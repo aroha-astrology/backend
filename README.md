@@ -1,4 +1,4 @@
-# jyotish-backend
+# aroha-astrology/backend
 
 The backend for Aroha Astrology — a Next.js API-only application plus the shared `@aroha-astrology/astro-engine` and `@aroha-astrology/shared` packages.
 
@@ -11,9 +11,9 @@ Owns:
 - Admin / one-off scripts (`scripts/`)
 
 Consumed by:
-- `jyotish-frontend` (web app) — calls this via `NEXT_PUBLIC_API_URL`
-- `jyotish-mobile` (Expo apps) — same
-- `jyotish-landing` does NOT consume this
+- `aroha-astrology/frontend` (web app) — calls this via `NEXT_PUBLIC_API_URL`
+- `aroha-astrology/mobile` (Expo apps) — same
+- `aroha-astrology/landing` does NOT consume this
 
 ## Branches
 
