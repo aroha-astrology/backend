@@ -1,0 +1,15 @@
+{
+  "runDir": "c:\\Users\\subir\\jyotish-ai\\scripts\\stress-test\\results\\run-2026-05-03T04-59-51-182Z",
+  "rounds": [
+    "round_1",
+    "round_2",
+    "round_3"
+  ],
+  "totalResults": 5,
+  "totalDurationMs": 118867,
+  "timestamp": "2026-05-03T04-59-51-182Z",
+  "dbVerification": {
+    "reportRowCount": 18,
+    "expectedRows": 13
+  }
+}
