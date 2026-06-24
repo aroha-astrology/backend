@@ -23,6 +23,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "dev:token": "tsx scripts/dev-token.ts",
+    "deploy": "bash scripts/deploy.sh",
     "prepare": "husky || true"
   },
   "dependencies": {

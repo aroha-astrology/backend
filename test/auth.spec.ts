@@ -26,10 +26,12 @@ vi.mock('firebase-admin/auth', () => ({
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findUserByFirebaseUid: state.findUserByFirebaseUid,
+  findUserByPhoneE164: vi.fn(),
   findActiveUserByFirebaseUid: vi.fn(),
   findActiveUserById: vi.fn(),
   insertUser: state.insertUser,
   updateUserById: state.updateUserById,
+  updateUserWithConsentLog: vi.fn(),
   softDeleteUserById: vi.fn(),
 }));
 

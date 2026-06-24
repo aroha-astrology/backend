@@ -80,7 +80,10 @@ usersRouter.openapi(getMeRoute, (c) => {
 usersRouter.openapi(patchMeRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
-  const next = await updateMe(user.id, body);
+  const sourceIp =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null;
+  const userAgent = c.req.header('user-agent') ?? null;
+  const next = await updateMe(user.id, body, { sourceIp, userAgent });
   return c.json(toUserDto(next), 200);
 });
 

@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   findUserByFirebaseUid: vi.fn(),
   findActiveUserById: vi.fn(),
   updateUserById: vi.fn(),
+  updateUserWithConsentLog: vi.fn(),
   softDeleteUserById: vi.fn(),
 }));
 
@@ -27,11 +28,15 @@ vi.mock('firebase-admin/auth', () => ({
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findUserByFirebaseUid: state.findUserByFirebaseUid,
+  findUserByPhoneE164: vi.fn(),
   findActiveUserByFirebaseUid: vi.fn(),
   findActiveUserById: state.findActiveUserById,
   insertUser: vi.fn(),
   updateUserById: state.updateUserById,
+  updateUserWithConsentLog: state.updateUserWithConsentLog,
   softDeleteUserById: state.softDeleteUserById,
+  softDeleteBirthProfilesByOwner: vi.fn().mockResolvedValue(undefined),
+  revokeDeviceTokensByUser: vi.fn().mockResolvedValue(undefined),
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -88,6 +93,7 @@ describe('PATCH /v1/me', () => {
     state.findUserByFirebaseUid.mockReset();
     state.findActiveUserById.mockReset();
     state.updateUserById.mockReset();
+    state.updateUserWithConsentLog.mockReset();
   });
 
   it('updates the profile and stamps profileCompletedAt when all fields are present', async () => {
@@ -125,6 +131,98 @@ describe('PATCH /v1/me', () => {
     const body = (await res.json()) as { profileCompletedAt: string | null };
     expect(body.profileCompletedAt).not.toBeNull();
     expect(state.updateUserById).toHaveBeenCalledTimes(2);
+  });
+
+  it('completes the profile with unknown birth time (no timeOfBirth required)', async () => {
+    const user = makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' });
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-1'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(user);
+    state.findActiveUserById.mockResolvedValueOnce(user);
+
+    // Core fields present, time genuinely unknown, time column stays null.
+    const filled = makeUserRow({
+      id: 'id-1',
+      firebaseUid: 'uid-1',
+      displayName: 'Bina',
+      gender: 'female',
+      dateOfBirth: '1990-01-01',
+      timeOfBirth: null,
+      birthTimeAccuracy: 'unknown',
+      placeOfBirth: { name: 'Delhi', lat: 28.6, lon: 77.2, tz: 'Asia/Kolkata' },
+    });
+    state.updateUserById.mockResolvedValueOnce(filled);
+    state.updateUserById.mockResolvedValueOnce(
+      makeUserRow({ ...filled, profileCompletedAt: new Date() }),
+    );
+
+    const app = createApp();
+    const res = await app.request('/v1/me', {
+      method: 'PATCH',
+      headers: AUTH,
+      body: JSON.stringify({
+        displayName: 'Bina',
+        gender: 'female',
+        dateOfBirth: '1990-01-01',
+        birthTimeAccuracy: 'unknown',
+        placeOfBirth: { name: 'Delhi', lat: 28.6, lon: 77.2, tz: 'Asia/Kolkata' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { profileCompletedAt: string | null };
+    expect(body.profileCompletedAt).not.toBeNull();
+  });
+
+  it('does NOT complete when birth time is approximate but missing', async () => {
+    const user = makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' });
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-1'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(user);
+    state.findActiveUserById.mockResolvedValueOnce(user);
+
+    const filled = makeUserRow({
+      id: 'id-1',
+      firebaseUid: 'uid-1',
+      displayName: 'Bina',
+      gender: 'female',
+      dateOfBirth: '1990-01-01',
+      timeOfBirth: null,
+      birthTimeAccuracy: 'approximate',
+      placeOfBirth: { name: 'Delhi', lat: 28.6, lon: 77.2, tz: 'Asia/Kolkata' },
+    });
+    state.updateUserById.mockResolvedValueOnce(filled);
+
+    const app = createApp();
+    const res = await app.request('/v1/me', {
+      method: 'PATCH',
+      headers: AUTH,
+      body: JSON.stringify({ birthTimeAccuracy: 'approximate' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { profileCompletedAt: string | null };
+    expect(body.profileCompletedAt).toBeNull();
+    // No second (finalizing) write happened.
+    expect(state.updateUserById).toHaveBeenCalledTimes(1);
+  });
+
+  it('records consent transactionally and exposes the active flag', async () => {
+    const user = makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' });
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-1'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(user);
+    state.findActiveUserById.mockResolvedValueOnce(user);
+    state.updateUserWithConsentLog.mockResolvedValueOnce(
+      makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', marketingConsentAt: new Date() }),
+    );
+
+    const app = createApp();
+    const res = await app.request('/v1/me', {
+      method: 'PATCH',
+      headers: AUTH,
+      body: JSON.stringify({ consent: { marketing: true } }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { marketingConsentActive: boolean };
+    expect(body.marketingConsentActive).toBe(true);
+    expect(state.updateUserWithConsentLog).toHaveBeenCalledTimes(1);
+    expect(state.updateUserById).not.toHaveBeenCalled();
   });
 
   it('rejects unknown fields with 422', async () => {
