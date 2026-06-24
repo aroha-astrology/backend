@@ -1,0 +1,662 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   Aroha Astrology — Vedic Night design tokens
+   Deep obsidian backgrounds, cosmic gold + saffron accents,
+   glassmorphism cards with bright inner-glows. Token NAMES
+   are preserved so consumers across 75+ files keep working;
+   only VALUES change.
+   ============================================================ */
+
+/* Paint dark immediately — prevents flash of light during PWA/web cold-start. */
+html, body { background-color: var(--bg); }
+body { padding-top: var(--app-banner-h, 0px); }
+
+:root {
+  /* Surfaces — deep obsidian + midnight purple */
+  --bg:           #11131A;          /* deep obsidian (page) */
+  --surface:      rgba(21,24,34,0.6);   /* glass card base */
+  --surface-2:    #1D1F26;          /* solid card / chip */
+  --surface-3:    #282A31;          /* elevated chip / icon container */
+  --border:       rgba(248,249,250,0.15);
+  --border-strong:rgba(248,249,250,0.22);
+
+  /* Ink — luminous off-white over dark */
+  --text:         #E1E2EB;          /* primary headings/body */
+  --text-2:       rgba(225,226,235,0.90);
+  --text-muted:   #D0C5AF;          /* warm muted (Vedic parchment) */
+  --text-dim:     #A39E8A;          /* ~7.5:1 on --bg — readable in outdoor glare */
+  --text-secondary: var(--text-muted);
+
+  /* Accent — cosmic gold + saffron */
+  --primary:      #D4AF37;          /* cosmic gold */
+  --primary-soft: rgba(212,175,55,0.18);
+  --primary-ink:  #F2CA50;          /* saffron glow (brighter accent) */
+  --accent:       #F2CA50;
+  --accent-soft:  rgba(242,202,80,0.18);
+
+  /* Status (dark-mode tuned) */
+  --success:      #4DD0A4;
+  --success-soft: rgba(77,208,164,0.18);
+  --warning:      #F2CA50;
+  --warning-soft: rgba(242,202,80,0.18);
+  --danger:       #FF6B7A;
+  --danger-soft:  rgba(255,107,122,0.18);
+  --error:        var(--danger);
+  --error-soft:   var(--danger-soft);
+
+  /* Glow tint reused across cards, buttons, nav */
+  --glow:         rgba(212,175,55,0.35);
+  --glow-soft:    rgba(212,175,55,0.15);
+  --glow-bright:  rgba(242,202,80,0.55);
+
+  /* Warm gold border tint (icon containers, accents) */
+  --border-gold:  #4D4635;
+
+  /* Nav glassmorphism background */
+  --nav-glass: rgba(17,19,26,0.75);
+
+  /* Background gradient accents (theme-aware) */
+  --bg-grad-1: rgba(80,30,140,0.25);
+  --bg-grad-2: rgba(40,30,90,0.35);
+
+  /* Utility class backgrounds (theme-aware) */
+  --card-bg: rgba(21,24,34,0.60);
+  --glass-bg: rgba(29,31,38,0.60);
+  --glass-3-bg: rgba(29,31,38,0.70);
+  --btn-secondary-bg: rgba(21,24,34,0.60);
+
+  /* Type — Cinzel headlines, Inter body.
+     Emoji fallbacks must be at the END of every stack — without them,
+     Inter/Cinzel return their .notdef "NO GLYPH" tile for 🪐 ✨ etc.
+     instead of letting the browser fall through to the system emoji font. */
+  --font-emoji:   'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Segoe UI Symbol', 'EmojiOne Color', 'Android Emoji';
+  --font-display: 'Cinzel', 'Times New Roman', Georgia, serif, var(--font-emoji);
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif, var(--font-emoji);
+  --font-mono:    'JetBrains Mono', 'SF Mono', ui-monospace, monospace, var(--font-emoji);
+
+  --tracking-display: 0.10em;
+  --tracking-eyebrow: 0.18em;
+
+  /* Type scale — fluid where it matters, fixed where it doesn't.
+     Use via .j-h1 / .j-h2 / .j-body / .j-caption (defined below) so
+     Hindi/Tamil/Bengali strings reflow cleanly when they're 20-40%
+     wider than English. */
+  --fs-display: clamp(14, 4.5vw, 40px);
+  --fs-h1:      clamp(22px, 3.5vw, 14);
+  --fs-h2:      18px;
+  --fs-body:    15px;
+  --fs-caption: 13px;
+  --fs-eyebrow: 11px;
+  --lh-tight:   1.2;
+  --lh-snug:    1.35;
+  --lh-relaxed: 1.55;
+
+  /* Spacing */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px; --s-9: 96px;
+
+  /* Radius */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 20px; --r-pill: 9999px;
+
+  /* Shadow — soft black + gold glow halo */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.30), 0 0 12px var(--glow-soft);
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.40), 0 0 20px var(--glow-soft);
+  --shadow-lg: 0 18px 50px rgba(0,0,0,0.55), 0 0 32px var(--glow);
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --t-fast: 150ms;
+  --t-mid: 300ms;
+  --t-slow: 500ms;
+}
+
+/* ============================================================
+   Light theme — warm white with blue-tint surfaces
+   Applied when data-theme="light"
+   ============================================================ */
+[data-theme="light"] {
+  /* Surfaces — warm white + light blue tint */
+  --bg:            #FDFCF8;
+  --surface:       rgba(255,255,255,0.70);
+  --surface-2:     #FFFFFF;
+  --surface-3:     rgba(212,175,55,0.10);
+
+  /* Borders — golden theme accents */
+  --border:        rgba(212,175,55,0.20);
+  --border-strong: rgba(212,175,55,0.30);
+  --border-gold:   rgba(212,175,55,0.40);
+
+  /* Text — dark on light */
+  --text:          #1A1A1A;
+  --text-2:        rgba(26,26,26,0.85);
+  --text-muted:    #987070;
+  --text-secondary:#987070;
+  --text-dim:      rgba(26,26,26,0.45);
+
+  /* Glow — softer on light bg */
+  --glow:          rgba(212,175,55,0.22);
+  --glow-soft:     rgba(212,175,55,0.10);
+  --glow-bright:   rgba(242,202,80,0.35);
+
+  /* Nav glass — warm frosted white */
+  --nav-glass:     rgba(253,252,248,0.88);
+
+  /* Background gradient accents — soft warm radials */
+  --bg-grad-1: rgba(255,255,255,0.60);
+  --bg-grad-2: rgba(212,175,55,0.08);
+
+  /* Utility class backgrounds for light theme */
+  --card-bg:       #ffffff;
+  --glass-bg:      rgba(253,252,248,0.85);
+  --glass-3-bg:    rgba(255,255,255,0.80);
+  --btn-secondary-bg: rgba(255,255,255,0.80);
+}
+
+/* Light theme: gold/yellow text reads poorly on warm-white surfaces.
+   Re-route text-color utilities and the .j-link / .j-token recipes to
+   the standard ink. Background, border, and gradient usages of the
+   same tokens stay gold — only the text colour flips. */
+[data-theme="light"] .text-accent,
+[data-theme="light"] .text-primary,
+[data-theme="light"] .text-primary-ink,
+[data-theme="light"] .text-warning {
+  color: var(--text);
+}
+[data-theme="light"] .j-link {
+  color: var(--text);
+  border-bottom-color: color-mix(in oklab, var(--text) 40%, transparent);
+}
+[data-theme="light"] .j-link:hover {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+[data-theme="light"] .j-token { color: var(--text); }
+
+/* ============================================================
+   Cosmic Blue theme — deep navy space, used on landing hero
+   ============================================================ */
+[data-theme="blue"] {
+  --bg:            #070D1A;
+  --surface:       rgba(14,30,60,0.65);
+  --surface-2:     #0F1E3A;
+  --surface-3:     #162545;
+  --border:        rgba(100,160,220,0.15);
+  --border-strong: rgba(100,160,220,0.25);
+  --border-gold:   rgba(100,160,220,0.20);
+  --text:          #E4EEF8;
+  --text-2:        rgba(228,238,248,0.88);
+  --text-muted:    #8AAECE;
+  --text-secondary:#8AAECE;
+  --text-dim:      rgba(100,150,200,0.55);
+  --primary:       #4A90D9;
+  --primary-soft:  rgba(74,144,217,0.18);
+  --primary-ink:   #6DB3F2;
+  --accent:        #6DB3F2;
+  --accent-soft:   rgba(109,179,242,0.18);
+  --glow:          rgba(74,144,217,0.35);
+  --glow-soft:     rgba(74,144,217,0.15);
+  --glow-bright:   rgba(109,179,242,0.55);
+  --nav-glass:     rgba(7,13,26,0.80);
+  --bg-grad-1:     rgba(20,50,120,0.30);
+  --bg-grad-2:     rgba(10,25,70,0.40);
+  --card-bg:       rgba(14,30,60,0.65);
+  --glass-bg:      rgba(15,30,58,0.75);
+  --glass-3-bg:    rgba(14,30,60,0.80);
+  --btn-secondary-bg: rgba(14,30,60,0.65);
+}
+
+/* ============================================================
+   Tailwind v4 theme bridge — same utility names as before
+   ============================================================ */
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-muted: var(--text-muted);
+  --color-text-dim: var(--text-dim);
+  --color-text-secondary: var(--text-muted);
+
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-ink: var(--primary-ink);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+
+  --font-display: 'Cinzel', 'Times New Roman', Georgia, serif, var(--font-emoji);
+  --font-sans: 'Inter', system-ui, sans-serif, var(--font-emoji);
+  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace, var(--font-emoji);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--font-body);
+    color: var(--text);
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, var(--bg-grad-1), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 110%, var(--bg-grad-2), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    min-height: 100dvh;
+  }
+}
+
+/* ============================================================
+   Typographic primitives
+   ============================================================ */
+.j-display {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  letter-spacing: var(--tracking-display);
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--text);
+}
+.j-h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  color: var(--text);
+}
+.j-h2 {
+  font-family: var(--font-body);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  color: var(--text);
+}
+.j-body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: var(--lh-relaxed);
+  color: var(--text-muted);
+}
+.j-caption {
+  font-family: var(--font-body);
+  font-size: var(--fs-caption);
+  font-weight: 400;
+  line-height: var(--lh-snug);
+  color: var(--text-muted);
+}
+.j-eyebrow {
+  font-family: var(--font-body);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.j-mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1, "ss01" 1;
+}
+.j-link {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  transition: color var(--t-fast) var(--ease);
+}
+.j-link:hover { color: var(--primary-ink); border-bottom-color: var(--primary-ink); }
+
+/* ============================================================
+   Card — glassmorphism with subtle gold halo
+   ============================================================ */
+.j-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 0 15px var(--glow-soft);
+  transition: box-shadow var(--t-mid) var(--ease),
+              border-color var(--t-mid) var(--ease),
+              transform var(--t-fast) var(--ease);
+}
+.j-card:hover {
+  box-shadow: 0 0 25px var(--glow);
+  border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+  transform: translateY(-2px);
+}
+
+/* Glass with stronger blur for nav / hero */
+.j-glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+
+/* 3D-tilt baseline — apply to a parent that uses framer-motion */
+.j-3d-tilt {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+/* ============================================================
+   Button — gold primary with halo, glass secondary
+   ============================================================ */
+.j-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 22px;
+  font: inherit; font-size: 14px; font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: all var(--t-fast) var(--ease);
+}
+.j-btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, #B8893F 100%);
+  color: var(--bg);
+  box-shadow: 0 0 18px var(--glow), 0 1px 0 rgba(255,255,255,0.15) inset;
+}
+.j-btn-primary:hover {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 0 14 var(--glow-bright), 0 1px 0 rgba(255,255,255,0.2) inset;
+}
+.j-btn-secondary {
+  background: var(--btn-secondary-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.j-btn-secondary:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 16px var(--glow-soft);
+}
+.j-btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+}
+.j-btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+
+/* ============================================================
+   Token chip & premium pill
+   ============================================================ */
+.j-token {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  background: var(--surface-3);
+  color: var(--accent);
+  border: 1px solid rgba(242,202,80,0.20);
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.j-premium {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px;
+  background: linear-gradient(135deg, #F2CA50 0%, #B8893F 100%);
+  color: #11131A;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 12px var(--glow);
+}
+
+/* ============================================================
+   Input
+   ============================================================ */
+.j-input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font: inherit; font-size: 15px;
+  color: var(--text);
+  outline: none;
+  transition: border-color var(--t-fast) var(--ease),
+              box-shadow var(--t-fast) var(--ease);
+}
+.j-input::placeholder { color: var(--text-dim); }
+.j-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--glow-soft);
+}
+
+/* ============================================================
+   Legacy glass utilities — mapped to Vedic Night glass
+   ============================================================ */
+.glass-card,
+.glass-2 {
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.glass-3  {
+  background: var(--glass-3-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+}
+
+/* ============================================================
+   Decorative — orbs, starfield, aurora, zodiac wheel
+   ============================================================ */
+.j-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+  border: 0;
+  margin: var(--s-5) 0;
+}
+.j-orb {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    color-mix(in oklab, var(--primary) 35%, transparent) 0%,
+    transparent 70%);
+  filter: blur(32px);
+  pointer-events: none;
+}
+.j-starfield {
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 18% 22%, rgba(242,202,80,.7), transparent),
+    radial-gradient(1px 1px at 70% 14%, rgba(225,226,235,.6), transparent),
+    radial-gradient(1px 1px at 35% 78%, rgba(212,175,55,.5), transparent),
+    radial-gradient(1px 1px at 85% 65%, rgba(225,226,235,.5), transparent),
+    radial-gradient(1.5px 1.5px at 52% 42%, rgba(242,202,80,.6), transparent),
+    radial-gradient(1px 1px at 14% 88%, rgba(212,175,55,.5), transparent),
+    radial-gradient(1px 1px at 62% 88%, rgba(225,226,235,.4), transparent),
+    radial-gradient(1px 1px at 92% 32%, rgba(242,202,80,.5), transparent);
+  pointer-events: none;
+  opacity: 0.7;
+}
+.j-aurora-bg {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 30%, var(--bg-grad-1), transparent 60%),
+    radial-gradient(ellipse 50% 35% at 80% 70%, var(--glow-soft), transparent 60%),
+    radial-gradient(ellipse 40% 50% at 50% 110%, var(--bg-grad-2), transparent 60%);
+  pointer-events: none;
+  animation: j-aurora 22s ease-in-out infinite alternate;
+}
+.j-zodiac-ring {
+  position: absolute;
+  border: 1px solid rgba(242,202,80,0.20);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.j-zodiac-ring::before,
+.j-zodiac-ring::after {
+  content: '';
+  position: absolute; inset: 12%;
+  border: 1px solid rgba(242,202,80,0.12);
+  border-radius: 50%;
+}
+.j-zodiac-ring::after { inset: 28%; }
+
+/* Active dot / pulsing node for timelines & dashas */
+.j-pulse-dot {
+  position: relative;
+  width: 10px; height: 10px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--glow-bright);
+}
+.j-pulse-dot::after {
+  content: '';
+  position: absolute; inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  animation: j-pulse-ring 1.8s var(--ease) infinite;
+}
+
+/* ============================================================
+   Keyframes
+   ============================================================ */
+@keyframes j-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.15); }
+}
+@keyframes j-pulse-ring {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes j-fade {
+  0%   { opacity: 0; transform: translateY(4px); }
+  10%  { opacity: 1; transform: translateY(0); }
+  85%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+@keyframes j-cursor {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+@keyframes j-drift {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  50%  { transform: translate(20px, -15px) rotate(180deg); }
+  100% { transform: translate(0, 0) rotate(360deg); }
+}
+@keyframes j-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes j-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes j-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes j-aurora {
+  0%   { transform: translate(0, 0) scale(1);    opacity: 0.7; }
+  50%  { transform: translate(-3%, 2%) scale(1.05); opacity: 0.9; }
+  100% { transform: translate(2%, -1%) scale(0.98); opacity: 0.75; }
+}
+@keyframes j-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-12px) rotate(2deg); }
+}
+@keyframes j-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes j-glow-pulse {
+  0%, 100% { box-shadow: 0 0 12px var(--glow-soft); }
+  50%      { box-shadow: 0 0 14 var(--glow-bright); }
+}
+
+.j-fade-up    { animation: j-fade-up 0.55s var(--ease) forwards; }
+.j-fade-in    { animation: j-fade-in 0.4s var(--ease-out) forwards; }
+.j-float      { animation: j-float 6s ease-in-out infinite; }
+.j-rotate-slow{ animation: j-rotate 60s linear infinite; }
+.j-glow-pulse { animation: j-glow-pulse 2.4s var(--ease) infinite; }
+.j-shimmer    {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+  background-size: 200% auto;
+  animation: j-shimmer 1.8s linear infinite;
+}
+
+/* ============================================================
+   Scrollbar — dark
+   ============================================================ */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(242,202,80,0.20); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(242,202,80,0.40); }
+
+/* ============================================================
+   Selection
+   ============================================================ */
+::selection {
+  background-color: var(--accent-soft);
+  color: var(--text);
+}
+
+/* ============================================================
+   Utilities
+   ============================================================ */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Gold halo helper — drop on any element */
+.j-halo-gold { box-shadow: 0 0 18px var(--glow), 0 0 36px var(--glow-soft); }
+
+/* Gold text gradient (logo, hero numbers) */
+.j-text-gold {
+  background: linear-gradient(135deg, #F2CA50 0%, #D4AF37 50%, #B8893F 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ============================================================
+   Reduced motion
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

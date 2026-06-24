@@ -1,0 +1,15 @@
+# Dev/CI install for machines WITHOUT a C toolchain (e.g. Windows without MSVC),
+# where pyswisseph cannot compile. Uses the pure-Python skyfield fallback engine.
+# Production / Linux uses requirements.txt (real pyswisseph).
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+firebase-admin>=6.5
+orjson>=3.10
+skyfield>=1.49
+langgraph>=0.2
+langchain-core>=0.3
+httpx>=0.27
+pytest>=8.2
+pytest-asyncio>=0.23
