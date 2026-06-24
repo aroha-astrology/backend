@@ -6,6 +6,14 @@ coverage/
 .env.*
 !.env.example
 
+# service account keys — never commit credentials.
+# note: keys downloaded from the GCP IAM console are named <project>-<hex>.json
+# and do NOT match the pattern below — keep all keys inside secrets/.
+secrets/
+*firebase-adminsdk*.json
+*.pem
+*.p12
+
 *.log
 npm-debug.log*
 

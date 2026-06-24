@@ -34,7 +34,10 @@ export function createApp(): OpenAPIHono {
       description:
         'HTTP API for the Aroha Astrology client. Authentication is via Firebase Auth — pass the Firebase ID token as `Authorization: Bearer <token>`.',
     },
-    servers: [{ url: 'http://localhost:3000', description: 'Local development' }],
+    servers: [
+      { url: 'http://13.232.179.137:3000', description: 'EC2 (Mumbai) — staging' },
+      { url: 'http://localhost:3000', description: 'Local development' },
+    ],
   });
 
   app.get('/docs', swaggerUI({ url: '/openapi.json' }));

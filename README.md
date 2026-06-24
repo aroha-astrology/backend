@@ -208,7 +208,7 @@ Allowed origins come from the `CORS_ORIGINS` env var on the server. For local de
   brew services start postgresql@15
   createdb aroha_astrology_dev
   ```
-- A Firebase project. Either a real one or, for purely-local boot, any valid PEM-formatted RSA key works (see Troubleshooting).
+- A Firebase project. Either a real one or, for purely-local boot, a dummy service account file works (see Troubleshooting).
 
 ### First-time setup
 
@@ -216,9 +216,40 @@ Allowed origins come from the `CORS_ORIGINS` env var on the server. For local de
 nvm use
 npm install
 cp .env.example .env
-# fill in DATABASE_URL, FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
+# 1. fill in DATABASE_URL
+# 2. drop the Firebase service account JSON into ./secrets/ (gitignored) and set
+#    FIREBASE_SERVICE_ACCOUNT_PATH to it (or set the three FIREBASE_* vars instead)
 npm run db:migrate
 npm run dev
+```
+
+### Firebase projects
+
+| Env  | Project ID        | Notes                                                          |
+| ---- | ----------------- | -------------------------------------------------------------- |
+| dev  | `aroha-dev-9c4b0` | Test phone number `+919999900001` → OTP `123456` (no real SMS) |
+| prod | `aroha-prod`      | Real SMS only — remove any test numbers before launch          |
+
+Phone sign-in is enabled on both, but the **SMS region policy** must allow
+India: Firebase console → Authentication → Settings → SMS region policy →
+allow `IN`. This applies even to test phone numbers — with the region blocked,
+`accounts:sendVerificationCode` fails with `OPERATION_NOT_ALLOWED`.
+
+Service account keys live in `./secrets/` (gitignored) — never commit them;
+rotate immediately if one leaks. Keep the **prod** key out of local checkouts
+entirely; only deployment infrastructure needs it.
+
+To call protected endpoints without a client app, mint a real ID token against
+the dev project (`scripts/dev-token.ts` refuses to run against non-dev
+projects):
+
+```bash
+# full phone-OTP flow (test number, no SMS sent):
+npm run -s dev:token -- --phone +919999900001 --code 123456
+
+# or any uid via the Admin SDK custom-token flow:
+TOKEN=$(npm run -s dev:token -- --uid local-dev-1)
+curl -X POST http://localhost:3000/v1/auth/session -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Daily workflow
@@ -237,6 +268,7 @@ npm run dev
 | `npm run db:generate` | Generate a migration from schema diffs            |
 | `npm run db:migrate`  | Apply pending migrations                          |
 | `npm run db:push`     | Push schema directly (dev-only, skips migrations) |
+| `npm run dev:token`   | Mint a Firebase ID token for local API testing    |
 | `npm run db:studio`   | Open drizzle-studio (web UI for the DB)           |
 
 Pre-commit hooks (via husky) auto-run ESLint + Prettier on staged files.
@@ -273,6 +305,8 @@ src/
 │   └── logger.ts             # pino instance
 └── types/
     └── hono.d.ts             # ContextVariableMap augmentation
+scripts/
+└── dev-token.ts              # mint Firebase ID tokens for local API testing
 test/
 ├── setup.ts                  # env vars for tests
 ├── helpers/mocks.ts          # data factories
@@ -342,18 +376,22 @@ For reference; full instructions land in `docs/deploy.md` when we ship.
 
 All env vars are validated at boot by `src/config/env.ts`. The server refuses to start if anything mandatory is missing or malformed.
 
-| Name                        | Required | Notes                                                                  |
-| --------------------------- | -------- | ---------------------------------------------------------------------- |
-| `NODE_ENV`                  | no       | `development` \| `test` \| `production`. Defaults to `development`.    |
-| `PORT`                      | no       | Defaults to `3000`.                                                    |
-| `LOG_LEVEL`                 | no       | `silent\|fatal\|error\|warn\|info\|debug\|trace`. Defaults to `info`.  |
-| `CORS_ORIGINS`              | no       | Comma-separated list. Empty = allow everything (use only in dev).      |
-| `DATABASE_URL`              | **yes**  | Postgres connection string. Use Supabase pooled URL in prod.           |
-| `SUPABASE_URL`              | no       | Required only when Storage features are turned on.                     |
-| `SUPABASE_SERVICE_ROLE_KEY` | no       | Required only when Storage features are turned on.                     |
-| `FIREBASE_PROJECT_ID`       | **yes**  | From Firebase service account JSON.                                    |
-| `FIREBASE_CLIENT_EMAIL`     | **yes**  | From Firebase service account JSON.                                    |
-| `FIREBASE_PRIVATE_KEY`      | **yes**  | PEM. Use `\n` for newlines, or wrap a real multi-line value in quotes. |
+| Name                            | Required | Notes                                                                  |
+| ------------------------------- | -------- | ---------------------------------------------------------------------- |
+| `NODE_ENV`                      | no       | `development` \| `test` \| `production`. Defaults to `development`.    |
+| `PORT`                          | no       | Defaults to `3000`.                                                    |
+| `LOG_LEVEL`                     | no       | `silent\|fatal\|error\|warn\|info\|debug\|trace`. Defaults to `info`.  |
+| `CORS_ORIGINS`                  | no       | Comma-separated list. Empty = allow everything (use only in dev).      |
+| `DATABASE_URL`                  | **yes**  | Postgres connection string. Use Supabase pooled URL in prod.           |
+| `SUPABASE_URL`                  | no       | Required only when Storage features are turned on.                     |
+| `SUPABASE_SERVICE_ROLE_KEY`     | no       | Required only when Storage features are turned on.                     |
+| `FIREBASE_SERVICE_ACCOUNT_PATH` | yes\*    | Path to the service account JSON (keep it in `./secrets/`).            |
+| `FIREBASE_PROJECT_ID`           | yes\*    | Alternative to the path. From Firebase service account JSON.           |
+| `FIREBASE_CLIENT_EMAIL`         | yes\*    | Alternative to the path. From Firebase service account JSON.           |
+| `FIREBASE_PRIVATE_KEY`          | yes\*    | PEM. Use `\n` for newlines, or wrap a real multi-line value in quotes. |
+| `FIREBASE_WEB_API_KEY`          | no       | Only for `scripts/dev-token.ts`. Not secret (ships in clients).        |
+
+\* Provide either `FIREBASE_SERVICE_ACCOUNT_PATH` **or** all three of project id / client email / private key.
 
 ---
 
@@ -361,11 +399,12 @@ All env vars are validated at boot by `src/config/env.ts`. The server refuses to
 
 **`Invalid environment configuration` on boot.** Read the error — it lists exactly which var failed and why. `.env.example` shows the right shape.
 
-**`Failed to parse private key`.** `FIREBASE_PRIVATE_KEY` must be a real PEM-formatted RSA key. For local-only dev (no real Firebase project), generate one:
+**`Failed to parse private key` / `Failed to parse service account json file`.** Note that `FIREBASE_SERVICE_ACCOUNT_PATH` takes precedence: if it is set, the three `FIREBASE_*` vars are ignored, so point it at a valid service account JSON (the path resolves from the working directory — run from `backend/`). If using the three-var route instead, leave `FIREBASE_SERVICE_ACCOUNT_PATH` unset, set **all three** vars, and make sure `FIREBASE_PRIVATE_KEY` is a real PEM-formatted RSA key. For purely-local boot with no Firebase project, generate a throwaway key and wrap it in a dummy service account file:
 
 ```bash
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/local.pem
-# then paste the contents into .env with literal \n between lines
+python3 -c "import json; print(json.dumps({'type':'service_account','project_id':'local-dev','client_email':'local-dev@local-dev.iam.gserviceaccount.com','private_key':open('/tmp/local.pem').read()}))" > secrets/local-dev.json
+# then set FIREBASE_SERVICE_ACCOUNT_PATH=./secrets/local-dev.json
 ```
 
 This makes the server boot. Actual token verification still requires a real Firebase project.
