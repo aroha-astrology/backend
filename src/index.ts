@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { logger } from './lib/logger.js';
 import { sqlClient } from './config/db.js';
 import { getFirebaseApp } from './config/firebase.js';
+import { closeRedis } from './config/redis.js';
 
 const app = createApp();
 
@@ -32,6 +33,11 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     await sqlClient.end({ timeout: 5 });
   } catch (err) {
     logger.error({ err }, 'server:shutdown:db-error');
+  }
+  try {
+    await closeRedis();
+  } catch (err) {
+    logger.error({ err }, 'server:shutdown:redis-error');
   }
   logger.info('server:shutdown:done');
   process.exit(0);

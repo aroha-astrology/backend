@@ -20,7 +20,9 @@
     "types": ["node", "vitest/globals"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@aroha-astrology/shared": ["src/lib/shared/index.ts"],
+      "@aroha-astrology/shared/*": ["src/lib/shared/*"]
     }
   },
   "include": [
@@ -31,5 +33,11 @@
     "tsup.config.ts",
     "vitest.config.ts"
   ],
-  "exclude": ["node_modules", "dist", "src/db/migrations"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/db/migrations",
+    "src/lib/astro-engine",
+    "src/lib/shared"
+  ]
 }

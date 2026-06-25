@@ -40,6 +40,48 @@ const EnvSchema = z
     // Web app API key — not used by the server itself, only by dev scripts
     // that sign in as a client (scripts/dev-token.ts).
     FIREBASE_WEB_API_KEY: z.string().min(1).optional(),
+
+    // --- NVIDIA NIM LLM ---------------------------------------------------
+    NVIDIA_NIM_API_KEY: z.string().min(1).optional(),
+    NVIDIA_NIM_BASE_URL: z.string().default('https://integrate.api.nvidia.com/v1'),
+    NVIDIA_NIM_API_KEY_2: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_3: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_4: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_5: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_6: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_7: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_8: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_9: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_10: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_11: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_12: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_13: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_14: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_15: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_16: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_17: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_18: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_19: z.string().min(1).optional(),
+    NVIDIA_NIM_API_KEY_20: z.string().min(1).optional(),
+
+    // --- NIM model routing -------------------------------------------------
+    MODEL_ROUTING: z.string().default('meta/llama-3.1-8b-instruct'),
+    MODEL_STRUCTURED: z.string().default('mistralai/mixtral-8x22b-instruct'),
+    MODEL_CONVERSATIONAL: z.string().default('meta/llama-3.1-70b-instruct'),
+
+    // --- Redis -------------------------------------------------------------
+    REDIS_URL: z.string().default('redis://localhost:6379/0'),
+
+    // --- Operations --------------------------------------------------------
+    CRON_SECRET: z.string().min(1).optional(),
+    TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
+    TELEGRAM_ALERT_CHAT_ID: z.string().min(1).optional(),
+
+    // --- Dev bypass --------------------------------------------------------
+    DEV_AUTH_BYPASS: z
+      .string()
+      .default('false')
+      .transform((v) => v === 'true' || v === '1'),
   })
   .superRefine((value, ctx) => {
     const hasPath = Boolean(value.FIREBASE_SERVICE_ACCOUNT_PATH);

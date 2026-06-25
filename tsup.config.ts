@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsup';
+import { resolve } from 'path';
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -11,4 +12,10 @@ export default defineConfig({
   shims: false,
   minify: false,
   dts: false,
+  external: ['swisseph-wasm'],
+  esbuildOptions(options) {
+    options.alias = {
+      '@aroha-astrology/shared': resolve('src/lib/shared/index.ts'),
+    };
+  },
 });

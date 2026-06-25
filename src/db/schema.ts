@@ -483,3 +483,168 @@ export const userConsentLog = pgTable(
 
 export type UserConsentLogRow = typeof userConsentLog.$inferSelect;
 export type NewUserConsentLogRow = typeof userConsentLog.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* subscription_plans — billing tiers                                          */
+/* -------------------------------------------------------------------------- */
+
+export const subscriptionPlanStatusEnum = pgEnum('subscription_status', [
+  'active',
+  'cancelled',
+  'expired',
+  'trial',
+]);
+
+export const subscriptionPlans = pgTable('subscription_plans', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  name: text('name').notNull(),
+  monthlyPrice: integer('monthly_price').notNull().default(0),
+  features: jsonb('features').$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export const userSubscriptions = pgTable(
+  'user_subscriptions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    planId: uuid('plan_id')
+      .notNull()
+      .references(() => subscriptionPlans.id),
+    status: subscriptionPlanStatusEnum('status').notNull().default('active'),
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('user_subscriptions_user_id_idx').on(table.userId),
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/* credit_transactions — token wallet ledger                                   */
+/* -------------------------------------------------------------------------- */
+
+export const creditTransactions = pgTable(
+  'credit_transactions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    delta: integer('delta').notNull(),
+    reason: text('reason').notNull(),
+    balanceAfter: integer('balance_after').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('credit_transactions_user_id_idx').on(table.userId),
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/* prediction_feedback — user feedback on predictions                          */
+/* -------------------------------------------------------------------------- */
+
+export const predictionFeedback = pgTable(
+  'prediction_feedback',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    predictionId: text('prediction_id'),
+    rating: integer('rating'),
+    helpful: boolean('helpful'),
+    comment: text('comment'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('prediction_feedback_user_id_idx').on(table.userId),
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/* ai_usage — LLM token/cost tracking                                          */
+/* -------------------------------------------------------------------------- */
+
+export const aiUsage = pgTable(
+  'ai_usage',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    agent: text('agent').notNull(),
+    model: text('model').notNull(),
+    tokensIn: integer('tokens_in').notNull().default(0),
+    tokensOut: integer('tokens_out').notNull().default(0),
+    durationMs: integer('duration_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('ai_usage_user_id_idx').on(table.userId),
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/* precompute_jobs — background job tracking                                    */
+/* -------------------------------------------------------------------------- */
+
+export const precomputeJobStatusEnum = pgEnum('precompute_job_status', [
+  'pending',
+  'running',
+  'completed',
+  'failed',
+]);
+
+export const precomputeJobs = pgTable(
+  'precompute_jobs',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    profileId: uuid('profile_id'),
+    periodType: text('period_type').notNull(),
+    periodKey: text('period_key').notNull(),
+    status: precomputeJobStatusEnum('status').notNull().default('pending'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userPeriodIdx: index('precompute_jobs_user_period_idx').on(
+      table.userId,
+      table.periodType,
+      table.periodKey,
+    ),
+  }),
+);

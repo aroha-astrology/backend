@@ -5,6 +5,11 @@ import { healthRouter } from './modules/health/health.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
 import { birthProfilesRouter } from './modules/birth-profiles/birth-profiles.routes.js';
 import { deviceTokensRouter } from './modules/device-tokens/device-tokens.routes.js';
+import { astroRouter } from './modules/astro/astro.routes.js';
+import { legalRouter } from './modules/legal/legal.routes.js';
+import { billingRouter } from './modules/billing/billing.routes.js';
+import { preferencesRouter } from './modules/preferences/preferences.routes.js';
+import { feedbackRouter } from './modules/feedback/feedback.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { corsMiddleware } from './middleware/cors.js';
@@ -23,6 +28,11 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', usersRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', deviceTokensRouter);
+  app.route('/v1', astroRouter);
+  app.route('/v1', legalRouter);
+  app.route('/v1', billingRouter);
+  app.route('/v1', preferencesRouter);
+  app.route('/v1', feedbackRouter);
 
   app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
     type: 'http',
