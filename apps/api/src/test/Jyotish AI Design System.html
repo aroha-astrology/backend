@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Jyotish AI — Design System & Screens</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="tokens.css"/>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    #root { height: 100%; }
+    /* artboard clip */
+    .j-artboard { overflow: hidden; }
+    /* Ensure artboard contents fill their container */
+    .j-artboard > * { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="jyotish-components.jsx"></script>
+<script type="text/babel" src="jyotish-screens-1.jsx"></script>
+<script type="text/babel" src="jyotish-screens-2.jsx"></script>
+<script type="text/babel" src="jyotish-screens-3.jsx"></script>
+<script type="text/babel" src="jyotish-screens-4.jsx"></script>
+
+<script type="text/babel">
+// ─── TWEAK DEFAULTS ──────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#7A96AB",
+  "displayFont": "cinzel",
+  "tone": "calm",
+  "showGuides": false
+}/*EDITMODE-END*/;
+
+// ─── Phone wrapper (artboard-sized) ──────────────────────────
+function PhoneArtboard({ children }) {
+  return (
+    <div style={{ width: '100%', height: '100%', background: '#D1E1E8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <PhoneFrame>{children}</PhoneFrame>
+    </div>
+  );
+}
+
+// ─── Desktop wrapper ─────────────────────────────────────────
+function DesktopArtboard({ children, url }) {
+  return (
+    <div style={{ width: '100%', height: '100%', background: '#D1E1E8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <DesktopFrame width={1100} height={740} url={url}>
+        {children}
+      </DesktopFrame>
+    </div>
+  );
+}
+
+// ─── Main App ────────────────────────────────────────────────
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Apply tweaks to CSS vars
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--primary', t.accent);
+    // derive ink: darken by mixing with black (simple hex darkening not needed — just use fixed)
+    // Map known accents to their ink variants
+    const inkMap = {
+      '#7A96AB': '#3D5A6E',
+      '#FCC4C6': '#8A3A40',
+      '#CFE9E2': '#2D6A5A',
+      '#B9C8D9': '#3A5268',
+    };
+    const softMap = {
+      '#7A96AB': '#D1E1E8',
+      '#FCC4C6': '#FED3D6',
+      '#CFE9E2': '#E0F4F0',
+      '#B9C8D9': '#D1E1E8',
+    };
+    root.style.setProperty('--primary-soft', softMap[t.accent] || '#D1E1E8');
+    root.style.setProperty('--primary-ink', inkMap[t.accent] || t.accent);
+
+    // display font
+    if (t.displayFont === 'cinzel') {
+      root.style.setProperty('--font-display', "'Cinzel', 'Times New Roman', Georgia, serif");
+    } else {
+      root.style.setProperty('--font-display', "'Georgia', 'Times New Roman', serif");
+    }
+    // tone
+    if (t.tone === 'mystical') {
+      root.style.setProperty('--bg', '#E4DFD8');
+      root.style.setProperty('--surface', '#F0EDE8');
+      root.style.setProperty('--surface-2', '#CADDE6');
+    } else {
+      root.style.setProperty('--bg', '#EAE7E2');
+      root.style.setProperty('--surface', '#F7F5F2');
+      root.style.setProperty('--surface-2', '#D1E1E8');
+    }
+  }, [t.accent, t.displayFont, t.tone]);
+
+  return (
+    <>
+      <DesignCanvas>
+
+        {/* ── 01 · DESIGN SYSTEM ─────────────────────── */}
+        <DCSection id="system" title="01 · Design System" subtitle="Tokens, type, components, motion">
+          <DCArtboard id="ds-full" label="Full system" width={1100} height={900}>
+            <div style={{ width: '100%', height: '100%' }}><DesignSystemPage/></div>
+          </DCArtboard>
+          <DCArtboard id="wisdom-showcase" label="WisdomLoader showcase" width={900} height={900}>
+            <div style={{ width: '100%', height: '100%' }}><WisdomShowcasePage/></div>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 02 · LANDING / LOGIN ───────────────────── */}
+        <DCSection id="landing" title="02 · Landing & Login" subtitle="First impression — auth entry">
+          <DCArtboard id="land-desktop" label="Desktop · Landing" width={1100} height={740}>
+            <DesktopArtboard url="jyotish.ai">
+              <LandingDesktop/>
+            </DesktopArtboard>
+          </DCArtboard>
+          <DCArtboard id="land-mobile" label="Mobile · Login" width={420} height={740}>
+            <PhoneArtboard><LandingMobile/></PhoneArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 03 · ONBOARDING ────────────────────────── */}
+        <DCSection id="onboarding" title="03 · Onboarding Chat" subtitle="Chat-form — 6 questions, wisdom loading">
+          <DCArtboard id="ob-step2" label="Mobile · Step 2 (date)" width={420} height={740}>
+            <PhoneArtboard><OnboardingMobile step={2}/></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="ob-step4" label="Mobile · Step 4 (choice)" width={420} height={740}>
+            <PhoneArtboard><OnboardingMobile step={4}/></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="ob-loading" label="Mobile · WisdomLoader (chart calc)" width={420} height={740}>
+            <PhoneArtboard>
+              <div style={{ height: '100%', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 32, padding: 40 }}>
+                <div className="j-display" style={{ fontSize: 13, letterSpacing: '0.2em' }}>JYOTISH</div>
+                <Constellation width={180} height={100} opacity={0.5}/>
+                <WisdomLoader section="onboarding" size="lg"/>
+                <div className="j-eyebrow" style={{ marginTop: 8, textAlign: 'center' }}>
+                  This takes about 20 seconds
+                </div>
+              </div>
+            </PhoneArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 04 · DASHBOARD ─────────────────────────── */}
+        <DCSection id="dashboard" title="04 · Dashboard" subtitle="Post-auth home — dasha, insights, tools">
+          <DCArtboard id="dash-desktop" label="Desktop · Dashboard" width={1100} height={740}>
+            <DesktopArtboard url="app.jyotish.ai/dashboard">
+              <DashboardDesktop/>
+            </DesktopArtboard>
+          </DCArtboard>
+          <DCArtboard id="dash-mobile" label="Mobile · Dashboard" width={420} height={740}>
+            <PhoneArtboard><DashboardMobile/></PhoneArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 05 · KUNDLI VIEWER ─────────────────────── */}
+        <DCSection id="kundli" title="05 · Birth Chart / Kundli" subtitle="SVG chart + planet table + dasha tabs">
+          <DCArtboard id="kundli-desktop-chart" label="Desktop · Chart tab" width={1100} height={740}>
+            <DesktopArtboard url="app.jyotish.ai/kundli">
+              <KundliDesktop/>
+            </DesktopArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 06 · CHAT WITH YOGI BABA ───────────────── */}
+        <DCSection id="chat" title="06 · Chat with Yogi Baba" subtitle="Streaming AI, suggested prompts, chart context">
+          <DCArtboard id="chat-mobile" label="Mobile · Mid-conversation" width={420} height={740}>
+            <PhoneArtboard><ChatMobile/></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="chat-desktop" label="Desktop · Chat" width={1100} height={740}>
+            <DesktopArtboard url="app.jyotish.ai/chat">
+              <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', height: '100%', background: 'var(--bg)' }}>
+                {/* sidebar placeholder */}
+                <div style={{ background: 'var(--surface)', borderRight: '1px solid var(--border)', padding: '16px 0' }}>
+                  <div style={{ padding: '8px 20px 20px' }}>
+                    <div className="j-display" style={{ fontSize: 13, letterSpacing: '0.2em' }}>JYOTISH</div>
+                  </div>
+                  {['Dashboard','Birth Chart','Life Journey','Horoscope'].map(l => (
+                    <div key={l} style={{ padding: '8px 20px', fontSize: 13, color: 'var(--text-muted)', cursor: 'pointer' }}>{l}</div>
+                  ))}
+                  <div style={{ padding: '8px 20px', fontSize: 13, fontWeight: 600, color: 'var(--primary-ink)', background: 'var(--primary-soft)', cursor: 'pointer' }}>Chat with Yogi Baba</div>
+                </div>
+                {/* full chat panel */}
+                <ChatMobile/>
+              </div>
+            </DesktopArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 07 · PREMIUM REPORT ────────────────────── */}
+        <DCSection id="report" title="07 · Premium Report" subtitle="Long-scroll editorial · 7 chapters · TOC sidebar">
+          <DCArtboard id="report-desktop" label="Desktop · Chapter 1" width={1100} height={740}>
+            <DesktopArtboard url="app.jyotish.ai/reports/premium">
+              <PremiumReportDesktop/>
+            </DesktopArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 08 · LIFE JOURNEY ──────────────────────── */}
+        <DCSection id="journey" title="08 · Life Journey" subtitle="Vimshottari dasha timeline — past, active, future">
+          <DCArtboard id="journey-desktop" label="Desktop · Journey" width={1100} height={740}>
+            <DesktopArtboard url="app.jyotish.ai/life-journey">
+              <LifeJourneyDesktop/>
+            </DesktopArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 09 · COUPLE MATCH ──────────────────────── */}
+        <DCSection id="couple" title="09 · Couple Match" subtitle="Guna milan · two charts compared · AI narration">
+          <DCArtboard id="couple-desktop" label="Desktop · Compatibility" width={1100} height={740}>
+            <DesktopArtboard url="app.jyotish.ai/couple">
+              <CoupleMatchDesktop/>
+            </DesktopArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ── 10 · TOOLS ─────────────────────────────── */}
+        <DCSection id="tools" title="10 · Tools" subtitle="Vastu, Gemstone, Buy Tokens, Profile">
+          <DCArtboard id="vastu-mobile" label="Mobile · Vastu" width={420} height={740}>
+            <PhoneArtboard><VastuMobile/></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="gem-mobile" label="Mobile · Gemstone" width={420} height={740}>
+            <PhoneArtboard><GemstoneMobile/></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="tokens-mobile" label="Mobile · Buy Tokens" width={420} height={740}>
+            <PhoneArtboard><BuyTokensMobile/></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="profile-mobile" label="Mobile · Profile" width={420} height={740}>
+            <PhoneArtboard><ProfileMobile/></PhoneArtboard>
+          </DCArtboard>
+        </DCSection>
+
+      </DesignCanvas>
+
+      {/* ── TWEAKS PANEL ─────────────────────────────── */}
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Accent colour"/>
+        {/* Palette swatches from the calm palette */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '2px 0' }}>
+          {[
+            { hex: '#7A96AB', label: 'Slate blue' },
+            { hex: '#B9C8D9', label: 'Powder' },
+            { hex: '#FCC4C6', label: 'Blush' },
+            { hex: '#CFE9E2', label: 'Mint' },
+            { hex: '#9B8EA8', label: 'Lavender' },
+            { hex: '#A8B49A', label: 'Sage' },
+          ].map(({ hex, label }) => (
+            <button key={hex} title={label} onClick={() => setTweak('accent', hex)}
+              style={{
+                width: 28, height: 28, borderRadius: '50%', background: hex,
+                border: t.accent === hex ? '2.5px solid var(--primary-ink)' : '1.5px solid var(--border-strong)',
+                cursor: 'pointer', padding: 0, flexShrink: 0,
+                boxShadow: t.accent === hex ? '0 0 0 2px white, 0 0 0 4px ' + hex : 'none',
+                transition: 'all 150ms',
+              }}/>
+          ))}
+        </div>
+        <TweakSection label="Display font"/>
+        <TweakRadio label="Font" value={t.displayFont}
+          options={['cinzel', 'georgia']}
+          onChange={(v) => setTweak('displayFont', v)}/>
+        <TweakSection label="Tone"/>
+        <TweakRadio label="Tone" value={t.tone}
+          options={['calm', 'mystical']}
+          onChange={(v) => setTweak('tone', v)}/>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

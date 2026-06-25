@@ -1,0 +1,112 @@
+[
+  {
+    "idx": 0,
+    "id": "f427b26d-f055-4c82-bf6f-1328c2532534",
+    "email": "stresstest+0@jyotish.local",
+    "password": "St!0Stresst5g5uivfX9",
+    "chartId": "a781444c-89dd-49ab-8272-acf9cad3e4dc",
+    "profileId": "b3a079a7-f232-4188-881b-160edad00c9a",
+    "name": "Aarav",
+    "dob": "1985-03-12",
+    "tob": "04:32"
+  },
+  {
+    "idx": 1,
+    "id": "a57ec002-b448-4617-b630-d9179c7d0701",
+    "email": "stresstest+1@jyotish.local",
+    "password": "St!1Stresswhlv3d4jX9",
+    "chartId": "82e4d773-43c0-49f1-9644-3bacb64cff8a",
+    "profileId": "1dca18f7-9970-473a-bfe7-edd9ce547bf8",
+    "name": "Diya",
+    "dob": "1992-07-21",
+    "tob": "11:18"
+  },
+  {
+    "idx": 2,
+    "id": "5d682785-0952-4633-ba64-f75de501b7e1",
+    "email": "stresstest+2@jyotish.local",
+    "password": "St!2Stressrgkh038mX9",
+    "chartId": "0d09de89-1e44-4e1c-87ef-9ab5f68bd856",
+    "profileId": "a9771589-7016-4720-9a4f-a200d28fdb06",
+    "name": "Vihaan",
+    "dob": "1988-11-08",
+    "tob": "22:05"
+  },
+  {
+    "idx": 3,
+    "id": "bc40cd4e-405a-4e8d-a2f0-296c6392f622",
+    "email": "stresstest+3@jyotish.local",
+    "password": "St!3Stressfx58neb0X9",
+    "chartId": "a97a271f-e633-4940-87ae-86aa8c847bdb",
+    "profileId": "b708b715-685e-4841-8bfa-55a65f98271d",
+    "name": "Ananya",
+    "dob": "1995-01-30",
+    "tob": "06:47"
+  },
+  {
+    "idx": 4,
+    "id": "6091e410-ec0b-4c4c-8c37-a6d22c73e12f",
+    "email": "stresstest+4@jyotish.local",
+    "password": "St!4Stresskz7xk2vbX9",
+    "chartId": "086c1006-990d-4fd1-a15e-ea33aec674d1",
+    "profileId": "ce7477f3-63a1-4872-94c1-32d8869d1a89",
+    "name": "Kabir",
+    "dob": "1990-09-15",
+    "tob": "14:22"
+  },
+  {
+    "idx": 5,
+    "id": "376e57f1-e0f4-44e7-af8f-969f9ffa1ab3",
+    "email": "stresstest+5@jyotish.local",
+    "password": "St!5Stress2ttxfqqtX9",
+    "chartId": "b4098f19-cf07-4037-81bf-8df0fb935824",
+    "profileId": "9458650f-e41c-4575-8d78-5b4d4f2d6bab",
+    "name": "Saanvi",
+    "dob": "1998-06-04",
+    "tob": "08:55"
+  },
+  {
+    "idx": 6,
+    "id": "2d4dff5c-bf4d-4dcc-8108-1867fff9427a",
+    "email": "stresstest+6@jyotish.local",
+    "password": "St!6Stressmoh4agx8X9",
+    "chartId": "13403c84-3e7a-4573-bdc8-9f593620398b",
+    "profileId": "a8b13a92-f329-4797-9847-0980ca15d664",
+    "name": "Arjun",
+    "dob": "1983-12-19",
+    "tob": "19:40"
+  },
+  {
+    "idx": 7,
+    "id": "19b6ac4b-6b31-4884-b0d2-6415b8042023",
+    "email": "stresstest+7@jyotish.local",
+    "password": "St!7Stressztiz74a8X9",
+    "chartId": "22443fda-7c6a-40ee-a542-e16494b37613",
+    "profileId": "449796d7-4085-49a2-9eb6-4870309acad2",
+    "name": "Myra",
+    "dob": "1996-04-27",
+    "tob": "02:15"
+  },
+  {
+    "idx": 8,
+    "id": "d8e0c28c-1681-4d81-8008-a01cca9afe63",
+    "email": "stresstest+8@jyotish.local",
+    "password": "St!8Stressp2kmpabbX9",
+    "chartId": "f1541f6b-d8b7-40e2-8f81-2eacf3a75a8b",
+    "profileId": "8ce2079a-6bf1-4834-aa04-b197b8163983",
+    "name": "Reyansh",
+    "dob": "1987-10-03",
+    "tob": "16:08"
+  },
+  {
+    "idx": 9,
+    "id": "9ea417de-312b-4f46-9c89-c66ee1076cc4",
+    "email": "stresstest+9@jyotish.local",
+    "password": "St!9Stresszr8fbqpzX9",
+    "chartId": "8b6f5c0c-7054-4d56-bef3-ec49de5b6227",
+    "profileId": "c0219dbc-f5cf-4f4c-af58-c3e3c300e3a4",
+    "name": "Aaradhya",
+    "dob": "1993-02-14",
+    "tob": "05:33"
+  }
+]
