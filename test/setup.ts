@@ -14,3 +14,4 @@ delete process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 process.env.FIREBASE_PROJECT_ID = 'test-project';
 process.env.FIREBASE_CLIENT_EMAIL = 'sa@test-project.iam.gserviceaccount.com';
 process.env.FIREBASE_PRIVATE_KEY = 'test-key';
+process.env.CRON_SECRET = 'test-cron-secret';

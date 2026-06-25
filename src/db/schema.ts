@@ -697,3 +697,40 @@ export const kundlis = pgTable('kundlis', {
 
 export type KundliRow = typeof kundlis.$inferSelect;
 export type NewKundliRow = typeof kundlis.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* daily_horoscopes — one personalized horoscope per user per day              */
+/* -------------------------------------------------------------------------- */
+
+export const dailyHoroscopes = pgTable(
+  'daily_horoscopes',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The calendar date (in the app's IST timezone) this horoscope is for. */
+    forDate: date('for_date').notNull(),
+    summary: text('summary').notNull(),
+    /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    // One horoscope per user per day — the upsert conflict target.
+    userDateUnique: uniqueIndex('daily_horoscopes_user_date_unique').on(
+      table.userId,
+      table.forDate,
+    ),
+  }),
+);
+
+export type DailyHoroscopeRow = typeof dailyHoroscopes.$inferSelect;
+export type NewDailyHoroscopeRow = typeof dailyHoroscopes.$inferInsert;
