@@ -1,0 +1,156 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.calculateYoginiDasha = calculateYoginiDasha;
+const shared_1 = require("@jyotish-ai/shared");
+// ============================================================
+// Helpers
+// ============================================================
+const MS_PER_DAY = 86_400_000;
+const DAYS_PER_YEAR = 365.25;
+const MS_PER_YEAR = DAYS_PER_YEAR * MS_PER_DAY;
+const YOGINI_TOTAL_YEARS = 36; // 1+2+3+4+5+6+7+8
+function addYears(date, years) {
+    return new Date(date.getTime() + years * MS_PER_YEAR);
+}
+function isDateInRange(date, start, end) {
+    const t = date.getTime();
+    return t >= start.getTime() && t < end.getTime();
+}
+// ============================================================
+// Nakshatra helpers
+// ============================================================
+/**
+ * Returns the 0-based nakshatra index (0-26) for a sidereal longitude.
+ */
+function getNakshatraIndex(moonLongitude) {
+    const normalized = ((moonLongitude % 360) + 360) % 360;
+    return Math.floor(normalized / shared_1.NAKSHATRA_SPAN);
+}
+/**
+ * Fraction of the current nakshatra already traversed (0-1).
+ */
+function getNakshatraTraversedFraction(moonLongitude) {
+    const normalized = ((moonLongitude % 360) + 360) % 360;
+    return (normalized % shared_1.NAKSHATRA_SPAN) / shared_1.NAKSHATRA_SPAN;
+}
+// ============================================================
+// Starting Yogini
+// ============================================================
+/**
+ * Determine the starting Yogini index (0-7) from the Moon's nakshatra.
+ *
+ * Traditional formula:
+ *   startingYoginiIndex = (nakshatraIndex + 3) % 8
+ *
+ * nakshatraIndex is 0-based (Ashwini = 0 ... Revati = 26).
+ */
+function getStartingYoginiIndex(nakshatraIndex) {
+    return (nakshatraIndex + 3) % 8;
+}
+// ============================================================
+// Antardasha builder
+// ============================================================
+/**
+ * Build Antardasha sub-periods within a Yogini Mahadasha.
+ *
+ * Within each Yogini mahadasha the 8 yogini antardashas cycle starting
+ * from the mahadasha yogini herself.  Each antardasha duration is
+ * proportional:
+ *
+ *   antardashaYears = mahadashaDuration * (antarYoginiYears / YOGINI_TOTAL_YEARS)
+ */
+function buildYoginiAntardashas(startYoginiIdx, startDate, mahadashaDurationYears, currentDate) {
+    const periods = [];
+    let cursor = new Date(startDate.getTime());
+    for (let i = 0; i < 8; i++) {
+        const idx = (startYoginiIdx + i) % 8;
+        const planet = shared_1.YOGINI_PLANETS[idx];
+        const durationYears = mahadashaDurationYears * (shared_1.YOGINI_YEARS[idx] / YOGINI_TOTAL_YEARS);
+        const endDate = addYears(cursor, durationYears);
+        const isActive = isDateInRange(currentDate, cursor, endDate);
+        periods.push({
+            planet,
+            startDate: new Date(cursor.getTime()),
+            endDate,
+            isActive,
+            level: 'antardasha',
+            subPeriods: [],
+        });
+        cursor = endDate;
+    }
+    return periods;
+}
+// ============================================================
+// Main entry point
+// ============================================================
+/**
+ * Calculate the Yogini Dasha system.
+ *
+ * The Yogini Dasha is a 36-year cycle with 8 yoginis:
+ *   Mangala(1/Moon), Pingala(2/Sun), Dhanya(3/Jupiter), Bhramari(4/Mars),
+ *   Bhadrika(5/Mercury), Ulka(6/Saturn), Siddha(7/Venus), Sankata(8/Rahu)
+ *
+ * The starting yogini is determined by (nakshatraIndex + 3) % 8.
+ * The balance of the first dasha is based on the remaining fraction of
+ * the birth nakshatra, identical in concept to Vimshottari.
+ *
+ * Two levels are computed: Mahadasha and Antardasha.
+ *
+ * @param moonLongitude  Sidereal Moon longitude (0-360).
+ * @param birthDate      Date/time of birth.
+ * @returns              A `YoginiDasha` object.
+ */
+function calculateYoginiDasha(moonLongitude, birthDate) {
+    const now = new Date();
+    // 1. Starting yogini
+    const nakshatraIdx = getNakshatraIndex(moonLongitude);
+    const startYoginiIdx = getStartingYoginiIndex(nakshatraIdx);
+    // 2. Balance of first dasha
+    const traversed = getNakshatraTraversedFraction(moonLongitude);
+    const balanceFraction = 1 - traversed;
+    const firstFullYears = shared_1.YOGINI_YEARS[startYoginiIdx];
+    const firstBalanceYears = firstFullYears * balanceFraction;
+    // 3. Build mahadasha list covering 120 years from birth
+    //    (multiple 36-year cycles, cycling through all 8 yoginis)
+    const TARGET_YEARS = 120;
+    const yoginis = [];
+    let cursor = new Date(birthDate.getTime());
+    let accumulatedYears = 0;
+    let periodCount = 0;
+    while (accumulatedYears < TARGET_YEARS) {
+        // The yogini index cycles: startYoginiIdx, startYoginiIdx+1, ...
+        const yoginiIdx = (startYoginiIdx + periodCount) % 8;
+        let durationYears;
+        if (periodCount === 0) {
+            // First mahadasha uses the balance (remaining nakshatra fraction)
+            durationYears = firstBalanceYears;
+        }
+        else {
+            durationYears = shared_1.YOGINI_YEARS[yoginiIdx];
+        }
+        // Clamp to not exceed target
+        if (accumulatedYears + durationYears > TARGET_YEARS) {
+            durationYears = TARGET_YEARS - accumulatedYears;
+        }
+        const planet = shared_1.YOGINI_PLANETS[yoginiIdx];
+        const endDate = addYears(cursor, durationYears);
+        const isActive = isDateInRange(now, cursor, endDate);
+        yoginis.push({
+            planet,
+            startDate: new Date(cursor.getTime()),
+            endDate,
+            isActive,
+            level: 'mahadasha',
+            subPeriods: isActive
+                ? buildYoginiAntardashas(yoginiIdx, cursor, durationYears, now)
+                : [],
+        });
+        accumulatedYears += durationYears;
+        cursor = endDate;
+        periodCount++;
+    }
+    // 4. Find currently active yogini
+    const currentYogini = yoginis.find((y) => y.isActive) ?? yoginis[0];
+    return { yoginis, currentYogini };
+}
+//# sourceMappingURL=yogini.js.map
