@@ -21,14 +21,13 @@ const errorResponse = (description: string) => ({
 
 export const usersRouter = new OpenAPIHono();
 
-usersRouter.use('*', requireUser);
-
 const getMeRoute = createRoute({
   method: 'get',
   path: '/me',
   tags: ['Users'],
   summary: 'Get current user profile',
   security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
   responses: {
     200: {
       description: 'The current user',
@@ -44,6 +43,7 @@ const patchMeRoute = createRoute({
   tags: ['Users'],
   summary: 'Update current user profile',
   security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
   request: {
     body: {
       required: true,
@@ -66,6 +66,7 @@ const deleteMeRoute = createRoute({
   tags: ['Users'],
   summary: 'Soft-delete the current user account',
   security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
   responses: {
     204: { description: 'Deleted' },
     401: errorResponse('Unauthorized'),

@@ -25,11 +25,11 @@ export function createApp(): OpenAPIHono {
 
   app.route('/', healthRouter);
   app.route('/v1/auth', authRouter);
+  app.route('/v1', astroRouter);
+  app.route('/v1', legalRouter);
   app.route('/v1', usersRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', deviceTokensRouter);
-  app.route('/v1', astroRouter);
-  app.route('/v1', legalRouter);
   app.route('/v1', billingRouter);
   app.route('/v1', preferencesRouter);
   app.route('/v1', feedbackRouter);
