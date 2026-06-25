@@ -234,14 +234,49 @@ astroRouter.openapi(matchmakingRoute, async (c) => {
 /* GET /panchang                                                         */
 /* -------------------------------------------------------------------------- */
 
+const PanchangQuerySchema = z.object({
+  lat: z
+    .string()
+    .optional()
+    .default('28.6139')
+    .transform(Number)
+    .pipe(z.number().min(-90).max(90))
+    .openapi({
+      param: { name: 'lat', in: 'query' },
+      example: '28.6139',
+      description: 'Latitude (defaults to New Delhi)',
+    }),
+  lon: z
+    .string()
+    .optional()
+    .default('77.209')
+    .transform(Number)
+    .pipe(z.number().min(-180).max(180))
+    .openapi({
+      param: { name: 'lon', in: 'query' },
+      example: '77.209',
+      description: 'Longitude (defaults to New Delhi)',
+    }),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .openapi({
+      param: { name: 'date', in: 'query' },
+      example: '2025-01-15',
+      description: 'Date in YYYY-MM-DD format (defaults to today)',
+    }),
+});
+
 const panchangRoute = createRoute({
   method: 'get',
   path: '/panchang',
   tags: ['Astro'],
-  summary: 'Get today\'s panchang (public, optional auth for GPS-based location)',
+  summary: 'Get panchang for a given date and location (public)',
+  request: { query: PanchangQuerySchema },
   responses: {
     200: {
-      description: 'Panchang data for today',
+      description: 'Panchang data',
       content: {
         'application/json': {
           schema: z.object({
@@ -250,27 +285,110 @@ const panchangRoute = createRoute({
             nakshatra: z.any(),
             yoga: z.any(),
             karana: z.any(),
-            sunrise: z.string().optional(),
-            sunset: z.string().optional(),
+            vara: z.string().optional(),
+            rahuKaal: z.any().optional(),
+            gulikaKaal: z.any().optional(),
+            yamagandaKaal: z.any().optional(),
+            abhijitMuhurta: z.any().optional(),
+            sunriseTime: z.string().optional(),
+            sunsetTime: z.string().optional(),
+            regionalMonths: z.any().optional(),
           }),
+        },
+      },
+    },
+    422: errorResponse('Validation failed'),
+  },
+});
+
+astroRouter.openapi(panchangRoute, async (c) => {
+  const { lat, lon, date } = c.req.valid('query');
+  const result = await astroService.getPanchang(lat, lon, date);
+  return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /remedies                                                         */
+/* -------------------------------------------------------------------------- */
+
+const RemedySchema = z.object({
+  planet: z.string(),
+  title: z.string(),
+  icon: z.string(),
+  remedy: z.string(),
+});
+
+const remediesRoute = createRoute({
+  method: 'get',
+  path: '/remedies',
+  tags: ['Astro'],
+  summary: 'Get personalised Vedic remedies (public, optional auth for chart-based results)',
+  request: {
+    query: z.object({
+      birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().openapi({
+        param: { name: 'birthDate', in: 'query' },
+        example: '1990-05-15',
+        description: 'Birth date (YYYY-MM-DD)',
+      }),
+      birthTime: z.string().optional().default('12:00').openapi({
+        param: { name: 'birthTime', in: 'query' },
+        example: '14:30',
+        description: 'Birth time (HH:mm)',
+      }),
+      lat: z
+        .string()
+        .optional()
+        .transform((v) => (v ? Number(v) : undefined))
+        .openapi({
+          param: { name: 'lat', in: 'query' },
+          example: '28.6139',
+          description: 'Birth latitude',
+        }),
+      lon: z
+        .string()
+        .optional()
+        .transform((v) => (v ? Number(v) : undefined))
+        .openapi({
+          param: { name: 'lon', in: 'query' },
+          example: '77.209',
+          description: 'Birth longitude',
+        }),
+      timezone: z.string().optional().default('Asia/Kolkata').openapi({
+        param: { name: 'timezone', in: 'query' },
+        example: 'Asia/Kolkata',
+        description: 'IANA timezone',
+      }),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'List of remedies',
+      content: {
+        'application/json': {
+          schema: z.object({ remedies: z.array(RemedySchema) }),
         },
       },
     },
   },
 });
 
-astroRouter.openapi(panchangRoute, async (c) => {
-  // TODO: integrate with lib/astro-engine/panchang when GPS-location middleware is ready
-  return c.json(
-    {
-      date: new Date().toISOString().slice(0, 10),
-      tithi: null,
-      nakshatra: null,
-      yoga: null,
-      karana: null,
-    },
-    200,
-  );
+astroRouter.openapi(remediesRoute, async (c) => {
+  const query = c.req.valid('query');
+
+  // If birth data is provided, pass it for chart-based remedies
+  const birthData =
+    query.birthDate && query.lat != null && query.lon != null
+      ? {
+          date: query.birthDate,
+          time: query.birthTime ?? '12:00',
+          latitude: query.lat,
+          longitude: query.lon,
+          timezone: query.timezone ?? 'Asia/Kolkata',
+        }
+      : undefined;
+
+  const remedies = await astroService.getRemedies(birthData);
+  return c.json({ remedies }, 200);
 });
 
 /* -------------------------------------------------------------------------- */
