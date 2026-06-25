@@ -2,7 +2,12 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import { requireUser } from '../../middleware/auth.js';
 import { requireConsent } from '../../middleware/consent.js';
+import { rateLimiter } from '../../middleware/rate-limit.js';
+import { logger } from '../../lib/logger.js';
 import * as astroService from './astro.service.js';
+
+/** Expensive LLM/swarm routes: cap per authenticated user. */
+const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20 });
 import {
   OnboardingRequestSchema,
   OnboardingResponseSchema,
@@ -50,7 +55,7 @@ const onboardingRoute = createRoute({
   tags: ['Astro'],
   summary: 'Run onboarding analysis for a new user',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -85,7 +90,7 @@ const dailyForecastRoute = createRoute({
   tags: ['Astro'],
   summary: 'Generate a daily forecast via the full swarm pipeline',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -120,7 +125,7 @@ const dailyFullSynthesisRoute = createRoute({
   tags: ['Astro'],
   summary: 'Generate a daily forecast via direct metrology + synthesis (no swarm)',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -205,7 +210,7 @@ const matchmakingRoute = createRoute({
   tags: ['Astro'],
   summary: 'Compute Ashtakoota matchmaking compatibility between two birth charts',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -238,7 +243,7 @@ const panchangRoute = createRoute({
   method: 'get',
   path: '/panchang',
   tags: ['Astro'],
-  summary: 'Get today\'s panchang (public, optional auth for GPS-based location)',
+  summary: "Get today's panchang (public, optional auth for GPS-based location)",
   responses: {
     200: {
       description: 'Panchang data for today',
@@ -283,7 +288,7 @@ const chatRoute = createRoute({
   tags: ['Astro'],
   summary: 'Chat with the Jyotish scholar (SSE streaming)',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -304,17 +309,29 @@ const chatRoute = createRoute({
 astroRouter.openapi(chatRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
+  // Aborts when the client disconnects — propagated to the LLM so generation
+  // (and its NIM inflight slot) stops instead of running on detached.
+  const signal = c.req.raw.signal;
 
   return streamSSE(c, async (stream) => {
-    for await (const token of astroService.chatStream(user.id, body.message)) {
-      await stream.writeSSE({
-        event: 'token',
-        data: JSON.stringify({ content: token }),
-      });
+    try {
+      for await (const token of astroService.chatStream(user.id, body.message, signal)) {
+        if (signal.aborted || stream.aborted) break;
+        await stream.writeSSE({ event: 'token', data: JSON.stringify({ content: token }) });
+      }
+      if (!signal.aborted && !stream.aborted) {
+        await stream.writeSSE({ event: 'done', data: JSON.stringify({ status: 'complete' }) });
+      }
+    } catch (err) {
+      // A failed stream MUST be distinguishable from a completed one — always
+      // emit a terminal event (and never leak internals to the client).
+      logger.error({ err, userId: user.id }, 'chat stream failed');
+      if (!signal.aborted && !stream.aborted) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ message: 'Generation failed. Please try again.' }),
+        });
+      }
     }
-    await stream.writeSSE({
-      event: 'done',
-      data: JSON.stringify({ status: 'complete' }),
-    });
   });
 });

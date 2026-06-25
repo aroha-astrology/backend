@@ -48,7 +48,7 @@ export async function onboard(
   return {
     profileId: crypto.randomUUID(),
     summary: (response.synthesis as Record<string, unknown> | undefined)
-      ? `Ascendant: ${(response.synthesis as Record<string, unknown>).ascendant}`
+      ? `Ascendant: ${String((response.synthesis as Record<string, unknown>).ascendant)}`
       : 'Chart analysis complete.',
     charts: response.metrology as Record<string, unknown> | undefined,
     insights: Array.isArray(response.findings)
@@ -163,9 +163,7 @@ export async function matchmake(
   userId: string,
   body: MatchmakingRequest,
 ): Promise<MatchmakingResponse> {
-  const { calculateAshtakoota } = await import(
-    '../../lib/astro-engine/matching/ashtakoota.js'
-  );
+  const { calculateAshtakoota } = await import('../../lib/astro-engine/matching/ashtakoota.js');
 
   // calculateAshtakoota(nakshatraIndex1, nakshatraIndex2, moonSign1, moonSign2)
   // We need to compute natal Moon nakshatra and sign for each person.
@@ -196,7 +194,7 @@ export async function matchmake(
   const sign1 = (moon1?.sign as string) ?? 'Aries';
   const sign2 = (moon2?.sign as string) ?? 'Aries';
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
   const result = calculateAshtakoota(nak1, nak2, sign1 as any, sign2 as any);
 
   return {
@@ -232,9 +230,10 @@ export async function sunSignForecast(signIndex: number) {
 export async function* chatStream(
   userId: string,
   message: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const state = newState({ userId, intent: 'chat', consent: true });
-  const tokenStream = scholarStream(state, message);
+  const tokenStream = scholarStream(state, message, signal);
   for await (const token of tokenStream) {
     yield token;
   }
