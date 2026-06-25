@@ -74,12 +74,19 @@ export interface DailySynthesisResult {
 
 export interface MoonSignPrediction {
   sign: string;
+  date: string;
   transitMoonSign: string;
   transitMoonNakshatra: string | undefined;
   houseFromSign: number;
   favorable: boolean;
   isAshtamaChandra: boolean;
   quality: 'good' | 'challenging' | 'avoid';
+  score: number;
+  description: string;
+  advice: string;
+  luckyColor: string;
+  luckyNumber: number;
+  keyTransits: { planet: string; sign: string; house: number; influence: string }[];
 }
 
 export interface SunSignPrediction {
@@ -325,6 +332,57 @@ export async function synthesizeDailyForecast(
  * Generic Moon-sign daily prediction — not personalised to natal chart.
  * Port of Python `moon_sign_prediction`.
  */
+const SIGN_RULERS: Record<string, string> = {
+  Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon',
+  Leo: 'Sun', Virgo: 'Mercury', Libra: 'Venus', Scorpio: 'Mars',
+  Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter',
+};
+
+const SIGN_ELEMENTS: Record<string, string> = {
+  Aries: 'Fire', Taurus: 'Earth', Gemini: 'Air', Cancer: 'Water',
+  Leo: 'Fire', Virgo: 'Earth', Libra: 'Air', Scorpio: 'Water',
+  Sagittarius: 'Fire', Capricorn: 'Earth', Aquarius: 'Air', Pisces: 'Water',
+};
+
+const LUCKY_COLORS: Record<string, string> = {
+  Aries: 'Red', Taurus: 'Green', Gemini: 'Yellow', Cancer: 'White',
+  Leo: 'Gold', Virgo: 'Blue', Libra: 'Pink', Scorpio: 'Maroon',
+  Sagittarius: 'Purple', Capricorn: 'Brown', Aquarius: 'Turquoise', Pisces: 'Sea Green',
+};
+
+const HOUSE_THEMES: Record<number, string> = {
+  1: 'self, personality & new beginnings',
+  2: 'wealth, family & speech',
+  3: 'courage, siblings & short travels',
+  4: 'home, mother & emotional peace',
+  5: 'creativity, children & romance',
+  6: 'health, enemies & daily work',
+  7: 'partnerships, marriage & public dealings',
+  8: 'transformation, obstacles & hidden matters',
+  9: 'luck, higher learning & spirituality',
+  10: 'career, status & public recognition',
+  11: 'gains, friendships & aspirations',
+  12: 'expenses, isolation & spiritual growth',
+};
+
+const QUALITY_DESC: Record<string, { desc: string; advice: string; score: number }> = {
+  good: {
+    desc: 'The cosmic energies are aligned in your favour today. Moon transiting a supportive house brings emotional clarity and positive outcomes.',
+    advice: 'Take initiative on important matters. Good day for meetings, decisions, and starting new ventures.',
+    score: 4,
+  },
+  challenging: {
+    desc: 'The Moon\'s transit brings some tension today. You may feel emotionally restless or face minor obstacles.',
+    advice: 'Practice patience and avoid impulsive decisions. Focus on routine tasks and self-care.',
+    score: 2,
+  },
+  avoid: {
+    desc: 'Ashtama Chandra — Moon transits the 8th house from your sign. This is traditionally considered unfavorable for new undertakings.',
+    advice: 'Postpone important decisions if possible. Focus on meditation, rest, and completing existing work.',
+    score: 1,
+  },
+};
+
 export async function moonSignPrediction(moonSignIndex: number): Promise<MoonSignPrediction> {
   const { transitSigns, transitSignNames } = await getCurrentSky();
   const transitMoonSignIdx = transitSigns['Moon'] ?? 0;
@@ -337,20 +395,42 @@ export async function moonSignPrediction(moonSignIndex: number): Promise<MoonSig
   else if (favorable) quality = 'good';
   else quality = 'challenging';
 
-  // Get transit moon nakshatra name by computing planet positions
   const jd = await getJdForDate();
   const planets = (await calculatePlanetPositions(jd)) as unknown as Array<Record<string, unknown>>;
   const moonPlanet = planets.find((p) => p.planet === 'Moon');
   const nakshatra = (moonPlanet?.nakshatra ?? moonPlanet?.nakshatraName) as string | undefined;
 
+  const signName = SIGNS[moonSignIndex] ?? 'Unknown';
+  const qualityInfo = QUALITY_DESC[quality];
+
+  const keyTransits: { planet: string; sign: string; house: number; influence: string }[] = [];
+  for (const key of ['Sun', 'Jupiter', 'Saturn', 'Rahu', 'Mars', 'Venus']) {
+    const signIdx = transitSigns[key];
+    if (signIdx === undefined) continue;
+    const house = ((signIdx - moonSignIndex + 12) % 12) + 1;
+    const planetSign = transitSignNames[key] ?? SIGNS[signIdx] ?? '';
+    const theme = HOUSE_THEMES[house] ?? '';
+    keyTransits.push({ planet: key, sign: planetSign, house, influence: theme });
+  }
+
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+  const luckyNumber = ((moonSignIndex + dayOfYear) % 9) + 1;
+
   return {
-    sign: SIGNS[moonSignIndex] ?? 'Unknown',
+    sign: signName,
+    date: new Date().toISOString().slice(0, 10),
     transitMoonSign: transitSignNames['Moon'] ?? SIGNS[transitMoonSignIdx] ?? 'Unknown',
     transitMoonNakshatra: nakshatra,
     houseFromSign,
     favorable,
     isAshtamaChandra,
     quality,
+    score: qualityInfo.score,
+    description: qualityInfo.desc,
+    advice: qualityInfo.advice,
+    luckyColor: LUCKY_COLORS[signName] ?? 'White',
+    luckyNumber,
+    keyTransits,
   };
 }
 
