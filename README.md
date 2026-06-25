@@ -359,16 +359,50 @@ For pure-local iteration, `npm run db:push` skips migrations and pushes the sche
 
 ### Deployment (EC2)
 
-For reference; full instructions land in `docs/deploy.md` when we ship.
+The Mumbai staging box runs the app under **pm2** (cluster mode) on `:3000`,
+currently reachable directly at `http://13.232.179.137:3000` (`/docs` for
+Swagger). nginx/TLS termination is not set up yet.
 
-- Ubuntu 22.04 LTS, Node 22 via `nvm` or NodeSource.
-- nginx reverse-proxies `:443` → `127.0.0.1:3000`; TLS via certbot.
-- Run with pm2 in cluster mode: `pm2 start dist/index.js -i max --name aroha-api`.
-- Logs: pm2 → file → CloudWatch agent.
-- Deploy:
-  ```bash
-  git pull && npm ci && npm run build && pm2 reload aroha-api
-  ```
+Deploy from your working tree:
+
+```bash
+npm run deploy        # = bash scripts/deploy.sh
+```
+
+`scripts/deploy.sh` rsyncs the tree to `ec2-user@13.232.179.137:/home/ec2-user/aroha-backend`
+(never shipping `.env`, `secrets/`, `node_modules`, `dist`, or `.git`), then on the box:
+builds, runs `npm run db:migrate` **only when `src/db/migrations/` changed**, reloads
+pm2 (`aroha-api`), and verifies `/healthz` + `/readyz`. Override `AROHA_PEM`, `AROHA_HOST`,
+`AROHA_REMOTE_DIR`, `AROHA_APP`, `AROHA_PORT` via the environment if your setup differs.
+
+#### Staging database (EC2-local Postgres)
+
+Staging uses a **PostgreSQL instance on the EC2 box itself** (data dir
+`/var/lib/pgsql/data`), not a managed/Supabase DB. `pg_hba.conf` requires a
+password over TCP (`host 127.0.0.1/32 scram-sha-256`), so the connection string
+connects as `…@localhost:5432` with a password.
+
+- **Role:** `atulgoel` (LOGIN, password-authenticated).
+- **Database:** `aroha_astrology_dev`, owned by `atulgoel` — which also owns the
+  `public` schema so migrations can create types/tables on PG15+.
+- **Credential:** lives **only** in the server's `~/aroha-backend/.env` as
+  `DATABASE_URL=postgres://atulgoel:<password>@localhost:5432/aroha_astrology_dev`
+  (never committed). Read it on the box with `grep DATABASE_URL ~/aroha-backend/.env`.
+
+Reprovision from scratch (run on the box; needs `sudo -u postgres`):
+
+```bash
+PW="$(openssl rand -hex 24)"                                   # strong random password
+sudo -u postgres psql -c "CREATE ROLE atulgoel LOGIN PASSWORD '$PW';"
+sudo -u postgres psql -c "CREATE DATABASE aroha_astrology_dev OWNER atulgoel;"
+sudo -u postgres psql -d aroha_astrology_dev \
+  -c "ALTER SCHEMA public OWNER TO atulgoel; GRANT ALL ON SCHEMA public TO atulgoel;"
+# write DATABASE_URL (with $PW) into ~/aroha-backend/.env — back up the old one first — then:
+cd ~/aroha-backend && npm run db:migrate
+```
+
+Rotate the password with `ALTER ROLE atulgoel PASSWORD '<new>';`, update `DATABASE_URL`
+in the server `.env`, then `pm2 restart aroha-api`.
 
 ---
 
