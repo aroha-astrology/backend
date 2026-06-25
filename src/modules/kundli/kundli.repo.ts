@@ -25,11 +25,13 @@ export async function claimKundliGeneration(
   opts: { force?: boolean } = {},
 ): Promise<KundliRow | undefined> {
   const now = new Date();
-  const staleCutoff = new Date(now.getTime() - STALE_GENERATING_MS);
 
   // Claimable when no fresh run is in flight, OR when an in-flight run is
   // computing a DIFFERENT birthHash (a corrected birth date supersedes it).
-  const claimable = sql`(${kundlis.status} <> 'generating' OR ${kundlis.startedAt} < ${staleCutoff} OR ${kundlis.birthHash} <> ${birthHash})`;
+  // The stale cutoff is expressed as a SQL interval (NOT a JS Date) — a Date
+  // embedded in a raw sql fragment isn't type-coerced and breaks the driver.
+  const staleSeconds = STALE_GENERATING_MS / 1000;
+  const claimable = sql`(${kundlis.status} <> 'generating' OR ${kundlis.startedAt} < now() - ${staleSeconds} * interval '1 second' OR ${kundlis.birthHash} <> ${birthHash})`;
   // Normal path additionally skips a kundli already ready for this exact hash;
   // `force` (regenerate endpoint) recomputes even then.
   const setWhere = opts.force
