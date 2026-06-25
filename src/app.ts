@@ -10,6 +10,7 @@ import { legalRouter } from './modules/legal/legal.routes.js';
 import { billingRouter } from './modules/billing/billing.routes.js';
 import { preferencesRouter } from './modules/preferences/preferences.routes.js';
 import { feedbackRouter } from './modules/feedback/feedback.routes.js';
+import { kundliRouter } from './modules/kundli/kundli.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { corsMiddleware } from './middleware/cors.js';
@@ -33,6 +34,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', billingRouter);
   app.route('/v1', preferencesRouter);
   app.route('/v1', feedbackRouter);
+  app.route('/v1', kundliRouter);
 
   app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
     type: 'http',
