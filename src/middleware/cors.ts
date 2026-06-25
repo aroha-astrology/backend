@@ -5,7 +5,9 @@ export const corsMiddleware = cors({
   origin: (origin) => {
     if (env.CORS_ORIGINS.length === 0) return origin ?? '*';
     if (!origin) return null;
-    return env.CORS_ORIGINS.includes(origin) ? origin : null;
+    if (env.CORS_ORIGINS.includes(origin)) return origin;
+    if (origin.endsWith('.vercel.app')) return origin;
+    return null;
   },
   allowMethods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Authorization', 'Content-Type', 'X-Request-Id'],
