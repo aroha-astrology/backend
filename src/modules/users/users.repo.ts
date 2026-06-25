@@ -1,0 +1,108 @@
+import { and, eq, isNull } from 'drizzle-orm';
+import { db } from '../../config/db.js';
+import {
+  users,
+  birthProfiles,
+  devicePushTokens,
+  userConsentLog,
+  type NewUserRow,
+  type NewUserConsentLogRow,
+  type UserRow,
+} from '../../db/schema.js';
+
+export async function findUserByFirebaseUid(firebaseUid: string): Promise<UserRow | undefined> {
+  const rows = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid)).limit(1);
+  return rows[0];
+}
+
+/** Any row (including soft-deleted) holding this phone number. */
+export async function findUserByPhoneE164(phoneE164: string): Promise<UserRow | undefined> {
+  const rows = await db.select().from(users).where(eq(users.phoneE164, phoneE164)).limit(1);
+  return rows[0];
+}
+
+export async function findActiveUserByFirebaseUid(
+  firebaseUid: string,
+): Promise<UserRow | undefined> {
+  const rows = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.firebaseUid, firebaseUid), isNull(users.deletedAt)))
+    .limit(1);
+  return rows[0];
+}
+
+export async function findActiveUserById(id: string): Promise<UserRow | undefined> {
+  const rows = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, id), isNull(users.deletedAt)))
+    .limit(1);
+  return rows[0];
+}
+
+export async function insertUser(values: NewUserRow): Promise<UserRow> {
+  const [row] = await db.insert(users).values(values).returning();
+  if (!row) throw new Error('Failed to insert user');
+  return row;
+}
+
+export async function updateUserById(
+  id: string,
+  patch: Partial<NewUserRow>,
+): Promise<UserRow | undefined> {
+  const [row] = await db
+    .update(users)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(users.id, id))
+    .returning();
+  return row;
+}
+
+export async function softDeleteUserById(id: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(eq(users.id, id));
+}
+
+/**
+ * Apply a profile patch and append its consent-audit rows ATOMICALLY, so the
+ * user's effective consent state and the append-only log can never diverge.
+ */
+export async function updateUserWithConsentLog(
+  id: string,
+  patch: Partial<NewUserRow>,
+  entries: NewUserConsentLogRow[],
+): Promise<UserRow | undefined> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(users)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    if (entries.length > 0) {
+      await tx.insert(userConsentLog).values(entries);
+    }
+    return row;
+  });
+}
+
+/**
+ * Cascade soft-delete to the account holder's saved charts so a third party's
+ * birth data stops being processed when the owner deactivates.
+ */
+export async function softDeleteBirthProfilesByOwner(ownerUserId: string): Promise<void> {
+  await db
+    .update(birthProfiles)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(birthProfiles.ownerUserId, ownerUserId), isNull(birthProfiles.deletedAt)));
+}
+
+/** Revoke every active push token for a user (logout / account soft-delete). */
+export async function revokeDeviceTokensByUser(userId: string): Promise<void> {
+  await db
+    .update(devicePushTokens)
+    .set({ revokedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(devicePushTokens.userId, userId), isNull(devicePushTokens.revokedAt)));
+}

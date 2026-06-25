@@ -1,61 +1,24 @@
-# dependencies
-node_modules
-.pnpm-debug.log
-pnpm-lock.yaml.bak
-
-# next.js / turbo / build
-.next/
-out/
-.turbo/
+node_modules/
 dist/
-build/
-*.tsbuildinfo
+coverage/
 
-# allow workspace package dist (needed for npm publishing + Vercel)
-!packages/*/dist/
-
-# env files — public repo, BLOCK ALL VARIANTS
 .env
 .env.*
 !.env.example
-!.env.example.*
 
-# secrets / credentials of any flavor
-*.key
+# service account keys — never commit credentials.
+# note: keys downloaded from the GCP IAM console are named <project>-<hex>.json
+# and do NOT match the pattern below — keep all keys inside secrets/.
+secrets/
+*firebase-adminsdk*.json
 *.pem
 *.p12
-*.pfx
-*.keystore
-*.jks
-*.gpg
-*credential*
-*secret*
-*service-account*.json
-*service_account*.json
-.vercel/
 
-# supabase
-supabase/.temp/
-supabase/.branches/
-.supabase/
+*.log
+npm-debug.log*
 
-# IDE / editor
+.DS_Store
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# OS
-.DS_Store
-Thumbs.db
-
-# logs / coverage / test
-*.log
-coverage/
-playwright-report/
-test-results/
-
-# misc local artifacts
-.claude/
-.user-backup-*.json
-*.pdf
+.husky/_/
