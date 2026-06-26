@@ -61,10 +61,30 @@ def compute_metrology(record: dict) -> dict:
             moon.longitude, dt_utc,
         ).as_dict()
 
+    sign_lords = {
+        "Aries": "Mars", "Taurus": "Venus", "Gemini": "Mercury", "Cancer": "Moon",
+        "Leo": "Sun", "Virgo": "Mercury", "Libra": "Venus", "Scorpio": "Mars",
+        "Sagittarius": "Jupiter", "Capricorn": "Saturn", "Aquarius": "Saturn", "Pisces": "Jupiter",
+    }
+    houses_array = []
+    for h_num in range(1, 13):
+        sign_idx = (asc_idx + h_num - 1) % 12
+        sign = swe_engine.SIGNS[sign_idx]
+        house_planets = [p["planet"] for p in planets if p.get("house") == h_num]
+        houses_array.append({
+            "house": h_num,
+            "cusp": sign_idx * 30.0,
+            "sign": sign,
+            "signIndex": sign_idx,
+            "lord": sign_lords[sign],
+            "planets": house_planets,
+        })
+
     return {
         "julianDay": jd,
         "ascendant": houses.as_dict(),
         "planets": planets,
+        "houses": houses_array,
         "divisionalCharts": vargas,
         "vimshottariDasha": vimshottari,
         "engineVersion": _engine_version(),
