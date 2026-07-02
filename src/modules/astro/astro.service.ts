@@ -310,8 +310,12 @@ export async function getPanchang(lat: number, lon: number, dateStr?: string) {
   const month = date.getMonth() + 1;
   const day = date.getDate();
 
-  // Approximate timezone offset from longitude (4 min per degree)
-  const timezoneOffset = Math.round(lon / 15);
+  // Approximate timezone offset from longitude (4 min per degree). Rounded to
+  // the nearest half-hour rather than whole hour — whole-hour rounding put
+  // India (UTC+5:30) and other half/quarter-hour zones off by up to 30min,
+  // shifting tithi/nakshatra boundaries near midnight. Still an approximation
+  // (no IANA lookup from lat/lon), but meaningfully closer for those zones.
+  const timezoneOffset = Math.round((lon / 15) * 2) / 2;
 
   // Calculate Julian Day for noon local time
   const jd = await dateToJulianDay(year, month, day, 12, 0, timezoneOffset);
