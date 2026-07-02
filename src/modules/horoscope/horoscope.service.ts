@@ -2,7 +2,7 @@ import { logger } from '../../lib/logger.js';
 import { generateHoroscopeSummary, type HoroscopeContext } from '../../lib/llm/horoscope.js';
 import type { DailyHoroscopeRow, KundliRow, UserRow } from '../../db/schema.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
-import type { HoroscopeDto } from './horoscope.schemas.js';
+import type { HoroscopeDto, HoroscopePeriod } from './horoscope.schemas.js';
 import { findHoroscope, listActiveUsersAfter, upsertHoroscope } from './horoscope.repo.js';
 
 /** The app's reference timezone — horoscopes are dated by the IST calendar day. */
@@ -24,15 +24,45 @@ export function todayForApp(): string {
   return dateInTz(new Date(), APP_TZ);
 }
 
+/**
+ * The period's key within itself: daily/weekly both key on the period's own
+ * start date (already unique per period), monthly/yearly truncate it.
+ */
+export function periodKeyFor(period: HoroscopePeriod, forDate: string): string {
+  if (period === 'monthly') return forDate.slice(0, 7);
+  if (period === 'yearly') return forDate.slice(0, 4);
+  return forDate;
+}
+
+/** Monday (ISO week start) of the week containing `forDate`, as YYYY-MM-DD. */
+function mondayOf(forDate: string): string {
+  const [y, m, d] = forDate.split('-').map(Number) as [number, number, number];
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = dt.getUTCDay(); // 0=Sun..6=Sat
+  dt.setUTCDate(dt.getUTCDate() + (dow === 0 ? -6 : 1 - dow));
+  return dt.toISOString().slice(0, 10);
+}
+
+/** The start date (period's `forDate`) of the period containing today, in IST. */
+export function currentPeriodStart(period: HoroscopePeriod): string {
+  const today = todayForApp();
+  if (period === 'daily') return today;
+  if (period === 'weekly') return mondayOf(today);
+  if (period === 'monthly') return `${today.slice(0, 7)}-01`;
+  return `${today.slice(0, 4)}-01-01`; // yearly
+}
+
 /** Assemble everything we know about the user for the LLM to personalize from. */
 function buildHoroscopeContext(
   user: UserRow,
   kundli: KundliRow | undefined,
   forDate: string,
+  period: HoroscopePeriod,
 ): HoroscopeContext {
   return {
     userId: user.id,
     forDate,
+    period,
     profile: {
       displayName: user.displayName,
       gender: user.gender,
@@ -72,14 +102,49 @@ async function generateForUser(
   forDate: string,
   force: boolean,
 ): Promise<'generated' | 'skipped'> {
-  if (!force && (await findHoroscope(user.id, forDate))) {
+  const period: HoroscopePeriod = 'daily';
+  if (!force && (await findHoroscope(user.id, period, forDate))) {
     return 'skipped';
   }
   const kundli = await findKundliByUserId(user.id);
-  const context = buildHoroscopeContext(user, kundli, forDate);
+  const context = buildHoroscopeContext(user, kundli, forDate, period);
   const { summary, model } = await generateHoroscopeSummary(context);
-  await upsertHoroscope(user.id, forDate, summary, model);
+  await upsertHoroscope({ userId: user.id, forDate, period, periodKey: forDate, summary, model });
   return 'generated';
+}
+
+/**
+ * Weekly/monthly/yearly horoscopes aren't CRON-populated (too infrequent to
+ * justify a dedicated schedule) — generated lazily on first request per
+ * period and cached from then on. Concurrent first-requesters for the same
+ * period both generate and both upsert; the last write wins and the unique
+ * index prevents duplicate rows, so no locking is needed for this volume.
+ */
+export async function getOrGenerateHoroscope(
+  user: UserRow,
+  period: HoroscopePeriod,
+): Promise<DailyHoroscopeRow> {
+  const forDate = currentPeriodStart(period);
+  const periodKey = periodKeyFor(period, forDate);
+  const existing = await findHoroscope(user.id, period, periodKey);
+  if (existing) return existing;
+
+  const kundli = await findKundliByUserId(user.id);
+  const context = buildHoroscopeContext(user, kundli, forDate, period);
+  const { summary, model, monthlyBreakdown } = await generateHoroscopeSummary(context);
+  await upsertHoroscope({
+    userId: user.id,
+    forDate,
+    period,
+    periodKey,
+    summary,
+    model,
+    ...(monthlyBreakdown !== undefined ? { monthlyBreakdown } : {}),
+  });
+
+  const row = await findHoroscope(user.id, period, periodKey);
+  if (!row) throw new Error('Horoscope upsert did not persist — this should be unreachable');
+  return row;
 }
 
 export interface DailyHoroscopeRunResult {
@@ -145,17 +210,22 @@ export async function runDailyHoroscopes(
   return { forDate, processed, generated, skipped, failed };
 }
 
+/** Daily only — CRON-populated, so a miss means "not generated yet" (never generated on read). */
 export async function getHoroscopeForUser(
   userId: string,
   forDate?: string,
 ): Promise<DailyHoroscopeRow | undefined> {
-  return findHoroscope(userId, forDate ?? todayForApp());
+  const date = forDate ?? todayForApp();
+  return findHoroscope(userId, 'daily', date);
 }
 
 export function toHoroscopeDto(row: DailyHoroscopeRow): HoroscopeDto {
   return {
     forDate: row.forDate,
+    period: row.period,
+    periodKey: row.periodKey,
     summary: row.summary,
+    monthlyBreakdown: row.monthlyBreakdown ?? undefined,
     model: row.model,
     generatedAt: row.updatedAt.toISOString(),
   };

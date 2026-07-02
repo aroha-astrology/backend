@@ -699,8 +699,22 @@ export type KundliRow = typeof kundlis.$inferSelect;
 export type NewKundliRow = typeof kundlis.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
-/* daily_horoscopes — one personalized horoscope per user per day              */
+/* daily_horoscopes — one personalized horoscope per user per period           */
 /* -------------------------------------------------------------------------- */
+
+export const horoscopePeriodEnum = pgEnum('horoscope_period', [
+  'daily',
+  'weekly',
+  'monthly',
+  'yearly',
+]);
+
+/** A short per-month blurb, populated only on `period: 'yearly'` rows. */
+export type MonthlyBreakdownEntry = {
+  month: number; // 1-12
+  monthLabel: string; // e.g. "January"
+  summary: string;
+};
 
 export const dailyHoroscopes = pgTable(
   'daily_horoscopes',
@@ -711,9 +725,22 @@ export const dailyHoroscopes = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    /** The calendar date (in the app's IST timezone) this horoscope is for. */
+    /**
+     * The period's start date (in the app's IST timezone): the day itself for
+     * 'daily', the Monday for 'weekly', the 1st for 'monthly'/'yearly'. Always
+     * a real date so existing date-based sorting/display keeps working.
+     */
     forDate: date('for_date').notNull(),
+    period: horoscopePeriodEnum('period').notNull().default('daily'),
+    /**
+     * The cache/lookup key within a period — YYYY-MM-DD (daily/weekly, weekly
+     * keyed by its Monday), YYYY-MM (monthly), YYYY (yearly). Paired with
+     * `period` as the real identity of a row; `forDate` is derived from it.
+     */
+    periodKey: text('period_key').notNull(),
     summary: text('summary').notNull(),
+    /** Only set on `period: 'yearly'` rows — a short blurb per calendar month. */
+    monthlyBreakdown: jsonb('monthly_breakdown').$type<MonthlyBreakdownEntry[]>(),
     /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
     model: text('model'),
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -724,10 +751,11 @@ export const dailyHoroscopes = pgTable(
       .default(sql`now()`),
   },
   (table) => ({
-    // One horoscope per user per day — the upsert conflict target.
-    userDateUnique: uniqueIndex('daily_horoscopes_user_date_unique').on(
+    // One horoscope per user per period+key — the upsert conflict target.
+    userPeriodKeyUnique: uniqueIndex('daily_horoscopes_user_period_key_unique').on(
       table.userId,
-      table.forDate,
+      table.period,
+      table.periodKey,
     ),
   }),
 );

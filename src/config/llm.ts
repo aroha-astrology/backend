@@ -67,6 +67,21 @@ export const HOROSCOPE_PROFILE: GenerationProfile = {
   maxTokens: 200,
 };
 
+/**
+ * Yearly horoscope — same call pattern as HOROSCOPE_PROFILE but returns a
+ * structured JSON overview + a per-month breakdown (12 short entries), so it
+ * needs a much larger token ceiling. Generated lazily (once per user per year,
+ * cached), never in a per-request hot path.
+ */
+export const HOROSCOPE_YEARLY_PROFILE: GenerationProfile = {
+  name: 'horoscope-yearly',
+  modelTier: 'structured',
+  temperature: 0.6,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 900,
+};
+
 export function modelForTier(tier: ModelTier): string {
   const map: Record<ModelTier, string> = {
     routing: env.MODEL_ROUTING,
