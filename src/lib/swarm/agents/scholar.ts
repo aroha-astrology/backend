@@ -19,7 +19,9 @@ export type { ChatPersona } from '../../chat-grounding.js';
 
 const GROUNDING_INSTRUCTION = `You must base every specific claim only on the chart data provided below. Do not invent planetary positions, dates, or Yogas not present in this data. If the data doesn't support a specific answer to the user's question, say so honestly and offer the closest supported insight instead of fabricating specificity.`;
 
-const OUTPUT_STYLE = `Keep responses conversational and under 150 words unless the user asks for more detail. Use the "hook then explanation" structure: lead with the most relevant insight in one sentence, then explain the reasoning in 2-3 more. Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
+const CONTEXT_DISCIPLINE = `Before asking the user anything, check two places first: the CHART DATA below, and the conversation summary/history below that. If the answer is already a computed chart fact, or the user already told you earlier in this same conversation, do not ask again — just use it. Only ask a clarifying question when it is genuinely necessary and truly unavailable from both of those sources, and ask at most one question per turn.`;
+
+const OUTPUT_STYLE = `Keep responses short: 2-4 sentences (under 90 words) by default, and never more than 150 words even if the user asks for more detail. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble ("Namaste," "Great question," etc. are not hooks). Then explain the reasoning in 1-3 more sentences. Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
 
 const PERSONA_ROLE: Record<ChatPersona, string> = {
   career: `You are a warm, knowledgeable Vedic astrology guide specializing in career questions.
@@ -54,7 +56,7 @@ Your role:
 };
 
 function personaSystemPrompt(persona: ChatPersona): string {
-  return [PERSONA_ROLE[persona], GROUNDING_INSTRUCTION, OUTPUT_STYLE].join('\n\n');
+  return [PERSONA_ROLE[persona], GROUNDING_INSTRUCTION, CONTEXT_DISCIPLINE, OUTPUT_STYLE].join('\n\n');
 }
 
 /** Cap the injected context block so a large chart can't blow the token budget. */

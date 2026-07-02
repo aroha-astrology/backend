@@ -64,6 +64,13 @@ export const ChatPersonaSchema = z
   .default('general')
   .openapi({ description: 'Which astrologer persona to answer as — determines which chart-fact slice is injected' });
 
+export const ChatHistoryTurnSchema = z
+  .object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().max(4000),
+  })
+  .openapi('ChatHistoryTurn');
+
 export const ChatRequestSchema = z
   .object({
     message: z
@@ -74,6 +81,22 @@ export const ChatRequestSchema = z
     persona: ChatPersonaSchema,
     profileId: z.string().uuid().optional().openapi({ description: 'Optional birth-profile ID for context' }),
     locale: z.string().default('en'),
+    history: z
+      .array(ChatHistoryTurnSchema)
+      .max(40)
+      .default([])
+      .openapi({
+        description:
+          'Recent turns the client is carrying forward. Older turns already folded into `summary` should be omitted.',
+      }),
+    summary: z
+      .string()
+      .max(2000)
+      .optional()
+      .openapi({
+        description:
+          'Running summary of the conversation before `history`, as returned by a prior turn\'s `summary` SSE event.',
+      }),
   })
   .openapi('ChatRequest');
 

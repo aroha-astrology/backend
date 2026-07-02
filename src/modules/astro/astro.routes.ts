@@ -315,9 +315,21 @@ astroRouter.openapi(chatRoute, async (c) => {
 
   return streamSSE(c, async (stream) => {
     try {
-      for await (const token of astroService.chatStream(user.id, body.message, body.persona, signal)) {
+      const events = astroService.chatStream(
+        user.id,
+        body.message,
+        body.persona,
+        body.history,
+        body.summary,
+        signal,
+      );
+      for await (const event of events) {
         if (signal.aborted || stream.aborted) break;
-        await stream.writeSSE({ event: 'token', data: JSON.stringify({ content: token }) });
+        if (event.type === 'token') {
+          await stream.writeSSE({ event: 'token', data: JSON.stringify({ content: event.content }) });
+        } else {
+          await stream.writeSSE({ event: 'summary', data: JSON.stringify({ summary: event.summary }) });
+        }
       }
       if (!signal.aborted && !stream.aborted) {
         await stream.writeSSE({ event: 'done', data: JSON.stringify({ status: 'complete' }) });

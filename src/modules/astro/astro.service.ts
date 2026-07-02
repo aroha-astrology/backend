@@ -17,6 +17,7 @@ import {
   detectMangalDosha,
 } from '../../lib/astro-engine/index.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
+import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
 import type {
   OnboardingRequest,
@@ -520,12 +521,18 @@ export async function getRemedies(birthData?: {
 /* Chat (SSE streaming)                                                        */
 /* -------------------------------------------------------------------------- */
 
+export type ChatStreamEvent =
+  | { type: 'token'; content: string }
+  | { type: 'summary'; summary: string };
+
 export async function* chatStream(
   userId: string,
   message: string,
   persona: ChatPersona,
+  history: ChatTurn[],
+  incomingSummary: string | undefined,
   signal?: AbortSignal,
-): AsyncGenerator<string> {
+): AsyncGenerator<ChatStreamEvent> {
   const state = newState({ userId, intent: 'chat', consent: true });
 
   // Best-effort: an unready/missing kundli just means no chart facts get
@@ -538,8 +545,17 @@ export async function* chatStream(
     doshas: kundli?.status === 'ready' ? (kundli.doshaData ?? null) : null,
   };
 
+  // Bound the prompt size regardless of how long this conversation has run —
+  // keeps generation fast (timeout risk) and keeps the model from losing
+  // track of what it already knows deep in a long raw transcript.
+  const { recentHistory, summary, changed } = await compactHistory(history, incomingSummary);
+  if (changed) {
+    yield { type: 'summary', summary };
+  }
+  state.chatContext = { history: recentHistory, summary };
+
   const tokenStream = scholarStream(state, message, persona, groundingSource, signal);
   for await (const token of tokenStream) {
-    yield token;
+    yield { type: 'token', content: token };
   }
 }
