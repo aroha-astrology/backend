@@ -154,12 +154,25 @@ astroRouter.openapi(dailyFullSynthesisRoute, async (c) => {
 /* GET /forecast/moon-sign/:signIndex                                    */
 /* -------------------------------------------------------------------------- */
 
+const PeriodQuerySchema = z.object({
+  period: z
+    .enum(['daily', 'weekly', 'monthly', 'yearly'])
+    .optional()
+    .default('daily')
+    .openapi({
+      param: { name: 'period', in: 'query' },
+      example: 'daily',
+      description:
+        'Timescale — weekly/monthly/yearly are aggregates of the daily engine output, never independent narration',
+    }),
+});
+
 const moonSignRoute = createRoute({
   method: 'get',
   path: '/forecast/moon-sign/{signIndex}',
   tags: ['Astro'],
-  summary: 'Public moon-sign daily forecast',
-  request: { params: SignIndexParamSchema },
+  summary: 'Public moon-sign forecast (daily/weekly/monthly/yearly)',
+  request: { params: SignIndexParamSchema, query: PeriodQuerySchema },
   responses: {
     200: {
       description: 'Moon-sign forecast',
@@ -171,7 +184,8 @@ const moonSignRoute = createRoute({
 
 astroRouter.openapi(moonSignRoute, async (c) => {
   const { signIndex } = c.req.valid('param');
-  const result = await astroService.moonSignForecast(signIndex);
+  const { period } = c.req.valid('query');
+  const result = await astroService.moonSignForecast(signIndex, period);
   return c.json({ forecast: result }, 200);
 });
 
@@ -326,9 +340,15 @@ astroRouter.openapi(chatRoute, async (c) => {
       for await (const event of events) {
         if (signal.aborted || stream.aborted) break;
         if (event.type === 'token') {
-          await stream.writeSSE({ event: 'token', data: JSON.stringify({ content: event.content }) });
+          await stream.writeSSE({
+            event: 'token',
+            data: JSON.stringify({ content: event.content }),
+          });
         } else {
-          await stream.writeSSE({ event: 'summary', data: JSON.stringify({ summary: event.summary }) });
+          await stream.writeSSE({
+            event: 'summary',
+            data: JSON.stringify({ summary: event.summary }),
+          });
         }
       }
       if (!signal.aborted && !stream.aborted) {

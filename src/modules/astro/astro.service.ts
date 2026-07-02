@@ -7,8 +7,10 @@ import {
   computeMetrology,
   synthesizeDailyForecast,
   moonSignPrediction,
+  moonSignPeriodicPrediction,
   sunSignPrediction,
   type ChatPersona,
+  type PeriodicPeriod,
 } from '../../lib/swarm/index.js';
 import {
   dateToJulianDay,
@@ -272,15 +274,17 @@ function buildMatchRecommendation(
   }
   if (flags.bhakootDosha) {
     parts.push(
-      'Bhakoot Dosha is present (0/7) — traditionally considered to affect the couple\'s general relationship, love, and family life.',
+      "Bhakoot Dosha is present (0/7) — traditionally considered to affect the couple's general relationship, love, and family life.",
     );
   }
   if (!mangalDosha.matched) {
     parts.push(
-      'Mangal Dosha is present in only one partner\'s chart — traditionally this asymmetry is discussed with an astrologer, as a matching Mangal Dosha (present or absent in both) is usually considered more favorable than a mismatch.',
+      "Mangal Dosha is present in only one partner's chart — traditionally this asymmetry is discussed with an astrologer, as a matching Mangal Dosha (present or absent in both) is usually considered more favorable than a mismatch.",
     );
   } else if (mangalDosha.person1) {
-    parts.push('Mangal Dosha is present in both charts, which traditional practitioners often consider self-cancelling.');
+    parts.push(
+      'Mangal Dosha is present in both charts, which traditional practitioners often consider self-cancelling.',
+    );
   }
 
   if (parts.length === 0) {
@@ -300,11 +304,7 @@ function buildMatchRecommendation(
 /* Panchang (public)                                                           */
 /* -------------------------------------------------------------------------- */
 
-export async function getPanchang(
-  lat: number,
-  lon: number,
-  dateStr?: string,
-) {
+export async function getPanchang(lat: number, lon: number, dateStr?: string) {
   const date = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
@@ -337,8 +337,12 @@ export async function getPanchang(
 /* Moon-sign / Sun-sign public forecasts                                       */
 /* -------------------------------------------------------------------------- */
 
-export async function moonSignForecast(signIndex: number) {
-  return moonSignPrediction(signIndex);
+export async function moonSignForecast(
+  signIndex: number,
+  period: 'daily' | PeriodicPeriod = 'daily',
+) {
+  if (period === 'daily') return moonSignPrediction(signIndex);
+  return moonSignPeriodicPrediction(signIndex, period);
 }
 
 export async function sunSignForecast(signIndex: number) {
@@ -384,7 +388,7 @@ const GENERAL_REMEDIES = [
     planet: 'General',
     title: 'Financial Abundance',
     icon: 'coins',
-    remedy: 'Donate yellow lentils (chana dal) to a Brahmin on Thursday for Jupiter\'s blessings.',
+    remedy: "Donate yellow lentils (chana dal) to a Brahmin on Thursday for Jupiter's blessings.",
   },
   {
     planet: 'General',
@@ -405,47 +409,56 @@ const PLANET_REMEDIES: Record<string, { title: string; icon: string; remedy: str
   Sun: {
     title: 'Strengthen the Sun',
     icon: 'sun',
-    remedy: 'Offer water (arghya) to the Sun at sunrise daily. Wear a Ruby (Manikya) set in gold on the ring finger on a Sunday.',
+    remedy:
+      'Offer water (arghya) to the Sun at sunrise daily. Wear a Ruby (Manikya) set in gold on the ring finger on a Sunday.',
   },
   Moon: {
     title: 'Strengthen the Moon',
     icon: 'moon',
-    remedy: 'Wear a Pearl (Moti) in silver on the little finger on a Monday. Drink water from a silver glass. Offer milk to Shivalinga on Mondays.',
+    remedy:
+      'Wear a Pearl (Moti) in silver on the little finger on a Monday. Drink water from a silver glass. Offer milk to Shivalinga on Mondays.',
   },
   Mars: {
     title: 'Pacify Mars',
     icon: 'flame',
-    remedy: 'Recite Hanuman Chalisa on Tuesdays. Donate red lentils (masoor dal) on Tuesdays. Wear a Red Coral (Moonga) on the ring finger.',
+    remedy:
+      'Recite Hanuman Chalisa on Tuesdays. Donate red lentils (masoor dal) on Tuesdays. Wear a Red Coral (Moonga) on the ring finger.',
   },
   Mercury: {
     title: 'Strengthen Mercury',
     icon: 'book-open',
-    remedy: 'Wear an Emerald (Panna) in gold on the little finger on a Wednesday. Feed green vegetables to cows. Chant Om Budhaya Namah.',
+    remedy:
+      'Wear an Emerald (Panna) in gold on the little finger on a Wednesday. Feed green vegetables to cows. Chant Om Budhaya Namah.',
   },
   Jupiter: {
     title: 'Strengthen Jupiter',
     icon: 'sparkles',
-    remedy: 'Wear a Yellow Sapphire (Pukhraj) in gold on the index finger on a Thursday. Offer bananas and yellow sweets at a temple. Apply saffron tilak.',
+    remedy:
+      'Wear a Yellow Sapphire (Pukhraj) in gold on the index finger on a Thursday. Offer bananas and yellow sweets at a temple. Apply saffron tilak.',
   },
   Venus: {
     title: 'Strengthen Venus',
     icon: 'diamond',
-    remedy: 'Wear a Diamond or White Sapphire on the middle finger on a Friday. Donate white clothes or sugar on Fridays. Recite Om Shukraya Namah.',
+    remedy:
+      'Wear a Diamond or White Sapphire on the middle finger on a Friday. Donate white clothes or sugar on Fridays. Recite Om Shukraya Namah.',
   },
   Saturn: {
     title: 'Pacify Saturn',
     icon: 'shield',
-    remedy: 'Donate black sesame seeds, mustard oil, or iron items on Saturdays. Wear a Blue Sapphire (Neelam) only after a trial period. Recite Shani Stotra.',
+    remedy:
+      'Donate black sesame seeds, mustard oil, or iron items on Saturdays. Wear a Blue Sapphire (Neelam) only after a trial period. Recite Shani Stotra.',
   },
   Rahu: {
     title: 'Pacify Rahu',
     icon: 'cloud',
-    remedy: 'Donate coconut, blanket, or electrical items on Saturdays. Keep fennel (saunf) under your pillow. Chant Om Rahave Namah 108 times.',
+    remedy:
+      'Donate coconut, blanket, or electrical items on Saturdays. Keep fennel (saunf) under your pillow. Chant Om Rahave Namah 108 times.',
   },
   Ketu: {
     title: 'Pacify Ketu',
     icon: 'eye',
-    remedy: 'Donate a black-and-white blanket on Tuesdays or Saturdays. Feed stray dogs. Wear a Cat\'s Eye (Lehsunia) in silver on the middle finger.',
+    remedy:
+      "Donate a black-and-white blanket on Tuesdays or Saturdays. Feed stray dogs. Wear a Cat's Eye (Lehsunia) in silver on the middle finger.",
   },
 };
 
