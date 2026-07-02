@@ -14,7 +14,18 @@ import { HOROSCOPE_PROFILE, HOROSCOPE_YEARLY_PROFILE, modelForTier } from '../..
 import { buildGroundingFacts, type GroundingSource } from '../chat-grounding.js';
 import { logger } from '../logger.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';
-import type { MonthlyBreakdownEntry } from '../../db/schema.js';
+import type { MonthlyBreakdownEntry, StructuredHoroscope } from '../../db/schema.js';
+
+const QUALITIES = ['good', 'moderate', 'challenging', 'avoid'] as const;
+const LUCKY_COLORS = [
+  'Gold',
+  'Red',
+  'Deep Blue',
+  'Emerald Green',
+  'White',
+  'Coral',
+  'Silver',
+] as const;
 
 const MONTH_NAMES = [
   'January',
@@ -44,11 +55,14 @@ export interface HoroscopeContext {
 }
 
 export interface HoroscopeResult {
+  /** The hook line — also used for push-notification bodies and as a fallback render. */
   summary: string;
   /** Identifier of the model that produced the summary. */
   model: string;
   /** Only set for `period: 'yearly'`. */
   monthlyBreakdown?: MonthlyBreakdownEntry[];
+  /** Only set for daily/weekly/monthly — the rich Plain-view fields. */
+  structured?: StructuredHoroscope;
 }
 
 // =============================================================================
@@ -63,27 +77,46 @@ const GROUNDING_RULE =
 const STYLE_RULE =
   'Second person, present/near-future tense, conversational but not flippant. Use tendency language ("this favors," "this is a strong window for") — never absolute guarantees ("you will..."). Vary your sentence openers across different users and periods; do not default to "This is a time when...".';
 
+const PLAIN_LANGUAGE_RULE =
+  'Write for someone with zero astrology background. Never use untranslated Sanskrit/technical terms (Mahadasha, Antardasha, Yoga names, Ascendant, Nakshatra, etc.) — translate what they MEAN in plain English instead (e.g. a supportive Jupiter dasha becomes "a long stretch favoring growth and good fortune," not "Jupiter Mahadasha"). Talk about real-life areas (career, relationships, money, health, mood) and concrete outcomes, not planetary mechanics.';
+
+const STRUCTURED_JSON_RULE = `Return STRICT JSON only, no markdown fences, in this exact shape:
+{"hook": string, "description": string, "advice": string, "quality": "good"|"moderate"|"challenging"|"avoid", "score": 1-5, "luckyColor": string, "luckyNumber": 1-9}
+
+"hook": one punchy headline sentence naming the single most relevant theme (this is the lead the user sees first — make it count, never generic filler like "Today is a good day for you").
+"description": 2-4 sentences of plain-language supporting detail — what's going on and why it matters.
+"advice": 1-2 concrete, actionable sentences (what to actually do with this).
+"quality"/"score": your honest overall read — "good"/4-5 for a genuinely strong window, "moderate"/3 for a steady/mixed one, "challenging"/2 for friction to navigate carefully, "avoid"/1 only for a real caution — do not inflate every reading to "good".
+"luckyColor": a single color name. "luckyNumber": an integer 1-9.`;
+
 const HOROSCOPE_SYSTEM: Record<Exclude<HoroscopePeriod, 'yearly'>, string> = {
   daily: `You are writing a short personalized daily Vedic astrology horoscope for a mobile app.
 
 ${GROUNDING_RULE}
+${PLAIN_LANGUAGE_RULE}
 
-Use a tension-then-resolution or specific-detail-then-payoff structure (never generic filler like "Today is a good day for you"). Lead with the single most relevant insight as a one-sentence hook, then 1-3 short supporting sentences — under 80 words total. ${STYLE_RULE}`,
+${STRUCTURED_JSON_RULE}
+Keep "hook" under 20 words and "description" under 70 words total. ${STYLE_RULE}`,
   weekly: `You are writing a short personalized weekly Vedic astrology horoscope for a mobile app, summarizing the arc of the coming week.
 
 ${GROUNDING_RULE}
+${PLAIN_LANGUAGE_RULE}
 
-Lead with the single most relevant theme for the week as a one-sentence hook, then 2-4 sentences on how it plays out and where to focus — under 100 words total. ${STYLE_RULE}`,
+${STRUCTURED_JSON_RULE}
+Keep "hook" under 20 words and "description" under 90 words total, covering how the theme develops across the week. ${STYLE_RULE}`,
   monthly: `You are writing a short personalized monthly Vedic astrology horoscope for a mobile app, summarizing the theme of the coming month.
 
 ${GROUNDING_RULE}
+${PLAIN_LANGUAGE_RULE}
 
-Lead with the month's dominant theme as a one-sentence hook, then 2-4 sentences on how it develops across the month — under 120 words total. ${STYLE_RULE}`,
+${STRUCTURED_JSON_RULE}
+Keep "hook" under 20 words and "description" under 100 words total, covering how the theme develops across the month. ${STYLE_RULE}`,
 };
 
 const HOROSCOPE_SYSTEM_YEARLY = `You are writing a personalized yearly Vedic astrology overview for a mobile app, plus a short blurb for each calendar month of that year.
 
 ${GROUNDING_RULE}
+${PLAIN_LANGUAGE_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"overview": string, "months": [{"month": 1, "summary": string}, ... one entry per month 1-12 in order]}
@@ -169,7 +202,7 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
   }
 
   try {
-    const summary = await generate({
+    const raw = await generate({
       profile: HOROSCOPE_PROFILE,
       messages: [
         { role: 'system', content: HOROSCOPE_SYSTEM[ctx.period] },
@@ -177,13 +210,17 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
         { role: 'user', content: `Write ${describePeriod(ctx.period, ctx.forDate)}.` },
       ],
     });
-    const trimmed = summary.trim();
-    if (trimmed) {
-      return { summary: trimmed, model: modelForTier(HOROSCOPE_PROFILE.modelTier) };
+    const structured = parseStructuredResponse(raw);
+    if (structured) {
+      return {
+        summary: structured.hook,
+        structured,
+        model: modelForTier(HOROSCOPE_PROFILE.modelTier),
+      };
     }
     logger.warn(
       { userId: ctx.userId },
-      'horoscope LLM returned empty summary — using template fallback',
+      'horoscope LLM returned unparseable JSON — using template fallback',
     );
   } catch (err) {
     logger.warn(
@@ -192,7 +229,42 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
     );
   }
 
-  return { summary: templateFallback(facts, ctx.period), model: 'template-fallback' };
+  const structured = templateFallbackStructured(facts, ctx.period);
+  return { summary: structured.hook, structured, model: 'template-fallback' };
+}
+
+function parseStructuredResponse(raw: string): StructuredHoroscope | null {
+  try {
+    const data = JSON.parse(raw) as Partial<StructuredHoroscope>;
+    if (
+      typeof data.hook !== 'string' ||
+      !data.hook.trim() ||
+      typeof data.description !== 'string' ||
+      !data.description.trim() ||
+      typeof data.advice !== 'string' ||
+      !data.advice.trim() ||
+      typeof data.luckyColor !== 'string' ||
+      !data.luckyColor.trim() ||
+      typeof data.score !== 'number' ||
+      typeof data.luckyNumber !== 'number'
+    ) {
+      return null;
+    }
+    const quality = QUALITIES.includes(data.quality as (typeof QUALITIES)[number])
+      ? (data.quality as (typeof QUALITIES)[number])
+      : 'moderate';
+    return {
+      hook: data.hook.trim(),
+      description: data.description.trim(),
+      advice: data.advice.trim(),
+      quality,
+      score: Math.min(5, Math.max(1, Math.round(data.score))),
+      luckyColor: data.luckyColor.trim(),
+      luckyNumber: Math.min(9, Math.max(1, Math.round(data.luckyNumber))),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function parseYearlyResponse(
@@ -255,4 +327,36 @@ function templateMonthlyBreakdown(): MonthlyBreakdownEntry[] {
     monthLabel,
     summary: `A steady stretch for ${monthLabel} — check back closer to the month for a fuller reading.`,
   }));
+}
+
+const FALLBACK_HOOKS: Record<Exclude<HoroscopePeriod, 'yearly'>, string> = {
+  daily: 'Today calls for steady focus rather than big swings.',
+  weekly: 'This week favors quiet consistency over dramatic moves.',
+  monthly: 'This month rewards patience — the bigger shifts are still building.',
+};
+
+/**
+ * Plain-language structured fallback for daily/weekly/monthly — deliberately
+ * generic rather than dumping the raw (jargon-heavy) grounding facts, since
+ * without an LLM there's no reliable way to translate them into plain
+ * language on the fly. An honest generic reading beats a jargon dump.
+ */
+function templateFallbackStructured(
+  facts: string[],
+  period: Exclude<HoroscopePeriod, 'yearly'>,
+): StructuredHoroscope {
+  const noun = period === 'daily' ? 'today' : period === 'weekly' ? 'this week' : 'this month';
+  const day = new Date().getDate();
+  return {
+    hook: FALLBACK_HOOKS[period],
+    description:
+      facts.length > 0
+        ? `The bigger picture in your chart is steady ${noun} — no single shift dominates, so treat this as a normal stretch rather than a turning point.`
+        : `No strong signal stands out in your chart ${noun} — a normal stretch, good for steady progress rather than big decisions.`,
+    advice: 'Stick to your regular plans and revisit anything big once a clearer window opens.',
+    quality: 'moderate',
+    score: 3,
+    luckyColor: LUCKY_COLORS[day % LUCKY_COLORS.length]!,
+    luckyNumber: (day % 9) + 1,
+  };
 }

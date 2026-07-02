@@ -5,6 +5,7 @@ import {
   users,
   type DailyHoroscopeRow,
   type MonthlyBreakdownEntry,
+  type StructuredHoroscope,
   type UserRow,
 } from '../../db/schema.js';
 import type { HoroscopePeriod } from './horoscope.schemas.js';
@@ -48,14 +49,19 @@ export async function upsertHoroscope(params: {
   summary: string;
   model: string;
   monthlyBreakdown?: MonthlyBreakdownEntry[];
+  structured?: StructuredHoroscope;
 }): Promise<void> {
-  const { userId, forDate, period, periodKey, summary, model, monthlyBreakdown } = params;
-  const breakdownField = monthlyBreakdown !== undefined ? { monthlyBreakdown } : {};
+  const { userId, forDate, period, periodKey, summary, model, monthlyBreakdown, structured } =
+    params;
+  const extraFields = {
+    ...(monthlyBreakdown !== undefined ? { monthlyBreakdown } : {}),
+    ...(structured !== undefined ? { structured } : {}),
+  };
   await db
     .insert(dailyHoroscopes)
-    .values({ userId, forDate, period, periodKey, summary, model, ...breakdownField })
+    .values({ userId, forDate, period, periodKey, summary, model, ...extraFields })
     .onConflictDoUpdate({
       target: [dailyHoroscopes.userId, dailyHoroscopes.period, dailyHoroscopes.periodKey],
-      set: { summary, model, updatedAt: new Date(), ...breakdownField },
+      set: { summary, model, updatedAt: new Date(), ...extraFields },
     });
 }

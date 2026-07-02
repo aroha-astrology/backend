@@ -66,7 +66,9 @@ const EnvSchema = z
 
     // --- NIM model routing -------------------------------------------------
     MODEL_ROUTING: z.string().default('meta/llama-3.1-8b-instruct'),
-    MODEL_STRUCTURED: z.string().default('mistralai/mixtral-8x22b-instruct'),
+    // mistralai/mixtral-8x22b-instruct was retired from the NIM catalog (404s
+    // on every call) — verified 2026-07-02 that llama-3.3-70b-instruct is live.
+    MODEL_STRUCTURED: z.string().default('meta/llama-3.3-70b-instruct'),
     MODEL_CONVERSATIONAL: z.string().default('meta/llama-3.1-70b-instruct'),
 
     // --- Redis -------------------------------------------------------------

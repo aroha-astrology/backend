@@ -108,8 +108,16 @@ async function generateForUser(
   }
   const kundli = await findKundliByUserId(user.id);
   const context = buildHoroscopeContext(user, kundli, forDate, period);
-  const { summary, model } = await generateHoroscopeSummary(context);
-  await upsertHoroscope({ userId: user.id, forDate, period, periodKey: forDate, summary, model });
+  const { summary, model, structured } = await generateHoroscopeSummary(context);
+  await upsertHoroscope({
+    userId: user.id,
+    forDate,
+    period,
+    periodKey: forDate,
+    summary,
+    model,
+    ...(structured !== undefined ? { structured } : {}),
+  });
   return 'generated';
 }
 
@@ -131,7 +139,7 @@ export async function getOrGenerateHoroscope(
 
   const kundli = await findKundliByUserId(user.id);
   const context = buildHoroscopeContext(user, kundli, forDate, period);
-  const { summary, model, monthlyBreakdown } = await generateHoroscopeSummary(context);
+  const { summary, model, monthlyBreakdown, structured } = await generateHoroscopeSummary(context);
   await upsertHoroscope({
     userId: user.id,
     forDate,
@@ -140,6 +148,7 @@ export async function getOrGenerateHoroscope(
     summary,
     model,
     ...(monthlyBreakdown !== undefined ? { monthlyBreakdown } : {}),
+    ...(structured !== undefined ? { structured } : {}),
   });
 
   const row = await findHoroscope(user.id, period, periodKey);
@@ -226,6 +235,7 @@ export function toHoroscopeDto(row: DailyHoroscopeRow): HoroscopeDto {
     periodKey: row.periodKey,
     summary: row.summary,
     monthlyBreakdown: row.monthlyBreakdown ?? undefined,
+    structured: row.structured ?? undefined,
     model: row.model,
     generatedAt: row.updatedAt.toISOString(),
   };

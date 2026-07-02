@@ -11,6 +11,18 @@ export const MonthlyBreakdownEntrySchema = z
   })
   .openapi('MonthlyBreakdownEntry');
 
+export const StructuredHoroscopeSchema = z
+  .object({
+    hook: z.string(),
+    description: z.string(),
+    advice: z.string(),
+    quality: z.enum(['good', 'moderate', 'challenging', 'avoid']),
+    score: z.number().int().min(1).max(5),
+    luckyColor: z.string(),
+    luckyNumber: z.number().int().min(1).max(9),
+  })
+  .openapi('StructuredHoroscope');
+
 export const HoroscopeSchema = z
   .object({
     forDate: z.string().describe('ISO date (YYYY-MM-DD, IST) the period starts on'),
@@ -19,6 +31,8 @@ export const HoroscopeSchema = z
     summary: z.string(),
     /** Only present on period: 'yearly' — a short blurb per calendar month. */
     monthlyBreakdown: z.array(MonthlyBreakdownEntrySchema).optional(),
+    /** Only present on daily/weekly/monthly — the rich Plain-view fields. */
+    structured: StructuredHoroscopeSchema.optional(),
     model: z.string().nullable(),
     generatedAt: z.string(),
   })

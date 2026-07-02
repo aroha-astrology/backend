@@ -43,6 +43,13 @@
       "when": 1783012301098,
       "tag": "0005_add_horoscope_periods",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783015058562,
+      "tag": "0006_add_horoscope_structured",
+      "breakpoints": true
     }
   ]
 }

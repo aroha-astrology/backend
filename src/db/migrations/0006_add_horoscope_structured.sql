@@ -1,0 +1,1 @@
+ALTER TABLE "daily_horoscopes" ADD COLUMN "structured" jsonb;

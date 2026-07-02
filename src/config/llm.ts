@@ -62,9 +62,9 @@ export const HOROSCOPE_PROFILE: GenerationProfile = {
   name: 'horoscope',
   modelTier: 'structured',
   temperature: 0.6,
-  jsonMode: false,
+  jsonMode: true,
   stream: false,
-  maxTokens: 200,
+  maxTokens: 400,
 };
 
 /**
