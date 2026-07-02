@@ -26,6 +26,10 @@ vi.mock('firebase-admin/auth', () => ({
   getAuth: vi.fn(() => ({ verifyIdToken: state.verifyIdToken })),
 }));
 
+vi.mock('../src/modules/kundli/kundli.service.js', () => ({
+  requestKundliGeneration: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findUserByFirebaseUid: state.findUserByFirebaseUid,
   findUserByPhoneE164: vi.fn(),

@@ -143,8 +143,8 @@ async function getCurrentSky(asOf?: string): Promise<{
     transitSignNames[name] = SIGNS[signIdx] ?? 'Unknown';
 
     // nakshatra index: each nakshatra spans 13.333... degrees (360/27)
-    const nakshatraIdx = (p.nakshatraIndex as number | undefined) ??
-      Math.floor((p.longitude as number) / (360 / 27));
+    const nakshatraIdx =
+      (p.nakshatraIndex as number | undefined) ?? Math.floor((p.longitude as number) / (360 / 27));
     transitNakshatras[name] = nakshatraIdx;
   }
 
@@ -222,7 +222,8 @@ export async function synthesizeDailyForecast(
   const natalSigns: Record<string, number> = {};
   const natalAscMap: number = natalAscSignIdx;
   for (const p of natalPlanets) {
-    natalSigns[p.planet as string] = (p.signIndex as number) ?? Math.floor((p.longitude as number) / 30);
+    natalSigns[p.planet as string] =
+      (p.signIndex as number) ?? Math.floor((p.longitude as number) / 30);
   }
 
   // ── 1. Dasha-lord transit quality ────────────────────────────────────────
@@ -231,11 +232,23 @@ export async function synthesizeDailyForecast(
 
   if (currentMdPlanet && transitSigns[currentMdPlanet] !== undefined) {
     const raw = dashaLordTransitQuality(currentMdPlanet, transitSigns[currentMdPlanet]);
-    mdQuality = { planet: raw.planet, transitSign: raw.transitSign, dignity: raw.dignity, qualityScore: raw.qualityScore, description: raw.description };
+    mdQuality = {
+      planet: raw.planet,
+      transitSign: raw.transitSign,
+      dignity: raw.dignity,
+      qualityScore: raw.qualityScore,
+      description: raw.description,
+    };
   }
   if (currentAdPlanet && transitSigns[currentAdPlanet] !== undefined) {
     const raw = dashaLordTransitQuality(currentAdPlanet, transitSigns[currentAdPlanet]);
-    adQuality = { planet: raw.planet, transitSign: raw.transitSign, dignity: raw.dignity, qualityScore: raw.qualityScore, description: raw.description };
+    adQuality = {
+      planet: raw.planet,
+      transitSign: raw.transitSign,
+      dignity: raw.dignity,
+      qualityScore: raw.qualityScore,
+      description: raw.description,
+    };
   }
 
   // ── 2. Ashtakavarga — BAV for Kakshya, SAV for overall sign strength ────
@@ -247,9 +260,7 @@ export async function synthesizeDailyForecast(
   try {
     const av = calculateAshtakavarga(chartData as never);
     if (av.bhinna) {
-      bhinnaAvDicts = av.bhinna.map(
-        (b) => ({ planet: b.planet as string, bindus: b.bindus }),
-      );
+      bhinnaAvDicts = av.bhinna.map((b) => ({ planet: b.planet, bindus: b.bindus }));
     }
     if (av.sarva?.bindus) {
       for (let i = 0; i < 12; i++) {
@@ -288,14 +299,14 @@ export async function synthesizeDailyForecast(
   // ── 7. Panchaka ──────────────────────────────────────────────────────────
   // Panchaka needs tithi, vara, nakshatra, lagna indices (all 1-based)
   // Use transit moon sign index as a proxy for nakshatra (1-based)
-  const varaIndex = (now.getUTCDay() + 1); // 1=Sunday .. 7=Saturday
+  const varaIndex = now.getUTCDay() + 1; // 1=Sunday .. 7=Saturday
   // tithi: rough estimate from moon-sun angular difference / 12
   // For a full panchang we'd need calculatePanchang; here we use the transit moon nakshatra
   const panchakaResult = computePanchaka(
     (((transitMoonNakIdx ?? 0) + 1) % 30) + 1, // proxy tithi 1-30
     varaIndex,
-    (transitMoonNakIdx ?? 0) + 1,              // nakshatra 1-based
-    natalAscSignIdx + 1,                        // lagna 1-based
+    (transitMoonNakIdx ?? 0) + 1, // nakshatra 1-based
+    natalAscSignIdx + 1, // lagna 1-based
   );
 
   // ── Score ─────────────────────────────────────────────────────────────────

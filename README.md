@@ -404,6 +404,26 @@ cd ~/aroha-backend && npm run db:migrate
 Rotate the password with `ALTER ROLE atulgoel PASSWORD '<new>';`, update `DATABASE_URL`
 in the server `.env`, then `pm2 restart aroha-api`.
 
+#### Daily horoscope CRON (server state — not in the repo)
+
+Personalized horoscopes are generated for every active user once a day by the OS
+crontab hitting an internal, secret-protected endpoint (an in-process scheduler
+would fire once per pm2 worker). Two pieces of server state, set once:
+
+1. **`CRON_SECRET`** in `~/aroha-backend/.env` — the shared secret for
+   `POST /internal/cron/daily-horoscopes` (the endpoint fails closed if unset).
+   `echo "CRON_SECRET=$(openssl rand -hex 24)" >> ~/aroha-backend/.env` then
+   `pm2 restart aroha-api`.
+2. **crontab** at 00:01 IST (the box is UTC → 18:31 UTC):
+   ```cron
+   31 18 * * * /home/ec2-user/aroha-backend/scripts/cron-daily-horoscopes.sh >> /home/ec2-user/cron-horoscopes.log 2>&1
+   ```
+   The script (`scripts/cron-daily-horoscopes.sh`, version-controlled) reads
+   `CRON_SECRET` from `.env` and calls the endpoint on localhost. Manual run /
+   backfill: `scripts/cron-daily-horoscopes.sh` (optional JSON body
+   `{"forDate":"YYYY-MM-DD","force":true}`). The LLM is currently a stub
+   returning a fixed value; the NVIDIA NIM call is wired in `src/lib/llm/horoscope.ts`.
+
 ---
 
 ## Environment variables

@@ -648,3 +648,89 @@ export const precomputeJobs = pgTable(
     ),
   }),
 );
+
+/* -------------------------------------------------------------------------- */
+/* kundlis — one precomputed natal kundli per account holder                   */
+/* -------------------------------------------------------------------------- */
+
+export const kundliStatusEnum = pgEnum('kundli_status', [
+  'pending',
+  'generating',
+  'ready',
+  'failed',
+]);
+
+export const kundlis = pgTable('kundlis', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  status: kundliStatusEnum('status').notNull().default('pending'),
+  /** Resolved ayanamsa actually used for the computation (engine-supported). */
+  ayanamsa: text('ayanamsa'),
+  /** Resolved house system actually used ('W' | 'P' | 'K' | 'E'). */
+  houseSystem: text('house_system'),
+  /**
+   * false when birth time was unknown → a degraded sign-level kundli with no
+   * ascendant/houses/dasha. Distinguishes a valid degraded chart from a bug.
+   */
+  timeKnown: boolean('time_known'),
+  /** Hash of the birth inputs this kundli was computed from (staleness/dedupe). */
+  birthHash: text('birth_hash'),
+  chartData: jsonb('chart_data').$type<Record<string, unknown>>(),
+  dashaData: jsonb('dasha_data').$type<Record<string, unknown>>(),
+  yogaData: jsonb('yoga_data').$type<Record<string, unknown>>(),
+  doshaData: jsonb('dosha_data').$type<Record<string, unknown>>(),
+  error: text('error'),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  generatedAt: timestamp('generated_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export type KundliRow = typeof kundlis.$inferSelect;
+export type NewKundliRow = typeof kundlis.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* daily_horoscopes — one personalized horoscope per user per day              */
+/* -------------------------------------------------------------------------- */
+
+export const dailyHoroscopes = pgTable(
+  'daily_horoscopes',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The calendar date (in the app's IST timezone) this horoscope is for. */
+    forDate: date('for_date').notNull(),
+    summary: text('summary').notNull(),
+    /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    // One horoscope per user per day — the upsert conflict target.
+    userDateUnique: uniqueIndex('daily_horoscopes_user_date_unique').on(
+      table.userId,
+      table.forDate,
+    ),
+  }),
+);
+
+export type DailyHoroscopeRow = typeof dailyHoroscopes.$inferSelect;
+export type NewDailyHoroscopeRow = typeof dailyHoroscopes.$inferInsert;

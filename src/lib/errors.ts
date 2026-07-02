@@ -5,6 +5,7 @@ export type AppErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'UNPROCESSABLE'
+  | 'TOO_MANY_REQUESTS'
   | 'INTERNAL';
 
 const STATUS_BY_CODE: Record<AppErrorCode, number> = {
@@ -14,6 +15,7 @@ const STATUS_BY_CODE: Record<AppErrorCode, number> = {
   NOT_FOUND: 404,
   CONFLICT: 409,
   UNPROCESSABLE: 422,
+  TOO_MANY_REQUESTS: 429,
   INTERNAL: 500,
 };
 
@@ -39,5 +41,6 @@ export const Errors = {
   conflict: (message: string) => new AppError('CONFLICT', message),
   unprocessable: (message: string, details?: unknown) =>
     new AppError('UNPROCESSABLE', message, details),
+  tooManyRequests: (message = 'Too many requests') => new AppError('TOO_MANY_REQUESTS', message),
   internal: (message = 'Internal server error') => new AppError('INTERNAL', message),
 };
