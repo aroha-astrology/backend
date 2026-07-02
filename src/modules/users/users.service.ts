@@ -1,6 +1,8 @@
 import type { NewUserRow, NewUserConsentLogRow, UserRow } from '../../db/schema.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { Errors } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
+import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import type { ConsentInput, UpdateMeBody, UserDto } from './users.schemas.js';
 import {
   findActiveUserById,
@@ -307,6 +309,23 @@ export async function updateMe(
       profileCompletedAt: shouldComplete ? new Date() : null,
     });
     if (finalized) next = finalized;
+  }
+
+  // Start kundli generation the moment onboarding completes — or when birth
+  // inputs change on an already-complete profile. Fire-and-forget so the PATCH
+  // returns immediately; the generation request is idempotent (DB-deduped).
+  const becameComplete = current.profileCompletedAt === null && next.profileCompletedAt !== null;
+  const touchedBirth =
+    body.dateOfBirth !== undefined ||
+    body.timeOfBirth !== undefined ||
+    body.placeOfBirth !== undefined ||
+    body.birthTimeAccuracy !== undefined ||
+    body.preferredAyanamsa !== undefined ||
+    body.preferredHouseSystem !== undefined;
+  if (next.profileCompletedAt !== null && (becameComplete || touchedBirth)) {
+    void requestKundliGeneration(userId).catch((err: unknown) => {
+      logger.error({ err, userId }, 'kundli generation trigger failed');
+    });
   }
 
   return next;

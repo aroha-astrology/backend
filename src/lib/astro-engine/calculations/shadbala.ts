@@ -27,9 +27,7 @@ import {
 // =============================================================================
 
 /** The 7 planets that participate in Shadbala (no Rahu/Ketu). */
-const SHADBALA_PLANETS: Planet[] = [
-  'Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn',
-];
+const SHADBALA_PLANETS: Planet[] = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
 
 /** Required minimum Virupas for each planet to be considered strong. */
 const REQUIRED_VIRUPAS: Record<string, number> = {
@@ -55,13 +53,13 @@ const NAISARGIKA_BALA: Record<string, number> = {
 
 /** Dig Bala strong houses: planet is strongest when in this house. */
 const DIG_BALA_STRONG_HOUSE: Record<string, number> = {
-  Jupiter: 1,   // East (Ascendant)
-  Mercury: 1,   // East (Ascendant)
-  Sun: 10,      // South (MC)
-  Mars: 10,     // South (MC)
-  Saturn: 7,    // West (Descendant)
-  Moon: 4,      // North (IC)
-  Venus: 4,     // North (IC)
+  Jupiter: 1, // East (Ascendant)
+  Mercury: 1, // East (Ascendant)
+  Sun: 10, // South (MC)
+  Mars: 10, // South (MC)
+  Saturn: 7, // West (Descendant)
+  Moon: 4, // North (IC)
+  Venus: 4, // North (IC)
 };
 
 /** Saptavargaja dignity points for each relationship level. */
@@ -121,10 +119,7 @@ function getPlanetPos(chartData: ChartData, planet: Planet): PlanetPosition | un
  * Determine the relationship between two planets:
  * 'friend', 'enemy', 'neutral', 'greatFriend', 'greatEnemy'
  */
-function getPlanetRelation(
-  planet: Planet,
-  signLord: Planet
-): 'friend' | 'enemy' | 'neutral' {
+function getPlanetRelation(planet: Planet, signLord: Planet): 'friend' | 'enemy' | 'neutral' {
   if (planet === signLord) return 'friend'; // own sign treated as friend for relationship
   const friends = PLANET_FRIENDS[planet] || [];
   const enemies = PLANET_ENEMIES[planet] || [];
@@ -137,11 +132,8 @@ function getPlanetRelation(
  * Calculate temporary (Tatkalika) friendship based on mutual positions.
  * Planets in 2, 3, 4, 10, 11, 12 from each other are temporary friends.
  */
-function getTemporaryRelation(
-  planet1House: number,
-  planet2House: number
-): 'friend' | 'enemy' {
-  let diff = ((planet2House - planet1House) % 12 + 12) % 12;
+function getTemporaryRelation(planet1House: number, planet2House: number): 'friend' | 'enemy' {
+  const diff = (((planet2House - planet1House) % 12) + 12) % 12;
   // Houses 2,3,4,10,11,12 from planet1 => diff = 1,2,3,9,10,11
   if ([1, 2, 3, 9, 10, 11].includes(diff)) {
     return 'friend';
@@ -154,7 +146,7 @@ function getTemporaryRelation(
  */
 function getCompoundRelation(
   natural: 'friend' | 'enemy' | 'neutral',
-  temporary: 'friend' | 'enemy'
+  temporary: 'friend' | 'enemy',
 ): string {
   if (natural === 'friend' && temporary === 'friend') return 'greatFriend';
   if (natural === 'friend' && temporary === 'enemy') return 'neutral';
@@ -170,7 +162,7 @@ function getCompoundRelation(
  * 0=Sunday, 1=Monday, etc.
  */
 function julianDayToWeekday(jd: number): number {
-  return (Math.floor(jd + 1.5) % 7);
+  return Math.floor(jd + 1.5) % 7;
 }
 
 /**
@@ -220,7 +212,7 @@ function calculateUchchaBala(planet: Planet, longitude: number): number {
 function calculateSaptavargajaBala(
   planet: Planet,
   longitude: number,
-  chartData: ChartData
+  chartData: ChartData,
 ): number {
   const signIndex = getSignIndex(longitude);
   const signName = ZODIAC_SIGNS[signIndex];
@@ -331,10 +323,7 @@ function calculateDrekkanaBala(planet: Planet, longitude: number): number {
 /**
  * Total Sthana Bala: Sum of all positional sub-strengths.
  */
-function calculateSthanaBala(
-  planet: Planet,
-  chartData: ChartData
-): number {
+function calculateSthanaBala(planet: Planet, chartData: ChartData): number {
   const pos = getPlanetPos(chartData, planet);
   if (!pos) return 0;
 
@@ -402,7 +391,7 @@ function calculatePakshaBala(planet: Planet, chartData: ChartData): number {
   if (!moonPos || !sunPos) return 30;
 
   // Angular distance Moon - Sun
-  let moonSunDist = normalizeDegree(moonPos.longitude - sunPos.longitude);
+  const moonSunDist = normalizeDegree(moonPos.longitude - sunPos.longitude);
 
   // Shukla Paksha: Moon ahead of Sun by 0-180° → benefics strong
   // Krishna Paksha: Moon ahead of Sun by 180-360° → malefics strong
@@ -495,7 +484,7 @@ function calculateVarshaMasaDinaHoraBala(planet: Planet, chartData: ChartData): 
   // Each subsequent hora follows the sequence with an interval of 3
   // (Sun, Venus, Mercury, Moon, Saturn, Jupiter, Mars and repeat).
   // Simplified: we compute the hora index from JD fractional part.
-  const dayFraction = (jd + 0.5) - Math.floor(jd + 0.5); // fraction since midnight UT
+  const dayFraction = jd + 0.5 - Math.floor(jd + 0.5); // fraction since midnight UT
   // Approximate sunrise as 6:00 UT (simplified)
   const hoursSinceSunrise = (dayFraction - 0.25) * 24;
   const horaIndex = Math.floor(((hoursSinceSunrise % 24) + 24) % 24);
@@ -641,7 +630,7 @@ function calculateDrikBala(planet: Planet, chartData: ChartData): number {
     if (!otherPos) continue;
 
     // House distance from other planet to this planet
-    let houseDiff = ((pos.house - otherPos.house) % 12 + 12) % 12;
+    const houseDiff = (((pos.house - otherPos.house) % 12) + 12) % 12;
 
     // Check if the other planet aspects this planet
     let aspectStrength = 0;
@@ -721,4 +710,3 @@ export function calculateShadbala(chartData: ChartData): PlanetShadbala[] {
 
   return results;
 }
-

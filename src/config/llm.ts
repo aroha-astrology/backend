@@ -29,13 +29,27 @@ export const FORECAST_PROFILE: GenerationProfile = {
   maxTokens: 2048,
 };
 
+// Target reply is ~90 words by default, ~150 words max (see scholar.ts
+// OUTPUT_STYLE) — 480 tokens is a generous ceiling over that, chosen to bound
+// worst-case generation latency (and therefore timeout risk) rather than to
+// fit the intended length exactly.
 export const CHAT_PROFILE: GenerationProfile = {
   name: 'chat',
   modelTier: 'conversational',
   temperature: 0.7,
   jsonMode: false,
   stream: true,
-  maxTokens: 1024,
+  maxTokens: 480,
+};
+
+/** Cheap, fast, non-streaming — used to fold older chat turns into a running summary. */
+export const CHAT_SUMMARY_PROFILE: GenerationProfile = {
+  name: 'chat-summary',
+  modelTier: 'routing',
+  temperature: 0.2,
+  jsonMode: false,
+  stream: false,
+  maxTokens: 220,
 };
 
 export function modelForTier(tier: ModelTier): string {
