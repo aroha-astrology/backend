@@ -52,6 +52,21 @@ export const CHAT_SUMMARY_PROFILE: GenerationProfile = {
   maxTokens: 220,
 };
 
+/**
+ * Personalized daily horoscope — called once per active user per day from the
+ * CRON pipeline (never per-request), so a moderate temperature for narrative
+ * variety is fine without repeated-cost or timeout concerns. Non-streaming:
+ * runDailyHoroscopes awaits the full summary before writing the DB row.
+ */
+export const HOROSCOPE_PROFILE: GenerationProfile = {
+  name: 'horoscope',
+  modelTier: 'structured',
+  temperature: 0.6,
+  jsonMode: false,
+  stream: false,
+  maxTokens: 200,
+};
+
 export function modelForTier(tier: ModelTier): string {
   const map: Record<ModelTier, string> = {
     routing: env.MODEL_ROUTING,
