@@ -1,0 +1,162 @@
+import { logger } from '../../lib/logger.js';
+import { generateHoroscopeSummary, type HoroscopeContext } from '../../lib/llm/horoscope.js';
+import type { DailyHoroscopeRow, KundliRow, UserRow } from '../../db/schema.js';
+import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import type { HoroscopeDto } from './horoscope.schemas.js';
+import { findHoroscope, listActiveUsersAfter, upsertHoroscope } from './horoscope.repo.js';
+
+/** The app's reference timezone — horoscopes are dated by the IST calendar day. */
+const APP_TZ = 'Asia/Kolkata';
+
+/** Calendar date (YYYY-MM-DD) for an instant, in the given tz. */
+export function dateInTz(d: Date, tz: string = APP_TZ): string {
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+/** Today's date in the app timezone. The CRON fires at 18:31 UTC = 00:01 IST. */
+export function todayForApp(): string {
+  return dateInTz(new Date(), APP_TZ);
+}
+
+/** Assemble everything we know about the user for the LLM to personalize from. */
+function buildHoroscopeContext(
+  user: UserRow,
+  kundli: KundliRow | undefined,
+  forDate: string,
+): HoroscopeContext {
+  return {
+    userId: user.id,
+    forDate,
+    profile: {
+      displayName: user.displayName,
+      gender: user.gender,
+      dateOfBirth: user.dateOfBirth,
+      timeOfBirth: user.timeOfBirth,
+      birthTimeAccuracy: user.birthTimeAccuracy,
+      placeOfBirth: user.placeOfBirth,
+      currentLocation: user.currentLocation,
+      currentTimezone: user.currentTimezone,
+      locale: user.locale,
+      contentLanguage: user.contentLanguage,
+      relationshipStatus: user.relationshipStatus,
+      interestAreas: user.interestAreas,
+    },
+    preferences: {
+      preferredSystem: user.preferredSystem,
+      preferredAyanamsa: user.preferredAyanamsa,
+      preferredHouseSystem: user.preferredHouseSystem,
+      preferredChartStyle: user.preferredChartStyle,
+      preferredDashaSystem: user.preferredDashaSystem,
+    },
+    // Attach the natal kundli when it's ready; never SKIP a user for lacking one.
+    kundli:
+      kundli && kundli.status === 'ready'
+        ? {
+            chart: kundli.chartData,
+            dasha: kundli.dashaData,
+            yogas: kundli.yogaData,
+            doshas: kundli.doshaData,
+          }
+        : null,
+  };
+}
+
+async function generateForUser(
+  user: UserRow,
+  forDate: string,
+  force: boolean,
+): Promise<'generated' | 'skipped'> {
+  if (!force && (await findHoroscope(user.id, forDate))) {
+    return 'skipped';
+  }
+  const kundli = await findKundliByUserId(user.id);
+  const context = buildHoroscopeContext(user, kundli, forDate);
+  const { summary, model } = await generateHoroscopeSummary(context);
+  await upsertHoroscope(user.id, forDate, summary, model);
+  return 'generated';
+}
+
+export interface DailyHoroscopeRunResult {
+  forDate: string;
+  processed: number;
+  generated: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * Generate a personalized horoscope for every active user for `forDate`
+ * (default: today in IST). Paginated (keyset) and per-user fault-isolated, so
+ * one user's failure never aborts the batch. Idempotent: re-running skips users
+ * already done (unless `force`).
+ *
+ * TODO(scale): the run is synchronous within one HTTP request — fine while the
+ * LLM is an instant stub. With the real NIM over N users this will exceed the
+ * request timeout; move to a queue/chunked workers when the LLM lands.
+ */
+export async function runDailyHoroscopes(
+  opts: {
+    forDate?: string | undefined;
+    force?: boolean | undefined;
+    limit?: number | undefined;
+  } = {},
+): Promise<DailyHoroscopeRunResult> {
+  const forDate = opts.forDate ?? todayForApp();
+  const force = opts.force ?? false;
+  const PAGE = 200;
+
+  let lastId: string | null = null;
+  let processed = 0;
+  let generated = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (;;) {
+    const remaining = opts.limit ? opts.limit - processed : PAGE;
+    if (remaining <= 0) break;
+    const batch = await listActiveUsersAfter(lastId, Math.min(PAGE, remaining));
+    if (batch.length === 0) break;
+
+    for (const user of batch) {
+      processed++;
+      try {
+        const outcome = await generateForUser(user, forDate, force);
+        if (outcome === 'generated') generated++;
+        else skipped++;
+      } catch (err) {
+        failed++;
+        logger.error({ err, userId: user.id, forDate }, 'daily horoscope failed for user');
+      }
+    }
+
+    const last = batch[batch.length - 1];
+    if (!last) break;
+    lastId = last.id;
+    if (batch.length < Math.min(PAGE, remaining)) break;
+  }
+
+  logger.info({ forDate, processed, generated, skipped, failed }, 'daily horoscope run complete');
+  return { forDate, processed, generated, skipped, failed };
+}
+
+export async function getHoroscopeForUser(
+  userId: string,
+  forDate?: string,
+): Promise<DailyHoroscopeRow | undefined> {
+  return findHoroscope(userId, forDate ?? todayForApp());
+}
+
+export function toHoroscopeDto(row: DailyHoroscopeRow): HoroscopeDto {
+  return {
+    forDate: row.forDate,
+    summary: row.summary,
+    model: row.model,
+    generatedAt: row.updatedAt.toISOString(),
+  };
+}

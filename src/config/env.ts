@@ -76,12 +76,6 @@ const EnvSchema = z
     CRON_SECRET: z.string().min(1).optional(),
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
     TELEGRAM_ALERT_CHAT_ID: z.string().min(1).optional(),
-
-    // --- Dev bypass --------------------------------------------------------
-    DEV_AUTH_BYPASS: z
-      .string()
-      .default('false')
-      .transform((v) => v === 'true' || v === '1'),
   })
   .superRefine((value, ctx) => {
     const hasPath = Boolean(value.FIREBASE_SERVICE_ACCOUNT_PATH);

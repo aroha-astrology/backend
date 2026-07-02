@@ -30,19 +30,19 @@ function mergeState(current: SwarmState, patch: Partial<SwarmState>): SwarmState
   const merged: SwarmState = { ...current };
 
   if (patch.findings) {
-    merged.findings = [...(current.findings ?? []), ...(patch.findings as Finding[])];
+    merged.findings = [...(current.findings ?? []), ...patch.findings];
   }
   if (patch.errors) {
-    merged.errors = [...(current.errors ?? []), ...(patch.errors as string[])];
+    merged.errors = [...(current.errors ?? []), ...patch.errors];
   }
   if (patch.warnings) {
-    merged.warnings = [...(current.warnings ?? []), ...(patch.warnings as string[])];
+    merged.warnings = [...(current.warnings ?? []), ...patch.warnings];
   }
 
   // Merge non-array keys
   for (const key of Object.keys(patch) as Array<keyof SwarmState>) {
     if (key === 'findings' || key === 'errors' || key === 'warnings') continue;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (merged as any)[key] = (patch as any)[key];
   }
 
@@ -67,7 +67,10 @@ export async function runPipeline(initialState: SwarmState): Promise<SwarmState>
 
   // Short-circuit on gateway errors (consent / missing fields)
   if (state.errors.length > 0) {
-    logger.warn({ requestId: state.requestId, errors: state.errors }, 'pipeline: gateway failed, aborting');
+    logger.warn(
+      { requestId: state.requestId, errors: state.errors },
+      'pipeline: gateway failed, aborting',
+    );
     return state;
   }
 
@@ -102,7 +105,11 @@ export async function runPipeline(initialState: SwarmState): Promise<SwarmState>
   state = mergeState(state, aggregatorPatch);
 
   logger.info(
-    { requestId: state.requestId, findingCount: state.findings.length, errors: state.errors.length },
+    {
+      requestId: state.requestId,
+      findingCount: state.findings.length,
+      errors: state.errors.length,
+    },
     'pipeline: complete',
   );
 

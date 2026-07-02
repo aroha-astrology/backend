@@ -28,7 +28,7 @@ import {
 // =============================================================================
 
 // Dynamic import to support both ESM and CommonJS contexts
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 let sweInstance: any = null;
 let initPromise: Promise<void> | null = null;
 
@@ -145,7 +145,7 @@ export async function dateToJulianDay(
   day: number,
   hour: number,
   min: number,
-  timezone: number
+  timezone: number,
 ): Promise<number> {
   const swe = await getSwe();
   const utHour = hour + min / 60 - timezone;
@@ -157,7 +157,7 @@ export async function dateToJulianDay(
  */
 export async function calculatePlanetPositions(
   jd: number,
-  ayanamsa: Ayanamsa = 'lahiri'
+  ayanamsa: Ayanamsa = 'lahiri',
 ): Promise<PlanetPosition[]> {
   const swe = await getSwe();
 
@@ -241,7 +241,7 @@ export async function calculateHouses(
   lat: number,
   lng: number,
   system: HouseSystem = 'W',
-  ayanamsa: Ayanamsa = 'lahiri'
+  ayanamsa: Ayanamsa = 'lahiri',
 ): Promise<HouseData[]> {
   const swe = await getSwe();
 
@@ -292,7 +292,7 @@ export async function calculateAscendant(
   jd: number,
   lat: number,
   lng: number,
-  ayanamsa: Ayanamsa = 'lahiri'
+  ayanamsa: Ayanamsa = 'lahiri',
 ): Promise<AscendantData> {
   const swe = await getSwe();
 
@@ -315,23 +315,29 @@ export async function calculateAscendant(
 }
 
 /**
- * Assign planets to houses based on their sign positions and house cusps.
+ * Assign planets to houses by longitude within each house's cusp interval.
+ * Correct for ALL house systems (whole-sign and quadrant alike) — a sign-based
+ * map breaks whenever a sign is intercepted (two cusps in one sign), silently
+ * leaving planets in house 0.
  */
-function assignPlanetsToHouses(
-  planets: PlanetPosition[],
-  houses: HouseData[]
-): void {
-  const signToHouse: Record<number, number> = {};
-  for (const h of houses) {
-    signToHouse[h.signIndex] = h.house;
-  }
-
+function assignPlanetsToHouses(planets: PlanetPosition[], houses: HouseData[]): void {
   for (const planet of planets) {
-    const houseNum = signToHouse[planet.signIndex];
-    if (houseNum !== undefined) {
-      planet.house = houseNum;
-      houses[houseNum - 1].planets.push(planet.planet);
+    const lon = normalizeDegree(planet.longitude);
+    let assignedHouse = houses[0].house; // sane fallback (house 1)
+
+    for (let i = 0; i < houses.length; i++) {
+      const start = normalizeDegree(houses[i].cusp);
+      const end = normalizeDegree(houses[(i + 1) % houses.length].cusp);
+      // A house spans [start, end); handle the 360°→0° wrap-around.
+      const inHouse = start <= end ? lon >= start && lon < end : lon >= start || lon < end;
+      if (inHouse) {
+        assignedHouse = houses[i].house;
+        break;
+      }
     }
+
+    planet.house = assignedHouse;
+    houses[assignedHouse - 1].planets.push(planet.planet);
   }
 }
 
@@ -348,7 +354,7 @@ export async function calculateChart(
   lat: number,
   lng: number,
   ayanamsa: Ayanamsa = 'lahiri',
-  houseSystem: HouseSystem = 'W'
+  houseSystem: HouseSystem = 'W',
 ): Promise<ChartData> {
   const swe = await getSwe();
 
@@ -375,4 +381,3 @@ export async function calculateChart(
     julianDay: jd,
   };
 }
-

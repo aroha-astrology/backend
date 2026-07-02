@@ -5,15 +5,19 @@ import { logger } from '../logger.js';
 const TTL_CHART = 86400; // 24h
 const TTL_PREDICTION = 3600; // 1h
 
-function sourceHash(birthRecord: Record<string, unknown>): string {
+/** Canonical key derivation — the SINGLE source of truth for read and write. */
+export function sourceHash(birthRecord: Record<string, unknown>): string {
   const data = JSON.stringify(birthRecord);
   return crypto.createHash('sha256').update(data).digest('hex').slice(0, 16);
 }
 
-export async function getCachedChart(userId: string, recordHash: string): Promise<unknown | null> {
+export async function getCachedChart(
+  userId: string,
+  birthRecord: Record<string, unknown>,
+): Promise<unknown | null> {
   try {
     const redis = getRedis();
-    const raw = await redis.get(`chart:${userId}:${recordHash}`);
+    const raw = await redis.get(`chart:${userId}:${sourceHash(birthRecord)}`);
     return raw ? JSON.parse(raw) : null;
   } catch (err) {
     logger.warn({ err }, 'cache:getCachedChart failed');
@@ -28,8 +32,11 @@ export async function setCachedChart(
 ): Promise<void> {
   try {
     const redis = getRedis();
-    const hash = sourceHash(birthRecord);
-    await redis.setex(`chart:${userId}:${hash}`, TTL_CHART, JSON.stringify(chart));
+    await redis.setex(
+      `chart:${userId}:${sourceHash(birthRecord)}`,
+      TTL_CHART,
+      JSON.stringify(chart),
+    );
   } catch (err) {
     logger.warn({ err }, 'cache:setCachedChart failed');
   }
@@ -58,8 +65,15 @@ export async function setCachedPrediction(key: string, data: unknown): Promise<v
 export async function invalidateUserCharts(userId: string): Promise<void> {
   try {
     const redis = getRedis();
-    const keys = await redis.keys(`chart:${userId}:*`);
-    if (keys.length > 0) await redis.del(...keys);
+    // Non-blocking cursor scan instead of KEYS (which is O(N) over the whole
+    // keyspace and blocks the Redis event loop).
+    const pattern = `chart:${userId}:*`;
+    let cursor = '0';
+    do {
+      const [next, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = next;
+      if (batch.length > 0) await redis.del(...batch);
+    } while (cursor !== '0');
   } catch (err) {
     logger.warn({ err }, 'cache:invalidateUserCharts failed');
   }

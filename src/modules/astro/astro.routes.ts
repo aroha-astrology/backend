@@ -2,7 +2,12 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import { requireUser } from '../../middleware/auth.js';
 import { requireConsent } from '../../middleware/consent.js';
+import { rateLimiter } from '../../middleware/rate-limit.js';
+import { logger } from '../../lib/logger.js';
 import * as astroService from './astro.service.js';
+
+/** Expensive LLM/swarm routes: cap per authenticated user. */
+const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20 });
 import {
   OnboardingRequestSchema,
   OnboardingResponseSchema,
@@ -50,7 +55,7 @@ const onboardingRoute = createRoute({
   tags: ['Astro'],
   summary: 'Run onboarding analysis for a new user',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -85,7 +90,7 @@ const dailyForecastRoute = createRoute({
   tags: ['Astro'],
   summary: 'Generate a daily forecast via the full swarm pipeline',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -120,7 +125,7 @@ const dailyFullSynthesisRoute = createRoute({
   tags: ['Astro'],
   summary: 'Generate a daily forecast via direct metrology + synthesis (no swarm)',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -149,12 +154,25 @@ astroRouter.openapi(dailyFullSynthesisRoute, async (c) => {
 /* GET /forecast/moon-sign/:signIndex                                    */
 /* -------------------------------------------------------------------------- */
 
+const PeriodQuerySchema = z.object({
+  period: z
+    .enum(['daily', 'weekly', 'monthly', 'yearly'])
+    .optional()
+    .default('daily')
+    .openapi({
+      param: { name: 'period', in: 'query' },
+      example: 'daily',
+      description:
+        'Timescale — weekly/monthly/yearly are aggregates of the daily engine output, never independent narration',
+    }),
+});
+
 const moonSignRoute = createRoute({
   method: 'get',
   path: '/forecast/moon-sign/{signIndex}',
   tags: ['Astro'],
-  summary: 'Public moon-sign daily forecast',
-  request: { params: SignIndexParamSchema },
+  summary: 'Public moon-sign forecast (daily/weekly/monthly/yearly)',
+  request: { params: SignIndexParamSchema, query: PeriodQuerySchema },
   responses: {
     200: {
       description: 'Moon-sign forecast',
@@ -166,7 +184,8 @@ const moonSignRoute = createRoute({
 
 astroRouter.openapi(moonSignRoute, async (c) => {
   const { signIndex } = c.req.valid('param');
-  const result = await astroService.moonSignForecast(signIndex);
+  const { period } = c.req.valid('query');
+  const result = await astroService.moonSignForecast(signIndex, period);
   return c.json({ forecast: result }, 200);
 });
 
@@ -205,7 +224,7 @@ const matchmakingRoute = createRoute({
   tags: ['Astro'],
   summary: 'Compute Ashtakoota matchmaking compatibility between two birth charts',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -234,49 +253,14 @@ astroRouter.openapi(matchmakingRoute, async (c) => {
 /* GET /panchang                                                         */
 /* -------------------------------------------------------------------------- */
 
-const PanchangQuerySchema = z.object({
-  lat: z
-    .string()
-    .optional()
-    .default('28.6139')
-    .transform(Number)
-    .pipe(z.number().min(-90).max(90))
-    .openapi({
-      param: { name: 'lat', in: 'query' },
-      example: '28.6139',
-      description: 'Latitude (defaults to New Delhi)',
-    }),
-  lon: z
-    .string()
-    .optional()
-    .default('77.209')
-    .transform(Number)
-    .pipe(z.number().min(-180).max(180))
-    .openapi({
-      param: { name: 'lon', in: 'query' },
-      example: '77.209',
-      description: 'Longitude (defaults to New Delhi)',
-    }),
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional()
-    .openapi({
-      param: { name: 'date', in: 'query' },
-      example: '2025-01-15',
-      description: 'Date in YYYY-MM-DD format (defaults to today)',
-    }),
-});
-
 const panchangRoute = createRoute({
   method: 'get',
   path: '/panchang',
   tags: ['Astro'],
-  summary: 'Get panchang for a given date and location (public)',
-  request: { query: PanchangQuerySchema },
+  summary: "Get today's panchang (public, optional auth for GPS-based location)",
   responses: {
     200: {
-      description: 'Panchang data',
+      description: 'Panchang data for today',
       content: {
         'application/json': {
           schema: z.object({
@@ -285,110 +269,27 @@ const panchangRoute = createRoute({
             nakshatra: z.any(),
             yoga: z.any(),
             karana: z.any(),
-            vara: z.string().optional(),
-            rahuKaal: z.any().optional(),
-            gulikaKaal: z.any().optional(),
-            yamagandaKaal: z.any().optional(),
-            abhijitMuhurta: z.any().optional(),
-            sunriseTime: z.string().optional(),
-            sunsetTime: z.string().optional(),
-            regionalMonths: z.any().optional(),
+            sunrise: z.string().optional(),
+            sunset: z.string().optional(),
           }),
         },
       },
     },
-    422: errorResponse('Validation failed'),
   },
 });
 
 astroRouter.openapi(panchangRoute, async (c) => {
-  const { lat, lon, date } = c.req.valid('query');
-  const result = await astroService.getPanchang(lat, lon, date);
-  return c.json(result, 200);
-});
-
-/* -------------------------------------------------------------------------- */
-/* GET /remedies                                                         */
-/* -------------------------------------------------------------------------- */
-
-const RemedySchema = z.object({
-  planet: z.string(),
-  title: z.string(),
-  icon: z.string(),
-  remedy: z.string(),
-});
-
-const remediesRoute = createRoute({
-  method: 'get',
-  path: '/remedies',
-  tags: ['Astro'],
-  summary: 'Get personalised Vedic remedies (public, optional auth for chart-based results)',
-  request: {
-    query: z.object({
-      birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().openapi({
-        param: { name: 'birthDate', in: 'query' },
-        example: '1990-05-15',
-        description: 'Birth date (YYYY-MM-DD)',
-      }),
-      birthTime: z.string().optional().default('12:00').openapi({
-        param: { name: 'birthTime', in: 'query' },
-        example: '14:30',
-        description: 'Birth time (HH:mm)',
-      }),
-      lat: z
-        .string()
-        .optional()
-        .transform((v) => (v ? Number(v) : undefined))
-        .openapi({
-          param: { name: 'lat', in: 'query' },
-          example: '28.6139',
-          description: 'Birth latitude',
-        }),
-      lon: z
-        .string()
-        .optional()
-        .transform((v) => (v ? Number(v) : undefined))
-        .openapi({
-          param: { name: 'lon', in: 'query' },
-          example: '77.209',
-          description: 'Birth longitude',
-        }),
-      timezone: z.string().optional().default('Asia/Kolkata').openapi({
-        param: { name: 'timezone', in: 'query' },
-        example: 'Asia/Kolkata',
-        description: 'IANA timezone',
-      }),
-    }),
-  },
-  responses: {
-    200: {
-      description: 'List of remedies',
-      content: {
-        'application/json': {
-          schema: z.object({ remedies: z.array(RemedySchema) }),
-        },
-      },
+  // TODO: integrate with lib/astro-engine/panchang when GPS-location middleware is ready
+  return c.json(
+    {
+      date: new Date().toISOString().slice(0, 10),
+      tithi: null,
+      nakshatra: null,
+      yoga: null,
+      karana: null,
     },
-  },
-});
-
-astroRouter.openapi(remediesRoute, async (c) => {
-  const query = c.req.valid('query');
-
-  // If birth data is provided, pass it for chart-based remedies
-  const birthData =
-    query.birthDate && query.lat != null && query.lon != null
-      ? {
-          date: query.birthDate,
-          time: query.birthTime ?? '12:00',
-          latitude: query.lat,
-          longitude: query.lon,
-          timezone: query.timezone ?? 'Asia/Kolkata',
-        }
-      : undefined;
-
-  const remedies = await astroService.getRemedies(birthData);
-  return c.json({ remedies }, 200);
+    200,
+  );
 });
 
 /* -------------------------------------------------------------------------- */
@@ -401,7 +302,7 @@ const chatRoute = createRoute({
   tags: ['Astro'],
   summary: 'Chat with the Jyotish scholar (SSE streaming)',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -422,17 +323,47 @@ const chatRoute = createRoute({
 astroRouter.openapi(chatRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
+  // Aborts when the client disconnects — propagated to the LLM so generation
+  // (and its NIM inflight slot) stops instead of running on detached.
+  const signal = c.req.raw.signal;
 
   return streamSSE(c, async (stream) => {
-    for await (const token of astroService.chatStream(user.id, body.message)) {
-      await stream.writeSSE({
-        event: 'token',
-        data: JSON.stringify({ content: token }),
-      });
+    try {
+      const events = astroService.chatStream(
+        user.id,
+        body.message,
+        body.persona,
+        body.history,
+        body.summary,
+        signal,
+      );
+      for await (const event of events) {
+        if (signal.aborted || stream.aborted) break;
+        if (event.type === 'token') {
+          await stream.writeSSE({
+            event: 'token',
+            data: JSON.stringify({ content: event.content }),
+          });
+        } else {
+          await stream.writeSSE({
+            event: 'summary',
+            data: JSON.stringify({ summary: event.summary }),
+          });
+        }
+      }
+      if (!signal.aborted && !stream.aborted) {
+        await stream.writeSSE({ event: 'done', data: JSON.stringify({ status: 'complete' }) });
+      }
+    } catch (err) {
+      // A failed stream MUST be distinguishable from a completed one — always
+      // emit a terminal event (and never leak internals to the client).
+      logger.error({ err, userId: user.id }, 'chat stream failed');
+      if (!signal.aborted && !stream.aborted) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ message: 'Generation failed. Please try again.' }),
+        });
+      }
     }
-    await stream.writeSSE({
-      event: 'done',
-      data: JSON.stringify({ status: 'complete' }),
-    });
   });
 });

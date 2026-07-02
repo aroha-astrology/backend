@@ -13,10 +13,7 @@ interface RateLimitEntry {
  * @param options.windowMs - Sliding window duration in milliseconds
  * @param options.max      - Maximum requests allowed per window
  */
-export function rateLimiter(options: {
-  windowMs: number;
-  max: number;
-}): MiddlewareHandler {
+export function rateLimiter(options: { windowMs: number; max: number }): MiddlewareHandler {
   const { windowMs, max } = options;
   const store = new Map<string, RateLimitEntry>();
 
@@ -53,9 +50,7 @@ export function rateLimiter(options: {
     if (entry.count > max) {
       const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
       c.header('Retry-After', String(retryAfter));
-      throw Errors.badRequest(
-        `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
-      );
+      throw Errors.tooManyRequests(`Rate limit exceeded. Try again in ${retryAfter} seconds.`);
     }
 
     await next();

@@ -29,7 +29,7 @@ function mod12(n: number): number {
 
 /** Get 0-based sign index from longitude. */
 function signIndex(longitude: number): number {
-  return Math.floor(((longitude % 360) + 360) % 360 / 30);
+  return Math.floor((((longitude % 360) + 360) % 360) / 30);
 }
 
 /** Get degree within the sign (0-30). */
@@ -356,11 +356,11 @@ export function calculateD30(longitude: number): number {
   // Trimshamsha ruler -> sign mapping (Parashara)
   // Mars=Aries, Saturn=Aquarius, Jupiter=Sagittarius, Mercury=Gemini, Venus=Libra
   const planetToSign: Record<string, number> = {
-    Mars: 0,      // Aries
-    Saturn: 10,   // Aquarius
-    Jupiter: 8,   // Sagittarius
-    Mercury: 2,   // Gemini
-    Venus: 6,     // Libra
+    Mars: 0, // Aries
+    Saturn: 10, // Aquarius
+    Jupiter: 8, // Sagittarius
+    Mercury: 2, // Gemini
+    Venus: 6, // Libra
   };
 
   let ruler: string;
@@ -471,16 +471,66 @@ export function calculateD108(longitude: number): number {
 // =============================================================================
 
 export const D60_DEITY_NAMES: string[] = [
-  'Ghora', 'Rakshasa', 'Deva', 'Kubera', 'Yaksha', 'Kinnara',
-  'Bhrashta', 'Kulaghna', 'Garala', 'Vahni', 'Maya', 'Purishaka',
-  'Apampathi', 'Marut', 'Kaala', 'Sarpa', 'Amrita', 'Indu',
-  'Mridu', 'Komala', 'Heramba', 'Brahma', 'Vishnu', 'Maheshwara',
-  'Deva', 'Ardra', 'Kalinasha', 'Kshitisha', 'Kamalakara', 'Gulika',
-  'Mrityu', 'Kaala', 'Davagni', 'Ghora', 'Yama', 'Kantaka',
-  'Sudha', 'Amrita', 'PurnaChandra', 'Vishagni', 'Kulanasha', 'Vamshakshaya',
-  'Utpata', 'Kaala', 'Saumya', 'Komala', 'Sheetala', 'Karala',
-  'Chandramukhi', 'Praveena', 'Kalapavaka', 'Dandayudha', 'Nirmala', 'Saumya',
-  'Kroora', 'Atisheetala', 'Kalusha', 'Chandramukhi', 'Praveena', 'Saumya',
+  'Ghora',
+  'Rakshasa',
+  'Deva',
+  'Kubera',
+  'Yaksha',
+  'Kinnara',
+  'Bhrashta',
+  'Kulaghna',
+  'Garala',
+  'Vahni',
+  'Maya',
+  'Purishaka',
+  'Apampathi',
+  'Marut',
+  'Kaala',
+  'Sarpa',
+  'Amrita',
+  'Indu',
+  'Mridu',
+  'Komala',
+  'Heramba',
+  'Brahma',
+  'Vishnu',
+  'Maheshwara',
+  'Deva',
+  'Ardra',
+  'Kalinasha',
+  'Kshitisha',
+  'Kamalakara',
+  'Gulika',
+  'Mrityu',
+  'Kaala',
+  'Davagni',
+  'Ghora',
+  'Yama',
+  'Kantaka',
+  'Sudha',
+  'Amrita',
+  'PurnaChandra',
+  'Vishagni',
+  'Kulanasha',
+  'Vamshakshaya',
+  'Utpata',
+  'Kaala',
+  'Saumya',
+  'Komala',
+  'Sheetala',
+  'Karala',
+  'Chandramukhi',
+  'Praveena',
+  'Kalapavaka',
+  'Dandayudha',
+  'Nirmala',
+  'Saumya',
+  'Kroora',
+  'Atisheetala',
+  'Kalusha',
+  'Chandramukhi',
+  'Praveena',
+  'Saumya',
 ];
 
 // =============================================================================
@@ -488,13 +538,30 @@ export const D60_DEITY_NAMES: string[] = [
 // =============================================================================
 
 export const DIVISIONAL_CALCULATORS: Record<DivisionalChart, (longitude: number) => number> = {
-  D1: calculateD1, D2: calculateD2, D3: calculateD3, D4: calculateD4,
-  D5: calculateD5, D6: calculateD6, D7: calculateD7, D8: calculateD8,
-  D9: calculateD9, D10: calculateD10, D11: calculateD11, D12: calculateD12,
-  D14: calculateD14, D16: calculateD16, D20: calculateD20, D21: calculateD21,
-  D24: calculateD24, D27: calculateD27, D30: calculateD30,
-  D40: calculateD40, D45: calculateD45, D60: calculateD60,
-  D81: calculateD81, D108: calculateD108,
+  D1: calculateD1,
+  D2: calculateD2,
+  D3: calculateD3,
+  D4: calculateD4,
+  D5: calculateD5,
+  D6: calculateD6,
+  D7: calculateD7,
+  D8: calculateD8,
+  D9: calculateD9,
+  D10: calculateD10,
+  D11: calculateD11,
+  D12: calculateD12,
+  D14: calculateD14,
+  D16: calculateD16,
+  D20: calculateD20,
+  D21: calculateD21,
+  D24: calculateD24,
+  D27: calculateD27,
+  D30: calculateD30,
+  D40: calculateD40,
+  D45: calculateD45,
+  D60: calculateD60,
+  D81: calculateD81,
+  D108: calculateD108,
 };
 
 // =============================================================================
@@ -530,9 +597,30 @@ export function calculateAllDivisionalCharts(
   const result = {} as Record<DivisionalChart, DivisionalChartEntry[]>;
 
   const chartTypes: DivisionalChart[] = [
-    'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10',
-    'D11', 'D12', 'D14', 'D16', 'D20', 'D21', 'D24', 'D27', 'D30',
-    'D40', 'D45', 'D60', 'D81', 'D108',
+    'D1',
+    'D2',
+    'D3',
+    'D4',
+    'D5',
+    'D6',
+    'D7',
+    'D8',
+    'D9',
+    'D10',
+    'D11',
+    'D12',
+    'D14',
+    'D16',
+    'D20',
+    'D21',
+    'D24',
+    'D27',
+    'D30',
+    'D40',
+    'D45',
+    'D60',
+    'D81',
+    'D108',
   ];
 
   for (const chart of chartTypes) {
@@ -564,13 +652,33 @@ export function calculateAllDivisionalChartsWithLagna(
 ): Record<DivisionalChart, DivisionalChartWithLagna> {
   const result = {} as Record<DivisionalChart, DivisionalChartWithLagna>;
 
-  const ascLongitude =
-    chartData.ascendant.signIndex * 30 + (chartData.ascendant.degree ?? 0);
+  const ascLongitude = chartData.ascendant.signIndex * 30 + (chartData.ascendant.degree ?? 0);
 
   const chartTypes: DivisionalChart[] = [
-    'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10',
-    'D11', 'D12', 'D14', 'D16', 'D20', 'D21', 'D24', 'D27', 'D30',
-    'D40', 'D45', 'D60', 'D81', 'D108',
+    'D1',
+    'D2',
+    'D3',
+    'D4',
+    'D5',
+    'D6',
+    'D7',
+    'D8',
+    'D9',
+    'D10',
+    'D11',
+    'D12',
+    'D14',
+    'D16',
+    'D20',
+    'D21',
+    'D24',
+    'D27',
+    'D30',
+    'D40',
+    'D45',
+    'D60',
+    'D81',
+    'D108',
   ];
 
   for (const chart of chartTypes) {
@@ -604,10 +712,9 @@ export function calculateAllDivisionalChartsWithLagna(
  * index. Old consumers that read `divisional_charts.D9` see the same array shape
  * they always did; new consumers that need the Lagna read `divisional_charts._lagna.D9`.
  */
-export type DivisionalChartsStorage =
-  Record<DivisionalChart, DivisionalChartEntry[]> & {
-    _lagna: Record<DivisionalChart, number>;
-  };
+export type DivisionalChartsStorage = Record<DivisionalChart, DivisionalChartEntry[]> & {
+  _lagna: Record<DivisionalChart, number>;
+};
 
 /**
  * Computes the storage-friendly shape: per-chart arrays + a `_lagna` companion.
@@ -620,11 +727,14 @@ export function calculateAllDivisionalChartsForStorage(
   const withLagna = calculateAllDivisionalChartsWithLagna(chartData);
   const arrays = {} as Record<DivisionalChart, DivisionalChartEntry[]>;
   const lagnas = {} as Record<DivisionalChart, number>;
-  for (const [key, value] of Object.entries(withLagna) as [DivisionalChart, DivisionalChartWithLagna][]) {
+  for (const [key, value] of Object.entries(withLagna) as [
+    DivisionalChart,
+    DivisionalChartWithLagna,
+  ][]) {
     arrays[key] = value.planets;
     lagnas[key] = value.ascendantSignIndex;
   }
-  return { ...arrays, _lagna: lagnas } as DivisionalChartsStorage;
+  return { ...arrays, _lagna: lagnas };
 }
 
 /**
@@ -652,10 +762,7 @@ export function getVargaWithLagna(
  * Houses are assigned by counting forward from the varga Lagna (whole-sign houses).
  * Renders correctly through NorthIndianChart / SouthIndianChart.
  */
-export function buildVargaChartData(
-  source: ChartData,
-  varga: DivisionalChartWithLagna,
-): ChartData {
+export function buildVargaChartData(source: ChartData, varga: DivisionalChartWithLagna): ChartData {
   const ascSign = varga.ascendantSignIndex;
 
   const houses = Array.from({ length: 12 }, (_, i): HouseData => {
@@ -666,9 +773,7 @@ export function buildVargaChartData(
       sign: ZODIAC_SIGNS[signIdx],
       signIndex: signIdx,
       lord: 'Sun', // placeholder — house lord isn't displayed in the card chart
-      planets: varga.planets
-        .filter((p) => p.signIndex === signIdx)
-        .map((p) => p.planet),
+      planets: varga.planets.filter((p) => p.signIndex === signIdx).map((p) => p.planet),
     };
   });
 
@@ -717,9 +822,7 @@ export function getMoonChart(source: ChartData): ChartData {
       sign: ZODIAC_SIGNS[signIdx],
       signIndex: signIdx,
       lord: existing?.lord ?? 'Sun',
-      planets: source.planets
-        .filter((p) => p.signIndex === signIdx)
-        .map((p) => p.planet),
+      planets: source.planets.filter((p) => p.signIndex === signIdx).map((p) => p.planet),
     };
   });
 
@@ -739,4 +842,3 @@ export function getMoonChart(source: ChartData): ChartData {
     },
   };
 }
-

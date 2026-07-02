@@ -33,11 +33,5 @@
     "tsup.config.ts",
     "vitest.config.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "src/db/migrations",
-    "src/lib/astro-engine",
-    "src/lib/shared"
-  ]
+  "exclude": ["node_modules", "dist", "src/db/migrations"]
 }
