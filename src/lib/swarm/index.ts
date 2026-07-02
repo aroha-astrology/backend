@@ -20,6 +20,7 @@ export { aggregatorNode } from './agents/aggregator.js';
 
 // Scholar streaming chat
 export { scholarStream, buildChatMessages } from './agents/scholar.js';
+export type { ChatPersona } from './agents/scholar.js';
 
 // Re-export daily synthesis for the service layer's direct path
 export { synthesizeDailyForecast, moonSignPrediction, sunSignPrediction } from '../astro-tools/daily-synthesis.js';

@@ -8,12 +8,16 @@ import {
   synthesizeDailyForecast,
   moonSignPrediction,
   sunSignPrediction,
+  type ChatPersona,
 } from '../../lib/swarm/index.js';
 import {
   dateToJulianDay,
   calculatePlanetPositions,
   calculateFullPanchang,
+  detectMangalDosha,
 } from '../../lib/astro-engine/index.js';
+import type { GroundingSource } from '../../lib/chat-grounding.js';
+import { getKundliForUser } from '../kundli/kundli.service.js';
 import type {
   OnboardingRequest,
   ForecastRequest,
@@ -202,6 +206,34 @@ export async function matchmake(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
   const result = calculateAshtakoota(nak1, nak2, sign1 as any, sign2 as any);
 
+  // Nadi (0/8) and Bhakoot (0/7) are near-disqualifying red flags checked
+  // independently of the 36-point total — a practitioner would flag these first.
+  const nadiScore = result.scores.find((s) => s.koota === 'Nadi');
+  const bhakootScore = result.scores.find((s) => s.koota === 'Bhakoot');
+  const flags = {
+    nadiDosha: nadiScore?.score === 0,
+    bhakootDosha: bhakootScore?.score === 0,
+  };
+
+  // Mangal Dosha (Kuja Dosha) — checked separately from the 36-point system,
+  // since traditional practitioners treat it as its own pass/fail gate.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+  const mangal1 = detectMangalDosha(met1.chart as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+  const mangal2 = detectMangalDosha(met2.chart as any);
+  const mangalDosha = {
+    person1: mangal1.present,
+    person2: mangal2.present,
+    matched: mangal1.present === mangal2.present,
+  };
+
+  const recommendation = buildMatchRecommendation(
+    result.totalScore,
+    result.maxTotal,
+    flags,
+    mangalDosha,
+  );
+
   return {
     totalScore: result.totalScore,
     maxScore: result.maxTotal,
@@ -212,8 +244,55 @@ export async function matchmake(
       description: s.description,
     })),
     compatibility: result.overallCompatibility,
-    recommendation: undefined,
+    recommendation,
+    flags,
+    mangalDosha,
   };
+}
+
+/**
+ * Deterministic, template-based recommendation built only from the computed
+ * Koota scores and dosha flags above — never LLM-generated, so it can never
+ * invent relationship advice not traceable to the actual analysis.
+ */
+function buildMatchRecommendation(
+  totalScore: number,
+  maxTotal: number,
+  flags: { nadiDosha: boolean; bhakootDosha: boolean },
+  mangalDosha: { person1: boolean; person2: boolean; matched: boolean },
+): string {
+  const parts: string[] = [];
+  const pct = maxTotal > 0 ? (totalScore / maxTotal) * 100 : 0;
+
+  if (flags.nadiDosha) {
+    parts.push(
+      'Nadi Dosha is present (0/8) — traditionally considered a serious red flag affecting the health of progeny, regardless of the total score.',
+    );
+  }
+  if (flags.bhakootDosha) {
+    parts.push(
+      'Bhakoot Dosha is present (0/7) — traditionally considered to affect the couple\'s general relationship, love, and family life.',
+    );
+  }
+  if (!mangalDosha.matched) {
+    parts.push(
+      'Mangal Dosha is present in only one partner\'s chart — traditionally this asymmetry is discussed with an astrologer, as a matching Mangal Dosha (present or absent in both) is usually considered more favorable than a mismatch.',
+    );
+  } else if (mangalDosha.person1) {
+    parts.push('Mangal Dosha is present in both charts, which traditional practitioners often consider self-cancelling.');
+  }
+
+  if (parts.length === 0) {
+    parts.push(
+      pct >= 75
+        ? 'No Nadi, Bhakoot, or Mangal Dosha mismatch was found, and the overall Guna score is strong.'
+        : pct >= 50
+          ? 'No Nadi, Bhakoot, or Mangal Dosha mismatch was found, though the overall Guna score is moderate.'
+          : 'No Nadi, Bhakoot, or Mangal Dosha mismatch was found, but the overall Guna score is on the lower side.',
+    );
+  }
+
+  return parts.join(' ');
 }
 
 /* -------------------------------------------------------------------------- */
@@ -444,10 +523,22 @@ export async function getRemedies(birthData?: {
 export async function* chatStream(
   userId: string,
   message: string,
+  persona: ChatPersona,
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const state = newState({ userId, intent: 'chat', consent: true });
-  const tokenStream = scholarStream(state, message, signal);
+
+  // Best-effort: an unready/missing kundli just means no chart facts get
+  // injected (buildGroundingFacts degrades gracefully) — chat still works.
+  const kundli = await getKundliForUser(userId).catch(() => undefined);
+  const groundingSource: GroundingSource = {
+    chart: kundli?.status === 'ready' ? (kundli.chartData ?? null) : null,
+    dasha: kundli?.status === 'ready' ? (kundli.dashaData ?? null) : null,
+    yogas: kundli?.status === 'ready' ? (kundli.yogaData ?? null) : null,
+    doshas: kundli?.status === 'ready' ? (kundli.doshaData ?? null) : null,
+  };
+
+  const tokenStream = scholarStream(state, message, persona, groundingSource, signal);
   for await (const token of tokenStream) {
     yield token;
   }

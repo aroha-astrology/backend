@@ -315,7 +315,7 @@ astroRouter.openapi(chatRoute, async (c) => {
 
   return streamSSE(c, async (stream) => {
     try {
-      for await (const token of astroService.chatStream(user.id, body.message, signal)) {
+      for await (const token of astroService.chatStream(user.id, body.message, body.persona, signal)) {
         if (signal.aborted || stream.aborted) break;
         await stream.writeSSE({ event: 'token', data: JSON.stringify({ content: token }) });
       }

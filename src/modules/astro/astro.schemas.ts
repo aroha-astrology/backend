@@ -59,6 +59,11 @@ export const MatchmakingRequestSchema = z
 
 export type MatchmakingRequest = z.infer<typeof MatchmakingRequestSchema>;
 
+export const ChatPersonaSchema = z
+  .enum(['career', 'love', 'health', 'general'])
+  .default('general')
+  .openapi({ description: 'Which astrologer persona to answer as — determines which chart-fact slice is injected' });
+
 export const ChatRequestSchema = z
   .object({
     message: z
@@ -66,6 +71,7 @@ export const ChatRequestSchema = z
       .min(1)
       .max(2000)
       .openapi({ example: 'What does my Jupiter transit mean?' }),
+    persona: ChatPersonaSchema,
     profileId: z.string().uuid().optional().openapi({ description: 'Optional birth-profile ID for context' }),
     locale: z.string().default('en'),
   })
@@ -114,6 +120,23 @@ export const MatchmakingResponseSchema = z
     ),
     compatibility: z.string(),
     recommendation: z.string().optional(),
+    /** Near-disqualifying red flags — checked independently of the 36-point total. */
+    flags: z
+      .object({
+        nadiDosha: z.boolean().describe('Nadi koota scored 0/8'),
+        bhakootDosha: z.boolean().describe('Bhakoot koota scored 0/7'),
+      })
+      .openapi('MatchmakingFlags')
+      .optional(),
+    /** Kuja/Mangal Dosha (Mars in 1/2/4/7/8/12 from Lagna) — checked separately from the 36-point system. */
+    mangalDosha: z
+      .object({
+        person1: z.boolean(),
+        person2: z.boolean(),
+        matched: z.boolean().describe('Both present or both absent — traditionally considered compatible either way'),
+      })
+      .openapi('MangalDoshaSummary')
+      .optional(),
   })
   .openapi('MatchmakingResponse');
 
