@@ -1,5 +1,6 @@
 import { logger } from '../../lib/logger.js';
 import { generateHoroscopeSummary, type HoroscopeContext } from '../../lib/llm/horoscope.js';
+import { buildDashaReading } from '../../lib/astro-tools/dasha-reading.js';
 import type { DailyHoroscopeRow, KundliRow, UserRow } from '../../db/schema.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import type { HoroscopeDto, HoroscopePeriod } from './horoscope.schemas.js';
@@ -228,7 +229,16 @@ export async function getHoroscopeForUser(
   return findHoroscope(userId, 'daily', date);
 }
 
-export function toHoroscopeDto(row: DailyHoroscopeRow): HoroscopeDto {
+/**
+ * `dashaData` is `kundli.dashaData` (not stored on the horoscope row itself —
+ * a Mahadasha/Antardasha spans months to years, far outliving any horoscope
+ * cache period, so it's recomputed fresh from the kundli each time rather
+ * than risking a stale copy in the cached row).
+ */
+export function toHoroscopeDto(
+  row: DailyHoroscopeRow,
+  dashaData?: Record<string, unknown> | null,
+): HoroscopeDto {
   return {
     forDate: row.forDate,
     period: row.period,
@@ -236,6 +246,7 @@ export function toHoroscopeDto(row: DailyHoroscopeRow): HoroscopeDto {
     summary: row.summary,
     monthlyBreakdown: row.monthlyBreakdown ?? undefined,
     structured: row.structured ?? undefined,
+    dasha: buildDashaReading(dashaData ?? null) ?? undefined,
     model: row.model,
     generatedAt: row.updatedAt.toISOString(),
   };

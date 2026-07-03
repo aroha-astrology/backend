@@ -21,6 +21,12 @@ import {
 import type { GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
+import {
+  PANCHANG_REFERENCE_POINTS,
+  snapToReferencePoint,
+} from '../../lib/astro-tools/panchang-reference-points.js';
+import { findCachedPanchang, upsertCachedPanchang } from './panchang-cache.repo.js';
+import { logger } from '../../lib/logger.js';
 import type {
   OnboardingRequest,
   ForecastRequest,
@@ -304,11 +310,34 @@ function buildMatchRecommendation(
 /* Panchang (public)                                                           */
 /* -------------------------------------------------------------------------- */
 
-export async function getPanchang(lat: number, lon: number, dateStr?: string) {
+/**
+ * Panchang depends only on (date, location) — never on who's asking — so a
+ * request that lands on one of the named reference points (see
+ * astro-tools/panchang-reference-points.ts) is served from panchang_cache
+ * instead of recomputing per request, and shared by every user who resolves
+ * to that same city on that day. Off-reference-point coordinates (an exact
+ * GPS fix that isn't one of the 5 cities) still compute fresh every time —
+ * only the named points are cached.
+ */
+export async function getPanchang(
+  lat: number,
+  lon: number,
+  dateStr?: string,
+  opts: { bypassCache?: boolean } = {},
+) {
   const date = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const day = date.getDate();
+  const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+  const refKey = snapToReferencePoint(lat, lon);
+  if (refKey && !opts.bypassCache) {
+    const cached = await findCachedPanchang(isoDate, refKey);
+    if (cached) {
+      return { date: isoDate, ...cached.data };
+    }
+  }
 
   // Approximate timezone offset from longitude (4 min per degree). Rounded to
   // the nearest half-hour rather than whole hour — whole-hour rounding put
@@ -331,10 +360,61 @@ export async function getPanchang(lat: number, lon: number, dateStr?: string) {
   // Calculate full panchang using the astro-engine
   const panchang = calculateFullPanchang(date, lat, lon, sunLong, moonLong, timezoneOffset);
 
+  if (refKey) {
+    await upsertCachedPanchang({ forDate: isoDate, refKey, lat, lon, data: panchang });
+  }
+
   return {
-    date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    date: isoDate,
     ...panchang,
   };
+}
+
+export interface PanchangWarmupResult {
+  forDate: string;
+  warmed: number;
+  failed: number;
+}
+
+/**
+ * Pre-populate panchang_cache for all 5 named reference points for a given
+ * date (default: today) — run once daily, before traffic, so users hitting
+ * a metro reference point get a cache hit instead of computing fresh.
+ * force=true recomputes and overwrites even if already cached (e.g. after an
+ * astro-engine bugfix, to flush a day computed with the old logic).
+ */
+export async function warmupPanchangCache(
+  opts: { forDate?: string | undefined; force?: boolean | undefined } = {},
+): Promise<PanchangWarmupResult> {
+  const forDate = opts.forDate ?? new Date().toISOString().slice(0, 10);
+  const force = opts.force ?? false;
+  let warmed = 0;
+  let failed = 0;
+
+  for (const point of PANCHANG_REFERENCE_POINTS) {
+    try {
+      if (!force) {
+        const existing = await findCachedPanchang(forDate, point.key);
+        if (existing) continue;
+      }
+      // getPanchang itself upserts the cache row when the coords snap to a
+      // reference point (which these do, by construction) — reuse it rather
+      // than duplicating the compute-and-cache logic. bypassCache is needed
+      // for force=true, since getPanchang would otherwise just re-return the
+      // still-existing stale row instead of recomputing it.
+      await getPanchang(point.lat, point.lon, forDate, { bypassCache: force });
+      warmed++;
+    } catch (err) {
+      failed++;
+      logger.error(
+        { err, forDate, refKey: point.key },
+        'panchang warmup failed for reference point',
+      );
+    }
+  }
+
+  logger.info({ forDate, warmed, failed }, 'panchang cache warmup complete');
+  return { forDate, warmed, failed };
 }
 
 /* -------------------------------------------------------------------------- */
