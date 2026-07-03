@@ -111,7 +111,7 @@ const BENEFIC_POINTS: Record<string, Record<string, number[]>> = {
 
   // Saturn's Ashtakavarga
   Saturn: {
-    Sun: [1, 2, 4, 7, 8, 9, 10, 11],
+    Sun: [1, 2, 4, 7, 8, 10, 11],
     Moon: [3, 6, 11],
     Mars: [3, 5, 6, 10, 11, 12],
     Mercury: [6, 8, 9, 10, 11, 12],
@@ -215,9 +215,7 @@ export function calculateBhinnaAshtakavarga(chartData: ChartData): BhinnaAshtaka
  * @param bhinnaData - Array of BhinnaAshtakavarga from calculateBhinnaAshtakavarga
  * @returns SarvaAshtakavarga with 12 sign totals and grand total
  */
-export function calculateSarvaAshtakavarga(
-  bhinnaData: BhinnaAshtakavarga[]
-): SarvaAshtakavarga {
+export function calculateSarvaAshtakavarga(bhinnaData: BhinnaAshtakavarga[]): SarvaAshtakavarga {
   const sarvaBindus = new Array<number>(12).fill(0);
 
   for (const bhinna of bhinnaData) {
@@ -263,7 +261,7 @@ export function calculateAshtakavarga(chartData: ChartData): AshtakavargaData {
 export function getBindusForPlanetInSign(
   bhinnaData: BhinnaAshtakavarga[],
   planet: Planet,
-  signIndex: number
+  signIndex: number,
 ): number {
   const planetData = bhinnaData.find((b) => b.planet === planet);
   if (!planetData) return 0;
@@ -281,7 +279,7 @@ export function getBindusForPlanetInSign(
  */
 export function evaluateSignStrength(
   sarva: SarvaAshtakavarga,
-  signIndex: number
+  signIndex: number,
 ): 'strong' | 'weak' | 'average' {
   const average = sarva.total / 12;
   const bindus = sarva.bindus[signIndex];
@@ -290,4 +288,3 @@ export function evaluateSignStrength(
   if (bindus < average - 1) return 'weak';
   return 'average';
 }
-

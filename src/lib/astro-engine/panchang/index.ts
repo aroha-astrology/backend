@@ -23,8 +23,13 @@ export { calculateRegionalMonths } from './regional';
 
 // Weekday names
 const WEEKDAY_NAMES = [
-  'Ravivaar', 'Somvaar', 'Mangalvaar', 'Budhvaar',
-  'Guruvaar', 'Shukravaar', 'Shanivaar',
+  'Ravivaar',
+  'Somvaar',
+  'Mangalvaar',
+  'Budhvaar',
+  'Guruvaar',
+  'Shukravaar',
+  'Shanivaar',
 ];
 
 /**
@@ -37,7 +42,8 @@ const WEEKDAY_NAMES = [
 function estimateSunriseSunset(
   date: Date,
   latitude: number,
-  longitude: number
+  longitude: number,
+  timezoneOffsetHours: number,
 ): { sunrise: string; sunset: string } {
   // Day of year
   const start = new Date(date.getFullYear(), 0, 0);
@@ -63,8 +69,7 @@ function estimateSunriseSunset(
 
   // Solar noon in local time (offset by longitude, 4 min per degree)
   const solarNoonUTC = 720 - 4 * longitude - equationOfTime; // in minutes from midnight UTC
-  const timezoneOffset = Math.round(longitude / 15) * 60; // approximate local timezone offset in minutes
-  const solarNoonLocal = solarNoonUTC + timezoneOffset;
+  const solarNoonLocal = solarNoonUTC + timezoneOffsetHours * 60;
 
   // Sunrise and sunset
   const sunriseMin = solarNoonLocal - (hourAngle / 360) * 24 * 60;
@@ -93,6 +98,11 @@ function estimateSunriseSunset(
  * @param longitude - Geographic longitude
  * @param sunLong - Sidereal longitude of the Sun (0-360)
  * @param moonLong - Sidereal longitude of the Moon (0-360)
+ * @param timezoneOffsetHours - Civil UTC offset in hours for `date`'s locale
+ *   (e.g. 5.5 for IST). Longitude alone cannot recover this — India's +5:30
+ *   is a political choice anchored to 82.5°E, not the local solar meridian,
+ *   so a longitude-derived guess is off by up to ~45min at the country's
+ *   eastern/western edges.
  * @returns Complete PanchangData
  */
 export function calculateFullPanchang(
@@ -100,12 +110,13 @@ export function calculateFullPanchang(
   latitude: number,
   longitude: number,
   sunLong: number,
-  moonLong: number
+  moonLong: number,
+  timezoneOffsetHours: number,
 ): PanchangData {
   const dayOfWeek = date.getDay(); // 0=Sunday
 
   // Estimate sunrise and sunset
-  const { sunrise, sunset } = estimateSunriseSunset(date, latitude, longitude);
+  const { sunrise, sunset } = estimateSunriseSunset(date, latitude, longitude, timezoneOffsetHours);
 
   // Calculate the five limbs (pancha-anga)
   const tithi = calculateTithi(moonLong, sunLong);
@@ -167,4 +178,3 @@ function formatMinToTime(totalMinutes: number): string {
   const m = mins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
-
