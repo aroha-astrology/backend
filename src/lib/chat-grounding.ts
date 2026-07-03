@@ -110,7 +110,9 @@ async function currentTransitSignIndex(planet: string): Promise<number | null> {
       now.getUTCMinutes(),
       0,
     );
-    const positions = (await calculatePlanetPositions(jd)) as unknown as Array<Record<string, unknown>>;
+    const positions = (await calculatePlanetPositions(jd)) as unknown as Array<
+      Record<string, unknown>
+    >;
     const p = positions.find((x) => x.planet === planet);
     return p ? Number(p.signIndex) : null;
   } catch {
@@ -134,41 +136,74 @@ export async function buildGroundingFacts(
   const facts: string[] = [];
 
   if (dasha.mahadasha) {
-    const range = dasha.mahaStart && dasha.mahaEnd ? ` (started ${dasha.mahaStart}, ends ${dasha.mahaEnd})` : '';
+    const range =
+      dasha.mahaStart && dasha.mahaEnd
+        ? ` (started ${dasha.mahaStart}, ends ${dasha.mahaEnd})`
+        : '';
     const antar = dasha.antardasha ? ` / ${dasha.antardasha} Antardasha` : '';
     facts.push(`Active Dasha: ${dasha.mahadasha} Mahadasha${antar}${range}`);
   }
 
   if (persona === 'career') {
     const tenth = houseLord(houses, 10);
+    const tenthLord = tenth?.lord;
     if (tenth) {
       facts.push(`10th house sign: ${tenth.sign}, lord: ${tenth.lord}`);
       const placement = planetPlacement(planets, tenth.lord);
       if (placement) {
         const dignity = dashaLordTransitQuality(tenth.lord, placement.signIndex);
-        facts.push(`${tenth.lord} (10th lord) is natally placed in house ${placement.house} (${placement.sign}) — ${dignity.dignity} dignity`);
+        facts.push(
+          `${tenth.lord} (10th lord) is natally placed in house ${placement.house} (${placement.sign}) — ${dignity.dignity} dignity`,
+        );
       }
     }
     const saturnSignIdx = await currentTransitSignIndex('Saturn');
     if (saturnSignIdx != null) {
       const q = dashaLordTransitQuality('Saturn', saturnSignIdx);
-      facts.push(`Saturn is currently transiting ${SIGNS[saturnSignIdx]} — ${q.dignity} dignity (career timing signal)`);
+      facts.push(
+        `Saturn is currently transiting ${SIGNS[saturnSignIdx]} — ${q.dignity} dignity (career timing signal)`,
+      );
     }
     for (const y of relevantYogas(src.yogas, [2, 6, 10, 11])) facts.push(`Relevant Yoga: ${y}`);
+
+    // Timing signal: is the currently-active dasha lord a career significator
+    // (10th lord, or a planet natally placed in the 10th house)?
+    const tenthOccupants = planets.filter((p) => p.house === 10).map((p) => p.planet);
+    const activeLordsCareer = [
+      ...new Set([dasha.mahadasha, dasha.antardasha].filter(Boolean)),
+    ] as string[];
+    for (const lord of activeLordsCareer) {
+      const role =
+        lord === tenthLord
+          ? '10th house lord'
+          : tenthOccupants.includes(lord)
+            ? 'natally placed in the 10th house'
+            : null;
+      if (role) {
+        facts.push(
+          `Currently active dasha lord ${lord} is also the ${role} — a traditionally significant window for career matters`,
+        );
+      }
+    }
   } else if (persona === 'love') {
     const seventh = houseLord(houses, 7);
+    const seventhLord = seventh?.lord;
     if (seventh) {
       facts.push(`7th house sign: ${seventh.sign}, lord: ${seventh.lord}`);
       const placement = planetPlacement(planets, seventh.lord);
       if (placement) {
         const dignity = dashaLordTransitQuality(seventh.lord, placement.signIndex);
-        facts.push(`${seventh.lord} (7th lord) is natally placed in house ${placement.house} (${placement.sign}) — ${dignity.dignity} dignity`);
+        facts.push(
+          `${seventh.lord} (7th lord) is natally placed in house ${placement.house} (${placement.sign}) — ${dignity.dignity} dignity`,
+        );
       }
     }
     const venus = planetPlacement(planets, 'Venus');
     if (venus) {
       const dignity = dashaLordTransitQuality('Venus', venus.signIndex);
-      facts.push(`Venus is natally in ${venus.sign} (house ${venus.house}) — ${dignity.dignity} dignity`);
+      facts.push(
+        `Venus is natally in ${venus.sign} (house ${venus.house}) — ${dignity.dignity} dignity`,
+      );
     }
     const mangal = src.doshas?.mangal as Record<string, unknown> | undefined;
     if (mangal) {
@@ -179,19 +214,90 @@ export async function buildGroundingFacts(
       );
     }
     for (const y of relevantYogas(src.yogas, [7])) facts.push(`Relevant Yoga: ${y}`);
+
+    // Timing signal 1: is the currently-active dasha lord a marriage
+    // significator (7th lord, Venus, or a planet natally placed in the 7th
+    // house)? Vedic timing convention checks this before anything else.
+    const seventhOccupants = planets.filter((p) => p.house === 7).map((p) => p.planet);
+    const activeLords = [
+      ...new Set([dasha.mahadasha, dasha.antardasha].filter(Boolean)),
+    ] as string[];
+    for (const lord of activeLords) {
+      const role =
+        lord === seventhLord
+          ? '7th house lord'
+          : lord === 'Venus'
+            ? 'natural relationship significator'
+            : seventhOccupants.includes(lord)
+              ? 'natally placed in the 7th house'
+              : null;
+      if (role) {
+        facts.push(
+          `Currently active dasha lord ${lord} is also the ${role} — a traditionally significant window for relationship/marriage matters`,
+        );
+      }
+    }
+
+    // Timing signal 2: Jupiter's current transit house-from-Ascendant — the
+    // classic marriage-timing check (2nd/5th/7th/9th/11th from Lagna is
+    // traditionally favorable). Mirrors the career persona's Saturn-transit
+    // check below; love previously had no equivalent transit-timing signal.
+    const asc = src.chart?.ascendant as Record<string, unknown> | undefined;
+    const ascSignIdx = asc?.signIndex != null ? Number(asc.signIndex) : null;
+    if (ascSignIdx != null) {
+      const jupiterSignIdx = await currentTransitSignIndex('Jupiter');
+      if (jupiterSignIdx != null) {
+        const houseFromAsc = ((jupiterSignIdx - ascSignIdx + 12) % 12) + 1;
+        const favorable = [2, 5, 7, 9, 11].includes(houseFromAsc);
+        facts.push(
+          `Jupiter is currently transiting your ${houseFromAsc}th house from the Ascendant — ${
+            favorable
+              ? 'traditionally favorable for relationship/marriage timing'
+              : 'not one of the classic favorable houses for relationship timing right now'
+          }`,
+        );
+      }
+    }
   } else if (persona === 'health') {
+    const sixEightTwelveLords: string[] = [];
     for (const houseNum of [6, 8, 12]) {
       const h = houseLord(houses, houseNum);
       if (!h) continue;
       facts.push(`${houseNum}th house sign: ${h.sign}, lord: ${h.lord}`);
-      if (dasha.mahadasha === h.lord) {
-        facts.push(`Active Mahadasha lord (${dasha.mahadasha}) is also the ${houseNum}th house lord`);
-      }
+      sixEightTwelveLords.push(h.lord);
     }
     const mars = planetPlacement(planets, 'Mars');
     if (mars) facts.push(`Mars is natally in house ${mars.house} (${mars.sign})`);
     const saturn = planetPlacement(planets, 'Saturn');
     if (saturn) facts.push(`Saturn is natally in house ${saturn.house} (${saturn.sign})`);
+
+    // Timing signal 1: is the currently-active dasha lord linked to the
+    // 6th/8th/12th houses (lord or natal occupant)? Extends the old
+    // Mahadasha-only, lord-only check to also cover Antardasha and occupants.
+    const sixEightTwelveOccupants = planets
+      .filter((p) => [6, 8, 12].includes(p.house))
+      .map((p) => p.planet);
+    const activeLordsHealth = [
+      ...new Set([dasha.mahadasha, dasha.antardasha].filter(Boolean)),
+    ] as string[];
+    for (const lord of activeLordsHealth) {
+      if (sixEightTwelveLords.includes(lord) || sixEightTwelveOccupants.includes(lord)) {
+        facts.push(
+          `Currently active dasha lord (${lord}) is linked to the 6th/8th/12th houses — traditionally a period to pay closer attention to health`,
+        );
+      }
+    }
+
+    // Timing signal 2: Sade Sati (Saturn's 7.5-year transit over the natal
+    // Moon sign) — the single most-referenced traditional health-timing
+    // indicator in Vedic astrology. Already computed into doshaData elsewhere
+    // (doshas/sadeSati.ts) but was never surfaced to this persona before.
+    const sadeSati = src.doshas?.sadeSati as Record<string, unknown> | undefined;
+    if (sadeSati?.phase && sadeSati.phase !== 'none') {
+      facts.push(
+        `Sade Sati: ${String(sadeSati.phase)} phase (Saturn's 7.5-year transit over the Moon sign) — traditionally a period calling for extra care and resilience`,
+      );
+    }
   } else {
     // general — summarized, not the raw planetary degree table
     const activeYogas = ((src.yogas?.yogas ?? []) as Array<Record<string, unknown>>)

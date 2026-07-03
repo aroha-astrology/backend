@@ -1,0 +1,6 @@
+# Shell scripts are executed on Linux (deploy target + cron) via their
+# shebang line. A Windows checkout with core.autocrlf=true silently converts
+# them to CRLF, which breaks `/usr/bin/env bash` (looks for an interpreter
+# literally named "bash\r") and `set -o pipefail` parsing — this bit a real
+# production deploy once. Force LF regardless of the checking-out platform.
+*.sh text eol=lf
