@@ -12,20 +12,10 @@
 import { generate } from './nim-client.js';
 import { HOROSCOPE_PROFILE, HOROSCOPE_YEARLY_PROFILE, modelForTier } from '../../config/llm.js';
 import { buildGroundingFacts, type GroundingSource } from '../chat-grounding.js';
-import { logger } from '../logger.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';
 import type { MonthlyBreakdownEntry, StructuredHoroscope } from '../../db/schema.js';
 
 const QUALITIES = ['good', 'moderate', 'challenging', 'avoid'] as const;
-const LUCKY_COLORS = [
-  'Gold',
-  'Red',
-  'Deep Blue',
-  'Emerald Green',
-  'White',
-  'Coral',
-  'Silver',
-] as const;
 
 const MONTH_NAMES = [
   'January',
@@ -145,6 +135,13 @@ function describePeriod(period: HoroscopePeriod, forDate: string): string {
  * PII discipline (spec 6.5): only the already-derived chart facts (dasha,
  * yogas, ascendant) are sent to the model — never the raw name, DOB, or
  * place-of-birth string from `ctx.profile`.
+ *
+ * No fallback: a failed or unparseable LLM response throws rather than
+ * substituting generic, non-personalized filler. Callers must not save a
+ * horoscope row when this rejects — no reading is more honest than a fake
+ * one. The daily CRON path (runDailyHoroscopes) already isolates per-user
+ * failures; on-demand requests (weekly/monthly/yearly) surface as a normal
+ * 500 via the app's error handler.
  */
 export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<HoroscopeResult> {
   const source: GroundingSource = {
@@ -167,70 +164,42 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
   };
 
   if (ctx.period === 'yearly') {
-    try {
-      const raw = await generate({
-        profile: HOROSCOPE_YEARLY_PROFILE,
-        messages: [
-          { role: 'system', content: HOROSCOPE_SYSTEM_YEARLY },
-          contextMessage,
-          { role: 'user', content: `Write ${describePeriod('yearly', ctx.forDate)}.` },
-        ],
-      });
-      const parsed = parseYearlyResponse(raw);
-      if (parsed) {
-        return {
-          summary: parsed.overview,
-          monthlyBreakdown: parsed.months,
-          model: modelForTier(HOROSCOPE_YEARLY_PROFILE.modelTier),
-        };
-      }
-      logger.warn(
-        { userId: ctx.userId },
-        'yearly horoscope LLM returned unparseable JSON — using template fallback',
-      );
-    } catch (err) {
-      logger.warn(
-        { err, userId: ctx.userId },
-        'yearly horoscope LLM generation failed — using template fallback',
-      );
+    const raw = await generate({
+      profile: HOROSCOPE_YEARLY_PROFILE,
+      messages: [
+        { role: 'system', content: HOROSCOPE_SYSTEM_YEARLY },
+        contextMessage,
+        { role: 'user', content: `Write ${describePeriod('yearly', ctx.forDate)}.` },
+      ],
+    });
+    const parsed = parseYearlyResponse(raw);
+    if (!parsed) {
+      throw new Error(`yearly horoscope LLM returned unparseable JSON for user ${ctx.userId}`);
     }
     return {
-      summary: templateFallback(facts, 'yearly'),
-      monthlyBreakdown: templateMonthlyBreakdown(),
-      model: 'template-fallback',
+      summary: parsed.overview,
+      monthlyBreakdown: parsed.months,
+      model: modelForTier(HOROSCOPE_YEARLY_PROFILE.modelTier),
     };
   }
 
-  try {
-    const raw = await generate({
-      profile: HOROSCOPE_PROFILE,
-      messages: [
-        { role: 'system', content: HOROSCOPE_SYSTEM[ctx.period] },
-        contextMessage,
-        { role: 'user', content: `Write ${describePeriod(ctx.period, ctx.forDate)}.` },
-      ],
-    });
-    const structured = parseStructuredResponse(raw);
-    if (structured) {
-      return {
-        summary: structured.hook,
-        structured,
-        model: modelForTier(HOROSCOPE_PROFILE.modelTier),
-      };
-    }
-    logger.warn(
-      { userId: ctx.userId },
-      'horoscope LLM returned unparseable JSON — using template fallback',
-    );
-  } catch (err) {
-    logger.warn(
-      { err, userId: ctx.userId },
-      'horoscope LLM generation failed — using template fallback',
-    );
+  const raw = await generate({
+    profile: HOROSCOPE_PROFILE,
+    messages: [
+      { role: 'system', content: HOROSCOPE_SYSTEM[ctx.period] },
+      contextMessage,
+      { role: 'user', content: `Write ${describePeriod(ctx.period, ctx.forDate)}.` },
+    ],
+  });
+  const structured = parseStructuredResponse(raw);
+  if (!structured) {
+    throw new Error(`${ctx.period} horoscope LLM returned unparseable JSON for user ${ctx.userId}`);
   }
-
-  const structured = templateFallbackStructured(facts, ctx.period);
-  return { summary: structured.hook, structured, model: 'template-fallback' };
+  return {
+    summary: structured.hook,
+    structured,
+    model: modelForTier(HOROSCOPE_PROFILE.modelTier),
+  };
 }
 
 function parseStructuredResponse(raw: string): StructuredHoroscope | null {
@@ -298,65 +267,4 @@ function parseYearlyResponse(
   } catch {
     return null;
   }
-}
-
-// =============================================================================
-// Deterministic fallback — used when the LLM call fails or returns nothing,
-// so a transient NIM outage never blocks a request. Traceable to the same
-// computed facts, just without narrative variety.
-// =============================================================================
-
-function templateFallback(facts: string[], period: HoroscopePeriod): string {
-  const noun =
-    period === 'daily'
-      ? 'today'
-      : period === 'weekly'
-        ? 'this week'
-        : period === 'monthly'
-          ? 'this month'
-          : 'this year';
-  if (facts.length === 0) {
-    return `The transits are steady ${noun} — no single planetary shift dominates, so let your own priorities set the pace rather than the stars.`;
-  }
-  return `Here's what your chart points to ${noun}: ${facts.join('; ')}. Take it as a tendency, not a certainty — use it to plan, not to predict.`;
-}
-
-function templateMonthlyBreakdown(): MonthlyBreakdownEntry[] {
-  return MONTH_NAMES.map((monthLabel, i) => ({
-    month: i + 1,
-    monthLabel,
-    summary: `A steady stretch for ${monthLabel} — check back closer to the month for a fuller reading.`,
-  }));
-}
-
-const FALLBACK_HOOKS: Record<Exclude<HoroscopePeriod, 'yearly'>, string> = {
-  daily: 'Today calls for steady focus rather than big swings.',
-  weekly: 'This week favors quiet consistency over dramatic moves.',
-  monthly: 'This month rewards patience — the bigger shifts are still building.',
-};
-
-/**
- * Plain-language structured fallback for daily/weekly/monthly — deliberately
- * generic rather than dumping the raw (jargon-heavy) grounding facts, since
- * without an LLM there's no reliable way to translate them into plain
- * language on the fly. An honest generic reading beats a jargon dump.
- */
-function templateFallbackStructured(
-  facts: string[],
-  period: Exclude<HoroscopePeriod, 'yearly'>,
-): StructuredHoroscope {
-  const noun = period === 'daily' ? 'today' : period === 'weekly' ? 'this week' : 'this month';
-  const day = new Date().getDate();
-  return {
-    hook: FALLBACK_HOOKS[period],
-    description:
-      facts.length > 0
-        ? `The bigger picture in your chart is steady ${noun} — no single shift dominates, so treat this as a normal stretch rather than a turning point.`
-        : `No strong signal stands out in your chart ${noun} — a normal stretch, good for steady progress rather than big decisions.`,
-    advice: 'Stick to your regular plans and revisit anything big once a clearer window opens.',
-    quality: 'moderate',
-    score: 3,
-    luckyColor: LUCKY_COLORS[day % LUCKY_COLORS.length]!,
-    luckyNumber: (day % 9) + 1,
-  };
 }
