@@ -329,7 +329,7 @@ export async function getPanchang(lat: number, lon: number, dateStr?: string) {
   const moonLong = moon?.longitude ?? 0;
 
   // Calculate full panchang using the astro-engine
-  const panchang = calculateFullPanchang(date, lat, lon, sunLong, moonLong);
+  const panchang = calculateFullPanchang(date, lat, lon, sunLong, moonLong, timezoneOffset);
 
   return {
     date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,

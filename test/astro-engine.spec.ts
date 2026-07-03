@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { calculateChart } from '../src/lib/astro-engine/calculations/planetPositions.js';
+import { calculateAshtakavarga } from '../src/lib/astro-engine/calculations/ashtakavarga.js';
 
 // Guards the critical fix (the swisseph-wasm dependency must resolve and
 // compute — not MODULE_NOT_FOUND) and the house-assignment fix (#18): every
@@ -35,5 +36,33 @@ describe('astro-engine: calculateChart', () => {
       expect(p.house).toBeGreaterThanOrEqual(1);
       expect(p.house).toBeLessThanOrEqual(12);
     }
+  }, 20_000);
+});
+
+// The classical BPHS Bhinnashtakavarga benefic-point rules yield a fixed
+// bindu total per planet — Sun=48, Moon=49, Mars=39, Mercury=54, Jupiter=56,
+// Venus=52, Saturn=39 (grand total 337) — for ANY birth chart, since every
+// contributor rule always lands on exactly one of the 12 signs. A wrong
+// house number in the BENEFIC_POINTS table (e.g. a stray extra entry)
+// throws a planet's total off regardless of which chart is fed in, which is
+// what caught a spurious "9" in Saturn's Sun-row (was 40, should be 39).
+describe('astro-engine: calculateAshtakavarga', () => {
+  it('produces the chart-invariant classical bindu totals per planet (sum 337)', async () => {
+    const chart = await calculateChart(1993, 4, 17, 20, 26, 5.5, 26.18, 91.75, 'lahiri', 'W');
+    const { bhinna, sarva } = calculateAshtakavarga(chart);
+
+    const expectedTotals: Record<string, number> = {
+      Sun: 48,
+      Moon: 49,
+      Mars: 39,
+      Mercury: 54,
+      Jupiter: 56,
+      Venus: 52,
+      Saturn: 39,
+    };
+    for (const b of bhinna) {
+      expect(b.total).toBe(expectedTotals[b.planet]);
+    }
+    expect(sarva.total).toBe(337);
   }, 20_000);
 });
