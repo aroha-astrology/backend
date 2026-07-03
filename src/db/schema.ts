@@ -9,10 +9,12 @@ import {
   jsonb,
   boolean,
   integer,
+  doublePrecision,
   index,
   uniqueIndex,
   pgEnum,
 } from 'drizzle-orm/pg-core';
+import type { PanchangData } from '@aroha-astrology/shared';
 
 /* -------------------------------------------------------------------------- */
 /* Enums                                                                       */
@@ -782,3 +784,38 @@ export const dailyHoroscopes = pgTable(
 
 export type DailyHoroscopeRow = typeof dailyHoroscopes.$inferSelect;
 export type NewDailyHoroscopeRow = typeof dailyHoroscopes.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* panchang_cache — one row per (date, reference point), shared by all users   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Panchang depends only on date + location, never on the requesting user, so
+ * it's cached once per (date, refKey) and reused for everyone hitting that
+ * reference point on that day — not per-user like daily_horoscopes.
+ * `refKey` is one of the named cities in astro-tools/panchang-reference-points.ts
+ * for cron-warmed rows, or 'custom' for an ad-hoc lat/lon a user's geolocation
+ * resolved to (still worth caching — same city, same day, many users).
+ */
+export const panchangCache = pgTable(
+  'panchang_cache',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    forDate: date('for_date').notNull(),
+    refKey: text('ref_key').notNull(),
+    lat: doublePrecision('lat').notNull(),
+    lon: doublePrecision('lon').notNull(),
+    data: jsonb('data').notNull().$type<PanchangData>(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    dateRefUnique: uniqueIndex('panchang_cache_date_ref_unique').on(table.forDate, table.refKey),
+  }),
+);
+
+export type PanchangCacheRow = typeof panchangCache.$inferSelect;
+export type NewPanchangCacheRow = typeof panchangCache.$inferInsert;
