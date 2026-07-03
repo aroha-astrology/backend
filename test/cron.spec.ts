@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   runDailyHoroscopes: vi.fn(),
   getHoroscopeForUser: vi.fn(),
   toHoroscopeDto: vi.fn(),
+  findKundliByUserId: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -44,21 +45,23 @@ vi.mock('../src/modules/horoscope/horoscope.service.js', () => ({
   toHoroscopeDto: state.toHoroscopeDto,
 }));
 
+vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
+  findKundliByUserId: state.findKundliByUserId,
+}));
+
 const { createApp } = await import('../src/app.js');
 
 const SECRET = 'test-cron-secret';
 
 describe('POST /internal/cron/daily-horoscopes', () => {
   beforeEach(() => {
-    state.runDailyHoroscopes
-      .mockReset()
-      .mockResolvedValue({
-        forDate: '2026-06-26',
-        processed: 3,
-        generated: 3,
-        skipped: 0,
-        failed: 0,
-      });
+    state.runDailyHoroscopes.mockReset().mockResolvedValue({
+      forDate: '2026-06-26',
+      processed: 3,
+      generated: 3,
+      skipped: 0,
+      failed: 0,
+    });
   });
 
   it('rejects with 403 when the cron secret is missing', async () => {
@@ -110,6 +113,7 @@ describe('GET /v1/horoscope', () => {
       .mockResolvedValue(makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' }));
     state.getHoroscopeForUser.mockReset();
     state.toHoroscopeDto.mockReset();
+    state.findKundliByUserId.mockReset().mockResolvedValue(undefined);
   });
 
   const AUTH = { Authorization: 'Bearer token' } as const;

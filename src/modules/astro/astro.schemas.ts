@@ -10,7 +10,10 @@ export const BirthInputSchema = z
     time: z
       .string()
       .default('12:00')
-      .openapi({ example: '14:30', description: 'Birth time (HH:mm), defaults to 12:00 if unknown' }),
+      .openapi({
+        example: '14:30',
+        description: 'Birth time (HH:mm), defaults to 12:00 if unknown',
+      }),
     latitude: z.number().min(-90).max(90).openapi({ example: 28.6139 }),
     longitude: z.number().min(-180).max(180).openapi({ example: 77.209 }),
     timezone: z
@@ -62,7 +65,10 @@ export type MatchmakingRequest = z.infer<typeof MatchmakingRequestSchema>;
 export const ChatPersonaSchema = z
   .enum(['career', 'love', 'health', 'general'])
   .default('general')
-  .openapi({ description: 'Which astrologer persona to answer as — determines which chart-fact slice is injected' });
+  .openapi({
+    description:
+      'Which astrologer persona to answer as — determines which chart-fact slice is injected',
+  });
 
 export const ChatHistoryTurnSchema = z
   .object({
@@ -73,30 +79,22 @@ export const ChatHistoryTurnSchema = z
 
 export const ChatRequestSchema = z
   .object({
-    message: z
-      .string()
-      .min(1)
-      .max(2000)
-      .openapi({ example: 'What does my Jupiter transit mean?' }),
+    message: z.string().min(1).max(2000).openapi({ example: 'What does my Jupiter transit mean?' }),
     persona: ChatPersonaSchema,
-    profileId: z.string().uuid().optional().openapi({ description: 'Optional birth-profile ID for context' }),
-    locale: z.string().default('en'),
-    history: z
-      .array(ChatHistoryTurnSchema)
-      .max(40)
-      .default([])
-      .openapi({
-        description:
-          'Recent turns the client is carrying forward. Older turns already folded into `summary` should be omitted.',
-      }),
-    summary: z
+    profileId: z
       .string()
-      .max(2000)
+      .uuid()
       .optional()
-      .openapi({
-        description:
-          'Running summary of the conversation before `history`, as returned by a prior turn\'s `summary` SSE event.',
-      }),
+      .openapi({ description: 'Optional birth-profile ID for context' }),
+    locale: z.string().default('en'),
+    history: z.array(ChatHistoryTurnSchema).max(40).default([]).openapi({
+      description:
+        'Recent turns the client is carrying forward. Older turns already folded into `summary` should be omitted.',
+    }),
+    summary: z.string().max(2000).optional().openapi({
+      description:
+        "Running summary of the conversation before `history`, as returned by a prior turn's `summary` SSE event.",
+    }),
   })
   .openapi('ChatRequest');
 
@@ -156,7 +154,9 @@ export const MatchmakingResponseSchema = z
       .object({
         person1: z.boolean(),
         person2: z.boolean(),
-        matched: z.boolean().describe('Both present or both absent — traditionally considered compatible either way'),
+        matched: z
+          .boolean()
+          .describe('Both present or both absent — traditionally considered compatible either way'),
       })
       .openapi('MangalDoshaSummary')
       .optional(),
@@ -180,3 +180,30 @@ export const SignIndexParamSchema = z.object({
       description: 'Zodiac sign index (0 = Aries/Mesha, 11 = Pisces/Meena)',
     }),
 });
+
+/* -------------------------------------------------------------------------- */
+/* Panchang cache warmup (cron)                                                */
+/* -------------------------------------------------------------------------- */
+
+export const PanchangWarmupBodySchema = z
+  .object({
+    forDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
+      .optional()
+      .describe('Override the date; defaults to today.'),
+    force: z
+      .boolean()
+      .optional()
+      .describe('Recompute and overwrite even if already cached for that date.'),
+  })
+  .strict()
+  .openapi('PanchangWarmupBody');
+
+export const PanchangWarmupResultSchema = z
+  .object({
+    forDate: z.string(),
+    warmed: z.number().int(),
+    failed: z.number().int(),
+  })
+  .openapi('PanchangWarmupResult');

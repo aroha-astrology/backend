@@ -6,6 +6,7 @@ import {
   getOrGenerateHoroscope,
   toHoroscopeDto,
 } from './horoscope.service.js';
+import { findKundliByUserId } from '../kundli/kundli.repo.js';
 
 const ErrorSchema = z
   .object({
@@ -50,10 +51,12 @@ const getHoroscopeRoute = createRoute({
 horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
   const user = c.get('user');
   const { period } = c.req.valid('query');
+  const kundli = await findKundliByUserId(user.id);
+  const dashaData = kundli && kundli.status === 'ready' ? kundli.dashaData : null;
 
   if (period !== 'daily') {
     const row = await getOrGenerateHoroscope(user, period);
-    return c.json(toHoroscopeDto(row), 200);
+    return c.json(toHoroscopeDto(row, dashaData), 200);
   }
 
   const row = await getHoroscopeForUser(user.id);
@@ -68,5 +71,5 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
       404,
     );
   }
-  return c.json(toHoroscopeDto(row), 200);
+  return c.json(toHoroscopeDto(row, dashaData), 200);
 });
