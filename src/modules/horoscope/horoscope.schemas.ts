@@ -23,6 +23,17 @@ export const StructuredHoroscopeSchema = z
   })
   .openapi('StructuredHoroscope');
 
+/** Plain-language reading of the user's current Vimshottari dasha — same shape on all 4 periods. */
+export const DashaReadingSchema = z
+  .object({
+    mahadashaPlanet: z.string(),
+    antardashaPlanet: z.string().nullable(),
+    hook: z.string(),
+    meaning: z.string(),
+    activeUntil: z.string().nullable().describe('ISO date the current Mahadasha ends'),
+  })
+  .openapi('DashaReading');
+
 export const HoroscopeSchema = z
   .object({
     forDate: z.string().describe('ISO date (YYYY-MM-DD, IST) the period starts on'),
@@ -33,6 +44,8 @@ export const HoroscopeSchema = z
     monthlyBreakdown: z.array(MonthlyBreakdownEntrySchema).optional(),
     /** Only present on daily/weekly/monthly — the rich Plain-view fields. */
     structured: StructuredHoroscopeSchema.optional(),
+    /** Current dasha reading, same on all 4 periods; absent if no kundli yet. */
+    dasha: DashaReadingSchema.optional(),
     model: z.string().nullable(),
     generatedAt: z.string(),
   })
