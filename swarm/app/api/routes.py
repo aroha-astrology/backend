@@ -324,6 +324,7 @@ async def chat(req: ChatRequest, user_id: CurrentUser):
     # Phase 1: in-memory state stub. Phase 2.5+ loads from Supabase.
     state: dict = {
         "user_id": user_id,
+        "persona": req.persona,
         "metrology": None,
         "findings": [],
         "chat_context": {"history": [], "summary": ""},

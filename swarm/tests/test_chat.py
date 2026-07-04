@@ -66,6 +66,26 @@ class TestChatEndpoint:
                     data = json.loads(line[6:])
                     assert isinstance(data, dict)
 
+    def test_chat_passes_persona_to_scholar_state(self, client):
+        with patch(
+            "app.swarm.agents.scholar_agent.scholar_stream",
+            return_value=_fake_stream(["Hi"]),
+        ) as mock_stream:
+            resp = client.post("/v1/chat", json={"message": "Should I invest?", "persona": "career"})
+            assert resp.status_code == 200
+            called_state = mock_stream.call_args.args[0]
+            assert called_state["persona"] == "career"
+
+    def test_chat_defaults_persona_to_general(self, client):
+        with patch(
+            "app.swarm.agents.scholar_agent.scholar_stream",
+            return_value=_fake_stream(["Hi"]),
+        ) as mock_stream:
+            resp = client.post("/v1/chat", json=CHAT_PAYLOAD)
+            assert resp.status_code == 200
+            called_state = mock_stream.call_args.args[0]
+            assert called_state["persona"] == "general"
+
     def test_chat_401_without_auth(self, client):
         # Clear the dev bypass to test auth
         import os
