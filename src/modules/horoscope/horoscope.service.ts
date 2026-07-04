@@ -123,11 +123,16 @@ async function generateForUser(
 }
 
 /**
- * Weekly/monthly/yearly horoscopes aren't CRON-populated (too infrequent to
- * justify a dedicated schedule) — generated lazily on first request per
- * period and cached from then on. Concurrent first-requesters for the same
- * period both generate and both upsert; the last write wins and the unique
- * index prevents duplicate rows, so no locking is needed for this volume.
+ * Get-or-generate for any period, including daily. Weekly/monthly/yearly are
+ * never CRON-populated (too infrequent to justify a dedicated schedule) and
+ * always go through this path. Daily is normally pre-populated by the nightly
+ * CRON (runDailyHoroscopes) for speed/scale, but also falls back here on a
+ * miss — a missed, delayed, or partially-failed CRON run no longer leaves a
+ * user without a reading; they just pay a one-time generation cost on read
+ * instead of waiting for the next night's run. Concurrent first-requesters
+ * for the same period both generate and both upsert; the last write wins and
+ * the unique index prevents duplicate rows, so no locking is needed for this
+ * volume.
  */
 export async function getOrGenerateHoroscope(
   user: UserRow,
@@ -218,15 +223,6 @@ export async function runDailyHoroscopes(
 
   logger.info({ forDate, processed, generated, skipped, failed }, 'daily horoscope run complete');
   return { forDate, processed, generated, skipped, failed };
-}
-
-/** Daily only — CRON-populated, so a miss means "not generated yet" (never generated on read). */
-export async function getHoroscopeForUser(
-  userId: string,
-  forDate?: string,
-): Promise<DailyHoroscopeRow | undefined> {
-  const date = forDate ?? todayForApp();
-  return findHoroscope(userId, 'daily', date);
 }
 
 /**

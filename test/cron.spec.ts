@@ -5,7 +5,7 @@ const state = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
   findUserByFirebaseUid: vi.fn(),
   runDailyHoroscopes: vi.fn(),
-  getHoroscopeForUser: vi.fn(),
+  getOrGenerateHoroscope: vi.fn(),
   toHoroscopeDto: vi.fn(),
   findKundliByUserId: vi.fn(),
 }));
@@ -41,7 +41,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
 
 vi.mock('../src/modules/horoscope/horoscope.service.js', () => ({
   runDailyHoroscopes: state.runDailyHoroscopes,
-  getHoroscopeForUser: state.getHoroscopeForUser,
+  getOrGenerateHoroscope: state.getOrGenerateHoroscope,
   toHoroscopeDto: state.toHoroscopeDto,
 }));
 
@@ -111,15 +111,15 @@ describe('GET /v1/horoscope', () => {
     state.findUserByFirebaseUid
       .mockReset()
       .mockResolvedValue(makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' }));
-    state.getHoroscopeForUser.mockReset();
+    state.getOrGenerateHoroscope.mockReset();
     state.toHoroscopeDto.mockReset();
     state.findKundliByUserId.mockReset().mockResolvedValue(undefined);
   });
 
   const AUTH = { Authorization: 'Bearer token' } as const;
 
-  it("returns 200 with today's horoscope", async () => {
-    state.getHoroscopeForUser.mockResolvedValueOnce({ forDate: '2026-06-26', summary: 'Lorem' });
+  it("returns 200 with today's horoscope, generating it if the CRON hasn't yet", async () => {
+    state.getOrGenerateHoroscope.mockResolvedValueOnce({ forDate: '2026-06-26', summary: 'Lorem' });
     state.toHoroscopeDto.mockReturnValueOnce({
       forDate: '2026-06-26',
       summary: 'Lorem',
@@ -130,13 +130,27 @@ describe('GET /v1/horoscope', () => {
     const res = await createApp().request('/v1/horoscope', { headers: AUTH });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { summary: string }).summary).toBe('Lorem');
+    expect(state.getOrGenerateHoroscope).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'id-1' }),
+      'daily',
+    );
   });
 
-  it('returns 404 when no horoscope exists for today', async () => {
-    state.getHoroscopeForUser.mockResolvedValueOnce(undefined);
+  it('passes through the requested period', async () => {
+    state.getOrGenerateHoroscope.mockResolvedValueOnce({ forDate: '2026-06-01', summary: 'Lorem' });
+    state.toHoroscopeDto.mockReturnValueOnce({
+      forDate: '2026-06-01',
+      summary: 'Lorem',
+      model: 'stub',
+      generatedAt: 'x',
+    });
 
-    const res = await createApp().request('/v1/horoscope', { headers: AUTH });
-    expect(res.status).toBe(404);
+    const res = await createApp().request('/v1/horoscope?period=yearly', { headers: AUTH });
+    expect(res.status).toBe(200);
+    expect(state.getOrGenerateHoroscope).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'id-1' }),
+      'yearly',
+    );
   });
 
   it('requires auth', async () => {
