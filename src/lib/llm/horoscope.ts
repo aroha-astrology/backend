@@ -51,7 +51,7 @@ export interface HoroscopeResult {
   model: string;
   /** Only set for `period: 'yearly'`. */
   monthlyBreakdown?: MonthlyBreakdownEntry[];
-  /** Only set for daily/weekly/monthly — the rich Plain-view fields. */
+  /** The rich Plain-view fields — populated for every period, including yearly. */
   structured?: StructuredHoroscope;
 }
 
@@ -109,10 +109,14 @@ ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
-{"overview": string, "months": [{"month": 1, "summary": string}, ... one entry per month 1-12 in order]}
+{"hook": string, "description": string, "advice": string, "quality": "good"|"moderate"|"challenging"|"avoid", "score": 1-5, "luckyColor": string, "luckyNumber": 1-9, "months": [{"month": 1, "summary": string}, ... one entry per month 1-12 in order]}
 
-"overview": a one-sentence hook for the year's dominant theme, then 2-3 sentences of supporting detail — under 130 words total.
-Each month's "summary": 1-2 sentences (under 30 words) on that month's tone within the year's arc — do not repeat the overview verbatim, vary the angle per month.
+"hook": one punchy headline sentence naming the year's dominant theme (this is the lead the user sees first — make it count, never generic filler like "This is a good year for you").
+"description": 2-4 sentences of plain-language supporting detail on the year's overall arc.
+"advice": 1-2 concrete, actionable sentences for the year (what to actually do with this).
+"quality"/"score": your honest overall read on the year — "good"/4-5 for a genuinely strong year, "moderate"/3 for a steady/mixed one, "challenging"/2 for friction to navigate carefully, "avoid"/1 only for a real caution — do not inflate every reading to "good".
+"luckyColor": a single color name. "luckyNumber": an integer 1-9.
+Each month's "summary": 1-2 sentences (under 30 words) on that month's tone within the year's arc — do not repeat the hook/description verbatim, vary the angle per month.
 ${STYLE_RULE}`;
 
 function describePeriod(period: HoroscopePeriod, forDate: string): string {
@@ -177,7 +181,8 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
       throw new Error(`yearly horoscope LLM returned unparseable JSON for user ${ctx.userId}`);
     }
     return {
-      summary: parsed.overview,
+      summary: parsed.structured.hook,
+      structured: parsed.structured,
       monthlyBreakdown: parsed.months,
       model: modelForTier(HOROSCOPE_YEARLY_PROFILE.modelTier),
     };
@@ -238,12 +243,12 @@ function parseStructuredResponse(raw: string): StructuredHoroscope | null {
 
 function parseYearlyResponse(
   raw: string,
-): { overview: string; months: MonthlyBreakdownEntry[] } | null {
+): { structured: StructuredHoroscope; months: MonthlyBreakdownEntry[] } | null {
+  const structured = parseStructuredResponse(raw);
+  if (!structured) return null;
   try {
-    const data = JSON.parse(raw) as { overview?: unknown; months?: unknown };
-    if (typeof data.overview !== 'string' || !data.overview.trim() || !Array.isArray(data.months)) {
-      return null;
-    }
+    const data = JSON.parse(raw) as { months?: unknown };
+    if (!Array.isArray(data.months)) return null;
     const months: MonthlyBreakdownEntry[] = [];
     for (const entry of data.months) {
       if (
@@ -263,7 +268,7 @@ function parseYearlyResponse(
     // than a template fallback for the missing ones.
     if (months.length !== 12) return null;
     months.sort((a, b) => a.month - b.month);
-    return { overview: data.overview.trim(), months };
+    return { structured, months };
   } catch {
     return null;
   }
