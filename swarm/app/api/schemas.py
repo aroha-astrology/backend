@@ -33,6 +33,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., max_length=2000, description="User message text")
     profile_id: str | None = Field(default=None, description="Birth profile ID (for multi-profile)")
     locale: str = Field(default="en")
+    persona: str = Field(default="general", description="Astrologer persona: general | career | love | health")
 
 
 class ChatMessage(BaseModel):
