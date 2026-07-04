@@ -721,9 +721,8 @@ export type MonthlyBreakdownEntry = {
 /**
  * Rich structured reading — mirrors the shape the moon-sign forecast cards
  * already use (components/horoscope/types.ts DailyForecastData), so the
- * personalized card can reuse the same Plain-view UI. Populated on
- * daily/weekly/monthly rows only; yearly stays as an overview + monthly
- * breakdown (a 1-5 "quality score" doesn't translate well to a whole year).
+ * personalized card can reuse the same Plain-view UI. Populated on every
+ * period's rows, including yearly (alongside its monthly breakdown).
  */
 export type StructuredHoroscope = {
   hook: string;
@@ -761,7 +760,7 @@ export const dailyHoroscopes = pgTable(
     summary: text('summary').notNull(),
     /** Only set on `period: 'yearly'` rows — a short blurb per calendar month. */
     monthlyBreakdown: jsonb('monthly_breakdown').$type<MonthlyBreakdownEntry[]>(),
-    /** Only set on daily/weekly/monthly rows — the rich Plain-view fields. */
+    /** The rich Plain-view fields, populated for every period. */
     structured: jsonb('structured').$type<StructuredHoroscope>(),
     /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
     model: text('model'),
