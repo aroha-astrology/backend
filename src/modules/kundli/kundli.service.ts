@@ -4,6 +4,7 @@ import {
   calculateVimshottariDasha,
   detectAllYogas,
   analyzeAllDoshas,
+  calculateAshtakavarga,
 } from '../../lib/astro-engine/index.js';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
@@ -245,6 +246,7 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
     // fail the whole kundli — the chart + dasha are the required payload.
     const yogas = tryCompute('yogas', () => detectAllYogas(chart));
     const doshas = tryCompute('doshas', () => analyzeAllDoshas(chart, saturn?.longitude ?? 0));
+    const ashtakavarga = tryCompute('ashtakavarga', () => calculateAshtakavarga(chart));
 
     await markKundliReady(user.id, claimedAt, {
       ayanamsa: inputs.ayanamsa,
@@ -255,6 +257,7 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
       dashaData: { vimshottari: dasha },
       yogaData: yogas ? { yogas } : null,
       doshaData: doshas ? (doshas as unknown as Record<string, unknown>) : null,
+      ashtakavargaData: ashtakavarga ? (ashtakavarga as unknown as Record<string, unknown>) : null,
     });
 
     // The horoscope LLM context is only grounded once the kundli is actually

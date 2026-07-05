@@ -9,7 +9,6 @@ import {
   moonSignPrediction,
   moonSignPeriodicPrediction,
   sunSignPrediction,
-  type ChatPersona,
   type PeriodicPeriod,
 } from '../../lib/swarm/index.js';
 import {
@@ -21,6 +20,7 @@ import {
 import type { GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
+import { findActiveUserById } from '../users/users.repo.js';
 import {
   PANCHANG_REFERENCE_POINTS,
   snapToReferencePoint,
@@ -625,7 +625,6 @@ export type ChatStreamEvent =
 export async function* chatStream(
   userId: string,
   message: string,
-  persona: ChatPersona,
   history: ChatTurn[],
   incomingSummary: string | undefined,
   signal?: AbortSignal,
@@ -634,13 +633,22 @@ export async function* chatStream(
 
   // Best-effort: an unready/missing kundli just means no chart facts get
   // injected (buildGroundingFacts degrades gracefully) — chat still works.
-  const kundli = await getKundliForUser(userId).catch(() => undefined);
+  const [kundli, user] = await Promise.all([
+    getKundliForUser(userId).catch(() => undefined),
+    findActiveUserById(userId).catch(() => undefined),
+  ]);
   const groundingSource: GroundingSource = {
     chart: kundli?.status === 'ready' ? (kundli.chartData ?? null) : null,
     dasha: kundli?.status === 'ready' ? (kundli.dashaData ?? null) : null,
     yogas: kundli?.status === 'ready' ? (kundli.yogaData ?? null) : null,
     doshas: kundli?.status === 'ready' ? (kundli.doshaData ?? null) : null,
+    ashtakavarga: kundli?.status === 'ready' ? (kundli.ashtakavargaData ?? null) : null,
   };
+  // A user who onboarded with an unknown birth time will NEVER get a ready
+  // kundli (see kundli.service.ts#missingKundliParams) — distinct from one
+  // that's simply still generating, so the scholar can pick the right
+  // "no chart data" fallback copy instead of implying the chart is just late.
+  const birthTimeUnknown = user?.birthTimeAccuracy === 'unknown';
 
   // Bound the prompt size regardless of how long this conversation has run —
   // keeps generation fast (timeout risk) and keeps the model from losing
@@ -651,7 +659,7 @@ export async function* chatStream(
   }
   state.chatContext = { history: recentHistory, summary };
 
-  const tokenStream = scholarStream(state, message, persona, groundingSource, signal);
+  const tokenStream = scholarStream(state, message, groundingSource, birthTimeUnknown, signal);
   for await (const token of tokenStream) {
     yield { type: 'token', content: token };
   }
