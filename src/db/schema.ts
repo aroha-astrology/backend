@@ -818,3 +818,57 @@ export const panchangCache = pgTable(
 
 export type PanchangCacheRow = typeof panchangCache.$inferSelect;
 export type NewPanchangCacheRow = typeof panchangCache.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* purchase_plans — Vedic timing analysis for major purchases                  */
+/* -------------------------------------------------------------------------- */
+
+export const purchasePlanCategoryEnum = pgEnum('purchase_plan_category', [
+  'vehicle',
+  'home',
+  'commercial',
+  'other',
+]);
+
+export const purchasePlanStatusEnum = pgEnum('purchase_plan_status', [
+  'pending',
+  'processing',
+  'done',
+  'error',
+]);
+
+export const purchasePlans = pgTable(
+  'purchase_plans',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    chartId: uuid('chart_id').references(() => kundlis.id, { onDelete: 'set null' }),
+    category: purchasePlanCategoryEnum('category').notNull(),
+    metadata: jsonb('metadata').notNull().default({}).$type<Record<string, string>>(),
+    costBracket: text('cost_bracket'),
+    bookingDate: date('booking_date'),
+    deliveryDate: date('delivery_date'),
+    resolvedBookingDate: date('resolved_booking_date').notNull(),
+    resolvedDeliveryDate: date('resolved_delivery_date').notNull(),
+    panchangDate: date('panchang_date').notNull(),
+    language: text('language').notNull().default('en'),
+    status: purchasePlanStatusEnum('status').notNull().default('pending'),
+    analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userCreatedIdx: index('purchase_plans_user_created_idx').on(table.userId, table.createdAt),
+    statusIdx: index('purchase_plans_status_idx').on(table.status),
+  }),
+);
+
+export type PurchasePlanRow = typeof purchasePlans.$inferSelect;
+export type NewPurchasePlanRow = typeof purchasePlans.$inferInsert;

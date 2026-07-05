@@ -57,6 +57,13 @@
       "when": 1783236000000,
       "tag": "0007_add_panchang_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783248582959,
+      "tag": "0008_smiling_ghost_rider",
+      "breakpoints": true
     }
   ]
 }
