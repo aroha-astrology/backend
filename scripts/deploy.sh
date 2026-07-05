@@ -48,6 +48,14 @@ ssh_run "bash -s" "$REMOTE_DIR" "$APP" "$REV" "$need_install" "$need_migrate" <<
 set -e
 REMOTE_DIR="$1"; APP="$2"; REV="$3"; need_install="$4"; need_migrate="$5"
 cd "$REMOTE_DIR"
+# Belt-and-suspenders: a Windows source checkout has bitten us twice with
+# CRLF-corrupted + non-executable cron scripts surviving the sync (rsync/tar
+# ship whatever the local working tree reports, and Windows permission bits
+# and line endings for these files aren't reliably preserved end-to-end).
+# .gitattributes now forces LF at checkout time, but this normalizes the
+# scripts unconditionally on every deploy regardless of the source platform.
+sed -i 's/\r$//' scripts/*.sh
+chmod +x scripts/*.sh
 if [ "$need_install" = "true" ]; then echo "▶ deps changed → npm ci"; npm ci; else echo "▶ deps unchanged → skipping npm ci"; fi
 echo "▶ build"; npm run build >/dev/null
 if [ "$need_migrate" = "true" ]; then echo "▶ migrations changed → db:migrate"; npm run db:migrate; fi
