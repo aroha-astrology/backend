@@ -42,3 +42,15 @@ export function snapToReferencePoint(lat: number, lon: number): string | null {
   }
   return null;
 }
+
+/**
+ * Fallback cache key for a location that isn't within tolerance of any named
+ * reference point. Rounds to 2 decimal places (~1.1km at the equator), which
+ * still shares a cache row across many nearby users without a `custom` key
+ * fragmenting into a distinct row per exact GPS fix. `panchang_cache.ref_key`
+ * is a plain `text` column, so this arbitrary string is a valid key alongside
+ * the 5 named ones.
+ */
+export function roundCoordToLocationKey(lat: number, lon: number): string {
+  return `${lat.toFixed(2)},${lon.toFixed(2)}`;
+}

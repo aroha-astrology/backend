@@ -24,6 +24,7 @@ import { findActiveUserById } from '../users/users.repo.js';
 import {
   PANCHANG_REFERENCE_POINTS,
   snapToReferencePoint,
+  roundCoordToLocationKey,
 } from '../../lib/astro-tools/panchang-reference-points.js';
 import { findCachedPanchang, upsertCachedPanchang } from './panchang-cache.repo.js';
 import { logger } from '../../lib/logger.js';
@@ -311,13 +312,14 @@ function buildMatchRecommendation(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Panchang depends only on (date, location) — never on who's asking — so a
- * request that lands on one of the named reference points (see
- * astro-tools/panchang-reference-points.ts) is served from panchang_cache
- * instead of recomputing per request, and shared by every user who resolves
- * to that same city on that day. Off-reference-point coordinates (an exact
- * GPS fix that isn't one of the 5 cities) still compute fresh every time —
- * only the named points are cached.
+ * Panchang depends only on (date, location) — never on who's asking — so
+ * every request is served from panchang_cache instead of recomputing per
+ * request, and shared by every user who resolves to the same cache key on
+ * that day. A request landing on one of the named reference points (see
+ * astro-tools/panchang-reference-points.ts) uses that city's stable key —
+ * cron-warmed and shared across the whole metro. Any other coordinate falls
+ * back to a rounded-to-2-decimal-places key (still shared across nearby
+ * users, just not pre-warmed), so no location ever skips the cache.
  */
 export async function getPanchang(
   lat: number,
@@ -331,8 +333,8 @@ export async function getPanchang(
   const day = date.getDate();
   const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-  const refKey = snapToReferencePoint(lat, lon);
-  if (refKey && !opts.bypassCache) {
+  const refKey = snapToReferencePoint(lat, lon) ?? roundCoordToLocationKey(lat, lon);
+  if (!opts.bypassCache) {
     const cached = await findCachedPanchang(isoDate, refKey);
     if (cached) {
       return { date: isoDate, ...cached.data };
@@ -360,14 +362,79 @@ export async function getPanchang(
   // Calculate full panchang using the astro-engine
   const panchang = calculateFullPanchang(date, lat, lon, sunLong, moonLong, timezoneOffset);
 
-  if (refKey) {
-    await upsertCachedPanchang({ forDate: isoDate, refKey, lat, lon, data: panchang });
-  }
+  await upsertCachedPanchang({ forDate: isoDate, refKey, lat, lon, data: panchang });
 
   return {
     date: isoDate,
     ...panchang,
   };
+}
+
+/**
+ * Full moon = tithi 15 (end of Shukla Paksha), new moon = tithi 30 (end of
+ * Krishna Paksha), Ekadashi = the 11th tithi of either paksha (11 or 26) —
+ * see calculateTithi's 1-30 numbering in lib/astro-engine/panchang/tithi.ts.
+ */
+export function classifyTithiForCalendar(tithiNumber: number): {
+  isFullMoon: boolean;
+  isNewMoon: boolean;
+  isEkadashi: boolean;
+} {
+  return {
+    isFullMoon: tithiNumber === 15,
+    isNewMoon: tithiNumber === 30,
+    isEkadashi: tithiNumber === 11 || tithiNumber === 26,
+  };
+}
+
+export interface PanchangMonthDay {
+  day: number;
+  isoDate: string;
+  tithiName: string;
+  tithiNumber: number;
+  paksha: string;
+  nakshatraName: string;
+  vara: string;
+  isFullMoon: boolean;
+  isNewMoon: boolean;
+  isEkadashi: boolean;
+}
+
+/**
+ * Lightweight per-day summaries for a calendar month view. Reuses getPanchang
+ * per day (which already caches per reference point), fetched in parallel —
+ * no separate month-cache table needed. A non-reference lat/lon (e.g. an
+ * exact GPS fix) recomputes fresh for every day; acceptable for a
+ * once-per-navigation calendar view, not a hot path.
+ */
+export async function getPanchangMonth(
+  year: number,
+  month: number,
+  lat: number,
+  lon: number,
+): Promise<PanchangMonthDay[]> {
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  return Promise.all(
+    dayNumbers.map(async (day) => {
+      const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const panchang = await getPanchang(lat, lon, isoDate);
+      const { isFullMoon, isNewMoon, isEkadashi } = classifyTithiForCalendar(panchang.tithi.number);
+      return {
+        day,
+        isoDate,
+        tithiName: panchang.tithi.name,
+        tithiNumber: panchang.tithi.number,
+        paksha: panchang.tithi.paksha,
+        nakshatraName: panchang.nakshatra.name,
+        vara: panchang.vara ?? '',
+        isFullMoon,
+        isNewMoon,
+        isEkadashi,
+      };
+    }),
+  );
 }
 
 export interface PanchangWarmupResult {

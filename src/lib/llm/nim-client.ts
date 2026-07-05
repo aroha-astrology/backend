@@ -177,6 +177,8 @@ interface NIMRequestOptions {
   model?: string;
   /** Caller cancellation (e.g. client disconnect on an SSE stream). */
   signal?: AbortSignal | undefined;
+  /** Override GENERATE_TIMEOUT_MS for this call (e.g. a large background job). */
+  timeoutMs?: number;
 }
 
 interface NIMChoice {
@@ -245,7 +247,7 @@ export async function generate(opts: NIMRequestOptions): Promise<string> {
     }
 
     keyState.inflight++;
-    const abort = makeAbort(opts.signal, GENERATE_TIMEOUT_MS);
+    const abort = makeAbort(opts.signal, opts.timeoutMs ?? GENERATE_TIMEOUT_MS);
     let response: Response;
     let bodyText: string;
 

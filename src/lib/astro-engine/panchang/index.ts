@@ -11,6 +11,8 @@ import { calculatePanchangYoga } from './yoga';
 import { calculateKarana } from './karana';
 import { calculateRahuKaal, calculateGulikaKaal, calculateYamagandaKaal } from './rahuKaal';
 import { calculateRegionalMonths } from './regional';
+import { calculateChoghadiya } from './choghadiya';
+import { calculateHora } from './hora';
 
 export { calculateTithi } from './tithi';
 export { calculateNakshatra } from './nakshatra';
@@ -146,6 +148,9 @@ export function calculateFullPanchang(
     paksha: tithi.paksha,
   });
 
+  const choghadiyaAll = calculateChoghadiya(sunrise, sunset, dayOfWeek);
+  const hora = buildHoraList(sunrise, dayOfWeek);
+
   return {
     tithi,
     nakshatra,
@@ -162,6 +167,8 @@ export function calculateFullPanchang(
     sunriseTime: sunrise,
     sunsetTime: sunset,
     regionalMonths,
+    choghadiya: { day: choghadiyaAll.slice(0, 8), night: choghadiyaAll.slice(8, 16) },
+    hora,
   };
 }
 
@@ -177,4 +184,15 @@ function formatMinToTime(totalMinutes: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** All 24 hora slots for the day, one hour each, starting at sunrise. */
+function buildHoraList(sunrise: string, dayOfWeek: number) {
+  const sunriseMin = parseTimeToMin(sunrise);
+  const list = [];
+  for (let i = 0; i < 24; i++) {
+    const slotTime = formatMinToTime(sunriseMin + i * 60);
+    list.push(calculateHora(sunrise, slotTime, dayOfWeek));
+  }
+  return list;
 }
