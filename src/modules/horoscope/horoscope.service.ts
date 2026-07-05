@@ -21,6 +21,7 @@ const RETRY_FOREVER_INTERVAL_MS = 5_000;
 
 export const HOROSCOPE_PERIODS: readonly HoroscopePeriod[] = [
   'daily',
+  'tomorrow',
   'weekly',
   'monthly',
   'yearly',
@@ -65,10 +66,19 @@ function mondayOf(forDate: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/** YYYY-MM-DD for the calendar day after `forDate`. */
+function addOneDay(forDate: string): string {
+  const [y, m, d] = forDate.split('-').map(Number) as [number, number, number];
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 1);
+  return dt.toISOString().slice(0, 10);
+}
+
 /** The start date (period's `forDate`) of the period containing today, in IST. */
 export function currentPeriodStart(period: HoroscopePeriod): string {
   const today = todayForApp();
   if (period === 'daily') return today;
+  if (period === 'tomorrow') return addOneDay(today);
   if (period === 'weekly') return mondayOf(today);
   if (period === 'monthly') return `${today.slice(0, 7)}-01`;
   return `${today.slice(0, 4)}-01-01`; // yearly

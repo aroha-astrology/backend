@@ -706,6 +706,7 @@ export type NewKundliRow = typeof kundlis.$inferInsert;
 
 export const horoscopePeriodEnum = pgEnum('horoscope_period', [
   'daily',
+  'tomorrow',
   'weekly',
   'monthly',
   'yearly',

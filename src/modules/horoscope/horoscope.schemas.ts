@@ -1,6 +1,6 @@
 import { z } from '@hono/zod-openapi';
 
-export const HoroscopePeriodSchema = z.enum(['daily', 'weekly', 'monthly', 'yearly']);
+export const HoroscopePeriodSchema = z.enum(['daily', 'tomorrow', 'weekly', 'monthly', 'yearly']);
 export type HoroscopePeriod = z.infer<typeof HoroscopePeriodSchema>;
 
 export const MonthlyBreakdownEntrySchema = z
