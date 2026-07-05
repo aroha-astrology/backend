@@ -124,6 +124,7 @@ function buildHoroscopeContext(
             dasha: kundli.dashaData,
             yogas: kundli.yogaData,
             doshas: kundli.doshaData,
+            ashtakavarga: kundli.ashtakavargaData,
           }
         : null,
   };

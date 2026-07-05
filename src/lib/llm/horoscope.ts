@@ -162,10 +162,6 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
     dasha: (ctx.kundli?.dasha as Record<string, unknown> | undefined) ?? null,
     yogas: (ctx.kundli?.yogas as Record<string, unknown> | undefined) ?? null,
     doshas: (ctx.kundli?.doshas as Record<string, unknown> | undefined) ?? null,
-    // TODO: wire once buildHoroscopeContext (horoscope.service.ts, on the
-    // feat/horoscope-async-generation branch) is merged and threads
-    // kundli.ashtakavargaData through HoroscopeContext.kundli — until then
-    // this is always null, same as before ashtakavarga grounding existed.
     ashtakavarga: (ctx.kundli?.ashtakavarga as Record<string, unknown> | undefined) ?? null,
   };
 
