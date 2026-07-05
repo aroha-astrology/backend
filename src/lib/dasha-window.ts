@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { buildSubPeriods } from './astro-engine/index.js';
-import type { DashaPeriod, Planet } from '@aroha-astrology/shared';
+import type { DashaPeriod } from '@aroha-astrology/shared';
 
 export interface FavorableWindow {
   lord: string;
