@@ -71,6 +71,11 @@ const EnvSchema = z
     MODEL_STRUCTURED: z.string().default('meta/llama-3.3-70b-instruct'),
     MODEL_CONVERSATIONAL: z.string().default('meta/llama-3.1-70b-instruct'),
 
+    // --- Gemini (cross-provider fallback, used only if NIM is down entirely) --
+    GEMINI_API_KEY: z.string().min(1).optional(),
+    GEMINI_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta/openai'),
+    GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+
     // --- Redis -------------------------------------------------------------
     REDIS_URL: z.string().default('redis://localhost:6379/0'),
 
