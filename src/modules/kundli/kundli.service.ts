@@ -4,6 +4,7 @@ import {
   calculateVimshottariDasha,
   detectAllYogas,
   analyzeAllDoshas,
+  calculateAshtakavarga,
 } from '../../lib/astro-engine/index.js';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
@@ -16,6 +17,7 @@ import {
   markKundliFailed,
   markKundliReady,
 } from './kundli.repo.js';
+import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 
 type EngineAyanamsa = 'lahiri' | 'raman' | 'krishnamurti';
 type EngineHouseSystem = 'W' | 'P' | 'K' | 'E';
@@ -215,7 +217,7 @@ function tryCompute<T>(label: string, fn: () => T): T | null {
   }
 }
 
-async function runGeneration(userId: string, inputs: BirthInputs, claimedAt: Date): Promise<void> {
+async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date): Promise<void> {
   try {
     const chart = await calculateChart(
       inputs.year,
@@ -244,8 +246,9 @@ async function runGeneration(userId: string, inputs: BirthInputs, claimedAt: Dat
     // fail the whole kundli — the chart + dasha are the required payload.
     const yogas = tryCompute('yogas', () => detectAllYogas(chart));
     const doshas = tryCompute('doshas', () => analyzeAllDoshas(chart, saturn?.longitude ?? 0));
+    const ashtakavarga = tryCompute('ashtakavarga', () => calculateAshtakavarga(chart));
 
-    await markKundliReady(userId, claimedAt, {
+    await markKundliReady(user.id, claimedAt, {
       ayanamsa: inputs.ayanamsa,
       houseSystem: inputs.houseSystem,
       timeKnown: true,
@@ -254,10 +257,26 @@ async function runGeneration(userId: string, inputs: BirthInputs, claimedAt: Dat
       dashaData: { vimshottari: dasha },
       yogaData: yogas ? { yogas } : null,
       doshaData: doshas ? (doshas as unknown as Record<string, unknown>) : null,
+      ashtakavargaData: ashtakavarga ? (ashtakavarga as unknown as Record<string, unknown>) : null,
     });
+
+    // The horoscope LLM context is only grounded once the kundli is actually
+    // ready (see buildHoroscopeContext) — firing this in parallel with kundli
+    // generation instead of after would risk baking in an ungrounded reading
+    // that then sits cached until the period rolls over. `force: true` is a
+    // no-op for a brand-new onboarding (no row yet) and correctly overwrites
+    // a stale reading if this run was a birth-data correction, not first-time
+    // onboarding. `retryForever` because nothing else is blocked on this.
+    for (const period of HOROSCOPE_PERIODS) {
+      void requestHoroscopeGeneration(user, period, { force: true, retryForever: true }).catch(
+        (err: unknown) => {
+          logger.error({ err, userId: user.id, period }, 'post-kundli horoscope trigger failed');
+        },
+      );
+    }
   } catch (err) {
-    logger.error({ err, userId }, 'kundli generation failed');
-    await markKundliFailed(userId, claimedAt, err instanceof Error ? err.message : String(err));
+    logger.error({ err, userId: user.id }, 'kundli generation failed');
+    await markKundliFailed(user.id, claimedAt, err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -276,7 +295,7 @@ export async function requestKundliGeneration(userId: string): Promise<void> {
   const claimed = await claimKundliGeneration(userId, inputs.birthHash);
   if (!claimed?.startedAt) return; // another run owns it, or it's already ready for this hash
 
-  await runGeneration(userId, inputs, claimed.startedAt);
+  await runGeneration(user, inputs, claimed.startedAt);
 }
 
 export type RegenerateResult =
@@ -300,7 +319,7 @@ export async function regenerateKundli(userId: string): Promise<RegenerateResult
 
   const claimed = await claimKundliGeneration(userId, inputs.birthHash, { force: true });
   if (claimed?.startedAt) {
-    await runGeneration(userId, inputs, claimed.startedAt);
+    await runGeneration(user, inputs, claimed.startedAt);
   }
 
   const row = await findKundliByUserId(userId);

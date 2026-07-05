@@ -75,9 +75,30 @@ export type Ayanamsa = 'lahiri' | 'krishnamurti' | 'raman';
 export type HouseSystem = 'W' | 'P' | 'K' | 'E'; // Whole sign, Placidus, Koch, Equal
 
 export type DivisionalChart =
-  | 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D7' | 'D8' | 'D9' | 'D10'
-  | 'D11' | 'D12' | 'D14' | 'D16' | 'D20' | 'D21' | 'D24' | 'D27' | 'D30'
-  | 'D40' | 'D45' | 'D60' | 'D81' | 'D108';
+  | 'D1'
+  | 'D2'
+  | 'D3'
+  | 'D4'
+  | 'D5'
+  | 'D6'
+  | 'D7'
+  | 'D8'
+  | 'D9'
+  | 'D10'
+  | 'D11'
+  | 'D12'
+  | 'D14'
+  | 'D16'
+  | 'D20'
+  | 'D21'
+  | 'D24'
+  | 'D27'
+  | 'D30'
+  | 'D40'
+  | 'D45'
+  | 'D60'
+  | 'D81'
+  | 'D108';
 
 export type ChartStyle = 'north' | 'south';
 
@@ -399,6 +420,10 @@ export interface PanchangData {
   sunriseTime: string;
   sunsetTime: string;
   regionalMonths?: Record<RegionId, RegionalMonth>;
+  /** 8 day + 8 night periods, cycling through 7 named types by weekday. */
+  choghadiya?: { day: Choghadiya[]; night: Choghadiya[] };
+  /** All 24 planetary hours for the day, starting at sunrise. */
+  hora?: Hora[];
 }
 
 // ── Regional calendar variants ───────────────────────────────────────────────
@@ -410,14 +435,14 @@ export type MonthSystem = 'purnimanta' | 'amanta' | 'solar';
 
 export interface RegionalMonth {
   region: RegionId;
-  calendar: string;            // 'Vikram Samvat' | 'Shalivahana Shaka' | 'Bengali San'
+  calendar: string; // 'Vikram Samvat' | 'Shalivahana Shaka' | 'Bengali San'
   monthSystem: MonthSystem;
-  monthIndex: number;          // 0..11
-  monthName: string;           // localised name in the regional convention
+  monthIndex: number; // 0..11
+  monthName: string; // localised name in the regional convention
   paksha?: 'shukla' | 'krishna'; // omitted for solar (East)
-  year: number;                // era year (Vikram 2083, Shaka 1948, Bengali 1433, ...)
-  isAdhikMaas?: boolean;       // true on dates inside an Adhik Maas range (lunisolar regions only)
-  adhikMaasLabel?: string;     // e.g., 'Adhik Jyeshtha 2026' when isAdhikMaas
+  year: number; // era year (Vikram 2083, Shaka 1948, Bengali 1433, ...)
+  isAdhikMaas?: boolean; // true on dates inside an Adhik Maas range (lunisolar regions only)
+  adhikMaasLabel?: string; // e.g., 'Adhik Jyeshtha 2026' when isAdhikMaas
 }
 
 export interface Choghadiya {

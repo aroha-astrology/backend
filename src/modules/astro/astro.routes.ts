@@ -312,6 +312,8 @@ const panchangRoute = createRoute({
             sunriseTime: z.string().optional(),
             sunsetTime: z.string().optional(),
             regionalMonths: z.any().optional(),
+            choghadiya: z.any().optional(),
+            hora: z.any().optional(),
           }),
         },
       },
@@ -324,6 +326,62 @@ astroRouter.openapi(panchangRoute, async (c) => {
   const { lat, lon, date } = c.req.valid('query');
   const result = await astroService.getPanchang(lat, lon, date);
   return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /panchang/month                                                   */
+/* -------------------------------------------------------------------------- */
+
+const PanchangMonthQuerySchema = z.object({
+  year: z
+    .string()
+    .regex(/^\d{4}$/)
+    .transform(Number)
+    .openapi({ param: { name: 'year', in: 'query' }, example: '2026' }),
+  month: z
+    .string()
+    .regex(/^(1[0-2]|[1-9])$/)
+    .transform(Number)
+    .openapi({ param: { name: 'month', in: 'query' }, example: '7', description: '1-12' }),
+  lat: z
+    .string()
+    .optional()
+    .default('28.6139')
+    .transform(Number)
+    .pipe(z.number().min(-90).max(90))
+    .openapi({ param: { name: 'lat', in: 'query' } }),
+  lon: z
+    .string()
+    .optional()
+    .default('77.209')
+    .transform(Number)
+    .pipe(z.number().min(-180).max(180))
+    .openapi({ param: { name: 'lon', in: 'query' } }),
+});
+
+const panchangMonthRoute = createRoute({
+  method: 'get',
+  path: '/panchang/month',
+  tags: ['Astro'],
+  summary: 'Get lightweight per-day panchang summaries for a calendar month (public)',
+  request: { query: PanchangMonthQuerySchema },
+  responses: {
+    200: {
+      description: 'Per-day panchang summaries',
+      content: {
+        'application/json': {
+          schema: z.object({ year: z.number(), month: z.number(), days: z.array(z.any()) }),
+        },
+      },
+    },
+    422: errorResponse('Validation failed'),
+  },
+});
+
+astroRouter.openapi(panchangMonthRoute, async (c) => {
+  const { year, month, lat, lon } = c.req.valid('query');
+  const days = await astroService.getPanchangMonth(year, month, lat, lon);
+  return c.json({ year, month, days }, 200);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -366,7 +424,6 @@ astroRouter.openapi(chatRoute, async (c) => {
       const events = astroService.chatStream(
         user.id,
         body.message,
-        body.persona,
         body.history,
         body.summary,
         signal,

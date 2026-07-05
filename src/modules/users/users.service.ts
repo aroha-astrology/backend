@@ -3,6 +3,7 @@ import { isUniqueViolation } from '../../lib/db-errors.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
+import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import type { ConsentInput, UpdateMeBody, UserDto } from './users.schemas.js';
 import {
   findActiveUserById,
@@ -326,6 +327,31 @@ export async function updateMe(
     void requestKundliGeneration(userId).catch((err: unknown) => {
       logger.error({ err, userId }, 'kundli generation trigger failed');
     });
+  }
+
+  // Users who onboard with an admittedly-unknown birth time never get a
+  // kundli (missingKundliParams always flags timeOfBirth for them), so the
+  // usual post-kundli-ready horoscope trigger (kundli.service.ts#runGeneration)
+  // never fires for this cohort. Fire directly here instead — the horoscope
+  // context tolerates a missing kundli (generic reading) rather than blocking
+  // on one. If they later add an exact time, touchedBirth's kundli trigger
+  // above takes over and its own post-ready hook naturally overwrites this
+  // with a grounded reading (force: true).
+  if (
+    next.profileCompletedAt !== null &&
+    (becameComplete || touchedBirth) &&
+    next.birthTimeAccuracy === 'unknown'
+  ) {
+    for (const period of HOROSCOPE_PERIODS) {
+      void requestHoroscopeGeneration(next, period, { retryForever: true }).catch(
+        (err: unknown) => {
+          logger.error(
+            { err, userId, period },
+            'horoscope generation trigger (unknown birth time) failed',
+          );
+        },
+      );
+    }
   }
 
   return next;
