@@ -370,6 +370,73 @@ export async function getPanchang(
   };
 }
 
+/**
+ * Full moon = tithi 15 (end of Shukla Paksha), new moon = tithi 30 (end of
+ * Krishna Paksha), Ekadashi = the 11th tithi of either paksha (11 or 26) —
+ * see calculateTithi's 1-30 numbering in lib/astro-engine/panchang/tithi.ts.
+ */
+export function classifyTithiForCalendar(tithiNumber: number): {
+  isFullMoon: boolean;
+  isNewMoon: boolean;
+  isEkadashi: boolean;
+} {
+  return {
+    isFullMoon: tithiNumber === 15,
+    isNewMoon: tithiNumber === 30,
+    isEkadashi: tithiNumber === 11 || tithiNumber === 26,
+  };
+}
+
+export interface PanchangMonthDay {
+  day: number;
+  isoDate: string;
+  tithiName: string;
+  tithiNumber: number;
+  paksha: string;
+  nakshatraName: string;
+  vara: string;
+  isFullMoon: boolean;
+  isNewMoon: boolean;
+  isEkadashi: boolean;
+}
+
+/**
+ * Lightweight per-day summaries for a calendar month view. Reuses getPanchang
+ * per day (which already caches per reference point), fetched in parallel —
+ * no separate month-cache table needed. A non-reference lat/lon (e.g. an
+ * exact GPS fix) recomputes fresh for every day; acceptable for a
+ * once-per-navigation calendar view, not a hot path.
+ */
+export async function getPanchangMonth(
+  year: number,
+  month: number,
+  lat: number,
+  lon: number,
+): Promise<PanchangMonthDay[]> {
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  return Promise.all(
+    dayNumbers.map(async (day) => {
+      const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const panchang = await getPanchang(lat, lon, isoDate);
+      const { isFullMoon, isNewMoon, isEkadashi } = classifyTithiForCalendar(panchang.tithi.number);
+      return {
+        day,
+        isoDate,
+        tithiName: panchang.tithi.name,
+        tithiNumber: panchang.tithi.number,
+        paksha: panchang.tithi.paksha,
+        nakshatraName: panchang.nakshatra.name,
+        vara: panchang.vara ?? '',
+        isFullMoon,
+        isNewMoon,
+        isEkadashi,
+      };
+    }),
+  );
+}
+
 export interface PanchangWarmupResult {
   forDate: string;
   warmed: number;
