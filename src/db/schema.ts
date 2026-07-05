@@ -706,10 +706,19 @@ export type NewKundliRow = typeof kundlis.$inferInsert;
 
 export const horoscopePeriodEnum = pgEnum('horoscope_period', [
   'daily',
+  'tomorrow',
   'weekly',
   'monthly',
   'yearly',
 ]);
+
+/**
+ * No 'pending' (unlike kundli_status): a horoscope row simply doesn't exist
+ * yet for a (user, period, periodKey) that's never been attempted, so row
+ * non-existence already carries that meaning — a 'generating' placeholder is
+ * only ever inserted the moment generation is actually claimed.
+ */
+export const horoscopeStatusEnum = pgEnum('horoscope_status', ['generating', 'ready', 'failed']);
 
 /** A short per-month blurb, populated only on `period: 'yearly'` rows. */
 export type MonthlyBreakdownEntry = {
@@ -756,14 +765,18 @@ export const dailyHoroscopes = pgTable(
      * `period` as the real identity of a row; `forDate` is derived from it.
      */
     periodKey: text('period_key').notNull(),
-    /** The hook line — kept as plain text too for push-notification bodies and as a fallback render. */
-    summary: text('summary').notNull(),
+    /** The hook line — kept as plain text too for push-notification bodies and as a fallback render. Null while 'generating'. */
+    summary: text('summary'),
     /** Only set on `period: 'yearly'` rows — a short blurb per calendar month. */
     monthlyBreakdown: jsonb('monthly_breakdown').$type<MonthlyBreakdownEntry[]>(),
     /** The rich Plain-view fields, populated for every period. */
     structured: jsonb('structured').$type<StructuredHoroscope>(),
     /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
     model: text('model'),
+    status: horoscopeStatusEnum('status').notNull(),
+    /** Claim token: fences markReady/markFailed against a superseding claim, and is heartbeat-refreshed (via updatedAt) by a live retry-forever run so it isn't mistaken for abandoned. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

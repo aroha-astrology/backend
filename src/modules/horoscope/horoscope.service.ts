@@ -4,10 +4,32 @@ import { buildDashaReading } from '../../lib/astro-tools/dasha-reading.js';
 import type { DailyHoroscopeRow, KundliRow, UserRow } from '../../db/schema.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import type { HoroscopeDto, HoroscopePeriod } from './horoscope.schemas.js';
-import { findHoroscope, listActiveUsersAfter, upsertHoroscope } from './horoscope.repo.js';
+import {
+  claimHoroscopeGeneration,
+  listActiveUsersAfter,
+  markHoroscopeFailed,
+  markHoroscopeReady,
+  touchHoroscopeGenerating,
+  STALE_GENERATING_MS,
+} from './horoscope.repo.js';
 
 /** The app's reference timezone — horoscopes are dated by the IST calendar day. */
 const APP_TZ = 'Asia/Kolkata';
+
+/** How long to wait between retry-forever attempts against a failing LLM. */
+const RETRY_FOREVER_INTERVAL_MS = 5_000;
+
+export const HOROSCOPE_PERIODS: readonly HoroscopePeriod[] = [
+  'daily',
+  'tomorrow',
+  'weekly',
+  'monthly',
+  'yearly',
+];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** Calendar date (YYYY-MM-DD) for an instant, in the given tz. */
 export function dateInTz(d: Date, tz: string = APP_TZ): string {
@@ -44,10 +66,19 @@ function mondayOf(forDate: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/** YYYY-MM-DD for the calendar day after `forDate`. */
+function addOneDay(forDate: string): string {
+  const [y, m, d] = forDate.split('-').map(Number) as [number, number, number];
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 1);
+  return dt.toISOString().slice(0, 10);
+}
+
 /** The start date (period's `forDate`) of the period containing today, in IST. */
 export function currentPeriodStart(period: HoroscopePeriod): string {
   const today = todayForApp();
   if (period === 'daily') return today;
+  if (period === 'tomorrow') return addOneDay(today);
   if (period === 'weekly') return mondayOf(today);
   if (period === 'monthly') return `${today.slice(0, 7)}-01`;
   return `${today.slice(0, 4)}-01-01`; // yearly
@@ -98,71 +129,96 @@ function buildHoroscopeContext(
   };
 }
 
-async function generateForUser(
+/** A 'generating' row whose run likely crashed or was abandoned (no heartbeat in a while). */
+export function isStaleGenerating(row: DailyHoroscopeRow): boolean {
+  return row.status === 'generating' && Date.now() - row.updatedAt.getTime() > STALE_GENERATING_MS;
+}
+
+async function runHoroscopeGeneration(
   user: UserRow,
+  period: HoroscopePeriod,
+  periodKey: string,
   forDate: string,
-  force: boolean,
-): Promise<'generated' | 'skipped'> {
-  const period: HoroscopePeriod = 'daily';
-  if (!force && (await findHoroscope(user.id, period, forDate))) {
-    return 'skipped';
+  claimedAt: Date,
+  retryForever: boolean,
+): Promise<'generated' | 'failed'> {
+  for (;;) {
+    try {
+      const kundli = await findKundliByUserId(user.id);
+      const context = buildHoroscopeContext(user, kundli, forDate, period);
+      const { summary, model, monthlyBreakdown, structured } =
+        await generateHoroscopeSummary(context);
+      await markHoroscopeReady(user.id, period, periodKey, claimedAt, {
+        summary,
+        model,
+        ...(monthlyBreakdown !== undefined ? { monthlyBreakdown } : {}),
+        ...(structured !== undefined ? { structured } : {}),
+      });
+      return 'generated';
+    } catch (err) {
+      logger.error(
+        { err, userId: user.id, period, periodKey },
+        'horoscope generation attempt failed',
+      );
+      if (!retryForever) {
+        await markHoroscopeFailed(
+          user.id,
+          period,
+          periodKey,
+          claimedAt,
+          err instanceof Error ? err.message : String(err),
+        );
+        return 'failed';
+      }
+      // Heartbeat before sleeping so the staleness check never mistakes this
+      // live retry loop for an abandoned run and lets a second claim in.
+      await touchHoroscopeGenerating(user.id, period, periodKey, claimedAt);
+      await sleep(RETRY_FOREVER_INTERVAL_MS);
+    }
   }
-  const kundli = await findKundliByUserId(user.id);
-  const context = buildHoroscopeContext(user, kundli, forDate, period);
-  const { summary, model, structured } = await generateHoroscopeSummary(context);
-  await upsertHoroscope({
-    userId: user.id,
-    forDate,
-    period,
-    periodKey: forDate,
-    summary,
-    model,
-    ...(structured !== undefined ? { structured } : {}),
-  });
-  return 'generated';
 }
 
 /**
- * Get-or-generate for any period, including daily. Weekly/monthly/yearly are
- * never CRON-populated (too infrequent to justify a dedicated schedule) and
- * always go through this path. Daily is normally pre-populated by the nightly
- * CRON (runDailyHoroscopes) for speed/scale, but also falls back here on a
- * miss — a missed, delayed, or partially-failed CRON run no longer leaves a
- * user without a reading; they just pay a one-time generation cost on read
- * instead of waiting for the next night's run. Concurrent first-requesters
- * for the same period both generate and both upsert; the last write wins and
- * the unique index prevents duplicate rows, so no locking is needed for this
- * volume.
+ * Fire-and-forget entry point used by the GET route (cache miss), the
+ * onboarding/kundli-ready hook, and the nightly cron batch alike — `forDate`/
+ * `force`/`retryForever` let one code path serve all three.
+ *
+ * `retryForever` is for single-user, nothing-else-blocked-on-it contexts
+ * (a live user's request, the onboarding trigger): on failure it keeps
+ * retrying every few seconds until the LLM recovers, rather than giving up.
+ * The cron batch must NOT use this — it awaits each user sequentially, so an
+ * unbounded retry on one stuck user would starve every other user's run that
+ * night. Left `false` (bounded — one attempt, using the LLM client's own
+ * internal retries/timeout), a cron failure just gets swept up again on the
+ * next nightly run instead.
  */
-export async function getOrGenerateHoroscope(
+export async function requestHoroscopeGeneration(
   user: UserRow,
   period: HoroscopePeriod,
-): Promise<DailyHoroscopeRow> {
-  const forDate = currentPeriodStart(period);
+  opts: { forDate?: string; force?: boolean; retryForever?: boolean } = {},
+): Promise<'generated' | 'skipped' | 'failed'> {
+  const forDate = opts.forDate ?? currentPeriodStart(period);
   const periodKey = periodKeyFor(period, forDate);
-  const existing = await findHoroscope(user.id, period, periodKey);
-  if (existing) return existing;
-
-  const kundli = await findKundliByUserId(user.id);
-  const context = buildHoroscopeContext(user, kundli, forDate, period);
-  const { summary, model, monthlyBreakdown, structured } = await generateHoroscopeSummary(context);
-  await upsertHoroscope({
-    userId: user.id,
-    forDate,
+  const claimed = await claimHoroscopeGeneration(
+    user.id,
     period,
     periodKey,
-    summary,
-    model,
-    ...(monthlyBreakdown !== undefined ? { monthlyBreakdown } : {}),
-    ...(structured !== undefined ? { structured } : {}),
-  });
-
-  const row = await findHoroscope(user.id, period, periodKey);
-  if (!row) throw new Error('Horoscope upsert did not persist — this should be unreachable');
-  return row;
+    forDate,
+    opts.force !== undefined ? { force: opts.force } : {},
+  );
+  if (!claimed?.startedAt) return 'skipped'; // another run owns it, or already ready
+  return runHoroscopeGeneration(
+    user,
+    period,
+    periodKey,
+    forDate,
+    claimed.startedAt,
+    opts.retryForever ?? false,
+  );
 }
 
-export interface DailyHoroscopeRunResult {
+export interface HoroscopeRunResult {
+  period: HoroscopePeriod;
   forDate: string;
   processed: number;
   generated: number;
@@ -171,23 +227,20 @@ export interface DailyHoroscopeRunResult {
 }
 
 /**
- * Generate a personalized horoscope for every active user for `forDate`
- * (default: today in IST). Paginated (keyset) and per-user fault-isolated, so
- * one user's failure never aborts the batch. Idempotent: re-running skips users
+ * Generate a personalized horoscope for every active user for one period's
+ * current periodKey. Paginated (keyset) and per-user fault-isolated, so one
+ * user's failure never aborts the batch. Idempotent: re-running skips users
  * already done (unless `force`).
- *
- * TODO(scale): the run is synchronous within one HTTP request — fine while the
- * LLM is an instant stub. With the real NIM over N users this will exceed the
- * request timeout; move to a queue/chunked workers when the LLM lands.
  */
-export async function runDailyHoroscopes(
+export async function runHoroscopeBatch(
+  period: HoroscopePeriod,
   opts: {
     forDate?: string | undefined;
     force?: boolean | undefined;
     limit?: number | undefined;
   } = {},
-): Promise<DailyHoroscopeRunResult> {
-  const forDate = opts.forDate ?? todayForApp();
+): Promise<HoroscopeRunResult> {
+  const forDate = opts.forDate ?? currentPeriodStart(period);
   const force = opts.force ?? false;
   const PAGE = 200;
 
@@ -206,12 +259,13 @@ export async function runDailyHoroscopes(
     for (const user of batch) {
       processed++;
       try {
-        const outcome = await generateForUser(user, forDate, force);
+        const outcome = await requestHoroscopeGeneration(user, period, { forDate, force });
         if (outcome === 'generated') generated++;
+        else if (outcome === 'failed') failed++;
         else skipped++;
       } catch (err) {
         failed++;
-        logger.error({ err, userId: user.id, forDate }, 'daily horoscope failed for user');
+        logger.error({ err, userId: user.id, period, forDate }, 'horoscope batch failed for user');
       }
     }
 
@@ -221,8 +275,34 @@ export async function runDailyHoroscopes(
     if (batch.length < Math.min(PAGE, remaining)) break;
   }
 
-  logger.info({ forDate, processed, generated, skipped, failed }, 'daily horoscope run complete');
-  return { forDate, processed, generated, skipped, failed };
+  logger.info(
+    { period, forDate, processed, generated, skipped, failed },
+    'horoscope batch run complete',
+  );
+  return { period, forDate, processed, generated, skipped, failed };
+}
+
+/**
+ * Sweep all 4 periods every night rather than only on each period's own
+ * rollover day: on non-rollover nights a period's claim is a near-instant
+ * no-op (row already `ready`), and this doubles as a <=24h self-heal for any
+ * stuck/failed row — valuable for `yearly`, which would otherwise wait up to
+ * a year for its next natural rollover. One period crashing can't block the
+ * others.
+ */
+export async function runAllHoroscopeBatches(
+  opts: { force?: boolean | undefined; limit?: number | undefined } = {},
+): Promise<HoroscopeRunResult[]> {
+  const results: HoroscopeRunResult[] = [];
+  for (const period of HOROSCOPE_PERIODS) {
+    try {
+      results.push(await runHoroscopeBatch(period, opts));
+    } catch (err) {
+      logger.error({ err, period }, 'horoscope batch crashed for period');
+      results.push({ period, forDate: '', processed: 0, generated: 0, skipped: 0, failed: 0 });
+    }
+  }
+  return results;
 }
 
 /**
@@ -239,7 +319,8 @@ export function toHoroscopeDto(
     forDate: row.forDate,
     period: row.period,
     periodKey: row.periodKey,
-    summary: row.summary,
+    // Only ever called on a `status === 'ready'` row, which always has a summary.
+    summary: row.summary ?? '',
     monthlyBreakdown: row.monthlyBreakdown ?? undefined,
     structured: row.structured ?? undefined,
     dasha: buildDashaReading(dashaData ?? null) ?? undefined,

@@ -87,6 +87,13 @@ ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
 Keep "hook" under 20 words and "description" under 70 words total. ${STYLE_RULE}`,
+  tomorrow: `You are writing a short personalized Vedic astrology horoscope for TOMORROW (the day after today) for a mobile app.
+
+${GROUNDING_RULE}
+${PLAIN_LANGUAGE_RULE}
+
+${STRUCTURED_JSON_RULE}
+Keep "hook" under 20 words and "description" under 70 words total. Write as a preview of what's coming, not what's happening now (e.g. "tomorrow favors..." not "today favors..."). ${STYLE_RULE}`,
   weekly: `You are writing a short personalized weekly Vedic astrology horoscope for a mobile app, summarizing the arc of the coming week.
 
 ${GROUNDING_RULE}
@@ -124,6 +131,8 @@ function describePeriod(period: HoroscopePeriod, forDate: string): string {
   switch (period) {
     case 'daily':
       return `today's (${forDate}) horoscope`;
+    case 'tomorrow':
+      return `tomorrow's (${forDate}) horoscope`;
     case 'weekly':
       return `this week's horoscope, for the 7-day period starting ${forDate}`;
     case 'monthly':
@@ -207,6 +216,21 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
   };
 }
 
+/**
+ * Raw technical terms PLAIN_LANGUAGE_RULE explicitly forbids, but that
+ * occasionally leak through anyway when the model echoes phrasing straight
+ * from the injected CHART DATA block (e.g. "Active Dasha: Saturn Mahadasha
+ * / Moon Antardasha...") instead of translating it. Checked post-hoc rather
+ * than trusted to prompting alone — a caught leak is treated the same as
+ * unparseable JSON, which the caller's retry-forever path turns into a fresh
+ * generation attempt instead of caching a jargon-laden reading.
+ */
+const RAW_JARGON_PATTERN = /\b(mahadasha|antardasha|dasha|ascendant|nakshatra|yoga)\b/i;
+
+export function hasRawJargon(s: string): boolean {
+  return RAW_JARGON_PATTERN.test(s);
+}
+
 function parseStructuredResponse(raw: string): StructuredHoroscope | null {
   try {
     const data = JSON.parse(raw) as Partial<StructuredHoroscope>;
@@ -224,13 +248,19 @@ function parseStructuredResponse(raw: string): StructuredHoroscope | null {
     ) {
       return null;
     }
+    const hook = data.hook.trim();
+    const description = data.description.trim();
+    const advice = data.advice.trim();
+    if (hasRawJargon(hook) || hasRawJargon(description) || hasRawJargon(advice)) {
+      return null;
+    }
     const quality = QUALITIES.includes(data.quality as (typeof QUALITIES)[number])
       ? (data.quality as (typeof QUALITIES)[number])
       : 'moderate';
     return {
-      hook: data.hook.trim(),
-      description: data.description.trim(),
-      advice: data.advice.trim(),
+      hook,
+      description,
+      advice,
       quality,
       score: Math.min(5, Math.max(1, Math.round(data.score))),
       luckyColor: data.luckyColor.trim(),
@@ -261,7 +291,7 @@ function parseYearlyResponse(
       }
       const month = (entry as { month: number }).month;
       const summary = (entry as { summary: string }).summary.trim();
-      if (month < 1 || month > 12 || !summary) continue;
+      if (month < 1 || month > 12 || !summary || hasRawJargon(summary)) continue;
       months.push({ month, monthLabel: MONTH_NAMES[month - 1]!, summary });
     }
     // Require all 12 months present — a partial breakdown is more confusing

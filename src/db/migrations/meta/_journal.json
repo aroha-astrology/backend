@@ -57,6 +57,20 @@
       "when": 1783236000000,
       "tag": "0007_add_panchang_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783248401707,
+      "tag": "0008_naive_blob",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783263138510,
+      "tag": "0009_cool_captain_america",
+      "breakpoints": true
     }
   ]
 }

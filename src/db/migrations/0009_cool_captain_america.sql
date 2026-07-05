@@ -1,0 +1,1 @@
+ALTER TYPE "public"."horoscope_period" ADD VALUE 'tomorrow' BEFORE 'weekly';
