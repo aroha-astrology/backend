@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { env } from '../../config/env.js';
-import { modelForTier, type GenerationProfile } from '../../config/llm.js';
+import { fallbackModelForTier, modelForTier, type GenerationProfile } from '../../config/llm.js';
 import { logger } from '../logger.js';
 
 // =============================================================================
@@ -231,7 +231,30 @@ async function doRequest(
 // Buffered Generate (non-streaming)
 // =============================================================================
 
+/**
+ * Buffered (non-streaming) generation, with one same-class fallback model
+ * retried if the tier's primary model fails outright (see
+ * config/llm.ts#fallbackModelForTier) — a full run of `generateOnce`'s own
+ * multi-key/multi-attempt retry loop already happened against the primary
+ * model by the time this catches anything, so this is "the primary model
+ * itself appears down," not an ordinary transient blip.
+ */
 export async function generate(opts: NIMRequestOptions): Promise<string> {
+  try {
+    return await generateOnce(opts);
+  } catch (err) {
+    const primaryModel = opts.model ?? modelForTier(opts.profile.modelTier);
+    const fallbackModel = fallbackModelForTier(opts.profile.modelTier);
+    if (!fallbackModel || fallbackModel === primaryModel) throw err;
+    logger.warn(
+      { err, primaryModel, fallbackModel, tier: opts.profile.modelTier },
+      'NIM primary model failed after all retries, trying fallback model once',
+    );
+    return generateOnce({ ...opts, model: fallbackModel });
+  }
+}
+
+async function generateOnce(opts: NIMRequestOptions): Promise<string> {
   if (keyPool.length === 0) {
     throw new AllKeysExhaustedError('No API keys configured');
   }
