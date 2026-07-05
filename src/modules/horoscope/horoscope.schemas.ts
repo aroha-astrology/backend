@@ -1,6 +1,6 @@
 import { z } from '@hono/zod-openapi';
 
-export const HoroscopePeriodSchema = z.enum(['daily', 'weekly', 'monthly', 'yearly']);
+export const HoroscopePeriodSchema = z.enum(['daily', 'tomorrow', 'weekly', 'monthly', 'yearly']);
 export type HoroscopePeriod = z.infer<typeof HoroscopePeriodSchema>;
 
 export const MonthlyBreakdownEntrySchema = z
@@ -62,7 +62,47 @@ export const GetHoroscopeQuerySchema = z.object({
     }),
 });
 
-/** Result summary of a daily-horoscope CRON run. */
+/** 202 body when a horoscope isn't ready yet — the client should poll GET again. */
+export const HoroscopeStatusSchema = z
+  .object({
+    status: z.enum(['generating', 'failed']),
+  })
+  .openapi('HoroscopeStatus');
+
+/** Result summary of one period's CRON batch run. */
+export const HoroscopeRunResultSchema = z
+  .object({
+    period: HoroscopePeriodSchema,
+    forDate: z.string(),
+    processed: z.number().int(),
+    generated: z.number().int(),
+    skipped: z.number().int(),
+    failed: z.number().int(),
+  })
+  .openapi('HoroscopeRunResult');
+
+/** Response of the generalized cron trigger: one result if `period` was given, else all 4. */
+export const HoroscopeRunResponseSchema = z.union([
+  HoroscopeRunResultSchema,
+  z.array(HoroscopeRunResultSchema),
+]);
+
+/** Optional body for the cron trigger (for testing / backfill). Omitting `period` runs all 4. */
+export const HoroscopeRunBodySchema = z
+  .object({
+    period: HoroscopePeriodSchema.optional().describe('Run only this period; omit to run all 4.'),
+    forDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
+      .optional()
+      .describe('Override the date; defaults to the current period (IST).'),
+    force: z.boolean().optional().describe('Regenerate even if one already exists for the period.'),
+    limit: z.number().int().positive().max(100000).optional().describe('Cap users processed.'),
+  })
+  .strict()
+  .openapi('HoroscopeRunBody');
+
+/** @deprecated kept only for the transitional /cron/daily-horoscopes alias — use HoroscopeRunResultSchema. */
 export const DailyHoroscopeRunSchema = z
   .object({
     forDate: z.string(),
@@ -73,7 +113,7 @@ export const DailyHoroscopeRunSchema = z
   })
   .openapi('DailyHoroscopeRun');
 
-/** Optional body for the cron trigger (for testing / backfill). */
+/** @deprecated kept only for the transitional /cron/daily-horoscopes alias — use HoroscopeRunBodySchema. */
 export const DailyHoroscopeRunBodySchema = z
   .object({
     forDate: z

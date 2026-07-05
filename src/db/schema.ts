@@ -686,6 +686,7 @@ export const kundlis = pgTable('kundlis', {
   dashaData: jsonb('dasha_data').$type<Record<string, unknown>>(),
   yogaData: jsonb('yoga_data').$type<Record<string, unknown>>(),
   doshaData: jsonb('dosha_data').$type<Record<string, unknown>>(),
+  ashtakavargaData: jsonb('ashtakavarga_data').$type<Record<string, unknown>>(),
   error: text('error'),
   startedAt: timestamp('started_at', { withTimezone: true }),
   generatedAt: timestamp('generated_at', { withTimezone: true }),
@@ -706,10 +707,19 @@ export type NewKundliRow = typeof kundlis.$inferInsert;
 
 export const horoscopePeriodEnum = pgEnum('horoscope_period', [
   'daily',
+  'tomorrow',
   'weekly',
   'monthly',
   'yearly',
 ]);
+
+/**
+ * No 'pending' (unlike kundli_status): a horoscope row simply doesn't exist
+ * yet for a (user, period, periodKey) that's never been attempted, so row
+ * non-existence already carries that meaning — a 'generating' placeholder is
+ * only ever inserted the moment generation is actually claimed.
+ */
+export const horoscopeStatusEnum = pgEnum('horoscope_status', ['generating', 'ready', 'failed']);
 
 /** A short per-month blurb, populated only on `period: 'yearly'` rows. */
 export type MonthlyBreakdownEntry = {
@@ -756,14 +766,18 @@ export const dailyHoroscopes = pgTable(
      * `period` as the real identity of a row; `forDate` is derived from it.
      */
     periodKey: text('period_key').notNull(),
-    /** The hook line — kept as plain text too for push-notification bodies and as a fallback render. */
-    summary: text('summary').notNull(),
+    /** The hook line — kept as plain text too for push-notification bodies and as a fallback render. Null while 'generating'. */
+    summary: text('summary'),
     /** Only set on `period: 'yearly'` rows — a short blurb per calendar month. */
     monthlyBreakdown: jsonb('monthly_breakdown').$type<MonthlyBreakdownEntry[]>(),
     /** The rich Plain-view fields, populated for every period. */
     structured: jsonb('structured').$type<StructuredHoroscope>(),
     /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
     model: text('model'),
+    status: horoscopeStatusEnum('status').notNull(),
+    /** Claim token: fences markReady/markFailed against a superseding claim, and is heartbeat-refreshed (via updatedAt) by a live retry-forever run so it isn't mistaken for abandoned. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -793,8 +807,10 @@ export type NewDailyHoroscopeRow = typeof dailyHoroscopes.$inferInsert;
  * it's cached once per (date, refKey) and reused for everyone hitting that
  * reference point on that day — not per-user like daily_horoscopes.
  * `refKey` is one of the named cities in astro-tools/panchang-reference-points.ts
- * for cron-warmed rows, or 'custom' for an ad-hoc lat/lon a user's geolocation
- * resolved to (still worth caching — same city, same day, many users).
+ * for cron-warmed rows, or a rounded "lat,lon" string (see
+ * roundCoordToLocationKey) for an ad-hoc coordinate a user's geolocation
+ * resolved to (still worth caching — same rounded spot, same day, many users).
+ * Plain `text`, not an enum — arbitrary rounded-coordinate keys are expected.
  */
 export const panchangCache = pgTable(
   'panchang_cache',
@@ -818,3 +834,57 @@ export const panchangCache = pgTable(
 
 export type PanchangCacheRow = typeof panchangCache.$inferSelect;
 export type NewPanchangCacheRow = typeof panchangCache.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* purchase_plans — Vedic timing analysis for major purchases                  */
+/* -------------------------------------------------------------------------- */
+
+export const purchasePlanCategoryEnum = pgEnum('purchase_plan_category', [
+  'vehicle',
+  'home',
+  'commercial',
+  'other',
+]);
+
+export const purchasePlanStatusEnum = pgEnum('purchase_plan_status', [
+  'pending',
+  'processing',
+  'done',
+  'error',
+]);
+
+export const purchasePlans = pgTable(
+  'purchase_plans',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    chartId: uuid('chart_id').references(() => kundlis.id, { onDelete: 'set null' }),
+    category: purchasePlanCategoryEnum('category').notNull(),
+    metadata: jsonb('metadata').notNull().default({}).$type<Record<string, string>>(),
+    costBracket: text('cost_bracket'),
+    bookingDate: date('booking_date'),
+    deliveryDate: date('delivery_date'),
+    resolvedBookingDate: date('resolved_booking_date').notNull(),
+    resolvedDeliveryDate: date('resolved_delivery_date').notNull(),
+    panchangDate: date('panchang_date').notNull(),
+    language: text('language').notNull().default('en'),
+    status: purchasePlanStatusEnum('status').notNull().default('pending'),
+    analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userCreatedIdx: index('purchase_plans_user_created_idx').on(table.userId, table.createdAt),
+    statusIdx: index('purchase_plans_status_idx').on(table.status),
+  }),
+);
+
+export type PurchasePlanRow = typeof purchasePlans.$inferSelect;
+export type NewPurchasePlanRow = typeof purchasePlans.$inferInsert;

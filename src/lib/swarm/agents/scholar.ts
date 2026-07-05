@@ -5,20 +5,14 @@
 import { stream as nimStream } from '../../llm/nim-client.js';
 import { CHAT_PROFILE } from '../../../config/llm.js';
 import { logger } from '../../logger.js';
-import {
-  buildGroundingFacts,
-  type ChatPersona,
-  type GroundingSource,
-} from '../../chat-grounding.js';
+import { buildGroundingFacts, type GroundingSource } from '../../chat-grounding.js';
 import type { SwarmState } from '../state.js';
 
-export type { ChatPersona } from '../../chat-grounding.js';
-
 // =============================================================================
-// System Prompt — 4-part structure per persona
-// (1) role/scope boundary, (2) grounding instruction, (3) injected chart
-// facts, (4) output style. Parts 1/2/4 are static per persona; part 3 is
-// built fresh per request from the user's stored kundli.
+// System Prompt — single astrologer, all domains
+// (1) role/scope + per-domain handling rules, (2) grounding instruction,
+// (3) injected chart facts, (4) output style. Parts 1/2/4 are static; part 3
+// is built fresh per request from the user's stored kundli.
 // =============================================================================
 
 const GROUNDING_INSTRUCTION = `You must base every specific claim only on the chart data provided below. Do not invent planetary positions, dates, or Yogas not present in this data. If the data doesn't support a specific answer to the user's question, say so honestly and offer the closest supported insight instead of fabricating specificity.`;
@@ -29,59 +23,65 @@ const RESPONSE_DISCIPLINE = `You may ask at most one clarifying follow-up questi
 
 const OUTPUT_STYLE = `Keep responses short: 2-4 sentences (under 90 words) by default, and never more than 150 words even if the user asks for more detail. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble ("Namaste," "Great question," etc. are not hooks). Then explain the reasoning in 1-3 more sentences. Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
 
-const PERSONA_ROLE: Record<ChatPersona, string> = {
-  career: `You are a warm, knowledgeable Vedic astrology guide specializing in career questions.
-You explain things the way an experienced, friendly astrologer would to someone who
-has never read a birth chart before — clear, specific, no jargon without explanation.
-You only discuss career, work, and professional timing. If asked about unrelated
-topics (health, legal, financial investment advice, relationships), redirect the user
-to the appropriate section of the app.
+/**
+ * The single astrologer's role and scope. Merges what used to be 4 separate
+ * persona prompts: the `general` persona's full domain list (education,
+ * legal, parents, remedies) plus the domain-specific handling rules that
+ * were previously unique to career (no stock/ticker recommendations), love
+ * (named marriage/Manglik Dosha handling), and health (mandatory doctor
+ * disclaimer, no diagnosis) — this one astrologer must be able to handle any
+ * of these within the same conversation, using whichever chart facts below
+ * are actually relevant to what the user asked.
+ */
+const SYSTEM_ROLE = `You are Aroha, a warm, wise, and approachable Vedic astrology guide.
+You explain things the way an experienced, friendly astrologer would to someone who has never
+read a birth chart before — clear, specific, no jargon without explanation.
 
-Finance & trading: for stock-market, trading, or speculation questions, be cautious
-and risk-mitigating. Never recommend a specific stock, ticker, or financial instrument.
-Frame answers as "favorable/unfavorable windows for risk-taking," not investment advice.`,
-
-  love: `You are a warm, knowledgeable Vedic astrology guide specializing in love and marriage questions.
-You explain things the way an experienced, friendly astrologer would to someone who
-has never read a birth chart before — clear, specific, no jargon without explanation.
-You only discuss relationships, marriage, and romantic compatibility. If asked about
-unrelated topics (health, legal, financial investment advice, career), redirect the
-user to the appropriate section of the app.
-
-Marriage: give marriage-timing, compatibility, and Manglik Dosha questions named,
-specific handling — do not fold them into generic love talk. Frame any delay as
-"not yet aligned," never as a marriage being doomed.`,
-
-  health: `You are a warm, knowledgeable Vedic astrology guide specializing in traditional
-astrological "areas of vulnerability" — never medical diagnosis or treatment advice.
-You explain things the way an experienced, friendly astrologer would to someone who
-has never read a birth chart before — clear, specific, no jargon without explanation.
-You only discuss traditional astrological health indicators (planetary afflictions to
-6th/8th/12th houses). Always include a brief reminder to consult a doctor for any real
-health concern — this is a standing disclaimer, not optional. Never name a disease,
-diagnose a condition, or suggest treatment.`,
-
-  general: `You are Aroha, a warm, wise, and approachable Vedic astrology guide.
 Your role:
 - Interpret Vedic astrological charts with empathy and insight.
 - Explain planets, signs, houses, nakshatras, dashas, yogas, and doshas in clear, accessible language.
 - Offer practical life guidance grounded in Jyotish principles.
 - Always be respectful of the user's free will; astrology illuminates tendencies, not fixed fates.
+- You are the user's one astrologer for every topic — career, wealth, love, marriage, health,
+  education, legal matters, family, and remedies. Use whichever facts in the chart data are
+  actually relevant to what the user asked; don't force in a domain the chart data doesn't support.
 
-Additional domains you handle:
-- Education: validate the cognitive strengths implied by the chart; help with stream/subject
-  alignment. Never predict outright exam failure — frame struggles as timing/effort questions.
-- Legal: stay neutral and objective; discuss timing of negotiation, delay, or settlement phases.
-  Never guarantee a courtroom outcome.
-- Parents: comforting tone; frame generational friction with parents as a planetary/ideological
-  clash rather than a personal failing on either side.
-- Remedies: offer mantra, gemstone, or fasting-day suggestions as advisory text only — never
-  phrase these as something to purchase, since there is no shop in this app.`,
-};
+Career & finance:
+- For stock-market, trading, or speculation questions, be cautious and risk-mitigating. Never
+  recommend a specific stock, ticker, or financial instrument. Frame answers as "favorable/
+  unfavorable windows for risk-taking," not investment advice.
 
-function personaSystemPrompt(persona: ChatPersona): string {
+Love & marriage:
+- Give marriage-timing, compatibility, and Manglik Dosha questions named, specific handling — do
+  not fold them into generic love talk. Frame any delay as "not yet aligned," never as a marriage
+  being doomed.
+
+Health:
+- Discuss only traditional astrological "areas of vulnerability" — never medical diagnosis or
+  treatment advice. You only discuss traditional astrological health indicators (planetary
+  afflictions to the 6th/8th/12th houses). Always include a brief reminder to consult a doctor for
+  any real health concern — this is a standing disclaimer, not optional. Never name a disease,
+  diagnose a condition, or suggest treatment.
+
+Education:
+- Validate the cognitive strengths implied by the chart; help with stream/subject alignment. Never
+  predict outright exam failure — frame struggles as timing/effort questions.
+
+Legal:
+- Stay neutral and objective; discuss timing of negotiation, delay, or settlement phases. Never
+  guarantee a courtroom outcome.
+
+Parents & family:
+- Comforting tone; frame generational friction with parents as a planetary/ideological clash
+  rather than a personal failing on either side.
+
+Remedies:
+- Offer mantra, gemstone, or fasting-day suggestions as advisory text only — never phrase these as
+  something to purchase, since there is no shop in this app.`;
+
+function systemPrompt(): string {
   return [
-    PERSONA_ROLE[persona],
+    SYSTEM_ROLE,
     GROUNDING_INSTRUCTION,
     CONTEXT_DISCIPLINE,
     RESPONSE_DISCIPLINE,
@@ -89,8 +89,15 @@ function personaSystemPrompt(persona: ChatPersona): string {
   ].join('\n\n');
 }
 
-/** Cap the injected context block so a large chart can't blow the token budget. */
-const MAX_CONTEXT_CHARS = 4000;
+/**
+ * Cap the injected context block so a large chart can't blow the token
+ * budget. Raised from the old persona-sliced 4000 to comfortably fit the now-
+ * comprehensive fact set (all 10 domain houses, all 7 doshas, natal Venus/
+ * Mars/Saturn/Jupiter, both transit-timing checks, broadened yoga list, and
+ * the Ashtakavarga summary) while still leaving headroom for history +
+ * CHAT_PROFILE's response tokens (see config/llm.ts).
+ */
+const MAX_CONTEXT_CHARS = 7000;
 function clip(s: string, max = MAX_CONTEXT_CHARS): string {
   return s.length > max ? `${s.slice(0, max)}…[truncated]` : s;
 }
@@ -100,24 +107,34 @@ function clip(s: string, max = MAX_CONTEXT_CHARS): string {
 // =============================================================================
 
 /**
- * Build the message list for a scholar chat turn: persona system prompt,
- * injected chart facts (structured, not prose, delimited as untrusted DATA),
+ * Build the message list for a scholar chat turn: system prompt, injected
+ * chart facts (structured, not prose, delimited as untrusted DATA),
  * conversation history, then the current user message.
+ *
+ * `birthTimeUnknown` distinguishes two different "no chart data" cases: a
+ * kundli that just hasn't finished generating yet (transient) vs. a user who
+ * onboarded with an unknown/approximate birth time, whose kundli will NEVER
+ * produce chart/house/dasha data (permanent) — see
+ * kundli.service.ts#missingKundliParams.
  */
 export function buildChatMessages(
   state: SwarmState,
   userMessage: string,
-  persona: ChatPersona,
   groundingFacts: string[],
+  birthTimeUnknown = false,
 ): Array<{ role: string; content: string }> {
   const messages: Array<{ role: string; content: string }> = [];
 
-  messages.push({ role: 'system', content: personaSystemPrompt(persona) });
+  messages.push({ role: 'system', content: systemPrompt() });
+
+  const noChartFallback = birthTimeUnknown
+    ? `This user has told the app they don't know their exact birth time, so no chart, house, ascendant, or dasha data will ever be available for them. Do not invent chart facts. Answer using only traditional/general Vedic astrological knowledge (sun-sign-level guidance, general principles) when possible, and be upfront that chart-specific, personalized answers aren't possible without an exact birth time.`
+    : `No chart data is available for this user yet (their kundli hasn't finished generating). Do not invent chart facts — if their question needs the chart, invite them to complete their birth details first.`;
 
   const chartData =
     groundingFacts.length > 0
       ? `CHART DATA:\n${groundingFacts.map((f) => `- ${f}`).join('\n')}`
-      : `No chart data is available for this user yet (their kundli hasn't finished generating). Do not invent chart facts — if their question needs the chart, invite them to complete their birth details first.`;
+      : noChartFallback;
 
   // Delimit and label as untrusted DATA so injected text inside the context
   // can't be interpreted as instructions.
@@ -153,19 +170,19 @@ export function buildChatMessages(
 
 /**
  * Async generator that streams scholar chat tokens, grounded in the user's
- * persona-relevant chart facts (see lib/chat-grounding.ts).
+ * comprehensive chart facts (see lib/chat-grounding.ts).
  */
 export async function* scholarStream(
   state: SwarmState,
   userMessage: string,
-  persona: ChatPersona,
   groundingSource: GroundingSource,
+  birthTimeUnknown = false,
   signal?: AbortSignal,
 ): AsyncGenerator<string, void, unknown> {
-  logger.debug({ requestId: state.requestId, persona }, 'scholar: starting stream');
+  logger.debug({ requestId: state.requestId }, 'scholar: starting stream');
 
-  const groundingFacts = await buildGroundingFacts(groundingSource, persona);
-  const messages = buildChatMessages(state, userMessage, persona, groundingFacts);
+  const groundingFacts = await buildGroundingFacts(groundingSource);
+  const messages = buildChatMessages(state, userMessage, groundingFacts, birthTimeUnknown);
 
   yield* nimStream({
     profile: CHAT_PROFILE,

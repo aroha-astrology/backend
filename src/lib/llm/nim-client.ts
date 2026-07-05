@@ -51,6 +51,13 @@ interface KeyState {
 
 /** A dead key is retired only temporarily, so transient 401/403s self-heal. */
 const DEAD_KEY_COOLDOWN_MS = 5 * 60_000;
+/**
+ * A timeout/network-error is a weaker signal than a clean 401/403 (could be
+ * one slow request), so it gets a much shorter cooldown than a dead key —
+ * just enough to push the next attempt onto a different key instead of
+ * re-hitting whichever key just hung, without fully sidelining it.
+ */
+const TIMEOUT_COOLDOWN_MS = 30_000;
 
 function loadKeys(): KeyState[] {
   const keys: KeyState[] = [];
@@ -74,6 +81,11 @@ const keyPool: KeyState[] = loadKeys();
 
 function markDead(keyState: KeyState): void {
   keyState.deadUntil = Date.now() + DEAD_KEY_COOLDOWN_MS;
+}
+
+/** Never shortens an existing longer cooldown (e.g. an already-dead key). */
+function markTimedOut(keyState: KeyState): void {
+  keyState.deadUntil = Math.max(keyState.deadUntil, Date.now() + TIMEOUT_COOLDOWN_MS);
 }
 
 // =============================================================================
@@ -165,6 +177,8 @@ interface NIMRequestOptions {
   model?: string;
   /** Caller cancellation (e.g. client disconnect on an SSE stream). */
   signal?: AbortSignal | undefined;
+  /** Override GENERATE_TIMEOUT_MS for this call (e.g. a large background job). */
+  timeoutMs?: number;
 }
 
 interface NIMChoice {
@@ -233,7 +247,7 @@ export async function generate(opts: NIMRequestOptions): Promise<string> {
     }
 
     keyState.inflight++;
-    const abort = makeAbort(opts.signal, GENERATE_TIMEOUT_MS);
+    const abort = makeAbort(opts.signal, opts.timeoutMs ?? GENERATE_TIMEOUT_MS);
     let response: Response;
     let bodyText: string;
 
@@ -243,6 +257,7 @@ export async function generate(opts: NIMRequestOptions): Promise<string> {
       bodyText = await response.text();
     } catch (err) {
       logger.warn({ err, attempt }, 'NIM request network error/timeout');
+      markTimedOut(keyState);
       if (attempt < MAX_ATTEMPTS) {
         await sleep(generalBackoff(attempt));
         continue;
@@ -347,6 +362,7 @@ export async function* stream(opts: NIMRequestOptions): AsyncGenerator<string, v
         response = await doRequest(keyState, { ...opts, profile: streamProfile }, abort.signal);
       } catch (err) {
         logger.warn({ err, attempt }, 'NIM stream request network error/timeout');
+        markTimedOut(keyState);
         if (attempt < MAX_ATTEMPTS) {
           await sleep(generalBackoff(attempt));
           continue;
