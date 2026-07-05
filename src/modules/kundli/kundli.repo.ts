@@ -64,6 +64,7 @@ export async function markKundliReady(
     | 'dashaData'
     | 'yogaData'
     | 'doshaData'
+    | 'ashtakavargaData'
   >,
 ): Promise<void> {
   // Fence on the claim token (startedAt): if a newer run superseded this one

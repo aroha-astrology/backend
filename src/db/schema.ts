@@ -686,6 +686,7 @@ export const kundlis = pgTable('kundlis', {
   dashaData: jsonb('dasha_data').$type<Record<string, unknown>>(),
   yogaData: jsonb('yoga_data').$type<Record<string, unknown>>(),
   doshaData: jsonb('dosha_data').$type<Record<string, unknown>>(),
+  ashtakavargaData: jsonb('ashtakavarga_data').$type<Record<string, unknown>>(),
   error: text('error'),
   startedAt: timestamp('started_at', { withTimezone: true }),
   generatedAt: timestamp('generated_at', { withTimezone: true }),

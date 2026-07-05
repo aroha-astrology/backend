@@ -7,13 +7,10 @@ import { z } from '@hono/zod-openapi';
 export const BirthInputSchema = z
   .object({
     date: z.string().openapi({ example: '1990-05-15', description: 'Birth date (YYYY-MM-DD)' }),
-    time: z
-      .string()
-      .default('12:00')
-      .openapi({
-        example: '14:30',
-        description: 'Birth time (HH:mm), defaults to 12:00 if unknown',
-      }),
+    time: z.string().default('12:00').openapi({
+      example: '14:30',
+      description: 'Birth time (HH:mm), defaults to 12:00 if unknown',
+    }),
     latitude: z.number().min(-90).max(90).openapi({ example: 28.6139 }),
     longitude: z.number().min(-180).max(180).openapi({ example: 77.209 }),
     timezone: z
@@ -62,14 +59,6 @@ export const MatchmakingRequestSchema = z
 
 export type MatchmakingRequest = z.infer<typeof MatchmakingRequestSchema>;
 
-export const ChatPersonaSchema = z
-  .enum(['career', 'love', 'health', 'general'])
-  .default('general')
-  .openapi({
-    description:
-      'Which astrologer persona to answer as — determines which chart-fact slice is injected',
-  });
-
 export const ChatHistoryTurnSchema = z
   .object({
     role: z.enum(['user', 'assistant']),
@@ -80,12 +69,6 @@ export const ChatHistoryTurnSchema = z
 export const ChatRequestSchema = z
   .object({
     message: z.string().min(1).max(2000).openapi({ example: 'What does my Jupiter transit mean?' }),
-    persona: ChatPersonaSchema,
-    profileId: z
-      .string()
-      .uuid()
-      .optional()
-      .openapi({ description: 'Optional birth-profile ID for context' }),
     locale: z.string().default('en'),
     history: z.array(ChatHistoryTurnSchema).max(40).default([]).openapi({
       description:

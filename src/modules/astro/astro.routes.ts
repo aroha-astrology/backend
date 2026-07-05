@@ -366,7 +366,6 @@ astroRouter.openapi(chatRoute, async (c) => {
       const events = astroService.chatStream(
         user.id,
         body.message,
-        body.persona,
         body.history,
         body.summary,
         signal,
