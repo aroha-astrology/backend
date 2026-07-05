@@ -82,6 +82,22 @@ export const HOROSCOPE_YEARLY_PROFILE: GenerationProfile = {
   maxTokens: 900,
 };
 
+/**
+ * Purchase-timing analysis ("Planning to Buy") — a single large structured
+ * JSON verdict (booking + delivery date breakdowns, birth-chart insights,
+ * remedies), generated once per request in a fire-and-forget background
+ * task, never in a blocking request path — so a larger token ceiling than
+ * any other profile is fine here.
+ */
+export const PURCHASE_PLAN_PROFILE: GenerationProfile = {
+  name: 'purchase-plan',
+  modelTier: 'structured',
+  temperature: 0.3,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 4096,
+};
+
 export function modelForTier(tier: ModelTier): string {
   const map: Record<ModelTier, string> = {
     routing: env.MODEL_ROUTING,
