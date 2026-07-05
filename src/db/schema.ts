@@ -793,8 +793,10 @@ export type NewDailyHoroscopeRow = typeof dailyHoroscopes.$inferInsert;
  * it's cached once per (date, refKey) and reused for everyone hitting that
  * reference point on that day — not per-user like daily_horoscopes.
  * `refKey` is one of the named cities in astro-tools/panchang-reference-points.ts
- * for cron-warmed rows, or 'custom' for an ad-hoc lat/lon a user's geolocation
- * resolved to (still worth caching — same city, same day, many users).
+ * for cron-warmed rows, or a rounded "lat,lon" string (see
+ * roundCoordToLocationKey) for an ad-hoc coordinate a user's geolocation
+ * resolved to (still worth caching — same rounded spot, same day, many users).
+ * Plain `text`, not an enum — arbitrary rounded-coordinate keys are expected.
  */
 export const panchangCache = pgTable(
   'panchang_cache',

@@ -24,6 +24,7 @@ import { getKundliForUser } from '../kundli/kundli.service.js';
 import {
   PANCHANG_REFERENCE_POINTS,
   snapToReferencePoint,
+  roundCoordToLocationKey,
 } from '../../lib/astro-tools/panchang-reference-points.js';
 import { findCachedPanchang, upsertCachedPanchang } from './panchang-cache.repo.js';
 import { logger } from '../../lib/logger.js';
@@ -311,13 +312,14 @@ function buildMatchRecommendation(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Panchang depends only on (date, location) — never on who's asking — so a
- * request that lands on one of the named reference points (see
- * astro-tools/panchang-reference-points.ts) is served from panchang_cache
- * instead of recomputing per request, and shared by every user who resolves
- * to that same city on that day. Off-reference-point coordinates (an exact
- * GPS fix that isn't one of the 5 cities) still compute fresh every time —
- * only the named points are cached.
+ * Panchang depends only on (date, location) — never on who's asking — so
+ * every request is served from panchang_cache instead of recomputing per
+ * request, and shared by every user who resolves to the same cache key on
+ * that day. A request landing on one of the named reference points (see
+ * astro-tools/panchang-reference-points.ts) uses that city's stable key —
+ * cron-warmed and shared across the whole metro. Any other coordinate falls
+ * back to a rounded-to-2-decimal-places key (still shared across nearby
+ * users, just not pre-warmed), so no location ever skips the cache.
  */
 export async function getPanchang(
   lat: number,
@@ -331,8 +333,8 @@ export async function getPanchang(
   const day = date.getDate();
   const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-  const refKey = snapToReferencePoint(lat, lon);
-  if (refKey && !opts.bypassCache) {
+  const refKey = snapToReferencePoint(lat, lon) ?? roundCoordToLocationKey(lat, lon);
+  if (!opts.bypassCache) {
     const cached = await findCachedPanchang(isoDate, refKey);
     if (cached) {
       return { date: isoDate, ...cached.data };
@@ -360,9 +362,7 @@ export async function getPanchang(
   // Calculate full panchang using the astro-engine
   const panchang = calculateFullPanchang(date, lat, lon, sunLong, moonLong, timezoneOffset);
 
-  if (refKey) {
-    await upsertCachedPanchang({ forDate: isoDate, refKey, lat, lon, data: panchang });
-  }
+  await upsertCachedPanchang({ forDate: isoDate, refKey, lat, lon, data: panchang });
 
   return {
     date: isoDate,
