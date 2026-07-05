@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNull } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   dailyHoroscopes,
@@ -9,6 +9,9 @@ import {
   type UserRow,
 } from '../../db/schema.js';
 import type { HoroscopePeriod } from './horoscope.schemas.js';
+
+/** Consider a 'generating' row abandoned (crashed mid-run, no heartbeat) after this long. */
+export const STALE_GENERATING_MS = 5 * 60_000;
 
 /** Keyset page of active users (deletedAt IS NULL), ordered by id for stable paging. */
 export async function listActiveUsersAfter(
@@ -40,28 +43,118 @@ export async function findHoroscope(
   return rows[0];
 }
 
-/** Idempotent per (userId, period, periodKey): re-running overwrites cleanly. */
-export async function upsertHoroscope(params: {
-  userId: string;
-  forDate: string;
-  period: HoroscopePeriod;
-  periodKey: string;
-  summary: string;
-  model: string;
-  monthlyBreakdown?: MonthlyBreakdownEntry[];
-  structured?: StructuredHoroscope;
-}): Promise<void> {
-  const { userId, forDate, period, periodKey, summary, model, monthlyBreakdown, structured } =
-    params;
-  const extraFields = {
-    ...(monthlyBreakdown !== undefined ? { monthlyBreakdown } : {}),
-    ...(structured !== undefined ? { structured } : {}),
-  };
-  await db
+/**
+ * Atomically claim generation for a (userId, period, periodKey). Returns the
+ * claimed row (with the fresh `startedAt` as the claim token) if THIS caller
+ * won, or `undefined` if there's nothing to do — another run already owns it
+ * (and isn't stale), or it's already `ready` (unless `force`).
+ *
+ * Unlike kundli (always exactly one row per user), a row for a brand-new
+ * periodKey usually doesn't exist yet — the plain INSERT branch handles that
+ * case; `setWhere` only matters on the (far rarer) conflict branch, exactly
+ * the same primitive kundli uses, just hit less often per-row here.
+ */
+export async function claimHoroscopeGeneration(
+  userId: string,
+  period: HoroscopePeriod,
+  periodKey: string,
+  forDate: string,
+  opts: { force?: boolean } = {},
+): Promise<DailyHoroscopeRow | undefined> {
+  const now = new Date();
+  const staleSeconds = STALE_GENERATING_MS / 1000;
+  const claimable = sql`(${dailyHoroscopes.status} <> 'generating' OR ${dailyHoroscopes.updatedAt} < now() - ${staleSeconds} * interval '1 second')`;
+  const setWhere = opts.force
+    ? claimable
+    : sql`${claimable} AND ${dailyHoroscopes.status} <> 'ready'`;
+
+  const [row] = await db
     .insert(dailyHoroscopes)
-    .values({ userId, forDate, period, periodKey, summary, model, ...extraFields })
+    .values({
+      userId,
+      forDate,
+      period,
+      periodKey,
+      status: 'generating',
+      startedAt: now,
+      error: null,
+    })
     .onConflictDoUpdate({
       target: [dailyHoroscopes.userId, dailyHoroscopes.period, dailyHoroscopes.periodKey],
-      set: { summary, model, updatedAt: new Date(), ...extraFields },
-    });
+      set: { status: 'generating', startedAt: now, error: null, updatedAt: now },
+      setWhere,
+    })
+    .returning();
+
+  return row;
+}
+
+/** Heartbeat for a live retry-forever run — refreshes `updatedAt` without disturbing the `startedAt` claim token, so the staleness check never mistakes an active retry loop for an abandoned one. */
+export async function touchHoroscopeGenerating(
+  userId: string,
+  period: HoroscopePeriod,
+  periodKey: string,
+  claimedAt: Date,
+): Promise<void> {
+  await db
+    .update(dailyHoroscopes)
+    .set({ updatedAt: new Date() })
+    .where(
+      and(
+        eq(dailyHoroscopes.userId, userId),
+        eq(dailyHoroscopes.period, period),
+        eq(dailyHoroscopes.periodKey, periodKey),
+        eq(dailyHoroscopes.status, 'generating'),
+        eq(dailyHoroscopes.startedAt, claimedAt),
+      ),
+    );
+}
+
+export async function markHoroscopeReady(
+  userId: string,
+  period: HoroscopePeriod,
+  periodKey: string,
+  claimedAt: Date,
+  patch: {
+    summary: string;
+    model: string;
+    monthlyBreakdown?: MonthlyBreakdownEntry[];
+    structured?: StructuredHoroscope;
+  },
+): Promise<void> {
+  // Fence on the claim token: if a newer claim superseded this one, this
+  // write matches 0 rows and is correctly lost.
+  await db
+    .update(dailyHoroscopes)
+    .set({ ...patch, status: 'ready', error: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(dailyHoroscopes.userId, userId),
+        eq(dailyHoroscopes.period, period),
+        eq(dailyHoroscopes.periodKey, periodKey),
+        eq(dailyHoroscopes.status, 'generating'),
+        eq(dailyHoroscopes.startedAt, claimedAt),
+      ),
+    );
+}
+
+export async function markHoroscopeFailed(
+  userId: string,
+  period: HoroscopePeriod,
+  periodKey: string,
+  claimedAt: Date,
+  error: string,
+): Promise<void> {
+  await db
+    .update(dailyHoroscopes)
+    .set({ status: 'failed', error: error.slice(0, 1000), updatedAt: new Date() })
+    .where(
+      and(
+        eq(dailyHoroscopes.userId, userId),
+        eq(dailyHoroscopes.period, period),
+        eq(dailyHoroscopes.periodKey, periodKey),
+        eq(dailyHoroscopes.status, 'generating'),
+        eq(dailyHoroscopes.startedAt, claimedAt),
+      ),
+    );
 }
