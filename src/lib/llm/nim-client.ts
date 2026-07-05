@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { env } from '../../config/env.js';
-import { modelForTier, type GenerationProfile } from '../../config/llm.js';
+import { fallbackModelForTier, modelForTier, type GenerationProfile } from '../../config/llm.js';
 import { logger } from '../logger.js';
 
 // =============================================================================
@@ -231,7 +231,93 @@ async function doRequest(
 // Buffered Generate (non-streaming)
 // =============================================================================
 
+/**
+ * Last-resort cross-provider fallback for when NIM itself (not just one
+ * model) is unreachable — Gemini's OpenAI-compatible endpoint accepts the
+ * same request/response shape as NIM, so this reuses NIMResponse/ChatMessage
+ * as-is. Single attempt, no key rotation (one key, this is a last resort,
+ * not a primary path) — a failure here just means both providers are down.
+ */
+async function generateViaGemini(opts: NIMRequestOptions): Promise<string> {
+  if (!env.GEMINI_API_KEY) {
+    throw new NIMError('Gemini fallback not configured (GEMINI_API_KEY unset)');
+  }
+  const abort = makeAbort(opts.signal, opts.timeoutMs ?? GENERATE_TIMEOUT_MS);
+  try {
+    const body: Record<string, unknown> = {
+      model: env.GEMINI_MODEL,
+      messages: opts.messages,
+      temperature: opts.profile.temperature,
+      max_tokens: opts.profile.maxTokens,
+      stream: false,
+    };
+    if (opts.profile.jsonMode) {
+      body.response_format = { type: 'json_object' };
+    }
+    const response = await fetch(`${env.GEMINI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.GEMINI_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: abort.signal,
+    });
+    const bodyText = await response.text();
+    if (!response.ok) {
+      throw new NIMError(
+        `Gemini API error ${response.status}: ${bodyText.slice(0, 500)}`,
+        response.status,
+        bodyText,
+      );
+    }
+    const data = JSON.parse(bodyText) as NIMResponse;
+    return data.choices?.[0]?.message?.content ?? '';
+  } finally {
+    abort.clear();
+  }
+}
+
+/**
+ * Buffered (non-streaming) generation, with graduated fallback if the
+ * primary NIM model fails outright after exhausting its own multi-key
+ * retry loop: first a same-class NIM model (config/llm.ts#fallbackModelForTier
+ * — e.g. 2026-07-05, llama-3.3-70b-instruct hung while llama-3.1-70b-instruct
+ * kept working on the same account), then Gemini as a last resort if NIM
+ * itself (not just one model) is unreachable. Each step only runs if the
+ * one before it actually failed — the common case never leaves the
+ * primary model.
+ */
 export async function generate(opts: NIMRequestOptions): Promise<string> {
+  try {
+    return await generateOnce(opts);
+  } catch (nimErr) {
+    const primaryModel = opts.model ?? modelForTier(opts.profile.modelTier);
+    const fallbackModel = fallbackModelForTier(opts.profile.modelTier);
+    if (fallbackModel && fallbackModel !== primaryModel) {
+      try {
+        logger.warn(
+          { err: nimErr, primaryModel, fallbackModel, tier: opts.profile.modelTier },
+          'NIM primary model failed after all retries, trying fallback model once',
+        );
+        return await generateOnce({ ...opts, model: fallbackModel });
+      } catch (fallbackErr) {
+        logger.error(
+          { err: fallbackErr, primaryModel, fallbackModel },
+          'NIM fallback model also failed, trying Gemini as last resort',
+        );
+        return await generateViaGemini(opts);
+      }
+    }
+    logger.error(
+      { err: nimErr, primaryModel },
+      'NIM failed with no same-class fallback configured, trying Gemini',
+    );
+    return await generateViaGemini(opts);
+  }
+}
+
+async function generateOnce(opts: NIMRequestOptions): Promise<string> {
   if (keyPool.length === 0) {
     throw new AllKeysExhaustedError('No API keys configured');
   }

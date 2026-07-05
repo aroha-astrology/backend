@@ -106,3 +106,19 @@ export function modelForTier(tier: ModelTier): string {
   };
   return map[tier];
 }
+
+/**
+ * A same-quality-class model to retry with, once, if a tier's primary model
+ * is unresponsive/degraded on the provider's side — e.g. 2026-07-05: NIM's
+ * llama-3.3-70b-instruct (structured) hung on every request for an extended
+ * period while llama-3.1-70b-instruct (conversational) kept responding
+ * normally on the same account. Deliberately one same-class alternative,
+ * not a full per-tier fallback chain — enough to survive one model going
+ * down without doubling every retry budget.
+ */
+export function fallbackModelForTier(tier: ModelTier): string | undefined {
+  const map: Partial<Record<ModelTier, string>> = {
+    structured: env.MODEL_CONVERSATIONAL,
+  };
+  return map[tier];
+}
