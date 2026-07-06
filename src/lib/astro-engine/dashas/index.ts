@@ -1,5 +1,4 @@
 // @ts-nocheck
-export { calculateVimshottariDasha } from './vimshottari';
+export { calculateVimshottariDasha, buildSubPeriods } from './vimshottari';
 export { calculateYoginiDasha } from './yogini';
 export { calculateCharaDasha } from './chara';
-

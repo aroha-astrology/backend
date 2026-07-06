@@ -1,9 +1,5 @@
 // @ts-nocheck
-import type {
-  DashaPeriod,
-  VimshottariDasha,
-  Planet,
-} from '@aroha-astrology/shared';
+import type { DashaPeriod, VimshottariDasha, Planet } from '@aroha-astrology/shared';
 
 import {
   VIMSHOTTARI_ORDER,
@@ -85,13 +81,14 @@ const LEVEL_SEQUENCE: DashaLevel[] = [
  * @param currentDate  "Now" – used only to set `isActive` flags.
  * @param maxDepth     Deepest level to calculate (default 4 = prana).
  */
-function buildSubPeriods(
+export function buildSubPeriods(
   startPlanet: Planet,
   startDate: Date,
   parentYears: number,
   depth: number,
   currentDate: Date,
   maxDepth: number = 4,
+  forceFullDepth: boolean = false,
 ): DashaPeriod[] {
   if (depth > maxDepth) return [];
 
@@ -103,8 +100,7 @@ function buildSubPeriods(
 
   for (let i = 0; i < 9; i++) {
     const planet = VIMSHOTTARI_ORDER[(startIdx + i) % 9];
-    const durationYears =
-      parentYears * (VIMSHOTTARI_YEARS[planet] / VIMSHOTTARI_TOTAL_YEARS);
+    const durationYears = parentYears * (VIMSHOTTARI_YEARS[planet] / VIMSHOTTARI_TOTAL_YEARS);
     const endDate = addYears(cursor, durationYears);
     const isActive = isDateInRange(currentDate, cursor, endDate);
 
@@ -114,9 +110,18 @@ function buildSubPeriods(
       endDate,
       isActive,
       level,
-      subPeriods: isActive
-        ? buildSubPeriods(planet, cursor, durationYears, depth + 1, currentDate, maxDepth)
-        : [],
+      subPeriods:
+        isActive || forceFullDepth
+          ? buildSubPeriods(
+              planet,
+              cursor,
+              durationYears,
+              depth + 1,
+              currentDate,
+              maxDepth,
+              forceFullDepth,
+            )
+          : [],
     };
 
     periods.push(period);
@@ -201,9 +206,7 @@ export function calculateVimshottariDasha(
       isActive,
       level: 'mahadasha',
       // Compute deeper levels only for the active branch (performance)
-      subPeriods: isActive
-        ? buildSubPeriods(planet, cursor, durationYears, 1, now, 4)
-        : [],
+      subPeriods: isActive ? buildSubPeriods(planet, cursor, durationYears, 1, now, 4) : [],
     };
 
     mahadashas.push(period);
@@ -215,11 +218,9 @@ export function calculateVimshottariDasha(
   // 4. Find currently active periods at each level
   const currentMahadasha = mahadashas.find((p) => p.isActive) ?? mahadashas[0];
   const currentAntardasha =
-    currentMahadasha.subPeriods.find((p) => p.isActive) ??
-    currentMahadasha.subPeriods[0];
+    currentMahadasha.subPeriods.find((p) => p.isActive) ?? currentMahadasha.subPeriods[0];
   const currentPratyantardasha =
-    currentAntardasha?.subPeriods.find((p) => p.isActive) ??
-    currentAntardasha?.subPeriods[0];
+    currentAntardasha?.subPeriods.find((p) => p.isActive) ?? currentAntardasha?.subPeriods[0];
 
   return {
     mahadashas,
@@ -228,4 +229,3 @@ export function calculateVimshottariDasha(
     currentPratyantardasha,
   };
 }
-
