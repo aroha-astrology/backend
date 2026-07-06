@@ -22,6 +22,7 @@ import { dailyKakshyaScore } from './kakshya.js';
 import { dailyLunarAssessment } from './tara-bala.js';
 import { detectDoubleTransit, dashaLordTransitQuality, SIGNS } from './transit.js';
 import { computePanchaka } from './panchaka.js';
+import type { Category, CategoryReading } from '@aroha-astrology/shared';
 
 // =============================================================================
 // Types
@@ -90,6 +91,8 @@ export interface MoonSignPrediction {
   luckyColor: string;
   luckyNumber: number;
   keyTransits: { planet: string; sign: string; house: number; influence: string }[];
+  /** Health/Career/Marriage + a derived Overall — see design doc 2026-07-03. */
+  categories: Record<Category, CategoryReading>;
 }
 
 export type PeriodicPeriod = 'weekly' | 'monthly' | 'yearly';
@@ -429,7 +432,10 @@ const HOUSE_THEMES: Record<number, string> = {
   12: 'expenses, isolation & spiritual growth',
 };
 
-const QUALITY_DESC: Record<string, { desc: string; advice: string; score: number }> = {
+const QUALITY_DESC: Record<
+  'good' | 'challenging' | 'avoid',
+  { desc: string; advice: string; score: number }
+> = {
   good: {
     desc: 'The cosmic energies are aligned in your favour today. Moon transiting a supportive house brings emotional clarity and positive outcomes.',
     advice:
@@ -559,6 +565,45 @@ const DOMAIN_ADVICE: Record<
   },
 };
 
+function buildDomainReading(
+  domain: 'health' | 'career' | 'marriage',
+  overallScore: number,
+  moonSignIndex: number,
+  transitSigns: Record<string, number>,
+  variantSeed: number,
+): CategoryReading {
+  const nudge = domainNudge(domain, moonSignIndex, transitSigns);
+  const score = Math.max(1, Math.min(5, Math.round(overallScore + nudge)));
+  const quality = domainQuality(score);
+  return {
+    hook: buildDomainHook(quality, DOMAIN_THEME[domain], variantSeed),
+    description: '', // daily: no separate paragraph, matches the card view's compactness
+    advice: DOMAIN_ADVICE[domain][quality],
+    quality,
+    score,
+  };
+}
+
+function overallReadingFrom(categories: {
+  health: CategoryReading;
+  career: CategoryReading;
+  marriage: CategoryReading;
+}): CategoryReading {
+  const scores = [categories.health.score, categories.career.score, categories.marriage.score];
+  const score = Math.max(
+    1,
+    Math.min(5, Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)),
+  );
+  const quality = domainQuality(score);
+  return {
+    hook: buildDomainHook(quality, 'the overall picture', score),
+    description: '',
+    advice: "Check the individual areas below for what's actually driving this.",
+    quality,
+    score,
+  };
+}
+
 /**
  * Short hook-line templates per quality bucket (spec 4.1: tension→resolution
  * or specific-detail→payoff, never generic filler). Multiple variants per
@@ -639,6 +684,30 @@ export async function moonSignPrediction(
   const luckyNumber = ((moonSignIndex + dayOfYear) % 9) + 1;
   const hook = buildHook(quality, houseFromSign, moonSignIndex + dayOfYear);
 
+  const domainSeed = moonSignIndex + dayOfYear;
+  const health = buildDomainReading(
+    'health',
+    qualityInfo.score,
+    moonSignIndex,
+    transitSigns,
+    domainSeed,
+  );
+  const career = buildDomainReading(
+    'career',
+    qualityInfo.score,
+    moonSignIndex,
+    transitSigns,
+    domainSeed + 1,
+  );
+  const marriage = buildDomainReading(
+    'marriage',
+    qualityInfo.score,
+    moonSignIndex,
+    transitSigns,
+    domainSeed + 2,
+  );
+  const overall = overallReadingFrom({ health, career, marriage });
+
   return {
     sign: signName,
     period: 'daily',
@@ -656,6 +725,7 @@ export async function moonSignPrediction(
     luckyColor: LUCKY_COLORS[signName] ?? 'White',
     luckyNumber,
     keyTransits,
+    categories: { overall, health, career, marriage },
   };
 }
 

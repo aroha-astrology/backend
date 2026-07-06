@@ -5,6 +5,7 @@ import {
   buildDomainHook,
   DOMAIN_HOUSE_OFFSET,
   DOMAIN_THEME,
+  moonSignPrediction,
 } from '../src/lib/astro-tools/daily-synthesis.js';
 
 describe('daily-synthesis: domain category helpers', () => {
@@ -59,5 +60,29 @@ describe('daily-synthesis: domain category helpers', () => {
     expect(hook).toContain(DOMAIN_THEME.health);
     // Same inputs always produce the same hook (traceable/cacheable).
     expect(buildDomainHook('good', DOMAIN_THEME.health, 7)).toBe(hook);
+  });
+});
+
+describe('daily-synthesis: moonSignPrediction categories', () => {
+  it('includes all 4 categories, each with a valid score/quality/hook/advice', async () => {
+    const result = await moonSignPrediction(0, '2026-07-03T12:00:00Z');
+    for (const key of ['overall', 'health', 'career', 'marriage'] as const) {
+      const c = result.categories[key];
+      expect(c.score).toBeGreaterThanOrEqual(1);
+      expect(c.score).toBeLessThanOrEqual(5);
+      expect(['good', 'moderate', 'challenging', 'avoid']).toContain(c.quality);
+      expect(c.hook.length).toBeGreaterThan(0);
+      expect(c.advice.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('derives overall.score as the average of health/career/marriage', async () => {
+    const result = await moonSignPrediction(0, '2026-07-03T12:00:00Z');
+    const { health, career, marriage, overall } = result.categories;
+    const expected = Math.max(
+      1,
+      Math.min(5, Math.round((health.score + career.score + marriage.score) / 3)),
+    );
+    expect(overall.score).toBe(expected);
   });
 });
