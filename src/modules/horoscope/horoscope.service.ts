@@ -352,6 +352,47 @@ export async function runAllHoroscopeBatches(
  * cache period, so it's recomputed fresh from the kundli each time rather
  * than risking a stale copy in the cached row).
  */
+/**
+ * Rows generated before the 2026-07-03/07-06 category-ratings work have
+ * `structured` populated in the OLD flat shape — no `categories` field at
+ * all (and rows from the very first category rollout have `categories`
+ * without `finance`/`education`, added 07-06). Every client reads
+ * `structured.categories.overall...` unconditionally now, so a stale row
+ * would otherwise crash the UI until it's naturally regenerated. Backfill by
+ * mirroring the legacy/available fields into every category slot — not
+ * accurate per-category, but consistent with what the old single-hook UI
+ * already showed, and self-heals the next time this (user, period,
+ * periodKey) regenerates.
+ */
+function normalizeStructured(
+  structured: StructuredHoroscope | null,
+): StructuredHoroscope | undefined {
+  if (!structured) return undefined;
+  const fallback = {
+    hook: structured.hook,
+    description: structured.description,
+    advice: structured.advice,
+    quality: structured.quality,
+    score: structured.score,
+  };
+  const categories = structured.categories ?? {
+    overall: fallback,
+    health: fallback,
+    career: fallback,
+    marriage: fallback,
+    finance: fallback,
+    education: fallback,
+  };
+  return {
+    ...structured,
+    categories: {
+      ...categories,
+      finance: categories.finance ?? fallback,
+      education: categories.education ?? fallback,
+    },
+  };
+}
+
 export function toHoroscopeDto(
   row: DailyHoroscopeRow,
   dashaData?: Record<string, unknown> | null,
@@ -363,7 +404,7 @@ export function toHoroscopeDto(
     // Only ever called on a `status === 'ready'` row, which always has a summary.
     summary: row.summary ?? '',
     monthlyBreakdown: row.monthlyBreakdown ?? undefined,
-    structured: row.structured ?? undefined,
+    structured: normalizeStructured(row.structured),
     dasha: buildDashaReading(dashaData ?? null) ?? undefined,
     model: row.model,
     generatedAt: row.updatedAt.toISOString(),
