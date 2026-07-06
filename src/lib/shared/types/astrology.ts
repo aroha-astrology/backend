@@ -504,10 +504,10 @@ export interface NumerologyResult {
 }
 
 // ============================================================
-// Horoscope category ratings (Overall/Health/Career/Marriage)
+// Horoscope category ratings (Overall/Health/Career/Marriage/Finance/Education)
 // ============================================================
 
-export type Category = 'overall' | 'health' | 'career' | 'marriage';
+export type Category = 'overall' | 'health' | 'career' | 'marriage' | 'finance' | 'education';
 
 export interface CategoryReading {
   hook: string;

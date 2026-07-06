@@ -15,12 +15,16 @@ describe('daily-synthesis: domain category helpers', () => {
     expect(DOMAIN_HOUSE_OFFSET.health).toBe(5); // 6th house
     expect(DOMAIN_HOUSE_OFFSET.marriage).toBe(6); // 7th house
     expect(DOMAIN_HOUSE_OFFSET.career).toBe(9); // 10th house
+    expect(DOMAIN_HOUSE_OFFSET.finance).toBe(1); // 2nd house
+    expect(DOMAIN_HOUSE_OFFSET.education).toBe(4); // 5th house
   });
 
   it('has a theme phrase for every domain', () => {
     expect(DOMAIN_THEME.health).toBeTruthy();
     expect(DOMAIN_THEME.career).toBeTruthy();
     expect(DOMAIN_THEME.marriage).toBeTruthy();
+    expect(DOMAIN_THEME.finance).toBeTruthy();
+    expect(DOMAIN_THEME.education).toBeTruthy();
   });
 
   it('nudges +1 when a benefic tenants the domain house', () => {
@@ -66,9 +70,16 @@ describe('daily-synthesis: domain category helpers', () => {
 });
 
 describe('daily-synthesis: moonSignPrediction categories', () => {
-  it('includes all 4 categories, each with a valid score/quality/hook/advice', async () => {
+  it('includes all 6 categories, each with a valid score/quality/hook/advice', async () => {
     const result = await moonSignPrediction(0, '2026-07-03T12:00:00Z');
-    for (const key of ['overall', 'health', 'career', 'marriage'] as const) {
+    for (const key of [
+      'overall',
+      'health',
+      'career',
+      'marriage',
+      'finance',
+      'education',
+    ] as const) {
       const c = result.categories[key];
       expect(c.score).toBeGreaterThanOrEqual(1);
       expect(c.score).toBeLessThanOrEqual(5);
@@ -78,21 +89,29 @@ describe('daily-synthesis: moonSignPrediction categories', () => {
     }
   });
 
-  it('derives overall.score as the average of health/career/marriage', async () => {
+  it('derives overall.score as the average of the 5 sub-categories', async () => {
     const result = await moonSignPrediction(0, '2026-07-03T12:00:00Z');
-    const { health, career, marriage, overall } = result.categories;
+    const { health, career, marriage, finance, education, overall } = result.categories;
+    const scores = [health.score, career.score, marriage.score, finance.score, education.score];
     const expected = Math.max(
       1,
-      Math.min(5, Math.round((health.score + career.score + marriage.score) / 3)),
+      Math.min(5, Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)),
     );
     expect(overall.score).toBe(expected);
   });
 });
 
 describe('daily-synthesis: periodic categories', () => {
-  it('weekly includes all 4 categories with non-empty descriptions', async () => {
+  it('weekly includes all 6 categories with non-empty descriptions', async () => {
     const result = await moonSignWeeklyPrediction(0);
-    for (const key of ['overall', 'health', 'career', 'marriage'] as const) {
+    for (const key of [
+      'overall',
+      'health',
+      'career',
+      'marriage',
+      'finance',
+      'education',
+    ] as const) {
       const c = result.categories[key];
       expect(c.score).toBeGreaterThanOrEqual(1);
       expect(c.score).toBeLessThanOrEqual(5);

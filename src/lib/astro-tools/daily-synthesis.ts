@@ -459,20 +459,26 @@ const QUALITY_DESC: Record<
 };
 
 // =============================================================================
-// Category ratings (Overall/Health/Career/Marriage) — spec:
+// Category ratings (Overall/Health/Career/Marriage/Finance/Education) — spec:
 // docs/superpowers/specs/2026-07-03-horoscope-category-ratings-design.md
 // =============================================================================
 
-export const DOMAIN_HOUSE_OFFSET: Record<'health' | 'career' | 'marriage', number> = {
+export type SubDomain = 'health' | 'career' | 'marriage' | 'finance' | 'education';
+
+export const DOMAIN_HOUSE_OFFSET: Record<SubDomain, number> = {
   health: 5, // 6th house from the sign
   marriage: 6, // 7th house
   career: 9, // 10th house
+  finance: 1, // 2nd house (accumulated wealth)
+  education: 4, // 5th house (intelligence/learning)
 };
 
-export const DOMAIN_THEME: Record<'health' | 'career' | 'marriage', string> = {
+export const DOMAIN_THEME: Record<SubDomain, string> = {
   health: 'your health and daily routine',
   career: 'your career and public standing',
   marriage: 'your relationships and marriage prospects',
+  finance: 'your money and savings',
+  education: 'your studies and learning',
 };
 
 const NATURAL_BENEFICS = new Set(['Jupiter', 'Venus']);
@@ -489,7 +495,7 @@ const TRACKED_PLANETS = ['Sun', 'Jupiter', 'Saturn', 'Rahu', 'Mars', 'Venus'];
  * nudges (e.g. a Jupiter-Saturn conjunction there nets to 0).
  */
 export function domainNudge(
-  domain: 'health' | 'career' | 'marriage',
+  domain: SubDomain,
   moonSignIndex: number,
   transitSigns: Record<string, number>,
 ): number {
@@ -543,7 +549,7 @@ export function buildDomainHook(
 }
 
 const DOMAIN_ADVICE: Record<
-  'health' | 'career' | 'marriage',
+  SubDomain,
   Record<'good' | 'moderate' | 'challenging' | 'avoid', string>
 > = {
   health: {
@@ -565,10 +571,22 @@ const DOMAIN_ADVICE: Record<
       'Give relationships a little extra patience and avoid picking fights over small things.',
     avoid: 'Avoid major relationship decisions until this phase passes.',
   },
+  finance: {
+    good: 'A good window to save, invest, or make a planned purchase.',
+    moderate: 'Steady as it goes — track spending but no need for drastic changes.',
+    challenging: 'Avoid new debt or risky spending until this settles.',
+    avoid: 'Postpone big financial commitments; review your budget instead.',
+  },
+  education: {
+    good: 'Good focus for studying, exams, or picking up something new.',
+    moderate: 'Steady learning pace — stick to your routine rather than cramming.',
+    challenging: 'Concentration may waver — break study sessions into smaller chunks.',
+    avoid: 'Revise familiar material rather than starting something new right now.',
+  },
 };
 
 function buildDomainReading(
-  domain: 'health' | 'career' | 'marriage',
+  domain: SubDomain,
   overallScore: number,
   moonSignIndex: number,
   transitSigns: Record<string, number>,
@@ -587,13 +605,13 @@ function buildDomainReading(
 }
 
 function overallReadingFrom(
-  categories: { health: CategoryReading; career: CategoryReading; marriage: CategoryReading },
+  categories: Record<SubDomain, CategoryReading>,
   /** Periodic callers pass the already-computed period-level description/advice (mirroring
    * the legacy top-level fields); daily leaves these unset since daily has no separate
    * description paragraph for any category (see design doc richness table). */
   overrides?: { description?: string; advice?: string },
 ): CategoryReading {
-  const scores = [categories.health.score, categories.career.score, categories.marriage.score];
+  const scores = Object.values(categories).map((c) => c.score);
   const score = Math.max(
     1,
     Math.min(5, Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)),
@@ -610,7 +628,7 @@ function overallReadingFrom(
 }
 
 function buildPeriodicDomainReading(
-  domain: 'health' | 'career' | 'marriage',
+  domain: SubDomain,
   daily: MoonSignPrediction[],
   period: PeriodicPeriod,
   unit: string,
@@ -739,7 +757,21 @@ export async function moonSignPrediction(
     transitSigns,
     domainSeed + 2,
   );
-  const overall = overallReadingFrom({ health, career, marriage });
+  const finance = buildDomainReading(
+    'finance',
+    qualityInfo.score,
+    moonSignIndex,
+    transitSigns,
+    domainSeed + 3,
+  );
+  const education = buildDomainReading(
+    'education',
+    qualityInfo.score,
+    moonSignIndex,
+    transitSigns,
+    domainSeed + 4,
+  );
+  const overall = overallReadingFrom({ health, career, marriage, finance, education });
 
   return {
     sign: signName,
@@ -758,7 +790,7 @@ export async function moonSignPrediction(
     luckyColor: LUCKY_COLORS[signName] ?? 'White',
     luckyNumber,
     keyTransits,
-    categories: { overall, health, career, marriage },
+    categories: { overall, health, career, marriage, finance, education },
   };
 }
 
@@ -868,7 +900,12 @@ async function buildPeriodic(
   const health = buildPeriodicDomainReading('health', daily, period, unit);
   const career = buildPeriodicDomainReading('career', daily, period, unit);
   const marriage = buildPeriodicDomainReading('marriage', daily, period, unit);
-  const overall = overallReadingFrom({ health, career, marriage }, { description, advice });
+  const finance = buildPeriodicDomainReading('finance', daily, period, unit);
+  const education = buildPeriodicDomainReading('education', daily, period, unit);
+  const overall = overallReadingFrom(
+    { health, career, marriage, finance, education },
+    { description, advice },
+  );
 
   return {
     sign: signName,
@@ -887,7 +924,7 @@ async function buildPeriodic(
     luckyColor: LUCKY_COLORS[signName] ?? 'White',
     luckyNumber: ((moonSignIndex + dayOfYearFor(new Date(periodStart))) % 9) + 1,
     keyTransits,
-    categories: { overall, health, career, marriage },
+    categories: { overall, health, career, marriage, finance, education },
   };
 }
 

@@ -3,11 +3,21 @@ import { z } from '@hono/zod-openapi';
 export const HoroscopePeriodSchema = z.enum(['daily', 'tomorrow', 'weekly', 'monthly', 'yearly']);
 export type HoroscopePeriod = z.infer<typeof HoroscopePeriodSchema>;
 
+const SubCategoryHooksSchema = z.object({
+  health: z.string(),
+  career: z.string(),
+  marriage: z.string(),
+  finance: z.string(),
+  education: z.string(),
+});
+
 export const MonthlyBreakdownEntrySchema = z
   .object({
     month: z.number().int().min(1).max(12),
     monthLabel: z.string(),
     summary: z.string(),
+    /** One relatable hook line per sub-category for that month. Absent on rows generated before 2026-07-06. */
+    categoryHooks: SubCategoryHooksSchema.optional(),
   })
   .openapi('MonthlyBreakdownEntry');
 
@@ -35,6 +45,8 @@ export const StructuredHoroscopeSchema = z
       health: CategoryReadingSchema,
       career: CategoryReadingSchema,
       marriage: CategoryReadingSchema,
+      finance: CategoryReadingSchema,
+      education: CategoryReadingSchema,
     }),
   })
   .openapi('StructuredHoroscope');

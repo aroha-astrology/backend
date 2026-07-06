@@ -726,6 +726,13 @@ export type MonthlyBreakdownEntry = {
   month: number; // 1-12
   monthLabel: string; // e.g. "January"
   summary: string;
+  /**
+   * One relatable hook line per sub-category (Health/Career/Marriage/Finance/
+   * Education) for that month — added 2026-07-06 so the yearly month-by-month
+   * view isn't just a single overall paragraph. Optional: older rows generated
+   * before this field existed won't have it.
+   */
+  categoryHooks?: Record<Exclude<Category, 'overall'>, string>;
 };
 
 /**

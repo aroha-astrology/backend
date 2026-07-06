@@ -72,16 +72,18 @@ const PLAIN_LANGUAGE_RULE =
   'Write for someone with zero astrology background. Never use untranslated Sanskrit/technical terms (Mahadasha, Antardasha, Yoga names, Ascendant, Nakshatra, etc.) — translate what they MEAN in plain English instead (e.g. a supportive Jupiter dasha becomes "a long stretch favoring growth and good fortune," not "Jupiter Mahadasha"). Talk about real-life areas (career, relationships, money, health, mood) and concrete outcomes, not planetary mechanics.';
 
 const STRUCTURED_JSON_RULE = `Return STRICT JSON only, no markdown fences, in this exact shape:
-{"health": <block>, "career": <block>, "marriage": <block>, "overall": <block>}
+{"health": <block>, "career": <block>, "marriage": <block>, "finance": <block>, "education": <block>, "overall": <block>}
 where each <block> is: {"hook": string, "description": string, "advice": string, "quality": "good"|"moderate"|"challenging"|"avoid", "score": 1-5}
 
-Write FOUR independent blocks — health, career, marriage, and overall — each covering that
-specific life area (overall = your holistic read considering all three together, not just
-a repeat of one of them).
+Write SIX independent blocks — health, career, marriage, finance, education, and overall —
+each covering that specific life area (overall = your holistic read considering the other
+five together, not just a repeat of one of them). "finance" covers money/savings/spending;
+"education" covers studies/learning/exams (if the person is clearly not a student, cover
+skill-building/learning more broadly instead).
 
-"hook": one punchy headline sentence naming that block's most relevant theme (this is the
-lead the user sees first — make it count, never generic filler like "Today is a good day
-for you").
+"hook": one punchy headline sentence naming that block's most relevant theme — something the
+user can immediately relate to their own life (this is the lead the user sees first — make
+it count, never generic filler like "Today is a good day for you").
 "description": plain-language supporting detail for that block — what's going on and why it
 matters.
 "advice": 1-2 concrete, actionable sentences for that specific area.
@@ -89,7 +91,7 @@ matters.
 window, "moderate"/3 for a steady/mixed one, "challenging"/2 for friction to navigate
 carefully, "avoid"/1 only for a real caution — do not inflate every block to "good".`;
 
-const LUCKY_ELEMENTS_RULE = `Also include at the top level (sibling to health/career/marriage/overall): "luckyColor": a single color name, and "luckyNumber": an integer 1-9.`;
+const LUCKY_ELEMENTS_RULE = `Also include at the top level (sibling to health/career/marriage/finance/education/overall): "luckyColor": a single color name, and "luckyNumber": an integer 1-9.`;
 
 const HOROSCOPE_SYSTEM: Record<Exclude<HoroscopePeriod, 'yearly'>, string> = {
   daily: `You are writing a short personalized daily Vedic astrology horoscope for a mobile app.
@@ -133,9 +135,18 @@ ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
 ${LUCKY_ELEMENTS_RULE}
-Also include at the top level (sibling to health/career/marriage/overall): "months": an array of exactly 12 entries, one per calendar month in order — [{"month": 1, "summary": string}, ...].
+Also include at the top level (sibling to health/career/marriage/finance/education/overall):
+"months": an array of exactly 12 entries, one per calendar month in order —
+[{"month": 1, "summary": string, "categoryHooks": {"health": string, "career": string, "marriage": string, "finance": string, "education": string}}, ...].
 Each month's "summary": 1-2 sentences (under 30 words) on that month's tone within the year's arc — do not repeat any block's hook/description verbatim, vary the angle per month.
-Keep each of health/career/marriage/overall's "hook" under 20 words and "description" under 100 words, covering that area's arc across the year (yearly uses the same richness budget as monthly). ${STYLE_RULE}`;
+Each month's "categoryHooks" are five SHORT (under 15 words each) relatable one-liners — one per
+sub-category — naming what's notable about that specific area in that specific month (e.g.
+education's February hook should be about February's studies/learning theme, not a repeat of
+January's or of the month's overall summary). These are the lines a user actually reads and
+relates to, so make each one concrete and specific to that month, never a generic filler line.
+Keep each of health/career/marriage/finance/education/overall's top-level "hook" under 20 words
+and "description" under 100 words, covering that area's arc across the year (yearly uses the
+same richness budget as monthly). ${STYLE_RULE}`;
 
 function describePeriod(period: HoroscopePeriod, forDate: string): string {
   const [y, m] = forDate.split('-').map(Number);
@@ -249,6 +260,8 @@ export function parseStructuredResponse(raw: string): StructuredHoroscope | null
       health?: unknown;
       career?: unknown;
       marriage?: unknown;
+      finance?: unknown;
+      education?: unknown;
       overall?: unknown;
       luckyColor?: unknown;
       luckyNumber?: unknown;
@@ -257,16 +270,19 @@ export function parseStructuredResponse(raw: string): StructuredHoroscope | null
     const health = parseCategoryBlock(data.health);
     const career = parseCategoryBlock(data.career);
     const marriage = parseCategoryBlock(data.marriage);
+    const finance = parseCategoryBlock(data.finance);
+    const education = parseCategoryBlock(data.education);
     const overallRaw = parseCategoryBlock(data.overall);
-    if (!health || !career || !marriage || !overallRaw) return null;
+    if (!health || !career || !marriage || !finance || !education || !overallRaw) return null;
     if (typeof data.luckyColor !== 'string' || !data.luckyColor.trim()) return null;
     if (typeof data.luckyNumber !== 'number') return null;
 
     // Overall's score/quality is always server-derived — never trust the model's own
     // number for it, only its narrative text (see design doc).
+    const subScores = [health.score, career.score, marriage.score, finance.score, education.score];
     const overallScore = Math.max(
       1,
-      Math.min(5, Math.round((health.score + career.score + marriage.score) / 3)),
+      Math.min(5, Math.round(subScores.reduce((a, b) => a + b, 0) / subScores.length)),
     );
     const overall: CategoryReading = {
       ...overallRaw,
@@ -283,7 +299,7 @@ export function parseStructuredResponse(raw: string): StructuredHoroscope | null
       score: overall.score,
       luckyColor: data.luckyColor.trim(),
       luckyNumber: Math.min(9, Math.max(1, Math.round(data.luckyNumber))),
-      categories: { overall, health, career, marriage },
+      categories: { overall, health, career, marriage, finance, education },
     };
   } catch {
     return null;
@@ -298,11 +314,11 @@ function scoreToQuality(score: number): 'good' | 'moderate' | 'challenging' | 'a
 }
 
 /**
- * Parses+validates one of the 4 category blocks. Applies the same
+ * Parses+validates one of the 6 category blocks. Applies the same
  * `hasRawJargon` post-hoc filter the old single-block parser used to apply
  * to its one hook/description/advice — now applied per-block so a jargon
- * leak in any of health/career/marriage/overall still gets rejected (see
- * `hasRawJargon`'s docstring above for why this check exists at all).
+ * leak in any of health/career/marriage/finance/education/overall still gets
+ * rejected (see `hasRawJargon`'s docstring above for why this check exists).
  */
 function parseCategoryBlock(block: unknown): CategoryReading | null {
   if (typeof block !== 'object' || block === null) return null;
@@ -336,7 +352,29 @@ function parseCategoryBlock(block: unknown): CategoryReading | null {
   };
 }
 
-function parseYearlyResponse(
+const MONTH_HOOK_CATEGORIES = ['health', 'career', 'marriage', 'finance', 'education'] as const;
+
+/**
+ * A month's `categoryHooks` is best-effort: if the model omits it or gets the
+ * shape wrong, the month still renders fine with just its `summary` (see
+ * MonthlyBreakdownEntry's optional field) — this returns undefined rather
+ * than failing the whole yearly parse over one incomplete month.
+ */
+function parseMonthCategoryHooks(
+  raw: unknown,
+): Record<(typeof MONTH_HOOK_CATEGORIES)[number], string> | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const obj = raw as Record<string, unknown>;
+  const result: Partial<Record<(typeof MONTH_HOOK_CATEGORIES)[number], string>> = {};
+  for (const key of MONTH_HOOK_CATEGORIES) {
+    const value = obj[key];
+    if (typeof value !== 'string' || !value.trim() || hasRawJargon(value)) return undefined;
+    result[key] = value.trim();
+  }
+  return result as Record<(typeof MONTH_HOOK_CATEGORIES)[number], string>;
+}
+
+export function parseYearlyResponse(
   raw: string,
 ): { structured: StructuredHoroscope; months: MonthlyBreakdownEntry[] } | null {
   const structured = parseStructuredResponse(raw);
@@ -357,7 +395,15 @@ function parseYearlyResponse(
       const month = (entry as { month: number }).month;
       const summary = (entry as { summary: string }).summary.trim();
       if (month < 1 || month > 12 || !summary || hasRawJargon(summary)) continue;
-      months.push({ month, monthLabel: MONTH_NAMES[month - 1]!, summary });
+      const categoryHooks = parseMonthCategoryHooks(
+        (entry as { categoryHooks?: unknown }).categoryHooks,
+      );
+      months.push({
+        month,
+        monthLabel: MONTH_NAMES[month - 1]!,
+        summary,
+        ...(categoryHooks ? { categoryHooks } : {}),
+      });
     }
     // Require all 12 months present — a partial breakdown is more confusing
     // than a template fallback for the missing ones.

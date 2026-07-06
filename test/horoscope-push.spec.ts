@@ -36,6 +36,8 @@ const structured: StructuredHoroscope = {
     health: { hook: 'h', description: 'd', advice: 'a', quality: 'good', score: 4 },
     career: { hook: 'h', description: 'd', advice: 'a', quality: 'good', score: 4 },
     marriage: { hook: 'h', description: 'd', advice: 'a', quality: 'good', score: 4 },
+    finance: { hook: 'h', description: 'd', advice: 'a', quality: 'good', score: 4 },
+    education: { hook: 'h', description: 'd', advice: 'a', quality: 'good', score: 4 },
   },
 };
 
