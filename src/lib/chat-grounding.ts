@@ -13,6 +13,7 @@
 
 import { dashaLordTransitQuality, SIGNS } from './astro-tools/index.js';
 import { dateToJulianDay, calculatePlanetPositions } from './astro-engine/index.js';
+import { findFavorableWindow } from './dasha-window.js';
 
 export interface GroundingSource {
   /** kundli.chartData — planets, houses (with lord), ascendant. */
@@ -407,6 +408,43 @@ export async function buildGroundingFacts(src: GroundingSource): Promise<string[
 
   // --- Ashtakavarga summary ---------------------------------------------------
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
+
+  // --- Forward-looking favorable dasha windows -------------------------------
+  // Unlike the "currently active dasha lord" checks above (which can only say
+  // "now is/isn't aligned"), this walks the *future* mahadasha→antardasha→
+  // pratyantardasha timeline to answer "when" — e.g. marriage-timing
+  // questions get an actual projected date range, not just a present/absent
+  // read. Never fabricates: findFavorableWindow returns undefined (and no
+  // fact is added) if nothing matches within its lookahead.
+  const now = new Date();
+
+  const marriageLords = [
+    ...new Set([seventhLord, 'Venus', ...seventhOccupants].filter(Boolean)),
+  ] as string[];
+  const marriageWindow = findFavorableWindow(src.dasha, marriageLords, now);
+  if (marriageWindow) {
+    facts.push(
+      `Nearest traditionally favorable window for marriage: ${marriageWindow.lord} ${marriageWindow.level} (within ${marriageWindow.withinMahadasha} Mahadasha), approx ${marriageWindow.startDate} to ${marriageWindow.endDate}`,
+    );
+  }
+
+  const careerLords = [
+    ...new Set([tenthLord, 'Saturn', ...tenthOccupants].filter(Boolean)),
+  ] as string[];
+  const careerWindow = findFavorableWindow(src.dasha, careerLords, now);
+  if (careerWindow) {
+    facts.push(
+      `Nearest traditionally favorable window for career growth: ${careerWindow.lord} ${careerWindow.level} (within ${careerWindow.withinMahadasha} Mahadasha), approx ${careerWindow.startDate} to ${careerWindow.endDate}`,
+    );
+  }
+
+  const healthLords = [...new Set([...sixEightTwelveLords, ...sixEightTwelveOccupants])];
+  const healthWindow = findFavorableWindow(src.dasha, healthLords, now);
+  if (healthWindow) {
+    facts.push(
+      `Nearest period traditionally calling for extra health care: ${healthWindow.lord} ${healthWindow.level} (within ${healthWindow.withinMahadasha} Mahadasha), approx ${healthWindow.startDate} to ${healthWindow.endDate}`,
+    );
+  }
 
   return facts;
 }
