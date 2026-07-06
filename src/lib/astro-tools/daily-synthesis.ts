@@ -116,6 +116,8 @@ export interface PeriodicMoonSignPrediction {
   luckyNumber: number;
   /** Snapshot of major-planet placements relative to this sign, taken at periodStart. */
   keyTransits: { planet: string; sign: string; house: number; influence: string }[];
+  /** Health/Career/Marriage + a derived Overall, aggregated across the sampled daily predictions. */
+  categories: Record<Category, CategoryReading>;
 }
 
 export interface SunSignPrediction {
@@ -584,11 +586,13 @@ function buildDomainReading(
   };
 }
 
-function overallReadingFrom(categories: {
-  health: CategoryReading;
-  career: CategoryReading;
-  marriage: CategoryReading;
-}): CategoryReading {
+function overallReadingFrom(
+  categories: { health: CategoryReading; career: CategoryReading; marriage: CategoryReading },
+  /** Periodic callers pass the already-computed period-level description/advice (mirroring
+   * the legacy top-level fields); daily leaves these unset since daily has no separate
+   * description paragraph for any category (see design doc richness table). */
+  overrides?: { description?: string; advice?: string },
+): CategoryReading {
   const scores = [categories.health.score, categories.career.score, categories.marriage.score];
   const score = Math.max(
     1,
@@ -597,11 +601,40 @@ function overallReadingFrom(categories: {
   const quality = domainQuality(score);
   return {
     hook: buildDomainHook(quality, 'the overall picture', score),
-    description: '',
-    advice: "Check the individual areas below for what's actually driving this.",
+    description: overrides?.description ?? '',
+    advice:
+      overrides?.advice ?? "Check the individual areas below for what's actually driving this.",
     quality,
     score,
   };
+}
+
+function buildPeriodicDomainReading(
+  domain: 'health' | 'career' | 'marriage',
+  daily: MoonSignPrediction[],
+  period: PeriodicPeriod,
+  unit: string,
+): CategoryReading {
+  const scores = daily.map((d) => d.categories[domain].score);
+  const avgScore = scores.reduce((a, b) => a + b, 0) / Math.max(1, scores.length);
+  const score = Math.max(1, Math.min(5, Math.round(avgScore)));
+  const quality = domainQuality(score);
+  const favorableCount = daily.filter((d) => d.categories[domain].score >= 4).length;
+  const hook = buildDomainHook(quality, DOMAIN_THEME[domain], daily.length + score);
+
+  let best: MoonSignPrediction | undefined;
+  for (const d of daily) {
+    if (!best || d.categories[domain].score > best.categories[domain].score) best = d;
+  }
+
+  const description =
+    period === 'weekly'
+      ? `${favorableCount} of the next ${daily.length} ${unit} favor ${DOMAIN_THEME[domain]}.`
+      : `${favorableCount} of the ${daily.length} sampled ${unit} favor ${DOMAIN_THEME[domain]}, with the strongest point around ${
+          period === 'yearly' ? `the month starting ${best?.date ?? 'n/a'}` : (best?.date ?? 'n/a')
+        }.`;
+
+  return { hook, description, advice: DOMAIN_ADVICE[domain][quality], quality, score };
 }
 
 /**
@@ -832,6 +865,11 @@ async function buildPeriodic(
     });
   }
 
+  const health = buildPeriodicDomainReading('health', daily, period, unit);
+  const career = buildPeriodicDomainReading('career', daily, period, unit);
+  const marriage = buildPeriodicDomainReading('marriage', daily, period, unit);
+  const overall = overallReadingFrom({ health, career, marriage }, { description, advice });
+
   return {
     sign: signName,
     period,
@@ -849,6 +887,7 @@ async function buildPeriodic(
     luckyColor: LUCKY_COLORS[signName] ?? 'White',
     luckyNumber: ((moonSignIndex + dayOfYearFor(new Date(periodStart))) % 9) + 1,
     keyTransits,
+    categories: { overall, health, career, marriage },
   };
 }
 

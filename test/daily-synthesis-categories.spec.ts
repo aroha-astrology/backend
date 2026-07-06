@@ -6,6 +6,8 @@ import {
   DOMAIN_HOUSE_OFFSET,
   DOMAIN_THEME,
   moonSignPrediction,
+  moonSignWeeklyPrediction,
+  moonSignMonthlyPrediction,
 } from '../src/lib/astro-tools/daily-synthesis.js';
 
 describe('daily-synthesis: domain category helpers', () => {
@@ -85,4 +87,24 @@ describe('daily-synthesis: moonSignPrediction categories', () => {
     );
     expect(overall.score).toBe(expected);
   });
+});
+
+describe('daily-synthesis: periodic categories', () => {
+  it('weekly includes all 4 categories with non-empty descriptions', async () => {
+    const result = await moonSignWeeklyPrediction(0);
+    for (const key of ['overall', 'health', 'career', 'marriage'] as const) {
+      const c = result.categories[key];
+      expect(c.score).toBeGreaterThanOrEqual(1);
+      expect(c.score).toBeLessThanOrEqual(5);
+      expect(c.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('monthly descriptions are richer (longer) than weekly ones', async () => {
+    const weekly = await moonSignWeeklyPrediction(0);
+    const monthly = await moonSignMonthlyPrediction(0);
+    expect(monthly.categories.career.description.length).toBeGreaterThan(
+      weekly.categories.career.description.length,
+    );
+  }, 20_000);
 });
