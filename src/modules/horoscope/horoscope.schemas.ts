@@ -11,6 +11,16 @@ export const MonthlyBreakdownEntrySchema = z
   })
   .openapi('MonthlyBreakdownEntry');
 
+export const CategoryReadingSchema = z
+  .object({
+    hook: z.string(),
+    description: z.string(),
+    advice: z.string(),
+    quality: z.enum(['good', 'moderate', 'challenging', 'avoid']),
+    score: z.number().int().min(1).max(5),
+  })
+  .openapi('CategoryReading');
+
 export const StructuredHoroscopeSchema = z
   .object({
     hook: z.string(),
@@ -20,6 +30,12 @@ export const StructuredHoroscopeSchema = z
     score: z.number().int().min(1).max(5),
     luckyColor: z.string(),
     luckyNumber: z.number().int().min(1).max(9),
+    categories: z.object({
+      overall: CategoryReadingSchema,
+      health: CategoryReadingSchema,
+      career: CategoryReadingSchema,
+      marriage: CategoryReadingSchema,
+    }),
   })
   .openapi('StructuredHoroscope');
 

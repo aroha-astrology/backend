@@ -14,7 +14,7 @@ import {
   uniqueIndex,
   pgEnum,
 } from 'drizzle-orm/pg-core';
-import type { PanchangData } from '@aroha-astrology/shared';
+import type { Category, CategoryReading, PanchangData } from '@aroha-astrology/shared';
 
 /* -------------------------------------------------------------------------- */
 /* Enums                                                                       */
@@ -733,6 +733,13 @@ export type MonthlyBreakdownEntry = {
  * already use (components/horoscope/types.ts DailyForecastData), so the
  * personalized card can reuse the same Plain-view UI. Populated on every
  * period's rows, including yearly (alongside its monthly breakdown).
+ *
+ * `categories` (added 2026-07-03) holds independently-rated Health/Career/
+ * Marriage plus a derived Overall — see
+ * docs/superpowers/specs/2026-07-03-horoscope-category-ratings-design.md.
+ * The top-level hook/description/advice/quality/score fields are kept as a
+ * mirror of `categories.overall` for backward compatibility with any
+ * consumer still reading the old singular shape.
  */
 export type StructuredHoroscope = {
   hook: string;
@@ -742,6 +749,7 @@ export type StructuredHoroscope = {
   score: number; // 1-5
   luckyColor: string;
   luckyNumber: number;
+  categories: Record<Category, CategoryReading>;
 };
 
 export const dailyHoroscopes = pgTable(
