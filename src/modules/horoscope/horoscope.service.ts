@@ -1,7 +1,12 @@
 import { logger } from '../../lib/logger.js';
 import { generateHoroscopeSummary, type HoroscopeContext } from '../../lib/llm/horoscope.js';
 import { buildDashaReading } from '../../lib/astro-tools/dasha-reading.js';
-import type { DailyHoroscopeRow, KundliRow, UserRow } from '../../db/schema.js';
+import type {
+  DailyHoroscopeRow,
+  KundliRow,
+  StructuredHoroscope,
+  UserRow,
+} from '../../db/schema.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import type { HoroscopeDto, HoroscopePeriod } from './horoscope.schemas.js';
 import {
@@ -12,6 +17,8 @@ import {
   touchHoroscopeGenerating,
   STALE_GENERATING_MS,
 } from './horoscope.repo.js';
+import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
+import { sendPushBatch } from '../../lib/notifications/fcm.js';
 
 /** The app's reference timezone — horoscopes are dated by the IST calendar day. */
 const APP_TZ = 'Asia/Kolkata';
@@ -135,6 +142,33 @@ export function isStaleGenerating(row: DailyHoroscopeRow): boolean {
   return row.status === 'generating' && Date.now() - row.updatedAt.getTime() > STALE_GENERATING_MS;
 }
 
+/**
+ * Best-effort push notification once a fresh daily horoscope is ready. Never
+ * throws — a push failure (expired token, FCM outage, no registered device)
+ * must not affect the horoscope row, which is already durably 'ready' by the
+ * time this is called. Intentionally not awaited by its caller.
+ */
+export async function pushDailyHoroscopeReady(
+  user: UserRow,
+  structured: StructuredHoroscope | undefined,
+) {
+  const hook = structured?.categories?.overall?.hook;
+  if (!hook) return;
+  try {
+    const tokens = await findActiveTokensForUser(user.id);
+    if (tokens.length === 0) return;
+    const { success, failure } = await sendPushBatch(
+      tokens.map((t) => t.token),
+      'Your horoscope is ready',
+      hook,
+      { type: 'daily_horoscope', userId: user.id },
+    );
+    logger.info({ userId: user.id, success, failure }, 'horoscope:push sent');
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'horoscope:push failed');
+  }
+}
+
 async function runHoroscopeGeneration(
   user: UserRow,
   period: HoroscopePeriod,
@@ -155,6 +189,12 @@ async function runHoroscopeGeneration(
         ...(monthlyBreakdown !== undefined ? { monthlyBreakdown } : {}),
         ...(structured !== undefined ? { structured } : {}),
       });
+      // Fire-and-forget: only for 'daily' (avoid pushing on every period's
+      // rollover), and never awaited so a slow/failed send can't add latency
+      // to the cron batch's sequential per-user loop.
+      if (period === 'daily') {
+        void pushDailyHoroscopeReady(user, structured);
+      }
       return 'generated';
     } catch (err) {
       logger.error(

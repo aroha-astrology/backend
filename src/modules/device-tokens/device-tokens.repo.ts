@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   devicePushTokens,
@@ -13,6 +13,25 @@ export async function findActiveTokenRow(token: string): Promise<DevicePushToken
     .where(and(eq(devicePushTokens.token, token), isNull(devicePushTokens.revokedAt)))
     .limit(1);
   return rows[0];
+}
+
+/**
+ * Active (unrevoked) tokens for a user that haven't explicitly opted out of
+ * push. `pushEnabled` is nullable (unknown OS-permission state) — NULL is
+ * treated as "enabled" (three-valued SQL logic means a plain `!= false`
+ * would silently drop NULL rows, so this is spelled out as an OR instead).
+ */
+export async function findActiveTokensForUser(userId: string): Promise<DevicePushTokenRow[]> {
+  return db
+    .select()
+    .from(devicePushTokens)
+    .where(
+      and(
+        eq(devicePushTokens.userId, userId),
+        isNull(devicePushTokens.revokedAt),
+        or(isNull(devicePushTokens.pushEnabled), eq(devicePushTokens.pushEnabled, true)),
+      ),
+    );
 }
 
 export async function insertDeviceToken(
