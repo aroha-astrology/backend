@@ -502,3 +502,17 @@ export interface NumerologyResult {
     personality: string;
   };
 }
+
+// ============================================================
+// Horoscope category ratings (Overall/Health/Career/Marriage)
+// ============================================================
+
+export type Category = 'overall' | 'health' | 'career' | 'marriage';
+
+export interface CategoryReading {
+  hook: string;
+  description: string;
+  advice: string;
+  quality: 'good' | 'moderate' | 'challenging' | 'avoid';
+  score: number; // 1-5
+}
