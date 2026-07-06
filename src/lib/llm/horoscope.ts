@@ -14,6 +14,7 @@ import { HOROSCOPE_PROFILE, HOROSCOPE_YEARLY_PROFILE, modelForTier } from '../..
 import { buildGroundingFacts, type GroundingSource } from '../chat-grounding.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';
 import type { MonthlyBreakdownEntry, StructuredHoroscope } from '../../db/schema.js';
+import type { CategoryReading } from '@aroha-astrology/shared';
 
 const QUALITIES = ['good', 'moderate', 'challenging', 'avoid'] as const;
 
@@ -71,13 +72,24 @@ const PLAIN_LANGUAGE_RULE =
   'Write for someone with zero astrology background. Never use untranslated Sanskrit/technical terms (Mahadasha, Antardasha, Yoga names, Ascendant, Nakshatra, etc.) — translate what they MEAN in plain English instead (e.g. a supportive Jupiter dasha becomes "a long stretch favoring growth and good fortune," not "Jupiter Mahadasha"). Talk about real-life areas (career, relationships, money, health, mood) and concrete outcomes, not planetary mechanics.';
 
 const STRUCTURED_JSON_RULE = `Return STRICT JSON only, no markdown fences, in this exact shape:
-{"hook": string, "description": string, "advice": string, "quality": "good"|"moderate"|"challenging"|"avoid", "score": 1-5, "luckyColor": string, "luckyNumber": 1-9}
+{"health": <block>, "career": <block>, "marriage": <block>, "overall": <block>}
+where each <block> is: {"hook": string, "description": string, "advice": string, "quality": "good"|"moderate"|"challenging"|"avoid", "score": 1-5}
 
-"hook": one punchy headline sentence naming the single most relevant theme (this is the lead the user sees first — make it count, never generic filler like "Today is a good day for you").
-"description": 2-4 sentences of plain-language supporting detail — what's going on and why it matters.
-"advice": 1-2 concrete, actionable sentences (what to actually do with this).
-"quality"/"score": your honest overall read — "good"/4-5 for a genuinely strong window, "moderate"/3 for a steady/mixed one, "challenging"/2 for friction to navigate carefully, "avoid"/1 only for a real caution — do not inflate every reading to "good".
-"luckyColor": a single color name. "luckyNumber": an integer 1-9.`;
+Write FOUR independent blocks — health, career, marriage, and overall — each covering that
+specific life area (overall = your holistic read considering all three together, not just
+a repeat of one of them).
+
+"hook": one punchy headline sentence naming that block's most relevant theme (this is the
+lead the user sees first — make it count, never generic filler like "Today is a good day
+for you").
+"description": plain-language supporting detail for that block — what's going on and why it
+matters.
+"advice": 1-2 concrete, actionable sentences for that specific area.
+"quality"/"score": your honest read for that area — "good"/4-5 for a genuinely strong
+window, "moderate"/3 for a steady/mixed one, "challenging"/2 for friction to navigate
+carefully, "avoid"/1 only for a real caution — do not inflate every block to "good".`;
+
+const LUCKY_ELEMENTS_RULE = `Also include at the top level (sibling to health/career/marriage/overall): "luckyColor": a single color name, and "luckyNumber": an integer 1-9.`;
 
 const HOROSCOPE_SYSTEM: Record<Exclude<HoroscopePeriod, 'yearly'>, string> = {
   daily: `You are writing a short personalized daily Vedic astrology horoscope for a mobile app.
@@ -86,28 +98,32 @@ ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
-Keep "hook" under 20 words and "description" under 70 words total. ${STYLE_RULE}`,
+${LUCKY_ELEMENTS_RULE}
+Keep each block's "hook" under 20 words and "description" under 40 words. ${STYLE_RULE}`,
   tomorrow: `You are writing a short personalized Vedic astrology horoscope for TOMORROW (the day after today) for a mobile app.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
-Keep "hook" under 20 words and "description" under 70 words total. Write as a preview of what's coming, not what's happening now (e.g. "tomorrow favors..." not "today favors..."). ${STYLE_RULE}`,
+${LUCKY_ELEMENTS_RULE}
+Keep each block's "hook" under 20 words and "description" under 40 words. Write as a preview of what's coming, not what's happening now (e.g. "tomorrow favors..." not "today favors..."). ${STYLE_RULE}`,
   weekly: `You are writing a short personalized weekly Vedic astrology horoscope for a mobile app, summarizing the arc of the coming week.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
-Keep "hook" under 20 words and "description" under 90 words total, covering how the theme develops across the week. ${STYLE_RULE}`,
+${LUCKY_ELEMENTS_RULE}
+Keep each block's "hook" under 20 words and "description" under 70 words, covering how that block's theme develops across the week. ${STYLE_RULE}`,
   monthly: `You are writing a short personalized monthly Vedic astrology horoscope for a mobile app, summarizing the theme of the coming month.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
-Keep "hook" under 20 words and "description" under 100 words total, covering how the theme develops across the month. ${STYLE_RULE}`,
+${LUCKY_ELEMENTS_RULE}
+Keep each block's "hook" under 20 words and "description" under 100 words, covering how that block's theme develops across the month. ${STYLE_RULE}`,
 };
 
 const HOROSCOPE_SYSTEM_YEARLY = `You are writing a personalized yearly Vedic astrology overview for a mobile app, plus a short blurb for each calendar month of that year.
@@ -115,16 +131,11 @@ const HOROSCOPE_SYSTEM_YEARLY = `You are writing a personalized yearly Vedic ast
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 
-Return STRICT JSON only, no markdown fences, in this exact shape:
-{"hook": string, "description": string, "advice": string, "quality": "good"|"moderate"|"challenging"|"avoid", "score": 1-5, "luckyColor": string, "luckyNumber": 1-9, "months": [{"month": 1, "summary": string}, ... one entry per month 1-12 in order]}
-
-"hook": one punchy headline sentence naming the year's dominant theme (this is the lead the user sees first — make it count, never generic filler like "This is a good year for you").
-"description": 2-4 sentences of plain-language supporting detail on the year's overall arc.
-"advice": 1-2 concrete, actionable sentences for the year (what to actually do with this).
-"quality"/"score": your honest overall read on the year — "good"/4-5 for a genuinely strong year, "moderate"/3 for a steady/mixed one, "challenging"/2 for friction to navigate carefully, "avoid"/1 only for a real caution — do not inflate every reading to "good".
-"luckyColor": a single color name. "luckyNumber": an integer 1-9.
-Each month's "summary": 1-2 sentences (under 30 words) on that month's tone within the year's arc — do not repeat the hook/description verbatim, vary the angle per month.
-${STYLE_RULE}`;
+${STRUCTURED_JSON_RULE}
+${LUCKY_ELEMENTS_RULE}
+Also include at the top level (sibling to health/career/marriage/overall): "months": an array of exactly 12 entries, one per calendar month in order — [{"month": 1, "summary": string}, ...].
+Each month's "summary": 1-2 sentences (under 30 words) on that month's tone within the year's arc — do not repeat any block's hook/description verbatim, vary the angle per month.
+Keep each of health/career/marriage/overall's "hook" under 20 words and "description" under 100 words, covering that area's arc across the year (yearly uses the same richness budget as monthly). ${STYLE_RULE}`;
 
 function describePeriod(period: HoroscopePeriod, forDate: string): string {
   const [y, m] = forDate.split('-').map(Number);
@@ -232,44 +243,97 @@ export function hasRawJargon(s: string): boolean {
   return RAW_JARGON_PATTERN.test(s);
 }
 
-function parseStructuredResponse(raw: string): StructuredHoroscope | null {
+export function parseStructuredResponse(raw: string): StructuredHoroscope | null {
   try {
-    const data = JSON.parse(raw) as Partial<StructuredHoroscope>;
-    if (
-      typeof data.hook !== 'string' ||
-      !data.hook.trim() ||
-      typeof data.description !== 'string' ||
-      !data.description.trim() ||
-      typeof data.advice !== 'string' ||
-      !data.advice.trim() ||
-      typeof data.luckyColor !== 'string' ||
-      !data.luckyColor.trim() ||
-      typeof data.score !== 'number' ||
-      typeof data.luckyNumber !== 'number'
-    ) {
-      return null;
-    }
-    const hook = data.hook.trim();
-    const description = data.description.trim();
-    const advice = data.advice.trim();
-    if (hasRawJargon(hook) || hasRawJargon(description) || hasRawJargon(advice)) {
-      return null;
-    }
-    const quality = QUALITIES.includes(data.quality as (typeof QUALITIES)[number])
-      ? (data.quality as (typeof QUALITIES)[number])
-      : 'moderate';
+    const data = JSON.parse(raw) as {
+      health?: unknown;
+      career?: unknown;
+      marriage?: unknown;
+      overall?: unknown;
+      luckyColor?: unknown;
+      luckyNumber?: unknown;
+    };
+
+    const health = parseCategoryBlock(data.health);
+    const career = parseCategoryBlock(data.career);
+    const marriage = parseCategoryBlock(data.marriage);
+    const overallRaw = parseCategoryBlock(data.overall);
+    if (!health || !career || !marriage || !overallRaw) return null;
+    if (typeof data.luckyColor !== 'string' || !data.luckyColor.trim()) return null;
+    if (typeof data.luckyNumber !== 'number') return null;
+
+    // Overall's score/quality is always server-derived — never trust the model's own
+    // number for it, only its narrative text (see design doc).
+    const overallScore = Math.max(
+      1,
+      Math.min(5, Math.round((health.score + career.score + marriage.score) / 3)),
+    );
+    const overall: CategoryReading = {
+      ...overallRaw,
+      score: overallScore,
+      quality: scoreToQuality(overallScore),
+    };
+
     return {
-      hook,
-      description,
-      advice,
-      quality,
-      score: Math.min(5, Math.max(1, Math.round(data.score))),
+      // Legacy top-level fields mirror categories.overall.
+      hook: overall.hook,
+      description: overall.description,
+      advice: overall.advice,
+      quality: overall.quality,
+      score: overall.score,
       luckyColor: data.luckyColor.trim(),
       luckyNumber: Math.min(9, Math.max(1, Math.round(data.luckyNumber))),
+      categories: { overall, health, career, marriage },
     };
   } catch {
     return null;
   }
+}
+
+function scoreToQuality(score: number): 'good' | 'moderate' | 'challenging' | 'avoid' {
+  if (score >= 4) return 'good';
+  if (score === 3) return 'moderate';
+  if (score === 2) return 'challenging';
+  return 'avoid';
+}
+
+/**
+ * Parses+validates one of the 4 category blocks. Applies the same
+ * `hasRawJargon` post-hoc filter the old single-block parser used to apply
+ * to its one hook/description/advice — now applied per-block so a jargon
+ * leak in any of health/career/marriage/overall still gets rejected (see
+ * `hasRawJargon`'s docstring above for why this check exists at all).
+ */
+function parseCategoryBlock(block: unknown): CategoryReading | null {
+  if (typeof block !== 'object' || block === null) return null;
+  const b = block as Partial<CategoryReading>;
+  if (
+    typeof b.hook !== 'string' ||
+    !b.hook.trim() ||
+    typeof b.description !== 'string' ||
+    !b.description.trim() ||
+    typeof b.advice !== 'string' ||
+    !b.advice.trim() ||
+    typeof b.score !== 'number'
+  ) {
+    return null;
+  }
+  const hook = b.hook.trim();
+  const description = b.description.trim();
+  const advice = b.advice.trim();
+  if (hasRawJargon(hook) || hasRawJargon(description) || hasRawJargon(advice)) {
+    return null;
+  }
+  const quality = QUALITIES.includes(b.quality as (typeof QUALITIES)[number])
+    ? (b.quality as (typeof QUALITIES)[number])
+    : 'moderate';
+  return {
+    hook,
+    description,
+    advice,
+    quality,
+    score: Math.min(5, Math.max(1, Math.round(b.score))),
+  };
 }
 
 function parseYearlyResponse(
