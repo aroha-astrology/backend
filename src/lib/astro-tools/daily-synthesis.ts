@@ -450,6 +450,115 @@ const QUALITY_DESC: Record<string, { desc: string; advice: string; score: number
   },
 };
 
+// =============================================================================
+// Category ratings (Overall/Health/Career/Marriage) — spec:
+// docs/superpowers/specs/2026-07-03-horoscope-category-ratings-design.md
+// =============================================================================
+
+export const DOMAIN_HOUSE_OFFSET: Record<'health' | 'career' | 'marriage', number> = {
+  health: 5, // 6th house from the sign
+  marriage: 6, // 7th house
+  career: 9, // 10th house
+};
+
+export const DOMAIN_THEME: Record<'health' | 'career' | 'marriage', string> = {
+  health: 'your health and daily routine',
+  career: 'your career and public standing',
+  marriage: 'your relationships and marriage prospects',
+};
+
+const NATURAL_BENEFICS = new Set(['Jupiter', 'Venus']);
+const NATURAL_MALEFICS = new Set(['Saturn', 'Mars', 'Rahu']);
+/** The same tracked-planet set the existing keyTransits logic already uses. Sun is
+ * intentionally excluded from both benefic/malefic sets — its classification varies by
+ * context in classical Jyotish, and this is a lightweight heuristic, not a full dignity
+ * analysis (see design doc). */
+const TRACKED_PLANETS = ['Sun', 'Jupiter', 'Saturn', 'Rahu', 'Mars', 'Venus'];
+
+/**
+ * +1 per benefic (Jupiter/Venus), -1 per malefic (Saturn/Mars/Rahu) currently transiting
+ * the domain's house-from-sign. Multiple tracked planets sharing that sign sum their
+ * nudges (e.g. a Jupiter-Saturn conjunction there nets to 0).
+ */
+export function domainNudge(
+  domain: 'health' | 'career' | 'marriage',
+  moonSignIndex: number,
+  transitSigns: Record<string, number>,
+): number {
+  const domainHouseSignIdx = (moonSignIndex + DOMAIN_HOUSE_OFFSET[domain]) % 12;
+  let nudge = 0;
+  for (const planet of TRACKED_PLANETS) {
+    if (transitSigns[planet] !== domainHouseSignIdx) continue;
+    if (NATURAL_BENEFICS.has(planet)) nudge += 1;
+    else if (NATURAL_MALEFICS.has(planet)) nudge -= 1;
+  }
+  return nudge;
+}
+
+export function domainQuality(score: number): 'good' | 'moderate' | 'challenging' | 'avoid' {
+  if (score >= 4) return 'good';
+  if (score === 3) return 'moderate';
+  if (score === 2) return 'challenging';
+  return 'avoid';
+}
+
+const DOMAIN_HOOK_TEMPLATES: Record<
+  'good' | 'moderate' | 'challenging' | 'avoid',
+  ((theme: string) => string)[]
+> = {
+  good: [
+    (theme) => `A strong window for ${theme}.`,
+    (theme) => `Things move in your favor around ${theme} right now.`,
+  ],
+  moderate: [
+    (theme) => `A steady, mixed stretch for ${theme} — nothing dramatic either way.`,
+    (theme) => `${theme} holds roughly even for now.`,
+  ],
+  challenging: [
+    (theme) => `Expect some friction around ${theme} — go carefully.`,
+    (theme) => `${theme} needs a little extra patience right now.`,
+  ],
+  avoid: [
+    (theme) => `A quieter window for ${theme} — let big moves wait if you can.`,
+    (theme) => `${theme} is better left alone until this passes.`,
+  ],
+};
+
+export function buildDomainHook(
+  quality: 'good' | 'moderate' | 'challenging' | 'avoid',
+  theme: string,
+  variantSeed: number,
+): string {
+  const templates = DOMAIN_HOOK_TEMPLATES[quality];
+  const fn = templates[((variantSeed % templates.length) + templates.length) % templates.length]!;
+  return fn(theme);
+}
+
+const DOMAIN_ADVICE: Record<
+  'health' | 'career' | 'marriage',
+  Record<'good' | 'moderate' | 'challenging' | 'avoid', string>
+> = {
+  health: {
+    good: 'Keep up whatever routine is already working — this is a good stretch to build on it.',
+    moderate: 'Nothing urgent, but do not skip the basics: sleep, water, movement.',
+    challenging: 'Ease up where you can and avoid pushing through fatigue this week.',
+    avoid: 'Prioritize rest and avoid overexertion until this passes.',
+  },
+  career: {
+    good: 'Good window to raise your hand for something visible or push a pending ask.',
+    moderate: 'Steady progress is likely — keep showing up, no need to force a big move.',
+    challenging: 'Stick to what is already committed rather than starting something new.',
+    avoid: 'Avoid big career decisions right now; revisit them once this settles.',
+  },
+  marriage: {
+    good: 'A good time for honest conversations or moving a relationship milestone forward.',
+    moderate: 'Keep communication open — nothing dramatic, just stay attentive.',
+    challenging:
+      'Give relationships a little extra patience and avoid picking fights over small things.',
+    avoid: 'Avoid major relationship decisions until this phase passes.',
+  },
+};
+
 /**
  * Short hook-line templates per quality bucket (spec 4.1: tension→resolution
  * or specific-detail→payoff, never generic filler). Multiple variants per
