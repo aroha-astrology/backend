@@ -228,6 +228,13 @@ async function runHoroscopeGeneration(
   }
 }
 
+/** Add small delay between batch requests to avoid rate limiting. */
+async function sleepBetweenBatchRequests(): Promise<void> {
+  const baseDelayMs = 100;
+  const jitterMs = Math.random() * 50;
+  await sleep(baseDelayMs + jitterMs);
+}
+
 /**
  * Optimization: for 'daily' horoscopes, try to reuse yesterday's 'tomorrow'
  * instead of regenerating. Yesterday's 'tomorrow' is exactly today's 'daily'
@@ -380,6 +387,8 @@ export async function runHoroscopeBatch(
         if (outcome === 'generated') generated++;
         else if (outcome === 'failed') failed++;
         else skipped++;
+        // Small delay to avoid rate limiting the LLM API during batch runs.
+        await sleepBetweenBatchRequests();
       } catch (err) {
         failed++;
         logger.error({ err, userId: user.id, period, forDate }, 'horoscope batch failed for user');

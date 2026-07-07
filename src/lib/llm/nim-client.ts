@@ -129,7 +129,7 @@ function generalBackoff(attempt: number): number {
 }
 
 function rateLimitBackoff(rateLimitWaits: number): number {
-  return Math.min(2000 * Math.pow(2, rateLimitWaits), 60000);
+  return Math.min(2000 * Math.pow(2, rateLimitWaits), 120000);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -323,7 +323,7 @@ async function generateOnce(opts: NIMRequestOptions): Promise<string> {
   }
 
   const MAX_ATTEMPTS = 3;
-  const MAX_RATE_LIMIT_RETRIES = 5;
+  const MAX_RATE_LIMIT_RETRIES = 15;
   let rateLimitWaits = 0;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -427,7 +427,7 @@ export async function* stream(opts: NIMRequestOptions): AsyncGenerator<string, v
   }
 
   const MAX_ATTEMPTS = 3;
-  const MAX_RATE_LIMIT_RETRIES = 5;
+  const MAX_RATE_LIMIT_RETRIES = 15;
   let rateLimitWaits = 0;
   // Once we have emitted tokens to the consumer we must NOT silently retry and
   // replay a fresh completion — that produces duplicated/garbled output.
