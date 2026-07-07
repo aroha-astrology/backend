@@ -11,6 +11,7 @@ import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import type { HoroscopeDto, HoroscopePeriod } from './horoscope.schemas.js';
 import {
   claimHoroscopeGeneration,
+  findHoroscope,
   listActiveUsersAfter,
   markHoroscopeFailed,
   markHoroscopeReady,
@@ -78,6 +79,14 @@ function addOneDay(forDate: string): string {
   const [y, m, d] = forDate.split('-').map(Number) as [number, number, number];
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() + 1);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD for the calendar day before `forDate`. */
+function subtractOneDay(forDate: string): string {
+  const [y, m, d] = forDate.split('-').map(Number) as [number, number, number];
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 1);
   return dt.toISOString().slice(0, 10);
 }
 
@@ -220,6 +229,66 @@ async function runHoroscopeGeneration(
 }
 
 /**
+ * Optimization: for 'daily' horoscopes, try to reuse yesterday's 'tomorrow'
+ * instead of regenerating. Yesterday's 'tomorrow' is exactly today's 'daily'
+ * — no need to call the LLM again, just copy the row.
+ *
+ * Returns true if reuse succeeded (daily now ready with yesterday's tomorrow),
+ * false if reuse wasn't possible (missing, stale, or wrong period).
+ */
+async function tryReuseYesterdaysTomorrow(userId: string, forDate: string): Promise<boolean> {
+  const yesterday = subtractOneDay(forDate);
+  const yesterdayTomorrowKey = periodKeyFor('tomorrow', yesterday);
+
+  try {
+    const yesterdayTomorrow = await findHoroscope(userId, 'tomorrow', yesterdayTomorrowKey);
+
+    // Only reuse if it's ready and has content
+    if (!yesterdayTomorrow || yesterdayTomorrow.status !== 'ready' || !yesterdayTomorrow.summary) {
+      return false;
+    }
+
+    // Found a ready tomorrow from yesterday — create/update today's daily
+    // using the same content (skip LLM generation entirely)
+    const todayDailyKey = periodKeyFor('daily', forDate);
+
+    // Try to claim and immediately mark ready with copied data
+    const claimed = await claimHoroscopeGeneration(userId, 'daily', todayDailyKey, forDate, {
+      force: false,
+    });
+
+    if (!claimed?.startedAt) {
+      // Another run already owns it or it's ready — let them handle it
+      return false;
+    }
+
+    // Mark it ready with yesterday's tomorrow content
+    await markHoroscopeReady(userId, 'daily', todayDailyKey, claimed.startedAt, {
+      summary: yesterdayTomorrow.summary,
+      model: yesterdayTomorrow.model,
+      ...(yesterdayTomorrow.monthlyBreakdown !== null
+        ? { monthlyBreakdown: yesterdayTomorrow.monthlyBreakdown }
+        : {}),
+      ...(yesterdayTomorrow.structured !== null
+        ? { structured: yesterdayTomorrow.structured }
+        : {}),
+    });
+
+    logger.info(
+      { userId, forDate, reusedFrom: yesterdayTomorrowKey },
+      "reused yesterday's tomorrow as today's daily",
+    );
+    return true;
+  } catch (err) {
+    logger.warn(
+      { err, userId, forDate },
+      "failed to reuse yesterday's tomorrow (will generate fresh)",
+    );
+    return false;
+  }
+}
+
+/**
  * Fire-and-forget entry point used by the GET route (cache miss), the
  * onboarding/kundli-ready hook, and the nightly cron batch alike — `forDate`/
  * `force`/`retryForever` let one code path serve all three.
@@ -240,6 +309,13 @@ export async function requestHoroscopeGeneration(
 ): Promise<'generated' | 'skipped' | 'failed'> {
   const forDate = opts.forDate ?? currentPeriodStart(period);
   const periodKey = periodKeyFor(period, forDate);
+
+  // Optimization: for daily, try to reuse yesterday's tomorrow first
+  if (period === 'daily' && !opts.force) {
+    const reused = await tryReuseYesterdaysTomorrow(user.id, forDate);
+    if (reused) return 'generated'; // Reuse counts as successful generation
+  }
+
   const claimed = await claimHoroscopeGeneration(
     user.id,
     period,
