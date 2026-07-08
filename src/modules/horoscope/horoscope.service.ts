@@ -82,14 +82,6 @@ function addOneDay(forDate: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
-/** YYYY-MM-DD for the calendar day before `forDate`. */
-function subtractOneDay(forDate: string): string {
-  const [y, m, d] = forDate.split('-').map(Number) as [number, number, number];
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() - 1);
-  return dt.toISOString().slice(0, 10);
-}
-
 /** The start date (period's `forDate`) of the period containing today, in IST. */
 export function currentPeriodStart(period: HoroscopePeriod): string {
   const today = todayForApp();
@@ -244,8 +236,11 @@ async function sleepBetweenBatchRequests(): Promise<void> {
  * false if reuse wasn't possible (missing, stale, or wrong period).
  */
 async function tryReuseYesterdaysTomorrow(userId: string, forDate: string): Promise<boolean> {
-  const yesterday = subtractOneDay(forDate);
-  const yesterdayTomorrowKey = periodKeyFor('tomorrow', yesterday);
+  // Yesterday's 'tomorrow' was generated with currentPeriodStart('tomorrow') =
+  // addOneDay(yesterday) = today = forDate, and periodKeyFor returns forDate
+  // as-is for 'tomorrow'. So the stored periodKey is `forDate` (today), not
+  // yesterday's date. Look up directly by forDate.
+  const yesterdayTomorrowKey = forDate;
 
   try {
     const yesterdayTomorrow = await findHoroscope(userId, 'tomorrow', yesterdayTomorrowKey);

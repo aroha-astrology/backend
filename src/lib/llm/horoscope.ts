@@ -187,7 +187,7 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
     ashtakavarga: (ctx.kundli?.ashtakavarga as Record<string, unknown> | undefined) ?? null,
   };
 
-  const facts = await buildGroundingFacts(source);
+  const facts = await buildGroundingFacts(source, ctx.forDate);
   const factsBlock =
     facts.length > 0
       ? `CHART DATA:\n${facts.map((f) => `- ${f}`).join('\n')}`
