@@ -16,7 +16,7 @@ import logging
 from collections.abc import AsyncIterator
 
 from app.config import CHAT_PROFILE
-from app.llm import nim_client
+from app.llm import llm_dispatcher
 
 logger = logging.getLogger("aroha.scholar")
 
@@ -25,6 +25,7 @@ MAX_RECENT_PAIRS = 3
 
 _GROUNDING_RULES = """GROUNDING RULES (NON-NEGOTIABLE):
 - Use ONLY the chart data, dasha periods, yogas, doshas, or other context provided below. Do NOT invent specific planet positions, dasha dates, transit timings, nakshatras, or yoga findings not present in the context.
+- Nakshatra names and padas are provided explicitly in the chart data — always use those exact values. Never infer or guess a nakshatra from sign/degree alone.
 - If the seeker asks about timing or a person whose birth data isn't in the context, ask ONE focused follow-up question instead of guessing.
 - For medical, legal, or major financial decisions: share the astrological perspective, then recommend consulting a qualified professional.
 - If the chart context is missing or incomplete, say so plainly rather than fabricating an answer."""
@@ -122,8 +123,11 @@ def _chart_brief(metrology: dict) -> str:
     lines = [f"Ascendant: {asc.get('ascendantSign', '?')}"]
     for p in planets:
         retro = " (R)" if p.get("isRetrograde") else ""
+        nakshatra = p.get("nakshatra", "")
+        pada = p.get("nakshatraPada", "")
+        nak_str = f" [{nakshatra} pada {pada}]" if nakshatra else ""
         lines.append(
-            f"  {p['planet']}: {p['sign']} {p.get('signDegree', 0):.1f}° H{p.get('house', '?')}{retro}"
+            f"  {p['planet']}: {p['sign']} {p.get('signDegree', 0):.1f}° H{p.get('house', '?')}{retro}{nak_str}"
         )
     dasha = metrology.get("vimshottariDasha", {})
     md = dasha.get("currentMahadasha")
@@ -141,5 +145,5 @@ async def scholar_stream(
 ) -> AsyncIterator[str]:
     """Stream Scholar response tokens. Caller handles SSE framing."""
     messages = _build_chat_messages(state, user_message)
-    async for token in nim_client.stream(messages, CHAT_PROFILE):
+    async for token in llm_dispatcher.stream(messages, CHAT_PROFILE):
         yield token

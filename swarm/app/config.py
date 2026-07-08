@@ -83,6 +83,14 @@ class Settings(BaseSettings):
     model_conversational: str = Field(default="meta/llama-3.1-70b-instruct")
     nim_summarizer_model: str = Field(default="meta/llama-3.1-8b-instruct")
 
+    # Groq — primary provider for chat + routing (NIM is fallback)
+    # Keys: GROQ_API_KEY, GROQ_API_KEY_2 … GROQ_API_KEY_20
+    groq_api_key: str = Field(default="")
+    groq_base_url: str = Field(default="https://api.groq.com/openai/v1")
+    groq_model_conversational: str = Field(default="llama-3.3-70b-versatile")
+    groq_model_routing: str = Field(default="llama-3.1-8b-instant")
+    groq_rpm_limit: int = Field(default=40)  # requests per minute per key
+
     # Engine
     ayanamsa: str = Field(default="lahiri")
     se_ephe_path: str = Field(default="")
