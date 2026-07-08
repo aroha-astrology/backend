@@ -6,6 +6,11 @@ const state = vi.hoisted(() => ({
   findUserByFirebaseUid: vi.fn(),
   insertUser: vi.fn(),
   updateUserById: vi.fn(),
+  notifyNewSignup: vi.fn(),
+}));
+
+vi.mock('../src/lib/notifications/telegram.js', () => ({
+  notifyNewSignup: state.notifyNewSignup,
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -43,6 +48,7 @@ describe('POST /v1/auth/session', () => {
     state.findUserByFirebaseUid.mockReset();
     state.insertUser.mockReset();
     state.updateUserById.mockReset();
+    state.notifyNewSignup.mockReset().mockResolvedValue(true);
   });
 
   it('returns 401 when the Authorization header is missing', async () => {
@@ -81,6 +87,12 @@ describe('POST /v1/auth/session', () => {
       firebaseUid: 'uid-new',
       phoneE164: '+911111111111',
     });
+    // Notification fires without awaiting, but in vitest it'll synchronously trigger the mock call
+    expect(state.notifyNewSignup).toHaveBeenCalledWith({
+      id: 'id-new',
+      email: null,
+      phone: '+911111111111',
+    });
   });
 
   it('returns the existing user (200) when one already exists', async () => {
@@ -99,6 +111,7 @@ describe('POST /v1/auth/session', () => {
     expect(body.created).toBe(false);
     expect(body.user.id).toBe('id-existing');
     expect(state.insertUser).not.toHaveBeenCalled();
+    expect(state.notifyNewSignup).not.toHaveBeenCalled();
   });
 
   it('resurrects a soft-deleted user on re-sign-in', async () => {

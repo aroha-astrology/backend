@@ -1,5 +1,5 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
-import { sqlClient } from '../../config/db.js';
+import { checkDb } from './health.service.js';
 
 const HealthSchema = z
   .object({
@@ -54,13 +54,7 @@ healthRouter.openapi(healthRoute, (c) =>
 );
 
 healthRouter.openapi(readyRoute, async (c) => {
-  let dbOk = false;
-  try {
-    await sqlClient`select 1`;
-    dbOk = true;
-  } catch {
-    dbOk = false;
-  }
+  const dbOk = await checkDb();
   const body = {
     status: dbOk ? ('ok' as const) : ('degraded' as const),
     checks: { db: dbOk ? ('ok' as const) : ('fail' as const) },

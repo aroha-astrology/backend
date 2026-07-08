@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, count, desc } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   users,
@@ -105,4 +105,24 @@ export async function revokeDeviceTokensByUser(userId: string): Promise<void> {
     .update(devicePushTokens)
     .set({ revokedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(devicePushTokens.userId, userId), isNull(devicePushTokens.revokedAt)));
+}
+
+export async function countUsers(): Promise<number> {
+  const [res] = await db.select({ count: count() }).from(users).where(isNull(users.deletedAt));
+  return res?.count ?? 0;
+}
+
+export async function listUsersPage(limit: number, offset: number) {
+  return db
+    .select({
+      id: users.id,
+      phoneE164: users.phoneE164,
+      email: users.email,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(isNull(users.deletedAt))
+    .orderBy(desc(users.createdAt))
+    .limit(limit)
+    .offset(offset);
 }

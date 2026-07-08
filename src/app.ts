@@ -14,6 +14,7 @@ import { kundliRouter } from './modules/kundli/kundli.routes.js';
 import { horoscopeRouter } from './modules/horoscope/horoscope.routes.js';
 import { purchasePlanRouter } from './modules/purchase-plan/purchase-plan.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
+import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { corsMiddleware } from './middleware/cors.js';
@@ -43,6 +44,7 @@ export function createApp(): OpenAPIHono {
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);
+  app.route('/internal', telegramBotRouter);
 
   app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
     type: 'http',

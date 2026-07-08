@@ -3,6 +3,7 @@ import { requireFirebaseToken } from '../../middleware/auth.js';
 import { toUserDto } from '../users/users.service.js';
 import { establishSession } from './auth.service.js';
 import { SessionResponseSchema } from './auth.schemas.js';
+import { notifyNewSignup } from '../../lib/notifications/telegram.js';
 
 const ErrorSchema = z
   .object({
@@ -48,6 +49,11 @@ const sessionRoute = createRoute({
 authRouter.openapi(sessionRoute, async (c) => {
   const token = c.get('firebaseToken');
   const { user, created } = await establishSession(token);
+
+  if (created) {
+    void notifyNewSignup({ id: user.id, email: user.email, phone: user.phoneE164 }).catch(() => {});
+  }
+
   const body = { user: toUserDto(user), created };
   return c.json(body, created ? 201 : 200);
 });

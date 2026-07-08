@@ -110,6 +110,7 @@ const EnvSchema = z
     CRON_SECRET: z.string().min(1).optional(),
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
     TELEGRAM_ALERT_CHAT_ID: z.string().min(1).optional(),
+    TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
     const hasPath = Boolean(value.FIREBASE_SERVICE_ACCOUNT_PATH);

@@ -9,6 +9,7 @@ import {
 import { runAllHoroscopeBatches, runHoroscopeBatch } from '../horoscope/horoscope.service.js';
 import { PanchangWarmupBodySchema, PanchangWarmupResultSchema } from '../astro/astro.schemas.js';
 import { warmupPanchangCache } from '../astro/astro.service.js';
+import { runHealthReport } from '../health-report/health-report.service.js';
 
 const ErrorSchema = z
   .object({
@@ -28,7 +29,7 @@ const errorResponse = (description: string) => ({
 
 export const cronRouter = new OpenAPIHono();
 
-cronRouter.use('*', requireCronSecret);
+cronRouter.use('/cron/*', requireCronSecret);
 
 const horoscopesRoute = createRoute({
   method: 'post',
@@ -124,4 +125,23 @@ cronRouter.openapi(panchangWarmupRoute, async (c) => {
   const body = c.req.valid('json') ?? {};
   const result = await warmupPanchangCache(body);
   return c.json(result, 200);
+});
+
+const healthReportRoute = createRoute({
+  method: 'post',
+  path: '/cron/health-report',
+  tags: ['Cron'],
+  summary: 'Run the health report and send to Telegram',
+  responses: {
+    200: {
+      description: 'Report completed',
+      content: { 'application/json': { schema: z.object({ status: z.literal('ok') }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(healthReportRoute, async (c) => {
+  await runHealthReport();
+  return c.json({ status: 'ok' as const }, 200);
 });
