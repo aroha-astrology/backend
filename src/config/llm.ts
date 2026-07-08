@@ -80,7 +80,7 @@ export const HOROSCOPE_PROFILE: GenerationProfile = {
   temperature: 0.6,
   jsonMode: true,
   stream: false,
-  maxTokens: 400,
+  maxTokens: 800,
 };
 
 /**
