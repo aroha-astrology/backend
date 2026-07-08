@@ -210,6 +210,9 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
     });
     const parsed = parseYearlyResponse(raw);
     if (!parsed) {
+      void import('../logger.js').then((m) =>
+        m.logger.error({ raw }, 'unparseable JSON in yearly horoscope'),
+      );
       throw new Error(`yearly horoscope LLM returned unparseable JSON for user ${ctx.userId}`);
     }
     return {
@@ -230,6 +233,9 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
   });
   const structured = parseStructuredResponse(raw);
   if (!structured) {
+    void import('../logger.js').then((m) =>
+      m.logger.error({ raw }, 'unparseable JSON in horoscope'),
+    );
     throw new Error(`${ctx.period} horoscope LLM returned unparseable JSON for user ${ctx.userId}`);
   }
   return {
@@ -254,9 +260,17 @@ export function hasRawJargon(s: string): boolean {
   return RAW_JARGON_PATTERN.test(s);
 }
 
+export function cleanJsonString(raw: string): string {
+  let cleaned = raw.trim();
+  if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
+  else if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
+  if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
+  return cleaned.trim();
+}
+
 export function parseStructuredResponse(raw: string): StructuredHoroscope | null {
   try {
-    const data = JSON.parse(raw) as {
+    const data = JSON.parse(cleanJsonString(raw)) as {
       health?: unknown;
       career?: unknown;
       marriage?: unknown;
@@ -380,8 +394,10 @@ export function parseYearlyResponse(
   const structured = parseStructuredResponse(raw);
   if (!structured) return null;
   try {
-    const data = JSON.parse(raw) as { months?: unknown };
-    if (!Array.isArray(data.months)) return null;
+    const data = JSON.parse(cleanJsonString(raw)) as {
+      months?: unknown[];
+    };
+    if (!Array.isArray(data.months) || data.months.length !== 12) return null;
     const months: MonthlyBreakdownEntry[] = [];
     for (const entry of data.months) {
       if (
