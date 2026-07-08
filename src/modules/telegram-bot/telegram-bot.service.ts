@@ -1,5 +1,5 @@
 import { env } from '../../config/env.js';
-import { sendMessage } from '../../lib/notifications/telegram.js';
+import { sendMessage, escapeMarkdown } from '../../lib/notifications/telegram.js';
 import { cmdUsers } from './telegram-bot.commands.js';
 
 export async function handleUpdate(update: unknown): Promise<void> {
@@ -25,13 +25,13 @@ export async function handleUpdate(update: unknown): Promise<void> {
   switch (command) {
     case '/start':
     case '/help':
-      reply = `Available commands:\n/users [offset] - List all users`;
+      reply = escapeMarkdown(`Available commands:\n/users [offset] - List all users`);
       break;
     case '/users':
       reply = await cmdUsers(args[0]);
       break;
     default:
-      reply = `Unknown command: ${command}`;
+      reply = escapeMarkdown(`Unknown command: ${command}`);
       break;
   }
 

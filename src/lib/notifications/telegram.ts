@@ -65,6 +65,6 @@ export async function sendMessage(text: string, chatId?: string | number): Promi
   }
 }
 
-function escapeMarkdown(text: string): string {
+export function escapeMarkdown(text: string): string {
   return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 }
