@@ -1,4 +1,4 @@
-import { countUsers, listUsersPage } from '../users/users.repo.js';
+import { countUsers, listUsersPage, hardDeleteUserById } from '../users/users.repo.js';
 import { escapeMarkdown } from '../../lib/notifications/telegram.js';
 
 export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
@@ -27,4 +27,18 @@ export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
   }
 
   return reply;
+}
+
+export async function cmdDeleteUser(idArg: string | undefined): Promise<string> {
+  if (!idArg) {
+    return escapeMarkdown('Please provide a user ID: /delete <id>');
+  }
+
+  try {
+    await hardDeleteUserById(idArg);
+    return escapeMarkdown(`Successfully deleted user ${idArg} and all associated data.`);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return escapeMarkdown(`Failed to delete user: ${msg}`);
+  }
 }

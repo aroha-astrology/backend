@@ -66,6 +66,15 @@ export async function softDeleteUserById(id: string): Promise<void> {
     .where(eq(users.id, id));
 }
 
+export async function hardDeleteUserById(id: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    // Delete consent logs first to bypass ON DELETE RESTRICT
+    await tx.delete(userConsentLog).where(eq(userConsentLog.userId, id));
+    // Hard delete user - all other tables have ON DELETE CASCADE
+    await tx.delete(users).where(eq(users.id, id));
+  });
+}
+
 /**
  * Apply a profile patch and append its consent-audit rows ATOMICALLY, so the
  * user's effective consent state and the append-only log can never diverge.
