@@ -13,8 +13,9 @@ export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
 
   const lines = users.map((u) => {
     const contact = escapeMarkdown(u.email || u.phoneE164 || 'No contact');
+    const name = escapeMarkdown(u.displayName || 'No Name');
     const date = escapeMarkdown(u.createdAt.toISOString().split('T')[0]);
-    return `• \`${u.id}\` \\| ${contact} \\| ${date}`;
+    return `• *${name}* \\| ${contact} \\| ${date}`;
   });
 
   const nextOffset = offset + PAGE_SIZE;

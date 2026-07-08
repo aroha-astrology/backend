@@ -116,6 +116,7 @@ export async function listUsersPage(limit: number, offset: number) {
   return db
     .select({
       id: users.id,
+      displayName: users.displayName,
       phoneE164: users.phoneE164,
       email: users.email,
       createdAt: users.createdAt,
