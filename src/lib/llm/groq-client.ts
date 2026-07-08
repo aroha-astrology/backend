@@ -193,9 +193,9 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
   while (attempts < MAX_ATTEMPTS) {
     const keyState = selectKey();
     if (!keyState) {
-      throw new AllGroqKeysExhaustedError(
-        `All ${keyPool.length} Groq keys have hit the ${env.GROQ_RPM_LIMIT} req/min limit`,
-      );
+      logger.warn('All Groq keys rate-limited. Waiting 10 seconds before retry...');
+      await sleep(10_000);
+      continue;
     }
 
     const now = Date.now();
@@ -281,7 +281,9 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
   while (attempts < MAX_ATTEMPTS) {
     const keyState = selectKey();
     if (!keyState) {
-      throw new AllGroqKeysExhaustedError(`All ${keyPool.length} Groq keys hit the limit`);
+      logger.warn('All Groq keys rate-limited (stream). Waiting 10 seconds before retry...');
+      await sleep(10_000);
+      continue;
     }
 
     const now = Date.now();
