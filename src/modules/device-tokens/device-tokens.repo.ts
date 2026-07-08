@@ -34,6 +34,18 @@ export async function findActiveTokensForUser(userId: string): Promise<DevicePus
     );
 }
 
+export async function getAllActiveTokens(): Promise<DevicePushTokenRow[]> {
+  return db
+    .select()
+    .from(devicePushTokens)
+    .where(
+      and(
+        isNull(devicePushTokens.revokedAt),
+        or(isNull(devicePushTokens.pushEnabled), eq(devicePushTokens.pushEnabled, true)),
+      ),
+    );
+}
+
 export async function insertDeviceToken(
   values: NewDevicePushTokenRow,
 ): Promise<DevicePushTokenRow> {

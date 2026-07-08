@@ -1,4 +1,4 @@
-import { and, eq, isNull, count, desc } from 'drizzle-orm';
+import { and, eq, isNull, count, desc, gte } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   users,
@@ -18,6 +18,11 @@ export async function findUserByFirebaseUid(firebaseUid: string): Promise<UserRo
 /** Any row (including soft-deleted) holding this phone number. */
 export async function findUserByPhoneE164(phoneE164: string): Promise<UserRow | undefined> {
   const rows = await db.select().from(users).where(eq(users.phoneE164, phoneE164)).limit(1);
+  return rows[0];
+}
+
+export async function findUserByEmail(email: string): Promise<UserRow | undefined> {
+  const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
   return rows[0];
 }
 
@@ -118,6 +123,17 @@ export async function revokeDeviceTokensByUser(userId: string): Promise<void> {
 
 export async function countUsers(): Promise<number> {
   const [res] = await db.select({ count: count() }).from(users).where(isNull(users.deletedAt));
+  return res?.count ?? 0;
+}
+
+export async function countNewUsersToday(): Promise<number> {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.createdAt, startOfDay)));
   return res?.count ?? 0;
 }
 

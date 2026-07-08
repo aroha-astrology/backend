@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, count } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { kundlis, type KundliRow, type NewKundliRow } from '../../db/schema.js';
 
@@ -8,6 +8,14 @@ export const STALE_GENERATING_MS = 5 * 60_000;
 export async function findKundliByUserId(userId: string): Promise<KundliRow | undefined> {
   const rows = await db.select().from(kundlis).where(eq(kundlis.userId, userId)).limit(1);
   return rows[0];
+}
+
+export async function countFailedKundlis(): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(kundlis)
+    .where(eq(kundlis.status, 'failed'));
+  return res?.count ?? 0;
 }
 
 /**

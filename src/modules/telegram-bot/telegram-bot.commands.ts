@@ -1,5 +1,15 @@
-import { countUsers, listUsersPage, hardDeleteUserById } from '../users/users.repo.js';
+import {
+  countUsers,
+  listUsersPage,
+  hardDeleteUserById,
+  countNewUsersToday,
+  findUserByEmail,
+  findUserByPhoneE164,
+} from '../users/users.repo.js';
+import { countFailedKundlis } from '../kundli/kundli.repo.js';
+import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
 import { escapeMarkdown } from '../../lib/notifications/telegram.js';
+import { sendPushBatch } from '../../lib/notifications/fcm.js';
 
 export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
   const PAGE_SIZE = 20;
@@ -41,4 +51,58 @@ export async function cmdDeleteUser(idArg: string | undefined): Promise<string> 
     const msg = error instanceof Error ? error.message : String(error);
     return escapeMarkdown(`Failed to delete user: ${msg}`);
   }
+}
+
+export async function cmdStats(): Promise<string> {
+  const [totalUsers, newUsers] = await Promise.all([countUsers(), countNewUsersToday()]);
+
+  return `*App Stats*\n\nTotal Users: ${totalUsers}\nNew Users Today: ${newUsers}\n\n\\(More stats can be added here\\)`;
+}
+
+export async function cmdSearch(query: string | undefined): Promise<string> {
+  if (!query) return escapeMarkdown('Please provide an email or phone: /search test@test.com');
+
+  const user = query.includes('@')
+    ? await findUserByEmail(query)
+    : await findUserByPhoneE164(query);
+
+  if (!user) return escapeMarkdown(`No user found matching: ${query}`);
+
+  return `*User Found*\n\nID: \`${user.id}\`\nName: ${escapeMarkdown(user.displayName || 'None')}\nEmail: ${escapeMarkdown(user.email || 'None')}\nPhone: ${escapeMarkdown(user.phoneE164 || 'None')}`;
+}
+
+export async function cmdUserDetails(phone: string | undefined): Promise<string> {
+  if (!phone) return escapeMarkdown('Please provide a mobile number: /user +1234567890');
+
+  const user = await findUserByPhoneE164(phone);
+  if (!user) return escapeMarkdown(`No user found with phone: ${phone}`);
+
+  const joined = escapeMarkdown(user.createdAt.toISOString().split('T')[0]);
+  const active = user.lastActiveAt
+    ? escapeMarkdown(user.lastActiveAt.toISOString().split('T')[0])
+    : 'Never';
+
+  return `*User Details*\n\nID: \`${user.id}\`\nName: ${escapeMarkdown(user.displayName || 'None')}\nPhone: ${escapeMarkdown(user.phoneE164 || 'None')}\nOnboarding: ${escapeMarkdown(user.onboardingStatus || 'None')}\nPlatform: ${escapeMarkdown(user.platform || 'None')}\nJoined: ${joined}\nLast Active: ${active}`;
+}
+
+export async function cmdJobs(): Promise<string> {
+  const failedKundlis = await countFailedKundlis();
+
+  if (failedKundlis === 0) {
+    return escapeMarkdown('All background jobs are running smoothly! 🚀');
+  }
+
+  return `*Job Alerts* ⚠️\n\nFailed Kundlis: ${failedKundlis}\n\nCheck server logs for more details.`;
+}
+
+export async function cmdBroadcast(message: string | undefined): Promise<string> {
+  if (!message) return escapeMarkdown('Please provide a message: /broadcast Hello everyone!');
+
+  const tokens = await getAllActiveTokens();
+  if (tokens.length === 0) return escapeMarkdown('No active devices to broadcast to.');
+
+  const tokenStrings = tokens.map((t) => t.token);
+  const result = await sendPushBatch(tokenStrings, 'Aroha Astrology Update', message);
+
+  return escapeMarkdown(`Broadcast sent!\nSuccess: ${result.success}\nFailed: ${result.failure}`);
 }

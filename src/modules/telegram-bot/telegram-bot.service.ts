@@ -1,6 +1,14 @@
 import { env } from '../../config/env.js';
 import { sendMessage, escapeMarkdown } from '../../lib/notifications/telegram.js';
-import { cmdUsers, cmdDeleteUser } from './telegram-bot.commands.js';
+import {
+  cmdUsers,
+  cmdDeleteUser,
+  cmdStats,
+  cmdSearch,
+  cmdUserDetails,
+  cmdJobs,
+  cmdBroadcast,
+} from './telegram-bot.commands.js';
 
 export async function handleUpdate(update: unknown): Promise<void> {
   if (!update || typeof update !== 'object') return;
@@ -20,13 +28,14 @@ export async function handleUpdate(update: unknown): Promise<void> {
   const parts = text.split(/\s+/);
   const command = parts[0] as string;
   const args = parts.slice(1);
+  const fullMessage = args.join(' ');
 
   let reply = '';
   switch (command) {
     case '/start':
     case '/help':
       reply = escapeMarkdown(
-        `Available commands:\n/users [offset] - List all users\n/delete [id] - Hard delete a user`,
+        `Available commands:\n/stats - App health\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification`,
       );
       break;
     case '/users':
@@ -34,6 +43,21 @@ export async function handleUpdate(update: unknown): Promise<void> {
       break;
     case '/delete':
       reply = await cmdDeleteUser(args[0]);
+      break;
+    case '/stats':
+      reply = await cmdStats();
+      break;
+    case '/search':
+      reply = await cmdSearch(args[0]);
+      break;
+    case '/user':
+      reply = await cmdUserDetails(args[0]);
+      break;
+    case '/jobs':
+      reply = await cmdJobs();
+      break;
+    case '/broadcast':
+      reply = await cmdBroadcast(fullMessage);
       break;
     default:
       reply = escapeMarkdown(`Unknown command: ${command}`);
