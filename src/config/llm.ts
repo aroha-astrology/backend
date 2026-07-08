@@ -11,6 +11,22 @@ export interface GenerationProfile {
   maxTokens: number;
 }
 
+export interface ChatMessage {
+  role: string;
+  content: string;
+}
+
+export interface LLMRequestOptions {
+  profile: GenerationProfile;
+  messages: ChatMessage[];
+  /** Override the model for this request. */
+  model?: string;
+  /** Caller cancellation (e.g. client disconnect on an SSE stream). */
+  signal?: AbortSignal | undefined;
+  /** Override default timeout for this call (e.g. a large background job). */
+  timeoutMs?: number;
+}
+
 export const ROUTING_PROFILE: GenerationProfile = {
   name: 'routing',
   modelTier: 'routing',

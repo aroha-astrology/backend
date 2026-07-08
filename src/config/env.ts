@@ -64,6 +64,32 @@ const EnvSchema = z
     NVIDIA_NIM_API_KEY_19: z.string().min(1).optional(),
     NVIDIA_NIM_API_KEY_20: z.string().min(1).optional(),
 
+    // --- Groq (Primary for some tiers) -------------------------------------
+    GROQ_API_KEY: z.string().min(1).optional(),
+    GROQ_API_KEY_2: z.string().min(1).optional(),
+    GROQ_API_KEY_3: z.string().min(1).optional(),
+    GROQ_API_KEY_4: z.string().min(1).optional(),
+    GROQ_API_KEY_5: z.string().min(1).optional(),
+    GROQ_API_KEY_6: z.string().min(1).optional(),
+    GROQ_API_KEY_7: z.string().min(1).optional(),
+    GROQ_API_KEY_8: z.string().min(1).optional(),
+    GROQ_API_KEY_9: z.string().min(1).optional(),
+    GROQ_API_KEY_10: z.string().min(1).optional(),
+    GROQ_API_KEY_11: z.string().min(1).optional(),
+    GROQ_API_KEY_12: z.string().min(1).optional(),
+    GROQ_API_KEY_13: z.string().min(1).optional(),
+    GROQ_API_KEY_14: z.string().min(1).optional(),
+    GROQ_API_KEY_15: z.string().min(1).optional(),
+    GROQ_API_KEY_16: z.string().min(1).optional(),
+    GROQ_API_KEY_17: z.string().min(1).optional(),
+    GROQ_API_KEY_18: z.string().min(1).optional(),
+    GROQ_API_KEY_19: z.string().min(1).optional(),
+    GROQ_API_KEY_20: z.string().min(1).optional(),
+    GROQ_BASE_URL: z.string().default('https://api.groq.com/openai/v1'),
+    GROQ_MODEL_CONVERSATIONAL: z.string().default('llama-3.3-70b-versatile'),
+    GROQ_MODEL_ROUTING: z.string().default('llama-3.1-8b-instant'),
+    GROQ_RPM_LIMIT: z.coerce.number().int().positive().default(40),
+
     // --- NIM model routing -------------------------------------------------
     MODEL_ROUTING: z.string().default('meta/llama-3.1-8b-instruct'),
     // mistralai/mixtral-8x22b-instruct was retired from the NIM catalog (404s

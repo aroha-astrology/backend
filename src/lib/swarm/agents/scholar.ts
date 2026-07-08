@@ -2,7 +2,7 @@
 // Scholar Agent - Streaming chat agent using NIM
 // =============================================================================
 
-import { stream as nimStream } from '../../llm/nim-client.js';
+import { stream as llmStream } from '../../llm/llm-dispatcher.js';
 import { CHAT_PROFILE } from '../../../config/llm.js';
 import { logger } from '../../logger.js';
 import { buildGroundingFacts, type GroundingSource } from '../../chat-grounding.js';
@@ -184,7 +184,7 @@ export async function* scholarStream(
   const groundingFacts = await buildGroundingFacts(groundingSource);
   const messages = buildChatMessages(state, userMessage, groundingFacts, birthTimeUnknown);
 
-  yield* nimStream({
+  yield* llmStream({
     profile: CHAT_PROFILE,
     messages,
     signal,

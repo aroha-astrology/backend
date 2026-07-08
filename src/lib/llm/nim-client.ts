@@ -6,7 +6,12 @@
 // =============================================================================
 
 import { env } from '../../config/env.js';
-import { fallbackModelForTier, modelForTier, type GenerationProfile } from '../../config/llm.js';
+import {
+  fallbackModelForTier,
+  modelForTier,
+  type GenerationProfile,
+  type LLMRequestOptions,
+} from '../../config/llm.js';
 import { logger } from '../logger.js';
 
 // =============================================================================
@@ -165,22 +170,6 @@ function makeAbort(external: AbortSignal | undefined, ms: number) {
 // Request Types
 // =============================================================================
 
-interface ChatMessage {
-  role: string;
-  content: string;
-}
-
-interface NIMRequestOptions {
-  profile: GenerationProfile;
-  messages: ChatMessage[];
-  /** Override the model for this request. */
-  model?: string;
-  /** Caller cancellation (e.g. client disconnect on an SSE stream). */
-  signal?: AbortSignal | undefined;
-  /** Override GENERATE_TIMEOUT_MS for this call (e.g. a large background job). */
-  timeoutMs?: number;
-}
-
 interface NIMChoice {
   message?: { content: string };
   delta?: { content?: string };
@@ -198,7 +187,7 @@ interface NIMResponse {
 
 async function doRequest(
   keyState: KeyState,
-  opts: NIMRequestOptions,
+  opts: LLMRequestOptions,
   signal: AbortSignal,
 ): Promise<Response> {
   const model = opts.model ?? modelForTier(opts.profile.modelTier);
@@ -238,7 +227,7 @@ async function doRequest(
  * as-is. Single attempt, no key rotation (one key, this is a last resort,
  * not a primary path) — a failure here just means both providers are down.
  */
-async function generateViaGemini(opts: NIMRequestOptions): Promise<string> {
+async function generateViaGemini(opts: LLMRequestOptions): Promise<string> {
   if (!env.GEMINI_API_KEY) {
     throw new NIMError('Gemini fallback not configured (GEMINI_API_KEY unset)');
   }
@@ -288,7 +277,7 @@ async function generateViaGemini(opts: NIMRequestOptions): Promise<string> {
  * one before it actually failed — the common case never leaves the
  * primary model.
  */
-export async function generate(opts: NIMRequestOptions): Promise<string> {
+export async function generate(opts: LLMRequestOptions): Promise<string> {
   try {
     return await generateOnce(opts);
   } catch (nimErr) {
@@ -317,7 +306,7 @@ export async function generate(opts: NIMRequestOptions): Promise<string> {
   }
 }
 
-async function generateOnce(opts: NIMRequestOptions): Promise<string> {
+async function generateOnce(opts: LLMRequestOptions): Promise<string> {
   if (keyPool.length === 0) {
     throw new AllKeysExhaustedError('No API keys configured');
   }
@@ -421,7 +410,7 @@ async function generateOnce(opts: NIMRequestOptions): Promise<string> {
 // Streaming Generate (SSE async generator)
 // =============================================================================
 
-export async function* stream(opts: NIMRequestOptions): AsyncGenerator<string, void, unknown> {
+export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
   if (keyPool.length === 0) {
     throw new AllKeysExhaustedError('No API keys configured');
   }

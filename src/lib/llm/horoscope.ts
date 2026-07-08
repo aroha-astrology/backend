@@ -9,7 +9,7 @@
 // that contradicts what the chat would tell them about the same chart.
 // =============================================================================
 
-import { generate } from './nim-client.js';
+import { generate } from './llm-dispatcher.js';
 import { HOROSCOPE_PROFILE, HOROSCOPE_YEARLY_PROFILE, modelForTier } from '../../config/llm.js';
 import { buildGroundingFacts, type GroundingSource } from '../chat-grounding.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';

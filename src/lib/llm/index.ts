@@ -1,7 +1,7 @@
+export { generate, stream } from './llm-dispatcher.js';
 export {
-  generate,
-  stream,
   NIMError,
-  AllKeysExhaustedError,
+  AllKeysExhaustedError as NIMAllKeysExhaustedError,
   ModelDegradedError,
 } from './nim-client.js';
+export { GroqError, AllGroqKeysExhaustedError } from './groq-client.js';
