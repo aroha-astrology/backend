@@ -11,14 +11,9 @@ import { logger } from '../logger.js';
 
 /**
  * Buffered generation with provider routing.
- * STRUCTURED → NIM always (Mixtral-8x22B)
- * CONVERSATIONAL / ROUTING → Groq primary, NIM fallback.
+ * EVERYTHING → Groq primary, NIM fallback.
  */
 export async function generate(opts: LLMRequestOptions): Promise<string> {
-  if (opts.profile.modelTier === 'structured') {
-    return await nimClient.generate(opts);
-  }
-
   try {
     return await groqClient.generate(opts);
   } catch (err) {
@@ -36,14 +31,9 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
 
 /**
  * Streaming generation with provider routing.
- * CONVERSATIONAL → Groq primary, NIM fallback.
+ * EVERYTHING → Groq primary, NIM fallback.
  */
 export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
-  if (opts.profile.modelTier === 'structured') {
-    yield* nimClient.stream(opts);
-    return;
-  }
-
   try {
     yield* groqClient.stream(opts);
     return;

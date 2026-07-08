@@ -87,6 +87,7 @@ const EnvSchema = z
     GROQ_API_KEY_20: z.string().min(1).optional(),
     GROQ_BASE_URL: z.string().default('https://api.groq.com/openai/v1'),
     GROQ_MODEL_CONVERSATIONAL: z.string().default('llama-3.3-70b-versatile'),
+    GROQ_MODEL_STRUCTURED: z.string().default('llama-3.3-70b-versatile'),
     GROQ_MODEL_ROUTING: z.string().default('llama-3.1-8b-instant'),
     GROQ_RPM_LIMIT: z.coerce.number().int().positive().default(40),
 

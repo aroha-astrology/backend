@@ -138,6 +138,7 @@ function makeAbort(external: AbortSignal | undefined, ms: number) {
 
 function resolveModel(opts: LLMRequestOptions): string {
   if (opts.model) return opts.model;
+  if (opts.profile.modelTier === 'structured') return env.GROQ_MODEL_STRUCTURED;
   if (opts.profile.modelTier === 'conversational') return env.GROQ_MODEL_CONVERSATIONAL;
   return env.GROQ_MODEL_ROUTING;
 }
