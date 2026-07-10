@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { stream as llmStream } from '../../llm/llm-dispatcher.js';
-import { CHAT_PROFILE } from '../../../config/llm.js';
+import { CHAT_PROFILE, CHAT_DETAILS_PROFILE } from '../../../config/llm.js';
 import { logger } from '../../logger.js';
 import { buildGroundingFacts, type GroundingSource } from '../../chat-grounding.js';
 import type { SwarmState } from '../state.js';
@@ -21,7 +21,16 @@ const CONTEXT_DISCIPLINE = `Before asking the user anything, check two places fi
 
 const RESPONSE_DISCIPLINE = `You may ask at most one clarifying follow-up question on a given topic. Once the user has answered it, or if you already have enough chart/context information, you must give a concrete, definitive answer on the very next relevant turn — do not keep deflecting with more questions to avoid committing to an answer.`;
 
-const OUTPUT_STYLE = `Keep responses short: 2-4 sentences (under 90 words) by default, and never more than 150 words even if the user asks for more detail. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble ("Namaste," "Great question," etc. are not hooks). Then explain the reasoning in 1-3 more sentences. Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
+const OUTPUT_STYLE = `Keep responses short: 2-4 sentences (under 90 words) by default, and never more than 150 words even if the user asks for more detail. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble ("Namaste," "Great question," etc. are not hooks). Then explain the reasoning in 1-3 more sentences.`;
+
+/**
+ * Used when the client has switched to "Details" mode (a UI toggle, not
+ * something the user asks for in words) — a long-form, structured answer in
+ * the shape of a deep report rather than the default short chat reply.
+ */
+const OUTPUT_STYLE_DETAILS = `The user has switched on Details mode, so give a long-form, structured answer instead of the usual short reply. Still open with the hook — the single most relevant insight, stated in the first sentence with no preamble. Then organize the rest into a few clearly labeled sections, using **bold** headers for whichever are actually relevant to the question (e.g. chart snapshot, strengths, extent of potential, blind spots/guardrails, next steps) — don't force in a section the chart data doesn't support. Use short paragraphs or bullet points under each header. Use a markdown table only when directly comparing several concrete options (e.g. ranking categories) — not for its own sake. Target roughly 500-900 words: thorough, not padded. End with one specific, engaging follow-up question.`;
+
+const HEDGE_LANGUAGE = `Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
 
 /**
  * The single astrologer's role and scope. Merges what used to be 4 separate
@@ -79,13 +88,16 @@ Remedies:
 - Offer mantra, gemstone, or fasting-day suggestions as advisory text only — never phrase these as
   something to purchase, since there is no shop in this app.`;
 
-function systemPrompt(): string {
+export type ChatDetailLevel = 'direct' | 'details';
+
+function systemPrompt(detailLevel: ChatDetailLevel): string {
   return [
     SYSTEM_ROLE,
     GROUNDING_INSTRUCTION,
     CONTEXT_DISCIPLINE,
     RESPONSE_DISCIPLINE,
-    OUTPUT_STYLE,
+    detailLevel === 'details' ? OUTPUT_STYLE_DETAILS : OUTPUT_STYLE,
+    HEDGE_LANGUAGE,
   ].join('\n\n');
 }
 
@@ -122,10 +134,11 @@ export function buildChatMessages(
   userMessage: string,
   groundingFacts: string[],
   birthTimeUnknown = false,
+  detailLevel: ChatDetailLevel = 'direct',
 ): Array<{ role: string; content: string }> {
   const messages: Array<{ role: string; content: string }> = [];
 
-  messages.push({ role: 'system', content: systemPrompt() });
+  messages.push({ role: 'system', content: systemPrompt(detailLevel) });
 
   const noChartFallback = birthTimeUnknown
     ? `This user has told the app they don't know their exact birth time, so no chart, house, ascendant, or dasha data will ever be available for them. Do not invent chart facts. Answer using only traditional/general Vedic astrological knowledge (sun-sign-level guidance, general principles) when possible, and be upfront that chart-specific, personalized answers aren't possible without an exact birth time.`
@@ -177,15 +190,22 @@ export async function* scholarStream(
   userMessage: string,
   groundingSource: GroundingSource,
   birthTimeUnknown = false,
+  detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
 ): AsyncGenerator<string, void, unknown> {
-  logger.debug({ requestId: state.requestId }, 'scholar: starting stream');
+  logger.debug({ requestId: state.requestId, detailLevel }, 'scholar: starting stream');
 
   const groundingFacts = await buildGroundingFacts(groundingSource);
-  const messages = buildChatMessages(state, userMessage, groundingFacts, birthTimeUnknown);
+  const messages = buildChatMessages(
+    state,
+    userMessage,
+    groundingFacts,
+    birthTimeUnknown,
+    detailLevel,
+  );
 
   yield* llmStream({
-    profile: CHAT_PROFILE,
+    profile: detailLevel === 'details' ? CHAT_DETAILS_PROFILE : CHAT_PROFILE,
     messages,
     signal,
   });

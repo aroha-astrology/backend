@@ -426,6 +426,7 @@ astroRouter.openapi(chatRoute, async (c) => {
         body.message,
         body.history,
         body.summary,
+        body.detailLevel,
         signal,
       );
       for await (const event of events) {

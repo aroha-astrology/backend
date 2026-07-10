@@ -62,7 +62,9 @@ export type MatchmakingRequest = z.infer<typeof MatchmakingRequestSchema>;
 export const ChatHistoryTurnSchema = z
   .object({
     role: z.enum(['user', 'assistant']),
-    content: z.string().max(4000),
+    // 8000 (not 4000) so a full Details-mode reply (~500-900 words) can be
+    // echoed back as history on the next turn without failing validation.
+    content: z.string().max(8000),
   })
   .openapi('ChatHistoryTurn');
 
@@ -77,6 +79,9 @@ export const ChatRequestSchema = z
     summary: z.string().max(2000).optional().openapi({
       description:
         "Running summary of the conversation before `history`, as returned by a prior turn's `summary` SSE event.",
+    }),
+    detailLevel: z.enum(['direct', 'details']).default('direct').openapi({
+      description: 'Reply depth: "direct" (short, default) or "details" (long-form, structured).',
     }),
   })
   .openapi('ChatRequest');

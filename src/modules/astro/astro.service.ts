@@ -10,6 +10,7 @@ import {
   moonSignPeriodicPrediction,
   sunSignPrediction,
   type PeriodicPeriod,
+  type ChatDetailLevel,
 } from '../../lib/swarm/index.js';
 import {
   dateToJulianDay,
@@ -694,6 +695,7 @@ export async function* chatStream(
   message: string,
   history: ChatTurn[],
   incomingSummary: string | undefined,
+  detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent> {
   const state = newState({ userId, intent: 'chat', consent: true });
@@ -726,7 +728,14 @@ export async function* chatStream(
   }
   state.chatContext = { history: recentHistory, summary };
 
-  const tokenStream = scholarStream(state, message, groundingSource, birthTimeUnknown, signal);
+  const tokenStream = scholarStream(
+    state,
+    message,
+    groundingSource,
+    birthTimeUnknown,
+    detailLevel,
+    signal,
+  );
   for await (const token of tokenStream) {
     yield { type: 'token', content: token };
   }

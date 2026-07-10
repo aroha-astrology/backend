@@ -58,6 +58,21 @@ export const CHAT_PROFILE: GenerationProfile = {
   maxTokens: 480,
 };
 
+/**
+ * Details-mode chat — a long-form, structured reply (~500-900 words, see
+ * scholar.ts OUTPUT_STYLE_DETAILS) instead of the default short one. 1600 is
+ * a generous ceiling over that target, same "bound worst-case latency"
+ * rationale as CHAT_PROFILE, not a tight fit to the intended length.
+ */
+export const CHAT_DETAILS_PROFILE: GenerationProfile = {
+  name: 'chat-details',
+  modelTier: 'conversational',
+  temperature: 0.7,
+  jsonMode: false,
+  stream: true,
+  maxTokens: 1600,
+};
+
 /** Cheap, fast, non-streaming — used to fold older chat turns into a running summary. */
 export const CHAT_SUMMARY_PROFILE: GenerationProfile = {
   name: 'chat-summary',
