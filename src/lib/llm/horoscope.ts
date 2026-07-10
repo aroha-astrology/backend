@@ -102,14 +102,14 @@ ${PLAIN_LANGUAGE_RULE}
 ${STRUCTURED_JSON_RULE}
 ${LUCKY_ELEMENTS_RULE}
 Keep each block's "hook" under 20 words and "description" under 40 words. ${STYLE_RULE}`,
-  tomorrow: `You are writing a short personalized Vedic astrology horoscope for TOMORROW (the day after today) for a mobile app.
+  tomorrow: `You are writing a short personalized Vedic astrology horoscope for the upcoming day (the day after today) for a mobile app.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
 ${LUCKY_ELEMENTS_RULE}
-Keep each block's "hook" under 20 words and "description" under 40 words. Write as a preview of what's coming, not what's happening now (e.g. "tomorrow favors..." not "today favors..."). ${STYLE_RULE}`,
+Keep each block's "hook" under 20 words and "description" under 40 words. Write in tendency language about what the day favors. Do NOT use the words "today" or "tomorrow" anywhere in the hook/description/advice text itself — this exact reading is later reused verbatim as the user's "today" horoscope once that day arrives, so it must read correctly regardless of which calendar day it's displayed on. ${STYLE_RULE}`,
   weekly: `You are writing a short personalized weekly Vedic astrology horoscope for a mobile app, summarizing the arc of the coming week.
 
 ${GROUNDING_RULE}

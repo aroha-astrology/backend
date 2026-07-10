@@ -485,7 +485,7 @@ export function toHoroscopeDto(
     summary: row.summary ?? '',
     monthlyBreakdown: row.monthlyBreakdown ?? undefined,
     structured: normalizeStructured(row.structured),
-    dasha: buildDashaReading(dashaData ?? null) ?? undefined,
+    dasha: buildDashaReading(dashaData ?? null, row.forDate) ?? undefined,
     model: row.model,
     generatedAt: row.updatedAt.toISOString(),
   };

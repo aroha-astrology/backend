@@ -84,6 +84,7 @@ interface RawDashaPeriod {
   planet?: unknown;
   startDate?: unknown;
   endDate?: unknown;
+  subPeriods?: unknown;
 }
 
 function toIsoDate(value: unknown): string | null {
@@ -93,21 +94,75 @@ function toIsoDate(value: unknown): string | null {
   return d.toISOString().slice(0, 10);
 }
 
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function isPlanet(value: unknown): value is Planet {
   return typeof value === 'string' && value in MAHADASHA_THEME;
 }
 
+/** Parse a YYYY-MM-DD date string to a Date at 12:00 UTC (midday avoids day-boundary issues). */
+function parseDateMidday(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+}
+
+/**
+ * Find whichever period in `periods` covers `target` — i.e. whose
+ * [startDate, endDate) range contains it — rather than trusting the
+ * `isActive` flag, which was only ever computed relative to "now" at kundli
+ * generation time and goes wrong for any other date (a different period, or
+ * simply real time having moved on since generation).
+ */
+function findPeriodAsOf(periods: RawDashaPeriod[], target: Date): RawDashaPeriod | undefined {
+  const t = target.getTime();
+  return periods.find((p) => {
+    const start = toDate(p.startDate);
+    const end = toDate(p.endDate);
+    return start && end && t >= start.getTime() && t < end.getTime();
+  });
+}
+
 /**
  * Build the plain-language current-dasha reading from `kundli.dashaData`
- * (the `{ vimshottari: VimshottariDasha }` blob). Returns null when the
- * kundli or dasha data isn't available yet (never fabricates a planet).
+ * (the `{ vimshottari: VimshottariDasha }` blob), as of `forDate` (defaults
+ * to now). Returns null when the kundli or dasha data isn't available yet
+ * (never fabricates a planet).
+ *
+ * Looks up the Mahadasha/Antardasha covering `forDate` from the full
+ * `mahadashas` timeline instead of always using `currentMahadasha`/
+ * `currentAntardasha` — those two fields are frozen at whatever "now" was
+ * when the kundli was generated, so without this a horoscope for a
+ * different period (or just an older kundli) would show a chapter that's no
+ * longer actually current. Antardasha-level `subPeriods` are only ever
+ * populated for the Mahadasha that was active at generation time (a
+ * performance tradeoff in the astro-engine), so `forDate`s that land in a
+ * different Mahadasha still resolve the correct planet, just without an
+ * antardasha nuance — a rare edge case since Mahadashas span years.
  */
-export function buildDashaReading(dashaData: Record<string, unknown> | null): DashaReading | null {
+export function buildDashaReading(
+  dashaData: Record<string, unknown> | null,
+  forDate?: string,
+): DashaReading | null {
   const vimshottari = dashaData?.vimshottari as Record<string, unknown> | undefined;
-  const maha = vimshottari?.currentMahadasha as RawDashaPeriod | undefined;
-  const antar = vimshottari?.currentAntardasha as RawDashaPeriod | undefined;
+  const target = forDate ? parseDateMidday(forDate) : new Date();
+
+  const mahadashas = vimshottari?.mahadashas as RawDashaPeriod[] | undefined;
+  const maha =
+    (mahadashas && findPeriodAsOf(mahadashas, target)) ??
+    (vimshottari?.currentMahadasha as RawDashaPeriod | undefined);
 
   if (!isPlanet(maha?.planet)) return null;
+
+  const subPeriods = maha.subPeriods as RawDashaPeriod[] | undefined;
+  const antar =
+    (subPeriods && findPeriodAsOf(subPeriods, target)) ??
+    (maha === vimshottari?.currentMahadasha
+      ? (vimshottari?.currentAntardasha as RawDashaPeriod | undefined)
+      : undefined);
 
   const mahadashaPlanet = maha.planet;
   const antardashaPlanet = isPlanet(antar?.planet) ? antar.planet : null;
