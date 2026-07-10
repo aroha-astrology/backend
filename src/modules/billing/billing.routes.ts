@@ -3,7 +3,21 @@ import { requireUser } from '../../middleware/auth.js';
 import {
   BillingPlanResponseSchema,
   BillingBalanceResponseSchema,
+  CreditPacksResponseSchema,
+  ValidateCouponBodySchema,
+  CouponValidationResponseSchema,
+  CheckoutBodySchema,
+  OrderSchema,
+  OrderIdParamSchema,
+  ConfirmOrderResponseSchema,
 } from './billing.schemas.js';
+import {
+  getCreditPacks,
+  validateCoupon,
+  checkout,
+  confirmPayment,
+  toOrderDto,
+} from './billing.service.js';
 
 const ErrorSchema = z
   .object({
@@ -46,10 +60,7 @@ const planRoute = createRoute({
 
 billingRouter.openapi(planRoute, async (c) => {
   // TODO: read from subscription table
-  return c.json(
-    { plan: 'free', expiresAt: null, features: ['daily_forecast', 'panchang'] },
-    200,
-  );
+  return c.json({ plan: 'free', expiresAt: null, features: ['daily_forecast', 'panchang'] }, 200);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -75,3 +86,118 @@ billingRouter.openapi(balanceRoute, async (c) => {
   // TODO: read from billing/credits table
   return c.json({ credits: 0, currency: 'INR' }, 200);
 });
+
+/* -------------------------------------------------------------------------- */
+/* GET /billing/packs                                                          */
+/* -------------------------------------------------------------------------- */
+
+const packsRoute = createRoute({
+  method: 'get',
+  path: '/billing/packs',
+  tags: ['Billing'],
+  summary: 'List purchasable credit packs',
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'Credit packs',
+      content: { 'application/json': { schema: CreditPacksResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+billingRouter.openapi(packsRoute, async (c) => {
+  return c.json({ packs: getCreditPacks() as unknown as CreditPack[] }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /billing/coupons/validate                                              */
+/* -------------------------------------------------------------------------- */
+
+const validateCouponRoute = createRoute({
+  method: 'post',
+  path: '/billing/coupons/validate',
+  tags: ['Billing'],
+  summary: 'Preview the discount a coupon code would apply to a pack, without redeeming it',
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { required: true, content: { 'application/json': { schema: ValidateCouponBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Validation result (valid:false with a message when not applicable)',
+      content: { 'application/json': { schema: CouponValidationResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    400: errorResponse('Unknown pack'),
+  },
+});
+
+billingRouter.openapi(validateCouponRoute, async (c) => {
+  const { code, packId } = c.req.valid('json');
+  const result = await validateCoupon(code, packId);
+  return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /billing/checkout                                                      */
+/* -------------------------------------------------------------------------- */
+
+const checkoutRoute = createRoute({
+  method: 'post',
+  path: '/billing/checkout',
+  tags: ['Billing'],
+  summary: 'Create a pending order for a credit pack (optionally with a coupon applied)',
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { required: true, content: { 'application/json': { schema: CheckoutBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Pending order, ready to be paid',
+      content: { 'application/json': { schema: OrderSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    400: errorResponse('Unknown pack or invalid coupon'),
+  },
+});
+
+billingRouter.openapi(checkoutRoute, async (c) => {
+  const user = c.get('user');
+  const { packId, couponCode } = c.req.valid('json');
+  const order = await checkout(user.id, packId, couponCode);
+  return c.json(toOrderDto(order), 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /billing/orders/{id}/confirm                                           */
+/* -------------------------------------------------------------------------- */
+
+const confirmRoute = createRoute({
+  method: 'post',
+  path: '/billing/orders/{id}/confirm',
+  tags: ['Billing'],
+  summary:
+    'Confirm payment for a pending order and grant its credits. MOCK: stands in for a real ' +
+    'gateway webhook until Razorpay/Stripe is wired up — always "succeeds" for a pending order.',
+  security: [{ bearerAuth: [] }],
+  request: { params: OrderIdParamSchema },
+  responses: {
+    200: {
+      description: 'Order confirmed, credits granted',
+      content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Order not found'),
+    409: errorResponse('Order already processed or not pending'),
+  },
+});
+
+billingRouter.openapi(confirmRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const { order, credits } = await confirmPayment(id, user.id);
+  return c.json({ order: toOrderDto(order), credits }, 200);
+});
+
+type CreditPack = z.infer<typeof CreditPacksResponseSchema>['packs'][number];

@@ -566,6 +566,82 @@ export const creditTransactions = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* coupons — admin-issued discount codes for credit-pack purchases             */
+/* -------------------------------------------------------------------------- */
+
+export const couponDiscountTypeEnum = pgEnum('coupon_discount_type', ['percent', 'flat']);
+
+export const coupons = pgTable(
+  'coupons',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    code: text('code').notNull(),
+    discountType: couponDiscountTypeEnum('discount_type').notNull(),
+    /** Percent: 1-100. Flat: paise off the pack price. */
+    discountValue: integer('discount_value').notNull(),
+    /** Null = unlimited redemptions. */
+    maxRedemptions: integer('max_redemptions'),
+    redemptionCount: integer('redemption_count').notNull().default(0),
+    minAmountPaise: integer('min_amount_paise'),
+    active: boolean('active').notNull().default(true),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    codeUpperUnique: uniqueIndex('coupons_code_upper_unique').on(sql`upper(${table.code})`),
+  }),
+);
+
+export type CouponRow = typeof coupons.$inferSelect;
+export type NewCouponRow = typeof coupons.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* orders — credit-pack purchases (gateway integration pending, see billing)   */
+/* -------------------------------------------------------------------------- */
+
+export const orderStatusEnum = pgEnum('order_status', ['pending', 'paid', 'failed', 'cancelled']);
+
+export const orders = pgTable(
+  'orders',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Matches an id in billing.service.ts's CREDIT_PACKS — not its own table since the catalog is small/static. */
+    packId: text('pack_id').notNull(),
+    credits: integer('credits').notNull(),
+    amountPaise: integer('amount_paise').notNull(),
+    discountPaise: integer('discount_paise').notNull().default(0),
+    finalAmountPaise: integer('final_amount_paise').notNull(),
+    currency: text('currency').notNull().default('INR'),
+    couponId: uuid('coupon_id').references(() => coupons.id),
+    couponCode: text('coupon_code'),
+    status: orderStatusEnum('status').notNull().default('pending'),
+    /** 'mock' until a real gateway (Razorpay/Stripe) is wired up. */
+    gatewayProvider: text('gateway_provider').notNull().default('mock'),
+    gatewayOrderId: text('gateway_order_id'),
+    gatewayPaymentId: text('gateway_payment_id'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userIdx: index('orders_user_id_idx').on(table.userId),
+  }),
+);
+
+export type OrderRow = typeof orders.$inferSelect;
+export type NewOrderRow = typeof orders.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* prediction_feedback — user feedback on predictions                          */
 /* -------------------------------------------------------------------------- */
 
