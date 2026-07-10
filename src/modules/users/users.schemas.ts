@@ -254,6 +254,8 @@ export const UserSchema = z
     streakLastDay: z.string().nullable(),
     appVersion: z.string().nullable(),
     platform: PlatformSchema.nullable(),
+    credits: z.number().int(),
+    unlockedHouses: z.array(z.number().int()),
 
     referralSource: z.string().nullable(),
     referredByCode: z.string().nullable(),
@@ -378,3 +380,16 @@ export const UpdateMeBodySchema = z
   .openapi('UpdateMeBody');
 
 export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
+
+/* -------------------------------------------------------------------------- */
+/* POST /v1/me/unlock-house body                                               */
+/* -------------------------------------------------------------------------- */
+
+export const UnlockHouseBodySchema = z
+  .object({
+    houseNumber: z.number().int().min(1).max(12),
+  })
+  .strict()
+  .openapi('UnlockHouseBody');
+
+export type UnlockHouseBody = z.infer<typeof UnlockHouseBodySchema>;

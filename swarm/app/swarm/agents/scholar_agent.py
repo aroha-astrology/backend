@@ -52,8 +52,10 @@ _LOVE_DOMAIN = """MARRIAGE: Give marriage-timing, compatibility, and Manglik Dos
 _HEALTH_DOMAIN = """WELLNESS FRAMING: Reframe every health question in terms of wellness, vitality, and energy — never diagnose. Always add: "This is wellness guidance, not a diagnosis — please see a doctor for medical concerns.\""""
 
 
+_HOOK_RULE = """HOOK RULE: Always provide a highly relatable, engaging 'hook' at the beginning of your reading to immediately capture the seeker's attention and resonate with their daily life."""
+
 def _persona_prompt(identity: str, domain_block: str) -> str:
-    return "\n\n".join([identity, _GROUNDING_RULES, _WRITING_RULE, _RESPONSE_DISCIPLINE, domain_block, _DISCLAIMER])
+    return "\n\n".join([identity, _GROUNDING_RULES, _HOOK_RULE, _WRITING_RULE, _RESPONSE_DISCIPLINE, domain_block, _DISCLAIMER])
 
 
 SCHOLAR_SYSTEM_BY_PERSONA: dict[str, str] = {

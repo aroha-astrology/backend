@@ -77,6 +77,8 @@ export function toUserDto(row: UserRow): UserDto {
     streakLastDay: row.streakLastDay,
     appVersion: row.appVersion,
     platform: row.platform,
+    credits: row.credits,
+    unlockedHouses: row.unlockedHouses ?? [1],
 
     referralSource: row.referralSource,
     referredByCode: row.referredByCode,
@@ -364,4 +366,12 @@ export async function deleteMe(userId: string): Promise<void> {
   await softDeleteBirthProfilesByOwner(userId);
   await revokeDeviceTokensByUser(userId);
   await softDeleteUserById(userId);
+}
+
+export async function unlockHouse(userId: string, houseNumber: number): Promise<void> {
+  const { unlockHouseForUser } = await import('./users.repo.js');
+  const success = await unlockHouseForUser(userId, houseNumber);
+  if (!success) {
+    throw Errors.conflict('Insufficient credits or house already unlocked');
+  }
 }
