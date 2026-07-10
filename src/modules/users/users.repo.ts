@@ -1,4 +1,4 @@
-import { and, eq, isNull, count, desc, gte } from 'drizzle-orm';
+import { and, eq, isNull, count, desc, gte, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   users,
@@ -151,4 +151,19 @@ export async function listUsersPage(limit: number, offset: number) {
     .orderBy(desc(users.createdAt))
     .limit(limit)
     .offset(offset);
+}
+
+export async function unlockHouseForUser(userId: string, houseNumber: number) {
+  // Use raw sql to deduct credits and array_append to unlockedHouses
+  // ensure credits >= 5 and houseNumber is not already in unlockedHouses
+  const result = await db.execute(sql`
+    UPDATE users
+    SET credits = credits - 5,
+        unlocked_houses = array_append(unlocked_houses, ${houseNumber})
+    WHERE id = ${userId} 
+      AND credits >= 5 
+      AND NOT (${houseNumber} = ANY(unlocked_houses))
+    RETURNING *;
+  `);
+  return result.length > 0;
 }

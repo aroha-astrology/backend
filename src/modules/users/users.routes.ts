@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { UpdateMeBodySchema, UserSchema } from './users.schemas.js';
-import { deleteMe, toUserDto, updateMe } from './users.service.js';
+import { deleteMe, toUserDto, updateMe, unlockHouse } from './users.service.js';
 
 const ErrorSchema = z
   .object({
@@ -60,6 +60,32 @@ const patchMeRoute = createRoute({
   },
 });
 
+const unlockHouseRoute = createRoute({
+  method: 'post',
+  path: '/me/unlock-house',
+  tags: ['Users'],
+  summary: 'Unlock a house using credits',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': { schema: z.object({ houseNumber: z.number().int().min(1).max(12) }) },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Success',
+      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    409: errorResponse('Conflict (Insufficient credits or already unlocked)'),
+    422: errorResponse('Validation failed'),
+  },
+});
+
 const deleteMeRoute = createRoute({
   method: 'delete',
   path: '/me',
@@ -92,4 +118,11 @@ usersRouter.openapi(deleteMeRoute, async (c) => {
   const user = c.get('user');
   await deleteMe(user.id);
   return c.body(null, 204);
+});
+
+usersRouter.openapi(unlockHouseRoute, async (c) => {
+  const user = c.get('user');
+  const body = c.req.valid('json');
+  await unlockHouse(user.id, body.houseNumber);
+  return c.json({ success: true }, 200);
 });

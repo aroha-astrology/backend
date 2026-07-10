@@ -317,6 +317,11 @@ export const users = pgTable(
     streakLastDay: date('streak_last_day'),
     appVersion: text('app_version'),
     platform: platformEnum('platform'),
+    credits: integer('credits').notNull().default(50),
+    unlockedHouses: integer('unlocked_houses')
+      .array()
+      .notNull()
+      .default(sql`ARRAY[1]::integer[]`),
 
     // --- acquisition / referral -------------------------------------------
     referralSource: text('referral_source'),
