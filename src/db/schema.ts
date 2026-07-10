@@ -895,6 +895,53 @@ export type DailyHoroscopeRow = typeof dailyHoroscopes.$inferSelect;
 export type NewDailyHoroscopeRow = typeof dailyHoroscopes.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* house_insights — one personalized LLM insight per (user, house 1-12)        */
+/* -------------------------------------------------------------------------- */
+
+/** Same generating/ready/failed shape as horoscope status — a row is only
+ * inserted the moment generation is actually claimed (see claimHouseInsightGeneration). */
+export const houseInsightStatusEnum = pgEnum('house_insight_status', [
+  'generating',
+  'ready',
+  'failed',
+]);
+
+export const houseInsights = pgTable(
+  'house_insights',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** 1-12. */
+    house: integer('house').notNull(),
+    /** Plain-language personalized reading for this house — what it means for THIS chart, not a generic house description. Null while 'generating'. */
+    text: text('text'),
+    strengths: jsonb('strengths').$type<string[]>(),
+    weaknesses: jsonb('weaknesses').$type<string[]>(),
+    model: text('model'),
+    status: houseInsightStatusEnum('status').notNull(),
+    /** Claim token, same fencing pattern as daily_horoscopes.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userHouseUnique: uniqueIndex('house_insights_user_house_unique').on(table.userId, table.house),
+  }),
+);
+
+export type HouseInsightRow = typeof houseInsights.$inferSelect;
+export type NewHouseInsightRow = typeof houseInsights.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* panchang_cache — one row per (date, reference point), shared by all users   */
 /* -------------------------------------------------------------------------- */
 

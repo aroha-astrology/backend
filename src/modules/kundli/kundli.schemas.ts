@@ -45,3 +45,29 @@ export const KundliMissingParamsSchema = z
     message: z.string(),
   })
   .openapi('KundliMissingParameters');
+
+export const HouseParamSchema = z.object({
+  house: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(12)
+    .openapi({ param: { name: 'house', in: 'path' } }),
+});
+
+/** 200 — the personalized per-house insight (generated lazily on first unlock). */
+export const HouseInsightSchema = z
+  .object({
+    status: z.literal('ready'),
+    text: z.string(),
+    strengths: z.array(z.string()),
+    weaknesses: z.array(z.string()),
+  })
+  .openapi('HouseInsight');
+
+/** 202 — generation in progress, or the last attempt failed — poll again. */
+export const HouseInsightStatusSchema = z
+  .object({
+    status: z.enum(['generating', 'failed']),
+  })
+  .openapi('HouseInsightStatus');

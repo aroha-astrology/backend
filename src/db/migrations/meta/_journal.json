@@ -99,6 +99,13 @@
       "when": 1783680214148,
       "tag": "0013_add_coupons_and_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783682650269,
+      "tag": "0014_add_house_insights",
+      "breakpoints": true
     }
   ]
 }

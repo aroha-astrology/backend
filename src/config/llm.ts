@@ -129,6 +129,21 @@ export const PURCHASE_PLAN_PROFILE: GenerationProfile = {
   maxTokens: 4096,
 };
 
+/**
+ * Per-house kundli insight ("what this house means for THIS chart") — one
+ * LLM call per (user, house), generated lazily the first time a user unlocks
+ * that house and cached forever after (the natal chart never changes), so a
+ * moderate token ceiling is fine without recurring per-request cost.
+ */
+export const HOUSE_INSIGHT_PROFILE: GenerationProfile = {
+  name: 'house-insight',
+  modelTier: 'structured',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 500,
+};
+
 export function modelForTier(tier: ModelTier): string {
   const map: Record<ModelTier, string> = {
     routing: env.MODEL_ROUTING,

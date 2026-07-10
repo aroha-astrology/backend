@@ -18,6 +18,15 @@ import {
   markKundliReady,
 } from './kundli.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
+import { generateHouseInsight } from '../../lib/llm/house-insight.js';
+import {
+  STALE_GENERATING_MS as HOUSE_INSIGHT_STALE_GENERATING_MS,
+  claimHouseInsightGeneration,
+  findHouseInsight,
+  markHouseInsightFailed,
+  markHouseInsightReady,
+} from './house-insight.repo.js';
+import type { HouseInsightRow } from '../../db/schema.js';
 
 type EngineAyanamsa = 'lahiri' | 'raman' | 'krishnamurti';
 type EngineHouseSystem = 'W' | 'P' | 'K' | 'E';
@@ -354,3 +363,78 @@ export function toKundliDto(row: KundliRow): KundliDto {
     generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Per-house insight — lazy, cached-forever LLM generation                    */
+/* -------------------------------------------------------------------------- */
+
+export interface HouseInsightReadyDto {
+  status: 'ready';
+  text: string;
+  strengths: string[];
+  weaknesses: string[];
+}
+
+/** Only call this once the row is confirmed `status === 'ready'` — the 202 (generating/failed) cases are plain literals, no DTO needed. */
+export function toHouseInsightDto(row: HouseInsightRow): HouseInsightReadyDto {
+  return {
+    status: 'ready',
+    text: row.text ?? '',
+    strengths: row.strengths ?? [],
+    weaknesses: row.weaknesses ?? [],
+  };
+}
+
+async function runHouseInsightGeneration(
+  userId: string,
+  house: number,
+  kundli: KundliRow,
+  claimedAt: Date,
+): Promise<void> {
+  try {
+    const result = await generateHouseInsight({
+      userId,
+      house,
+      chart: kundli.chartData,
+      dasha: kundli.dashaData,
+    });
+    await markHouseInsightReady(userId, house, claimedAt, result);
+  } catch (err) {
+    logger.error({ err, userId, house }, 'house insight generation failed');
+    await markHouseInsightFailed(
+      userId,
+      house,
+      claimedAt,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+/**
+ * Fire-and-forget entry point used by the GET route (cache miss/retry) — a
+ * single bounded attempt (no retry-forever loop; a user re-opening the house
+ * drawer naturally retries), same as horoscope's on-demand weekly/monthly
+ * periods. No-op (returns 'skipped') if another run already owns the claim
+ * or a ready row already exists.
+ */
+export async function requestHouseInsightGeneration(
+  userId: string,
+  house: number,
+  kundli: KundliRow,
+): Promise<'generated' | 'skipped'> {
+  const claimed = await claimHouseInsightGeneration(userId, house);
+  if (!claimed?.startedAt) return 'skipped';
+  await runHouseInsightGeneration(userId, house, kundli, claimed.startedAt);
+  return 'generated';
+}
+
+/** A 'generating' house_insights row whose run likely crashed (older than the stale cutoff). */
+export function isHouseInsightStale(row: HouseInsightRow): boolean {
+  return (
+    row.status === 'generating' &&
+    row.startedAt !== null &&
+    Date.now() - row.startedAt.getTime() > HOUSE_INSIGHT_STALE_GENERATING_MS
+  );
+}
+
+export { findHouseInsight };

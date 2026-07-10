@@ -1,14 +1,25 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { logger } from '../../lib/logger.js';
-import { KundliMissingParamsSchema, KundliSchema, KundliStatusSchema } from './kundli.schemas.js';
+import {
+  HouseInsightSchema,
+  HouseInsightStatusSchema,
+  HouseParamSchema,
+  KundliMissingParamsSchema,
+  KundliSchema,
+  KundliStatusSchema,
+} from './kundli.schemas.js';
 import {
   birthInputsForUser,
+  findHouseInsight,
   getKundliForUser,
+  isHouseInsightStale,
   isStaleGenerating,
   missingKundliParams,
   regenerateKundli,
+  requestHouseInsightGeneration,
   requestKundliGeneration,
+  toHouseInsightDto,
   toKundliDto,
   type KundliRequiredField,
 } from './kundli.service.js';
@@ -185,4 +196,75 @@ kundliRouter.openapi(regenerateRoute, async (c) => {
     },
     202,
   );
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /v1/kundli/houses/{house}/insight                                       */
+/* -------------------------------------------------------------------------- */
+
+/** Kick off house-insight generation without blocking the response. */
+function fireHouseInsightGeneration(
+  userId: string,
+  house: number,
+  kundliRow: NonNullable<Awaited<ReturnType<typeof getKundliForUser>>>,
+): void {
+  void requestHouseInsightGeneration(userId, house, kundliRow).catch((err: unknown) => {
+    logger.error({ err, userId, house }, 'house insight background generation errored');
+  });
+}
+
+const getHouseInsightRoute = createRoute({
+  method: 'get',
+  path: '/kundli/houses/{house}/insight',
+  tags: ['Kundli'],
+  summary: "Get the current user's personalized insight for one house (1-12)",
+  description:
+    'Returns 200 with the insight when ready, 202 while it is still being generated ' +
+    '(poll again — generated lazily the first time a house is viewed, then cached ' +
+    "forever since the natal chart never changes), or 403 if the house isn't unlocked.",
+  security: [{ bearerAuth: [] }],
+  request: { params: HouseParamSchema },
+  responses: {
+    200: {
+      description: 'House insight',
+      content: { 'application/json': { schema: HouseInsightSchema } },
+    },
+    202: {
+      description: 'Generation in progress or the last attempt failed — poll again',
+      content: { 'application/json': { schema: HouseInsightStatusSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('House is not unlocked'),
+  },
+});
+
+kundliRouter.openapi(getHouseInsightRoute, async (c) => {
+  const user = c.get('user');
+  const { house } = c.req.valid('param');
+
+  const unlockedHouses = user.unlockedHouses ?? [];
+  if (!unlockedHouses.includes(house)) {
+    return c.json(
+      { error: { code: 'FORBIDDEN', message: 'This house is not unlocked yet.' } },
+      403,
+    );
+  }
+
+  const kundli = await getKundliForUser(user.id);
+  if (!kundli || kundli.status !== 'ready') {
+    return c.json({ status: 'generating' as const }, 202);
+  }
+
+  const existing = await findHouseInsight(user.id, house);
+
+  if (existing?.status === 'ready') {
+    return c.json(toHouseInsightDto(existing), 200);
+  }
+
+  if (existing?.status === 'generating' && !isHouseInsightStale(existing)) {
+    return c.json({ status: 'generating' as const }, 202);
+  }
+
+  fireHouseInsightGeneration(user.id, house, kundli);
+  return c.json({ status: 'generating' as const }, 202);
 });

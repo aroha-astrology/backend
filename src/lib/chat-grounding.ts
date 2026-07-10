@@ -14,6 +14,7 @@
 import { dashaLordTransitQuality, SIGNS } from './astro-tools/index.js';
 import { dateToJulianDay, calculatePlanetPositions } from './astro-engine/index.js';
 import { findFavorableWindow } from './dasha-window.js';
+import { NAKSHATRAS } from '@aroha-astrology/shared';
 
 export interface GroundingSource {
   /** kundli.chartData — planets, houses (with lord), ascendant. */
@@ -128,6 +129,41 @@ async function currentTransitSignIndex(planet: string, asOfDate?: string): Promi
     return p ? Number(p.signIndex) : null;
   } catch {
     return null; // best-effort — a missing transit fact is fine, an invented one is not
+  }
+}
+
+/**
+ * Moon changes sign every ~2.25 days and nakshatra roughly daily — the only
+ * fast-moving transit signal available (Saturn/Jupiter, the other transits
+ * computed here, hold the same sign for months/years, so a daily/tomorrow
+ * horoscope grounded only in those two plus permanent natal facts has near-
+ * identical input every day and inevitably reads as a generic, evergreen
+ * "tagline" rather than something tied to that specific date).
+ */
+async function currentTransitMoonDetail(
+  asOfDate?: string,
+): Promise<{ signIndex: number; nakshatraIndex: number } | null> {
+  try {
+    const dt = asOfDate ? parseDateMidday(asOfDate) : new Date();
+    const jd = await dateToJulianDay(
+      dt.getUTCFullYear(),
+      dt.getUTCMonth() + 1,
+      dt.getUTCDate(),
+      dt.getUTCHours(),
+      dt.getUTCMinutes(),
+      0,
+    );
+    const positions = (await calculatePlanetPositions(jd)) as unknown as Array<
+      Record<string, unknown>
+    >;
+    const p = positions.find((x) => x.planet === 'Moon');
+    if (!p) return null;
+    const signIndex = Number(p.signIndex);
+    const nakshatraIndex =
+      (p.nakshatraIndex as number | undefined) ?? Math.floor(Number(p.longitude) / (360 / 27));
+    return { signIndex, nakshatraIndex };
+  } catch {
+    return null;
   }
 }
 
@@ -369,6 +405,16 @@ export async function buildGroundingFacts(
             ? 'traditionally favorable for relationship/marriage timing'
             : 'not one of the classic favorable houses for relationship timing right now'
         }`,
+      );
+    }
+
+    const moonTransit = await currentTransitMoonDetail(asOfDate);
+    if (moonTransit) {
+      const moonHouseFromAsc = ((moonTransit.signIndex - ascSignIndex + 12) % 12) + 1;
+      facts.push(
+        `Moon is ${transitLabel} transiting ${SIGNS[moonTransit.signIndex]} in ${
+          NAKSHATRAS[moonTransit.nakshatraIndex] ?? 'an unknown'
+        } nakshatra, your ${moonHouseFromAsc}th house from the Ascendant — this is the fastest-moving daily signal (changes sign every ~2.25 days, nakshatra roughly daily) and should anchor what's distinctive about THIS specific date versus other days`,
       );
     }
   }

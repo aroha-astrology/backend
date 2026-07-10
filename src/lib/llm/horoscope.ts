@@ -93,6 +93,9 @@ carefully, "avoid"/1 only for a real caution — do not inflate every block to "
 
 const LUCKY_ELEMENTS_RULE = `Also include at the top level (sibling to health/career/marriage/finance/education/overall): "luckyColor": a single color name, and "luckyNumber": an integer 1-9.`;
 
+const DAILY_ANCHOR_RULE =
+  "The chart data includes a \"Moon is transiting...\" line — this is the only fact that actually changes day to day (Saturn/Jupiter hold the same sign for months or years, and the natal chart never changes), so it is what makes THIS day's reading different from yesterday's or tomorrow's. At least 2-3 of the six hooks must draw on it (the sign, nakshatra, or house it touches) or on another same-day-specific fact, not just restate a permanent natal theme in different words — a hook that would read equally true on any other day is a failure, however punchy it sounds.";
+
 const HOROSCOPE_SYSTEM: Record<Exclude<HoroscopePeriod, 'yearly'>, string> = {
   daily: `You are writing a short personalized daily Vedic astrology horoscope for a mobile app.
 
@@ -101,6 +104,7 @@ ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
 ${LUCKY_ELEMENTS_RULE}
+${DAILY_ANCHOR_RULE}
 Keep each block's "hook" under 20 words and "description" under 40 words. ${STYLE_RULE}`,
   tomorrow: `You are writing a short personalized Vedic astrology horoscope for the upcoming day (the day after today) for a mobile app.
 
@@ -109,6 +113,7 @@ ${PLAIN_LANGUAGE_RULE}
 
 ${STRUCTURED_JSON_RULE}
 ${LUCKY_ELEMENTS_RULE}
+${DAILY_ANCHOR_RULE}
 Keep each block's "hook" under 20 words and "description" under 40 words. Write in tendency language about what the day favors. Do NOT use the words "today" or "tomorrow" anywhere in the hook/description/advice text itself — this exact reading is later reused verbatim as the user's "today" horoscope once that day arrives, so it must read correctly regardless of which calendar day it's displayed on. ${STYLE_RULE}`,
   weekly: `You are writing a short personalized weekly Vedic astrology horoscope for a mobile app, summarizing the arc of the coming week.
 
