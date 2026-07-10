@@ -321,7 +321,7 @@ export const users = pgTable(
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
-      .default(sql`ARRAY[1]::integer[]`),
+      .default(sql`ARRAY[]::integer[]`),
 
     // --- acquisition / referral -------------------------------------------
     referralSource: text('referral_source'),

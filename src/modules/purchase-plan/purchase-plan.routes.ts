@@ -11,6 +11,7 @@ import {
   requestPurchasePlanAnalysis,
   getPlansForUser,
   getPlanForUser,
+  removePlanForUser,
 } from './purchase-plan.service.js';
 
 const ErrorSchema = z
@@ -111,4 +112,25 @@ purchasePlanRouter.openapi(getOneRoute, async (c) => {
   const { id } = c.req.valid('param');
   const plan = await getPlanForUser(id, user.id);
   return c.json(plan, 200);
+});
+
+const deleteRoute = createRoute({
+  method: 'delete',
+  path: '/purchase-plan/{id}',
+  tags: ['PurchasePlan'],
+  summary: 'Delete a single purchase-plan analysis',
+  security: [{ bearerAuth: [] }],
+  request: { params: PlanIdParamSchema },
+  responses: {
+    204: { description: 'Deleted' },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found'),
+  },
+});
+
+purchasePlanRouter.openapi(deleteRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  await removePlanForUser(id, user.id);
+  return c.body(null, 204);
 });

@@ -58,3 +58,9 @@ export async function markError(id: string, errorMessage: string): Promise<void>
     .set({ status: 'error', errorMessage, completedAt: new Date() })
     .where(eq(purchasePlans.id, id));
 }
+
+export async function deletePlanForUser(id: string, userId: string): Promise<void> {
+  await db
+    .delete(purchasePlans)
+    .where(and(eq(purchasePlans.id, id), eq(purchasePlans.userId, userId)));
+}

@@ -12,6 +12,7 @@ import {
   markProcessing,
   markDone,
   markError,
+  deletePlanForUser,
 } from './purchase-plan.repo.js';
 import type { PurchasePlanRow } from '../../db/schema.js';
 import type { AnalyzePurchasePlanBody, PurchasePlanDto } from './purchase-plan.schemas.js';
@@ -163,4 +164,10 @@ export async function getPlanForUser(id: string, userId: string): Promise<Purcha
   const row = await findPlanForUser(id, userId);
   if (!row) throw Errors.notFound('Purchase plan not found');
   return toPurchasePlanDto(row);
+}
+
+export async function removePlanForUser(id: string, userId: string): Promise<void> {
+  const row = await findPlanForUser(id, userId);
+  if (!row) throw Errors.notFound('Purchase plan not found');
+  await deletePlanForUser(id, userId);
 }
