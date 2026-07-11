@@ -121,6 +121,16 @@ function rateLimitBackoff(rateLimitWaits: number): number {
   return Math.min(1000 * Math.pow(2, rateLimitWaits), 10_000);
 }
 
+/**
+ * Cap on how long we'll ever actually sleep for a single 429, REGARDLESS of
+ * what Groq's Retry-After header says. Groq has returned Retry-After values
+ * of 20-30+ minutes (real quota exhaustion, not a short RPM window) — honoring
+ * that verbatim leaves the SSE stream silent long enough for nginx's
+ * proxy_read_timeout to kill the connection outright. Capping means we fail
+ * fast (and cleanly, via the normal error path) instead of hanging.
+ */
+const MAX_RATE_LIMIT_WAIT_MS = 10_000;
+
 const GENERATE_TIMEOUT_MS = 60_000;
 const STREAM_TIMEOUT_MS = 120_000;
 /**
@@ -262,7 +272,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
       const waitMs = Number.isNaN(retryAfterSec)
         ? rateLimitBackoff(rateLimitWaits)
-        : retryAfterSec * 1000;
+        : Math.min(retryAfterSec * 1000, MAX_RATE_LIMIT_WAIT_MS);
       rateLimitWaits++;
       logger.warn(
         { status: response.status, waitMs, rateLimitWaits },
@@ -374,7 +384,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
           const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
           const waitMs = Number.isNaN(retryAfterSec)
             ? rateLimitBackoff(rateLimitWaits)
-            : retryAfterSec * 1000;
+            : Math.min(retryAfterSec * 1000, MAX_RATE_LIMIT_WAIT_MS);
           rateLimitWaits++;
           logger.warn(
             { status: response.status, waitMs, rateLimitWaits },
