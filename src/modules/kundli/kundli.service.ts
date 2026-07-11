@@ -283,6 +283,16 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
         },
       );
     }
+
+    const readyKundli = await findKundliByUserId(user.id);
+    if (readyKundli) {
+      const unlockedHouses = user.unlockedHouses ?? [1];
+      for (const house of unlockedHouses) {
+        void requestHouseInsightGeneration(user.id, house, readyKundli).catch((err: unknown) => {
+          logger.error({ err, userId: user.id, house }, 'post-kundli house insight trigger failed');
+        });
+      }
+    }
   } catch (err) {
     logger.error({ err, userId: user.id }, 'kundli generation failed');
     await markKundliFailed(user.id, claimedAt, err instanceof Error ? err.message : String(err));

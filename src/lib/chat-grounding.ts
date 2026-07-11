@@ -334,17 +334,17 @@ export async function buildGroundingFacts(
       dasha.mahaStart && dasha.mahaEnd
         ? ` (started ${dasha.mahaStart}, ends ${dasha.mahaEnd})`
         : '';
-    const antar = dasha.antardasha ? ` / ${dasha.antardasha} Antardasha` : '';
-    facts.push(`Active Dasha: ${dasha.mahadasha} Mahadasha${antar}${range}`);
+    const antar = dasha.antardasha ? ` / ${dasha.antardasha} minor period` : '';
+    facts.push(`Active Major Planetary Period: ${dasha.mahadasha}${antar}${range}`);
   }
 
   // --- Ascendant ----------------------------------------------------------
   const asc = src.chart?.ascendant as Record<string, unknown> | undefined;
   const ascSignIndex = asc?.signIndex != null ? Number(asc.signIndex) : null;
-  if (asc?.sign) facts.push(`Ascendant: ${String(asc.sign)}`);
+  if (asc?.sign) facts.push(`Rising Sign (Ascendant): ${String(asc.sign)}`);
 
   // --- Key yogas (all domains, strongest first) ---------------------------
-  for (const y of relevantYogas(src.yogas)) facts.push(`Relevant Yoga: ${y}`);
+  for (const y of relevantYogas(src.yogas)) facts.push(`Significant Planetary Combination: ${y}`);
 
   // --- House-lord + sign for the domain-relevant houses --------------------
   // 7th and 10th additionally get their lord's natal-placement dignity, as
@@ -400,7 +400,7 @@ export async function buildGroundingFacts(
       const houseFromAsc = ((jupiterSignIdx - ascSignIndex + 12) % 12) + 1;
       const favorable = [2, 5, 7, 9, 11].includes(houseFromAsc);
       facts.push(
-        `Jupiter is ${transitLabel} transiting your ${houseFromAsc}th house from the Ascendant — ${
+        `Jupiter is ${transitLabel} transiting your ${houseFromAsc}th house from the Rising Sign — ${
           favorable
             ? 'traditionally favorable for relationship/marriage timing'
             : 'not one of the classic favorable houses for relationship timing right now'
@@ -414,7 +414,7 @@ export async function buildGroundingFacts(
       facts.push(
         `Moon is ${transitLabel} transiting ${SIGNS[moonTransit.signIndex]} in ${
           NAKSHATRAS[moonTransit.nakshatraIndex] ?? 'an unknown'
-        } nakshatra, your ${moonHouseFromAsc}th house from the Ascendant — this is the fastest-moving daily signal (changes sign every ~2.25 days, nakshatra roughly daily) and should anchor what's distinctive about THIS specific date versus other days`,
+        } lunar mansion, your ${moonHouseFromAsc}th house from the Rising Sign — this is the fastest-moving daily signal (changes sign every ~2.25 days, lunar mansion roughly daily) and should anchor what's distinctive about THIS specific date versus other days`,
       );
     }
   }
@@ -485,7 +485,7 @@ export async function buildGroundingFacts(
   const marriageWindow = findFavorableWindow(src.dasha, marriageLords, now);
   if (marriageWindow) {
     facts.push(
-      `Nearest traditionally favorable window for marriage: ${marriageWindow.lord} ${marriageWindow.level} (within ${marriageWindow.withinMahadasha} Mahadasha), approx ${marriageWindow.startDate} to ${marriageWindow.endDate}`,
+      `Nearest traditionally favorable window for marriage: ${marriageWindow.lord} ${marriageWindow.level} (within ${marriageWindow.withinMahadasha} major period), approx ${marriageWindow.startDate} to ${marriageWindow.endDate}`,
     );
   }
 
@@ -495,7 +495,7 @@ export async function buildGroundingFacts(
   const careerWindow = findFavorableWindow(src.dasha, careerLords, now);
   if (careerWindow) {
     facts.push(
-      `Nearest traditionally favorable window for career growth: ${careerWindow.lord} ${careerWindow.level} (within ${careerWindow.withinMahadasha} Mahadasha), approx ${careerWindow.startDate} to ${careerWindow.endDate}`,
+      `Nearest traditionally favorable window for career growth: ${careerWindow.lord} ${careerWindow.level} (within ${careerWindow.withinMahadasha} major period), approx ${careerWindow.startDate} to ${careerWindow.endDate}`,
     );
   }
 
@@ -503,7 +503,7 @@ export async function buildGroundingFacts(
   const healthWindow = findFavorableWindow(src.dasha, healthLords, now);
   if (healthWindow) {
     facts.push(
-      `Nearest period traditionally calling for extra health care: ${healthWindow.lord} ${healthWindow.level} (within ${healthWindow.withinMahadasha} Mahadasha), approx ${healthWindow.startDate} to ${healthWindow.endDate}`,
+      `Nearest period traditionally calling for extra health care: ${healthWindow.lord} ${healthWindow.level} (within ${healthWindow.withinMahadasha} major period), approx ${healthWindow.startDate} to ${healthWindow.endDate}`,
     );
   }
 
