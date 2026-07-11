@@ -203,6 +203,8 @@ const HOROSCOPE_YEARLY_RESPONSE_SCHEMA = {
     luckyNumber: { type: 'integer' },
     months: {
       type: 'array',
+      minItems: 12,
+      maxItems: 12,
       items: {
         type: 'object',
         properties: {
