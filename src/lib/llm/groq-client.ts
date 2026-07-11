@@ -116,8 +116,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Backoff when ALL keys are simultaneously rate-limited (no key to switch to). */
+function rateLimitBackoff(rateLimitWaits: number): number {
+  return Math.min(1000 * Math.pow(2, rateLimitWaits), 10_000);
+}
+
 const GENERATE_TIMEOUT_MS = 60_000;
 const STREAM_TIMEOUT_MS = 120_000;
+/**
+ * 429s don't consume the real (network-error/dead-key) attempt budget — they
+ * back off and retry instead, up to this many rounds, since with only a
+ * handful of keys a burst of concurrent requests (chat + horoscope + chat
+ * summary + purchase-plan all share this pool) can 429 every key at once
+ * without any of them being individually "dead". Bounded well under nginx's
+ * proxy timeout so a real failure still surfaces instead of hanging forever.
+ */
+const MAX_RATE_LIMIT_RETRIES = 12;
 
 function makeAbort(external: AbortSignal | undefined, ms: number) {
   const ac = new AbortController();
@@ -189,12 +203,20 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
 
   const MAX_ATTEMPTS = keyPool.length * 2;
   let attempts = 0;
+  let rateLimitWaits = 0;
 
   while (attempts < MAX_ATTEMPTS) {
     const keyState = selectKey();
     if (!keyState) {
-      logger.warn('All Groq keys rate-limited. Waiting 10 seconds before retry...');
-      await sleep(10_000);
+      if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
+        throw new AllGroqKeysExhaustedError(
+          `All Groq keys rate-limited after ${MAX_RATE_LIMIT_RETRIES} backoff rounds`,
+        );
+      }
+      const waitMs = rateLimitBackoff(rateLimitWaits);
+      rateLimitWaits++;
+      logger.warn({ waitMs, rateLimitWaits }, 'All Groq keys rate-limited, backing off');
+      await sleep(waitMs);
       continue;
     }
 
@@ -227,11 +249,29 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
     }
 
     if (response.status === 429) {
-      logger.warn('Groq 429 rate limited, maxing out window for this key');
-      // Max out the window so it won't be selected again for a minute
+      // Max out the window so this key won't be selected again for a minute.
       while (keyState.requestWindow.length < env.GROQ_RPM_LIMIT) {
         keyState.requestWindow.push(Date.now());
       }
+      if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
+        throw new AllGroqKeysExhaustedError(
+          `Rate limited after ${MAX_RATE_LIMIT_RETRIES} backoff rounds`,
+        );
+      }
+      const retryAfterHeader = response.headers.get('Retry-After');
+      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+      const waitMs = Number.isNaN(retryAfterSec)
+        ? rateLimitBackoff(rateLimitWaits)
+        : retryAfterSec * 1000;
+      rateLimitWaits++;
+      logger.warn(
+        { status: response.status, waitMs, rateLimitWaits },
+        'Groq 429 rate limited, backing off',
+      );
+      await sleep(waitMs);
+      // Doesn't consume the real attempt budget — only genuine network/dead-key
+      // failures should burn through MAX_ATTEMPTS.
+      attempts--;
       continue;
     }
 
@@ -276,13 +316,21 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
 
   const MAX_ATTEMPTS = keyPool.length * 2;
   let attempts = 0;
+  let rateLimitWaits = 0;
   let yieldedAny = false;
 
   while (attempts < MAX_ATTEMPTS) {
     const keyState = selectKey();
     if (!keyState) {
-      logger.warn('All Groq keys rate-limited (stream). Waiting 10 seconds before retry...');
-      await sleep(10_000);
+      if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
+        throw new AllGroqKeysExhaustedError(
+          `All Groq keys rate-limited after ${MAX_RATE_LIMIT_RETRIES} backoff rounds`,
+        );
+      }
+      const waitMs = rateLimitBackoff(rateLimitWaits);
+      rateLimitWaits++;
+      logger.warn({ waitMs, rateLimitWaits }, 'All Groq keys rate-limited (stream), backing off');
+      await sleep(waitMs);
       continue;
     }
 
@@ -313,11 +361,27 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         }
 
         if (response.status === 429) {
-          logger.warn('Groq 429 stream rate limited');
           while (keyState.requestWindow.length < env.GROQ_RPM_LIMIT) {
             keyState.requestWindow.push(Date.now());
           }
           if (yieldedAny) throw new GroqError('Groq 429 mid-stream', 429, bodyText);
+          if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
+            throw new AllGroqKeysExhaustedError(
+              `Rate limited after ${MAX_RATE_LIMIT_RETRIES} backoff rounds`,
+            );
+          }
+          const retryAfterHeader = response.headers.get('Retry-After');
+          const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+          const waitMs = Number.isNaN(retryAfterSec)
+            ? rateLimitBackoff(rateLimitWaits)
+            : retryAfterSec * 1000;
+          rateLimitWaits++;
+          logger.warn(
+            { status: response.status, waitMs, rateLimitWaits },
+            'Groq 429 stream rate limited, backing off',
+          );
+          await sleep(waitMs);
+          attempts--;
           continue;
         }
 
