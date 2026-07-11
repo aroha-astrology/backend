@@ -80,7 +80,18 @@ function doRequest(
   };
 
   if (opts.profile.jsonMode) {
-    body.response_format = { type: 'json_object' };
+    if (opts.responseSchema) {
+      body.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name: 'structured_output',
+          schema: opts.responseSchema,
+          strict: true,
+        },
+      };
+    } else {
+      body.response_format = { type: 'json_object' };
+    }
   }
 
   return fetch(`${env.GEMINI_BASE_URL}/chat/completions`, {

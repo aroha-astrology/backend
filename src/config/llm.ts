@@ -21,6 +21,8 @@ export interface LLMRequestOptions {
   messages: ChatMessage[];
   /** Override the model for this request. */
   model?: string;
+  /** JSON schema to enforce on the response. */
+  responseSchema?: Record<string, unknown>;
   /** Caller cancellation (e.g. client disconnect on an SSE stream). */
   signal?: AbortSignal | undefined;
   /** Override default timeout for this call (e.g. a large background job). */

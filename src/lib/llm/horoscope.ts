@@ -153,6 +153,89 @@ Keep each of health/career/marriage/finance/education/overall's top-level "hook"
 and "description" under 100 words, covering that area's arc across the year (yearly uses the
 same richness budget as monthly). ${STYLE_RULE}`;
 
+const blockSchema = {
+  type: 'object',
+  properties: {
+    hook: { type: 'string' },
+    description: { type: 'string' },
+    advice: { type: 'string' },
+    quality: { type: 'string', enum: ['good', 'moderate', 'challenging', 'avoid'] },
+    score: { type: 'integer' },
+  },
+  required: ['hook', 'description', 'advice', 'quality', 'score'],
+};
+
+const HOROSCOPE_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    health: blockSchema,
+    career: blockSchema,
+    marriage: blockSchema,
+    finance: blockSchema,
+    education: blockSchema,
+    overall: blockSchema,
+    luckyColor: { type: 'string' },
+    luckyNumber: { type: 'integer' },
+  },
+  required: [
+    'health',
+    'career',
+    'marriage',
+    'finance',
+    'education',
+    'overall',
+    'luckyColor',
+    'luckyNumber',
+  ],
+};
+
+const HOROSCOPE_YEARLY_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    health: blockSchema,
+    career: blockSchema,
+    marriage: blockSchema,
+    finance: blockSchema,
+    education: blockSchema,
+    overall: blockSchema,
+    luckyColor: { type: 'string' },
+    luckyNumber: { type: 'integer' },
+    months: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          month: { type: 'integer' },
+          summary: { type: 'string' },
+          categoryHooks: {
+            type: 'object',
+            properties: {
+              health: { type: 'string' },
+              career: { type: 'string' },
+              marriage: { type: 'string' },
+              finance: { type: 'string' },
+              education: { type: 'string' },
+            },
+            required: ['health', 'career', 'marriage', 'finance', 'education'],
+          },
+        },
+        required: ['month', 'summary', 'categoryHooks'],
+      },
+    },
+  },
+  required: [
+    'health',
+    'career',
+    'marriage',
+    'finance',
+    'education',
+    'overall',
+    'luckyColor',
+    'luckyNumber',
+    'months',
+  ],
+};
+
 function describePeriod(period: HoroscopePeriod, forDate: string): string {
   const [y, m] = forDate.split('-').map(Number);
   switch (period) {
@@ -207,6 +290,7 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
   if (ctx.period === 'yearly') {
     const raw = await generate({
       profile: HOROSCOPE_YEARLY_PROFILE,
+      responseSchema: HOROSCOPE_YEARLY_RESPONSE_SCHEMA,
       messages: [
         { role: 'system', content: HOROSCOPE_SYSTEM_YEARLY },
         contextMessage,
@@ -230,6 +314,7 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
 
   const raw = await generate({
     profile: HOROSCOPE_PROFILE,
+    responseSchema: HOROSCOPE_RESPONSE_SCHEMA,
     messages: [
       { role: 'system', content: HOROSCOPE_SYSTEM[ctx.period] },
       contextMessage,
