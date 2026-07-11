@@ -496,7 +496,7 @@ export function parseYearlyResponse(
     const data = JSON.parse(cleanJsonString(raw)) as {
       months?: unknown[];
     };
-    if (!Array.isArray(data.months) || data.months.length !== 12) return null;
+    if (!Array.isArray(data.months) || data.months.length === 0) return null;
     const months: MonthlyBreakdownEntry[] = [];
     for (const entry of data.months) {
       if (
