@@ -109,6 +109,35 @@ Output ONLY a single JSON object (no markdown fences, no commentary) matching ex
 }`;
 }
 
+/**
+ * Extracts the first balanced `{...}` object from `text`, respecting string
+ * literals (so `{`/`}` inside a string value don't throw off the brace
+ * count). Returns null if no balanced object is found.
+ */
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 /** Never throws on malformed LLM JSON — callers persist the fallback shape instead of failing the row. */
 export function parsePurchasePlanResponse(raw: string): {
   analysis: Record<string, unknown>;
@@ -121,6 +150,17 @@ export function parsePurchasePlanResponse(raw: string): {
   try {
     return { analysis: JSON.parse(cleaned) as Record<string, unknown>, parseError: false };
   } catch {
+    // Gemini occasionally appends stray closing braces after an otherwise
+    // complete, valid object (seen in production) — recover by re-parsing
+    // just the first balanced object instead of the whole trailing garbage.
+    const extracted = extractFirstJsonObject(cleaned);
+    if (extracted) {
+      try {
+        return { analysis: JSON.parse(extracted) as Record<string, unknown>, parseError: false };
+      } catch {
+        // fall through to the raw fallback below
+      }
+    }
     return { analysis: { raw: cleaned, parseError: true }, parseError: true };
   }
 }
