@@ -4,7 +4,12 @@ import { requireUser } from '../../middleware/auth.js';
 import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
+import { Errors } from '../../lib/errors.js';
+import { deductCredits } from '../users/users.repo.js';
 import * as astroService from './astro.service.js';
+
+/** Flat cost per chat question, charged atomically before generation starts. */
+const CHAT_MESSAGE_COST = 2;
 
 /** Expensive LLM/swarm routes: cap per authenticated user. */
 const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20 });
@@ -408,6 +413,7 @@ const chatRoute = createRoute({
     },
     401: errorResponse('Unauthorized'),
     403: errorResponse('Consent required'),
+    409: errorResponse('Not enough credits'),
     422: errorResponse('Validation failed'),
   },
 });
@@ -418,6 +424,16 @@ astroRouter.openapi(chatRoute, async (c) => {
   // Aborts when the client disconnects — propagated to the LLM so generation
   // (and its NIM inflight slot) stops instead of running on detached.
   const signal = c.req.raw.signal;
+
+  // Charge atomically before any generation starts — same balance-check-and-
+  // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
+  // sends can't both succeed against a balance that only covers one. Not
+  // refunded if generation later fails (same precedent as house unlocks:
+  // the charge is for asking, not contingent on the LLM call succeeding).
+  const charged = await deductCredits(user.id, CHAT_MESSAGE_COST);
+  if (!charged) {
+    throw Errors.conflict('Not enough credits to ask a question');
+  }
 
   return streamSSE(c, async (stream) => {
     try {

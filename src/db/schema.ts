@@ -273,6 +273,9 @@ export const users = pgTable(
       'birth_time_rectification_confidence',
     ),
     birthLocationAccuracy: birthLocationAccuracyEnum('birth_location_accuracy'),
+    // null = the user's one allowed birth-detail edit (DOB/time/place) is
+    // still available; set the first (and only) time they use it.
+    birthDetailsEditedAt: timestamp('birth_details_edited_at', { withTimezone: true }),
     gotra: text('gotra'),
     sankalpaName: text('sankalpa_name'),
 

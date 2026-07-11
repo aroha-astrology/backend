@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "birth_details_edited_at" timestamp with time zone;

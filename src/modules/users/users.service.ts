@@ -3,9 +3,11 @@ import { isUniqueViolation } from '../../lib/db-errors.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
+import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import type { ConsentInput, UpdateMeBody, UserDto } from './users.schemas.js';
 import {
+  claimBirthDetailsEdit,
   findActiveUserById,
   revokeDeviceTokensByUser,
   softDeleteBirthProfilesByOwner,
@@ -39,6 +41,7 @@ export function toUserDto(row: UserRow): UserDto {
     birthTimeRectified: row.birthTimeRectified,
     birthTimeRectificationConfidence: row.birthTimeRectificationConfidence,
     birthLocationAccuracy: row.birthLocationAccuracy,
+    canEditBirthDetails: row.birthDetailsEditedAt === null,
     gotra: row.gotra,
     sankalpaName: row.sankalpaName,
 
@@ -280,6 +283,24 @@ export async function updateMe(
   const current = await findActiveUserById(userId);
   if (!current) throw Errors.notFound('User not found');
 
+  // Editing the birth event (DOB/time/place) on an ALREADY-complete profile
+  // is capped at one lifetime edit — onboarding itself (profile not yet
+  // complete, possibly filled in across several steps) is exempt, since
+  // that's the initial set, not a correction. Claim atomically, up front,
+  // so a rejected edit never partially applies alongside other fields in
+  // the same request; if the rest of the patch below fails for an unrelated
+  // reason, roll the claim back so the user doesn't lose their one edit to
+  // an unrelated error.
+  const touchedBirthEvent =
+    body.dateOfBirth !== undefined ||
+    body.timeOfBirth !== undefined ||
+    body.placeOfBirth !== undefined;
+  const isPostOnboardingBirthEdit = touchedBirthEvent && current.profileCompletedAt !== null;
+  if (isPostOnboardingBirthEdit) {
+    const claimed = await claimBirthDetailsEdit(userId);
+    if (!claimed) throw Errors.conflict('Birth details can only be edited once');
+  }
+
   const patch = buildPatch(body);
   const consentLogs = body.consent ? applyConsent(body.consent, patch, userId, ctx) : [];
 
@@ -299,10 +320,23 @@ export async function updateMe(
         ? await updateUserWithConsentLog(userId, patch, consentLogs)
         : await updateUserById(userId, patch);
   } catch (err) {
+    if (isPostOnboardingBirthEdit) {
+      await updateUserById(userId, { birthDetailsEditedAt: null }).catch(() => {});
+    }
     if (isUniqueViolation(err)) throw Errors.conflict('That email is already in use');
     throw err;
   }
   if (!next) throw Errors.notFound('User not found');
+
+  // The natal chart just changed under previously-unlocked houses — their
+  // cached insight text no longer matches. Wipe it so it regenerates fresh
+  // (lazily, on next view) rather than silently serving stale content;
+  // houses stay unlocked, no re-charge.
+  if (isPostOnboardingBirthEdit) {
+    await deleteHouseInsightsForUser(userId).catch((err: unknown) => {
+      logger.error({ err, userId }, 'house insight invalidation after birth-detail edit failed');
+    });
+  }
 
   // Reconcile the completion latch in BOTH directions so the DTO never claims
   // a profile is complete after a required field (e.g. timeOfBirth) is cleared.

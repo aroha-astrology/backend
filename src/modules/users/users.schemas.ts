@@ -216,6 +216,9 @@ export const UserSchema = z
     birthTimeRectified: z.boolean().nullable(),
     birthTimeRectificationConfidence: RectificationConfidenceSchema.nullable(),
     birthLocationAccuracy: BirthLocationAccuracySchema.nullable(),
+    canEditBirthDetails: z
+      .boolean()
+      .describe('False once the user has used their one lifetime birth-detail edit'),
     gotra: z.string().nullable(),
     sankalpaName: z.string().nullable(),
 

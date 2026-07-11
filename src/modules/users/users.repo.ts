@@ -64,6 +64,38 @@ export async function updateUserById(
   return row;
 }
 
+/**
+ * Atomically deduct `amount` credits if (and only if) the user has enough.
+ * Same claim-style primitive as `unlockHouseForUser` — the balance check and
+ * the debit happen in one conditional UPDATE so two concurrent spends can
+ * never both succeed against a balance that only covers one of them.
+ */
+export async function deductCredits(userId: string, amount: number): Promise<boolean> {
+  const result = await db.execute(sql`
+    UPDATE users
+    SET credits = credits - ${amount}
+    WHERE id = ${userId}
+      AND credits >= ${amount}
+    RETURNING *;
+  `);
+  return result.length > 0;
+}
+
+/**
+ * Atomically claim the user's one lifetime birth-detail edit. Returns the
+ * updated row if THIS call won the claim, or `undefined` if it was already
+ * used — same claim primitive as `claimKundliGeneration`, so two concurrent
+ * edit requests can't both slip through.
+ */
+export async function claimBirthDetailsEdit(id: string): Promise<UserRow | undefined> {
+  const [row] = await db
+    .update(users)
+    .set({ birthDetailsEditedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(users.id, id), isNull(users.birthDetailsEditedAt)))
+    .returning();
+  return row;
+}
+
 export async function softDeleteUserById(id: string): Promise<void> {
   await db
     .update(users)

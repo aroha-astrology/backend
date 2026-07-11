@@ -49,6 +49,16 @@ export async function claimHouseInsightGeneration(
   return row;
 }
 
+/**
+ * Wipe every cached house insight for a user — used when their birth
+ * details change (natal chart is regenerated) so previously-unlocked
+ * houses regenerate fresh against the new chart on next view instead of
+ * silently serving stale text forever.
+ */
+export async function deleteHouseInsightsForUser(userId: string): Promise<void> {
+  await db.delete(houseInsights).where(eq(houseInsights.userId, userId));
+}
+
 export async function markHouseInsightReady(
   userId: string,
   house: number,
