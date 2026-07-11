@@ -160,7 +160,7 @@ const blockSchema = {
     description: { type: 'string' },
     advice: { type: 'string' },
     quality: { type: 'string', enum: ['good', 'moderate', 'challenging', 'avoid'] },
-    score: { type: 'integer' },
+    score: { type: 'integer', enum: [1, 2, 3, 4, 5], description: 'A score from 1 to 5 only' },
   },
   required: ['hook', 'description', 'advice', 'quality', 'score'],
 };
@@ -447,12 +447,18 @@ function parseCategoryBlock(block: unknown): CategoryReading | null {
   const quality = QUALITIES.includes(b.quality as (typeof QUALITIES)[number])
     ? (b.quality as (typeof QUALITIES)[number])
     : 'moderate';
+
+  let rawScore = b.score;
+  if (rawScore > 10)
+    rawScore = Math.round(rawScore / 20); // 0-100 scale -> 0-5
+  else if (rawScore > 5) rawScore = Math.round(rawScore / 2); // 0-10 scale -> 0-5
+
   return {
     hook,
     description,
     advice,
     quality,
-    score: Math.min(5, Math.max(1, Math.round(b.score))),
+    score: Math.min(5, Math.max(1, Math.round(rawScore))),
   };
 }
 
