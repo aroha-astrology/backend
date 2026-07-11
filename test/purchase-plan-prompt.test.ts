@@ -58,4 +58,18 @@ describe('parsePurchasePlanResponse', () => {
     expect(result.parseError).toBe(true);
     expect(result.analysis).toHaveProperty('raw', 'not json at all');
   });
+
+  it('recovers from stray closing braces the model appends after a complete object', () => {
+    // Observed in production (plan c6c7f8b1-911f-44a3-a508-d3094d541fcb): Gemini
+    // emitted a fully-formed, schema-correct object followed by two extra "}".
+    const result = parsePurchasePlanResponse('{"overallScore": 80}\n}\n}');
+    expect(result.parseError).toBe(false);
+    expect(result.analysis.overallScore).toBe(80);
+  });
+
+  it('does not let braces inside string values confuse the recovery scan', () => {
+    const result = parsePurchasePlanResponse('{"overallVerdict": "use the {abhijit} window"}\n}');
+    expect(result.parseError).toBe(false);
+    expect(result.analysis.overallVerdict).toBe('use the {abhijit} window');
+  });
 });
