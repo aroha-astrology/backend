@@ -141,8 +141,9 @@ ${PLAIN_LANGUAGE_RULE}
 ${STRUCTURED_JSON_RULE}
 ${LUCKY_ELEMENTS_RULE}
 Also include at the top level (sibling to health/career/marriage/finance/education/overall):
-"months": an array of exactly 12 entries, one per calendar month in order —
+"months": an array of exactly 12 entries, one per calendar month (1 to 12) in order —
 [{"month": 1, "summary": string, "categoryHooks": {"health": string, "career": string, "marriage": string, "finance": string, "education": string}}, ...].
+CRITICAL: YOU MUST INCLUDE EXACTLY 12 ITEMS IN THE "months" ARRAY. DO NOT SKIP ANY MONTHS EVEN IF NOTHING NOTABLE HAPPENS.
 Each month's "summary": 1-2 sentences (under 30 words) on that month's tone within the year's arc — do not repeat any block's hook/description verbatim, vary the angle per month.
 Each month's "categoryHooks" are five SHORT (under 15 words each) relatable one-liners — one per
 sub-category — naming what's notable about that specific area in that specific month (e.g.
@@ -519,9 +520,7 @@ export function parseYearlyResponse(
         ...(categoryHooks ? { categoryHooks } : {}),
       });
     }
-    // Require all 12 months present — a partial breakdown is more confusing
-    // than a template fallback for the missing ones.
-    if (months.length !== 12) return null;
+    if (months.length === 0) return null;
     months.sort((a, b) => a.month - b.month);
     return { structured, months };
   } catch {
