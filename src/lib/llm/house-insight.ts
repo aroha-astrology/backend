@@ -5,8 +5,8 @@
 // never changes, so there's nothing to regenerate.
 // =============================================================================
 
-import { generate } from './llm-dispatcher.js';
-import { HOUSE_INSIGHT_PROFILE, modelForTier } from '../../config/llm.js';
+import { generate } from './gemini-client.js';
+import { HOUSE_INSIGHT_PROFILE, MODEL } from '../../config/llm.js';
 import { dashaLordTransitQuality } from '../astro-tools/index.js';
 import { cleanJsonString, hasRawJargon } from './horoscope.js';
 
@@ -204,5 +204,5 @@ export async function generateHouseInsight(ctx: HouseInsightContext): Promise<Ho
     );
   }
 
-  return { ...parsed, model: modelForTier(HOUSE_INSIGHT_PROFILE.modelTier) };
+  return { ...parsed, model: MODEL };
 }

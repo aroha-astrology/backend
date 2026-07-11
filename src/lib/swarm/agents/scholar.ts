@@ -1,8 +1,8 @@
 // =============================================================================
-// Scholar Agent - Streaming chat agent using NIM
+// Scholar Agent - Streaming chat agent using Gemini
 // =============================================================================
 
-import { stream as llmStream } from '../../llm/llm-dispatcher.js';
+import { stream as llmStream } from '../../llm/gemini-client.js';
 import { CHAT_PROFILE, CHAT_DETAILS_PROFILE } from '../../../config/llm.js';
 import { logger } from '../../logger.js';
 import { buildGroundingFacts, type GroundingSource } from '../../chat-grounding.js';

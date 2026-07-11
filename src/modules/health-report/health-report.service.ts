@@ -2,7 +2,7 @@ import { sendHealthReport } from '../../lib/notifications/telegram.js';
 import { checkDb } from '../health/health.service.js';
 import {
   checkRedis,
-  checkNim,
+  checkGemini,
   checkMemoryUsage,
   checkDiskUsage,
   checkPm2Process,
@@ -19,10 +19,10 @@ export async function runHealthReport(): Promise<void> {
     };
   };
 
-  const [dbRes, redisRes, nimRes, memRes, diskRes, pm2Res] = await Promise.all([
+  const [dbRes, redisRes, geminiRes, memRes, diskRes, pm2Res] = await Promise.all([
     checkDbWithLatency(),
     checkRedis(),
-    checkNim(),
+    checkGemini(),
     checkMemoryUsage(),
     checkDiskUsage(),
     checkPm2Process('aroha-api'),
@@ -31,7 +31,7 @@ export async function runHealthReport(): Promise<void> {
   const report = {
     Database: dbRes,
     Redis: redisRes,
-    'NVIDIA NIM': nimRes,
+    Gemini: geminiRes,
     'Memory Usage': memRes,
     'Disk Usage': diskRes,
     'PM2 Process (aroha-api)': pm2Res,

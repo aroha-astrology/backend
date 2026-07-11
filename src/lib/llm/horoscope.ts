@@ -9,8 +9,8 @@
 // that contradicts what the chat would tell them about the same chart.
 // =============================================================================
 
-import { generate } from './llm-dispatcher.js';
-import { HOROSCOPE_PROFILE, HOROSCOPE_YEARLY_PROFILE, modelForTier } from '../../config/llm.js';
+import { generate } from './gemini-client.js';
+import { HOROSCOPE_PROFILE, HOROSCOPE_YEARLY_PROFILE, MODEL } from '../../config/llm.js';
 import { buildGroundingFacts, type GroundingSource } from '../chat-grounding.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';
 import type { MonthlyBreakdownEntry, StructuredHoroscope } from '../../db/schema.js';
@@ -224,7 +224,7 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
       summary: parsed.structured.hook,
       structured: parsed.structured,
       monthlyBreakdown: parsed.months,
-      model: modelForTier(HOROSCOPE_YEARLY_PROFILE.modelTier),
+      model: MODEL,
     };
   }
 
@@ -246,7 +246,7 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
   return {
     summary: structured.hook,
     structured,
-    model: modelForTier(HOROSCOPE_PROFILE.modelTier),
+    model: MODEL,
   };
 }
 

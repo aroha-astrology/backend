@@ -1,4 +1,4 @@
-import { generate } from './llm-dispatcher.js';
+import { generate } from './gemini-client.js';
 import { PURCHASE_PLAN_PROFILE } from '../../config/llm.js';
 import type { PanchangData } from '@aroha-astrology/shared';
 

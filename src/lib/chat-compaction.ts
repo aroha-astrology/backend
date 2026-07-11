@@ -12,7 +12,7 @@
 // conversation runs.
 // =============================================================================
 
-import { generate } from './llm/llm-dispatcher.js';
+import { generate } from './llm/gemini-client.js';
 import { CHAT_SUMMARY_PROFILE } from '../config/llm.js';
 import { logger } from './logger.js';
 

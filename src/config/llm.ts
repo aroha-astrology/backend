@@ -1,10 +1,10 @@
 import { env } from './env.js';
 
-export type ModelTier = 'routing' | 'structured' | 'conversational';
+/** Gemini is the sole LLM provider — every profile below uses this one model. */
+export const MODEL = env.GEMINI_MODEL;
 
 export interface GenerationProfile {
   name: string;
-  modelTier: ModelTier;
   temperature: number;
   jsonMode: boolean;
   stream: boolean;
@@ -29,7 +29,6 @@ export interface LLMRequestOptions {
 
 export const ROUTING_PROFILE: GenerationProfile = {
   name: 'routing',
-  modelTier: 'routing',
   temperature: 0.0,
   jsonMode: true,
   stream: false,
@@ -38,7 +37,6 @@ export const ROUTING_PROFILE: GenerationProfile = {
 
 export const FORECAST_PROFILE: GenerationProfile = {
   name: 'forecast',
-  modelTier: 'structured',
   temperature: 0.2,
   jsonMode: true,
   stream: false,
@@ -51,7 +49,6 @@ export const FORECAST_PROFILE: GenerationProfile = {
 // fit the intended length exactly.
 export const CHAT_PROFILE: GenerationProfile = {
   name: 'chat',
-  modelTier: 'conversational',
   temperature: 0.7,
   jsonMode: false,
   stream: true,
@@ -66,7 +63,6 @@ export const CHAT_PROFILE: GenerationProfile = {
  */
 export const CHAT_DETAILS_PROFILE: GenerationProfile = {
   name: 'chat-details',
-  modelTier: 'conversational',
   temperature: 0.7,
   jsonMode: false,
   stream: true,
@@ -76,7 +72,6 @@ export const CHAT_DETAILS_PROFILE: GenerationProfile = {
 /** Cheap, fast, non-streaming — used to fold older chat turns into a running summary. */
 export const CHAT_SUMMARY_PROFILE: GenerationProfile = {
   name: 'chat-summary',
-  modelTier: 'routing',
   temperature: 0.2,
   jsonMode: false,
   stream: false,
@@ -91,7 +86,6 @@ export const CHAT_SUMMARY_PROFILE: GenerationProfile = {
  */
 export const HOROSCOPE_PROFILE: GenerationProfile = {
   name: 'horoscope',
-  modelTier: 'structured',
   temperature: 0.6,
   jsonMode: true,
   stream: false,
@@ -106,7 +100,6 @@ export const HOROSCOPE_PROFILE: GenerationProfile = {
  */
 export const HOROSCOPE_YEARLY_PROFILE: GenerationProfile = {
   name: 'horoscope-yearly',
-  modelTier: 'structured',
   temperature: 0.6,
   jsonMode: true,
   stream: false,
@@ -122,7 +115,6 @@ export const HOROSCOPE_YEARLY_PROFILE: GenerationProfile = {
  */
 export const PURCHASE_PLAN_PROFILE: GenerationProfile = {
   name: 'purchase-plan',
-  modelTier: 'structured',
   temperature: 0.3,
   jsonMode: true,
   stream: false,
@@ -137,34 +129,8 @@ export const PURCHASE_PLAN_PROFILE: GenerationProfile = {
  */
 export const HOUSE_INSIGHT_PROFILE: GenerationProfile = {
   name: 'house-insight',
-  modelTier: 'structured',
   temperature: 0.5,
   jsonMode: true,
   stream: false,
   maxTokens: 500,
 };
-
-export function modelForTier(tier: ModelTier): string {
-  const map: Record<ModelTier, string> = {
-    routing: env.MODEL_ROUTING,
-    structured: env.MODEL_STRUCTURED,
-    conversational: env.MODEL_CONVERSATIONAL,
-  };
-  return map[tier];
-}
-
-/**
- * A same-quality-class model to retry with, once, if a tier's primary model
- * is unresponsive/degraded on the provider's side — e.g. 2026-07-05: NIM's
- * llama-3.3-70b-instruct (structured) hung on every request for an extended
- * period while llama-3.1-70b-instruct (conversational) kept responding
- * normally on the same account. Deliberately one same-class alternative,
- * not a full per-tier fallback chain — enough to survive one model going
- * down without doubling every retry budget.
- */
-export function fallbackModelForTier(tier: ModelTier): string | undefined {
-  const map: Partial<Record<ModelTier, string>> = {
-    structured: env.MODEL_CONVERSATIONAL,
-  };
-  return map[tier];
-}

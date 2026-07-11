@@ -48,26 +48,11 @@ export async function checkRedis(): Promise<CheckResult> {
   );
 }
 
-export async function checkNim(): Promise<CheckResult> {
+export async function checkGemini(): Promise<CheckResult> {
   return measure(
     async () => {
-      let apiKey = env.NVIDIA_NIM_API_KEY;
-      if (!apiKey) {
-        for (let i = 2; i <= 20; i++) {
-          const keyName = `NVIDIA_NIM_API_KEY_${i}` as keyof typeof env;
-          const key = env[keyName] as string | undefined;
-          if (key) {
-            apiKey = key;
-            break;
-          }
-        }
-      }
-      if (!apiKey) {
-        throw new Error('No NIM API key configured');
-      }
-
-      const res = await fetch(`${env.NVIDIA_NIM_BASE_URL}/models`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
+      const res = await fetch(`${env.GEMINI_BASE_URL}/models`, {
+        headers: { Authorization: `Bearer ${env.GEMINI_API_KEY}` },
         signal: AbortSignal.timeout(5000),
       });
       if (!res.ok) {
