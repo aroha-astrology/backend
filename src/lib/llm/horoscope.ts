@@ -526,3 +526,91 @@ export function parseYearlyResponse(
     return null;
   }
 }
+
+/**
+ * Translates a structured horoscope (and its monthly breakdown, if present) into the target language.
+ */
+export async function translateHoroscopeContent(
+  original: {
+    summary: string | null;
+    structured: StructuredHoroscope | null;
+    monthlyBreakdown: MonthlyBreakdownEntry[] | null;
+  },
+  targetLanguage: string,
+): Promise<{
+  summary?: string;
+  structured?: StructuredHoroscope;
+  monthlyBreakdown?: MonthlyBreakdownEntry[];
+}> {
+  const prompt = `Translate the following astrology horoscope content into the language "${targetLanguage}".
+Keep the exact same JSON structure, keys, formatting, and meaning. ONLY translate the text values.
+Do not translate the keys. Do not change the scores or numbers.
+
+Original Content:
+${JSON.stringify(original, null, 2)}`;
+
+  const response = await generate({
+    messages: [{ role: 'user', content: prompt }],
+    profile: HOROSCOPE_PROFILE,
+    responseSchema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string' },
+        structured: HOROSCOPE_RESPONSE_SCHEMA,
+        monthlyBreakdown: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              month: { type: 'integer' },
+              monthLabel: { type: 'string' },
+              summary: { type: 'string' },
+              categoryHooks: {
+                type: 'object',
+                properties: {
+                  health: { type: 'string' },
+                  career: { type: 'string' },
+                  marriage: { type: 'string' },
+                  finance: { type: 'string' },
+                  education: { type: 'string' },
+                },
+              },
+            },
+            required: ['month', 'monthLabel', 'summary'],
+          },
+        },
+      },
+    },
+  });
+
+  return JSON.parse(response) as {
+    summary?: string;
+    structured?: StructuredHoroscope;
+    monthlyBreakdown?: MonthlyBreakdownEntry[];
+  };
+}
+
+/**
+ * Translates arbitrary JSON content (like Moon Sign forecasts) to the target language.
+ */
+export async function translateForecastContent<T>(content: T, targetLanguage: string): Promise<T> {
+  const prompt = `Translate the following astrology forecast into "${targetLanguage}".
+Keep the exact same JSON structure, keys, formatting, and meaning. ONLY translate the string values.
+Do not translate the keys. Do not change any numbers or enums.
+
+Original Content:
+${JSON.stringify(content, null, 2)}`;
+
+  const response = await generate({
+    messages: [{ role: 'user', content: prompt }],
+    profile: HOROSCOPE_PROFILE,
+  });
+
+  // Since we aren't using json_schema for arbitrary objects (due to strict requirement),
+  // we extract the JSON block if wrapped in markdown.
+  const rawText = response.trim();
+  const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const jsonString = match ? match[1]! : rawText;
+
+  return JSON.parse(jsonString) as T;
+}

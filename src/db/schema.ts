@@ -871,6 +871,18 @@ export const dailyHoroscopes = pgTable(
     monthlyBreakdown: jsonb('monthly_breakdown').$type<MonthlyBreakdownEntry[]>(),
     /** The rich Plain-view fields, populated for every period. */
     structured: jsonb('structured').$type<StructuredHoroscope>(),
+    /** Cached translations for this horoscope by language code (e.g., 'hi') */
+    translations:
+      jsonb('translations').$type<
+        Record<
+          string,
+          {
+            summary?: string;
+            monthlyBreakdown?: MonthlyBreakdownEntry[];
+            structured?: StructuredHoroscope;
+          }
+        >
+      >(),
     /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
     model: text('model'),
     status: horoscopeStatusEnum('status').notNull(),
@@ -1034,3 +1046,43 @@ export const purchasePlans = pgTable(
 
 export type PurchasePlanRow = typeof purchasePlans.$inferSelect;
 export type NewPurchasePlanRow = typeof purchasePlans.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* forecast_translations — caches general moon/sun sign translations          */
+/* -------------------------------------------------------------------------- */
+
+export const forecastTranslations = pgTable(
+  'forecast_translations',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    /** The date this forecast applies to */
+    forDate: date('for_date').notNull(),
+    /** The type of sign: 'moon' or 'sun' */
+    signType: text('sign_type').notNull(),
+    /** The index of the sign (0-11) */
+    signIndex: integer('sign_index').notNull(),
+    /** The period (e.g. 'daily', 'weekly') */
+    period: text('period').notNull().default('daily'),
+    /** Language code, e.g. 'hi' */
+    language: text('language').notNull(),
+    /** The translated JSON data */
+    data: jsonb('data').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    uniqueLookup: uniqueIndex('forecast_translations_lookup_idx').on(
+      table.forDate,
+      table.signType,
+      table.signIndex,
+      table.period,
+      table.language,
+    ),
+  }),
+);
+
+export type ForecastTranslationRow = typeof forecastTranslations.$inferSelect;
+export type NewForecastTranslationRow = typeof forecastTranslations.$inferInsert;

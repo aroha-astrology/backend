@@ -158,3 +158,44 @@ export async function markHoroscopeFailed(
       ),
     );
 }
+
+export async function saveHoroscopeTranslation(
+  userId: string,
+  period: HoroscopePeriod,
+  periodKey: string,
+  language: string,
+  translation: {
+    summary?: string;
+    monthlyBreakdown?: MonthlyBreakdownEntry[];
+    structured?: StructuredHoroscope;
+  },
+): Promise<void> {
+  const existing = await db
+    .select({ translations: dailyHoroscopes.translations })
+    .from(dailyHoroscopes)
+    .where(
+      and(
+        eq(dailyHoroscopes.userId, userId),
+        eq(dailyHoroscopes.period, period),
+        eq(dailyHoroscopes.periodKey, periodKey),
+      ),
+    )
+    .limit(1)
+    .then((r) => r[0]);
+
+  if (!existing) return; // if it was deleted, do nothing
+
+  const translations = existing.translations || {};
+  translations[language] = translation;
+
+  await db
+    .update(dailyHoroscopes)
+    .set({ translations })
+    .where(
+      and(
+        eq(dailyHoroscopes.userId, userId),
+        eq(dailyHoroscopes.period, period),
+        eq(dailyHoroscopes.periodKey, periodKey),
+      ),
+    );
+}

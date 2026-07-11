@@ -492,13 +492,79 @@ export async function warmupPanchangCache(
 export async function moonSignForecast(
   signIndex: number,
   period: 'daily' | PeriodicPeriod = 'daily',
+  language: string = 'en',
 ) {
-  if (period === 'daily') return moonSignPrediction(signIndex);
-  return moonSignPeriodicPrediction(signIndex, period);
+  let result;
+  if (period === 'daily') result = await moonSignPrediction(signIndex);
+  else result = await moonSignPeriodicPrediction(signIndex, period);
+
+  if (language === 'en') return result;
+
+  // For periodic forecasts that might not have an `asOf` string directly on them,
+  // we use today's date for cache keying
+  const forDate = (result as { asOf?: string }).asOf ?? new Date().toISOString().split('T')[0]!;
+  return getCachedForecastTranslation(forDate, 'moon', signIndex, period, language, result);
 }
 
-export async function sunSignForecast(signIndex: number) {
-  return sunSignPrediction(signIndex);
+export async function sunSignForecast(signIndex: number, language: string = 'en') {
+  const result = await sunSignPrediction(signIndex);
+  if (language === 'en') return result;
+
+  const forDate = new Date().toISOString().split('T')[0]!;
+  return getCachedForecastTranslation(forDate, 'sun', signIndex, 'daily', language, result);
+}
+
+import { db } from '../../config/db.js';
+import { forecastTranslations } from '../../db/schema.js';
+import { and, eq } from 'drizzle-orm';
+import { translateForecastContent } from '../../lib/llm/horoscope.js';
+
+async function getCachedForecastTranslation<T>(
+  forDate: string,
+  signType: string,
+  signIndex: number,
+  period: string,
+  language: string,
+  englishContent: T,
+): Promise<T> {
+  const dateOnly = forDate.split('T')[0]!;
+  const existing = await db
+    .select({ data: forecastTranslations.data })
+    .from(forecastTranslations)
+    .where(
+      and(
+        eq(forecastTranslations.forDate, dateOnly),
+        eq(forecastTranslations.signType, signType),
+        eq(forecastTranslations.signIndex, signIndex),
+        eq(forecastTranslations.period, period),
+        eq(forecastTranslations.language, language),
+      ),
+    )
+    .limit(1)
+    .then((r) => r[0]);
+
+  if (existing) {
+    return existing.data as T;
+  }
+
+  try {
+    const translated = await translateForecastContent(englishContent, language);
+    await db
+      .insert(forecastTranslations)
+      .values({
+        forDate: dateOnly,
+        signType,
+        signIndex,
+        period,
+        language,
+        data: translated,
+      })
+      .onConflictDoNothing(); // If another request raced and inserted it, that's fine
+    return translated;
+  } catch (err) {
+    logger.warn({ err, signType, signIndex, language }, 'failed to translate forecast');
+    return englishContent; // fallback to English if translation fails
+  }
 }
 
 /* -------------------------------------------------------------------------- */

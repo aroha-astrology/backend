@@ -13,8 +13,9 @@ import {
   requestHoroscopeGeneration,
   toHoroscopeDto,
 } from './horoscope.service.js';
-import { findHoroscope } from './horoscope.repo.js';
+import { findHoroscope, saveHoroscopeTranslation } from './horoscope.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import { translateHoroscopeContent } from '../../lib/llm/horoscope.js';
 import type { UserRow } from '../../db/schema.js';
 import type { HoroscopePeriod } from './horoscope.schemas.js';
 
@@ -89,7 +90,32 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
   if (existing.status === 'ready') {
     const kundli = await findKundliByUserId(user.id);
     const dashaData = kundli && kundli.status === 'ready' ? kundli.dashaData : null;
-    return c.json(toHoroscopeDto(existing, dashaData), 200);
+    let dto = toHoroscopeDto(existing, dashaData);
+
+    const lang = user.contentLanguage || 'en';
+    if (lang !== 'en') {
+      const translations = existing.translations || {};
+      if (translations[lang]) {
+        dto = { ...dto, ...translations[lang] };
+      } else {
+        try {
+          const translated = await translateHoroscopeContent(
+            {
+              summary: existing.summary,
+              structured: existing.structured,
+              monthlyBreakdown: existing.monthlyBreakdown,
+            },
+            lang,
+          );
+          await saveHoroscopeTranslation(user.id, period, periodKey, lang, translated);
+          dto = { ...dto, ...translated };
+        } catch (err) {
+          logger.warn({ err, userId: user.id, lang }, 'failed to translate horoscope');
+        }
+      }
+    }
+
+    return c.json(dto, 200);
   }
 
   if (existing.status === 'generating') {
