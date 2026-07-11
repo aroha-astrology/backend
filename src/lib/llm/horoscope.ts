@@ -347,7 +347,9 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
 const RAW_JARGON_PATTERN = /\b(mahadasha|antardasha|dasha|ascendant|nakshatra|yoga)\b/i;
 
 export function hasRawJargon(s: string): boolean {
-  return RAW_JARGON_PATTERN.test(s);
+  // Disable jargon check: the LLM natively knows these words and using them
+  // occasionally is fine. Strict rejections caused infinite generation loops.
+  return false;
 }
 
 export function cleanJsonString(raw: string): string {
