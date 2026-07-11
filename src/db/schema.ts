@@ -872,17 +872,16 @@ export const dailyHoroscopes = pgTable(
     /** The rich Plain-view fields, populated for every period. */
     structured: jsonb('structured').$type<StructuredHoroscope>(),
     /** Cached translations for this horoscope by language code (e.g., 'hi') */
-    translations:
-      jsonb('translations').$type<
-        Record<
-          string,
-          {
-            summary?: string;
-            monthlyBreakdown?: MonthlyBreakdownEntry[];
-            structured?: StructuredHoroscope;
-          }
-        >
-      >(),
+    translations: jsonb('translations').$type<
+      Record<
+        string,
+        {
+          summary?: string;
+          monthlyBreakdown?: MonthlyBreakdownEntry[];
+          structured?: StructuredHoroscope;
+        }
+      >
+    >(),
     /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
     model: text('model'),
     status: horoscopeStatusEnum('status').notNull(),
@@ -936,6 +935,11 @@ export const houseInsights = pgTable(
     text: text('text'),
     strengths: jsonb('strengths').$type<string[]>(),
     weaknesses: jsonb('weaknesses').$type<string[]>(),
+    /** Cached translations for this insight by language code (e.g., 'hi') — same shape as dailyHoroscopes.translations. */
+    translations:
+      jsonb('translations').$type<
+        Record<string, { text?: string; strengths?: string[]; weaknesses?: string[] }>
+      >(),
     model: text('model'),
     status: houseInsightStatusEnum('status').notNull(),
     /** Claim token, same fencing pattern as daily_horoscopes.startedAt. */

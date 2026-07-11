@@ -18,13 +18,14 @@ import {
   markKundliReady,
 } from './kundli.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
-import { generateHouseInsight } from '../../lib/llm/house-insight.js';
+import { generateHouseInsight, translateHouseInsightContent } from '../../lib/llm/house-insight.js';
 import {
   STALE_GENERATING_MS as HOUSE_INSIGHT_STALE_GENERATING_MS,
   claimHouseInsightGeneration,
   findHouseInsight,
   markHouseInsightFailed,
   markHouseInsightReady,
+  saveHouseInsightTranslation,
 } from './house-insight.repo.js';
 import type { HouseInsightRow } from '../../db/schema.js';
 
@@ -448,3 +449,37 @@ export function isHouseInsightStale(row: HouseInsightRow): boolean {
 }
 
 export { findHouseInsight };
+
+/**
+ * The house-insight dto in the requested language. English (or no language)
+ * returns the canonical row as-is. Otherwise checks the cached `translations`
+ * map first; on a miss, translates via a second LLM call and persists it for
+ * next time — same pattern as horoscope's translate-on-read. A translation
+ * failure logs and falls back to the untranslated dto rather than erroring
+ * the request.
+ */
+export async function toHouseInsightDtoForLanguage(
+  row: HouseInsightRow,
+  language: string,
+): Promise<HouseInsightReadyDto> {
+  const dto = toHouseInsightDto(row);
+  if (language === 'en') return dto;
+
+  const cached = row.translations?.[language];
+  if (cached) return { ...dto, ...cached };
+
+  try {
+    const translated = await translateHouseInsightContent(
+      { text: row.text ?? '', strengths: row.strengths ?? [], weaknesses: row.weaknesses ?? [] },
+      language,
+    );
+    await saveHouseInsightTranslation(row.userId, row.house, language, translated);
+    return { ...dto, ...translated };
+  } catch (err) {
+    logger.warn(
+      { err, userId: row.userId, house: row.house, language },
+      'failed to translate house insight',
+    );
+    return dto;
+  }
+}

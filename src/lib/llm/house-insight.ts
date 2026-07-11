@@ -164,6 +164,75 @@ function parseResponse(
   }
 }
 
+export function buildHouseInsightTranslationPrompt(
+  original: { text: string; strengths: string[]; weaknesses: string[] },
+  targetLanguage: string,
+): string {
+  return `Translate the following Vedic astrology house insight into the language "${targetLanguage}".
+Keep the exact same JSON structure and keys. ONLY translate the text values, not the keys.
+
+Original Content:
+${JSON.stringify(original, null, 2)}`;
+}
+
+export function parseHouseInsightTranslation(
+  raw: string,
+): { text?: string; strengths?: string[]; weaknesses?: string[] } | null {
+  try {
+    const data = JSON.parse(cleanJsonString(raw)) as {
+      text?: unknown;
+      strengths?: unknown;
+      weaknesses?: unknown;
+    };
+    const result: { text?: string; strengths?: string[]; weaknesses?: string[] } = {};
+    if (typeof data.text === 'string' && data.text.trim()) result.text = data.text.trim();
+    if (Array.isArray(data.strengths)) {
+      const strengths = data.strengths.filter(
+        (s): s is string => typeof s === 'string' && s.trim().length > 0,
+      );
+      if (strengths.length > 0) result.strengths = strengths;
+    }
+    if (Array.isArray(data.weaknesses)) {
+      const weaknesses = data.weaknesses.filter(
+        (s): s is string => typeof s === 'string' && s.trim().length > 0,
+      );
+      if (weaknesses.length > 0) result.weaknesses = weaknesses;
+    }
+    return Object.keys(result).length > 0 ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Translates an already-generated house insight into another language — a second, cheap LLM call, same pattern as `translateHoroscopeContent`. */
+export async function translateHouseInsightContent(
+  original: { text: string; strengths: string[]; weaknesses: string[] },
+  targetLanguage: string,
+): Promise<{ text?: string; strengths?: string[]; weaknesses?: string[] }> {
+  const raw = await generate({
+    profile: HOUSE_INSIGHT_PROFILE,
+    responseSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string' },
+        strengths: { type: 'array', items: { type: 'string' } },
+        weaknesses: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    messages: [
+      { role: 'user', content: buildHouseInsightTranslationPrompt(original, targetLanguage) },
+    ],
+  });
+
+  const parsed = parseHouseInsightTranslation(raw);
+  if (!parsed) {
+    throw new Error(
+      `house insight translation returned unparseable JSON (target=${targetLanguage})`,
+    );
+  }
+  return parsed;
+}
+
 /**
  * No fallback: a failed or unparseable LLM response throws rather than
  * substituting generic, non-personalized filler — same discipline as

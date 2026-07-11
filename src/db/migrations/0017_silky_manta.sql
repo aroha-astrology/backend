@@ -1,0 +1,1 @@
+ALTER TABLE "house_insights" ADD COLUMN "translations" jsonb;

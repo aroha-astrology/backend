@@ -78,6 +78,30 @@ export async function markHouseInsightReady(
     );
 }
 
+export async function saveHouseInsightTranslation(
+  userId: string,
+  house: number,
+  language: string,
+  translation: { text?: string; strengths?: string[]; weaknesses?: string[] },
+): Promise<void> {
+  const existing = await db
+    .select({ translations: houseInsights.translations })
+    .from(houseInsights)
+    .where(and(eq(houseInsights.userId, userId), eq(houseInsights.house, house)))
+    .limit(1)
+    .then((r) => r[0]);
+
+  if (!existing) return; // if it was deleted, do nothing
+
+  const translations = existing.translations || {};
+  translations[language] = translation;
+
+  await db
+    .update(houseInsights)
+    .set({ translations })
+    .where(and(eq(houseInsights.userId, userId), eq(houseInsights.house, house)));
+}
+
 export async function markHouseInsightFailed(
   userId: string,
   house: number,
