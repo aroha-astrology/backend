@@ -99,13 +99,20 @@ export const HOROSCOPE_PROFILE: GenerationProfile = {
  * structured JSON overview + a per-month breakdown (12 short entries), so it
  * needs a much larger token ceiling. Generated lazily (once per user per year,
  * cached), never in a per-request hot path.
+ *
+ * 2026-07-11: raised 2500->4096 (matching PURCHASE_PLAN_PROFILE, the other
+ * "large schema" tier) after finding 2500 still truncated the months array
+ * in 3 of 4 production users (2/3/4 months instead of 12) even after the
+ * parser stopped hard-rejecting incomplete responses -- the schema here (6
+ * category blocks + a 12-entry month array with 5 sub-hooks each) is at
+ * least as large as purchase-plan's single verdict.
  */
 export const HOROSCOPE_YEARLY_PROFILE: GenerationProfile = {
   name: 'horoscope-yearly',
   temperature: 0.6,
   jsonMode: true,
   stream: false,
-  maxTokens: 2500,
+  maxTokens: 4096,
 };
 
 /**
