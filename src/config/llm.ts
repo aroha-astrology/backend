@@ -105,7 +105,7 @@ export const HOROSCOPE_YEARLY_PROFILE: GenerationProfile = {
   temperature: 0.6,
   jsonMode: true,
   stream: false,
-  maxTokens: 900,
+  maxTokens: 2500,
 };
 
 /**

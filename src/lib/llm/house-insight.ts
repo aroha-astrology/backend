@@ -184,6 +184,15 @@ export async function generateHouseInsight(ctx: HouseInsightContext): Promise<Ho
 
   const raw = await generate({
     profile: HOUSE_INSIGHT_PROFILE,
+    responseSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string' },
+        strengths: { type: 'array', items: { type: 'string' } },
+        weaknesses: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['text', 'strengths', 'weaknesses'],
+    },
     messages: [
       { role: 'system', content: systemPrompt(ctx.house) },
       contextMessage,
