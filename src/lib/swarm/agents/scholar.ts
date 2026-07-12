@@ -175,16 +175,11 @@ export async function checkTopicGate(
             .join('\n')}\n\n`
         : '';
 
+    // Plain jsonMode (no responseSchema) — kept portable across branches
+    // that don't all carry structured-output support yet; the prompt already
+    // spells out the exact two-key shape, which is enough for this.
     const raw = await llmGenerate({
       profile: ROUTING_PROFILE,
-      responseSchema: {
-        type: 'object',
-        properties: {
-          astrologyRelated: { type: 'boolean' },
-          declineMessage: { type: 'string' },
-        },
-        required: ['astrologyRelated', 'declineMessage'],
-      },
       messages: [
         { role: 'system', content: TOPIC_GATE_PROMPT },
         { role: 'user', content: `${contextBlock}Latest message: ${userMessage}` },
