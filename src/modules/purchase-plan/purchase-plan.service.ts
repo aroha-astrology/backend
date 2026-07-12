@@ -16,10 +16,45 @@ import {
 } from './purchase-plan.repo.js';
 import type { PurchasePlanRow } from '../../db/schema.js';
 import type { AnalyzePurchasePlanBody, PurchasePlanDto } from './purchase-plan.schemas.js';
+import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
+import { sendPushBatch } from '../../lib/notifications/fcm.js';
 
 const REFERENCE_LAT = 28.6139;
 const REFERENCE_LON = 77.209;
 const DAILY_PLAN_LIMIT = 3;
+
+const CATEGORY_LABELS: Record<'vehicle' | 'home' | 'commercial' | 'other', string> = {
+  vehicle: 'vehicle',
+  home: 'home',
+  commercial: 'property',
+  other: 'purchase',
+};
+
+/**
+ * Best-effort push notification once a purchase-plan analysis is done.
+ * Follows the same fire-and-forget, never-throws contract as
+ * `pushDailyHoroscopeReady` in horoscope.service.ts.
+ * Exported so it can be unit-tested in isolation.
+ */
+export async function notifyPurchasePlanReady(
+  userId: string,
+  category: 'vehicle' | 'home' | 'commercial' | 'other',
+): Promise<void> {
+  try {
+    const tokens = await findActiveTokensForUser(userId);
+    if (tokens.length === 0) return;
+    const label = CATEGORY_LABELS[category];
+    await sendPushBatch(
+      tokens.map((t) => t.token),
+      '🔮 Your Vedic timing analysis is ready',
+      `Your auspicious ${label} purchase timing report is waiting — tap to read it now.`,
+      { type: 'purchase_plan_ready', navigate: '/panchang' },
+    );
+    logger.info({ userId, category }, 'purchase-plan:push sent');
+  } catch (err) {
+    logger.warn({ err, userId }, 'purchase-plan:push failed');
+  }
+}
 
 /** Best-effort extraction from the loosely-typed kundli jsonb blobs — falls back to a generic line if fields are absent. */
 function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>>): string {
@@ -89,7 +124,7 @@ export async function requestPurchasePlanAnalysis(
   // Fire-and-forget: the app runs single-instance under pm2 (-i 1), so an
   // in-process background task survives until it finishes without needing a
   // separate job queue — see docs/superpowers/specs/2026-07-04-panchang-parity-design.md.
-  void processAnalysis(row.id, {
+  void processAnalysis(row.id, userId, {
     category: body.category,
     metadata: body.metadata,
     costBracket: body.costBracket,
@@ -108,6 +143,7 @@ export async function requestPurchasePlanAnalysis(
 
 async function processAnalysis(
   planId: string,
+  userId: string,
   input: {
     category: 'vehicle' | 'home' | 'commercial' | 'other';
     metadata: Record<string, string>;
@@ -133,6 +169,7 @@ async function processAnalysis(
       deliveryPanchang: deliveryPanchang,
     });
     await markDone(planId, analysis);
+    void notifyPurchasePlanReady(userId, input.category).catch(() => {/* already logged */});
   } catch (err) {
     logger.error({ err, planId }, 'purchase plan LLM analysis failed');
     await markError(planId, err instanceof Error ? err.message : 'Unknown error');
