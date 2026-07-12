@@ -1,11 +1,6 @@
 import { Errors } from '../../lib/errors.js';
 import type { OrderRow } from '../../db/schema.js';
-import {
-  findActiveCouponByCode,
-  insertOrder,
-  findOrderByIdForUser,
-  confirmOrderAndGrantCredits,
-} from './billing.repo.js';
+import { findActiveCouponByCode, insertOrder, findOrderByIdForUser } from './billing.repo.js';
 
 /**
  * Fixed credit-pack catalog. Small and rarely-changing enough to keep as code
@@ -111,21 +106,21 @@ export async function checkout(userId: string, packId: string, couponCode: strin
 }
 
 /**
- * MOCK payment confirmation — stands in for a real gateway's webhook/signature
- * verification (Razorpay/Stripe), which isn't wired up yet. Swap this call site
- * out once a real gateway is integrated; `confirmOrderAndGrantCredits` (the
- * credit-ledger side) stays the same.
+ * No real payment gateway (Razorpay/Stripe) is wired up yet — this used to be
+ * a MOCK that always "succeeded" and granted credits for any pending order,
+ * which meant any signed-in user could get free credits by hitting this
+ * endpoint with no actual payment involved. Refuse until a real gateway's
+ * webhook/signature verification replaces this call site;
+ * `confirmOrderAndGrantCredits` (the credit-ledger side) is unchanged and
+ * ready to be wired to that verification once it exists.
  */
-export async function confirmPayment(orderId: string, userId: string) {
+export async function confirmPayment(
+  orderId: string,
+  userId: string,
+): Promise<{ order: OrderRow; credits: number }> {
   const order = await findOrderByIdForUser(orderId, userId);
   if (!order) throw Errors.notFound('Order not found');
-  if (order.status === 'paid') throw Errors.conflict('Order already paid');
-  if (order.status !== 'pending') throw Errors.conflict(`Order is ${order.status}`);
-
-  const mockPaymentId = `mock_${orderId.slice(0, 8)}_${Date.now()}`;
-  const result = await confirmOrderAndGrantCredits(orderId, userId, mockPaymentId);
-  if (!result) throw Errors.conflict('Order could not be confirmed (already processed)');
-  return result;
+  throw Errors.forbidden('Online payments are not live yet.');
 }
 
 export function toOrderDto(order: OrderRow) {

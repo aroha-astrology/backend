@@ -45,16 +45,19 @@ export const FORECAST_PROFILE: GenerationProfile = {
   maxTokens: 2048,
 };
 
-// Target reply is ~90 words by default, ~150 words max (see scholar.ts
-// OUTPUT_STYLE) — 480 tokens is a generous ceiling over that, chosen to bound
-// worst-case generation latency (and therefore timeout risk) rather than to
-// fit the intended length exactly.
+// Target reply is ~90 words by default, ~150 words max plus one short
+// "Ask next:" follow-up line (see scholar.ts OUTPUT_STYLE). 260 tokens is a
+// ceiling a bit above that target — mainly a hard backstop against the model
+// ignoring the length instruction on an open-ended question (observed:
+// multi-section 400+ word replies in Direct mode despite the prompt asking
+// for 2-4 sentences) rather than a tight fit, so still bounds worst-case
+// latency without leaving room for a full "Details"-length reply to sneak in.
 export const CHAT_PROFILE: GenerationProfile = {
   name: 'chat',
   temperature: 0.7,
   jsonMode: false,
   stream: true,
-  maxTokens: 480,
+  maxTokens: 260,
 };
 
 /**
