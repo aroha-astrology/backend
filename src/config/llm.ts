@@ -45,19 +45,21 @@ export const FORECAST_PROFILE: GenerationProfile = {
   maxTokens: 2048,
 };
 
-// Target reply is ~90 words by default, ~150 words max plus one short
-// "Ask next:" follow-up line (see scholar.ts OUTPUT_STYLE). 260 tokens is a
-// ceiling a bit above that target — mainly a hard backstop against the model
-// ignoring the length instruction on an open-ended question (observed:
-// multi-section 400+ word replies in Direct mode despite the prompt asking
-// for 2-4 sentences) rather than a tight fit, so still bounds worst-case
-// latency without leaving room for a full "Details"-length reply to sneak in.
+// Target reply is ~90 words, ~150 words max plus one short "Ask next:"
+// follow-up line (see scholar.ts OUTPUT_STYLE) — but Gemini doesn't reliably
+// hit that on open-ended questions (observed: multi-section 400+ word
+// replies in Direct mode despite the prompt asking for 2-4 sentences).
+// scholar.ts's cleanDirectModeReply() now generates non-streaming and trims
+// the result to the target length itself (flattening any markdown structure
+// into prose first, so real content isn't lost to a mid-list cutoff), so
+// this ceiling only needs to comfortably fit the model's *raw*, possibly
+// disobedient output before cleanup — not the already-short target.
 export const CHAT_PROFILE: GenerationProfile = {
   name: 'chat',
   temperature: 0.7,
   jsonMode: false,
-  stream: true,
-  maxTokens: 260,
+  stream: false,
+  maxTokens: 700,
 };
 
 /**

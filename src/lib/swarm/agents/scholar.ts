@@ -2,8 +2,8 @@
 // Scholar Agent - Streaming chat agent using Gemini
 // =============================================================================
 
-import { stream as llmStream } from '../../llm/gemini-client.js';
-import { CHAT_PROFILE, CHAT_DETAILS_PROFILE } from '../../../config/llm.js';
+import { stream as llmStream, generate as llmGenerate } from '../../llm/gemini-client.js';
+import { CHAT_PROFILE, CHAT_DETAILS_PROFILE, ROUTING_PROFILE } from '../../../config/llm.js';
 import { logger } from '../../logger.js';
 import { buildGroundingFacts, type GroundingSource } from '../../chat-grounding.js';
 import type { SwarmState } from '../state.js';
@@ -21,7 +21,7 @@ const CONTEXT_DISCIPLINE = `Before asking the user anything, check two places fi
 
 const RESPONSE_DISCIPLINE = `You may ask at most one clarifying follow-up question on a given topic. Once the user has answered it, or if you already have enough chart/context information, you must give a concrete, definitive answer on the very next relevant turn — do not keep deflecting with more questions to avoid committing to an answer.`;
 
-const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT: your entire reply must be 2-4 sentences and under 90 words — never more than 150 words even if the topic feels like it deserves more (a multi-part question like "how will my week be" still gets ONE tight paragraph, not a breakdown of each part). Plain prose only: no headers, no numbered/labeled sections, no bullet points, no bold-as-section-titles — those are for Details mode, not this one. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble ("Namaste," "Great question," etc. are not hooks). Then explain the reasoning in 1-3 more sentences. If there's a natural, non-obvious follow-up question the user would want to ask next, you may end with one short one (max ~12 words) on its own line prefixed by "Ask next:" — omit this entirely when there isn't a genuinely useful follow-up, don't force one.`;
+const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT — this is the instruction you are most likely to break, so follow it exactly: your entire reply must be 2-4 sentences and under 90 words — never more than 150 words even if the topic feels like it deserves more. A multi-part question like "how will my week be" still gets ONE tight paragraph, NOT a breakdown into a "The Vibe" section and "The Advice" section, and not a numbered list of separate points. Plain prose only. Never write any of these in this mode: "**bold headers:**", a numbered list ("1.", "2."), a bullet ("•", "-", "*"), or any labeled section. If you notice yourself starting one of those while drafting, stop and rewrite the whole reply as a single flowing paragraph instead — that formatting is for Details mode only, and this is not Details mode. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble. Do NOT open with a throat-clearing setup sentence like "To understand your week, we look at...", "Based on your chart, here is an analysis of...", or "Let's look at..." — that is a preamble, not an answer, and it is banned even though it looks like plain prose; your very first sentence must already commit to the actual answer/insight itself, with the reasoning packed into the rest of that same short paragraph, not deferred to a "here is the breakdown" that follows. Then explain the reasoning in 1-3 more sentences. If there's a natural, non-obvious follow-up question the user would want to ask next, you may end with one short one (max ~12 words) on its own line prefixed by "Ask next:" — omit this entirely when there isn't a genuinely useful follow-up, don't force one.`;
 
 /**
  * Used when the client has switched to "Details" mode (a UI toggle, not
@@ -90,7 +90,16 @@ Parents & family:
 
 Remedies:
 - Offer mantra, gemstone, or fasting-day suggestions as advisory text only — never phrase these as
-  something to purchase, since there is no shop in this app.`;
+  something to purchase, since there is no shop in this app.
+
+Off-topic questions:
+- If the user asks something with no genuine connection to astrology, their birth chart, or life
+  guidance astrology can speak to — general trivia, coding/tech help, math problems, writing
+  requests unrelated to astrology, or anything else outside your role — do not attempt to answer
+  the underlying question, even partially, and do not add disclaimers around a partial answer.
+  Say in one short, warm sentence that this is outside what you can help with as their astrologer,
+  and invite them to ask something about their chart or life guidance instead. Then stop — do not
+  explain the app or lecture them about scope.`;
 
 export type ChatDetailLevel = 'direct' | 'details';
 
@@ -100,10 +109,14 @@ function systemPrompt(detailLevel: ChatDetailLevel): string {
     GROUNDING_INSTRUCTION,
     CONTEXT_DISCIPLINE,
     RESPONSE_DISCIPLINE,
-    detailLevel === 'details' ? OUTPUT_STYLE_DETAILS : OUTPUT_STYLE,
     HEDGE_LANGUAGE,
     DATE_SPECIFICITY,
     EFFORT_DEPENDENT_OUTCOMES,
+    // Kept last, closest to generation: the length/formatting constraint is
+    // the one the model most often ignores on broad questions (see
+    // CHAT_PROFILE comment in config/llm.ts), and instructions near the end
+    // of the prompt get followed more reliably than ones buried mid-prompt.
+    detailLevel === 'details' ? OUTPUT_STYLE_DETAILS : OUTPUT_STYLE,
   ].join('\n\n');
 }
 
@@ -118,6 +131,82 @@ function systemPrompt(detailLevel: ChatDetailLevel): string {
 const MAX_CONTEXT_CHARS = 7000;
 function clip(s: string, max = MAX_CONTEXT_CHARS): string {
   return s.length > max ? `${s.slice(0, max)}…[truncated]` : s;
+}
+
+// =============================================================================
+// Off-topic gate
+// =============================================================================
+
+/**
+ * SYSTEM_ROLE's "Off-topic questions" rule alone isn't enough — empirically
+ * confirmed Gemini still happily writes Python functions, answers trivia,
+ * and debugs React code when asked, ignoring the persona instruction
+ * entirely (the same instruction-following gap as OUTPUT_STYLE, but worse:
+ * general "be helpful" training pulls harder against a scope rule than a
+ * formatting one). A dedicated classification call, isolated from the big
+ * permissive persona prompt and the temptation to just answer, is much more
+ * reliable. Runs before any grounding/chart work so an off-topic message
+ * skips that (unnecessary) work entirely. Fails open (treats the message as
+ * astrology-related) on any classifier error or unparseable response, since
+ * a false positive here (wrongly blocking a real astrology question) is far
+ * worse than a false negative (occasionally answering something off-topic).
+ */
+const TOPIC_GATE_PROMPT = `You are a triage step in front of a Vedic astrology chat assistant.
+
+Decide whether the user's latest message has a genuine connection to astrology, their birth chart, planetary influences, or the kind of life guidance (career, love, marriage, health, education, family, finance, timing, remedies) a Vedic astrologer would address — including natural follow-ups within an ongoing astrology conversation (recent turns are provided below for that context). When in doubt, treat it as related; do not be over-eager to reject borderline questions.
+
+If it is NOT related — general knowledge trivia, coding/tech help, math problems, writing/content requests unrelated to astrology, or asking the assistant to act as a different kind of assistant — write one short, warm sentence, in the SAME language the user's latest message is written in, telling them this is outside what you can help with as their astrologer, and inviting them to ask about their chart or life guidance instead. Do not mention being an AI. Do not answer their actual question even partially.
+
+Return STRICT JSON only: {"astrologyRelated": boolean, "declineMessage": string}
+"declineMessage" is only used when astrologyRelated is false — leave it as an empty string when astrologyRelated is true.`;
+
+export type TopicGateResult = { related: true } | { related: false; message: string };
+
+export async function checkTopicGate(
+  userMessage: string,
+  recentHistory: Array<{ role: string; content: string }> = [],
+): Promise<TopicGateResult> {
+  try {
+    const contextBlock =
+      recentHistory.length > 0
+        ? `Recent conversation turns (for follow-up context only):\n${recentHistory
+            .slice(-4)
+            .map((t) => `${t.role}: ${t.content}`)
+            .join('\n')}\n\n`
+        : '';
+
+    const raw = await llmGenerate({
+      profile: ROUTING_PROFILE,
+      responseSchema: {
+        type: 'object',
+        properties: {
+          astrologyRelated: { type: 'boolean' },
+          declineMessage: { type: 'string' },
+        },
+        required: ['astrologyRelated', 'declineMessage'],
+      },
+      messages: [
+        { role: 'system', content: TOPIC_GATE_PROMPT },
+        { role: 'user', content: `${contextBlock}Latest message: ${userMessage}` },
+      ],
+    });
+
+    const parsed = JSON.parse(raw) as { astrologyRelated?: unknown; declineMessage?: unknown };
+    if (
+      parsed.astrologyRelated === false &&
+      typeof parsed.declineMessage === 'string' &&
+      parsed.declineMessage.trim()
+    ) {
+      return { related: false, message: parsed.declineMessage.trim() };
+    }
+    return { related: true };
+  } catch (err) {
+    logger.warn(
+      { err },
+      'topic gate check failed — defaulting to treating the message as astrology-related',
+    );
+    return { related: true };
+  }
 }
 
 // =============================================================================
@@ -165,6 +254,33 @@ export function buildChatMessages(
       `<astro_context>\n${clip(chartData)}\n</astro_context>`,
   });
 
+  // Descriptive instructions alone weren't enough to stop Direct mode from
+  // opening with a content-free setup sentence ("To understand your week,
+  // we look at...") and saving the real answer for a second, disallowed
+  // structured block — a few-shot demonstration of the exact expected shape
+  // (answer-first, single paragraph, no preamble) is far more reliable than
+  // another line of prose telling it what not to do. Bracketed and labeled
+  // so the model doesn't mistake this fictional pair for real conversation
+  // history about this user.
+  if (detailLevel === 'direct') {
+    messages.push({
+      role: 'system',
+      content:
+        'FORMAT EXAMPLE ONLY — this fictional exchange is not about the current user; copy only its length, directness, and lack of preamble, not its content:',
+    });
+    messages.push({ role: 'user', content: 'How will my week be?' });
+    messages.push({
+      role: 'assistant',
+      content:
+        "This week favors steady, collaborative moves over bold solo ones — Jupiter's strong placement in your 5th house keeps your thinking sharp and creative, while the Moon moving through your 7th house makes you more attuned to what partners and close friends need. Lean into that sensitivity mid-week especially, since it's your best window for clearing up any recent misunderstandings.",
+    });
+    messages.push({
+      role: 'system',
+      content:
+        'End of example. Continue the real conversation below using the real chart data above.',
+    });
+  }
+
   if (state.chatContext?.history) {
     for (const msg of state.chatContext.history) {
       messages.push({ role: msg.role, content: msg.content });
@@ -186,6 +302,73 @@ export function buildChatMessages(
 // =============================================================================
 // Streaming Chat
 // =============================================================================
+
+/**
+ * Direct mode's prompt (OUTPUT_STYLE) asks for one short plain-prose
+ * paragraph, but Gemini doesn't reliably comply on broad questions —
+ * empirically confirmed it still produces markdown headers, bold-as-label
+ * lines, and numbered/bulleted sections. Trusting prompt compliance alone
+ * meant CHAT_PROFILE's max_tokens cap would hard-cut that structure mid-item
+ * (the original bug: a reply visibly ending on a bare "2.").
+ *
+ * A first attempt stopped forwarding tokens the instant a paragraph break
+ * appeared, on the theory that disallowed structure always came *after* a
+ * compliant opening paragraph. Empirically false: on some questions Gemini's
+ * first paragraph is itself a content-free preamble ("To understand your
+ * week, we look at...") with the real answer only arriving after the break —
+ * that approach silently threw away the actual answer, which is worse than
+ * the original bug.
+ *
+ * This does it the reliable way instead: let generation run to completion
+ * (non-streaming — CHAT_PROFILE's max_tokens is generous enough for this to
+ * rarely bind), then flatten any markdown structure into continuous prose
+ * and trim to a sentence-boundary word budget across the *whole* reply, not
+ * just its first paragraph — so real content survives no matter where in the
+ * reply it landed, and the visible result never ends mid-sentence or
+ * mid-list. The cleaned text is then re-chunked for the SSE stream so the
+ * client still sees an incremental "typing" reveal.
+ */
+function cleanDirectModeReply(raw: string): string {
+  const askNextMatch = raw.match(/\n *Ask next:\s*(.+?)\s*$/i);
+  const askNext = askNextMatch ? askNextMatch[1]!.trim() : null;
+  const rawBody = askNextMatch ? raw.slice(0, askNextMatch.index) : raw;
+
+  const flattened = rawBody
+    .replace(/^#{1,6}\s*/gm, '') // markdown headers
+    .replace(/\*\*(.+?)\*\*/g, '$1') // bold
+    .replace(/^\s*[-•*]\s+/gm, '') // bullets
+    .replace(/^\s*\d+\.\s+/gm, '') // numbered list markers
+    .replace(/\n{2,}/g, ' ') // paragraph breaks -> single space
+    .replace(/\n/g, ' ') // any remaining single newlines -> space
+    .replace(/ {2,}/g, ' ')
+    .trim();
+
+  const WORD_BUDGET = 110; // a little above the 90-word target, matching the "never more than 150" ceiling with margin for the closing sentence
+  const sentences = flattened.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g) ?? [flattened];
+  let trimmed = '';
+  let words = 0;
+  for (const s of sentences) {
+    const sWords = s.trim().split(/\s+/).filter(Boolean).length;
+    if (words > 0 && words + sWords > WORD_BUDGET) break;
+    trimmed += s;
+    words += sWords;
+  }
+  trimmed = trimmed.trim() || flattened; // never end up empty — fall back to the full flattened body
+
+  return askNext ? `${trimmed}\nAsk next: ${askNext}` : trimmed;
+}
+
+async function* streamDirectModeParagraph(
+  messages: Array<{ role: string; content: string }>,
+  signal: AbortSignal | undefined,
+): AsyncGenerator<string, void, unknown> {
+  const raw = await llmGenerate({ profile: CHAT_PROFILE, messages, signal });
+  const cleaned = cleanDirectModeReply(raw);
+  const CHUNK_SIZE = 24;
+  for (let i = 0; i < cleaned.length; i += CHUNK_SIZE) {
+    yield cleaned.slice(i, i + CHUNK_SIZE);
+  }
+}
 
 /**
  * Async generator that streams scholar chat tokens, grounded in the user's
@@ -210,9 +393,10 @@ export async function* scholarStream(
     detailLevel,
   );
 
-  yield* llmStream({
-    profile: detailLevel === 'details' ? CHAT_DETAILS_PROFILE : CHAT_PROFILE,
-    messages,
-    signal,
-  });
+  if (detailLevel === 'details') {
+    yield* llmStream({ profile: CHAT_DETAILS_PROFILE, messages, signal });
+    return;
+  }
+
+  yield* streamDirectModeParagraph(messages, signal);
 }
