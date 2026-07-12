@@ -58,6 +58,7 @@ function makeAbort(external: AbortSignal | undefined, ms: number) {
 interface GeminiChoice {
   message?: { content: string };
   delta?: { content?: string };
+  finish_reason?: string | null;
 }
 
 interface GeminiResponse {
@@ -256,6 +257,12 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
                   yieldedAny = true;
                   yield delta;
                 }
+                if (chunk.choices?.[0]?.finish_reason === 'length') {
+                  logger.warn(
+                    { profile: opts.profile.name, maxTokens: opts.profile.maxTokens },
+                    'Gemini stream hit max_tokens — reply was truncated mid-generation',
+                  );
+                }
               } catch {
                 logger.debug({ sample: trimmed.slice(0, 200) }, 'Skipping malformed SSE chunk');
               }
@@ -270,6 +277,12 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
             if (delta) {
               yieldedAny = true;
               yield delta;
+            }
+            if (chunk.choices?.[0]?.finish_reason === 'length') {
+              logger.warn(
+                { profile: opts.profile.name, maxTokens: opts.profile.maxTokens },
+                'Gemini stream hit max_tokens — reply was truncated mid-generation',
+              );
             }
           } catch {
             // ignore trailing partial

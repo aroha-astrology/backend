@@ -4,6 +4,7 @@ import {
   newState,
   compileResponse,
   scholarStream,
+  checkTopicGate,
   computeMetrology,
   synthesizeDailyForecast,
   moonSignPrediction,
@@ -698,6 +699,15 @@ export async function* chatStream(
   detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent> {
+  // Gate off-topic messages (coding help, trivia, etc.) before doing any
+  // chart/grounding work — see checkTopicGate's own comment for why this
+  // needs a dedicated classification call rather than a persona prompt rule.
+  const gate = await checkTopicGate(message, history);
+  if (!gate.related) {
+    yield { type: 'token', content: gate.message };
+    return;
+  }
+
   const state = newState({ userId, intent: 'chat', consent: true });
 
   // Best-effort: an unready/missing kundli just means no chart facts get
