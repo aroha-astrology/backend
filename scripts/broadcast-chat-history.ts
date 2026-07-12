@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { getAllActiveTokens } from '../src/modules/device-tokens/device-tokens.repo.js';
 import { sendPushBatch } from '../src/lib/notifications/fcm.js';
 import { logger } from '../src/lib/logger.js';
-import { pool } from '../src/config/db.js';
+import { sqlClient } from '../src/config/db.js';
 
 async function main() {
   logger.info('Starting Chat History Broadcast script...');
@@ -50,7 +50,7 @@ async function main() {
   logger.info({ totalSuccess, totalFailure }, 'Chat History Broadcast complete');
   
   // Close the DB connection so the script can exit
-  await pool.end();
+  await sqlClient.end();
 }
 
 main().catch((err) => {
