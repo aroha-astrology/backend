@@ -35,13 +35,14 @@ async function main() {
   for (const chunk of chunks) {
     const rawTokens = chunk.map((c) => c.token);
     try {
-      const result = await sendPushBatch(rawTokens, {
+      const result = await sendPushBatch(
+        rawTokens,
         title,
         body,
-        data: { route: '/chat-history' },
-      });
-      totalSuccess += result.successCount;
-      totalFailure += result.failureCount;
+        { route: '/chat-history' }
+      );
+      totalSuccess += result.success;
+      totalFailure += result.failure;
     } catch (err) {
       logger.error({ err }, 'broadcast-chat-history batch send failed entirely');
     }
