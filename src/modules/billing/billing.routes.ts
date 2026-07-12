@@ -178,8 +178,8 @@ const confirmRoute = createRoute({
   path: '/billing/orders/{id}/confirm',
   tags: ['Billing'],
   summary:
-    'Confirm payment for a pending order and grant its credits. MOCK: stands in for a real ' +
-    'gateway webhook until Razorpay/Stripe is wired up — always "succeeds" for a pending order.',
+    'Confirm payment for a pending order and grant its credits. Currently always refuses — no ' +
+    'real payment gateway (Razorpay/Stripe) is wired up yet, so this cannot verify a real payment.',
   security: [{ bearerAuth: [] }],
   request: { params: OrderIdParamSchema },
   responses: {
@@ -188,6 +188,7 @@ const confirmRoute = createRoute({
       content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
     },
     401: errorResponse('Unauthorized'),
+    403: errorResponse('Online payments are not live yet'),
     404: errorResponse('Order not found'),
     409: errorResponse('Order already processed or not pending'),
   },
