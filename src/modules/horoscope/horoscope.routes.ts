@@ -76,7 +76,7 @@ const getHoroscopeRoute = createRoute({
 
 horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
   const user = c.get('user');
-  const { period } = c.req.valid('query');
+  const { period, language } = c.req.valid('query');
 
   const forDate = currentPeriodStart(period);
   const periodKey = periodKeyFor(period, forDate);
@@ -92,7 +92,10 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
     const dashaData = kundli && kundli.status === 'ready' ? kundli.dashaData : null;
     let dto = toHoroscopeDto(existing, dashaData);
 
-    const lang = user.contentLanguage || 'en';
+    // Query param wins — the in-app language switcher never persists to
+    // `user.contentLanguage` (PUT /preferences is a stub), so that field is
+    // stale for anyone who changed language mid-session.
+    const lang = language || user.contentLanguage || 'en';
     if (lang !== 'en') {
       const translations = existing.translations || {};
       if (translations[lang]) {
