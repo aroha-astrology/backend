@@ -1090,3 +1090,34 @@ export const forecastTranslations = pgTable(
 
 export type ForecastTranslationRow = typeof forecastTranslations.$inferSelect;
 export type NewForecastTranslationRow = typeof forecastTranslations.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* chat_sessions — stored AI chat histories                                   */
+/* -------------------------------------------------------------------------- */
+
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('New Chat'),
+    history: jsonb('history').notNull().default(sql`'[]'::jsonb`),
+    summary: text('summary'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('chat_sessions_user_id_idx').on(table.userId),
+  }),
+);
+
+export type ChatSessionRow = typeof chatSessions.$inferSelect;
+export type NewChatSessionRow = typeof chatSessions.$inferInsert;

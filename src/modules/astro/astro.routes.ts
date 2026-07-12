@@ -7,6 +7,7 @@ import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
 import { deductCredits } from '../users/users.repo.js';
 import * as astroService from './astro.service.js';
+import * as chatSessionsRepo from './chat-sessions.repo.js';
 
 /** Flat cost per chat question, charged atomically before generation starts. */
 const CHAT_MESSAGE_COST = 2;
@@ -445,14 +446,20 @@ astroRouter.openapi(chatRoute, async (c) => {
         body.detailLevel,
         signal,
       );
+      
+      let fullContent = '';
+      let currentSummary = body.summary;
+      
       for await (const event of events) {
         if (signal.aborted || stream.aborted) break;
         if (event.type === 'token') {
+          fullContent += event.content;
           await stream.writeSSE({
             event: 'token',
             data: JSON.stringify({ content: event.content }),
           });
         } else {
+          currentSummary = event.summary;
           await stream.writeSSE({
             event: 'summary',
             data: JSON.stringify({ summary: event.summary }),
@@ -460,6 +467,24 @@ astroRouter.openapi(chatRoute, async (c) => {
         }
       }
       if (!signal.aborted && !stream.aborted) {
+        // Save history
+        let sessionId = body.sessionId;
+        const newHistory = [
+          ...body.history,
+          { role: 'user', content: body.message },
+          { role: 'assistant', content: fullContent }
+        ] as any[]; // cast to avoid exact typing mismatch if any
+
+        if (sessionId) {
+          await chatSessionsRepo.updateChatSession(sessionId, newHistory, currentSummary);
+        } else {
+          // generate a new session title based on the message
+          const title = body.message.length > 50 ? body.message.substring(0, 47) + '...' : body.message;
+          const session = await chatSessionsRepo.createChatSession(user.id, title, newHistory, currentSummary);
+          sessionId = session.id;
+        }
+
+        await stream.writeSSE({ event: 'session_id', data: JSON.stringify({ sessionId }) });
         await stream.writeSSE({ event: 'done', data: JSON.stringify({ status: 'complete' }) });
       }
     } catch (err) {
@@ -474,4 +499,66 @@ astroRouter.openapi(chatRoute, async (c) => {
       }
     }
   });
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /chat/sessions                                                         */
+/* -------------------------------------------------------------------------- */
+
+const chatSessionsRoute = createRoute({
+  method: 'get',
+  path: '/chat/sessions',
+  tags: ['Astro'],
+  summary: 'List all past chat sessions',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'List of chat sessions',
+      content: { 'application/json': { schema: z.any() } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+astroRouter.openapi(chatSessionsRoute, async (c) => {
+  const user = c.get('user');
+  const sessions = await chatSessionsRepo.getChatSessions(user.id);
+  return c.json(sessions, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /chat/sessions/:id                                                     */
+/* -------------------------------------------------------------------------- */
+
+const chatSessionByIdRoute = createRoute({
+  method: 'get',
+  path: '/chat/sessions/{id}',
+  tags: ['Astro'],
+  summary: 'Get a specific chat session with its full history',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: {
+    params: z.object({
+      id: z.string().uuid().openapi({ param: { name: 'id', in: 'path' } }),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Chat session details',
+      content: { 'application/json': { schema: z.any() } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Session not found'),
+  },
+});
+
+astroRouter.openapi(chatSessionByIdRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const session = await chatSessionsRepo.getChatSession(id, user.id);
+  if (!session) {
+    throw Errors.notFound('Session not found');
+  }
+  return c.json(session, 200);
 });

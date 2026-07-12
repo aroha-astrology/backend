@@ -68,8 +68,11 @@ export const ChatHistoryTurnSchema = z
   })
   .openapi('ChatHistoryTurn');
 
+export type ChatHistoryTurn = z.infer<typeof ChatHistoryTurnSchema>;
+
 export const ChatRequestSchema = z
   .object({
+    sessionId: z.string().uuid().optional().openapi({ description: 'ID of an existing chat session to continue.' }),
     message: z.string().min(1).max(2000).openapi({ example: 'What does my Jupiter transit mean?' }),
     locale: z.string().default('en'),
     history: z.array(ChatHistoryTurnSchema).max(40).default([]).openapi({
