@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import {
   calculateChart,
   calculateVimshottariDasha,
+  calculateYoginiDasha,
   detectAllYogas,
   analyzeAllDoshas,
   calculateAshtakavarga,
@@ -251,6 +252,7 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
         inputs.tzOffset * 3_600_000,
     );
     const dasha = calculateVimshottariDasha(moon?.longitude ?? 0, birthDate);
+    const yogini = calculateYoginiDasha(moon?.longitude ?? 0, birthDate);
 
     // Best-effort enrichment: a failure in any single (unvetted) calc must NOT
     // fail the whole kundli — the chart + dasha are the required payload.
@@ -264,7 +266,7 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
       timeKnown: true,
       birthHash: inputs.birthHash,
       chartData: { ...chart },
-      dashaData: { vimshottari: dasha },
+      dashaData: { vimshottari: dasha, yogini },
       yogaData: yogas ? { yogas } : null,
       doshaData: doshas ? (doshas as unknown as Record<string, unknown>) : null,
       ashtakavargaData: ashtakavarga ? (ashtakavarga as unknown as Record<string, unknown>) : null,

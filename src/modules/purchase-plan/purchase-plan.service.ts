@@ -48,7 +48,7 @@ export async function notifyPurchasePlanReady(
       tokens.map((t) => t.token),
       '🔮 Your Vedic timing analysis is ready',
       `Your auspicious ${label} purchase timing report is waiting — tap to read it now.`,
-      { type: 'purchase_plan_ready', navigate: '/panchang' },
+      { type: 'purchase_plan_ready', navigate: '/panchang#purchase-plans' },
     );
     logger.info({ userId, category }, 'purchase-plan:push sent');
   } catch (err) {
@@ -169,7 +169,9 @@ async function processAnalysis(
       deliveryPanchang: deliveryPanchang,
     });
     await markDone(planId, analysis);
-    void notifyPurchasePlanReady(userId, input.category).catch(() => {/* already logged */});
+    void notifyPurchasePlanReady(userId, input.category).catch(() => {
+      /* already logged */
+    });
   } catch (err) {
     logger.error({ err, planId }, 'purchase plan LLM analysis failed');
     await markError(planId, err instanceof Error ? err.message : 'Unknown error');

@@ -15,6 +15,7 @@ import { dashaLordTransitQuality, SIGNS } from './astro-tools/index.js';
 import { dateToJulianDay, calculatePlanetPositions } from './astro-engine/index.js';
 import { findFavorableWindow } from './dasha-window.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
+import { scoreDomainWindow } from './astro-engine/dasha-confidence.js';
 
 export interface GroundingSource {
   /** kundli.chartData — planets, houses (with lord), ascendant. */
@@ -72,6 +73,7 @@ function planetPlacement(planets: PlanetFact[], planetName: string): PlanetFact 
 interface CurrentDasha {
   mahadasha?: string | undefined;
   antardasha?: string | undefined;
+  pratyantardasha?: string | undefined;
   mahaStart?: string | undefined;
   mahaEnd?: string | undefined;
 }
@@ -80,12 +82,29 @@ function currentDasha(dasha: Record<string, unknown> | null): CurrentDasha {
   const v = (dasha?.vimshottari ?? {}) as Record<string, unknown>;
   const md = v.currentMahadasha as Record<string, unknown> | undefined;
   const ad = v.currentAntardasha as Record<string, unknown> | undefined;
+  const pd = v.currentPratyantardasha as Record<string, unknown> | undefined;
   return {
     mahadasha: md?.planet ? String(md.planet) : undefined,
     antardasha: ad?.planet ? String(ad.planet) : undefined,
+    pratyantardasha: pd?.planet ? String(pd.planet) : undefined,
     mahaStart: md?.startDate ? String(md.startDate).slice(0, 10) : undefined,
     mahaEnd: md?.endDate ? String(md.endDate).slice(0, 10) : undefined,
   };
+}
+
+function currentYoginiFact(dasha: Record<string, unknown> | null): string | null {
+  const y = (dasha?.yogini ?? {}) as Record<string, unknown>;
+  const cy = y.currentYogini as Record<string, unknown> | undefined;
+  if (!cy || !cy.planet || !cy.deity) return null;
+
+  const antardashas = (cy.subPeriods ?? []) as Array<Record<string, unknown>>;
+  const activeAntar = antardashas.find((sp) => sp.isActive);
+
+  let fact = `Concurrent Yogini Dasha (micro-cycle confirmation): ${String(cy.deity)} (${String(cy.planet)})`;
+  if (activeAntar && activeAntar.deity) {
+    fact += ` → ${String(activeAntar.deity)} Yogini sub-period`;
+  }
+  return fact;
 }
 
 /**
@@ -335,8 +354,12 @@ export async function buildGroundingFacts(
         ? ` (started ${dasha.mahaStart}, ends ${dasha.mahaEnd})`
         : '';
     const antar = dasha.antardasha ? ` / ${dasha.antardasha} minor period` : '';
-    facts.push(`Active Major Planetary Period: ${dasha.mahadasha}${antar}${range}`);
+    const pratyantar = dasha.pratyantardasha ? ` / ${dasha.pratyantardasha} sub-minor period` : '';
+    facts.push(`Active Major Planetary Period: ${dasha.mahadasha}${antar}${pratyantar}${range}`);
   }
+
+  const yoginiFact = currentYoginiFact(src.dasha);
+  if (yoginiFact) facts.push(yoginiFact);
 
   // --- Ascendant ----------------------------------------------------------
   const asc = src.chart?.ascendant as Record<string, unknown> | undefined;
@@ -387,27 +410,9 @@ export async function buildGroundingFacts(
   // --- Transits as of the target date (timing signals, not persona-gated) --
   const transitLabel = asOfDate ? `as of ${asOfDate}` : 'currently';
   const saturnSignIdx = await currentTransitSignIndex('Saturn', asOfDate);
-  if (saturnSignIdx != null) {
-    const q = dashaLordTransitQuality('Saturn', saturnSignIdx);
-    facts.push(
-      `Saturn is ${transitLabel} transiting ${SIGNS[saturnSignIdx]} — ${q.dignity} dignity (career timing signal)`,
-    );
-  }
+  const jupiterSignIdx = await currentTransitSignIndex('Jupiter', asOfDate);
 
   if (ascSignIndex != null) {
-    const jupiterSignIdx = await currentTransitSignIndex('Jupiter', asOfDate);
-    if (jupiterSignIdx != null) {
-      const houseFromAsc = ((jupiterSignIdx - ascSignIndex + 12) % 12) + 1;
-      const favorable = [2, 5, 7, 9, 11].includes(houseFromAsc);
-      facts.push(
-        `Jupiter is ${transitLabel} transiting your ${houseFromAsc}th house from the Rising Sign — ${
-          favorable
-            ? 'traditionally favorable for relationship/marriage timing'
-            : 'not one of the classic favorable houses for relationship timing right now'
-        }`,
-      );
-    }
-
     const moonTransit = await currentTransitMoonDetail(asOfDate);
     if (moonTransit) {
       const moonHouseFromAsc = ((moonTransit.signIndex - ascSignIndex + 12) % 12) + 1;
@@ -419,49 +424,83 @@ export async function buildGroundingFacts(
     }
   }
 
-  // --- Active dasha lord significance (career / love / health windows) -----
-  const activeLords = [...new Set([dasha.mahadasha, dasha.antardasha].filter(Boolean))] as string[];
-  const tenthOccupants = planets.filter((p) => p.house === 10).map((p) => p.planet);
-  const seventhOccupants = planets.filter((p) => p.house === 7).map((p) => p.planet);
-  const sixEightTwelveLords = [6, 8, 12]
-    .map((h) => houseLord(houses, h)?.lord)
-    .filter((l): l is string => Boolean(l));
-  const sixEightTwelveOccupants = planets
-    .filter((p) => [6, 8, 12].includes(p.house))
-    .map((p) => p.planet);
+  // --- Confidence Scoring Engine (Career, Love, Health) -----
+  const houseLordsMap: Record<number, string> = {};
+  for (const h of houses) houseLordsMap[h.house] = h.lord;
 
-  for (const lord of activeLords) {
-    const careerRole =
-      lord === tenthLord
-        ? '10th house lord'
-        : tenthOccupants.includes(lord)
-          ? 'natally placed in the 10th house'
-          : null;
-    if (careerRole) {
-      facts.push(
-        `Currently active dasha lord ${lord} is also the ${careerRole} — a traditionally significant window for career matters`,
-      );
-    }
+  const houseOccupantsMap: Record<number, string[]> = {};
+  for (const p of planets) {
+    if (!houseOccupantsMap[p.house]) houseOccupantsMap[p.house] = [];
+    houseOccupantsMap[p.house].push(p.planet);
+  }
 
-    const loveRole =
-      lord === seventhLord
-        ? '7th house lord'
-        : lord === 'Venus'
-          ? 'natural relationship significator'
-          : seventhOccupants.includes(lord)
-            ? 'natally placed in the 7th house'
-            : null;
-    if (loveRole) {
-      facts.push(
-        `Currently active dasha lord ${lord} is also the ${loveRole} — a traditionally significant window for relationship/marriage matters`,
-      );
-    }
+  const transits = {
+    saturnSignIndex: saturnSignIdx,
+    jupiterSignIndex: jupiterSignIdx,
+  };
 
-    if (sixEightTwelveLords.includes(lord) || sixEightTwelveOccupants.includes(lord)) {
-      facts.push(
-        `Currently active dasha lord (${lord}) is linked to the 6th/8th/12th houses — traditionally a period to pay closer attention to health`,
-      );
-    }
+  const now = new Date();
+
+  const seventhOccupants = houseOccupantsMap[7] ?? [];
+  const marriageLords = [
+    ...new Set([seventhLord, 'Venus', ...seventhOccupants].filter(Boolean)),
+  ] as string[];
+  const loveScore = scoreDomainWindow(
+    'love',
+    marriageLords,
+    [7],
+    src.dasha,
+    ascSignIndex,
+    now,
+    transits,
+  );
+  if (loveScore.windowStartDate) {
+    facts.push(
+      `Relationship Window Confidence: ${loveScore.level} — ${loveScore.reasoning.join(' ')} approx ${loveScore.windowStartDate} to ${loveScore.windowEndDate}`,
+    );
+  }
+
+  const tenthOccupants = houseOccupantsMap[10] ?? [];
+  const careerLords = [
+    ...new Set([tenthLord, 'Saturn', ...tenthOccupants].filter(Boolean)),
+  ] as string[];
+  const careerScore = scoreDomainWindow(
+    'career',
+    careerLords,
+    [10],
+    src.dasha,
+    ascSignIndex,
+    now,
+    transits,
+  );
+  if (careerScore.windowStartDate) {
+    facts.push(
+      `Career Window Confidence: ${careerScore.level} — ${careerScore.reasoning.join(' ')} approx ${careerScore.windowStartDate} to ${careerScore.windowEndDate}`,
+    );
+  }
+
+  const sixEightTwelveLords = [houseLordsMap[6], houseLordsMap[8], houseLordsMap[12]].filter(
+    Boolean,
+  );
+  const sixEightTwelveOccupants = [
+    ...(houseOccupantsMap[6] ?? []),
+    ...(houseOccupantsMap[8] ?? []),
+    ...(houseOccupantsMap[12] ?? []),
+  ];
+  const healthLords = [...new Set([...sixEightTwelveLords, ...sixEightTwelveOccupants])];
+  const healthScore = scoreDomainWindow(
+    'health',
+    healthLords,
+    [6, 8, 12],
+    src.dasha,
+    ascSignIndex,
+    now,
+    transits,
+  );
+  if (healthScore.windowStartDate) {
+    facts.push(
+      `Health Vigilance Required: ${healthScore.level} — ${healthScore.reasoning.join(' ')} approx ${healthScore.windowStartDate} to ${healthScore.windowEndDate}`,
+    );
   }
 
   // --- All 7 traditional doshas ---------------------------------------------
@@ -469,43 +508,6 @@ export async function buildGroundingFacts(
 
   // --- Ashtakavarga summary ---------------------------------------------------
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
-
-  // --- Forward-looking favorable dasha windows -------------------------------
-  // Unlike the "currently active dasha lord" checks above (which can only say
-  // "now is/isn't aligned"), this walks the *future* mahadasha→antardasha→
-  // pratyantardasha timeline to answer "when" — e.g. marriage-timing
-  // questions get an actual projected date range, not just a present/absent
-  // read. Never fabricates: findFavorableWindow returns undefined (and no
-  // fact is added) if nothing matches within its lookahead.
-  const now = new Date();
-
-  const marriageLords = [
-    ...new Set([seventhLord, 'Venus', ...seventhOccupants].filter(Boolean)),
-  ] as string[];
-  const marriageWindow = findFavorableWindow(src.dasha, marriageLords, now);
-  if (marriageWindow) {
-    facts.push(
-      `Nearest traditionally favorable window for marriage: ${marriageWindow.lord} ${marriageWindow.level} (within ${marriageWindow.withinMahadasha} major period), approx ${marriageWindow.startDate} to ${marriageWindow.endDate}`,
-    );
-  }
-
-  const careerLords = [
-    ...new Set([tenthLord, 'Saturn', ...tenthOccupants].filter(Boolean)),
-  ] as string[];
-  const careerWindow = findFavorableWindow(src.dasha, careerLords, now);
-  if (careerWindow) {
-    facts.push(
-      `Nearest traditionally favorable window for career growth: ${careerWindow.lord} ${careerWindow.level} (within ${careerWindow.withinMahadasha} major period), approx ${careerWindow.startDate} to ${careerWindow.endDate}`,
-    );
-  }
-
-  const healthLords = [...new Set([...sixEightTwelveLords, ...sixEightTwelveOccupants])];
-  const healthWindow = findFavorableWindow(src.dasha, healthLords, now);
-  if (healthWindow) {
-    facts.push(
-      `Nearest period traditionally calling for extra health care: ${healthWindow.lord} ${healthWindow.level} (within ${healthWindow.withinMahadasha} major period), approx ${healthWindow.startDate} to ${healthWindow.endDate}`,
-    );
-  }
 
   return facts;
 }
