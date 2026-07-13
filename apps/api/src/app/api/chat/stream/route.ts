@@ -466,14 +466,8 @@ Avoid Choghadiya: ${badChog || 'none'}`;
       chartId
         ? (() => {
             const lq = (question as string).toLowerCase();
+            const CORE_CHARTS = ['D1', 'D2', 'D3', 'D4', 'D7', 'D9', 'D10', 'D12'];
             const CHART_KEYWORDS: Record<string, string[]> = {
-              D2: ['wealth', 'money', 'income', 'financial', 'rich', 'poor'],
-              D3: ['sibling', 'brother', 'sister', 'courage'],
-              D4: ['property', 'house', 'land', 'real estate', 'home'],
-              D7: ['children', 'child', 'son', 'daughter', 'baby', 'pregnancy'],
-              D9: ['marriage', 'spouse', 'wife', 'husband', 'partner', 'relationship', 'wedding', 'divorce'],
-              D10: ['career', 'job', 'profession', 'work', 'business', 'promotion'],
-              D12: ['parents', 'father', 'mother', 'ancestor'],
               D16: ['vehicle', 'car', 'luxury', 'comfort'],
               D20: ['spiritual', 'religion', 'worship', 'mantra', 'meditation', 'dharma'],
               D24: ['education', 'studies', 'knowledge', 'degree', 'college'],
@@ -483,10 +477,10 @@ Avoid Choghadiya: ${badChog || 'none'}`;
               D45: ['paternal', 'father side', 'character'],
               D60: ['karma', 'past life', 'destiny', 'fate', 'prarabdha'],
             };
-            const relevant = Object.entries(CHART_KEYWORDS)
+            const additionalCharts = Object.entries(CHART_KEYWORDS)
               .filter(([, kws]) => kws.some((kw) => lq.includes(kw)))
               .map(([ct]) => ct);
-            const toFetch = relevant.length > 0 ? relevant : ['D9', 'D10'];
+            const toFetch = [...CORE_CHARTS, ...additionalCharts];
             return supabase
               .from('divisional_chart_analyses')
               .select('chart_type, key_findings')
