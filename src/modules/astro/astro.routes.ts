@@ -171,6 +171,14 @@ const PeriodQuerySchema = z.object({
       description:
         'Timescale — weekly/monthly/yearly are aggregates of the daily engine output, never independent narration',
     }),
+  language: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'language', in: 'query' },
+      example: 'hi',
+      description: 'Language code for translation',
+    }),
 });
 
 const moonSignRoute = createRoute({
@@ -190,8 +198,8 @@ const moonSignRoute = createRoute({
 
 astroRouter.openapi(moonSignRoute, async (c) => {
   const { signIndex } = c.req.valid('param');
-  const { period } = c.req.valid('query');
-  const result = await astroService.moonSignForecast(signIndex, period);
+  const { period, language } = c.req.valid('query');
+  const result = await astroService.moonSignForecast(signIndex, period, language);
   return c.json({ forecast: result }, 200);
 });
 
@@ -199,12 +207,23 @@ astroRouter.openapi(moonSignRoute, async (c) => {
 /* GET /forecast/sun-sign/:signIndex                                     */
 /* -------------------------------------------------------------------------- */
 
+const SunSignQuerySchema = z.object({
+  language: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'language', in: 'query' },
+      example: 'hi',
+      description: 'Language code for translation',
+    }),
+});
+
 const sunSignRoute = createRoute({
   method: 'get',
   path: '/forecast/sun-sign/{signIndex}',
   tags: ['Astro'],
   summary: 'Public sun-sign daily forecast',
-  request: { params: SignIndexParamSchema },
+  request: { params: SignIndexParamSchema, query: SunSignQuerySchema },
   responses: {
     200: {
       description: 'Sun-sign forecast',
@@ -216,7 +235,8 @@ const sunSignRoute = createRoute({
 
 astroRouter.openapi(sunSignRoute, async (c) => {
   const { signIndex } = c.req.valid('param');
-  const result = await astroService.sunSignForecast(signIndex);
+  const { language } = c.req.valid('query');
+  const result = await astroService.sunSignForecast(signIndex, language);
   return c.json({ forecast: result }, 200);
 });
 
@@ -445,11 +465,12 @@ astroRouter.openapi(chatRoute, async (c) => {
         body.summary,
         body.detailLevel,
         signal,
+        body.locale,
       );
-      
+
       let fullContent = '';
       let currentSummary = body.summary;
-      
+
       for await (const event of events) {
         if (signal.aborted || stream.aborted) break;
         if (event.type === 'token') {
@@ -472,15 +493,21 @@ astroRouter.openapi(chatRoute, async (c) => {
         const newHistory = [
           ...body.history,
           { role: 'user', content: body.message },
-          { role: 'assistant', content: fullContent }
-        ] as any[]; // cast to avoid exact typing mismatch if any
+          { role: 'assistant', content: fullContent },
+        ] as { role: 'user' | 'assistant'; content: string }[]; // cast to avoid exact typing mismatch if any
 
         if (sessionId) {
           await chatSessionsRepo.updateChatSession(sessionId, newHistory, currentSummary);
         } else {
           // generate a new session title based on the message
-          const title = body.message.length > 50 ? body.message.substring(0, 47) + '...' : body.message;
-          const session = await chatSessionsRepo.createChatSession(user.id, title, newHistory, currentSummary);
+          const title =
+            body.message.length > 50 ? body.message.substring(0, 47) + '...' : body.message;
+          const session = await chatSessionsRepo.createChatSession(
+            user.id,
+            title,
+            newHistory,
+            currentSummary,
+          );
           sessionId = session.id;
         }
 
@@ -540,7 +567,10 @@ const chatSessionByIdRoute = createRoute({
   middleware: [requireUser] as const,
   request: {
     params: z.object({
-      id: z.string().uuid().openapi({ param: { name: 'id', in: 'path' } }),
+      id: z
+        .string()
+        .uuid()
+        .openapi({ param: { name: 'id', in: 'path' } }),
     }),
   },
   responses: {

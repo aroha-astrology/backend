@@ -1036,6 +1036,7 @@ export const purchasePlans = pgTable(
     language: text('language').notNull().default('en'),
     status: purchasePlanStatusEnum('status').notNull().default('pending'),
     analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
     errorMessage: text('error_message'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -1105,7 +1106,9 @@ export const chatSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text('title').notNull().default('New Chat'),
-    history: jsonb('history').notNull().default(sql`'[]'::jsonb`),
+    history: jsonb('history')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     summary: text('summary'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

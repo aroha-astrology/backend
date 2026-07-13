@@ -2,7 +2,10 @@ import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { getPanchang } from '../astro/astro.service.js';
-import { generatePurchasePlanAnalysis } from '../../lib/llm/purchase-plan.js';
+import {
+  generatePurchasePlanAnalysis,
+  translatePurchasePlanContent,
+} from '../../lib/llm/purchase-plan.js';
 import { resolveDates, todayIso } from './purchase-plan.dates.js';
 import {
   insertPendingPlan,
@@ -13,6 +16,7 @@ import {
   markDone,
   markError,
   deletePlanForUser,
+  savePurchasePlanTranslation,
 } from './purchase-plan.repo.js';
 import type { PurchasePlanRow } from '../../db/schema.js';
 import type { AnalyzePurchasePlanBody, PurchasePlanDto } from './purchase-plan.schemas.js';
@@ -194,15 +198,46 @@ export function toPurchasePlanDto(row: PurchasePlanRow): PurchasePlanDto {
   };
 }
 
-export async function getPlansForUser(userId: string): Promise<PurchasePlanDto[]> {
-  const rows = await listPlansForUser(userId);
-  return rows.map(toPurchasePlanDto);
+export async function toPurchasePlanDtoForLanguage(
+  row: PurchasePlanRow,
+  language: string = 'en',
+): Promise<PurchasePlanDto> {
+  const baseDto = toPurchasePlanDto(row);
+
+  if (language === 'en' || !baseDto.analysis || baseDto.status !== 'done') {
+    return baseDto;
+  }
+
+  if (row.translations && row.translations[language]) {
+    return { ...baseDto, analysis: row.translations[language] };
+  }
+
+  try {
+    const translated = await translatePurchasePlanContent(baseDto.analysis, language);
+    await savePurchasePlanTranslation(row.id, language, translated);
+    return { ...baseDto, analysis: translated };
+  } catch (err) {
+    logger.warn({ err, planId: row.id, language }, 'failed to translate purchase plan analysis');
+    return baseDto;
+  }
 }
 
-export async function getPlanForUser(id: string, userId: string): Promise<PurchasePlanDto> {
+export async function getPlansForUser(
+  userId: string,
+  language: string = 'en',
+): Promise<PurchasePlanDto[]> {
+  const rows = await listPlansForUser(userId);
+  return Promise.all(rows.map((r) => toPurchasePlanDtoForLanguage(r, language)));
+}
+
+export async function getPlanForUser(
+  id: string,
+  userId: string,
+  language: string = 'en',
+): Promise<PurchasePlanDto> {
   const row = await findPlanForUser(id, userId);
   if (!row) throw Errors.notFound('Purchase plan not found');
-  return toPurchasePlanDto(row);
+  return toPurchasePlanDtoForLanguage(row, language);
 }
 
 export async function removePlanForUser(id: string, userId: string): Promise<void> {

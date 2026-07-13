@@ -225,6 +225,7 @@ export function buildChatMessages(
   groundingFacts: string[],
   birthTimeUnknown = false,
   detailLevel: ChatDetailLevel = 'direct',
+  locale: string = 'en',
 ): Array<{ role: string; content: string }> {
   const messages: Array<{ role: string; content: string }> = [];
 
@@ -290,6 +291,13 @@ export function buildChatMessages(
   }
 
   messages.push({ role: 'user', content: userMessage });
+
+  if (locale !== 'en') {
+    messages.push({
+      role: 'system',
+      content: `Respond in language: ${locale}`,
+    });
+  }
 
   return messages;
 }
@@ -376,6 +384,7 @@ export async function* scholarStream(
   birthTimeUnknown = false,
   detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
+  locale: string = 'en',
 ): AsyncGenerator<string, void, unknown> {
   logger.debug({ requestId: state.requestId, detailLevel }, 'scholar: starting stream');
 
@@ -386,6 +395,7 @@ export async function* scholarStream(
     groundingFacts,
     birthTimeUnknown,
     detailLevel,
+    locale,
   );
 
   if (detailLevel === 'details') {

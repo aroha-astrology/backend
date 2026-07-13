@@ -764,6 +764,7 @@ export async function* chatStream(
   incomingSummary: string | undefined,
   detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
+  locale: string = 'en',
 ): AsyncGenerator<ChatStreamEvent> {
   // Gate off-topic messages (coding help, trivia, etc.) before doing any
   // chart/grounding work — see checkTopicGate's own comment for why this
@@ -811,6 +812,7 @@ export async function* chatStream(
     birthTimeUnknown,
     detailLevel,
     signal,
+    locale,
   );
   for await (const token of tokenStream) {
     yield { type: 'token', content: token };

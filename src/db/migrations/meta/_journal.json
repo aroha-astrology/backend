@@ -134,6 +134,13 @@
       "when": 1783867347031,
       "tag": "0018_rich_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783961074281,
+      "tag": "0019_equal_blazing_skull",
+      "breakpoints": true
     }
   ]
 }
