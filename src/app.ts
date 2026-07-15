@@ -13,6 +13,7 @@ import { feedbackRouter } from './modules/feedback/feedback.routes.js';
 import { kundliRouter } from './modules/kundli/kundli.routes.js';
 import { horoscopeRouter } from './modules/horoscope/horoscope.routes.js';
 import { purchasePlanRouter } from './modules/purchase-plan/purchase-plan.routes.js';
+import { vastuRouter } from './modules/vastu/vastu.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -41,6 +42,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', kundliRouter);
   app.route('/v1', horoscopeRouter);
   app.route('/v1', purchasePlanRouter);
+  app.route('/v1', vastuRouter);
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);

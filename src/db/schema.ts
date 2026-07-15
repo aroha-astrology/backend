@@ -1053,6 +1053,53 @@ export type PurchasePlanRow = typeof purchasePlans.$inferSelect;
 export type NewPurchasePlanRow = typeof purchasePlans.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* vastu_plans — saved Vastu floor plans + their AI remedy analyses           */
+/* -------------------------------------------------------------------------- */
+
+export const vastuPlanStatusEnum = pgEnum('vastu_plan_status', [
+  'pending',
+  'processing',
+  'done',
+  'error',
+]);
+
+export const vastuPlans = pgTable(
+  'vastu_plans',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The full editable CAD plan (rooms/doors/windows/orientation) for reload. */
+    layout: jsonb('layout').$type<Record<string, unknown>>(),
+    /** room type → occupied direction(s), the rules-engine input. */
+    roomLayout: jsonb('room_layout').notNull().$type<Record<string, string[]>>(),
+    /** Door/window facings + any free-text notes passed to the AI. */
+    roomDetails: jsonb('room_details').notNull().default({}).$type<Record<string, unknown>>(),
+    /** Deterministic weighted score (0–100) from the rules engine. */
+    overallScore: integer('overall_score'),
+    language: text('language').notNull().default('en'),
+    status: vastuPlanStatusEnum('status').notNull().default('pending'),
+    analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userCreatedIdx: index('vastu_plans_user_created_idx').on(table.userId, table.createdAt),
+    statusIdx: index('vastu_plans_status_idx').on(table.status),
+  }),
+);
+
+export type VastuPlanRow = typeof vastuPlans.$inferSelect;
+export type NewVastuPlanRow = typeof vastuPlans.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* forecast_translations — caches general moon/sun sign translations          */
 /* -------------------------------------------------------------------------- */
 

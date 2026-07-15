@@ -136,6 +136,20 @@ export const PURCHASE_PLAN_PROFILE: GenerationProfile = {
 };
 
 /**
+ * Vastu remedies analysis — one large structured JSON verdict (per-room
+ * assessment, element balance, remedies, priority actions) generated once per
+ * request in a fire-and-forget background task, never in a blocking path. Same
+ * "large schema" tier as PURCHASE_PLAN_PROFILE.
+ */
+export const VASTU_PROFILE: GenerationProfile = {
+  name: 'vastu',
+  temperature: 0.4,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 4096,
+};
+
+/**
  * Per-house kundli insight ("what this house means for THIS chart") — one
  * LLM call per (user, house), generated lazily the first time a user unlocks
  * that house and cached forever after (the natal chart never changes), so a
