@@ -643,6 +643,48 @@ function parseTranslatedJson<T>(rawText: string): T {
 }
 
 /**
+ * The prompt tells the model not to translate enums, but "good"/"daily" read
+ * as ordinary words to it and it translates them anyway often enough to
+ * matter — the frontend keys star-ratings and badge colors off these exact
+ * English strings (see components/horoscope/types.ts's forecastToRating and
+ * QUALITY_BADGE_KEYS), so a translated "quality"/"period" silently breaks
+ * that lookup instead of erroring. Cheaper and more reliable to restore the
+ * known non-translatable fields from the original than to keep fighting the
+ * model over wording.
+ */
+function restoreNonTranslatableFields<T>(original: T, translated: T): T {
+  if (
+    typeof original !== 'object' ||
+    original === null ||
+    typeof translated !== 'object' ||
+    translated === null
+  ) {
+    return translated;
+  }
+
+  const orig = original as Record<string, unknown>;
+  const result = { ...(translated as Record<string, unknown>) };
+
+  for (const key of ['period', 'quality', 'favorable', 'isAshtamaChandra']) {
+    if (key in orig) result[key] = orig[key];
+  }
+
+  const origCategories = orig.categories as Record<string, Record<string, unknown>> | undefined;
+  const transCategories = result.categories as Record<string, Record<string, unknown>> | undefined;
+  if (origCategories && transCategories) {
+    const restoredCategories = { ...transCategories };
+    for (const [catKey, catVal] of Object.entries(origCategories)) {
+      if (restoredCategories[catKey] && catVal.quality !== undefined) {
+        restoredCategories[catKey] = { ...restoredCategories[catKey], quality: catVal.quality };
+      }
+    }
+    result.categories = restoredCategories;
+  }
+
+  return result as T;
+}
+
+/**
  * Translates arbitrary JSON content (like Moon Sign forecasts) to the target language.
  */
 export async function translateForecastContent<T>(content: T, targetLanguage: string): Promise<T> {
@@ -659,5 +701,6 @@ ${JSON.stringify(content, null, 2)}`;
     profile: FORECAST_TRANSLATION_PROFILE,
   });
 
-  return parseTranslatedJson<T>(response);
+  const parsed = parseTranslatedJson<T>(response);
+  return restoreNonTranslatableFields(content, parsed);
 }
