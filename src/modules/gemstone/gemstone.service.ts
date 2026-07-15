@@ -50,6 +50,7 @@ function buildDeterministicGems(analyses: PlanetAnalysis[]): DeterministicGem[] 
       donts: gem.donts,
       strength: a?.strength ?? 'average',
       recommended: a?.needsGemstone ?? false,
+      preferencePercent: a?.preference ?? 50,
       reason: a?.reason ?? 'Neutral placement',
     };
   });

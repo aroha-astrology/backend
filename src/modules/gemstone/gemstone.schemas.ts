@@ -29,6 +29,8 @@ export const GemstoneItemSchema = z
     strength: GemstoneStrengthSchema,
     /** How strongly this stone is preferred for the user: true = strongly recommended (weak/afflicted planet). */
     recommended: z.boolean(),
+    /** 0-100 — how strongly this gemstone is preferred for the user (headline percentage). */
+    preferencePercent: z.number().int().min(0).max(100),
     /** Deterministic dignity reason, e.g. "Debilitated in Libra". */
     reason: z.string(),
     /** AI-authored personal note (translated on read). */

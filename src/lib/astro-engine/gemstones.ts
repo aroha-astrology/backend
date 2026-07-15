@@ -286,6 +286,8 @@ export interface PlanetAnalysis {
   strength: PlanetStrength;
   reason: string;
   needsGemstone: boolean;
+  /** 0-100 — how strongly this gemstone is preferred for the user (higher = wear it). */
+  preference: number;
 }
 
 const DEBILITATION: Record<string, string> = {
@@ -368,22 +370,28 @@ export function analyzePlanetStrengths(chart: Record<string, unknown> | null): P
         strength: 'average',
         reason: 'Position data unavailable',
         needsGemstone: false,
+        preference: 50,
       };
     }
 
     const reasons: string[] = [];
     let strength: PlanetStrength = 'average';
     let needsGemstone = false;
+    // Preference score (0-100): starts neutral, rises with affliction (the
+    // planet needs strengthening → wear the stone) and falls with dignity.
+    let score = 45;
 
     if (DEBILITATION[planetName] === pos.sign) {
       reasons.push(`Debilitated in ${pos.sign}`);
       strength = 'weak';
       needsGemstone = true;
+      score += 38;
     }
     if (ENEMY_SIGNS[planetName]?.includes(pos.sign)) {
       reasons.push(`In enemy sign ${pos.sign}`);
       strength = 'weak';
       needsGemstone = true;
+      score += 26;
     }
     if (
       planetName !== 'Sun' &&
@@ -399,27 +407,36 @@ export function analyzePlanetStrengths(chart: Record<string, unknown> | null): P
         reasons.push('Combust (close to Sun)');
         strength = 'weak';
         needsGemstone = true;
+        score += 24;
       }
     }
-    if (pos.isRetrograde) reasons.push('Retrograde');
+    if (pos.isRetrograde) {
+      reasons.push('Retrograde');
+      score += 8;
+    }
 
     // Exaltation / own sign are strong signals that override the "weak" flags.
     if (EXALTATION[planetName] === pos.sign) {
       reasons.push(`Exalted in ${pos.sign}`);
       strength = 'strong';
       needsGemstone = false;
+      score -= 32;
     }
     if (OWN_SIGNS[planetName]?.includes(pos.sign)) {
       reasons.push(`In own sign ${pos.sign}`);
       if (strength !== 'strong') strength = 'strong';
       needsGemstone = false;
+      score -= 22;
     }
+
+    const preference = Math.max(5, Math.min(95, Math.round(score)));
 
     return {
       planet: planetName,
       strength,
       reason: reasons.length > 0 ? reasons.join('; ') : 'Neutral placement',
       needsGemstone,
+      preference,
     };
   });
 }
