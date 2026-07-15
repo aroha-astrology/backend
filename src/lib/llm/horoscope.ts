@@ -615,12 +615,36 @@ ${JSON.stringify(original, null, 2)}`;
 }
 
 /**
+ * Best-effort repair for the most common LLM JSON slip on large free-form
+ * objects: an occasional unquoted key (e.g. `{key: "value"}` instead of
+ * `{"key": "value"}`) buried deep in an otherwise-valid payload. Only used
+ * as a fallback after a straight JSON.parse fails.
+ */
+function repairUnquotedKeys(text: string): string {
+  return text.replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$]*)(\s*:)/g, '$1"$2"$3');
+}
+
+function parseTranslatedJson<T>(rawText: string): T {
+  // Since we aren't using json_schema for arbitrary objects (due to strict
+  // requirement), we extract the JSON block if wrapped in markdown.
+  const match = cleanJsonString(rawText).match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const jsonString = match ? match[1]! : cleanJsonString(rawText);
+
+  try {
+    return JSON.parse(jsonString) as T;
+  } catch {
+    return JSON.parse(repairUnquotedKeys(jsonString)) as T;
+  }
+}
+
+/**
  * Translates arbitrary JSON content (like Moon Sign forecasts) to the target language.
  */
 export async function translateForecastContent<T>(content: T, targetLanguage: string): Promise<T> {
   const prompt = `Translate the following astrology forecast into "${targetLanguage}".
 Keep the exact same JSON structure, keys, formatting, and meaning. ONLY translate the string values.
 Do not translate the keys. Do not change any numbers or enums.
+Return STRICT JSON only — every key and every string value must be double-quoted, no trailing commas, no comments, no markdown fences.
 
 Original Content:
 ${JSON.stringify(content, null, 2)}`;
@@ -630,11 +654,5 @@ ${JSON.stringify(content, null, 2)}`;
     profile: HOROSCOPE_PROFILE,
   });
 
-  // Since we aren't using json_schema for arbitrary objects (due to strict requirement),
-  // we extract the JSON block if wrapped in markdown.
-  const rawText = response.trim();
-  const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  const jsonString = match ? match[1]! : rawText;
-
-  return JSON.parse(jsonString) as T;
+  return parseTranslatedJson<T>(response);
 }
