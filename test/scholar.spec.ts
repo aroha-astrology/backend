@@ -27,10 +27,24 @@ describe('scholar single-astrologer system prompt', () => {
     expect(content).toContain('manglik');
   });
 
-  it('has a mandatory doctor disclaimer and never-diagnose rule', () => {
+  it('has a medical caveat and a no-clinical-diagnosis guardrail for health', () => {
     const content = systemContent().toLowerCase();
-    expect(content).toContain('consult a doctor');
-    expect(content).toMatch(/never (name a disease|diagnose)/);
+    expect(content).toMatch(/not a medical professional|not a doctor/);
+    expect(content).toContain('doctor');
+    expect(content).toMatch(/clinical diagnosis|prescrib|medication/);
+  });
+
+  it('covers accident/physical-safety questions instead of deflecting', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toContain('accident');
+    expect(content).toMatch(/6th house|8th house|physical safety/);
+    expect(content).toMatch(/do not deflect|never deflect|not deflect/);
+  });
+
+  it('answers directly and uses an upfront professional caveat rather than refusing', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toContain("i'm not a doctor");
+    expect(content).toContain("i'm not a lawyer");
   });
 
   it('covers education, legal, parents, and remedies', () => {
