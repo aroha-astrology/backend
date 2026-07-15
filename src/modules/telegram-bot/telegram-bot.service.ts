@@ -8,6 +8,8 @@ import {
   cmdUserDetails,
   cmdJobs,
   cmdBroadcast,
+  cmdCoupons,
+  cmdNewCoupon,
 } from './telegram-bot.commands.js';
 
 export async function handleUpdate(update: unknown): Promise<void> {
@@ -35,7 +37,7 @@ export async function handleUpdate(update: unknown): Promise<void> {
     case '/start':
     case '/help':
       reply = escapeMarkdown(
-        `Available commands:\n/stats - App health\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification`,
+        `Available commands:\n/stats - App health\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification\n/coupons - List active coupons\n/newcoupon [code] [percent] [value] [maxUses] [expireDays] - Create a coupon`,
       );
       break;
     case '/users':
@@ -58,6 +60,12 @@ export async function handleUpdate(update: unknown): Promise<void> {
       break;
     case '/broadcast':
       reply = await cmdBroadcast(fullMessage);
+      break;
+    case '/coupons':
+      reply = await cmdCoupons();
+      break;
+    case '/newcoupon':
+      reply = await cmdNewCoupon(args);
       break;
     default:
       reply = escapeMarkdown(`Unknown command: ${command}`);

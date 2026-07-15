@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -6,6 +6,7 @@ import {
   users,
   creditTransactions,
   type CouponRow,
+  type NewCouponRow,
   type OrderRow,
   type NewOrderRow,
 } from '../../db/schema.js';
@@ -17,6 +18,16 @@ export async function findActiveCouponByCode(code: string): Promise<CouponRow | 
     .where(and(sql`upper(${coupons.code}) = upper(${code})`, eq(coupons.active, true)))
     .limit(1);
   return rows[0];
+}
+
+export async function listActiveCoupons(): Promise<CouponRow[]> {
+  return db.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
+}
+
+export async function insertCoupon(values: NewCouponRow): Promise<CouponRow> {
+  const [row] = await db.insert(coupons).values(values).returning();
+  if (!row) throw new Error('Failed to insert coupon');
+  return row;
 }
 
 export async function insertOrder(values: NewOrderRow): Promise<OrderRow> {
