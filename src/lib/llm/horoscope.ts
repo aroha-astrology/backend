@@ -10,7 +10,12 @@
 // =============================================================================
 
 import { generate } from './gemini-client.js';
-import { HOROSCOPE_PROFILE, HOROSCOPE_YEARLY_PROFILE, MODEL } from '../../config/llm.js';
+import {
+  FORECAST_TRANSLATION_PROFILE,
+  HOROSCOPE_PROFILE,
+  HOROSCOPE_YEARLY_PROFILE,
+  MODEL,
+} from '../../config/llm.js';
 import { buildGroundingFacts, type GroundingSource } from '../chat-grounding.js';
 import { getDailyLuckyElements } from '../astro-engine/lucky-elements.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';
@@ -651,7 +656,7 @@ ${JSON.stringify(content, null, 2)}`;
 
   const response = await generate({
     messages: [{ role: 'user', content: prompt }],
-    profile: HOROSCOPE_PROFILE,
+    profile: FORECAST_TRANSLATION_PROFILE,
   });
 
   return parseTranslatedJson<T>(response);

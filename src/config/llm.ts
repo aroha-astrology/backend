@@ -150,6 +150,28 @@ export const VASTU_PROFILE: GenerationProfile = {
 };
 
 /**
+ * Moon/sun-sign forecast translation — re-emits the full forecast object
+ * (hook/description/advice + a 6-entry `keyTransits` array + a 6-category
+ * `categories` block, each with its own hook/description/advice) in the
+ * target language. Devanagari and other non-Latin scripts routinely need
+ * more tokens than the English original for the same content, and this
+ * schema is already comparable in size to the yearly-horoscope one — 800
+ * (HOROSCOPE_PROFILE's ceiling) truncated every translation attempt
+ * mid-JSON (confirmed via production logs: "Unterminated string in JSON"
+ * around the categories block). Same "large schema" tier as
+ * HOROSCOPE_YEARLY_PROFILE/PURCHASE_PLAN_PROFILE. Cached forever per
+ * (date, sign, period, language) after the first successful call, so the
+ * larger ceiling is not a recurring per-request cost.
+ */
+export const FORECAST_TRANSLATION_PROFILE: GenerationProfile = {
+  name: 'forecast-translation',
+  temperature: 0.3,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 4096,
+};
+
+/**
  * Per-house kundli insight ("what this house means for THIS chart") — one
  * LLM call per (user, house), generated lazily the first time a user unlocks
  * that house and cached forever after (the natal chart never changes), so a
