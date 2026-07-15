@@ -8,6 +8,8 @@ export const AnalyzeVastuBodySchema = z
     roomDetails: z.record(z.string(), z.unknown()).optional().default({}),
     /** The full editable CAD plan, stored verbatim for reload. */
     layout: z.record(z.string(), z.unknown()).optional(),
+    /** e.g. "rectangle", "l_shape", plus a cut-corner note — fed to the AI. */
+    houseShape: z.string().optional(),
     language: z.string().optional().default('en'),
   })
   .refine((b) => Object.keys(b.roomLayout).length > 0, {
@@ -16,6 +18,12 @@ export const AnalyzeVastuBodySchema = z
   .openapi('AnalyzeVastuBody');
 
 export type AnalyzeVastuBody = z.infer<typeof AnalyzeVastuBodySchema>;
+
+export const AskVastuBodySchema = z
+  .object({ question: z.string().min(2).max(500) })
+  .openapi('AskVastuBody');
+
+export type AskVastuBody = z.infer<typeof AskVastuBodySchema>;
 
 export const VastuPlanSchema = z
   .object({

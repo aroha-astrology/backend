@@ -81,6 +81,15 @@ export async function deductCredits(userId: string, amount: number): Promise<boo
   return result.length > 0;
 }
 
+/** Add `amount` credits back (e.g. refunding a charge whose async job failed). */
+export async function addCredits(userId: string, amount: number): Promise<void> {
+  await db.execute(sql`
+    UPDATE users
+    SET credits = credits + ${amount}
+    WHERE id = ${userId};
+  `);
+}
+
 /**
  * Atomically claim the user's one lifetime birth-detail edit. Returns the
  * updated row if THIS call won the claim, or `undefined` if it was already

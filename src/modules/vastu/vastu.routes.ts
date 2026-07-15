@@ -4,12 +4,14 @@ import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import {
   AnalyzeVastuBodySchema,
+  AskVastuBodySchema,
   VastuPlanSchema,
   PlanIdParamSchema,
   LanguageQuerySchema,
 } from './vastu.schemas.js';
 import {
   requestVastuAnalysis,
+  askVastuQuestion,
   getPlansForUser,
   getPlanForUser,
   removePlanForUser,
@@ -61,6 +63,7 @@ const analyzeRoute = createRoute({
     },
     401: errorResponse('Unauthorized'),
     403: errorResponse('Consent required'),
+    409: errorResponse('Insufficient credits (message INSUFFICIENT_CREDITS)'),
     422: errorResponse('Validation failed'),
     429: errorResponse('Daily analysis limit reached'),
   },
@@ -71,6 +74,36 @@ vastuRouter.openapi(analyzeRoute, async (c) => {
   const body = c.req.valid('json');
   const result = await requestVastuAnalysis(user.id, body);
   return c.json(result, 200);
+});
+
+const askRoute = createRoute({
+  method: 'post',
+  path: '/vastu/{id}/ask',
+  tags: ['Vastu'],
+  summary: 'Ask one free follow-up question about a completed Vastu report',
+  security: [{ bearerAuth: [] }],
+  middleware: [rateLimiter({ windowMs: 60_000, max: 8 })] as const,
+  request: {
+    params: PlanIdParamSchema,
+    body: { required: true, content: { 'application/json': { schema: AskVastuBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'The plan with the follow-up answer',
+      content: { 'application/json': { schema: VastuPlanSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found'),
+    409: errorResponse('Not ready or already asked'),
+  },
+});
+
+vastuRouter.openapi(askRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const { question } = c.req.valid('json');
+  const plan = await askVastuQuestion(id, user.id, question);
+  return c.json(plan, 200);
 });
 
 const listRoute = createRoute({

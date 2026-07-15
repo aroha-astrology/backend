@@ -1,6 +1,12 @@
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
-import { generateVastuAnalysis, translateVastuContent } from '../../lib/llm/vastu.js';
+import {
+  generateVastuAnalysis,
+  generateVastuAnswer,
+  translateVastuContent,
+} from '../../lib/llm/vastu.js';
+import { deductCredits, addCredits } from '../users/users.repo.js';
+import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { evaluateRoomPlacement } from './vastu.rules.js';
 import {
   insertPendingPlan,
@@ -11,12 +17,47 @@ import {
   markDone,
   markError,
   deletePlanForUser,
+  saveFollowUp,
   saveVastuTranslation,
 } from './vastu.repo.js';
 import type { VastuPlanRow } from '../../db/schema.js';
 import type { AnalyzeVastuBody, VastuPlanDto } from './vastu.schemas.js';
 
-const DAILY_LIMIT = 10;
+const DAILY_LIMIT = 20;
+export const VASTU_CREDIT_COST = 5;
+
+/** Best-effort birth-chart summary for personalising the analysis. */
+function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>>): string {
+  if (!kundli || kundli.status !== 'ready') {
+    return 'No birth chart is available for this resident yet — give full Vastu advice and keep chart alignment general.';
+  }
+  const dasha = kundli.dashaData as {
+    currentMahadasha?: { lord?: string };
+    currentAntardasha?: { lord?: string };
+  } | null;
+  const chart = kundli.chartData as {
+    ascendant?: { sign?: string };
+    planets?: Array<{ planet: string; sign: string; house?: number }>;
+  } | null;
+
+  const lines: string[] = [];
+  if (chart?.ascendant?.sign) lines.push(`Ascendant: ${chart.ascendant.sign}`);
+  if (dasha?.currentMahadasha?.lord)
+    lines.push(`Current Mahadasha: ${dasha.currentMahadasha.lord}`);
+  if (dasha?.currentAntardasha?.lord)
+    lines.push(`Current Antardasha: ${dasha.currentAntardasha.lord}`);
+  if (chart?.planets?.length) {
+    lines.push(
+      'Planet placements: ' +
+        chart.planets
+          .map((p) => `${p.planet} in ${p.sign}${p.house ? ` (house ${p.house})` : ''}`)
+          .join(', '),
+    );
+  }
+  return lines.length > 0
+    ? lines.join('\n')
+    : 'No birth chart is available for this resident yet — keep chart alignment general.';
+}
 
 export async function requestVastuAnalysis(
   userId: string,
@@ -25,51 +66,67 @@ export async function requestVastuAnalysis(
   const recentCount = await countRecentPlansForUser(userId, 24);
   if (recentCount >= DAILY_LIMIT) {
     throw Errors.tooManyRequests(
-      `You've reached today's limit of ${DAILY_LIMIT} Vastu analyses. Try again tomorrow.`,
+      `You've reached today's limit of ${DAILY_LIMIT} Vastu reports. Try again tomorrow.`,
     );
   }
 
-  const { roomScores, overallScore } = evaluateRoomPlacement(body.roomLayout);
+  // Charge up-front; refunded below if we can't even queue the job, or later if
+  // the async generation fails.
+  const charged = await deductCredits(userId, VASTU_CREDIT_COST);
+  if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
-  const row = await insertPendingPlan({
-    userId,
-    layout: body.layout ?? null,
-    roomLayout: body.roomLayout,
-    roomDetails: body.roomDetails,
-    overallScore,
-    language: body.language,
-    status: 'pending',
-  });
+  try {
+    const { roomScores, overallScore } = evaluateRoomPlacement(body.roomLayout);
+    const kundli = await findKundliByUserId(userId);
+    const chartContext = buildChartContext(kundli);
+    const houseShape = body.houseShape ?? 'rectangle';
+    const roomDetails = { ...body.roomDetails, houseShape };
 
-  // Fire-and-forget: single-instance pm2 (-i 1) keeps the background task alive
-  // until it finishes — same pattern as purchase-plan.
-  void processAnalysis(row.id, {
-    roomLayout: body.roomLayout,
-    roomDetails: body.roomDetails,
-    roomScores,
-    overallScore,
-    language: body.language,
-  }).catch((err) => {
-    logger.error({ err, planId: row.id }, 'vastu background processing failed');
-  });
+    const row = await insertPendingPlan({
+      userId,
+      layout: body.layout ?? null,
+      roomLayout: body.roomLayout,
+      roomDetails,
+      overallScore,
+      language: body.language,
+      status: 'pending',
+    });
 
-  return { planId: row.id };
+    void processAnalysis(row.id, userId, {
+      roomLayout: body.roomLayout,
+      roomDetails,
+      roomScores,
+      overallScore,
+      language: body.language,
+      chartContext,
+      houseShape,
+    }).catch((err) => {
+      logger.error({ err, planId: row.id }, 'vastu background processing failed');
+    });
+
+    return { planId: row.id };
+  } catch (err) {
+    await addCredits(userId, VASTU_CREDIT_COST).catch(() => {});
+    throw err;
+  }
 }
 
 async function processAnalysis(
   planId: string,
+  userId: string,
   input: {
     roomLayout: Record<string, string[]>;
     roomDetails: Record<string, unknown>;
     roomScores: ReturnType<typeof evaluateRoomPlacement>['roomScores'];
     overallScore: number;
     language: string;
+    chartContext: string;
+    houseShape?: string;
   },
 ): Promise<void> {
   await markProcessing(planId);
   try {
     const { analysis } = await generateVastuAnalysis(input);
-    // Fold the deterministic scores back in so the client always has them.
     await markDone(planId, {
       ...analysis,
       vastuScores: input.roomScores,
@@ -78,7 +135,36 @@ async function processAnalysis(
   } catch (err) {
     logger.error({ err, planId }, 'vastu LLM analysis failed');
     await markError(planId, err instanceof Error ? err.message : 'Unknown error');
+    // Don't charge for a report we couldn't produce.
+    await addCredits(userId, VASTU_CREDIT_COST).catch(() => {});
   }
+}
+
+export async function askVastuQuestion(
+  planId: string,
+  userId: string,
+  question: string,
+): Promise<VastuPlanDto> {
+  const row = await findPlanForUser(planId, userId);
+  if (!row) throw Errors.notFound('Vastu plan not found');
+  if (row.status !== 'done' || !row.analysis) {
+    throw Errors.conflict('Report is not ready yet');
+  }
+  if ((row.analysis as { followUp?: unknown }).followUp) {
+    throw Errors.conflict('ALREADY_ASKED');
+  }
+
+  const kundli = await findKundliByUserId(userId);
+  const answer = await generateVastuAnswer({
+    analysis: row.analysis,
+    question,
+    chartContext: buildChartContext(kundli),
+    language: row.language,
+  });
+  await saveFollowUp(planId, { question, answer });
+
+  const updated = await findPlanForUser(planId, userId);
+  return toVastuPlanDto(updated ?? row);
 }
 
 export function toVastuPlanDto(row: VastuPlanRow): VastuPlanDto {

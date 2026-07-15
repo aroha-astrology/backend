@@ -63,6 +63,23 @@ export async function deletePlanForUser(id: string, userId: string): Promise<voi
   await db.delete(vastuPlans).where(and(eq(vastuPlans.id, id), eq(vastuPlans.userId, userId)));
 }
 
+/** Persist the single follow-up Q&A into analysis.followUp (jsonb_set). */
+export async function saveFollowUp(
+  id: string,
+  followUp: { question: string; answer: string },
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE ${vastuPlans}
+    SET analysis = jsonb_set(
+      COALESCE(analysis, '{}'::jsonb),
+      '{followUp}',
+      ${JSON.stringify(followUp)}::jsonb,
+      true
+    )
+    WHERE id = ${id}
+  `);
+}
+
 export async function saveVastuTranslation(
   id: string,
   language: string,
