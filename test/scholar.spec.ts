@@ -47,6 +47,30 @@ describe('scholar single-astrologer system prompt', () => {
     expect(content).toContain("i'm not a lawyer");
   });
 
+  it('bans "astrology cannot/does not predict" as a hedging opener', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toMatch(/never open a reply with meta-commentary/);
+    expect(content).toContain('does not predict in the literal sense');
+  });
+
+  it('points accident timing at real computed window facts instead of inventing one', () => {
+    const content = systemContent();
+    expect(content).toContain('Health Vigilance Required');
+    expect(content).toContain('Active Major Planetary Period');
+    expect(content.toLowerCase()).toMatch(/never invent a date range/);
+  });
+
+  it('bans plain-text pseudo-headers in Direct mode, not just markdown ones', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toMatch(/without asterisks or a hash mark|no markdown at all/);
+  });
+
+  it('demands the same warm human tone on every reply regardless of topic', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toMatch(/exact same warm, human, conversational voice/);
+    expect(content).toMatch(/consistency of tone/);
+  });
+
   it('covers education, legal, parents, and remedies', () => {
     const content = systemContent().toLowerCase();
     expect(content).toContain('education');
