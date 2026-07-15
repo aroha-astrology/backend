@@ -259,6 +259,9 @@ export const UserSchema = z
     platform: PlatformSchema.nullable(),
     credits: z.number().int(),
     unlockedHouses: z.array(z.number().int()),
+    gemstoneUnlocked: z
+      .boolean()
+      .describe('True once the user has spent credits to unlock the gemstone report'),
 
     referralSource: z.string().nullable(),
     referredByCode: z.string().nullable(),

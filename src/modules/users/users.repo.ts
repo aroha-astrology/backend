@@ -201,9 +201,31 @@ export async function unlockHouseForUser(userId: string, houseNumber: number) {
     UPDATE users
     SET credits = credits - 5,
         unlocked_houses = array_append(unlocked_houses, ${houseNumber})
-    WHERE id = ${userId} 
-      AND credits >= 5 
+    WHERE id = ${userId}
+      AND credits >= 5
       AND NOT (${houseNumber} = ANY(unlocked_houses))
+    RETURNING *;
+  `);
+  return result.length > 0;
+}
+
+/** Cost in credits to unlock the full gemstone report (whole report, one-time). */
+export const GEMSTONE_UNLOCK_COST = 10;
+
+/**
+ * Atomically spend credits to unlock the gemstone report — same combined
+ * deduct-and-guard primitive as `unlockHouseForUser`. Returns false if the
+ * user has too few credits OR the report is already unlocked, so a second
+ * click can never double-charge.
+ */
+export async function unlockGemstoneForUser(userId: string) {
+  const result = await db.execute(sql`
+    UPDATE users
+    SET credits = credits - ${GEMSTONE_UNLOCK_COST},
+        gemstone_unlocked_at = now()
+    WHERE id = ${userId}
+      AND credits >= ${GEMSTONE_UNLOCK_COST}
+      AND gemstone_unlocked_at IS NULL
     RETURNING *;
   `);
   return result.length > 0;

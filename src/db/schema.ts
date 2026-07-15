@@ -325,6 +325,8 @@ export const users = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::integer[]`),
+    /** Set the moment the user spends credits to unlock the gemstone report; null = still locked. One-time, whole-report unlock. */
+    gemstoneUnlockedAt: timestamp('gemstone_unlocked_at', { withTimezone: true }),
 
     // --- acquisition / referral -------------------------------------------
     referralSource: text('referral_source'),
@@ -959,6 +961,48 @@ export const houseInsights = pgTable(
 
 export type HouseInsightRow = typeof houseInsights.$inferSelect;
 export type NewHouseInsightRow = typeof houseInsights.$inferInsert;
+
+export const gemstoneRecommendationStatusEnum = pgEnum('gemstone_recommendation_status', [
+  'generating',
+  'ready',
+  'failed',
+]);
+
+/**
+ * One personalized gemstone report per user — a single row (whole report, all
+ * 9 planets, unlocked in one go). Generated lazily the first time the unlocked
+ * report is viewed and cached forever after (the natal chart never changes),
+ * same lifecycle as house_insights. The deterministic gem facts + curated
+ * care notes live in code (astro-engine/gemstones.ts); only the personalized
+ * `intro` and per-gem narrative are model-generated and stored here.
+ */
+export const gemstoneRecommendations = pgTable('gemstone_recommendations', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** The full computed report (deterministic gem facts + strength + AI intro/notes). Null while 'generating'. */
+  analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+  /** Cached translations of the AI-authored fields by language code — same shape as vastu_plans.translations. */
+  translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
+  model: text('model'),
+  status: gemstoneRecommendationStatusEnum('status').notNull(),
+  /** Claim token, same fencing pattern as house_insights.startedAt. */
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export type GemstoneRecommendationRow = typeof gemstoneRecommendations.$inferSelect;
+export type NewGemstoneRecommendationRow = typeof gemstoneRecommendations.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
 /* panchang_cache — one row per (date, reference point), shared by all users   */

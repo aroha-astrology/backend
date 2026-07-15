@@ -4,6 +4,7 @@ import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
+import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import type { ConsentInput, UpdateMeBody, UserDto } from './users.schemas.js';
 import {
@@ -82,6 +83,7 @@ export function toUserDto(row: UserRow): UserDto {
     platform: row.platform,
     credits: row.credits,
     unlockedHouses: row.unlockedHouses ?? [1],
+    gemstoneUnlocked: row.gemstoneUnlockedAt !== null,
 
     referralSource: row.referralSource,
     referredByCode: row.referredByCode,
@@ -336,6 +338,11 @@ export async function updateMe(
     await deleteHouseInsightsForUser(userId).catch((err: unknown) => {
       logger.error({ err, userId }, 'house insight invalidation after birth-detail edit failed');
     });
+    // The gemstone report is derived from the same natal chart — wipe it too so
+    // it regenerates against the new chart. The unlock flag stays set (no re-charge).
+    await deleteGemstoneForUser(userId).catch((err: unknown) => {
+      logger.error({ err, userId }, 'gemstone invalidation after birth-detail edit failed');
+    });
   }
 
   // Reconcile the completion latch in BOTH directions so the DTO never claims
@@ -407,5 +414,13 @@ export async function unlockHouse(userId: string, houseNumber: number): Promise<
   const success = await unlockHouseForUser(userId, houseNumber);
   if (!success) {
     throw Errors.conflict('Insufficient credits or house already unlocked');
+  }
+}
+
+export async function unlockGemstone(userId: string): Promise<void> {
+  const { unlockGemstoneForUser } = await import('./users.repo.js');
+  const success = await unlockGemstoneForUser(userId);
+  if (!success) {
+    throw Errors.conflict('Insufficient credits or gemstone report already unlocked');
   }
 }

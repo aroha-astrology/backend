@@ -184,3 +184,18 @@ export const HOUSE_INSIGHT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 500,
 };
+
+/**
+ * Personalized gemstone report — one structured JSON verdict (a short intro +
+ * a per-planet personal note for all 9 planets), generated lazily the first
+ * time the unlocked report is viewed and cached forever after (natal chart
+ * never changes). The 9-entry `perGem` array pushes this into the "large
+ * schema" tier alongside PURCHASE_PLAN/VASTU, so it gets the same 4096 ceiling.
+ */
+export const GEMSTONE_PROFILE: GenerationProfile = {
+  name: 'gemstone',
+  temperature: 0.4,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 4096,
+};
