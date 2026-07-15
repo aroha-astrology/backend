@@ -326,7 +326,7 @@ export function buildChatMessages(
     messages.push({
       role: 'system',
       content:
-        'FORMAT EXAMPLE ONLY — this fictional exchange is not about the current user; copy only its length, directness, and lack of preamble, not its content:',
+        'FORMAT EXAMPLES ONLY — these fictional exchanges are not about the current user; copy only their length, directness, plain language, and lack of preamble or hedging, not their content:',
     });
     messages.push({ role: 'user', content: 'How will my week be?' });
     messages.push({
@@ -334,10 +334,24 @@ export function buildChatMessages(
       content:
         "This week favors steady, collaborative moves over bold solo ones — Jupiter's strong placement in your 5th house keeps your thinking sharp and creative, while the Moon moving through your 7th house makes you more attuned to what partners and close friends need. Lean into that sensitivity mid-week especially, since it's your best window for clearing up any recent misunderstandings.",
     });
+    // A second, sensitive-topic example — descriptive prose rules alone
+    // weren't reliable at stopping the model from opening with "astrology
+    // cannot/does not predict this" on accident/injury/health questions
+    // (verified in production: the exact hedge re-worded itself across
+    // requests even with an explicit prose ban in place). Demonstrating the
+    // expected non-hedging, plain-language, specifically-timed answer
+    // in-context is far more reliable than another line telling it what not
+    // to do — same lesson as the format example above, applied to tone.
+    messages.push({ role: 'user', content: 'Is there any chance of an accident for me?' });
+    messages.push({
+      role: 'assistant',
+      content:
+        "The stretch through the rest of your current Saturn period calls for real care around vehicles and sharp tools — Mars is under some pressure in your chart right now, and that combination tends to show up as rushing or a short fuse, exactly when small mishaps happen. Slow down behind the wheel and keep basic precautions in place through that window, and this passes without any lasting harm.\nAsk next: What's one remedy for this period?",
+    });
     messages.push({
       role: 'system',
       content:
-        'End of example. Continue the real conversation below using the real chart data above.',
+        'End of examples. Continue the real conversation below using the real chart data above.',
     });
   }
 
