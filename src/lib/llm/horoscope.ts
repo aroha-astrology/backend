@@ -198,6 +198,50 @@ const HOROSCOPE_RESPONSE_SCHEMA = {
   ],
 };
 
+/**
+ * Schema for translating an already-generated (and already-normalized)
+ * `StructuredHoroscope` row — a DIFFERENT shape than HOROSCOPE_RESPONSE_SCHEMA
+ * above. HOROSCOPE_RESPONSE_SCHEMA is what the model outputs during
+ * *generation* (health/career/etc as flat top-level siblings), which
+ * parseStructuredResponse() then reshapes into the stored shape (top-level
+ * hook/description/advice/quality/score mirroring categories.overall, PLUS
+ * a nested `categories` object). translateHoroscopeContent sends that
+ * already-reshaped stored object as its input and used to reuse
+ * HOROSCOPE_RESPONSE_SCHEMA for the output too — under Gemini's strict
+ * json_schema mode the model conforms to the SCHEMA over the prompt's
+ * "keep the same structure" instruction, so the response came back flat
+ * (matching the schema) instead of nested (matching the actual input/stored
+ * shape), and `translated.structured.categories` silently came back
+ * undefined — confirmed via a live production test after the maxTokens fix
+ * above (the JSON now parses fine, but with an empty categories object,
+ * which is what actually renders as the six detail blocks in the app).
+ */
+const STRUCTURED_HOROSCOPE_TRANSLATION_SCHEMA = {
+  type: 'object',
+  properties: {
+    hook: { type: 'string' },
+    description: { type: 'string' },
+    advice: { type: 'string' },
+    quality: { type: 'string', enum: ['good', 'moderate', 'challenging', 'avoid'] },
+    score: { type: 'integer' },
+    luckyColor: { type: 'string' },
+    luckyNumber: { type: 'integer' },
+    categories: {
+      type: 'object',
+      properties: {
+        overall: blockSchema,
+        health: blockSchema,
+        career: blockSchema,
+        marriage: blockSchema,
+        finance: blockSchema,
+        education: blockSchema,
+      },
+      required: ['overall', 'health', 'career', 'marriage', 'finance', 'education'],
+    },
+  },
+  required: ['hook', 'description', 'advice', 'quality', 'score', 'categories'],
+};
+
 const HOROSCOPE_YEARLY_RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
@@ -605,7 +649,7 @@ ${JSON.stringify(translatable, null, 2)}`;
       type: 'object',
       properties: {
         summary: { type: 'string' },
-        structured: HOROSCOPE_RESPONSE_SCHEMA,
+        structured: STRUCTURED_HOROSCOPE_TRANSLATION_SCHEMA,
         monthlyBreakdown: {
           type: 'array',
           items: {
@@ -639,12 +683,40 @@ ${JSON.stringify(translatable, null, 2)}`;
     },
   });
 
-  return JSON.parse(response) as {
+  const parsed = JSON.parse(response) as {
     summary?: string;
     structured?: StructuredHoroscope;
     monthlyBreakdown?: MonthlyBreakdownEntry[];
     dasha?: { hook?: string; meaning?: string };
   };
+
+  // Defense in depth: if the model ever returns a `structured` missing one of
+  // the 6 category blocks (shouldn't happen under strict json_schema mode,
+  // but this is exactly the failure mode that silently shipped broken empty
+  // categories before STRUCTURED_HOROSCOPE_TRANSLATION_SCHEMA was fixed to
+  // match the stored shape) drop it entirely rather than let the caller
+  // merge a half-translated `structured` over the known-good English one.
+  if (parsed.structured && !isCompleteCategories(parsed.structured.categories)) {
+    delete parsed.structured;
+  }
+
+  return parsed;
+}
+
+function isCompleteCategories(categories: StructuredHoroscope['categories'] | undefined): boolean {
+  if (!categories) return false;
+  return (['overall', 'health', 'career', 'marriage', 'finance', 'education'] as const).every(
+    (key) => {
+      const block = categories[key];
+      return (
+        block &&
+        typeof block.hook === 'string' &&
+        block.hook.trim().length > 0 &&
+        typeof block.description === 'string' &&
+        block.description.trim().length > 0
+      );
+    },
+  );
 }
 
 /**
