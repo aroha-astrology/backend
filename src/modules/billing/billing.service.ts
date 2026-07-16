@@ -154,6 +154,20 @@ export async function confirmGooglePlayPurchase(
 
   if (order.status === 'paid') {
     if (order.gatewayPaymentId === purchaseToken) {
+      // A reconciler (Task 10) may replay this call for every purchase Google
+      // still reports as unconsumed — e.g. because a prior consume attempt
+      // failed. Retry it here too, best-effort, so a transient failure on
+      // the first attempt doesn't permanently strand the purchase as
+      // unconsumed (which would block the user from ever repurchasing this
+      // consumable pack again).
+      try {
+        await consumeGooglePlayPurchase({ productId, purchaseToken });
+      } catch (err) {
+        logger.warn(
+          { err, purchaseToken, productId },
+          'Failed to consume Google Play purchase on idempotent replay',
+        );
+      }
       const credits = await getUserCredits(userId);
       return { order, credits };
     }

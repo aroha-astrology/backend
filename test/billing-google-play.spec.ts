@@ -99,6 +99,7 @@ describe('confirmGooglePlayPurchase', () => {
       gatewayPaymentId: 'tok',
     });
     vi.mocked(findActiveUserById).mockResolvedValue({ credits: 60 } as never);
+    vi.mocked(consumeGooglePlayPurchase).mockResolvedValue(undefined);
 
     const result = await confirmGooglePlayPurchase('user-1', {
       purchaseToken: 'tok',
@@ -106,7 +107,30 @@ describe('confirmGooglePlayPurchase', () => {
     });
 
     expect(verifyGooglePlayPurchase).not.toHaveBeenCalled();
+    expect(consumeGooglePlayPurchase).toHaveBeenCalledWith({
+      productId: 'starter',
+      purchaseToken: 'tok',
+    });
     expect(result.credits).toBe(60);
+  });
+
+  it('retries consume on idempotent replay even when the earlier consume attempt failed', async () => {
+    vi.mocked(findLatestOrderForPack).mockResolvedValue({
+      ...baseOrder,
+      status: 'paid',
+      gatewayPaymentId: 'tok',
+    });
+    vi.mocked(findActiveUserById).mockResolvedValue({ credits: 60 } as never);
+    vi.mocked(consumeGooglePlayPurchase).mockRejectedValue(new Error('still unconsumed'));
+
+    await expect(
+      confirmGooglePlayPurchase('user-1', { purchaseToken: 'tok', productId: 'starter' }),
+    ).resolves.toMatchObject({ credits: 60 });
+
+    expect(consumeGooglePlayPurchase).toHaveBeenCalledWith({
+      productId: 'starter',
+      purchaseToken: 'tok',
+    });
   });
 
   it('rejects when the order is already paid with a different token', async () => {
@@ -119,6 +143,37 @@ describe('confirmGooglePlayPurchase', () => {
     await expect(
       confirmGooglePlayPurchase('user-1', { purchaseToken: 'tok', productId: 'starter' }),
     ).rejects.toThrow('Order already confirmed with a different purchase');
+  });
+
+  it('rejects when the order is in a non-payable status other than pending/paid', async () => {
+    vi.mocked(findLatestOrderForPack).mockResolvedValue({
+      ...baseOrder,
+      status: 'cancelled',
+    });
+
+    await expect(
+      confirmGooglePlayPurchase('user-1', { purchaseToken: 'tok', productId: 'starter' }),
+    ).rejects.toThrow('not payable');
+    expect(verifyGooglePlayPurchase).not.toHaveBeenCalled();
+    expect(confirmOrderAndGrantCredits).not.toHaveBeenCalled();
+  });
+
+  it('recovers when a concurrent call already confirmed the order (lost race)', async () => {
+    vi.mocked(findLatestOrderForPack)
+      .mockResolvedValueOnce(baseOrder)
+      .mockResolvedValueOnce({ ...baseOrder, status: 'paid', gatewayPaymentId: 'tok' });
+    vi.mocked(verifyGooglePlayPurchase).mockResolvedValue(true);
+    vi.mocked(confirmOrderAndGrantCredits).mockResolvedValue(undefined);
+    vi.mocked(findActiveUserById).mockResolvedValue({ credits: 60 } as never);
+
+    const result = await confirmGooglePlayPurchase('user-1', {
+      purchaseToken: 'tok',
+      productId: 'starter',
+    });
+
+    expect(findLatestOrderForPack).toHaveBeenCalledTimes(2);
+    expect(result.credits).toBe(60);
+    expect(consumeGooglePlayPurchase).not.toHaveBeenCalled();
   });
 
   it('does not fail the request when consume fails after credits are granted', async () => {
