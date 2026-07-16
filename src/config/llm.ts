@@ -172,6 +172,31 @@ export const FORECAST_TRANSLATION_PROFILE: GenerationProfile = {
 };
 
 /**
+ * Horoscope translation (daily/weekly/monthly/yearly) — re-emits the summary
+ * + 6-category `structured` block + (yearly only) the 12-entry
+ * `monthlyBreakdown` in the target language. Same non-Latin-script token
+ * inflation problem documented on FORECAST_TRANSLATION_PROFILE above, except
+ * this call used to reuse HOROSCOPE_PROFILE's 800-token generation ceiling —
+ * far too small once translated (yearly's own *English* generation already
+ * needs HOROSCOPE_YEARLY_PROFILE's 4096 for this exact schema+breakdown
+ * combination, so 800 for a non-English re-emission of the same content was
+ * guaranteed to truncate mid-JSON). This is the ceiling that was silently
+ * missed when FORECAST_TRANSLATION_PROFILE was split out for the moon/sun
+ * forecast path — translate-on-read here fails the same way and falls back
+ * to English, which is why users on non-Latin-script languages (Hindi,
+ * Bengali, Tamil, etc.) saw horoscope detail categories stuck in English.
+ * Cached forever per (period, periodKey, language) after the first
+ * successful call, so the larger ceiling is not a recurring per-request cost.
+ */
+export const HOROSCOPE_TRANSLATION_PROFILE: GenerationProfile = {
+  name: 'horoscope-translation',
+  temperature: 0.3,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 4096,
+};
+
+/**
  * Per-house kundli insight ("what this house means for THIS chart") — one
  * LLM call per (user, house), generated lazily the first time a user unlocks
  * that house and cached forever after (the natal chart never changes), so a
@@ -183,6 +208,24 @@ export const HOUSE_INSIGHT_PROFILE: GenerationProfile = {
   jsonMode: true,
   stream: false,
   maxTokens: 500,
+};
+
+/**
+ * House-insight translation — separate, larger ceiling than
+ * HOUSE_INSIGHT_PROFILE's 500 (which is sized for *English* generation).
+ * The translated text+strengths+weaknesses payload is smaller than
+ * horoscope's, but still subject to the same non-Latin-script token
+ * inflation (see HOROSCOPE_TRANSLATION_PROFILE) — 500 tokens leaves very
+ * little headroom once JSON structure overhead is counted, so this gets its
+ * own generous ceiling rather than risking the same truncate-then-fall-back-
+ * to-English failure mode.
+ */
+export const HOUSE_INSIGHT_TRANSLATION_PROFILE: GenerationProfile = {
+  name: 'house-insight-translation',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 1200,
 };
 
 /**

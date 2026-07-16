@@ -6,7 +6,11 @@
 // =============================================================================
 
 import { generate } from './gemini-client.js';
-import { HOUSE_INSIGHT_PROFILE, MODEL } from '../../config/llm.js';
+import {
+  HOUSE_INSIGHT_PROFILE,
+  HOUSE_INSIGHT_TRANSLATION_PROFILE,
+  MODEL,
+} from '../../config/llm.js';
 import { dashaLordTransitQuality } from '../astro-tools/index.js';
 import { cleanJsonString, hasRawJargon } from './horoscope.js';
 
@@ -210,7 +214,7 @@ export async function translateHouseInsightContent(
   targetLanguage: string,
 ): Promise<{ text?: string; strengths?: string[]; weaknesses?: string[] }> {
   const raw = await generate({
-    profile: HOUSE_INSIGHT_PROFILE,
+    profile: HOUSE_INSIGHT_TRANSLATION_PROFILE,
     responseSchema: {
       type: 'object',
       properties: {

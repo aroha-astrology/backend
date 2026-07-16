@@ -168,6 +168,7 @@ export async function saveHoroscopeTranslation(
     summary?: string;
     monthlyBreakdown?: MonthlyBreakdownEntry[];
     structured?: StructuredHoroscope;
+    dasha?: { hook?: string; meaning?: string };
   },
 ): Promise<void> {
   const existing = await db

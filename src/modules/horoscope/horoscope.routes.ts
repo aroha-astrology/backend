@@ -98,8 +98,16 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
     const lang = language || user.contentLanguage || 'en';
     if (lang !== 'en') {
       const translations = existing.translations || {};
+      // The dasha reading's mahadashaPlanet/antardashaPlanet/activeUntil are
+      // never translated (see translateHoroscopeContent) — only hook/meaning
+      // come back from a translation, so merge those onto the existing
+      // (English/deterministic) dasha object rather than replacing it.
+      const mergeDasha = (t: { dasha?: { hook?: string; meaning?: string } } | undefined) =>
+        t?.dasha && dto.dasha ? { ...dto.dasha, ...t.dasha } : dto.dasha;
+
       if (translations[lang]) {
-        dto = { ...dto, ...translations[lang] };
+        const cached = translations[lang];
+        dto = { ...dto, ...cached, dasha: mergeDasha(cached) };
       } else {
         try {
           const translated = await translateHoroscopeContent(
@@ -107,11 +115,12 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
               summary: existing.summary,
               structured: existing.structured,
               monthlyBreakdown: existing.monthlyBreakdown,
+              ...(dto.dasha ? { dasha: dto.dasha } : {}),
             },
             lang,
           );
           await saveHoroscopeTranslation(user.id, period, periodKey, lang, translated);
-          dto = { ...dto, ...translated };
+          dto = { ...dto, ...translated, dasha: mergeDasha(translated) };
         } catch (err) {
           logger.warn({ err, userId: user.id, lang }, 'failed to translate horoscope');
         }

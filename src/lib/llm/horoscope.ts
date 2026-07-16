@@ -13,6 +13,7 @@ import { generate } from './gemini-client.js';
 import {
   FORECAST_TRANSLATION_PROFILE,
   HOROSCOPE_PROFILE,
+  HOROSCOPE_TRANSLATION_PROFILE,
   HOROSCOPE_YEARLY_PROFILE,
   MODEL,
 } from '../../config/llm.js';
@@ -21,6 +22,7 @@ import { getDailyLuckyElements } from '../astro-engine/lucky-elements.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';
 import type { MonthlyBreakdownEntry, StructuredHoroscope } from '../../db/schema.js';
 import type { CategoryReading } from '@aroha-astrology/shared';
+import type { DashaReading } from '../astro-tools/dasha-reading.js';
 
 const QUALITIES = ['good', 'moderate', 'challenging', 'avoid'] as const;
 
@@ -557,30 +559,48 @@ export function parseYearlyResponse(
 }
 
 /**
- * Translates a structured horoscope (and its monthly breakdown, if present) into the target language.
+ * Translates a structured horoscope (its monthly breakdown, if present, and
+ * the current dasha reading's hook/meaning, if present) into the target
+ * language. The dasha object's `mahadashaPlanet`/`antardashaPlanet`/
+ * `activeUntil` are deliberately NOT sent to the model (planet names/dates
+ * aren't translatable content, same deferred-scope call as planet names
+ * elsewhere in the app) — only `hook`/`meaning` go through translation, and
+ * the caller is expected to merge the result back onto the original `dasha`
+ * object rather than replace it wholesale.
  */
 export async function translateHoroscopeContent(
   original: {
     summary: string | null;
     structured: StructuredHoroscope | null;
     monthlyBreakdown: MonthlyBreakdownEntry[] | null;
+    dasha?: Pick<DashaReading, 'hook' | 'meaning'> | null;
   },
   targetLanguage: string,
 ): Promise<{
   summary?: string;
   structured?: StructuredHoroscope;
   monthlyBreakdown?: MonthlyBreakdownEntry[];
+  dasha?: { hook?: string; meaning?: string };
 }> {
+  const translatable = {
+    summary: original.summary,
+    structured: original.structured,
+    monthlyBreakdown: original.monthlyBreakdown,
+    ...(original.dasha
+      ? { dasha: { hook: original.dasha.hook, meaning: original.dasha.meaning } }
+      : {}),
+  };
+
   const prompt = `Translate the following astrology horoscope content into the language "${targetLanguage}".
 Keep the exact same JSON structure, keys, formatting, and meaning. ONLY translate the text values.
 Do not translate the keys. Do not change the scores or numbers.
 
 Original Content:
-${JSON.stringify(original, null, 2)}`;
+${JSON.stringify(translatable, null, 2)}`;
 
   const response = await generate({
     messages: [{ role: 'user', content: prompt }],
-    profile: HOROSCOPE_PROFILE,
+    profile: HOROSCOPE_TRANSLATION_PROFILE,
     responseSchema: {
       type: 'object',
       properties: {
@@ -608,6 +628,13 @@ ${JSON.stringify(original, null, 2)}`;
             required: ['month', 'monthLabel', 'summary'],
           },
         },
+        dasha: {
+          type: 'object',
+          properties: {
+            hook: { type: 'string' },
+            meaning: { type: 'string' },
+          },
+        },
       },
     },
   });
@@ -616,6 +643,7 @@ ${JSON.stringify(original, null, 2)}`;
     summary?: string;
     structured?: StructuredHoroscope;
     monthlyBreakdown?: MonthlyBreakdownEntry[];
+    dasha?: { hook?: string; meaning?: string };
   };
 }
 

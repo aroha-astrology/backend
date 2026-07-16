@@ -881,6 +881,8 @@ export const dailyHoroscopes = pgTable(
           summary?: string;
           monthlyBreakdown?: MonthlyBreakdownEntry[];
           structured?: StructuredHoroscope;
+          /** Translated hook/meaning for the current dasha reading — see toHoroscopeDto. */
+          dasha?: { hook?: string; meaning?: string };
         }
       >
     >(),
