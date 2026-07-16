@@ -1,6 +1,7 @@
 import { generate } from './gemini-client.js';
 import { PURCHASE_PLAN_PROFILE } from '../../config/llm.js';
 import type { PanchangData } from '@aroha-astrology/shared';
+import { mergeTranslatedContent } from './translation-merge.js';
 
 export interface PurchasePlanInput {
   category: 'vehicle' | 'home' | 'commercial' | 'other';
@@ -205,5 +206,5 @@ export async function translatePurchasePlanContent(
       `purchase plan translation returned unparseable JSON (target=${targetLanguage})`,
     );
   }
-  return analysis;
+  return mergeTranslatedContent(original, analysis) as Record<string, unknown>;
 }

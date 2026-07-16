@@ -391,6 +391,17 @@ export async function buildGroundingFacts(
   }
 
   // --- Natal planet placements ---------------------------------------------
+  // Moon sign (Rashi) and Sun sign are two of the most fundamental facts in
+  // Vedic astrology and are surfaced directly elsewhere in the app (the
+  // moon-sign forecast feature, the Plain-mode ascendant/moon/sun-sign
+  // pills) — stated explicitly here for the same reason Venus/Mars/Saturn/
+  // Jupiter are below, rather than leaving the astrologer to infer them
+  // indirectly from house-lord facts alone.
+  const moon = planetPlacement(planets, 'Moon');
+  if (moon) facts.push(`Moon Sign (Rashi) is natally in ${moon.sign} (house ${moon.house})`);
+  const sun = planetPlacement(planets, 'Sun');
+  if (sun) facts.push(`Sun Sign is natally in ${sun.sign} (house ${sun.house})`);
+
   const venus = planetPlacement(planets, 'Venus');
   if (venus) {
     const dignity = dashaLordTransitQuality('Venus', venus.signIndex);

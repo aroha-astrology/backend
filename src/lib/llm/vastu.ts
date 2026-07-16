@@ -1,6 +1,7 @@
 import { generate } from './gemini-client.js';
 import { VASTU_PROFILE } from '../../config/llm.js';
 import { VASTU_RULES, type RoomScore } from '../../modules/vastu/vastu.rules.js';
+import { mergeTranslatedContent } from './translation-merge.js';
 
 export interface VastuAnalysisInput {
   roomLayout: Record<string, string[]>;
@@ -206,5 +207,5 @@ export async function translateVastuContent(
   if (parseError) {
     throw new Error(`vastu translation returned unparseable JSON (target=${targetLanguage})`);
   }
-  return analysis;
+  return mergeTranslatedContent(original, analysis) as Record<string, unknown>;
 }
