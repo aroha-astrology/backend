@@ -41,6 +41,22 @@ const EnvSchema = z
     // that sign in as a client (scripts/dev-token.ts).
     FIREBASE_WEB_API_KEY: z.string().min(1).optional(),
 
+    // --- Google Play Billing (Android in-app purchases) --------------------
+    // Either point at a service account JSON file (preferred) ...
+    GOOGLE_PLAY_SERVICE_ACCOUNT_PATH: z.string().min(1).optional(),
+    // ... or provide the three fields individually.
+    GOOGLE_PLAY_PROJECT_ID: z.string().min(1).optional(),
+    GOOGLE_PLAY_CLIENT_EMAIL: z
+      .string()
+      .email('GOOGLE_PLAY_CLIENT_EMAIL must be a valid email')
+      .optional(),
+    GOOGLE_PLAY_PRIVATE_KEY: z
+      .string()
+      .min(1)
+      .transform((value) => value.replace(/\\n/g, '\n'))
+      .optional(),
+    GOOGLE_PLAY_PACKAGE_NAME: z.string().min(1).default('com.aroha.astrology'),
+
     // --- Gemini (sole LLM provider) ----------------------------------------
     GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required'),
     GEMINI_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta/openai'),
@@ -66,6 +82,23 @@ const EnvSchema = z
         path: ['FIREBASE_SERVICE_ACCOUNT_PATH'],
         message:
           'Provide FIREBASE_SERVICE_ACCOUNT_PATH, or all of FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY',
+      });
+    }
+
+    const hasPlayPath = Boolean(value.GOOGLE_PLAY_SERVICE_ACCOUNT_PATH);
+    const playTripleValues = [
+      value.GOOGLE_PLAY_PROJECT_ID,
+      value.GOOGLE_PLAY_CLIENT_EMAIL,
+      value.GOOGLE_PLAY_PRIVATE_KEY,
+    ];
+    const hasAnyPlayTriple = playTripleValues.some(Boolean);
+    const hasFullPlayTriple = playTripleValues.every(Boolean);
+    if (!hasPlayPath && hasAnyPlayTriple && !hasFullPlayTriple) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GOOGLE_PLAY_SERVICE_ACCOUNT_PATH'],
+        message:
+          'Provide GOOGLE_PLAY_SERVICE_ACCOUNT_PATH, all three of GOOGLE_PLAY_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY, or omit all Google Play config',
       });
     }
   });
