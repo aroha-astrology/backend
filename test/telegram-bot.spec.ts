@@ -31,6 +31,7 @@ vi.mock('../src/config/env.js', () => ({
   env: {
     TELEGRAM_WEBHOOK_SECRET: 'test-secret',
     TELEGRAM_ALERT_CHAT_ID: '12345',
+    TELEGRAM_ADMIN_CHAT_IDS: ['67890'],
     LOG_LEVEL: 'silent',
     CORS_ORIGINS: [],
   },
@@ -84,6 +85,22 @@ describe('POST /internal/telegram/webhook', () => {
     });
     expect(res.status).toBe(200);
     expect(state.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('accepts commands from an extra admin chat ID in TELEGRAM_ADMIN_CHAT_IDS', async () => {
+    state.countUsers.mockResolvedValue(100);
+    state.listUsersPage.mockResolvedValue([
+      { id: 'u1', email: 'test@example.com', createdAt: new Date() },
+    ]);
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 67890 }, text: '/users' } }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it('handles /users command with pagination', async () => {

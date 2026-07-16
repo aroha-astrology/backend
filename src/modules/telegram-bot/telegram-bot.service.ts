@@ -22,7 +22,10 @@ export async function handleUpdate(update: unknown): Promise<void> {
   if (!chat || (typeof chat.id !== 'string' && typeof chat.id !== 'number')) return;
 
   const chatId = String(chat.id);
-  if (chatId !== env.TELEGRAM_ALERT_CHAT_ID) return;
+  const allowedChatIds = new Set(
+    [env.TELEGRAM_ALERT_CHAT_ID, ...env.TELEGRAM_ADMIN_CHAT_IDS].filter(Boolean),
+  );
+  if (!allowedChatIds.has(chatId)) return;
 
   const text = message.text.trim();
   if (!text.startsWith('/')) return;

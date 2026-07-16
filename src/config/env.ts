@@ -69,6 +69,17 @@ const EnvSchema = z
     CRON_SECRET: z.string().min(1).optional(),
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
     TELEGRAM_ALERT_CHAT_ID: z.string().min(1).optional(),
+    // Extra admin chat IDs allowed to use the /internal/telegram/webhook commands,
+    // beyond TELEGRAM_ALERT_CHAT_ID (which stays the default outgoing-alert target).
+    TELEGRAM_ADMIN_CHAT_IDS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
