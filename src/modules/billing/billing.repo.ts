@@ -48,6 +48,20 @@ export async function findOrderByIdForUser(
   return rows[0];
 }
 
+/** Most recent order (any status) for this user+pack — used to find the order a Google Play purchase belongs to without the client needing to remember an order ID. */
+export async function findLatestOrderForPack(
+  userId: string,
+  packId: string,
+): Promise<OrderRow | undefined> {
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.userId, userId), eq(orders.packId, packId)))
+    .orderBy(desc(orders.createdAt))
+    .limit(1);
+  return rows[0];
+}
+
 /**
  * Marks a pending order paid, grants its credits, bumps the coupon's
  * redemption count, and appends a credit-ledger row — all atomically. Returns

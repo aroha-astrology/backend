@@ -1,6 +1,15 @@
 import { Errors } from '../../lib/errors.js';
 import type { OrderRow } from '../../db/schema.js';
-import { findActiveCouponByCode, insertOrder, findOrderByIdForUser } from './billing.repo.js';
+import {
+  findActiveCouponByCode,
+  insertOrder,
+  findOrderByIdForUser,
+  findLatestOrderForPack,
+  confirmOrderAndGrantCredits,
+} from './billing.repo.js';
+import { findActiveUserById } from '../users/users.repo.js';
+import { logger } from '../../lib/logger.js';
+import { verifyGooglePlayPurchase, consumeGooglePlayPurchase } from './google-play-verifier.js';
 
 /**
  * Fixed credit-pack catalog. Small and rarely-changing enough to keep as code
@@ -121,6 +130,64 @@ export async function confirmPayment(
   const order = await findOrderByIdForUser(orderId, userId);
   if (!order) throw Errors.notFound('Order not found');
   throw Errors.forbidden('Online payments are not live yet.');
+}
+
+async function getUserCredits(userId: string): Promise<number> {
+  const user = await findActiveUserById(userId);
+  if (!user) throw Errors.notFound('User not found');
+  return user.credits;
+}
+
+/**
+ * Confirms a Google Play purchase and grants its credits. Deliberately takes
+ * no order ID — the client can't reliably remember one across a process
+ * kill between purchase and confirm, so this looks up the order itself by
+ * (userId, productId). Safe to call more than once for the same purchase
+ * (crash-recovery reconciliation replays this on every app start).
+ */
+export async function confirmGooglePlayPurchase(
+  userId: string,
+  { purchaseToken, productId }: { purchaseToken: string; productId: string },
+): Promise<{ order: OrderRow; credits: number }> {
+  const order = await findLatestOrderForPack(userId, productId);
+  if (!order) throw Errors.notFound('No matching order found for this purchase');
+
+  if (order.status === 'paid') {
+    if (order.gatewayPaymentId === purchaseToken) {
+      const credits = await getUserCredits(userId);
+      return { order, credits };
+    }
+    throw Errors.conflict('Order already confirmed with a different purchase');
+  }
+  if (order.status !== 'pending') {
+    throw Errors.conflict(`Order is ${order.status}, not payable`);
+  }
+
+  const verified = await verifyGooglePlayPurchase({ productId, purchaseToken });
+  if (!verified) throw Errors.badRequest('Purchase is not in a completed state');
+
+  const result = await confirmOrderAndGrantCredits(order.id, userId, purchaseToken);
+  if (!result) {
+    // Lost a race with a concurrent confirm for the same order — the other
+    // call already granted credits. Return the now-paid order instead of
+    // erroring, since the purchase genuinely did succeed.
+    const nowPaid = await findLatestOrderForPack(userId, productId);
+    if (!nowPaid || nowPaid.status !== 'paid') {
+      throw Errors.internal('Failed to confirm order');
+    }
+    const credits = await getUserCredits(userId);
+    return { order: nowPaid, credits };
+  }
+
+  try {
+    await consumeGooglePlayPurchase({ productId, purchaseToken });
+  } catch (err) {
+    // Credits are already granted — a failed consume is a Play-side
+    // bookkeeping issue, not a reason to fail the request.
+    logger.warn({ err, purchaseToken, productId }, 'Failed to consume Google Play purchase');
+  }
+
+  return result;
 }
 
 export function toOrderDto(order: OrderRow) {
