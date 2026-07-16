@@ -16,6 +16,7 @@ import { dateToJulianDay, calculatePlanetPositions } from './astro-engine/index.
 import { findFavorableWindow } from './dasha-window.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
 import { scoreDomainWindow } from './astro-engine/dasha-confidence.js';
+import { calculateD9, calculateD10 } from './astro-engine/charts/divisionalCharts.js';
 
 export interface GroundingSource {
   /** kundli.chartData — planets, houses (with lord), ascendant. */
@@ -328,6 +329,52 @@ function ashtakavargaFacts(
 }
 
 /**
+ * D9 Navamsa (marriage/inner-strength/dharma) and D10 Dasamsa (career)
+ * divisional-chart facts, computed live from natal planet longitudes —
+ * chat grounding previously had zero divisional-chart data at all (only the
+ * D1/Rashi chart), so questions that traditionally lean on Navamsa/Dasamsa
+ * (e.g. "how's my marriage looking") had no grounded facts to draw on
+ * beyond the D1 7th house. The frontend already recomputes D1-D60 client-
+ * side for display (`lib/divisional-charts.ts`) and the backend defines the
+ * same varga math (`astro-engine/charts/divisionalCharts.ts`,
+ * `calculateD9`/`calculateD10`) but never calls it during kundli generation
+ * or storage — rather than adding a migration to persist all 24 vargas,
+ * this computes just D9/D10 on the fly from `chart.planets[].longitude`
+ * (already present on every stored chart), which is cheap (pure arithmetic,
+ * no ephemeris lookup) and needs no schema change.
+ */
+function divisionalChartFacts(chart: Record<string, unknown> | null): string[] {
+  const rawPlanets = (chart?.planets ?? []) as Array<Record<string, unknown>>;
+  const asc = chart?.ascendant as Record<string, unknown> | undefined;
+  const ascSignIndex = asc?.signIndex != null ? Number(asc.signIndex) : null;
+  if (rawPlanets.length === 0 || ascSignIndex == null) return [];
+
+  const ascLongitude = ascSignIndex * 30 + Number(asc?.degree ?? 0);
+  const withLongitude = rawPlanets.filter((p) => p.planet != null && p.longitude != null);
+  if (withLongitude.length === 0) return [];
+
+  const facts: string[] = [];
+
+  const d9Lagna = SIGNS[calculateD9(ascLongitude)];
+  const d9Placements = withLongitude
+    .map((p) => `${String(p.planet)}-${SIGNS[calculateD9(Number(p.longitude))]}`)
+    .join(', ');
+  facts.push(
+    `D9 Navamsa divisional chart (marriage, spouse, inner strength, dharma — traditionally consulted alongside the D1 7th house for marriage questions): Navamsa Lagna is ${d9Lagna}. Planet placements: ${d9Placements}.`,
+  );
+
+  const d10Lagna = SIGNS[calculateD10(ascLongitude)];
+  const d10Placements = withLongitude
+    .map((p) => `${String(p.planet)}-${SIGNS[calculateD10(Number(p.longitude))]}`)
+    .join(', ');
+  facts.push(
+    `D10 Dasamsa divisional chart (career, profession, public status — traditionally consulted alongside the D1 10th house for career questions): Dasamsa Lagna is ${d10Lagna}. Planet placements: ${d10Placements}.`,
+  );
+
+  return facts;
+}
+
+/**
  * Build the comprehensive "CHART DATA" fact lines for the single astrologer.
  * Every line is traceable to a value already present in the user's stored
  * kundli (or, for the transit lines, a planet-position calculation for
@@ -519,6 +566,9 @@ export async function buildGroundingFacts(
 
   // --- Ashtakavarga summary ---------------------------------------------------
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
+
+  // --- D9 Navamsa / D10 Dasamsa divisional charts ----------------------------
+  facts.push(...divisionalChartFacts(src.chart));
 
   return facts;
 }
