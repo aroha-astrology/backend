@@ -8,6 +8,8 @@ import { Errors } from '../../lib/errors.js';
 import { deductCredits } from '../users/users.repo.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
+import { incrementFeedbackCounter, saveChatFeedbackReport } from './feedback.repo.js';
+import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 
 /** Flat cost per chat question, charged atomically before generation starts. */
 const CHAT_MESSAGE_COST = 2;
@@ -22,6 +24,7 @@ import {
   MatchmakingRequestSchema,
   MatchmakingResponseSchema,
   ChatRequestSchema,
+  ChatFeedbackRequestSchema,
   SignIndexParamSchema,
 } from './astro.schemas.js';
 
@@ -526,6 +529,59 @@ astroRouter.openapi(chatRoute, async (c) => {
       }
     }
   });
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /chat/feedback  (thumbs up/down on a reply)                           */
+/* -------------------------------------------------------------------------- */
+
+const chatFeedbackRoute = createRoute({
+  method: 'post',
+  path: '/chat/feedback',
+  tags: ['Astro'],
+  summary: 'Thumbs up/down on an AI chat reply',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: ChatFeedbackRequestSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Feedback recorded',
+      content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    422: errorResponse('Validation failed'),
+  },
+});
+
+astroRouter.openapi(chatFeedbackRoute, async (c) => {
+  const user = c.get('user');
+  const body = c.req.valid('json');
+
+  await incrementFeedbackCounter(body.vote === 'up' ? 'chat_thumbs_up' : 'chat_thumbs_down');
+
+  if (body.vote === 'down' && body.question && body.answer) {
+    await saveChatFeedbackReport({
+      userId: user.id,
+      sessionId: body.sessionId,
+      question: body.question,
+      answer: body.answer,
+      locale: body.locale,
+    });
+    // Fire-and-forget — a Telegram outage must never fail the feedback request.
+    void notifyChatDownvote({
+      userId: user.id,
+      locale: body.locale,
+      question: body.question,
+      answer: body.answer,
+    }).catch(() => {});
+  }
+
+  return c.json({ ok: true }, 200);
 });
 
 /* -------------------------------------------------------------------------- */

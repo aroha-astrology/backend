@@ -1217,3 +1217,72 @@ export const chatSessions = pgTable(
 
 export type ChatSessionRow = typeof chatSessions.$inferSelect;
 export type NewChatSessionRow = typeof chatSessions.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* feedback_counters — simple up/down counters for AI chat replies             */
+/* -------------------------------------------------------------------------- */
+
+export const feedbackCounters = pgTable('feedback_counters', {
+  metric: text('metric').primaryKey(),
+  count: integer('count').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export type FeedbackCounterRow = typeof feedbackCounters.$inferSelect;
+export type NewFeedbackCounterRow = typeof feedbackCounters.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* chat_feedback_reports — saved Q&A for thumbs-down chat replies              */
+/* -------------------------------------------------------------------------- */
+
+export const chatFeedbackReports = pgTable(
+  'chat_feedback_reports',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id'),
+    question: text('question').notNull(),
+    answer: text('answer').notNull(),
+    locale: text('locale'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('chat_feedback_reports_user_id_idx').on(table.userId),
+  }),
+);
+
+export type ChatFeedbackReportRow = typeof chatFeedbackReports.$inferSelect;
+export type NewChatFeedbackReportRow = typeof chatFeedbackReports.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* user_facts — durable personal facts extracted from AI chat conversations    */
+/* -------------------------------------------------------------------------- */
+
+export const userFacts = pgTable(
+  'user_facts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    fact: text('fact').notNull(),
+    category: text('category'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('user_facts_user_id_idx').on(table.userId),
+  }),
+);
+
+export type UserFactRow = typeof userFacts.$inferSelect;
+export type NewUserFactRow = typeof userFacts.$inferInsert;

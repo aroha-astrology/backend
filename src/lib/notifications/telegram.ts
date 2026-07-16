@@ -39,6 +39,26 @@ export async function notifyError(context: string, error: unknown): Promise<bool
   return sendAlert(`Error: ${context}`, msg);
 }
 
+/** Truncate for Telegram readability — full text is stored in chat_feedback_reports. */
+function clipForTelegram(text: string, max = 400): string {
+  return text.length > max ? text.slice(0, max) + '…' : text;
+}
+
+export async function notifyChatDownvote(fields: {
+  userId: string;
+  locale?: string | undefined;
+  question: string;
+  answer: string;
+}): Promise<boolean> {
+  const text =
+    `👎 *AI Chat Downvote*\n\n` +
+    `User: \`${escapeMarkdown(fields.userId)}\`\n` +
+    (fields.locale ? `Locale: ${escapeMarkdown(fields.locale)}\n` : '') +
+    `\n*Q:* ${escapeMarkdown(clipForTelegram(fields.question))}\n` +
+    `*A:* ${escapeMarkdown(clipForTelegram(fields.answer))}`;
+  return sendMessage(text);
+}
+
 export async function sendMessage(text: string, chatId?: string | number): Promise<boolean> {
   try {
     const targetChatId = chatId || env.TELEGRAM_ALERT_CHAT_ID;

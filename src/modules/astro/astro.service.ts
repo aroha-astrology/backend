@@ -23,6 +23,7 @@ import type { GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
+import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import {
   PANCHANG_REFERENCE_POINTS,
   snapToReferencePoint,
@@ -779,9 +780,10 @@ export async function* chatStream(
 
   // Best-effort: an unready/missing kundli just means no chart facts get
   // injected (buildGroundingFacts degrades gracefully) — chat still works.
-  const [kundli, user] = await Promise.all([
+  const [kundli, user, userFacts] = await Promise.all([
     getKundliForUser(userId).catch(() => undefined),
     findActiveUserById(userId).catch(() => undefined),
+    getUserFacts(userId).catch(() => []),
   ]);
   const groundingSource: GroundingSource = {
     chart: kundli?.status === 'ready' ? (kundli.chartData ?? null) : null,
@@ -799,9 +801,13 @@ export async function* chatStream(
   // Bound the prompt size regardless of how long this conversation has run —
   // keeps generation fast (timeout risk) and keeps the model from losing
   // track of what it already knows deep in a long raw transcript.
-  const { recentHistory, summary, changed } = await compactHistory(history, incomingSummary);
+  const { recentHistory, summary, changed, facts } = await compactHistory(history, incomingSummary);
   if (changed) {
     yield { type: 'summary', summary };
+  }
+  if (facts.length > 0) {
+    // Fire-and-forget — a facts-save failure must never break the chat reply.
+    void saveUserFacts(userId, facts).catch(() => {});
   }
   state.chatContext = { history: recentHistory, summary };
 
@@ -813,6 +819,7 @@ export async function* chatStream(
     detailLevel,
     signal,
     locale,
+    userFacts,
   );
   for await (const token of tokenStream) {
     yield { type: 'token', content: token };

@@ -72,7 +72,11 @@ export type ChatHistoryTurn = z.infer<typeof ChatHistoryTurnSchema>;
 
 export const ChatRequestSchema = z
   .object({
-    sessionId: z.string().uuid().optional().openapi({ description: 'ID of an existing chat session to continue.' }),
+    sessionId: z
+      .string()
+      .uuid()
+      .optional()
+      .openapi({ description: 'ID of an existing chat session to continue.' }),
     message: z.string().min(1).max(2000).openapi({ example: 'What does my Jupiter transit mean?' }),
     locale: z.string().default('en'),
     history: z.array(ChatHistoryTurnSchema).max(40).default([]).openapi({
@@ -90,6 +94,18 @@ export const ChatRequestSchema = z
   .openapi('ChatRequest');
 
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
+
+export const ChatFeedbackRequestSchema = z
+  .object({
+    vote: z.enum(['up', 'down']),
+    sessionId: z.string().uuid().optional(),
+    question: z.string().max(2000).optional(),
+    answer: z.string().max(4000).optional(),
+    locale: z.string().max(10).optional(),
+  })
+  .openapi('ChatFeedbackRequest');
+
+export type ChatFeedbackRequest = z.infer<typeof ChatFeedbackRequestSchema>;
 
 /* -------------------------------------------------------------------------- */
 /* Response schemas                                                            */
