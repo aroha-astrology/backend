@@ -225,7 +225,7 @@ const confirmGooglePlayRoute = createRoute({
       content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
     },
     401: errorResponse('Unauthorized'),
-    400: errorResponse('Purchase not in a completed state, or product mismatch'),
+    400: errorResponse('Purchase is not in a completed state'),
     404: errorResponse('No matching order found'),
     409: errorResponse('Order already processed in a conflicting state'),
   },
