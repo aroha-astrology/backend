@@ -10,6 +10,7 @@ import { runAllHoroscopeBatches, runHoroscopeBatch } from '../horoscope/horoscop
 import { PanchangWarmupBodySchema, PanchangWarmupResultSchema } from '../astro/astro.schemas.js';
 import { warmupPanchangCache } from '../astro/astro.service.js';
 import { runHealthReport } from '../health-report/health-report.service.js';
+import { broadcastDailyReading } from './broadcast.service.js';
 
 const ErrorSchema = z
   .object({
@@ -144,4 +145,43 @@ const healthReportRoute = createRoute({
 cronRouter.openapi(healthReportRoute, async (c) => {
   await runHealthReport();
   return c.json({ status: 'ok' as const }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Broadcast: "Today's Reading is Ready" — fires at 07:00 IST (01:30 UTC)
+// ---------------------------------------------------------------------------
+
+const broadcastDailyReadingRoute = createRoute({
+  method: 'post',
+  path: '/cron/broadcast-daily-reading',
+  tags: ['Cron'],
+  summary: "Broadcast \"Today's Reading is Ready\" to all active device tokens",
+  description:
+    'Sends an eye-catching FCM push notification to every un-revoked, push-enabled device token. ' +
+    'Uses a rotating set of 7 Vedic-themed hook messages (one per day of the week) so the copy ' +
+    'is never the same two days in a row. Deep-links users to the Horoscope screen on tap. ' +
+    'Designed to run at 01:30 UTC (07:00 IST) — well after the 00:01 IST horoscope generation ' +
+    'cron, so readings are always ready before the notification lands. ' +
+    'Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Broadcast completed',
+      content: {
+        'application/json': {
+          schema: z.object({
+            hook: z.string().describe('Notification title used today'),
+            tokensFound: z.number().int(),
+            success: z.number().int(),
+            failure: z.number().int(),
+          }),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(broadcastDailyReadingRoute, async (c) => {
+  const result = await broadcastDailyReading();
+  return c.json(result, 200);
 });

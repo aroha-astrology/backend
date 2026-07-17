@@ -113,6 +113,62 @@
       "when": 1783761618590,
       "tag": "0015_shiny_cargill",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783771050026,
+      "tag": "0016_naive_black_widow",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783785570905,
+      "tag": "0017_silky_manta",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783867347031,
+      "tag": "0018_rich_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783961074281,
+      "tag": "0019_equal_blazing_skull",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784095519229,
+      "tag": "0020_sweet_karma",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784146484483,
+      "tag": "0021_ancient_trauma",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784229271789,
+      "tag": "0022_square_miracleman",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784261286830,
+      "tag": "0023_security_hardening_2026_07_17",
+      "breakpoints": true
     }
   ]
 }

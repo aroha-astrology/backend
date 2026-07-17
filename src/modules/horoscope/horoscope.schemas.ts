@@ -88,6 +88,14 @@ export const GetHoroscopeQuerySchema = z.object({
       param: { name: 'period', in: 'query' },
       example: 'daily',
     }),
+  /** Request-scoped language override — see GET /kundli/houses/{house}/insight
+   * for why this is preferred over the unreliable `user.contentLanguage`. */
+  language: z
+    .string()
+    .min(2)
+    .max(35)
+    .optional()
+    .openapi({ param: { name: 'language', in: 'query' } }),
 });
 
 /** 202 body when a horoscope isn't ready yet — the client should poll GET again. */

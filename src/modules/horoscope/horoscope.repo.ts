@@ -9,6 +9,7 @@ import {
   type UserRow,
 } from '../../db/schema.js';
 import type { HoroscopePeriod } from './horoscope.schemas.js';
+import { decryptUserRow } from '../users/users.repo.js';
 
 /** Consider a 'generating' row abandoned (crashed mid-run, no heartbeat) after this long. */
 export const STALE_GENERATING_MS = 5 * 60_000;
@@ -21,7 +22,10 @@ export async function listActiveUsersAfter(
   const where = afterId
     ? and(isNull(users.deletedAt), gt(users.id, afterId))
     : isNull(users.deletedAt);
-  return db.select().from(users).where(where).orderBy(asc(users.id)).limit(limit);
+  const rows = await db.select().from(users).where(where).orderBy(asc(users.id)).limit(limit);
+  // users.dateOfBirth/timeOfBirth/placeOfBirth are encrypted at rest — this
+  // cron reads them to compute chart facts, so decrypt before returning.
+  return rows.map(decryptUserRow);
 }
 
 export async function findHoroscope(
@@ -155,6 +159,48 @@ export async function markHoroscopeFailed(
         eq(dailyHoroscopes.periodKey, periodKey),
         eq(dailyHoroscopes.status, 'generating'),
         eq(dailyHoroscopes.startedAt, claimedAt),
+      ),
+    );
+}
+
+export async function saveHoroscopeTranslation(
+  userId: string,
+  period: HoroscopePeriod,
+  periodKey: string,
+  language: string,
+  translation: {
+    summary?: string;
+    monthlyBreakdown?: MonthlyBreakdownEntry[];
+    structured?: StructuredHoroscope;
+    dasha?: { hook?: string; meaning?: string };
+  },
+): Promise<void> {
+  const existing = await db
+    .select({ translations: dailyHoroscopes.translations })
+    .from(dailyHoroscopes)
+    .where(
+      and(
+        eq(dailyHoroscopes.userId, userId),
+        eq(dailyHoroscopes.period, period),
+        eq(dailyHoroscopes.periodKey, periodKey),
+      ),
+    )
+    .limit(1)
+    .then((r) => r[0]);
+
+  if (!existing) return; // if it was deleted, do nothing
+
+  const translations = existing.translations || {};
+  translations[language] = translation;
+
+  await db
+    .update(dailyHoroscopes)
+    .set({ translations })
+    .where(
+      and(
+        eq(dailyHoroscopes.userId, userId),
+        eq(dailyHoroscopes.period, period),
+        eq(dailyHoroscopes.periodKey, periodKey),
       ),
     );
 }

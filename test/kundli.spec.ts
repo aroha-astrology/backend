@@ -11,6 +11,10 @@ const state = vi.hoisted(() => ({
   regenerateKundli: vi.fn(),
   isStaleGenerating: vi.fn(),
   toKundliDto: vi.fn(),
+  findHouseInsight: vi.fn(),
+  toHouseInsightDtoForLanguage: vi.fn(),
+  requestHouseInsightGeneration: vi.fn(),
+  isHouseInsightStale: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -50,6 +54,10 @@ vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   regenerateKundli: state.regenerateKundli,
   isStaleGenerating: state.isStaleGenerating,
   toKundliDto: state.toKundliDto,
+  findHouseInsight: state.findHouseInsight,
+  toHouseInsightDtoForLanguage: state.toHouseInsightDtoForLanguage,
+  requestHouseInsightGeneration: state.requestHouseInsightGeneration,
+  isHouseInsightStale: state.isHouseInsightStale,
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -68,6 +76,10 @@ beforeEach(() => {
   state.regenerateKundli.mockReset();
   state.isStaleGenerating.mockReset().mockReturnValue(false);
   state.toKundliDto.mockReset();
+  state.findHouseInsight.mockReset();
+  state.toHouseInsightDtoForLanguage.mockReset();
+  state.requestHouseInsightGeneration.mockReset().mockResolvedValue('generated');
+  state.isHouseInsightStale.mockReset().mockReturnValue(false);
 });
 
 describe('GET /v1/kundli', () => {
@@ -162,5 +174,69 @@ describe('POST /v1/kundli/regenerate', () => {
     const body = (await res.json()) as { status: string; missing: string[] };
     expect(body.status).toBe('missing_parameters');
     expect(body.missing).toEqual(['timeOfBirth']);
+  });
+});
+
+describe('GET /v1/kundli/houses/:house/insight', () => {
+  beforeEach(() => {
+    state.findUserByFirebaseUid.mockResolvedValue(
+      makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', unlockedHouses: [2] }),
+    );
+    state.getKundliForUser.mockResolvedValue({ status: 'ready', id: 'k1' });
+  });
+
+  it('returns 403 when the house is not unlocked', async () => {
+    const res = await createApp().request('/v1/kundli/houses/5/insight', { headers: AUTH });
+    expect(res.status).toBe(403);
+    expect(state.findHouseInsight).not.toHaveBeenCalled();
+  });
+
+  it('defaults to English and returns the dto as-is when no language is requested', async () => {
+    state.findHouseInsight.mockResolvedValueOnce({ status: 'ready' });
+    state.toHouseInsightDtoForLanguage.mockResolvedValueOnce({
+      status: 'ready',
+      text: 'You value stability.',
+      strengths: [],
+      weaknesses: [],
+    });
+
+    const res = await createApp().request('/v1/kundli/houses/2/insight', { headers: AUTH });
+
+    expect(res.status).toBe(200);
+    expect(state.toHouseInsightDtoForLanguage).toHaveBeenCalledWith({ status: 'ready' }, 'en');
+  });
+
+  it('passes the ?language query param through to the language-aware dto builder', async () => {
+    state.findHouseInsight.mockResolvedValueOnce({ status: 'ready' });
+    state.toHouseInsightDtoForLanguage.mockResolvedValueOnce({
+      status: 'ready',
+      text: 'आप स्थिरता को महत्व देते हैं।',
+      strengths: [],
+      weaknesses: [],
+    });
+
+    const res = await createApp().request('/v1/kundli/houses/2/insight?language=hi', {
+      headers: AUTH,
+    });
+
+    expect(res.status).toBe(200);
+    expect(state.toHouseInsightDtoForLanguage).toHaveBeenCalledWith({ status: 'ready' }, 'hi');
+    const body = (await res.json()) as { text: string };
+    expect(body.text).toBe('आप स्थिरता को महत्व देते हैं।');
+  });
+
+  it('returns 202 and fires generation on a cache miss, ignoring language', async () => {
+    state.findHouseInsight.mockResolvedValueOnce(undefined);
+
+    const res = await createApp().request('/v1/kundli/houses/2/insight?language=hi', {
+      headers: AUTH,
+    });
+
+    expect(res.status).toBe(202);
+    expect(state.requestHouseInsightGeneration).toHaveBeenCalledWith('id-1', 2, {
+      status: 'ready',
+      id: 'k1',
+    });
+    expect(state.toHouseInsightDtoForLanguage).not.toHaveBeenCalled();
   });
 });

@@ -69,12 +69,24 @@ purchasePlanRouter.openapi(analyzeRoute, async (c) => {
   return c.json(result, 200);
 });
 
+const LanguageQuerySchema = z.object({
+  language: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'language', in: 'query' },
+      example: 'hi',
+      description: 'Language code for translation',
+    }),
+});
+
 const listRoute = createRoute({
   method: 'get',
   path: '/purchase-plan',
   tags: ['PurchasePlan'],
   summary: "List the current user's recent purchase-plan analyses",
   security: [{ bearerAuth: [] }],
+  request: { query: LanguageQuerySchema },
   responses: {
     200: {
       description: 'Recent plans',
@@ -86,7 +98,8 @@ const listRoute = createRoute({
 
 purchasePlanRouter.openapi(listRoute, async (c) => {
   const user = c.get('user');
-  const plans = await getPlansForUser(user.id);
+  const { language } = c.req.valid('query');
+  const plans = await getPlansForUser(user.id, language);
   return c.json({ plans }, 200);
 });
 
@@ -96,7 +109,7 @@ const getOneRoute = createRoute({
   tags: ['PurchasePlan'],
   summary: 'Get a single purchase-plan analysis (poll target)',
   security: [{ bearerAuth: [] }],
-  request: { params: PlanIdParamSchema },
+  request: { params: PlanIdParamSchema, query: LanguageQuerySchema },
   responses: {
     200: {
       description: 'The plan',
@@ -110,7 +123,8 @@ const getOneRoute = createRoute({
 purchasePlanRouter.openapi(getOneRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const plan = await getPlanForUser(id, user.id);
+  const { language } = c.req.valid('query');
+  const plan = await getPlanForUser(id, user.id, language);
   return c.json(plan, 200);
 });
 

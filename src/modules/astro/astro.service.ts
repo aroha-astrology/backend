@@ -19,10 +19,11 @@ import {
   calculateFullPanchang,
   detectMangalDosha,
 } from '../../lib/astro-engine/index.js';
-import type { GroundingSource } from '../../lib/chat-grounding.js';
+import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
+import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import {
   PANCHANG_REFERENCE_POINTS,
   snapToReferencePoint,
@@ -493,13 +494,79 @@ export async function warmupPanchangCache(
 export async function moonSignForecast(
   signIndex: number,
   period: 'daily' | PeriodicPeriod = 'daily',
+  language: string = 'en',
 ) {
-  if (period === 'daily') return moonSignPrediction(signIndex);
-  return moonSignPeriodicPrediction(signIndex, period);
+  let result;
+  if (period === 'daily') result = await moonSignPrediction(signIndex);
+  else result = await moonSignPeriodicPrediction(signIndex, period);
+
+  if (language === 'en') return result;
+
+  // For periodic forecasts that might not have an `asOf` string directly on them,
+  // we use today's date for cache keying
+  const forDate = (result as { asOf?: string }).asOf ?? new Date().toISOString().split('T')[0]!;
+  return getCachedForecastTranslation(forDate, 'moon', signIndex, period, language, result);
 }
 
-export async function sunSignForecast(signIndex: number) {
-  return sunSignPrediction(signIndex);
+export async function sunSignForecast(signIndex: number, language: string = 'en') {
+  const result = await sunSignPrediction(signIndex);
+  if (language === 'en') return result;
+
+  const forDate = new Date().toISOString().split('T')[0]!;
+  return getCachedForecastTranslation(forDate, 'sun', signIndex, 'daily', language, result);
+}
+
+import { db } from '../../config/db.js';
+import { forecastTranslations } from '../../db/schema.js';
+import { and, eq } from 'drizzle-orm';
+import { translateForecastContent } from '../../lib/llm/horoscope.js';
+
+async function getCachedForecastTranslation<T>(
+  forDate: string,
+  signType: string,
+  signIndex: number,
+  period: string,
+  language: string,
+  englishContent: T,
+): Promise<T> {
+  const dateOnly = forDate.split('T')[0]!;
+  const existing = await db
+    .select({ data: forecastTranslations.data })
+    .from(forecastTranslations)
+    .where(
+      and(
+        eq(forecastTranslations.forDate, dateOnly),
+        eq(forecastTranslations.signType, signType),
+        eq(forecastTranslations.signIndex, signIndex),
+        eq(forecastTranslations.period, period),
+        eq(forecastTranslations.language, language),
+      ),
+    )
+    .limit(1)
+    .then((r) => r[0]);
+
+  if (existing) {
+    return existing.data as T;
+  }
+
+  try {
+    const translated = await translateForecastContent(englishContent, language);
+    await db
+      .insert(forecastTranslations)
+      .values({
+        forDate: dateOnly,
+        signType,
+        signIndex,
+        period,
+        language,
+        data: translated,
+      })
+      .onConflictDoNothing(); // If another request raced and inserted it, that's fine
+    return translated;
+  } catch (err) {
+    logger.warn({ err, signType, signIndex, language }, 'failed to translate forecast');
+    return englishContent; // fallback to English if translation fails
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -698,6 +765,7 @@ export async function* chatStream(
   incomingSummary: string | undefined,
   detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
+  locale: string = 'en',
 ): AsyncGenerator<ChatStreamEvent> {
   // Gate off-topic messages (coding help, trivia, etc.) before doing any
   // chart/grounding work — see checkTopicGate's own comment for why this
@@ -712,9 +780,10 @@ export async function* chatStream(
 
   // Best-effort: an unready/missing kundli just means no chart facts get
   // injected (buildGroundingFacts degrades gracefully) — chat still works.
-  const [kundli, user] = await Promise.all([
+  const [kundli, user, userFacts] = await Promise.all([
     getKundliForUser(userId).catch(() => undefined),
     findActiveUserById(userId).catch(() => undefined),
+    getUserFacts(userId).catch(() => []),
   ]);
   const groundingSource: GroundingSource = {
     chart: kundli?.status === 'ready' ? (kundli.chartData ?? null) : null,
@@ -732,11 +801,19 @@ export async function* chatStream(
   // Bound the prompt size regardless of how long this conversation has run —
   // keeps generation fast (timeout risk) and keeps the model from losing
   // track of what it already knows deep in a long raw transcript.
-  const { recentHistory, summary, changed } = await compactHistory(history, incomingSummary);
+  const { recentHistory, summary, changed, facts } = await compactHistory(history, incomingSummary);
   if (changed) {
     yield { type: 'summary', summary };
   }
+  if (facts.length > 0) {
+    // Fire-and-forget — a facts-save failure must never break the chat reply.
+    void saveUserFacts(userId, facts).catch(() => {});
+  }
   state.chatContext = { history: recentHistory, summary };
+
+  // Share-safe, non-identifying context (gender/relationship/interests) —
+  // does not touch the "never the name" rule, see buildProfileFacts's comment.
+  const profileFacts = user ? buildProfileFacts(user) : [];
 
   const tokenStream = scholarStream(
     state,
@@ -745,6 +822,9 @@ export async function* chatStream(
     birthTimeUnknown,
     detailLevel,
     signal,
+    locale,
+    userFacts,
+    profileFacts,
   );
   for await (const token of tokenStream) {
     yield { type: 'token', content: token };

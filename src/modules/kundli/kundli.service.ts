@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import {
   calculateChart,
   calculateVimshottariDasha,
+  calculateYoginiDasha,
   detectAllYogas,
   analyzeAllDoshas,
   calculateAshtakavarga,
@@ -18,13 +19,14 @@ import {
   markKundliReady,
 } from './kundli.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
-import { generateHouseInsight } from '../../lib/llm/house-insight.js';
+import { generateHouseInsight, translateHouseInsightContent } from '../../lib/llm/house-insight.js';
 import {
   STALE_GENERATING_MS as HOUSE_INSIGHT_STALE_GENERATING_MS,
   claimHouseInsightGeneration,
   findHouseInsight,
   markHouseInsightFailed,
   markHouseInsightReady,
+  saveHouseInsightTranslation,
 } from './house-insight.repo.js';
 import type { HouseInsightRow } from '../../db/schema.js';
 
@@ -250,6 +252,7 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
         inputs.tzOffset * 3_600_000,
     );
     const dasha = calculateVimshottariDasha(moon?.longitude ?? 0, birthDate);
+    const yogini = calculateYoginiDasha(moon?.longitude ?? 0, birthDate);
 
     // Best-effort enrichment: a failure in any single (unvetted) calc must NOT
     // fail the whole kundli — the chart + dasha are the required payload.
@@ -263,7 +266,7 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
       timeKnown: true,
       birthHash: inputs.birthHash,
       chartData: { ...chart },
-      dashaData: { vimshottari: dasha },
+      dashaData: { vimshottari: dasha, yogini },
       yogaData: yogas ? { yogas } : null,
       doshaData: doshas ? (doshas as unknown as Record<string, unknown>) : null,
       ashtakavargaData: ashtakavarga ? (ashtakavarga as unknown as Record<string, unknown>) : null,
@@ -282,6 +285,16 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
           logger.error({ err, userId: user.id, period }, 'post-kundli horoscope trigger failed');
         },
       );
+    }
+
+    const readyKundli = await findKundliByUserId(user.id);
+    if (readyKundli) {
+      const unlockedHouses = user.unlockedHouses ?? [1];
+      for (const house of unlockedHouses) {
+        void requestHouseInsightGeneration(user.id, house, readyKundli).catch((err: unknown) => {
+          logger.error({ err, userId: user.id, house }, 'post-kundli house insight trigger failed');
+        });
+      }
     }
   } catch (err) {
     logger.error({ err, userId: user.id }, 'kundli generation failed');
@@ -438,3 +451,37 @@ export function isHouseInsightStale(row: HouseInsightRow): boolean {
 }
 
 export { findHouseInsight };
+
+/**
+ * The house-insight dto in the requested language. English (or no language)
+ * returns the canonical row as-is. Otherwise checks the cached `translations`
+ * map first; on a miss, translates via a second LLM call and persists it for
+ * next time — same pattern as horoscope's translate-on-read. A translation
+ * failure logs and falls back to the untranslated dto rather than erroring
+ * the request.
+ */
+export async function toHouseInsightDtoForLanguage(
+  row: HouseInsightRow,
+  language: string,
+): Promise<HouseInsightReadyDto> {
+  const dto = toHouseInsightDto(row);
+  if (language === 'en') return dto;
+
+  const cached = row.translations?.[language];
+  if (cached) return { ...dto, ...cached };
+
+  try {
+    const translated = await translateHouseInsightContent(
+      { text: row.text ?? '', strengths: row.strengths ?? [], weaknesses: row.weaknesses ?? [] },
+      language,
+    );
+    await saveHouseInsightTranslation(row.userId, row.house, language, translated);
+    return { ...dto, ...translated };
+  } catch (err) {
+    logger.warn(
+      { err, userId: row.userId, house: row.house, language },
+      'failed to translate house insight',
+    );
+    return dto;
+  }
+}

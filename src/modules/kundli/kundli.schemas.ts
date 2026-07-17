@@ -55,6 +55,16 @@ export const HouseParamSchema = z.object({
     .openapi({ param: { name: 'house', in: 'path' } }),
 });
 
+/** Optional request-scoped language override — mirrors PurchasePlanModal's `language: i18n.language`, not the (currently unsynced) `user.contentLanguage` profile field. */
+export const HouseInsightQuerySchema = z.object({
+  language: z
+    .string()
+    .min(2)
+    .max(35)
+    .optional()
+    .openapi({ param: { name: 'language', in: 'query' } }),
+});
+
 /** 200 — the personalized per-house insight (generated lazily on first unlock). */
 export const HouseInsightSchema = z
   .object({

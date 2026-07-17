@@ -13,11 +13,14 @@ import { feedbackRouter } from './modules/feedback/feedback.routes.js';
 import { kundliRouter } from './modules/kundli/kundli.routes.js';
 import { horoscopeRouter } from './modules/horoscope/horoscope.routes.js';
 import { purchasePlanRouter } from './modules/purchase-plan/purchase-plan.routes.js';
+import { vastuRouter } from './modules/vastu/vastu.routes.js';
+import { gemstoneRouter } from './modules/gemstone/gemstone.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { corsMiddleware } from './middleware/cors.js';
+import { isProduction } from './config/env.js';
 
 export function createApp(): OpenAPIHono {
   const app = new OpenAPIHono();
@@ -41,32 +44,39 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', kundliRouter);
   app.route('/v1', horoscopeRouter);
   app.route('/v1', purchasePlanRouter);
+  app.route('/v1', vastuRouter);
+  app.route('/v1', gemstoneRouter);
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);
   app.route('/internal', telegramBotRouter);
 
-  app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
-    type: 'http',
-    scheme: 'bearer',
-    bearerFormat: 'Firebase ID token',
-  });
+  // API docs expose the full route surface (including cron/Telegram internal
+  // route shapes) — only serve them outside production. A production request
+  // for either path falls through to the normal 404 handler.
+  if (!isProduction) {
+    app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'Firebase ID token',
+    });
 
-  app.doc('/openapi.json', {
-    openapi: '3.0.0',
-    info: {
-      title: 'Aroha Astrology Backend',
-      version: '0.1.0',
-      description:
-        'HTTP API for the Aroha Astrology client. Authentication is via Firebase Auth — pass the Firebase ID token as `Authorization: Bearer <token>`.',
-    },
-    servers: [
-      { url: 'http://13.232.179.137:3000', description: 'EC2 (Mumbai) — staging' },
-      { url: 'http://localhost:3000', description: 'Local development' },
-    ],
-  });
+    app.doc('/openapi.json', {
+      openapi: '3.0.0',
+      info: {
+        title: 'Aroha Astrology Backend',
+        version: '0.1.0',
+        description:
+          'HTTP API for the Aroha Astrology client. Authentication is via Firebase Auth — pass the Firebase ID token as `Authorization: Bearer <token>`.',
+      },
+      servers: [
+        { url: 'http://13.232.179.137:3000', description: 'EC2 (Mumbai) — staging' },
+        { url: 'http://localhost:3000', description: 'Local development' },
+      ],
+    });
 
-  app.get('/docs', swaggerUI({ url: '/openapi.json' }));
+    app.get('/docs', swaggerUI({ url: '/openapi.json' }));
+  }
 
   return app;
 }

@@ -178,7 +178,10 @@ async function runHoroscopeGeneration(
   claimedAt: Date,
   retryForever: boolean,
 ): Promise<'generated' | 'failed'> {
+  let attempt = 0;
+  const MAX_RETRIES = 3;
   for (;;) {
+    attempt++;
     try {
       const kundli = await findKundliByUserId(user.id);
       const context = buildHoroscopeContext(user, kundli, forDate, period);
@@ -202,7 +205,7 @@ async function runHoroscopeGeneration(
         { err, userId: user.id, period, periodKey },
         'horoscope generation attempt failed',
       );
-      if (!retryForever) {
+      if (!retryForever || attempt >= MAX_RETRIES) {
         await markHoroscopeFailed(
           user.id,
           period,

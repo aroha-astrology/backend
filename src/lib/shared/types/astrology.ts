@@ -159,6 +159,7 @@ export interface DashaPeriod {
   isActive: boolean;
   level: 'mahadasha' | 'antardasha' | 'pratyantardasha' | 'sookshma' | 'prana';
   subPeriods: DashaPeriod[];
+  deity?: string;
 }
 
 export interface VimshottariDasha {

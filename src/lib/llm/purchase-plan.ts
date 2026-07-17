@@ -1,6 +1,7 @@
 import { generate } from './gemini-client.js';
 import { PURCHASE_PLAN_PROFILE } from '../../config/llm.js';
 import type { PanchangData } from '@aroha-astrology/shared';
+import { mergeTranslatedContent } from './translation-merge.js';
 
 export interface PurchasePlanInput {
   category: 'vehicle' | 'home' | 'commercial' | 'other';
@@ -175,4 +176,35 @@ export async function generatePurchasePlanAnalysis(
     timeoutMs: 180_000,
   });
   return parsePurchasePlanResponse(raw);
+}
+
+export function buildPurchasePlanTranslationPrompt(
+  original: Record<string, unknown>,
+  targetLanguage: string,
+): string {
+  return `Translate the following Vedic astrology purchase plan analysis into the language "${targetLanguage}".
+Keep the exact same JSON structure and keys. ONLY translate the string values, not the keys. Preserve structure/keys.
+
+Original Content:
+${JSON.stringify(original, null, 2)}`;
+}
+
+export async function translatePurchasePlanContent(
+  original: Record<string, unknown>,
+  targetLanguage: string,
+): Promise<Record<string, unknown>> {
+  const raw = await generate({
+    profile: PURCHASE_PLAN_PROFILE,
+    messages: [
+      { role: 'user', content: buildPurchasePlanTranslationPrompt(original, targetLanguage) },
+    ],
+  });
+
+  const { analysis, parseError } = parsePurchasePlanResponse(raw);
+  if (parseError) {
+    throw new Error(
+      `purchase plan translation returned unparseable JSON (target=${targetLanguage})`,
+    );
+  }
+  return mergeTranslatedContent(original, analysis) as Record<string, unknown>;
 }

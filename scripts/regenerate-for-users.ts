@@ -7,9 +7,7 @@
  *   npx ts-node scripts/regenerate-for-users.ts +919535960988 daily tomorrow
  */
 
-import { db } from '../src/config/db.js';
-import { users } from '../src/db/schema.js';
-import { inArray } from 'drizzle-orm';
+import { findUserByPhoneE164 } from '../src/modules/users/users.repo.js';
 import { requestHoroscopeGeneration } from '../src/modules/horoscope/horoscope.service.js';
 import type { HoroscopePeriod } from '../src/modules/horoscope/horoscope.schemas.js';
 
@@ -31,8 +29,12 @@ async function regenerateForUsers(phoneNumbers: string[], periods?: HoroscopePer
 
   const periodsToGenerate = periods?.length ? periods : [...HOROSCOPE_PERIODS];
 
-  // Fetch users by phone numbers
-  const userRows = await db.select().from(users).where(inArray(users.phoneE164, phoneNumbers));
+  // Fetch users by phone numbers — phoneE164 is encrypted at rest, so this
+  // goes through the repo's hash-index lookup one number at a time rather
+  // than a plaintext inArray() match.
+  const userRows = (await Promise.all(phoneNumbers.map(findUserByPhoneE164))).filter(
+    (u): u is NonNullable<typeof u> => u != null,
+  );
 
   if (userRows.length === 0) {
     console.error(`❌ No users found for: ${phoneNumbers.join(', ')}`);

@@ -1,13 +1,16 @@
 import 'dotenv/config';
 import { db } from '../config/db.js';
 import { users } from '../db/schema.js';
+import { decryptUserRow } from '../modules/users/users.repo.js';
 import {
   requestHoroscopeGeneration,
   HOROSCOPE_PERIODS,
 } from '../modules/horoscope/horoscope.service.js';
 
 async function main() {
-  const allUsers = await db.select().from(users);
+  // dateOfBirth/timeOfBirth/placeOfBirth are encrypted at rest — decrypt
+  // before generating, same as the daily-horoscope cron path.
+  const allUsers = (await db.select().from(users)).map(decryptUserRow);
   console.log(`Found ${allUsers.length} users. Regenerating horoscopes...`);
 
   for (const user of allUsers) {

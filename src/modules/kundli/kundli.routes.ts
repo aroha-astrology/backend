@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { logger } from '../../lib/logger.js';
 import {
+  HouseInsightQuerySchema,
   HouseInsightSchema,
   HouseInsightStatusSchema,
   HouseParamSchema,
@@ -19,7 +20,7 @@ import {
   regenerateKundli,
   requestHouseInsightGeneration,
   requestKundliGeneration,
-  toHouseInsightDto,
+  toHouseInsightDtoForLanguage,
   toKundliDto,
   type KundliRequiredField,
 } from './kundli.service.js';
@@ -223,7 +224,7 @@ const getHouseInsightRoute = createRoute({
     '(poll again — generated lazily the first time a house is viewed, then cached ' +
     "forever since the natal chart never changes), or 403 if the house isn't unlocked.",
   security: [{ bearerAuth: [] }],
-  request: { params: HouseParamSchema },
+  request: { params: HouseParamSchema, query: HouseInsightQuerySchema },
   responses: {
     200: {
       description: 'House insight',
@@ -241,6 +242,7 @@ const getHouseInsightRoute = createRoute({
 kundliRouter.openapi(getHouseInsightRoute, async (c) => {
   const user = c.get('user');
   const { house } = c.req.valid('param');
+  const { language } = c.req.valid('query');
 
   const unlockedHouses = user.unlockedHouses ?? [];
   if (!unlockedHouses.includes(house)) {
@@ -258,7 +260,7 @@ kundliRouter.openapi(getHouseInsightRoute, async (c) => {
   const existing = await findHouseInsight(user.id, house);
 
   if (existing?.status === 'ready') {
-    return c.json(toHouseInsightDto(existing), 200);
+    return c.json(await toHouseInsightDtoForLanguage(existing, language || 'en'), 200);
   }
 
   if (existing?.status === 'generating' && !isHouseInsightStale(existing)) {
