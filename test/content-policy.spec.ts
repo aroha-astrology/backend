@@ -46,6 +46,18 @@ describe('classifyUserMessage — death topic blocking', () => {
     expect(r.blocked).toBe(true);
     expect(r.cannedResponse).toContain('क्षमा');
   });
+
+  it('localizes the canned response to Gujarati when language=gu', () => {
+    const r = classifyUserMessage('When will I die?', 'gu');
+    expect(r.blocked).toBe(true);
+    expect(r.cannedResponse).toContain('માફ કરશો');
+  });
+
+  it('falls back to English for an unrecognized language code', () => {
+    const r = classifyUserMessage('When will I die?', 'kn');
+    expect(r.blocked).toBe(true);
+    expect(r.cannedResponse).toContain("I'm so sorry");
+  });
 });
 
 describe('classifyUserMessage — suicide topic', () => {
@@ -70,6 +82,13 @@ describe('classifyUserMessage — suicide topic', () => {
   it('prefers suicide over death when both regexes would match', () => {
     const r = classifyUserMessage('I want to die, when will I die', 'en');
     expect(r.topic).toBe('suicide');
+  });
+
+  it('localizes the suicide helpline response to Gujarati when language=gu', () => {
+    const r = classifyUserMessage('I want to kill myself', 'gu');
+    expect(r.blocked).toBe(true);
+    expect(r.cannedResponse).toMatch(/iCall|9152987821|Vandrevala|1860-2662-345/);
+    expect(r.cannedResponse).toContain('વંદ્રેવાલા');
   });
 });
 
