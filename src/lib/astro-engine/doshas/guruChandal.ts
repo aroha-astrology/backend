@@ -22,6 +22,7 @@ export function detectGuruChandalDosha(chartData: ChartData): GuruChandalDosha {
       present: false,
       house: 0,
       severity: 'none',
+      description: '',
     };
   }
 
@@ -38,10 +39,15 @@ export function detectGuruChandalDosha(chartData: ChartData): GuruChandalDosha {
     severity = conjunctRahu ? 'severe' : 'moderate';
   }
 
+  const shadowPlanet = conjunctRahu ? 'Rahu' : 'Ketu';
+  const description = present
+    ? `Jupiter is conjunct ${shadowPlanet} in house ${jupiterHouse}, forming Guru Chandal Dosha — this can cloud Jupiter's wisdom and guidance with ${shadowPlanet}'s illusion or detachment in that house's life area.`
+    : '';
+
   return {
     present,
     house: present ? jupiterHouse : 0,
     severity,
+    description,
   };
 }
-

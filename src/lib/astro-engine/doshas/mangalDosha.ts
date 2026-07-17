@@ -31,7 +31,7 @@ function getPlanetPosition(chartData: ChartData, planet: Planet) {
 function getPlanetsInHouseFromSign(
   chartData: ChartData,
   referenceSignIndex: number,
-  house: number
+  house: number,
 ): Planet[] {
   return chartData.planets
     .filter((p) => getHouseFromSign(p.signIndex, referenceSignIndex) === house)
@@ -41,7 +41,7 @@ function getPlanetsInHouseFromSign(
 function isAspectedBy(
   chartData: ChartData,
   targetSignIndex: number,
-  aspectingPlanet: Planet
+  aspectingPlanet: Planet,
 ): boolean {
   const aspector = getPlanetPosition(chartData, aspectingPlanet);
   if (!aspector) return false;
@@ -86,10 +86,10 @@ function checkCancellations(chartData: ChartData): string[] {
 
   // 3. Mars conjunct (same house/sign) a benefic (Jupiter or Venus)
   const planetsInMarsSign = chartData.planets.filter(
-    (p) => p.signIndex === marsSignIndex && p.planet !== 'Mars'
+    (p) => p.signIndex === marsSignIndex && p.planet !== 'Mars',
   );
   const beneficConjunctions = planetsInMarsSign.filter(
-    (p) => p.planet === 'Jupiter' || p.planet === 'Venus'
+    (p) => p.planet === 'Jupiter' || p.planet === 'Venus',
   );
   if (beneficConjunctions.length > 0) {
     const names = beneficConjunctions.map((p) => p.planet).join(', ');
@@ -121,7 +121,7 @@ function checkCancellations(chartData: ChartData): string[] {
     const marsHouseFromJupiter = getHouseFromSign(marsSignIndex, jupiter.signIndex);
     if ([1, 4, 7, 10].includes(marsHouseFromJupiter)) {
       cancellations.push(
-        `Mars in Kendra (house ${marsHouseFromJupiter}) from Jupiter - cancellation applies`
+        `Mars in Kendra (house ${marsHouseFromJupiter}) from Jupiter - cancellation applies`,
       );
     }
   }
@@ -141,6 +141,33 @@ function checkCancellations(chartData: ChartData): string[] {
   return cancellations;
 }
 
+function buildDescription(
+  present: boolean,
+  type: MangalDosha['type'],
+  marsHouseFromLagna: number,
+  fromLagna: boolean,
+  fromMoon: boolean,
+  fromVenus: boolean,
+  cancellations: string[],
+): string {
+  if (!present) return '';
+
+  const refs = [fromLagna && 'Lagna', fromMoon && 'Moon', fromVenus && 'Venus'].filter(
+    Boolean,
+  ) as string[];
+  const refText = refs.join(', ');
+
+  if (type === 'cancelled') {
+    const reason =
+      cancellations[0]?.replace(/ - cancellation applies$/, '') ?? 'a classical exception';
+    return `Mars sits in house ${marsHouseFromLagna} from your ${refText}, which would normally form Mangal Dosha, but ${reason} — a classical cancellation that substantially neutralizes its effect.`;
+  }
+  if (type === 'full') {
+    return `Mars afflicts all three reference points (Lagna, Moon, and Venus) from house ${marsHouseFromLagna}, forming a full Mangal Dosha with no cancellation — traditionally significant for marriage timing and marital harmony.`;
+  }
+  return `Mars in house ${marsHouseFromLagna} afflicts your ${refText}, forming a partial Mangal Dosha (${refs.length} of 3 reference points affected).`;
+}
+
 export function detectMangalDosha(chartData: ChartData): MangalDosha {
   const mars = getPlanetPosition(chartData, 'Mars');
 
@@ -157,6 +184,7 @@ export function detectMangalDosha(chartData: ChartData): MangalDosha {
       marsHouseFromVenus: 0,
       cancellations: [],
       type: 'none',
+      description: '',
     };
   }
 
@@ -206,6 +234,16 @@ export function detectMangalDosha(chartData: ChartData): MangalDosha {
     type = 'partial';
   }
 
+  const description = buildDescription(
+    present,
+    type,
+    marsHouseFromLagna,
+    fromLagna,
+    fromMoon,
+    fromVenus,
+    cancellations,
+  );
+
   return {
     present,
     severity,
@@ -218,6 +256,6 @@ export function detectMangalDosha(chartData: ChartData): MangalDosha {
     marsHouseFromVenus,
     cancellations,
     type,
+    description,
   };
 }
-
