@@ -432,7 +432,7 @@ const VARGA_LABELS: Record<string, string> = {
   D21: 'general/auxiliary — classical domain not confidently sourced',
   D24: 'education, learning, higher intelligence',
   D27: 'stamina, general strength, resilience',
-  D30: 'hardships, health vulnerabilities, misfortune',
+  D30: 'hardships, health vulnerabilities, misfortune, hidden vices and boundary-testing tendencies',
   D40: 'inherited patterns from the maternal line',
   D45: 'character, ethics, paternal-line inheritance',
   D60: 'overall karmic destiny — the most fine-grained varga, time-sensitive',
