@@ -5,7 +5,7 @@ import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
-import { deductCredits } from '../users/users.repo.js';
+import { deductCredits, addCredits } from '../users/users.repo.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
 import { incrementFeedbackCounter, saveChatFeedbackReport } from './feedback.repo.js';
@@ -451,9 +451,10 @@ astroRouter.openapi(chatRoute, async (c) => {
 
   // Charge atomically before any generation starts — same balance-check-and-
   // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
-  // sends can't both succeed against a balance that only covers one. Not
-  // refunded if generation later fails (same precedent as house unlocks:
-  // the charge is for asking, not contingent on the LLM call succeeding).
+  // sends can't both succeed against a balance that only covers one.
+  // Refunded below (same fire-and-forget addCredits pattern as
+  // vastu.service.ts) if generation throws or comes back with no content —
+  // the user shouldn't pay for a question that got no answer.
   const charged = await deductCredits(user.id, CHAT_MESSAGE_COST);
   if (!charged) {
     throw Errors.conflict('Not enough credits to ask a question');
@@ -491,6 +492,13 @@ astroRouter.openapi(chatRoute, async (c) => {
         }
       }
       if (!signal.aborted && !stream.aborted) {
+        if (!fullContent.trim()) {
+          // Generation "succeeded" with nothing to show (e.g. hit the
+          // token ceiling before any content could be flushed) — don't
+          // charge for a question that got no answer.
+          await addCredits(user.id, CHAT_MESSAGE_COST).catch(() => {});
+        }
+
         // Save history
         let sessionId = body.sessionId;
         const newHistory = [
@@ -521,6 +529,8 @@ astroRouter.openapi(chatRoute, async (c) => {
       // A failed stream MUST be distinguishable from a completed one — always
       // emit a terminal event (and never leak internals to the client).
       logger.error({ err, userId: user.id }, 'chat stream failed');
+      // Don't charge for a question the LLM never actually answered.
+      await addCredits(user.id, CHAT_MESSAGE_COST).catch(() => {});
       if (!signal.aborted && !stream.aborted) {
         await stream.writeSSE({
           event: 'error',
