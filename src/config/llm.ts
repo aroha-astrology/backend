@@ -49,16 +49,18 @@ export const FORECAST_PROFILE: GenerationProfile = {
 // follow-up line (see scholar.ts OUTPUT_STYLE) — but Gemini doesn't reliably
 // hit that on open-ended questions (observed: multi-section 400+ word
 // replies in Direct mode despite the prompt asking for 2-4 sentences).
-// scholar.ts's cleanDirectModeReply() now generates non-streaming and trims
-// the result to the target length itself (flattening any markdown structure
-// into prose first, so real content isn't lost to a mid-list cutoff), so
-// this ceiling only needs to comfortably fit the model's *raw*, possibly
-// disobedient output before cleanup — not the already-short target.
+// scholar.ts's streamDirectModeParagraph() streams the reply and cleans +
+// trims it unit-by-unit as it arrives (flattening any markdown structure into
+// prose, stopping generation at a sentence boundary once the word budget is
+// crossed), so this ceiling only needs to comfortably fit the model's *raw*,
+// possibly disobedient output before that cleanup — not the already-short
+// target — and mainly bounds worst-case latency/cost if the budget-based
+// early stop is somehow never reached.
 export const CHAT_PROFILE: GenerationProfile = {
   name: 'chat',
   temperature: 0.7,
   jsonMode: false,
-  stream: false,
+  stream: true,
   maxTokens: 700,
 };
 

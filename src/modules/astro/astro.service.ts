@@ -820,6 +820,7 @@ export async function* chatStream(
     signal,
     locale,
     userFacts,
+    user?.displayName ?? undefined,
   );
   for await (const token of tokenStream) {
     yield { type: 'token', content: token };
