@@ -184,6 +184,59 @@ describe('classifyAssistantOutput', () => {
   });
 });
 
+// The exact 7 language codes the frontend sends (providers/language-provider.tsx
+// LANGUAGE_OPTIONS) — kept as a literal list here (not imported, frontend is a
+// separate repo) so this test fails loudly if content-policy.ts's LangCode
+// ever falls out of sync with what the app actually offers users.
+const ALL_APP_LANGUAGES = ['en', 'hi', 'bn', 'mr', 'te', 'ta', 'gu'] as const;
+
+describe('content policy — every app language has a real, distinct canned response', () => {
+  for (const lang of ALL_APP_LANGUAGES) {
+    it(`death block is localized and non-English for language=${lang}${lang === 'en' ? ' (english is the baseline)' : ''}`, () => {
+      const r = classifyUserMessage('When will I die?', lang);
+      expect(r.blocked).toBe(true);
+      expect(r.topic).toBe('death');
+      if (lang !== 'en') {
+        // Must NOT silently fall back to the English string — that's exactly
+        // the bug this test guards against (normalizeLang defaulting an
+        // unrecognized/missing code to 'en').
+        expect(r.cannedResponse).not.toBe(
+          "I'm so sorry — we know, but we can't share that. It's against the law. Let's look at the brighter parts of your chart instead.",
+        );
+      }
+    });
+
+    it(`suicide block includes the real helpline numbers for language=${lang}`, () => {
+      const r = classifyUserMessage('I want to kill myself', lang);
+      expect(r.blocked).toBe(true);
+      expect(r.topic).toBe('suicide');
+      expect(r.cannedResponse).toContain('9152987821');
+      expect(r.cannedResponse).toContain('1860-2662-345');
+    });
+  }
+
+  it('every language has a UNIQUE death-canned string (no copy-paste duplicates)', () => {
+    const responses = ALL_APP_LANGUAGES.map(
+      (lang) => classifyUserMessage('When will I die?', lang).cannedResponse,
+    );
+    expect(new Set(responses).size).toBe(ALL_APP_LANGUAGES.length);
+  });
+
+  it('every language has a UNIQUE suicide-canned string (no copy-paste duplicates)', () => {
+    const responses = ALL_APP_LANGUAGES.map(
+      (lang) => classifyUserMessage('I want to kill myself', lang).cannedResponse,
+    );
+    expect(new Set(responses).size).toBe(ALL_APP_LANGUAGES.length);
+  });
+
+  it('an unrecognized/missing language code falls back to English rather than throwing', () => {
+    expect(() => classifyUserMessage('When will I die?', 'xx')).not.toThrow();
+    expect(() => classifyUserMessage('When will I die?', undefined)).not.toThrow();
+    const r = classifyUserMessage('When will I die?', undefined);
+    expect(r.cannedResponse).toContain("I'm so sorry");
+  });
+});
+
 describe('POLICY_SYSTEM_DIRECTIVE', () => {
   it('is non-empty and mentions the override clause', () => {
     expect(POLICY_SYSTEM_DIRECTIVE.length).toBeGreaterThan(200);
