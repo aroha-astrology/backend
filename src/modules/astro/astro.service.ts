@@ -759,6 +759,33 @@ export type ChatStreamEvent =
   | { type: 'token'; content: string }
   | { type: 'summary'; summary: string };
 
+/**
+ * Panchang facts for chat grounding — this is the SAME `getPanchang` used by
+ * the public `/panchang` endpoint above, so results are already cache-shared
+ * across every user at this location today. Previously computed nowhere in
+ * the chat path (scholar.ts's SYSTEM_ROLE has never had any muhurta/timing
+ * data to cite), so "is today good for X" / "best date for a wedding"
+ * questions had nothing to reason from. Best-effort: a Panchang failure
+ * (e.g. no birth place on file) must never break the chat reply.
+ */
+async function buildChatPanchangFacts(lat: number, lon: number): Promise<string[]> {
+  const panchang = await getPanchang(lat, lon);
+  const goodChoghadiya = (panchang.choghadiya?.day ?? [])
+    .filter((c) => c.type === 'good')
+    .map((c) => `${c.name} (${c.startTime}-${c.endTime})`)
+    .join(', ');
+
+  const facts = [
+    `Today's Panchang (${panchang.date}, ${panchang.vara}): Tithi ${panchang.tithi.name} (${panchang.tithi.paksha} Paksha, ${panchang.tithi.isAuspicious ? 'auspicious' : 'not traditionally auspicious'}), Nakshatra ${panchang.nakshatra.name}, Yoga ${panchang.yoga.name}, Karana ${panchang.karana.name}`,
+    `Rahu Kaal today (avoid starting anything important): ${panchang.rahuKaal.start}-${panchang.rahuKaal.end}`,
+    `Abhijit Muhurta today (traditionally auspicious for starting things): ${panchang.abhijitMuhurta.start}-${panchang.abhijitMuhurta.end}`,
+  ];
+  if (goodChoghadiya) {
+    facts.push(`Favorable Choghadiya windows today (daytime): ${goodChoghadiya}`);
+  }
+  return facts;
+}
+
 export async function* chatStream(
   userId: string,
   message: string,
@@ -829,6 +856,17 @@ export async function* chatStream(
   // does not touch the "never the name" rule, see buildProfileFacts's comment.
   const profileFacts = user ? buildProfileFacts(user) : [];
 
+  // Today's Panchang at the user's birth location — best-effort, never blocks
+  // the reply (a missing place of birth, or the panchang engine throwing,
+  // just means no muhurta facts get injected, same degrade-gracefully
+  // contract as groundingSource above).
+  const place = user?.placeOfBirth;
+  const panchangFacts =
+    place?.lat != null && place?.lon != null
+      ? await buildChatPanchangFacts(place.lat, place.lon).catch(() => [])
+      : [];
+  const extraFacts = [...profileFacts, ...panchangFacts];
+
   const tokenStream = scholarStream(
     state,
     message,
@@ -838,7 +876,7 @@ export async function* chatStream(
     signal,
     locale,
     userFacts,
-    profileFacts,
+    extraFacts,
   );
 
   // Output-side backstop for the death/self-harm policy: the input filter
