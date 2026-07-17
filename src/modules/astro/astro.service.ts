@@ -21,6 +21,7 @@ import {
 } from '../../lib/astro-engine/index.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
+import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
@@ -767,6 +768,19 @@ export async function* chatStream(
   signal?: AbortSignal,
   locale: string = 'en',
 ): AsyncGenerator<ChatStreamEvent> {
+  // Death/self-harm policy gate — runs before checkTopicGate (and before any
+  // chart/grounding work) so a self-harm message never reaches the topic
+  // classifier or the LLM at all. This is the primary defense; see the
+  // output-side classifyAssistantOutput check below the generation loop for
+  // the backstop. SYSTEM_ROLE (scholar.ts) claims "a separate policy handles"
+  // death/self-harm — this is that policy; previously nothing implemented it
+  // on this path.
+  const inputPolicy = classifyUserMessage(message, locale);
+  if (inputPolicy.blocked) {
+    yield { type: 'token', content: inputPolicy.cannedResponse };
+    return;
+  }
+
   // Gate off-topic messages (coding help, trivia, etc.) before doing any
   // chart/grounding work — see checkTopicGate's own comment for why this
   // needs a dedicated classification call rather than a persona prompt rule.
@@ -826,7 +840,24 @@ export async function* chatStream(
     userFacts,
     profileFacts,
   );
+
+  // Output-side backstop for the death/self-harm policy: the input filter
+  // above is the primary defense, but the LLM can still occasionally produce
+  // a violation unprompted (e.g. volunteering a "you will die" framing inside
+  // an otherwise benign accident/health answer). Check the accumulated reply
+  // text BEFORE each delta is emitted — not after the stream ends — so a
+  // violation that only completes mid-reply is caught and swapped for the
+  // canned response before that delta ever reaches the client, without
+  // sacrificing token-by-token streaming for the rest of the reply.
+  let fullText = '';
   for await (const token of tokenStream) {
+    const tentative = fullText + token;
+    const outputPolicy = classifyAssistantOutput(tentative, locale);
+    if (outputPolicy.blocked) {
+      yield { type: 'token', content: outputPolicy.cannedResponse };
+      return;
+    }
+    fullText = tentative;
     yield { type: 'token', content: token };
   }
 }

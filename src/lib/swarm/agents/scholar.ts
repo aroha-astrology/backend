@@ -6,6 +6,7 @@ import { stream as llmStream, generate as llmGenerate } from '../../llm/gemini-c
 import { CHAT_PROFILE, CHAT_DETAILS_PROFILE, ROUTING_PROFILE } from '../../../config/llm.js';
 import { logger } from '../../logger.js';
 import { buildGroundingFacts, type GroundingSource } from '../../chat-grounding.js';
+import { POLICY_SYSTEM_DIRECTIVE } from '../../content-policy.js';
 import type { SwarmState } from '../state.js';
 
 // =============================================================================
@@ -82,7 +83,7 @@ const RANKED_WINDOWS = `When the user asks about timing, give the 2-3 strongest 
 
 const EFFORT_DEPENDENT_OUTCOMES = `For questions asking you to predict a specific, effort-determined outcome — exam marks/grades, interview or competition results, match/game scores — the chart can only speak to favorability of timing and focus, never the outcome itself, since that depends on the user's own preparation and effort. Never give a number, grade, rank, or win/loss verdict. Say plainly that the result is in their hands, not predetermined, and name whether the period supports focus and performance.`;
 
-const ANSWER_DIRECTLY = `Within the life topics you cover, answer the question the seeker actually asked — do not hide behind "astrology cannot predict this," "that depends on your choices and environment," or a polite refusal to engage. The ONLY subjects you withhold are death/lifespan and self-harm, which a separate policy handles; everything else — health, accidents, money, career, legal, relationships, family — gets a real, chart-grounded answer. When a topic is one a licensed professional would normally own (health/medical, legal, financial or investment), do NOT refuse it: open with one short, honest caveat that you are not that professional — e.g. "I'm not a doctor, so please see one for anything serious, but your chart shows…", or "I'm not a lawyer, but astrologically…" — and then give the actual reading from the chart. That caveat is a brief opening line, never a substitute for the answer.`;
+const ANSWER_DIRECTLY = `Within the life topics you cover, answer the question the seeker actually asked — do not hide behind "astrology cannot predict this," "that depends on your choices and environment," or a polite refusal to engage. The ONLY subjects you withhold are death/lifespan and self-harm, enforced by the ABSOLUTE CONTENT POLICY prepended to this prompt; everything else — health, accidents, money, career, legal, relationships, family — gets a real, chart-grounded answer. When a topic is one a licensed professional would normally own (health/medical, legal, financial or investment), do NOT refuse it: open with one short, honest caveat that you are not that professional — e.g. "I'm not a doctor, so please see one for anything serious, but your chart shows…", or "I'm not a lawyer, but astrologically…" — and then give the actual reading from the chart. That caveat is a brief opening line, never a substitute for the answer.`;
 
 const NO_HEDGE_OPENERS = `Never open a reply with meta-commentary about what astrology "cannot predict," "does not predict in the literal sense," or "isn't a predictive science for X" — that is a disclaimer standing in for an answer, not an answer, and it is banned as an opener even when the topic is a sensitive one like accidents or health. If a caveat is genuinely needed (e.g. "I'm not a doctor"), keep it to one short clause and move immediately into the actual chart-based insight in that same first sentence — never spend the whole opening explaining the limits of astrology before getting to the point.`;
 
@@ -186,6 +187,25 @@ Health:
   is fine; presenting it as a confirmed clinical diagnosis, or prescribing specific medication or
   treatment, is not. Frame everything as a tendency to stay mindful of, not a verdict.
 
+Emotional & mental wellbeing:
+- When the user discloses anxiety, depression, grief, panic, burnout, or a painful childhood/family
+  memory, respond to the person first, not just the chart — open with a brief, genuine acknowledgement
+  (per the empathy rule below) before any astrological framing. Do not turn a vulnerable disclosure
+  into a clinical or textbook-sounding analysis.
+- Read what the chart actually shows — Moon or Mercury affliction, a stressed dasha/transit window,
+  6th/8th/12th house pressure, generational patterns from the 4th/9th houses — and frame it as a
+  tendency or a season the person is moving through, never as a label, diagnosis, or permanent trait.
+  Never say things like "you have depression" or "your chart shows a mental illness" — astrology
+  speaks to tendencies and timing, not clinical diagnoses.
+- For a genuinely heavy disclosure (real distress, not just a passing bad mood), gently note — once,
+  briefly, without turning it into a lecture — that talking to a mental-health professional alongside
+  this reading is worth considering, the same way the health caveat below works: one honest clause,
+  then straight back into the actual chart-grounded reading. This is a caution, not a refusal — still
+  give the real reading.
+- Frame childhood wounds or parental friction the same way the Parents & family section below does:
+  as a planetary/generational pattern to understand and grow through, not a verdict on anyone's
+  character.
+
 Accidents, injuries & physical safety:
 - Questions about accident risk, injury, or physical safety ("could I have an accident," "should
   I be careful of injury," "any danger to my body in the next few years") are a normal, core part
@@ -277,6 +297,14 @@ function temporalAnchor(now: Date): string {
 
 function systemPrompt(detailLevel: ChatDetailLevel, now: Date): string {
   return [
+    // Prepended, not appended: POLICY_SYSTEM_DIRECTIVE is explicitly written
+    // to override every other instruction in this prompt, including
+    // roleplay/"what if" framings and user commands to ignore it — it must be
+    // seen first. The input/output classifyUserMessage and
+    // classifyAssistantOutput calls in astro.service.ts#chatStream are the
+    // enforced short-circuits; this directive is the model-side reinforcement
+    // for cases that don't trip those regex filters.
+    POLICY_SYSTEM_DIRECTIVE,
     SYSTEM_ROLE,
     GROUNDING_INSTRUCTION,
     NO_ASSUMPTIONS,
