@@ -50,4 +50,41 @@ describe('extractNextUnit / stripUnitMarkers — direct-mode streaming boundarie
     const next = extractNextUnit('1. First item continues');
     expect(next).toBeNull();
   });
+
+  it('strips a Bengali-numeral list marker ("২।") instead of flushing it as a bare fake sentence', () => {
+    // Reproduces the recurrence reported after the danda fix shipped: Gemini
+    // wrote a Bengali numbered list using native digits ("২।" = "2."), not
+    // ASCII ones. The digit-guard used to be ASCII-only (\d), so it failed to
+    // recognize "২" as a list-marker-in-progress and flushed "২।" on its own
+    // — rendering literally in the chat bubble and burning a word-budget slot
+    // on a fake one-word "sentence," which could cut the real item text that
+    // should follow it.
+    const { units, leftover } = drain(
+      'বিবাহের সম্ভাবনা যথেষ্ট বেশি। ২। শনির প্রভাব থাকতে পারে। বাকি',
+    );
+    expect(units).toEqual(['বিবাহের সম্ভাবনা যথেষ্ট বেশি।', 'শনির প্রভাব থাকতে পারে।']);
+    expect(units.some((u) => u === '২।' || u.startsWith('২।'))).toBe(false);
+    expect(leftover).toBe('বাকি');
+  });
+
+  it('still guards against mistaking a bare native-digit list marker ("২।") for a real sentence end', () => {
+    const next = extractNextUnit('২। প্রথম পয়েন্ট চলছে');
+    expect(next).toBeNull();
+  });
+
+  it('same fix also covers Devanagari numerals (Hindi/Marathi "२।") — not Bengali-specific', () => {
+    const { units, leftover } = drain(
+      'विवाह की संभावना अधिक है। २। शनि का प्रभाव हो सकता है। बाकी',
+    );
+    expect(units).toEqual(['विवाह की संभावना अधिक है।', 'शनि का प्रभाव हो सकता है।']);
+    expect(units.some((u) => u === '२।' || u.startsWith('२।'))).toBe(false);
+    expect(leftover).toBe('बाकी');
+  });
+
+  it('same fix also covers Gujarati numerals ("૨।")', () => {
+    const { units, leftover } = drain('લગ્નની શક્યતા વધારે છે। ૨। શનિની અસર હોઈ શકે છે। બાકી');
+    expect(units).toEqual(['લગ્નની શક્યતા વધારે છે।', 'શનિની અસર હોઈ શકે છે।']);
+    expect(units.some((u) => u === '૨।' || u.startsWith('૨।'))).toBe(false);
+    expect(leftover).toBe('બાકી');
+  });
 });

@@ -450,7 +450,7 @@ export function stripUnitMarkers(unit: string): string {
     .replace(/^#{1,6}\s*/, '') // markdown header
     .replace(/\*\*(.+?)\*\*/g, '$1') // bold
     .replace(/^\s*[-•*]\s+/, '') // bullet
-    .replace(/^\s*\d+\.\s+/, '') // numbered list marker
+    .replace(/^\s*\p{Nd}+[.।॥]\s*/u, '') // numbered list marker (incl. native-script digits/danda)
     .trim();
 }
 
@@ -486,7 +486,13 @@ export function extractNextUnit(
     // that opens a (prompt-disallowed but sometimes-emitted) numbered list
     // gets mistaken for a completed sentence, which can trip the word-budget
     // stop right there and silently drop the entire list that follows.
-    if (/^\s*\d{1,2}$/.test(buf.slice(0, idx))) continue;
+    // \p{Nd} (not \d) because Bengali/Devanagari/Gujarati numbered lists use
+    // native-script digits ("২।" for "2."), not ASCII ones — an ASCII-only
+    // guard misses those, letting the bare marker itself be flushed as a fake
+    // one-word "sentence" that both renders literally in the chat bubble and
+    // advances the word budget, sometimes cutting the real item content that
+    // should follow it.
+    if (/^\s*\p{Nd}{1,2}$/u.test(buf.slice(0, idx))) continue;
     return { unit: buf.slice(0, idx + 1), rest: buf.slice(idx + 2), sentence: true };
   }
   return null;
