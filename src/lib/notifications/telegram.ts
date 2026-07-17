@@ -44,6 +44,14 @@ function clipForTelegram(text: string, max = 400): string {
   return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
+/** Every recipient for the chat-downvote alert — the default ops chat plus any extra recipients configured just for this alert. */
+function downvoteRecipients(): (string | number)[] {
+  const ids = [env.TELEGRAM_ALERT_CHAT_ID, ...env.TELEGRAM_DOWNVOTE_EXTRA_CHAT_IDS].filter(
+    (id): id is string => Boolean(id),
+  );
+  return [...new Set(ids)];
+}
+
 export async function notifyChatDownvote(fields: {
   userId: string;
   locale?: string | undefined;
@@ -56,7 +64,11 @@ export async function notifyChatDownvote(fields: {
     (fields.locale ? `Locale: ${escapeMarkdown(fields.locale)}\n` : '') +
     `\n*Q:* ${escapeMarkdown(clipForTelegram(fields.question))}\n` +
     `*A:* ${escapeMarkdown(clipForTelegram(fields.answer))}`;
-  return sendMessage(text);
+
+  const recipients = downvoteRecipients();
+  if (recipients.length === 0) return sendMessage(text);
+  const results = await Promise.all(recipients.map((chatId) => sendMessage(text, chatId)));
+  return results.some(Boolean);
 }
 
 export async function sendMessage(text: string, chatId?: string | number): Promise<boolean> {

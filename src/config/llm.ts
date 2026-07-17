@@ -49,17 +49,29 @@ export const FORECAST_PROFILE: GenerationProfile = {
 // follow-up line (see scholar.ts OUTPUT_STYLE) — but Gemini doesn't reliably
 // hit that on open-ended questions (observed: multi-section 400+ word
 // replies in Direct mode despite the prompt asking for 2-4 sentences).
-// scholar.ts's cleanDirectModeReply() now generates non-streaming and trims
-// the result to the target length itself (flattening any markdown structure
-// into prose first, so real content isn't lost to a mid-list cutoff), so
-// this ceiling only needs to comfortably fit the model's *raw*, possibly
-// disobedient output before cleanup — not the already-short target.
+// scholar.ts's streamDirectModeParagraph() streams the reply and cleans +
+// trims it unit-by-unit as it arrives (flattening any markdown structure into
+// prose, stopping generation at a sentence boundary once the word budget is
+// crossed), so this ceiling only needs to comfortably fit the model's *raw*,
+// possibly disobedient output before that cleanup — not the already-short
+// target — and mainly bounds worst-case latency/cost if the budget-based
+// early stop is somehow never reached.
+//
+// 700 was sized for English. Non-Latin scripts need substantially more raw
+// tokens per word than English/Latin script (see the same non-Latin-script
+// token inflation already called out on HOROSCOPE_TRANSLATION_PROFILE and
+// HOUSE_INSIGHT_TRANSLATION_PROFILE below) — a Bengali reply hitting this
+// ceiling before streamDirectModeParagraph ever reaches a sentence boundary
+// comes back with no flushable content at all, i.e. a genuinely empty reply
+// with no error surfaced (reported 2026-07-17: Bengali questions got no
+// answer while the same question in Hindi/English worked fine). Raised to
+// give non-Latin replies the same headroom Latin-script ones already had.
 export const CHAT_PROFILE: GenerationProfile = {
   name: 'chat',
   temperature: 0.7,
   jsonMode: false,
-  stream: false,
-  maxTokens: 700,
+  stream: true,
+  maxTokens: 2048,
 };
 
 /**

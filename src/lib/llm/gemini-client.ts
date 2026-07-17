@@ -171,7 +171,19 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
         response.status,
       );
     }
-    return data.choices?.[0]?.message?.content ?? '';
+    const content = data.choices?.[0]?.message?.content ?? '';
+    if (data.choices?.[0]?.finish_reason === 'length') {
+      logger.warn(
+        {
+          profile: opts.profile.name,
+          maxTokens: opts.profile.maxTokens,
+          contentLength: content.length,
+        },
+        'Gemini generate() hit max_tokens — reply was truncated' +
+          (content ? ' mid-generation' : ' to empty'),
+      );
+    }
+    return content;
   }
 
   throw new GeminiError('Exhausted all retry attempts');

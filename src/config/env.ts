@@ -101,6 +101,19 @@ const EnvSchema = z
           .map((id) => id.trim())
           .filter(Boolean),
       ),
+    // Extra recipients for the chat-downvote alert specifically (on top of
+    // TELEGRAM_ALERT_CHAT_ID) — deliberately separate from TELEGRAM_ADMIN_CHAT_IDS,
+    // which grants webhook command authority and shouldn't be widened just to
+    // add a notification recipient.
+    TELEGRAM_DOWNVOTE_EXTRA_CHAT_IDS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
