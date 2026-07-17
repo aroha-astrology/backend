@@ -346,12 +346,16 @@ export async function getPanchang(
     }
   }
 
-  // Approximate timezone offset from longitude (4 min per degree). Rounded to
-  // the nearest half-hour rather than whole hour — whole-hour rounding put
-  // India (UTC+5:30) and other half/quarter-hour zones off by up to 30min,
-  // shifting tithi/nakshatra boundaries near midnight. Still an approximation
-  // (no IANA lookup from lat/lon), but meaningfully closer for those zones.
-  const timezoneOffset = Math.round((lon / 15) * 2) / 2;
+  // India's civil clock is a single fixed UTC+5:30 nationwide (anchored to
+  // 82.5°E, not local solar longitude) — it is NOT derivable from (lat, lon).
+  // A previous version of this line approximated it via Math.round((lon/15)*2)/2
+  // (half-hour rounding), which looked like a fix but still resolved to 5.0
+  // instead of 5.5 for every city west of ~78.75°E — i.e. Delhi, Mumbai, and
+  // Bengaluru (3 of the 5 warmed reference points), shifting sunrise/sunset
+  // and every derived window (Rahu/Gulika/Yamaganda Kaal, Abhijit Muhurta,
+  // Choghadiya, Hora) ~30min early. This product only serves Indian panchang,
+  // so hardcode the real civil offset instead of re-deriving an approximation.
+  const timezoneOffset = 5.5;
 
   // Calculate Julian Day for noon local time
   const jd = await dateToJulianDay(year, month, day, 12, 0, timezoneOffset);
