@@ -5,6 +5,7 @@ import {
   YOGINI_YEARS,
   YOGINI_PLANETS,
   NAKSHATRA_SPAN,
+  YOGINI_NAMES,
 } from '@aroha-astrology/shared';
 
 // ============================================================
@@ -74,7 +75,7 @@ function getStartingYoginiIndex(nakshatraIndex: number): number {
  *
  *   antardashaYears = mahadashaDuration * (antarYoginiYears / YOGINI_TOTAL_YEARS)
  */
-function buildYoginiAntardashas(
+export function buildYoginiAntardashas(
   startYoginiIdx: number,
   startDate: Date,
   mahadashaDurationYears: number,
@@ -86,8 +87,7 @@ function buildYoginiAntardashas(
   for (let i = 0; i < 8; i++) {
     const idx = (startYoginiIdx + i) % 8;
     const planet: Planet = YOGINI_PLANETS[idx];
-    const durationYears =
-      mahadashaDurationYears * (YOGINI_YEARS[idx] / YOGINI_TOTAL_YEARS);
+    const durationYears = mahadashaDurationYears * (YOGINI_YEARS[idx] / YOGINI_TOTAL_YEARS);
     const endDate = addYears(cursor, durationYears);
     const isActive = isDateInRange(currentDate, cursor, endDate);
 
@@ -98,6 +98,7 @@ function buildYoginiAntardashas(
       isActive,
       level: 'antardasha',
       subPeriods: [],
+      deity: YOGINI_NAMES[idx],
     });
 
     cursor = endDate;
@@ -127,10 +128,7 @@ function buildYoginiAntardashas(
  * @param birthDate      Date/time of birth.
  * @returns              A `YoginiDasha` object.
  */
-export function calculateYoginiDasha(
-  moonLongitude: number,
-  birthDate: Date,
-): YoginiDasha {
+export function calculateYoginiDasha(moonLongitude: number, birthDate: Date): YoginiDasha {
   const now = new Date();
 
   // 1. Starting yogini
@@ -178,9 +176,8 @@ export function calculateYoginiDasha(
       endDate,
       isActive,
       level: 'mahadasha',
-      subPeriods: isActive
-        ? buildYoginiAntardashas(yoginiIdx, cursor, durationYears, now)
-        : [],
+      subPeriods: isActive ? buildYoginiAntardashas(yoginiIdx, cursor, durationYears, now) : [],
+      deity: YOGINI_NAMES[yoginiIdx],
     });
 
     accumulatedYears += durationYears;
@@ -193,4 +190,3 @@ export function calculateYoginiDasha(
 
   return { yoginis, currentYogini };
 }
-

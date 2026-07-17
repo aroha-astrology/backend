@@ -26,6 +26,8 @@ export {
 
 // Dasha Systems
 export * from './dashas/index';
+export * from './dasha-confidence.js';
+export * from './lucky-elements.js';
 
 // Dosha Analysis
 export * from './doshas/index';
@@ -72,7 +74,13 @@ export {
   getNamePlanes,
   getKuaData,
 } from './numerology/vedic';
-export type { LoShuGrid, ChallengeNumbers, ZodiacInfo, NamePlanes, KuaData } from './numerology/vedic';
+export type {
+  LoShuGrid,
+  ChallengeNumbers,
+  ZodiacInfo,
+  NamePlanes,
+  KuaData,
+} from './numerology/vedic';
 
 // Name Correction
 export {
@@ -92,4 +100,3 @@ export * from './lalkitab/pakkaghar';
 export * from './lalkitab/blindPlanets';
 export * from './lalkitab/debts';
 export { getLalKitabRemedies } from './lalkitab/remedies';
-

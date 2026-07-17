@@ -15,6 +15,8 @@ import { dashaLordTransitQuality, SIGNS } from './astro-tools/index.js';
 import { dateToJulianDay, calculatePlanetPositions } from './astro-engine/index.js';
 import { findFavorableWindow } from './dasha-window.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
+import { scoreDomainWindow } from './astro-engine/dasha-confidence.js';
+import { calculateD9, calculateD10 } from './astro-engine/charts/divisionalCharts.js';
 
 export interface GroundingSource {
   /** kundli.chartData — planets, houses (with lord), ascendant. */
@@ -72,6 +74,7 @@ function planetPlacement(planets: PlanetFact[], planetName: string): PlanetFact 
 interface CurrentDasha {
   mahadasha?: string | undefined;
   antardasha?: string | undefined;
+  pratyantardasha?: string | undefined;
   mahaStart?: string | undefined;
   mahaEnd?: string | undefined;
 }
@@ -80,12 +83,29 @@ function currentDasha(dasha: Record<string, unknown> | null): CurrentDasha {
   const v = (dasha?.vimshottari ?? {}) as Record<string, unknown>;
   const md = v.currentMahadasha as Record<string, unknown> | undefined;
   const ad = v.currentAntardasha as Record<string, unknown> | undefined;
+  const pd = v.currentPratyantardasha as Record<string, unknown> | undefined;
   return {
     mahadasha: md?.planet ? String(md.planet) : undefined,
     antardasha: ad?.planet ? String(ad.planet) : undefined,
+    pratyantardasha: pd?.planet ? String(pd.planet) : undefined,
     mahaStart: md?.startDate ? String(md.startDate).slice(0, 10) : undefined,
     mahaEnd: md?.endDate ? String(md.endDate).slice(0, 10) : undefined,
   };
+}
+
+function currentYoginiFact(dasha: Record<string, unknown> | null): string | null {
+  const y = (dasha?.yogini ?? {}) as Record<string, unknown>;
+  const cy = y.currentYogini as Record<string, unknown> | undefined;
+  if (!cy || !cy.planet || !cy.deity) return null;
+
+  const antardashas = (cy.subPeriods ?? []) as Array<Record<string, unknown>>;
+  const activeAntar = antardashas.find((sp) => sp.isActive);
+
+  let fact = `Concurrent Yogini Dasha (micro-cycle confirmation): ${String(cy.deity)} (${String(cy.planet)})`;
+  if (activeAntar && activeAntar.deity) {
+    fact += ` → ${String(activeAntar.deity)} Yogini sub-period`;
+  }
+  return fact;
 }
 
 /**
@@ -309,6 +329,110 @@ function ashtakavargaFacts(
 }
 
 /**
+ * Bhinnashtakavarga (per-planet bindu strength) — how many points each
+ * planet has in the house it natally occupies, the single most commonly
+ * consulted per-planet AV number (self-support at its own placement).
+ * `ashtakavargaFacts` above only surfaces the Sarva (total) table; this adds
+ * the per-planet detail the interface already carries but nothing read.
+ */
+function bhinnashtakavargaFacts(
+  ashtakavarga: Record<string, unknown> | null,
+  planets: PlanetFact[],
+): string[] {
+  if (!ashtakavarga) return [];
+  const bhinna = ashtakavarga.bhinna as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(bhinna)) return [];
+
+  const lines: string[] = [];
+  for (const entry of bhinna) {
+    const planetName = String(entry.planet ?? '');
+    const bindus = Array.isArray(entry.bindus) ? (entry.bindus as number[]) : null;
+    if (!planetName || !bindus || bindus.length !== 12) continue;
+    const placement = planets.find((p) => p.planet === planetName);
+    if (!placement) continue;
+    const ownBindus = bindus[placement.signIndex] ?? 0;
+    lines.push(
+      `${planetName} has ${ownBindus} Bhinnashtakavarga bindus in its own natal house (house ${placement.house}, ${placement.sign}) — self-support at its own placement`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * Non-identifying user-context facts that improve narration without
+ * touching the "never the name" rule — gender, relationship status, and
+ * stated interest areas are all on the `users` row already, share-safe, and
+ * (per the 2026-07-17 audit) were captured but never reaching the chat
+ * prompt. Kept as a separate function from `buildGroundingFacts` (which
+ * horoscope generation also calls) so this only affects chat, where it's
+ * being added, and horoscope's existing bespoke relationship-status handling
+ * in `lib/llm/horoscope.ts` is untouched.
+ */
+export function buildProfileFacts(profile: {
+  gender?: string | null;
+  relationshipStatus?: string | null;
+  interestAreas?: string[] | null;
+}): string[] {
+  const facts: string[] = [];
+  if (profile.gender) facts.push(`User's gender: ${profile.gender}`);
+  if (profile.relationshipStatus) {
+    facts.push(
+      `User's relationship status: ${profile.relationshipStatus}. If single, do not assume a spouse/partner exists; if partnered, framing can reference the relationship.`,
+    );
+  }
+  if (profile.interestAreas && profile.interestAreas.length > 0) {
+    facts.push(`User's stated areas of interest: ${profile.interestAreas.join(', ')}.`);
+  }
+  return facts;
+}
+
+/**
+ * D9 Navamsa (marriage/inner-strength/dharma) and D10 Dasamsa (career)
+ * divisional-chart facts, computed live from natal planet longitudes —
+ * chat grounding previously had zero divisional-chart data at all (only the
+ * D1/Rashi chart), so questions that traditionally lean on Navamsa/Dasamsa
+ * (e.g. "how's my marriage looking") had no grounded facts to draw on
+ * beyond the D1 7th house. The frontend already recomputes D1-D60 client-
+ * side for display (`lib/divisional-charts.ts`) and the backend defines the
+ * same varga math (`astro-engine/charts/divisionalCharts.ts`,
+ * `calculateD9`/`calculateD10`) but never calls it during kundli generation
+ * or storage — rather than adding a migration to persist all 24 vargas,
+ * this computes just D9/D10 on the fly from `chart.planets[].longitude`
+ * (already present on every stored chart), which is cheap (pure arithmetic,
+ * no ephemeris lookup) and needs no schema change.
+ */
+function divisionalChartFacts(chart: Record<string, unknown> | null): string[] {
+  const rawPlanets = (chart?.planets ?? []) as Array<Record<string, unknown>>;
+  const asc = chart?.ascendant as Record<string, unknown> | undefined;
+  const ascSignIndex = asc?.signIndex != null ? Number(asc.signIndex) : null;
+  if (rawPlanets.length === 0 || ascSignIndex == null) return [];
+
+  const ascLongitude = ascSignIndex * 30 + Number(asc?.degree ?? 0);
+  const withLongitude = rawPlanets.filter((p) => p.planet != null && p.longitude != null);
+  if (withLongitude.length === 0) return [];
+
+  const facts: string[] = [];
+
+  const d9Lagna = SIGNS[calculateD9(ascLongitude)];
+  const d9Placements = withLongitude
+    .map((p) => `${String(p.planet)}-${SIGNS[calculateD9(Number(p.longitude))]}`)
+    .join(', ');
+  facts.push(
+    `D9 Navamsa divisional chart (marriage, spouse, inner strength, dharma — traditionally consulted alongside the D1 7th house for marriage questions): Navamsa Lagna is ${d9Lagna}. Planet placements: ${d9Placements}.`,
+  );
+
+  const d10Lagna = SIGNS[calculateD10(ascLongitude)];
+  const d10Placements = withLongitude
+    .map((p) => `${String(p.planet)}-${SIGNS[calculateD10(Number(p.longitude))]}`)
+    .join(', ');
+  facts.push(
+    `D10 Dasamsa divisional chart (career, profession, public status — traditionally consulted alongside the D1 10th house for career questions): Dasamsa Lagna is ${d10Lagna}. Planet placements: ${d10Placements}.`,
+  );
+
+  return facts;
+}
+
+/**
  * Build the comprehensive "CHART DATA" fact lines for the single astrologer.
  * Every line is traceable to a value already present in the user's stored
  * kundli (or, for the transit lines, a planet-position calculation for
@@ -334,17 +458,21 @@ export async function buildGroundingFacts(
       dasha.mahaStart && dasha.mahaEnd
         ? ` (started ${dasha.mahaStart}, ends ${dasha.mahaEnd})`
         : '';
-    const antar = dasha.antardasha ? ` / ${dasha.antardasha} Antardasha` : '';
-    facts.push(`Active Dasha: ${dasha.mahadasha} Mahadasha${antar}${range}`);
+    const antar = dasha.antardasha ? ` / ${dasha.antardasha} minor period` : '';
+    const pratyantar = dasha.pratyantardasha ? ` / ${dasha.pratyantardasha} sub-minor period` : '';
+    facts.push(`Active Major Planetary Period: ${dasha.mahadasha}${antar}${pratyantar}${range}`);
   }
+
+  const yoginiFact = currentYoginiFact(src.dasha);
+  if (yoginiFact) facts.push(yoginiFact);
 
   // --- Ascendant ----------------------------------------------------------
   const asc = src.chart?.ascendant as Record<string, unknown> | undefined;
   const ascSignIndex = asc?.signIndex != null ? Number(asc.signIndex) : null;
-  if (asc?.sign) facts.push(`Ascendant: ${String(asc.sign)}`);
+  if (asc?.sign) facts.push(`Rising Sign (Ascendant): ${String(asc.sign)}`);
 
   // --- Key yogas (all domains, strongest first) ---------------------------
-  for (const y of relevantYogas(src.yogas)) facts.push(`Relevant Yoga: ${y}`);
+  for (const y of relevantYogas(src.yogas)) facts.push(`Significant Planetary Combination: ${y}`);
 
   // --- House-lord + sign for the domain-relevant houses --------------------
   // 7th and 10th additionally get their lord's natal-placement dignity, as
@@ -368,6 +496,17 @@ export async function buildGroundingFacts(
   }
 
   // --- Natal planet placements ---------------------------------------------
+  // Moon sign (Rashi) and Sun sign are two of the most fundamental facts in
+  // Vedic astrology and are surfaced directly elsewhere in the app (the
+  // moon-sign forecast feature, the Plain-mode ascendant/moon/sun-sign
+  // pills) — stated explicitly here for the same reason Venus/Mars/Saturn/
+  // Jupiter are below, rather than leaving the astrologer to infer them
+  // indirectly from house-lord facts alone.
+  const moon = planetPlacement(planets, 'Moon');
+  if (moon) facts.push(`Moon Sign (Rashi) is natally in ${moon.sign} (house ${moon.house})`);
+  const sun = planetPlacement(planets, 'Sun');
+  if (sun) facts.push(`Sun Sign is natally in ${sun.sign} (house ${sun.house})`);
+
   const venus = planetPlacement(planets, 'Venus');
   if (venus) {
     const dignity = dashaLordTransitQuality('Venus', venus.signIndex);
@@ -387,81 +526,97 @@ export async function buildGroundingFacts(
   // --- Transits as of the target date (timing signals, not persona-gated) --
   const transitLabel = asOfDate ? `as of ${asOfDate}` : 'currently';
   const saturnSignIdx = await currentTransitSignIndex('Saturn', asOfDate);
-  if (saturnSignIdx != null) {
-    const q = dashaLordTransitQuality('Saturn', saturnSignIdx);
-    facts.push(
-      `Saturn is ${transitLabel} transiting ${SIGNS[saturnSignIdx]} — ${q.dignity} dignity (career timing signal)`,
-    );
-  }
+  const jupiterSignIdx = await currentTransitSignIndex('Jupiter', asOfDate);
 
   if (ascSignIndex != null) {
-    const jupiterSignIdx = await currentTransitSignIndex('Jupiter', asOfDate);
-    if (jupiterSignIdx != null) {
-      const houseFromAsc = ((jupiterSignIdx - ascSignIndex + 12) % 12) + 1;
-      const favorable = [2, 5, 7, 9, 11].includes(houseFromAsc);
-      facts.push(
-        `Jupiter is ${transitLabel} transiting your ${houseFromAsc}th house from the Ascendant — ${
-          favorable
-            ? 'traditionally favorable for relationship/marriage timing'
-            : 'not one of the classic favorable houses for relationship timing right now'
-        }`,
-      );
-    }
-
     const moonTransit = await currentTransitMoonDetail(asOfDate);
     if (moonTransit) {
       const moonHouseFromAsc = ((moonTransit.signIndex - ascSignIndex + 12) % 12) + 1;
       facts.push(
         `Moon is ${transitLabel} transiting ${SIGNS[moonTransit.signIndex]} in ${
           NAKSHATRAS[moonTransit.nakshatraIndex] ?? 'an unknown'
-        } nakshatra, your ${moonHouseFromAsc}th house from the Ascendant — this is the fastest-moving daily signal (changes sign every ~2.25 days, nakshatra roughly daily) and should anchor what's distinctive about THIS specific date versus other days`,
+        } lunar mansion, your ${moonHouseFromAsc}th house from the Rising Sign — this is the fastest-moving daily signal (changes sign every ~2.25 days, lunar mansion roughly daily) and should anchor what's distinctive about THIS specific date versus other days`,
       );
     }
   }
 
-  // --- Active dasha lord significance (career / love / health windows) -----
-  const activeLords = [...new Set([dasha.mahadasha, dasha.antardasha].filter(Boolean))] as string[];
-  const tenthOccupants = planets.filter((p) => p.house === 10).map((p) => p.planet);
-  const seventhOccupants = planets.filter((p) => p.house === 7).map((p) => p.planet);
-  const sixEightTwelveLords = [6, 8, 12]
-    .map((h) => houseLord(houses, h)?.lord)
-    .filter((l): l is string => Boolean(l));
-  const sixEightTwelveOccupants = planets
-    .filter((p) => [6, 8, 12].includes(p.house))
-    .map((p) => p.planet);
+  // --- Confidence Scoring Engine (Career, Love, Health) -----
+  const houseLordsMap: Record<number, string> = {};
+  for (const h of houses) houseLordsMap[h.house] = h.lord;
 
-  for (const lord of activeLords) {
-    const careerRole =
-      lord === tenthLord
-        ? '10th house lord'
-        : tenthOccupants.includes(lord)
-          ? 'natally placed in the 10th house'
-          : null;
-    if (careerRole) {
-      facts.push(
-        `Currently active dasha lord ${lord} is also the ${careerRole} — a traditionally significant window for career matters`,
-      );
-    }
+  const houseOccupantsMap: Record<number, string[]> = {};
+  for (const p of planets) {
+    if (!houseOccupantsMap[p.house]) houseOccupantsMap[p.house] = [];
+    houseOccupantsMap[p.house].push(p.planet);
+  }
 
-    const loveRole =
-      lord === seventhLord
-        ? '7th house lord'
-        : lord === 'Venus'
-          ? 'natural relationship significator'
-          : seventhOccupants.includes(lord)
-            ? 'natally placed in the 7th house'
-            : null;
-    if (loveRole) {
-      facts.push(
-        `Currently active dasha lord ${lord} is also the ${loveRole} — a traditionally significant window for relationship/marriage matters`,
-      );
-    }
+  const transits = {
+    saturnSignIndex: saturnSignIdx,
+    jupiterSignIndex: jupiterSignIdx,
+  };
 
-    if (sixEightTwelveLords.includes(lord) || sixEightTwelveOccupants.includes(lord)) {
-      facts.push(
-        `Currently active dasha lord (${lord}) is linked to the 6th/8th/12th houses — traditionally a period to pay closer attention to health`,
-      );
-    }
+  const now = new Date();
+
+  const seventhOccupants = houseOccupantsMap[7] ?? [];
+  const marriageLords = [
+    ...new Set([seventhLord, 'Venus', ...seventhOccupants].filter(Boolean)),
+  ] as string[];
+  const loveScore = scoreDomainWindow(
+    'love',
+    marriageLords,
+    [7],
+    src.dasha,
+    ascSignIndex,
+    now,
+    transits,
+  );
+  if (loveScore.windowStartDate) {
+    facts.push(
+      `Relationship Window Confidence: ${loveScore.level} — ${loveScore.reasoning.join(' ')} approx ${loveScore.windowStartDate} to ${loveScore.windowEndDate}`,
+    );
+  }
+
+  const tenthOccupants = houseOccupantsMap[10] ?? [];
+  const careerLords = [
+    ...new Set([tenthLord, 'Saturn', ...tenthOccupants].filter(Boolean)),
+  ] as string[];
+  const careerScore = scoreDomainWindow(
+    'career',
+    careerLords,
+    [10],
+    src.dasha,
+    ascSignIndex,
+    now,
+    transits,
+  );
+  if (careerScore.windowStartDate) {
+    facts.push(
+      `Career Window Confidence: ${careerScore.level} — ${careerScore.reasoning.join(' ')} approx ${careerScore.windowStartDate} to ${careerScore.windowEndDate}`,
+    );
+  }
+
+  const sixEightTwelveLords = [houseLordsMap[6], houseLordsMap[8], houseLordsMap[12]].filter(
+    Boolean,
+  );
+  const sixEightTwelveOccupants = [
+    ...(houseOccupantsMap[6] ?? []),
+    ...(houseOccupantsMap[8] ?? []),
+    ...(houseOccupantsMap[12] ?? []),
+  ];
+  const healthLords = [...new Set([...sixEightTwelveLords, ...sixEightTwelveOccupants])];
+  const healthScore = scoreDomainWindow(
+    'health',
+    healthLords,
+    [6, 8, 12],
+    src.dasha,
+    ascSignIndex,
+    now,
+    transits,
+  );
+  if (healthScore.windowStartDate) {
+    facts.push(
+      `Health Vigilance Required: ${healthScore.level} — ${healthScore.reasoning.join(' ')} approx ${healthScore.windowStartDate} to ${healthScore.windowEndDate}`,
+    );
   }
 
   // --- All 7 traditional doshas ---------------------------------------------
@@ -469,43 +624,10 @@ export async function buildGroundingFacts(
 
   // --- Ashtakavarga summary ---------------------------------------------------
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
+  facts.push(...bhinnashtakavargaFacts(src.ashtakavarga, planets));
 
-  // --- Forward-looking favorable dasha windows -------------------------------
-  // Unlike the "currently active dasha lord" checks above (which can only say
-  // "now is/isn't aligned"), this walks the *future* mahadasha→antardasha→
-  // pratyantardasha timeline to answer "when" — e.g. marriage-timing
-  // questions get an actual projected date range, not just a present/absent
-  // read. Never fabricates: findFavorableWindow returns undefined (and no
-  // fact is added) if nothing matches within its lookahead.
-  const now = new Date();
-
-  const marriageLords = [
-    ...new Set([seventhLord, 'Venus', ...seventhOccupants].filter(Boolean)),
-  ] as string[];
-  const marriageWindow = findFavorableWindow(src.dasha, marriageLords, now);
-  if (marriageWindow) {
-    facts.push(
-      `Nearest traditionally favorable window for marriage: ${marriageWindow.lord} ${marriageWindow.level} (within ${marriageWindow.withinMahadasha} Mahadasha), approx ${marriageWindow.startDate} to ${marriageWindow.endDate}`,
-    );
-  }
-
-  const careerLords = [
-    ...new Set([tenthLord, 'Saturn', ...tenthOccupants].filter(Boolean)),
-  ] as string[];
-  const careerWindow = findFavorableWindow(src.dasha, careerLords, now);
-  if (careerWindow) {
-    facts.push(
-      `Nearest traditionally favorable window for career growth: ${careerWindow.lord} ${careerWindow.level} (within ${careerWindow.withinMahadasha} Mahadasha), approx ${careerWindow.startDate} to ${careerWindow.endDate}`,
-    );
-  }
-
-  const healthLords = [...new Set([...sixEightTwelveLords, ...sixEightTwelveOccupants])];
-  const healthWindow = findFavorableWindow(src.dasha, healthLords, now);
-  if (healthWindow) {
-    facts.push(
-      `Nearest period traditionally calling for extra health care: ${healthWindow.lord} ${healthWindow.level} (within ${healthWindow.withinMahadasha} Mahadasha), approx ${healthWindow.startDate} to ${healthWindow.endDate}`,
-    );
-  }
+  // --- D9 Navamsa / D10 Dasamsa divisional charts ----------------------------
+  facts.push(...divisionalChartFacts(src.chart));
 
   return facts;
 }

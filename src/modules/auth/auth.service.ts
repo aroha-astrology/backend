@@ -18,6 +18,13 @@ export type EstablishSessionResult = {
  * user's email, so another active account may have claimed it meanwhile;
  * on that collision, resurrect without the now-contested email rather than
  * 500-ing and locking the returning user out forever.
+ *
+ * Safe against phone-recycling/SIM-swap: `DELETE /v1/me` (`anonymizeUserById`
+ * in users.repo.ts) scrubs every identifying field at deletion time rather
+ * than only setting `deletedAt`. So if a recycled number's new owner ends up
+ * here (by Firebase reissuing the same UID, or by the phone-collision branch
+ * below), there is no previous owner's PII left on the row to hand back —
+ * they just get an empty, freshly-onboardable account under their own auth.
  */
 async function resurrect(existing: UserRow): Promise<UserRow> {
   try {

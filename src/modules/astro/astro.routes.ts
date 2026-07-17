@@ -5,8 +5,11 @@ import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
-import { deductCredits } from '../users/users.repo.js';
+import { deductCredits, addCredits } from '../users/users.repo.js';
 import * as astroService from './astro.service.js';
+import * as chatSessionsRepo from './chat-sessions.repo.js';
+import { incrementFeedbackCounter, saveChatFeedbackReport } from './feedback.repo.js';
+import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 
 /** Flat cost per chat question, charged atomically before generation starts. */
 const CHAT_MESSAGE_COST = 2;
@@ -21,6 +24,7 @@ import {
   MatchmakingRequestSchema,
   MatchmakingResponseSchema,
   ChatRequestSchema,
+  ChatFeedbackRequestSchema,
   SignIndexParamSchema,
 } from './astro.schemas.js';
 
@@ -170,6 +174,14 @@ const PeriodQuerySchema = z.object({
       description:
         'Timescale — weekly/monthly/yearly are aggregates of the daily engine output, never independent narration',
     }),
+  language: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'language', in: 'query' },
+      example: 'hi',
+      description: 'Language code for translation',
+    }),
 });
 
 const moonSignRoute = createRoute({
@@ -189,8 +201,8 @@ const moonSignRoute = createRoute({
 
 astroRouter.openapi(moonSignRoute, async (c) => {
   const { signIndex } = c.req.valid('param');
-  const { period } = c.req.valid('query');
-  const result = await astroService.moonSignForecast(signIndex, period);
+  const { period, language } = c.req.valid('query');
+  const result = await astroService.moonSignForecast(signIndex, period, language);
   return c.json({ forecast: result }, 200);
 });
 
@@ -198,12 +210,23 @@ astroRouter.openapi(moonSignRoute, async (c) => {
 /* GET /forecast/sun-sign/:signIndex                                     */
 /* -------------------------------------------------------------------------- */
 
+const SunSignQuerySchema = z.object({
+  language: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'language', in: 'query' },
+      example: 'hi',
+      description: 'Language code for translation',
+    }),
+});
+
 const sunSignRoute = createRoute({
   method: 'get',
   path: '/forecast/sun-sign/{signIndex}',
   tags: ['Astro'],
   summary: 'Public sun-sign daily forecast',
-  request: { params: SignIndexParamSchema },
+  request: { params: SignIndexParamSchema, query: SunSignQuerySchema },
   responses: {
     200: {
       description: 'Sun-sign forecast',
@@ -215,7 +238,8 @@ const sunSignRoute = createRoute({
 
 astroRouter.openapi(sunSignRoute, async (c) => {
   const { signIndex } = c.req.valid('param');
-  const result = await astroService.sunSignForecast(signIndex);
+  const { language } = c.req.valid('query');
+  const result = await astroService.sunSignForecast(signIndex, language);
   return c.json({ forecast: result }, 200);
 });
 
@@ -427,9 +451,10 @@ astroRouter.openapi(chatRoute, async (c) => {
 
   // Charge atomically before any generation starts — same balance-check-and-
   // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
-  // sends can't both succeed against a balance that only covers one. Not
-  // refunded if generation later fails (same precedent as house unlocks:
-  // the charge is for asking, not contingent on the LLM call succeeding).
+  // sends can't both succeed against a balance that only covers one.
+  // Refunded below (same fire-and-forget addCredits pattern as
+  // vastu.service.ts) if generation throws or comes back with no content —
+  // the user shouldn't pay for a question that got no answer.
   const charged = await deductCredits(user.id, CHAT_MESSAGE_COST);
   if (!charged) {
     throw Errors.conflict('Not enough credits to ask a question');
@@ -444,15 +469,22 @@ astroRouter.openapi(chatRoute, async (c) => {
         body.summary,
         body.detailLevel,
         signal,
+        body.locale,
       );
+
+      let fullContent = '';
+      let currentSummary = body.summary;
+
       for await (const event of events) {
         if (signal.aborted || stream.aborted) break;
         if (event.type === 'token') {
+          fullContent += event.content;
           await stream.writeSSE({
             event: 'token',
             data: JSON.stringify({ content: event.content }),
           });
         } else {
+          currentSummary = event.summary;
           await stream.writeSSE({
             event: 'summary',
             data: JSON.stringify({ summary: event.summary }),
@@ -460,12 +492,45 @@ astroRouter.openapi(chatRoute, async (c) => {
         }
       }
       if (!signal.aborted && !stream.aborted) {
+        if (!fullContent.trim()) {
+          // Generation "succeeded" with nothing to show (e.g. hit the
+          // token ceiling before any content could be flushed) — don't
+          // charge for a question that got no answer.
+          await addCredits(user.id, CHAT_MESSAGE_COST).catch(() => {});
+        }
+
+        // Save history
+        let sessionId = body.sessionId;
+        const newHistory = [
+          ...body.history,
+          { role: 'user', content: body.message },
+          { role: 'assistant', content: fullContent },
+        ] as { role: 'user' | 'assistant'; content: string }[]; // cast to avoid exact typing mismatch if any
+
+        if (sessionId) {
+          await chatSessionsRepo.updateChatSession(sessionId, newHistory, currentSummary);
+        } else {
+          // generate a new session title based on the message
+          const title =
+            body.message.length > 50 ? body.message.substring(0, 47) + '...' : body.message;
+          const session = await chatSessionsRepo.createChatSession(
+            user.id,
+            title,
+            newHistory,
+            currentSummary,
+          );
+          sessionId = session.id;
+        }
+
+        await stream.writeSSE({ event: 'session_id', data: JSON.stringify({ sessionId }) });
         await stream.writeSSE({ event: 'done', data: JSON.stringify({ status: 'complete' }) });
       }
     } catch (err) {
       // A failed stream MUST be distinguishable from a completed one — always
       // emit a terminal event (and never leak internals to the client).
       logger.error({ err, userId: user.id }, 'chat stream failed');
+      // Don't charge for a question the LLM never actually answered.
+      await addCredits(user.id, CHAT_MESSAGE_COST).catch(() => {});
       if (!signal.aborted && !stream.aborted) {
         await stream.writeSSE({
           event: 'error',
@@ -474,4 +539,122 @@ astroRouter.openapi(chatRoute, async (c) => {
       }
     }
   });
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /chat/feedback  (thumbs up/down on a reply)                           */
+/* -------------------------------------------------------------------------- */
+
+const chatFeedbackRoute = createRoute({
+  method: 'post',
+  path: '/chat/feedback',
+  tags: ['Astro'],
+  summary: 'Thumbs up/down on an AI chat reply',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: ChatFeedbackRequestSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Feedback recorded',
+      content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    422: errorResponse('Validation failed'),
+  },
+});
+
+astroRouter.openapi(chatFeedbackRoute, async (c) => {
+  const user = c.get('user');
+  const body = c.req.valid('json');
+
+  await incrementFeedbackCounter(body.vote === 'up' ? 'chat_thumbs_up' : 'chat_thumbs_down');
+
+  if (body.vote === 'down' && body.question && body.answer) {
+    await saveChatFeedbackReport({
+      userId: user.id,
+      sessionId: body.sessionId,
+      question: body.question,
+      answer: body.answer,
+      locale: body.locale,
+    });
+    // Fire-and-forget — a Telegram outage must never fail the feedback request.
+    void notifyChatDownvote({
+      userId: user.id,
+      locale: body.locale,
+      question: body.question,
+      answer: body.answer,
+    }).catch(() => {});
+  }
+
+  return c.json({ ok: true }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /chat/sessions                                                         */
+/* -------------------------------------------------------------------------- */
+
+const chatSessionsRoute = createRoute({
+  method: 'get',
+  path: '/chat/sessions',
+  tags: ['Astro'],
+  summary: 'List all past chat sessions',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'List of chat sessions',
+      content: { 'application/json': { schema: z.any() } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+astroRouter.openapi(chatSessionsRoute, async (c) => {
+  const user = c.get('user');
+  const sessions = await chatSessionsRepo.getChatSessions(user.id);
+  return c.json(sessions, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /chat/sessions/:id                                                     */
+/* -------------------------------------------------------------------------- */
+
+const chatSessionByIdRoute = createRoute({
+  method: 'get',
+  path: '/chat/sessions/{id}',
+  tags: ['Astro'],
+  summary: 'Get a specific chat session with its full history',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: {
+    params: z.object({
+      id: z
+        .string()
+        .uuid()
+        .openapi({ param: { name: 'id', in: 'path' } }),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Chat session details',
+      content: { 'application/json': { schema: z.any() } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Session not found'),
+  },
+});
+
+astroRouter.openapi(chatSessionByIdRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const session = await chatSessionsRepo.getChatSession(id, user.id);
+  if (!session) {
+    throw Errors.notFound('Session not found');
+  }
+  return c.json(session, 200);
 });

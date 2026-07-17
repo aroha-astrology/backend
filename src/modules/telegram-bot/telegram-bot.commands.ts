@@ -8,8 +8,10 @@ import {
 } from '../users/users.repo.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
+import { listActiveCoupons, insertCoupon } from '../billing/billing.repo.js';
 import { escapeMarkdown } from '../../lib/notifications/telegram.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { isUniqueViolation } from '../../lib/db-errors.js';
 
 export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
   const PAGE_SIZE = 20;
@@ -93,6 +95,94 @@ export async function cmdJobs(): Promise<string> {
   }
 
   return `*Job Alerts* ⚠️\n\nFailed Kundlis: ${failedKundlis}\n\nCheck server logs for more details.`;
+}
+
+export async function cmdCoupons(): Promise<string> {
+  const activeCoupons = await listActiveCoupons();
+
+  if (activeCoupons.length === 0) {
+    return escapeMarkdown('No active coupons.');
+  }
+
+  const lines = activeCoupons.map((c) => {
+    const discount =
+      c.discountType === 'percent'
+        ? `${c.discountValue}% off`
+        : `₹${(c.discountValue / 100).toFixed(0)} off`;
+    const usage =
+      c.maxRedemptions != null
+        ? `${c.redemptionCount}/${c.maxRedemptions} used`
+        : `${c.redemptionCount} used`;
+    const expiry = c.expiresAt
+      ? escapeMarkdown(c.expiresAt.toISOString().split('T')[0] as string)
+      : 'no expiry';
+    return `• *${escapeMarkdown(c.code)}* \\| ${escapeMarkdown(discount)} \\| ${escapeMarkdown(usage)} \\| ${expiry}`;
+  });
+
+  return `*Active Coupons \\(${activeCoupons.length}\\)*\n\n${lines.join('\n')}`;
+}
+
+const NEWCOUPON_USAGE = 'Usage: /newcoupon CODE percent VALUE [maxRedemptions] [expiresInDays]';
+
+export async function cmdNewCoupon(args: string[]): Promise<string> {
+  const [code, type, valueArg, maxRedemptionsArg, expiresInDaysArg] = args;
+
+  if (!code || !type || !valueArg) {
+    return escapeMarkdown(NEWCOUPON_USAGE);
+  }
+
+  if (type.toLowerCase() !== 'percent') {
+    return escapeMarkdown(`Only "percent" coupons are supported right now. ${NEWCOUPON_USAGE}`);
+  }
+
+  const value = Number(valueArg);
+  if (!Number.isInteger(value) || value < 1 || value > 100) {
+    return escapeMarkdown('Discount value must be a whole number between 1 and 100.');
+  }
+
+  let maxRedemptions: number | null = null;
+  if (maxRedemptionsArg !== undefined) {
+    maxRedemptions = Number(maxRedemptionsArg);
+    if (!Number.isInteger(maxRedemptions) || maxRedemptions < 1) {
+      return escapeMarkdown('maxRedemptions must be a positive whole number.');
+    }
+  }
+
+  let expiresAt: Date | null = null;
+  if (expiresInDaysArg !== undefined) {
+    const expiresInDays = Number(expiresInDaysArg);
+    if (!Number.isInteger(expiresInDays) || expiresInDays < 1) {
+      return escapeMarkdown('expiresInDays must be a positive whole number.');
+    }
+    expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+  }
+
+  const normalizedCode = code.toUpperCase();
+
+  try {
+    const coupon = await insertCoupon({
+      code: normalizedCode,
+      discountType: 'percent',
+      discountValue: value,
+      maxRedemptions,
+      expiresAt,
+    });
+
+    const usage =
+      coupon.maxRedemptions != null
+        ? `${coupon.maxRedemptions} redemptions`
+        : 'unlimited redemptions';
+    const expiry = coupon.expiresAt
+      ? escapeMarkdown(coupon.expiresAt.toISOString().split('T')[0] as string)
+      : 'no expiry';
+    return `Coupon *${escapeMarkdown(coupon.code)}* created \\| ${escapeMarkdown(`${value}% off`)} \\| ${escapeMarkdown(usage)} \\| ${expiry}`;
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return escapeMarkdown(`Coupon code ${normalizedCode} already exists.`);
+    }
+    const msg = error instanceof Error ? error.message : String(error);
+    return escapeMarkdown(`Failed to create coupon: ${msg}`);
+  }
 }
 
 export async function cmdBroadcast(message: string | undefined): Promise<string> {

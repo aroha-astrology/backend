@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { purchasePlans, type NewPurchasePlanRow, type PurchasePlanRow } from '../../db/schema.js';
 
@@ -63,4 +63,23 @@ export async function deletePlanForUser(id: string, userId: string): Promise<voi
   await db
     .delete(purchasePlans)
     .where(and(eq(purchasePlans.id, id), eq(purchasePlans.userId, userId)));
+}
+
+export async function savePurchasePlanTranslation(
+  id: string,
+  language: string,
+  translation: Record<string, unknown>,
+): Promise<void> {
+  // Use jsonb_set to inject the translation at {translations, [language]}
+  // without clobbering other languages in the same row.
+  await db.execute(sql`
+    UPDATE ${purchasePlans}
+    SET translations = jsonb_set(
+      COALESCE(translations, '{}'::jsonb),
+      ${`{${language}}`},
+      ${JSON.stringify(translation)}::jsonb,
+      true
+    )
+    WHERE id = ${id}
+  `);
 }

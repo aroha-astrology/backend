@@ -230,19 +230,6 @@ export type ChartPreferences = {
   detectAspectPatterns?: boolean;
 };
 
-/** First-touch attribution payload (MMP/UTM). Write-once at signup. */
-export type AcquisitionAttribution = {
-  utmSource?: string;
-  utmMedium?: string;
-  utmCampaign?: string;
-  utmTerm?: string;
-  utmContent?: string;
-  gclid?: string;
-  fbclid?: string;
-  installId?: string;
-  adgroup?: string;
-};
-
 /* -------------------------------------------------------------------------- */
 /* users — the account holder                                                  */
 /* -------------------------------------------------------------------------- */
@@ -254,7 +241,12 @@ export const users = pgTable(
       .primaryKey()
       .default(sql`gen_random_uuid()`),
     firebaseUid: text('firebase_uid').notNull().unique(),
-    phoneE164: text('phone_e164').unique(),
+    // Encrypted at rest (field-level encryption, see src/lib/crypto). Lookups
+    // go through phoneE164Hash (a deterministic HMAC blind index) instead,
+    // since AES-GCM ciphertext is non-deterministic and can't back a unique
+    // constraint or an equality WHERE clause directly.
+    phoneE164: text('phone_e164'),
+    phoneE164Hash: text('phone_e164_hash').unique(),
 
     // --- identity / profile ------------------------------------------------
     displayName: text('display_name'),
@@ -262,10 +254,15 @@ export const users = pgTable(
     email: text('email'),
     avatarUrl: text('avatar_url'),
 
-    // --- birth event (chart inputs) ---------------------------------------
-    dateOfBirth: date('date_of_birth'),
-    timeOfBirth: time('time_of_birth'),
-    placeOfBirth: jsonb('place_of_birth').$type<PlaceOfBirth>(),
+    // --- birth event (chart inputs) -----------------------------------------
+    // dateOfBirth/timeOfBirth/placeOfBirth are `text` (not date/time/jsonb)
+    // because they hold an encrypted blob, not the raw value — the repo layer
+    // (users.repo.ts) transparently encrypts on write and decrypts on read,
+    // so every other layer of the app still sees a plain date/time string or
+    // PlaceOfBirth object exactly as before.
+    dateOfBirth: text('date_of_birth'),
+    timeOfBirth: text('time_of_birth'),
+    placeOfBirth: text('place_of_birth').$type<PlaceOfBirth>(),
     birthTimeAccuracy: birthTimeAccuracyEnum('birth_time_accuracy'),
     birthTimeSource: birthTimeSourceEnum('birth_time_source'),
     birthTimeRectified: boolean('birth_time_rectified'),
@@ -325,12 +322,13 @@ export const users = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::integer[]`),
+    /** Set the moment the user spends credits to unlock the gemstone report; null = still locked. One-time, whole-report unlock. */
+    gemstoneUnlockedAt: timestamp('gemstone_unlocked_at', { withTimezone: true }),
 
     // --- acquisition / referral -------------------------------------------
     referralSource: text('referral_source'),
     referredByCode: text('referred_by_code'),
     referralCode: text('referral_code'),
-    acquisitionAttribution: jsonb('acquisition_attribution').$type<AcquisitionAttribution>(),
 
     // --- consent (current effective state; history in user_consent_log) ----
     marketingConsentAt: timestamp('marketing_consent_at', { withTimezone: true }),
@@ -357,7 +355,7 @@ export const users = pgTable(
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => ({
-    // firebase_uid and phone_e164 are already backed by unique-constraint
+    // firebase_uid and phone_e164_hash are already backed by unique-constraint
     // indexes (.unique()), so no separate plain index is needed.
     emailLowerUnique: uniqueIndex('users_email_lower_unique')
       .on(sql`lower(${table.email})`)
@@ -388,9 +386,11 @@ export const birthProfiles = pgTable(
     relationship: birthProfileRelationshipEnum('relationship'),
     displayName: text('display_name'),
     gender: genderEnum('gender'),
-    dateOfBirth: date('date_of_birth'),
-    timeOfBirth: time('time_of_birth'),
-    placeOfBirth: jsonb('place_of_birth').$type<PlaceOfBirth>(),
+    // Encrypted at rest — same repo-layer transparent encrypt/decrypt as
+    // users.dateOfBirth/timeOfBirth/placeOfBirth, see the comment there.
+    dateOfBirth: text('date_of_birth'),
+    timeOfBirth: text('time_of_birth'),
+    placeOfBirth: text('place_of_birth').$type<PlaceOfBirth>(),
     birthTimeAccuracy: birthTimeAccuracyEnum('birth_time_accuracy'),
     birthTimeSource: birthTimeSourceEnum('birth_time_source'),
     birthLocationAccuracy: birthLocationAccuracyEnum('birth_location_accuracy'),
@@ -872,17 +872,18 @@ export const dailyHoroscopes = pgTable(
     /** The rich Plain-view fields, populated for every period. */
     structured: jsonb('structured').$type<StructuredHoroscope>(),
     /** Cached translations for this horoscope by language code (e.g., 'hi') */
-    translations:
-      jsonb('translations').$type<
-        Record<
-          string,
-          {
-            summary?: string;
-            monthlyBreakdown?: MonthlyBreakdownEntry[];
-            structured?: StructuredHoroscope;
-          }
-        >
-      >(),
+    translations: jsonb('translations').$type<
+      Record<
+        string,
+        {
+          summary?: string;
+          monthlyBreakdown?: MonthlyBreakdownEntry[];
+          structured?: StructuredHoroscope;
+          /** Translated hook/meaning for the current dasha reading — see toHoroscopeDto. */
+          dasha?: { hook?: string; meaning?: string };
+        }
+      >
+    >(),
     /** Which model produced it ('stub' until the NVIDIA NIM engine is wired). */
     model: text('model'),
     status: horoscopeStatusEnum('status').notNull(),
@@ -936,6 +937,11 @@ export const houseInsights = pgTable(
     text: text('text'),
     strengths: jsonb('strengths').$type<string[]>(),
     weaknesses: jsonb('weaknesses').$type<string[]>(),
+    /** Cached translations for this insight by language code (e.g., 'hi') — same shape as dailyHoroscopes.translations. */
+    translations:
+      jsonb('translations').$type<
+        Record<string, { text?: string; strengths?: string[]; weaknesses?: string[] }>
+      >(),
     model: text('model'),
     status: houseInsightStatusEnum('status').notNull(),
     /** Claim token, same fencing pattern as daily_horoscopes.startedAt. */
@@ -955,6 +961,48 @@ export const houseInsights = pgTable(
 
 export type HouseInsightRow = typeof houseInsights.$inferSelect;
 export type NewHouseInsightRow = typeof houseInsights.$inferInsert;
+
+export const gemstoneRecommendationStatusEnum = pgEnum('gemstone_recommendation_status', [
+  'generating',
+  'ready',
+  'failed',
+]);
+
+/**
+ * One personalized gemstone report per user — a single row (whole report, all
+ * 9 planets, unlocked in one go). Generated lazily the first time the unlocked
+ * report is viewed and cached forever after (the natal chart never changes),
+ * same lifecycle as house_insights. The deterministic gem facts + curated
+ * care notes live in code (astro-engine/gemstones.ts); only the personalized
+ * `intro` and per-gem narrative are model-generated and stored here.
+ */
+export const gemstoneRecommendations = pgTable('gemstone_recommendations', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** The full computed report (deterministic gem facts + strength + AI intro/notes). Null while 'generating'. */
+  analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+  /** Cached translations of the AI-authored fields by language code — same shape as vastu_plans.translations. */
+  translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
+  model: text('model'),
+  status: gemstoneRecommendationStatusEnum('status').notNull(),
+  /** Claim token, same fencing pattern as house_insights.startedAt. */
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export type GemstoneRecommendationRow = typeof gemstoneRecommendations.$inferSelect;
+export type NewGemstoneRecommendationRow = typeof gemstoneRecommendations.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
 /* panchang_cache — one row per (date, reference point), shared by all users   */
@@ -1032,6 +1080,7 @@ export const purchasePlans = pgTable(
     language: text('language').notNull().default('en'),
     status: purchasePlanStatusEnum('status').notNull().default('pending'),
     analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
     errorMessage: text('error_message'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -1046,6 +1095,53 @@ export const purchasePlans = pgTable(
 
 export type PurchasePlanRow = typeof purchasePlans.$inferSelect;
 export type NewPurchasePlanRow = typeof purchasePlans.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* vastu_plans — saved Vastu floor plans + their AI remedy analyses           */
+/* -------------------------------------------------------------------------- */
+
+export const vastuPlanStatusEnum = pgEnum('vastu_plan_status', [
+  'pending',
+  'processing',
+  'done',
+  'error',
+]);
+
+export const vastuPlans = pgTable(
+  'vastu_plans',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The full editable CAD plan (rooms/doors/windows/orientation) for reload. */
+    layout: jsonb('layout').$type<Record<string, unknown>>(),
+    /** room type → occupied direction(s), the rules-engine input. */
+    roomLayout: jsonb('room_layout').notNull().$type<Record<string, string[]>>(),
+    /** Door/window facings + any free-text notes passed to the AI. */
+    roomDetails: jsonb('room_details').notNull().default({}).$type<Record<string, unknown>>(),
+    /** Deterministic weighted score (0–100) from the rules engine. */
+    overallScore: integer('overall_score'),
+    language: text('language').notNull().default('en'),
+    status: vastuPlanStatusEnum('status').notNull().default('pending'),
+    analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userCreatedIdx: index('vastu_plans_user_created_idx').on(table.userId, table.createdAt),
+    statusIdx: index('vastu_plans_status_idx').on(table.status),
+  }),
+);
+
+export type VastuPlanRow = typeof vastuPlans.$inferSelect;
+export type NewVastuPlanRow = typeof vastuPlans.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
 /* forecast_translations — caches general moon/sun sign translations          */
@@ -1086,3 +1182,132 @@ export const forecastTranslations = pgTable(
 
 export type ForecastTranslationRow = typeof forecastTranslations.$inferSelect;
 export type NewForecastTranslationRow = typeof forecastTranslations.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* chat_sessions — stored AI chat histories                                   */
+/* -------------------------------------------------------------------------- */
+
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('New Chat'),
+    // Encrypted at rest (full free-text transcript) — text, not jsonb; the
+    // repo layer (chat-sessions.repo.ts) serializes/encrypts on write and
+    // decrypts/parses on read, so callers still see a ChatHistoryTurn[].
+    history: text('history').notNull().default('[]'),
+    summary: text('summary'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('chat_sessions_user_id_idx').on(table.userId),
+  }),
+);
+
+export type ChatSessionRow = typeof chatSessions.$inferSelect;
+export type NewChatSessionRow = typeof chatSessions.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* feedback_counters — simple up/down counters for AI chat replies             */
+/* -------------------------------------------------------------------------- */
+
+export const feedbackCounters = pgTable('feedback_counters', {
+  metric: text('metric').primaryKey(),
+  count: integer('count').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export type FeedbackCounterRow = typeof feedbackCounters.$inferSelect;
+export type NewFeedbackCounterRow = typeof feedbackCounters.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* chat_feedback_reports — saved Q&A for thumbs-down chat replies              */
+/* -------------------------------------------------------------------------- */
+
+export const chatFeedbackReports = pgTable(
+  'chat_feedback_reports',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id'),
+    question: text('question').notNull(),
+    answer: text('answer').notNull(),
+    locale: text('locale'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('chat_feedback_reports_user_id_idx').on(table.userId),
+  }),
+);
+
+export type ChatFeedbackReportRow = typeof chatFeedbackReports.$inferSelect;
+export type NewChatFeedbackReportRow = typeof chatFeedbackReports.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* user_facts — durable personal facts extracted from AI chat conversations    */
+/* -------------------------------------------------------------------------- */
+
+export const userFacts = pgTable(
+  'user_facts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    fact: text('fact').notNull(),
+    category: text('category'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('user_facts_user_id_idx').on(table.userId),
+  }),
+);
+
+export type UserFactRow = typeof userFacts.$inferSelect;
+export type NewUserFactRow = typeof userFacts.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* telegram_admin_audit_log — who ran what via the Telegram admin bot          */
+/* -------------------------------------------------------------------------- */
+
+export const telegramAdminAuditLog = pgTable(
+  'telegram_admin_audit_log',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    chatId: text('chat_id').notNull(),
+    tier: text('tier').notNull(), // 'admin' | 'readonly'
+    command: text('command').notNull(),
+    args: text('args'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    createdAtIdx: index('telegram_admin_audit_log_created_at_idx').on(table.createdAt),
+  }),
+);
+
+export type TelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferSelect;
+export type NewTelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferInsert;

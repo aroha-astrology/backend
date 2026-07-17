@@ -510,15 +510,10 @@ Avoid Choghadiya: ${badChog || 'none'}`;
       }
     }
 
-    // Divisional chart analysis context — inject when question touches a specific life area
+    // Divisional chart analysis context — load core D charts for all questions for better accuracy
+    // Then add additional charts if keywords match
+    const CORE_CHARTS = ['D1', 'D2', 'D3', 'D4', 'D7', 'D9', 'D10', 'D12']; // Most important for accuracy
     const CHART_KEYWORDS: Record<string, string[]> = {
-      D2:  ['wealth', 'money', 'income', 'financial', 'savings', 'liquid', 'rich', 'poor'],
-      D3:  ['sibling', 'brother', 'sister', 'courage', 'effort'],
-      D4:  ['property', 'house', 'land', 'fixed asset', 'real estate', 'home'],
-      D7:  ['children', 'child', 'progeny', 'kid', 'son', 'daughter', 'baby', 'pregnancy'],
-      D9:  ['marriage', 'spouse', 'wife', 'husband', 'navamsa', 'partner', 'relationship', 'wedding', 'divorce'],
-      D10: ['career', 'job', 'profession', 'work', 'business', 'dasamsa', 'promotion', 'office', 'boss'],
-      D12: ['parents', 'father', 'mother', 'ancestor', 'hereditary', 'family legacy'],
       D16: ['vehicle', 'car', 'luxury', 'comfort', 'conveyance', 'bike', 'transport'],
       D20: ['spiritual', 'religion', 'worship', 'mantra', 'meditation', 'dharma', 'temple'],
       D24: ['education', 'studies', 'academic', 'knowledge', 'learning', 'degree', 'school', 'college'],
@@ -532,12 +527,12 @@ Avoid Choghadiya: ${badChog || 'none'}`;
     let vargaContext = '';
     if (chartId) {
       const lq = question.toLowerCase();
-      const relevant = Object.entries(CHART_KEYWORDS)
+      const additionalCharts = Object.entries(CHART_KEYWORDS)
         .filter(([, kws]) => kws.some((kw) => lq.includes(kw)))
         .map(([ct]) => ct);
 
-      // Fallback: if no keyword matches, include D9 + D10 as universal baseline
-      const toFetch = relevant.length > 0 ? relevant : ['D9', 'D10'];
+      // Always load core charts + any additional ones matching keywords
+      const toFetch = [...CORE_CHARTS, ...additionalCharts];
 
       const { data: analyses } = await supabase
         .from('divisional_chart_analyses')

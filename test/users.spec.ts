@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({
   findActiveUserById: vi.fn(),
   updateUserById: vi.fn(),
   updateUserWithConsentLog: vi.fn(),
-  softDeleteUserById: vi.fn(),
+  anonymizeUserById: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -38,7 +38,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   insertUser: vi.fn(),
   updateUserById: state.updateUserById,
   updateUserWithConsentLog: state.updateUserWithConsentLog,
-  softDeleteUserById: state.softDeleteUserById,
+  anonymizeUserById: state.anonymizeUserById,
   softDeleteBirthProfilesByOwner: vi.fn().mockResolvedValue(undefined),
   revokeDeviceTokensByUser: vi.fn().mockResolvedValue(undefined),
 }));
@@ -53,7 +53,7 @@ describe('GET /v1/me', () => {
     state.findUserByFirebaseUid.mockReset();
     state.findActiveUserById.mockReset();
     state.updateUserById.mockReset();
-    state.softDeleteUserById.mockReset();
+    state.anonymizeUserById.mockReset();
   });
 
   it('returns the current user profile', async () => {
@@ -263,19 +263,19 @@ describe('DELETE /v1/me', () => {
     state.verifyIdToken.mockReset();
     state.findUserByFirebaseUid.mockReset();
     state.findActiveUserById.mockReset();
-    state.softDeleteUserById.mockReset();
+    state.anonymizeUserById.mockReset();
   });
 
-  it('soft-deletes the user', async () => {
+  it('erases the user (anonymize, not just soft-delete)', async () => {
     const user = makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' });
     state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-1'));
     state.findUserByFirebaseUid.mockResolvedValueOnce(user);
     state.findActiveUserById.mockResolvedValueOnce(user);
-    state.softDeleteUserById.mockResolvedValueOnce(undefined);
+    state.anonymizeUserById.mockResolvedValueOnce(undefined);
 
     const app = createApp();
     const res = await app.request('/v1/me', { method: 'DELETE', headers: AUTH });
     expect(res.status).toBe(204);
-    expect(state.softDeleteUserById).toHaveBeenCalledWith('id-1');
+    expect(state.anonymizeUserById).toHaveBeenCalledWith('id-1');
   });
 });

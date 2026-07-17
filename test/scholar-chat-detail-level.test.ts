@@ -25,4 +25,18 @@ describe('buildChatMessages detail level', () => {
     expect(direct[0]!.content).toContain('Never state outcomes as guaranteed certainties');
     expect(details[0]!.content).toContain('Never state outcomes as guaranteed certainties');
   });
+
+  it('includes a non-hedging accident few-shot example in direct mode only', () => {
+    const direct = buildChatMessages(state(), 'x', []);
+    const details = buildChatMessages(state(), 'x', [], false, 'details');
+    const directExample = direct.find((m) => m.content.includes('chance of an accident'));
+    const detailsExample = details.find((m) => m.content.includes('chance of an accident'));
+    expect(directExample).toBeDefined();
+    expect(detailsExample).toBeUndefined();
+
+    const reply = direct.find((m) => m.role === 'assistant' && m.content.includes('Saturn period'));
+    expect(reply?.content.toLowerCase()).not.toMatch(
+      /cannot predict|does not predict|not possible/,
+    );
+  });
 });

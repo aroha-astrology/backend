@@ -10,12 +10,14 @@ import {
   OrderSchema,
   OrderIdParamSchema,
   ConfirmOrderResponseSchema,
+  ConfirmGooglePlayBodySchema,
 } from './billing.schemas.js';
 import {
   getCreditPacks,
   validateCoupon,
   checkout,
   confirmPayment,
+  confirmGooglePlayPurchase,
   toOrderDto,
 } from './billing.service.js';
 
@@ -198,6 +200,41 @@ billingRouter.openapi(confirmRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
   const { order, credits } = await confirmPayment(id, user.id);
+  return c.json({ order: toOrderDto(order), credits }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /billing/confirm-google-play                                          */
+/* -------------------------------------------------------------------------- */
+
+const confirmGooglePlayRoute = createRoute({
+  method: 'post',
+  path: '/billing/confirm-google-play',
+  tags: ['Billing'],
+  summary: 'Confirm a Google Play purchase and grant its credits',
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: ConfirmGooglePlayBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Order confirmed, credits granted',
+      content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    400: errorResponse('Purchase is not in a completed state'),
+    404: errorResponse('No matching order found'),
+    409: errorResponse('Order already processed in a conflicting state'),
+  },
+});
+
+billingRouter.openapi(confirmGooglePlayRoute, async (c) => {
+  const user = c.get('user');
+  const { purchaseToken, productId } = c.req.valid('json');
+  const { order, credits } = await confirmGooglePlayPurchase(user.id, { purchaseToken, productId });
   return c.json({ order: toOrderDto(order), credits }, 200);
 });
 

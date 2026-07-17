@@ -98,3 +98,10 @@ export const ConfirmOrderResponseSchema = z
     credits: z.number().openapi({ description: "User's new credit balance" }),
   })
   .openapi('ConfirmOrderResponse');
+
+export const ConfirmGooglePlayBodySchema = z
+  .object({
+    purchaseToken: z.string().min(1),
+    productId: z.string().min(1),
+  })
+  .openapi('ConfirmGooglePlayBody');
