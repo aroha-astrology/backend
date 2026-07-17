@@ -56,12 +56,22 @@ export const FORECAST_PROFILE: GenerationProfile = {
 // possibly disobedient output before that cleanup — not the already-short
 // target — and mainly bounds worst-case latency/cost if the budget-based
 // early stop is somehow never reached.
+//
+// 700 was sized for English. Non-Latin scripts need substantially more raw
+// tokens per word than English/Latin script (see the same non-Latin-script
+// token inflation already called out on HOROSCOPE_TRANSLATION_PROFILE and
+// HOUSE_INSIGHT_TRANSLATION_PROFILE below) — a Bengali reply hitting this
+// ceiling before streamDirectModeParagraph ever reaches a sentence boundary
+// comes back with no flushable content at all, i.e. a genuinely empty reply
+// with no error surfaced (reported 2026-07-17: Bengali questions got no
+// answer while the same question in Hindi/English worked fine). Raised to
+// give non-Latin replies the same headroom Latin-script ones already had.
 export const CHAT_PROFILE: GenerationProfile = {
   name: 'chat',
   temperature: 0.7,
   jsonMode: false,
   stream: true,
-  maxTokens: 700,
+  maxTokens: 2048,
 };
 
 /**
