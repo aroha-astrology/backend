@@ -400,9 +400,26 @@ export function buildChatMessages(
   messages.push({ role: 'user', content: userMessage });
 
   if (locale !== 'en') {
+    // A bare "Respond in language: X" measurably degrades everything else in
+    // this prompt, not just the output script — live-tested against real
+    // production chart data (bn/hi): the model would revert to a generic,
+    // textbook explanation of "what astrologers generally look at" instead
+    // of citing the actual CHART DATA facts above, and would ask the user
+    // for birth details that CHART DATA already provides (a direct
+    // CONTEXT_DISCIPLINE violation that never happened in English). Spelling
+    // out that only the script changes — not the grounding, confidence, or
+    // directness — restores the same specific, chart-cited answers English
+    // gets, confirmed via live A/B calls before shipping this.
     messages.push({
       role: 'system',
-      content: `Respond in language: ${locale}`,
+      content:
+        `Respond in language: ${locale}. This changes ONLY the output language — every ` +
+        `instruction above still applies at full force: cite the specific CHART DATA facts ` +
+        `above (the actual house/sign/dasha placements), give a concrete, definitive, ` +
+        `chart-grounded answer, and never ask the user for birth details or chart information ` +
+        `already present in CHART DATA above. Do not fall back to generic, textbook-style ` +
+        `descriptions of what astrologers "generally" look at — commit to the same level of ` +
+        `specific, confident narration the English example above shows, just written in ${locale}.`,
     });
   }
 
