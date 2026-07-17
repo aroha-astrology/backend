@@ -53,7 +53,10 @@ export async function markGemstoneReady(
 ): Promise<void> {
   await db
     .update(gemstoneRecommendations)
-    .set({ ...patch, status: 'ready', error: null, updatedAt: new Date() })
+    // Reset cached translations whenever the underlying English analysis changes (e.g. a forced
+    // regeneration) — otherwise non-English users would keep serving stale translations of the
+    // PREVIOUS intro/notes forever, the same staleness bug this whole fix is about, one layer down.
+    .set({ ...patch, translations: null, status: 'ready', error: null, updatedAt: new Date() })
     .where(
       and(
         eq(gemstoneRecommendations.userId, userId),
