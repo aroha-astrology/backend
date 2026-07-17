@@ -456,7 +456,7 @@ export function buildChatMessages(
  * sentence still counts toward the word budget rather than being silently
  * removed, so no case that used to survive now gets lost.
  */
-function stripUnitMarkers(unit: string): string {
+export function stripUnitMarkers(unit: string): string {
   return unit
     .replace(/^#{1,6}\s*/, '') // markdown header
     .replace(/\*\*(.+?)\*\*/g, '$1') // bold
@@ -469,13 +469,27 @@ function countWords(s: string): number {
   return s.split(/\s+/).filter(Boolean).length;
 }
 
+// "।" and "॥" (danda / double danda, U+0964 / U+0965) are the actual
+// sentence-final punctuation in Hindi, Bengali, Marathi, and Gujarati (all
+// Brahmic scripts that share this Unicode block) — the model uses them in
+// place of "." when replying in those languages. Without recognizing them,
+// extractNextUnit never finds a boundary in those replies: the whole
+// response buffers unstreamed, the word-budget soft-stop below (which only
+// checks at a recognized boundary) can never fire, making the raw maxTokens
+// hard-cutoff far more likely, and any stray list marker lands mid-buffer
+// instead of at a clean unit start, so stripUnitMarkers's start-anchored
+// regexes miss it and it renders as literal "1."/"**" in the chat bubble.
+const SENTENCE_TERMINATORS = '.!?।॥';
+
 /** Pulls the next complete sentence/line off the front of `buf`, or null if nothing's complete yet. */
-function extractNextUnit(buf: string): { unit: string; rest: string; sentence: boolean } | null {
-  const boundary = /[.!?]\s|\n/g;
+export function extractNextUnit(
+  buf: string,
+): { unit: string; rest: string; sentence: boolean } | null {
+  const boundary = /[.!?।॥]\s|\n/g;
   let m: RegExpExecArray | null;
   while ((m = boundary.exec(buf))) {
     const idx = m.index;
-    if (!'.!?'.includes(buf[idx]!)) {
+    if (!SENTENCE_TERMINATORS.includes(buf[idx]!)) {
       return { unit: buf.slice(0, idx), rest: buf.slice(idx + 1), sentence: false };
     }
     // A numbered-list marker ("1.", "12.") followed by whitespace is
