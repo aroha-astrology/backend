@@ -10,284 +10,45 @@
 // The AI layer (src/lib/llm/gemstone.ts) writes the personalized prose on top;
 // everything here is pure, deterministic, and safe (curated care notes incl.
 // the Blue Sapphire warning are authored, never model-generated).
+//
+// `conditionalDont.check` predicates below are evaluated fresh against the
+// user's actual chart on every read (see gemstone.service.ts) — they are never
+// baked into a cached response, so a caution only ever appears when it's
+// actually true for that person, and any future fix to this logic applies
+// retroactively to every already-unlocked user with no backfill.
 // =============================================================================
 
 export type PlanetStrength = 'weak' | 'average' | 'strong';
 
+// Locale-dependent facts (name, alternatives, finger, metal, day, weight, dos, static donts, the
+// conditional caution's wording) live in the frontend's i18n resources, keyed by `planet` — see
+// `kundli.gemstone.data.<planet>.*` in frontend/i18n/resources.ts. This module only owns what
+// varies per user (the conditionalDont predicate) or is locale-invariant (Sanskrit mantra, hex color).
 export interface GemstoneInfo {
   planet: string;
-  planetHindi: string;
-  gemstone: string;
-  gemstoneHindi: string;
-  alternativeStones: string[];
-  finger: string;
-  metal: string;
-  dayToWear: string;
   mantra: string;
-  mantraCount: number;
-  weightCarats: string;
+  /** Practical mantra practice: N times per day for N days (uniform across all 9 stones). */
+  mantraPerDay: number;
+  mantraDays: number;
   /** Hex accent used by the UI to render the stone's colour swatch. */
   color: string;
-  dos: string[];
-  donts: string[];
+  /** A chart-specific caution, evaluated per-user — omitted entirely when it doesn't apply. */
+  conditionalDont?: {
+    check: (chart: Record<string, unknown> | null) => boolean;
+  };
 }
 
-export const GEMSTONE_DATA: Record<string, GemstoneInfo> = {
-  Sun: {
-    planet: 'Sun',
-    planetHindi: 'Surya',
-    gemstone: 'Ruby (Manik)',
-    gemstoneHindi: 'Manik',
-    alternativeStones: ['Garnet', 'Red Spinel', 'Sunstone'],
-    finger: 'Ring finger',
-    metal: 'Gold',
-    dayToWear: 'Sunday',
-    mantra: 'Om Hraam Hreem Hraum Sah Suryaya Namah',
-    mantraCount: 7000,
-    weightCarats: '3-5 carats',
-    color: '#ef4444',
-    dos: [
-      'Wear during Shukla Paksha on a Sunday morning',
-      'Energize with Surya mantra before wearing',
-      'Touch the ring to your forehead before wearing',
-      'Offer water to the Sun every morning',
-    ],
-    donts: [
-      'Do not wear if Sun is in enemy sign with Saturn',
-      'Avoid wearing cracked or flawed rubies',
-      'Do not wear during eclipse periods',
-      'Remove before sleeping if it causes heat or restlessness',
-    ],
-  },
-  Moon: {
-    planet: 'Moon',
-    planetHindi: 'Chandra',
-    gemstone: 'Pearl (Moti)',
-    gemstoneHindi: 'Moti',
-    alternativeStones: ['Moonstone', 'White Coral', 'White Sapphire'],
-    finger: 'Little finger',
-    metal: 'Silver',
-    dayToWear: 'Monday',
-    mantra: 'Om Shraam Shreem Shraum Sah Chandraya Namah',
-    mantraCount: 11000,
-    weightCarats: '2-4 carats',
-    color: '#e2e8f0',
-    dos: [
-      'Wear on a Monday during Shukla Paksha',
-      'Dip in Gangajal or raw milk before wearing',
-      'Chant Chandra mantra 108 times',
-      'Offer white flowers to Lord Shiva',
-    ],
-    donts: [
-      'Do not wear if Moon is conjunct Rahu or Ketu',
-      'Avoid yellow or discolored pearls',
-      'Do not wear during Amavasya (new moon)',
-      'Remove if experiencing excessive cold or lethargy',
-    ],
-  },
-  Mars: {
-    planet: 'Mars',
-    planetHindi: 'Mangal',
-    gemstone: 'Red Coral (Moonga)',
-    gemstoneHindi: 'Moonga',
-    alternativeStones: ['Carnelian', 'Red Jasper', 'Bloodstone'],
-    finger: 'Ring finger',
-    metal: 'Gold or Copper',
-    dayToWear: 'Tuesday',
-    mantra: 'Om Kraam Kreem Kraum Sah Bhaumaya Namah',
-    mantraCount: 10000,
-    weightCarats: '3-5 carats',
-    color: '#f97316',
-    dos: [
-      'Wear on a Tuesday morning during Shukla Paksha',
-      'Wash with Gangajal and energize with mantra',
-      'Offer red flowers at Hanuman temple',
-      'Recite Hanuman Chalisa before wearing',
-    ],
-    donts: [
-      'Do not wear if Mars is lord of 6th, 8th, or 12th house for your ascendant',
-      'Avoid cracked or spotted corals',
-      'Do not combine with emerald or blue sapphire',
-      'Remove if experiencing excessive anger or aggression',
-    ],
-  },
-  Mercury: {
-    planet: 'Mercury',
-    planetHindi: 'Budh',
-    gemstone: 'Emerald (Panna)',
-    gemstoneHindi: 'Panna',
-    alternativeStones: ['Green Tourmaline', 'Peridot', 'Green Jade'],
-    finger: 'Little finger',
-    metal: 'Gold',
-    dayToWear: 'Wednesday',
-    mantra: 'Om Braam Breem Braum Sah Budhaya Namah',
-    mantraCount: 9000,
-    weightCarats: '3-5 carats',
-    color: '#22c55e',
-    dos: [
-      'Wear on a Wednesday morning during Shukla Paksha',
-      'Dip in Gangajal and chant Budh mantra 108 times',
-      'Offer green moong dal to Brahmins',
-      'Keep emerald clean and free of scratches',
-    ],
-    donts: [
-      'Do not combine with red coral or pearl',
-      'Avoid emeralds with black spots or inclusions',
-      'Do not wear if Mercury is combust',
-      'Remove if experiencing skin allergies',
-    ],
-  },
-  Jupiter: {
-    planet: 'Jupiter',
-    planetHindi: 'Guru/Brihaspati',
-    gemstone: 'Yellow Sapphire (Pukhraj)',
-    gemstoneHindi: 'Pukhraj',
-    alternativeStones: ['Yellow Topaz', 'Citrine', 'Yellow Beryl'],
-    finger: 'Index finger',
-    metal: 'Gold',
-    dayToWear: 'Thursday',
-    mantra: 'Om Graam Greem Graum Sah Gurave Namah',
-    mantraCount: 19000,
-    weightCarats: '3-5 carats',
-    color: '#eab308',
-    dos: [
-      'Wear on a Thursday morning during Shukla Paksha',
-      'Dip in Gangajal and turmeric water',
-      'Chant Guru mantra 108 times before wearing',
-      'Offer yellow sweets and clothes to Brahmins',
-    ],
-    donts: [
-      'Do not wear with blue sapphire or diamond',
-      'Avoid milky or clouded yellow sapphires',
-      'Do not wear if Jupiter is in 6th, 8th, or 12th house',
-      'Remove if experiencing weight gain or liver issues',
-    ],
-  },
-  Venus: {
-    planet: 'Venus',
-    planetHindi: 'Shukra',
-    gemstone: 'Diamond (Heera)',
-    gemstoneHindi: 'Heera',
-    alternativeStones: ['White Sapphire', 'Zircon', 'White Topaz'],
-    finger: 'Middle finger or Ring finger',
-    metal: 'Platinum or Silver',
-    dayToWear: 'Friday',
-    mantra: 'Om Draam Dreem Draum Sah Shukraya Namah',
-    mantraCount: 16000,
-    weightCarats: '0.5-2 carats',
-    color: '#a78bfa',
-    dos: [
-      'Wear on a Friday morning during Shukla Paksha',
-      'Dip in raw milk and Gangajal',
-      'Chant Shukra mantra 108 times',
-      'Offer white flowers and sweets to a Goddess temple',
-    ],
-    donts: [
-      'Do not combine with ruby or red coral',
-      'Avoid diamonds with dark inclusions or cracks',
-      'Do not wear if Venus is combust with Sun',
-      'Remove if experiencing relationship turbulence',
-    ],
-  },
-  Saturn: {
-    planet: 'Saturn',
-    planetHindi: 'Shani',
-    gemstone: 'Blue Sapphire (Neelam)',
-    gemstoneHindi: 'Neelam',
-    alternativeStones: ['Amethyst', 'Blue Topaz', 'Iolite', 'Lapis Lazuli'],
-    finger: 'Middle finger',
-    metal: 'Panchdhatu or Silver',
-    dayToWear: 'Saturday',
-    mantra: 'Om Praam Preem Praum Sah Shanaischaraya Namah',
-    mantraCount: 23000,
-    weightCarats: '2-5 carats',
-    color: '#3b82f6',
-    dos: [
-      'Test for 3 days by keeping under pillow before wearing',
-      'Wear on a Saturday evening during Shukla Paksha',
-      'Dip in sesame oil and Gangajal',
-      'Offer mustard oil and black sesame to Shani temple',
-    ],
-    donts: [
-      'NEVER wear without consulting an astrologer first',
-      'Do not combine with ruby, red coral, or pearl',
-      'Remove immediately if bad dreams or accidents occur within 3 days',
-      'Avoid if Saturn rules the 2nd or 7th house for your lagna — consult an astrologer first',
-    ],
-  },
-  Rahu: {
-    planet: 'Rahu',
-    planetHindi: 'Rahu',
-    gemstone: 'Hessonite / Gomed',
-    gemstoneHindi: 'Gomed',
-    alternativeStones: ['Orange Zircon', 'Spessartite Garnet'],
-    finger: 'Middle finger',
-    metal: 'Panchdhatu or Silver',
-    dayToWear: 'Saturday or Wednesday',
-    mantra: 'Om Bhraam Bhreem Bhraum Sah Rahave Namah',
-    mantraCount: 18000,
-    weightCarats: '3-5 carats',
-    color: '#6b7280',
-    dos: [
-      'Wear on a Saturday during Shukla Paksha',
-      'Dip in raw milk and Gangajal',
-      'Chant Rahu mantra 108 times',
-      'Offer coconut and blue flowers at a Naga temple',
-    ],
-    donts: [
-      'Do not combine with ruby, pearl, or red coral',
-      'Avoid if Rahu is in 6th, 8th, or 12th house',
-      'Do not wear cracked or dull hessonites',
-      'Remove if experiencing confusion or anxiety',
-    ],
-  },
-  Ketu: {
-    planet: 'Ketu',
-    planetHindi: 'Ketu',
-    gemstone: "Cat's Eye (Lehsunia)",
-    gemstoneHindi: 'Lehsunia / Vaidurya',
-    alternativeStones: ['Tiger Eye', 'Chrysoberyl'],
-    finger: 'Little finger or Ring finger',
-    metal: 'Panchdhatu or Silver',
-    dayToWear: 'Tuesday or Saturday',
-    mantra: 'Om Sraam Sreem Sraum Sah Ketave Namah',
-    mantraCount: 7000,
-    weightCarats: '3-5 carats',
-    color: '#92400e',
-    dos: [
-      'Wear on a Tuesday during Shukla Paksha',
-      'Dip in Gangajal and energize with mantra',
-      'Offer a flag at a Ganesha temple',
-      'Donate blankets to the needy',
-    ],
-    donts: [
-      'Do not combine with emerald or diamond',
-      'Avoid if Ketu is in enemy sign or conjunct malefics',
-      'Do not wear chipped or cloudy stones',
-      'Remove if experiencing detachment or confusion',
-    ],
-  },
-};
-
-export const GEMSTONE_PLANET_ORDER = [
-  'Sun',
-  'Moon',
-  'Mars',
-  'Mercury',
-  'Jupiter',
-  'Venus',
-  'Saturn',
-  'Rahu',
-  'Ketu',
-] as const;
-
-export interface PlanetAnalysis {
+interface NatalPlanet {
   planet: string;
-  strength: PlanetStrength;
-  reason: string;
-  needsGemstone: boolean;
-  /** 0-100 — how strongly this gemstone is preferred for the user (higher = wear it). */
-  preference: number;
+  sign?: string;
+  isRetrograde?: boolean;
+  house?: number;
+  longitude?: number;
+}
+
+interface NatalHouse {
+  house?: number;
+  lord?: string;
 }
 
 const DEBILITATION: Record<string, string> = {
@@ -334,6 +95,7 @@ const ENEMY_SIGNS: Record<string, string[]> = {
   Rahu: ['Leo', 'Cancer', 'Aries', 'Scorpio'],
   Ketu: ['Leo', 'Cancer'],
 };
+/** No entry ⇒ combustion doesn't apply to that body (Sun can't be combust with itself; Rahu/Ketu are shadow points). */
 const COMBUST_DISTANCE: Record<string, number> = {
   Moon: 12,
   Mars: 17,
@@ -343,12 +105,173 @@ const COMBUST_DISTANCE: Record<string, number> = {
   Saturn: 15,
 };
 
-interface NatalPlanet {
+function getPlanetPos(
+  planetName: string,
+  chart: Record<string, unknown> | null,
+): NatalPlanet | undefined {
+  const planets = ((chart?.planets ?? []) as NatalPlanet[]) || [];
+  return planets.find((p) => p.planet === planetName);
+}
+
+/** Whole-sign-house conjunction — same house number, mirroring how houses are assigned elsewhere in this app. */
+function isConjunct(
+  planetA: string,
+  planetB: string,
+  chart: Record<string, unknown> | null,
+): boolean {
+  const a = getPlanetPos(planetA, chart);
+  const b = getPlanetPos(planetB, chart);
+  return typeof a?.house === 'number' && a.house === b?.house;
+}
+
+function getHousesRuledBy(planetName: string, chart: Record<string, unknown> | null): number[] {
+  const houses = ((chart?.houses ?? []) as NatalHouse[]) || [];
+  return houses
+    .filter((h) => h.lord === planetName)
+    .map((h) => h.house)
+    .filter((h): h is number => typeof h === 'number');
+}
+
+function rulesAnyOf(
+  planetName: string,
+  houseNumbers: number[],
+  chart: Record<string, unknown> | null,
+): boolean {
+  return getHousesRuledBy(planetName, chart).some((h) => houseNumbers.includes(h));
+}
+
+function isInHouse(
+  planetName: string,
+  houseNumbers: number[],
+  chart: Record<string, unknown> | null,
+): boolean {
+  const pos = getPlanetPos(planetName, chart);
+  return typeof pos?.house === 'number' && houseNumbers.includes(pos.house);
+}
+
+function isInEnemySign(planetName: string, chart: Record<string, unknown> | null): boolean {
+  const pos = getPlanetPos(planetName, chart);
+  return !!pos?.sign && (ENEMY_SIGNS[planetName]?.includes(pos.sign) ?? false);
+}
+
+function isCombust(planetName: string, chart: Record<string, unknown> | null): boolean {
+  const distance = COMBUST_DISTANCE[planetName];
+  if (!distance) return false;
+  const pos = getPlanetPos(planetName, chart);
+  const sunPos = getPlanetPos('Sun', chart);
+  if (
+    !pos ||
+    !sunPos ||
+    typeof pos.longitude !== 'number' ||
+    typeof sunPos.longitude !== 'number'
+  ) {
+    return false;
+  }
+  const diff = Math.abs(pos.longitude - sunPos.longitude);
+  const angDist = diff > 180 ? 360 - diff : diff;
+  return angDist < distance;
+}
+
+export const GEMSTONE_DATA: Record<string, GemstoneInfo> = {
+  Sun: {
+    planet: 'Sun',
+    mantra: 'Om Hraam Hreem Hraum Sah Suryaya Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#ef4444',
+    conditionalDont: { check: (chart) => isInEnemySign('Sun', chart) },
+  },
+  Moon: {
+    planet: 'Moon',
+    mantra: 'Om Shraam Shreem Shraum Sah Chandraya Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#e2e8f0',
+    conditionalDont: {
+      check: (chart) => isConjunct('Moon', 'Rahu', chart) || isConjunct('Moon', 'Ketu', chart),
+    },
+  },
+  Mars: {
+    planet: 'Mars',
+    mantra: 'Om Kraam Kreem Kraum Sah Bhaumaya Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#f97316',
+    conditionalDont: { check: (chart) => rulesAnyOf('Mars', [6, 8, 12], chart) },
+  },
+  Mercury: {
+    planet: 'Mercury',
+    mantra: 'Om Braam Breem Braum Sah Budhaya Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#22c55e',
+    conditionalDont: { check: (chart) => isCombust('Mercury', chart) },
+  },
+  Jupiter: {
+    planet: 'Jupiter',
+    mantra: 'Om Graam Greem Graum Sah Gurave Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#eab308',
+    conditionalDont: { check: (chart) => isInHouse('Jupiter', [6, 8, 12], chart) },
+  },
+  Venus: {
+    planet: 'Venus',
+    mantra: 'Om Draam Dreem Draum Sah Shukraya Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#a78bfa',
+    conditionalDont: { check: (chart) => isCombust('Venus', chart) },
+  },
+  Saturn: {
+    planet: 'Saturn',
+    mantra: 'Om Praam Preem Praum Sah Shanaischaraya Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#3b82f6',
+    conditionalDont: { check: (chart) => rulesAnyOf('Saturn', [2, 7], chart) },
+  },
+  Rahu: {
+    planet: 'Rahu',
+    mantra: 'Om Bhraam Bhreem Bhraum Sah Rahave Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#6b7280',
+    conditionalDont: { check: (chart) => isInHouse('Rahu', [6, 8, 12], chart) },
+  },
+  Ketu: {
+    planet: 'Ketu',
+    mantra: 'Om Sraam Sreem Sraum Sah Ketave Namah',
+    mantraPerDay: 108,
+    mantraDays: 11,
+    color: '#92400e',
+    conditionalDont: {
+      check: (chart) =>
+        isInEnemySign('Ketu', chart) ||
+        ['Sun', 'Mars', 'Saturn', 'Rahu'].some((m) => isConjunct('Ketu', m, chart)),
+    },
+  },
+};
+
+export const GEMSTONE_PLANET_ORDER = [
+  'Sun',
+  'Moon',
+  'Mars',
+  'Mercury',
+  'Jupiter',
+  'Venus',
+  'Saturn',
+  'Rahu',
+  'Ketu',
+] as const;
+
+export interface PlanetAnalysis {
   planet: string;
-  sign?: string;
-  isRetrograde?: boolean;
-  house?: number;
-  longitude?: number;
+  strength: PlanetStrength;
+  reason: string;
+  needsGemstone: boolean;
+  /** 0-100 — how strongly this gemstone is preferred for the user (higher = wear it). */
+  preference: number;
 }
 
 /**
@@ -360,7 +283,6 @@ interface NatalPlanet {
  */
 export function analyzePlanetStrengths(chart: Record<string, unknown> | null): PlanetAnalysis[] {
   const planets = ((chart?.planets ?? []) as NatalPlanet[]) || [];
-  const sunPos = planets.find((p) => p.planet === 'Sun');
 
   return GEMSTONE_PLANET_ORDER.map((planetName): PlanetAnalysis => {
     const pos = planets.find((p) => p.planet === planetName);
@@ -387,28 +309,17 @@ export function analyzePlanetStrengths(chart: Record<string, unknown> | null): P
       needsGemstone = true;
       score += 38;
     }
-    if (ENEMY_SIGNS[planetName]?.includes(pos.sign)) {
+    if (isInEnemySign(planetName, chart)) {
       reasons.push(`In enemy sign ${pos.sign}`);
       strength = 'weak';
       needsGemstone = true;
       score += 26;
     }
-    if (
-      planetName !== 'Sun' &&
-      planetName !== 'Rahu' &&
-      planetName !== 'Ketu' &&
-      sunPos &&
-      typeof pos.longitude === 'number' &&
-      typeof sunPos.longitude === 'number'
-    ) {
-      const diff = Math.abs(pos.longitude - sunPos.longitude);
-      const angDist = diff > 180 ? 360 - diff : diff;
-      if (angDist < (COMBUST_DISTANCE[planetName] ?? 10)) {
-        reasons.push('Combust (close to Sun)');
-        strength = 'weak';
-        needsGemstone = true;
-        score += 24;
-      }
+    if (isCombust(planetName, chart)) {
+      reasons.push('Combust (close to Sun)');
+      strength = 'weak';
+      needsGemstone = true;
+      score += 24;
     }
     if (pos.isRetrograde) {
       reasons.push('Retrograde');

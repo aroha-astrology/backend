@@ -11,28 +11,22 @@ export const GemstoneStrengthSchema = z
 
 export const GemstoneItemSchema = z
   .object({
+    /** Also the i18n lookup key on the frontend — kundli.gemstone.data.<planet>.* — for all locale-dependent facts (name, alternatives, finger, metal, day, weight, dos, donts). */
     planet: z.string(),
-    planetHindi: z.string(),
-    gemstone: z.string(),
-    gemstoneHindi: z.string(),
-    alternativeStones: z.array(z.string()),
-    finger: z.string(),
-    metal: z.string(),
-    dayToWear: z.string(),
+    /** Sanskrit chant text — locale-invariant, same for every language. */
     mantra: z.string(),
-    mantraCount: z.number().int(),
-    weightCarats: z.string(),
+    /** Practical mantra practice: N times per day for N days (uniform across all 9 stones). */
+    mantraPerDay: z.number().int(),
+    mantraDays: z.number().int(),
     /** Hex accent for the UI gem swatch. */
     color: z.string(),
-    dos: z.array(z.string()),
-    donts: z.array(z.string()),
     strength: GemstoneStrengthSchema,
     /** How strongly this stone is preferred for the user: true = strongly recommended (weak/afflicted planet). */
     recommended: z.boolean(),
     /** 0-100 — how strongly this gemstone is preferred for the user (headline percentage). */
     preferencePercent: z.number().int().min(0).max(100),
-    /** Deterministic dignity reason, e.g. "Debilitated in Libra". */
-    reason: z.string(),
+    /** True only when this planet's chart-specific caution actually applies to this user (e.g. rules a dusthana house) — the frontend shows the matching translated caution line only when true. */
+    conditionalCautionApplies: z.boolean(),
     /** AI-authored personal note (translated on read). */
     note: z.string(),
   })

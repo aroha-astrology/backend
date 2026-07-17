@@ -88,7 +88,10 @@ gemstoneRouter.openapi(getGemstoneRoute, async (c) => {
   const existing = await findGemstoneRecommendation(user.id);
 
   if (existing?.status === 'ready') {
-    return c.json(await toGemstoneReportDtoForLanguage(existing, language || 'en'), 200);
+    return c.json(
+      await toGemstoneReportDtoForLanguage(existing, language || 'en', kundli.chartData),
+      200,
+    );
   }
 
   if (existing?.status === 'generating' && !isGemstoneStale(existing)) {
