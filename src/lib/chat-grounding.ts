@@ -59,6 +59,9 @@ interface PlanetFact {
   sign: string;
   signIndex: number;
   house: number;
+  nakshatra: string;
+  nakshatraPada: number;
+  nakshatraLord: string;
 }
 
 function getHouses(chart: Record<string, unknown> | null): HouseFact[] {
@@ -77,6 +80,9 @@ function getPlanets(chart: Record<string, unknown> | null): PlanetFact[] {
       sign: String(p.sign ?? ''),
       signIndex: Number(p.signIndex ?? 0),
       house: Number(p.house ?? 0),
+      nakshatra: String(p.nakshatra ?? ''),
+      nakshatraPada: Number(p.nakshatraPada ?? 0),
+      nakshatraLord: String(p.nakshatraLord ?? ''),
     }));
 }
 
@@ -686,6 +692,16 @@ export async function buildGroundingFacts(
   // indirectly from house-lord facts alone.
   const moon = planetPlacement(planets, 'Moon');
   if (moon) facts.push(`Moon Sign (Rashi) is natally in ${moon.sign} (house ${moon.house})`);
+  // Janma Nakshatra (birth star) — computed and stored on every kundli but
+  // was previously dropped by getPlanets() above; only the transiting Moon's
+  // CURRENT nakshatra was ever surfaced (see the transit block below), never
+  // the user's own birth star, even though it's fundamental to identity,
+  // emotional temperament, and synastry/matchmaking questions.
+  if (moon?.nakshatra) {
+    facts.push(
+      `Janma Nakshatra (birth star) is ${moon.nakshatra}, pada ${moon.nakshatraPada}, ruled by ${moon.nakshatraLord}`,
+    );
+  }
   const sun = planetPlacement(planets, 'Sun');
   if (sun) facts.push(`Sun Sign is natally in ${sun.sign} (house ${sun.house})`);
 

@@ -21,8 +21,10 @@ import {
 } from '../../lib/astro-engine/index.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
+import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
+import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import {
   PANCHANG_REFERENCE_POINTS,
@@ -758,6 +760,187 @@ export type ChatStreamEvent =
   | { type: 'token'; content: string }
   | { type: 'summary'; summary: string };
 
+/**
+ * Keyword-gated, unlike Panchang above: a relocation scan costs one
+ * computeMetrology() call plus N calculateAscendant() calls (see
+ * astrocartography/index.ts), so it's only worth paying for on a message
+ * that's actually asking a "where" question — everything else skips it
+ * entirely rather than doing this work on every single chat turn.
+ */
+const RELOCATION_KEYWORDS =
+  /\b(relocat\w*|astrocartograph\w*|move\s+(to|abroad)|moving\s+abroad|which\s+(city|country)|where\s+should\s+i\s+(live|move|settle)|best\s+(place|city|country)\s+(for|to)\s+(live|move)|settle\s+(down\s+)?(in|abroad)|thrive\s+(in|abroad))\b/i;
+
+/**
+ * Curated-city relocation/astrocartography scan for chat grounding — see
+ * astro-engine/astrocartography/index.ts for the full method (relocated
+ * Ascendant for the same birth instant, which natal benefics/malefics land
+ * angular per city). Best-effort: a missing/incomplete birth record just
+ * means no relocation facts get injected, never a broken reply.
+ */
+async function buildChatRelocationFacts(
+  dateOfBirth: string,
+  timeOfBirth: string,
+  place: { lat: number; lon: number; tz: string },
+): Promise<string[]> {
+  const natal = await computeMetrology({
+    date: dateOfBirth,
+    time: timeOfBirth,
+    latitude: place.lat,
+    longitude: place.lon,
+    timezone: place.tz,
+  });
+  const julianDay = natal.julianDay as number;
+  const natalPlanets = ((natal.planets as Array<Record<string, unknown>>) ?? []).map((p) => ({
+    planet: asString(p.planet, ''),
+    signIndex: Number(p.signIndex ?? 0),
+  }));
+
+  const { scoreRelocationCities } =
+    await import('../../lib/astro-engine/astrocartography/index.js');
+  const ranked = (await scoreRelocationCities(julianDay, natalPlanets)).slice(0, 4);
+
+  const cityLines = ranked.map((r) => {
+    const bits = [`Ascendant ${r.ascendantSign}`];
+    if (r.angularBenefics.length) bits.push(`favorable: ${r.angularBenefics.join('/')} angular`);
+    if (r.angularMalefics.length) bits.push(`caution: ${r.angularMalefics.join('/')} angular`);
+    return `${r.city.name}, ${r.city.country} (${bits.join(', ')})`;
+  });
+
+  return [
+    `Relocation/astrocartography scan — same birth instant relocated to each city, ranked ` +
+      `best-first by angular benefics vs. malefics: ${cityLines.join('; ')}.`,
+  ];
+}
+
+/**
+ * Panchang facts for chat grounding — this is the SAME `getPanchang` used by
+ * the public `/panchang` endpoint above, so results are already cache-shared
+ * across every user at this location today. Previously computed nowhere in
+ * the chat path (scholar.ts's SYSTEM_ROLE has never had any muhurta/timing
+ * data to cite), so "is today good for X" / "best date for a wedding"
+ * questions had nothing to reason from. Best-effort: a Panchang failure
+ * (e.g. no birth place on file) must never break the chat reply.
+ */
+async function buildChatPanchangFacts(lat: number, lon: number): Promise<string[]> {
+  const panchang = await getPanchang(lat, lon);
+  const goodChoghadiya = (panchang.choghadiya?.day ?? [])
+    .filter((c) => c.type === 'good')
+    .map((c) => `${c.name} (${c.startTime}-${c.endTime})`)
+    .join(', ');
+
+  const facts = [
+    `Today's Panchang (${panchang.date}, ${panchang.vara}): Tithi ${panchang.tithi.name} (${panchang.tithi.paksha} Paksha, ${panchang.tithi.isAuspicious ? 'auspicious' : 'not traditionally auspicious'}), Nakshatra ${panchang.nakshatra.name}, Yoga ${panchang.yoga.name}, Karana ${panchang.karana.name}`,
+    `Rahu Kaal today (avoid starting anything important): ${panchang.rahuKaal.start}-${panchang.rahuKaal.end}`,
+    `Abhijit Muhurta today (traditionally auspicious for starting things): ${panchang.abhijitMuhurta.start}-${panchang.abhijitMuhurta.end}`,
+  ];
+  if (goodChoghadiya) {
+    facts.push(`Favorable Choghadiya windows today (daytime): ${goodChoghadiya}`);
+  }
+  return facts;
+}
+
+/** Narrows an `unknown` field pulled off a loosely-typed chart object to a
+ * string, without `String(unknown)`'s "[object Object]" risk if the field
+ * turns out not to be a string at runtime. */
+function asString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+/**
+ * Loads a saved birth_profiles row (partner/child/etc., see the
+ * `birth_profiles` table) and builds labeled facts for chat grounding: a real
+ * Ashtakoota synastry reading — same engine as POST /matchmaking above,
+ * `calculateAshtakoota` + `detectMangalDosha` — for partner-type
+ * relationships, or the second person's own key placements for a child/other
+ * relationship, so parenting questions can read that child's actual chart
+ * instead of only the user's own 5th-house derivation. Best-effort: an
+ * owner-scoped lookup miss or incomplete birth data on the saved profile must
+ * never break the chat reply, just degrade to no second-chart facts.
+ */
+export async function buildSecondChartFacts(
+  userId: string,
+  groundingSource: GroundingSource,
+  birthProfileId: string,
+): Promise<string[]> {
+  const profile = await getBirthProfile(userId, birthProfileId);
+  const label = profile.displayName
+    ? `${profile.displayName} (${profile.relationship ?? 'saved profile'})`
+    : (profile.relationship ?? 'this saved profile');
+
+  if (!profile.dateOfBirth || !profile.timeOfBirth || !profile.placeOfBirth) {
+    return [
+      `Saved profile "${label}" has no exact birth details on file — only general, ` +
+        `non-chart-specific guidance is possible for them.`,
+    ];
+  }
+
+  const { computeMetrology } = await import('../../lib/swarm/agents/metrologist.js');
+  const met = await computeMetrology({
+    date: profile.dateOfBirth,
+    time: profile.timeOfBirth,
+    latitude: profile.placeOfBirth.lat,
+    longitude: profile.placeOfBirth.lon,
+    timezone: profile.placeOfBirth.tz,
+  });
+
+  const planets = (met.planets as Array<Record<string, unknown>>) ?? [];
+  const moon = planets.find((p) => p.planet === 'Moon');
+  const sun = planets.find((p) => p.planet === 'Sun');
+  const ascendant = (met.chart as Record<string, unknown> | undefined)?.ascendant as
+    | Record<string, unknown>
+    | undefined;
+
+  const isPartnerType =
+    profile.relationship === 'partner' ||
+    profile.relationship === 'spouse' ||
+    profile.relationship === 'prospective_match';
+
+  if (isPartnerType && moon) {
+    const userMoon = (
+      (groundingSource.chart?.planets ?? []) as Array<Record<string, unknown>>
+    ).find((p) => p.planet === 'Moon');
+    if (userMoon) {
+      const { calculateAshtakoota } = await import('../../lib/astro-engine/matching/ashtakoota.js');
+      const nak1 = Number(userMoon.nakshatraIndex ?? 0);
+      const nak2 = Number(moon.nakshatraIndex ?? 0);
+      const sign1 = asString(userMoon.sign, 'Aries');
+      const sign2 = asString(moon.sign, 'Aries');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      const result = calculateAshtakoota(nak1, nak2, sign1 as any, sign2 as any);
+      const nadi = result.scores.find((s) => s.koota === 'Nadi');
+      const bhakoot = result.scores.find((s) => s.koota === 'Bhakoot');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      const mangalUser = detectMangalDosha(groundingSource.chart as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      const mangalOther = detectMangalDosha(met.chart as any);
+
+      return [
+        `Real Ashtakoota synastry reading with saved profile "${label}" (their actual chart, not ` +
+          `a guess): total Guna score ${result.totalScore}/${result.maxTotal} (${result.overallCompatibility}). ` +
+          `Nadi Dosha ${nadi?.score === 0 ? 'PRESENT (0/8 — traditionally a serious flag)' : 'not present'}. ` +
+          `Bhakoot Dosha ${bhakoot?.score === 0 ? 'PRESENT (0/7)' : 'not present'}. ` +
+          `Mangal Dosha: you ${mangalUser.present ? 'have it' : 'do not have it'}, they ${
+            mangalOther.present ? 'have it' : 'do not have it'
+          } (${mangalUser.present === mangalOther.present ? 'matched' : 'MISMATCHED — asymmetric'}).`,
+      ];
+    }
+  }
+
+  if (profile.relationship === 'child') {
+    return [
+      `Chart snapshot for your child, saved profile "${label}" — read THIS chart's own placements ` +
+        `for their temperament and needs, not derived from your own 5th house: Ascendant ` +
+        `${asString(ascendant?.sign, 'unknown')}, Moon Sign ${asString(moon?.sign, 'unknown')} ` +
+        `(Nakshatra ${asString(moon?.nakshatra, 'unknown')}), Sun Sign ${asString(sun?.sign, 'unknown')}.`,
+    ];
+  }
+
+  return [
+    `Chart snapshot for saved profile "${label}": Ascendant ${asString(ascendant?.sign, 'unknown')}, ` +
+      `Moon Sign ${asString(moon?.sign, 'unknown')}, Sun Sign ${asString(sun?.sign, 'unknown')}.`,
+  ];
+}
+
 export async function* chatStream(
   userId: string,
   message: string,
@@ -766,7 +949,21 @@ export async function* chatStream(
   detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
   locale: string = 'en',
+  birthProfileId?: string,
 ): AsyncGenerator<ChatStreamEvent> {
+  // Death/self-harm policy gate — runs before checkTopicGate (and before any
+  // chart/grounding work) so a self-harm message never reaches the topic
+  // classifier or the LLM at all. This is the primary defense; see the
+  // output-side classifyAssistantOutput check below the generation loop for
+  // the backstop. SYSTEM_ROLE (scholar.ts) claims "a separate policy handles"
+  // death/self-harm — this is that policy; previously nothing implemented it
+  // on this path.
+  const inputPolicy = classifyUserMessage(message, locale);
+  if (inputPolicy.blocked) {
+    yield { type: 'token', content: inputPolicy.cannedResponse };
+    return;
+  }
+
   // Gate off-topic messages (coding help, trivia, etc.) before doing any
   // chart/grounding work — see checkTopicGate's own comment for why this
   // needs a dedicated classification call rather than a persona prompt rule.
@@ -815,6 +1012,42 @@ export async function* chatStream(
   // does not touch the "never the name" rule, see buildProfileFacts's comment.
   const profileFacts = user ? buildProfileFacts(user) : [];
 
+  // Today's Panchang at the user's birth location — best-effort, never blocks
+  // the reply (a missing place of birth, or the panchang engine throwing,
+  // just means no muhurta facts get injected, same degrade-gracefully
+  // contract as groundingSource above).
+  const place = user?.placeOfBirth;
+  const panchangFacts =
+    place?.lat != null && place?.lon != null
+      ? await buildChatPanchangFacts(place.lat, place.lon).catch(() => [])
+      : [];
+
+  // Second chart (partner/child/etc.) — only when the client explicitly asks
+  // for one via birthProfileId (see ChatRequestSchema). Best-effort: a bad id
+  // or an owner mismatch must never break the chat reply.
+  const secondChartFacts = birthProfileId
+    ? await buildSecondChartFacts(userId, groundingSource, birthProfileId).catch(() => [])
+    : [];
+
+  // Relocation/astrocartography scan — only when the message actually asks a
+  // "where" question (see RELOCATION_KEYWORDS above for why this is gated
+  // unlike Panchang).
+  const relocationFacts =
+    RELOCATION_KEYWORDS.test(message) &&
+    user?.dateOfBirth &&
+    user?.timeOfBirth &&
+    place?.lat != null &&
+    place?.lon != null &&
+    place?.tz
+      ? await buildChatRelocationFacts(user.dateOfBirth, user.timeOfBirth, {
+          lat: place.lat,
+          lon: place.lon,
+          tz: place.tz,
+        }).catch(() => [])
+      : [];
+
+  const extraFacts = [...profileFacts, ...panchangFacts, ...secondChartFacts, ...relocationFacts];
+
   const tokenStream = scholarStream(
     state,
     message,
@@ -824,9 +1057,26 @@ export async function* chatStream(
     signal,
     locale,
     userFacts,
-    profileFacts,
+    extraFacts,
   );
+
+  // Output-side backstop for the death/self-harm policy: the input filter
+  // above is the primary defense, but the LLM can still occasionally produce
+  // a violation unprompted (e.g. volunteering a "you will die" framing inside
+  // an otherwise benign accident/health answer). Check the accumulated reply
+  // text BEFORE each delta is emitted — not after the stream ends — so a
+  // violation that only completes mid-reply is caught and swapped for the
+  // canned response before that delta ever reaches the client, without
+  // sacrificing token-by-token streaming for the rest of the reply.
+  let fullText = '';
   for await (const token of tokenStream) {
+    const tentative = fullText + token;
+    const outputPolicy = classifyAssistantOutput(tentative, locale);
+    if (outputPolicy.blocked) {
+      yield { type: 'token', content: outputPolicy.cannedResponse };
+      return;
+    }
+    fullText = tentative;
     yield { type: 'token', content: token };
   }
 }
