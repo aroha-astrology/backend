@@ -761,6 +761,58 @@ export type ChatStreamEvent =
   | { type: 'summary'; summary: string };
 
 /**
+ * Keyword-gated, unlike Panchang above: a relocation scan costs one
+ * computeMetrology() call plus N calculateAscendant() calls (see
+ * astrocartography/index.ts), so it's only worth paying for on a message
+ * that's actually asking a "where" question — everything else skips it
+ * entirely rather than doing this work on every single chat turn.
+ */
+const RELOCATION_KEYWORDS =
+  /\b(relocat\w*|astrocartograph\w*|move\s+(to|abroad)|moving\s+abroad|which\s+(city|country)|where\s+should\s+i\s+(live|move|settle)|best\s+(place|city|country)\s+(for|to)\s+(live|move)|settle\s+(down\s+)?(in|abroad)|thrive\s+(in|abroad))\b/i;
+
+/**
+ * Curated-city relocation/astrocartography scan for chat grounding — see
+ * astro-engine/astrocartography/index.ts for the full method (relocated
+ * Ascendant for the same birth instant, which natal benefics/malefics land
+ * angular per city). Best-effort: a missing/incomplete birth record just
+ * means no relocation facts get injected, never a broken reply.
+ */
+async function buildChatRelocationFacts(
+  dateOfBirth: string,
+  timeOfBirth: string,
+  place: { lat: number; lon: number; tz: string },
+): Promise<string[]> {
+  const natal = await computeMetrology({
+    date: dateOfBirth,
+    time: timeOfBirth,
+    latitude: place.lat,
+    longitude: place.lon,
+    timezone: place.tz,
+  });
+  const julianDay = natal.julianDay as number;
+  const natalPlanets = ((natal.planets as Array<Record<string, unknown>>) ?? []).map((p) => ({
+    planet: asString(p.planet, ''),
+    signIndex: Number(p.signIndex ?? 0),
+  }));
+
+  const { scoreRelocationCities } =
+    await import('../../lib/astro-engine/astrocartography/index.js');
+  const ranked = (await scoreRelocationCities(julianDay, natalPlanets)).slice(0, 4);
+
+  const cityLines = ranked.map((r) => {
+    const bits = [`Ascendant ${r.ascendantSign}`];
+    if (r.angularBenefics.length) bits.push(`favorable: ${r.angularBenefics.join('/')} angular`);
+    if (r.angularMalefics.length) bits.push(`caution: ${r.angularMalefics.join('/')} angular`);
+    return `${r.city.name}, ${r.city.country} (${bits.join(', ')})`;
+  });
+
+  return [
+    `Relocation/astrocartography scan — same birth instant relocated to each city, ranked ` +
+      `best-first by angular benefics vs. malefics: ${cityLines.join('; ')}.`,
+  ];
+}
+
+/**
  * Panchang facts for chat grounding — this is the SAME `getPanchang` used by
  * the public `/panchang` endpoint above, so results are already cache-shared
  * across every user at this location today. Previously computed nowhere in
@@ -977,7 +1029,24 @@ export async function* chatStream(
     ? await buildSecondChartFacts(userId, groundingSource, birthProfileId).catch(() => [])
     : [];
 
-  const extraFacts = [...profileFacts, ...panchangFacts, ...secondChartFacts];
+  // Relocation/astrocartography scan — only when the message actually asks a
+  // "where" question (see RELOCATION_KEYWORDS above for why this is gated
+  // unlike Panchang).
+  const relocationFacts =
+    RELOCATION_KEYWORDS.test(message) &&
+    user?.dateOfBirth &&
+    user?.timeOfBirth &&
+    place?.lat != null &&
+    place?.lon != null &&
+    place?.tz
+      ? await buildChatRelocationFacts(user.dateOfBirth, user.timeOfBirth, {
+          lat: place.lat,
+          lon: place.lon,
+          tz: place.tz,
+        }).catch(() => [])
+      : [];
+
+  const extraFacts = [...profileFacts, ...panchangFacts, ...secondChartFacts, ...relocationFacts];
 
   const tokenStream = scholarStream(
     state,
