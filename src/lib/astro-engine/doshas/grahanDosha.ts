@@ -54,10 +54,18 @@ export function detectGrahanDosha(chartData: ChartData): GrahanDosha {
     severity = 'moderate';
   }
 
+  const DESCRIPTIONS: Record<Exclude<GrahanDosha['type'], 'none'>, string> = {
+    surya_grahan:
+      'Sun and Rahu occupy the same house (Surya Grahan / solar-eclipse affliction), which can dim vitality, confidence, and paternal relationships.',
+    chandra_grahan:
+      'Moon and a shadow planet (Rahu or Ketu) occupy the same house (Chandra Grahan / lunar-eclipse affliction), which can create emotional turbulence or fluctuating mental clarity.',
+    both: 'Both Surya Grahan (Sun-Rahu) and Chandra Grahan (Moon with Rahu/Ketu) afflictions are present — a rarer double-eclipse affliction affecting both vitality and emotional stability.',
+  };
+
   return {
     present,
     type,
     severity,
+    description: type === 'none' ? '' : DESCRIPTIONS[type],
   };
 }
-

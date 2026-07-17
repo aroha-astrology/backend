@@ -42,8 +42,7 @@ export function detectPitraDosha(chartData: ChartData): PitraDosha {
   const ninthHouseSignIndex = (lagnaSignIndex + 8) % 12;
   const maleficsInNinth = chartData.planets.filter(
     (p) =>
-      NATURAL_MALEFICS.includes(p.planet) &&
-      getHouseFromLagna(p.signIndex, lagnaSignIndex) === 9
+      NATURAL_MALEFICS.includes(p.planet) && getHouseFromLagna(p.signIndex, lagnaSignIndex) === 9,
   );
   if (maleficsInNinth.length > 0) {
     const names = maleficsInNinth.map((p) => p.planet).join(', ');
@@ -58,9 +57,7 @@ export function detectPitraDosha(chartData: ChartData): PitraDosha {
   if (ninthLordPosition) {
     const debilitation = PLANET_DEBILITATION[ninthLord];
     if (debilitation && ninthLordPosition.sign === debilitation.sign) {
-      indicators.push(
-        `9th lord ${ninthLord} is debilitated in ${ninthLordPosition.sign}`
-      );
+      indicators.push(`9th lord ${ninthLord} is debilitated in ${ninthLordPosition.sign}`);
     }
   }
 
@@ -75,10 +72,14 @@ export function detectPitraDosha(chartData: ChartData): PitraDosha {
     severity = 'mild';
   }
 
+  const description = present
+    ? `Pitra Dosha (ancestral affliction) indicated by ${indicators.length} factor${indicators.length > 1 ? 's' : ''}: ${indicators.join('; ')}.`
+    : '';
+
   return {
     present,
     indicators,
     severity,
+    description,
   };
 }
-

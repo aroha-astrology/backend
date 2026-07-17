@@ -86,17 +86,27 @@ export function detectSadeSati(moonSign: ZodiacSign, saturnLongitude: number): S
       endDate = new Date(now.getTime() + (daysRemaining + 2 * SATURN_DAYS_PER_SIGN) * 86400000);
     } else if (phase === 'peak') {
       // Saturn is on Moon sign; started 1 sign ago
-      startDate = new Date(
-        now.getTime() - (daysElapsed + SATURN_DAYS_PER_SIGN) * 86400000
-      );
+      startDate = new Date(now.getTime() - (daysElapsed + SATURN_DAYS_PER_SIGN) * 86400000);
       endDate = new Date(now.getTime() + (daysRemaining + SATURN_DAYS_PER_SIGN) * 86400000);
     } else if (phase === 'setting') {
       // Saturn is in the setting sign; started 2 signs ago
-      startDate = new Date(
-        now.getTime() - (daysElapsed + 2 * SATURN_DAYS_PER_SIGN) * 86400000
-      );
+      startDate = new Date(now.getTime() - (daysElapsed + 2 * SATURN_DAYS_PER_SIGN) * 86400000);
       endDate = new Date(now.getTime() + daysRemaining * 86400000);
     }
+  }
+
+  let description = '';
+  if (active) {
+    const phaseLabel: Record<'rising' | 'peak' | 'setting', string> = {
+      rising: 'rising (first) phase',
+      peak: 'peak (second) phase',
+      setting: 'setting (third) phase',
+    };
+    const range =
+      startDate && endDate
+        ? ` Estimated to run from ${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)}.`
+        : '';
+    description = `Saturn is transiting ${saturnSign}, marking the ${phaseLabel[phase as 'rising' | 'peak' | 'setting']} of Sade Sati for your Moon in ${moonSign}.${range}`;
   }
 
   return {
@@ -107,6 +117,6 @@ export function detectSadeSati(moonSign: ZodiacSign, saturnLongitude: number): S
     severity,
     saturnSign,
     moonSign,
+    description,
   };
 }
-
