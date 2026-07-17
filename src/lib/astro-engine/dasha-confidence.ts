@@ -18,7 +18,8 @@ export type Domain =
   | 'legal'
   | 'foreign'
   | 'spirituality'
-  | 'business';
+  | 'business'
+  | 'friends';
 
 export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -167,6 +168,14 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Saturn',
     triggerHouses: [7, 10, 11],
     varga: 'D10',
+  },
+  friends: {
+    label: 'Friendships/Community Window Confidence',
+    natalHouses: [11],
+    staticKarakas: ['Jupiter', 'Mercury'],
+    transitPlanet: 'Jupiter',
+    triggerHouses: [3, 11],
+    varga: 'D1',
   },
 };
 
