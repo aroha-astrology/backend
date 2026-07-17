@@ -470,6 +470,7 @@ astroRouter.openapi(chatRoute, async (c) => {
         body.detailLevel,
         signal,
         body.locale,
+        body.birthProfileId,
       );
 
       let fullContent = '';

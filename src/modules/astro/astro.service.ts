@@ -24,6 +24,7 @@ import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
+import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import {
   PANCHANG_REFERENCE_POINTS,
@@ -786,6 +787,108 @@ async function buildChatPanchangFacts(lat: number, lon: number): Promise<string[
   return facts;
 }
 
+/** Narrows an `unknown` field pulled off a loosely-typed chart object to a
+ * string, without `String(unknown)`'s "[object Object]" risk if the field
+ * turns out not to be a string at runtime. */
+function asString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+/**
+ * Loads a saved birth_profiles row (partner/child/etc., see the
+ * `birth_profiles` table) and builds labeled facts for chat grounding: a real
+ * Ashtakoota synastry reading — same engine as POST /matchmaking above,
+ * `calculateAshtakoota` + `detectMangalDosha` — for partner-type
+ * relationships, or the second person's own key placements for a child/other
+ * relationship, so parenting questions can read that child's actual chart
+ * instead of only the user's own 5th-house derivation. Best-effort: an
+ * owner-scoped lookup miss or incomplete birth data on the saved profile must
+ * never break the chat reply, just degrade to no second-chart facts.
+ */
+export async function buildSecondChartFacts(
+  userId: string,
+  groundingSource: GroundingSource,
+  birthProfileId: string,
+): Promise<string[]> {
+  const profile = await getBirthProfile(userId, birthProfileId);
+  const label = profile.displayName
+    ? `${profile.displayName} (${profile.relationship ?? 'saved profile'})`
+    : (profile.relationship ?? 'this saved profile');
+
+  if (!profile.dateOfBirth || !profile.timeOfBirth || !profile.placeOfBirth) {
+    return [
+      `Saved profile "${label}" has no exact birth details on file — only general, ` +
+        `non-chart-specific guidance is possible for them.`,
+    ];
+  }
+
+  const { computeMetrology } = await import('../../lib/swarm/agents/metrologist.js');
+  const met = await computeMetrology({
+    date: profile.dateOfBirth,
+    time: profile.timeOfBirth,
+    latitude: profile.placeOfBirth.lat,
+    longitude: profile.placeOfBirth.lon,
+    timezone: profile.placeOfBirth.tz,
+  });
+
+  const planets = (met.planets as Array<Record<string, unknown>>) ?? [];
+  const moon = planets.find((p) => p.planet === 'Moon');
+  const sun = planets.find((p) => p.planet === 'Sun');
+  const ascendant = (met.chart as Record<string, unknown> | undefined)?.ascendant as
+    | Record<string, unknown>
+    | undefined;
+
+  const isPartnerType =
+    profile.relationship === 'partner' ||
+    profile.relationship === 'spouse' ||
+    profile.relationship === 'prospective_match';
+
+  if (isPartnerType && moon) {
+    const userMoon = (
+      (groundingSource.chart?.planets ?? []) as Array<Record<string, unknown>>
+    ).find((p) => p.planet === 'Moon');
+    if (userMoon) {
+      const { calculateAshtakoota } = await import('../../lib/astro-engine/matching/ashtakoota.js');
+      const nak1 = Number(userMoon.nakshatraIndex ?? 0);
+      const nak2 = Number(moon.nakshatraIndex ?? 0);
+      const sign1 = asString(userMoon.sign, 'Aries');
+      const sign2 = asString(moon.sign, 'Aries');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      const result = calculateAshtakoota(nak1, nak2, sign1 as any, sign2 as any);
+      const nadi = result.scores.find((s) => s.koota === 'Nadi');
+      const bhakoot = result.scores.find((s) => s.koota === 'Bhakoot');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      const mangalUser = detectMangalDosha(groundingSource.chart as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      const mangalOther = detectMangalDosha(met.chart as any);
+
+      return [
+        `Real Ashtakoota synastry reading with saved profile "${label}" (their actual chart, not ` +
+          `a guess): total Guna score ${result.totalScore}/${result.maxTotal} (${result.overallCompatibility}). ` +
+          `Nadi Dosha ${nadi?.score === 0 ? 'PRESENT (0/8 — traditionally a serious flag)' : 'not present'}. ` +
+          `Bhakoot Dosha ${bhakoot?.score === 0 ? 'PRESENT (0/7)' : 'not present'}. ` +
+          `Mangal Dosha: you ${mangalUser.present ? 'have it' : 'do not have it'}, they ${
+            mangalOther.present ? 'have it' : 'do not have it'
+          } (${mangalUser.present === mangalOther.present ? 'matched' : 'MISMATCHED — asymmetric'}).`,
+      ];
+    }
+  }
+
+  if (profile.relationship === 'child') {
+    return [
+      `Chart snapshot for your child, saved profile "${label}" — read THIS chart's own placements ` +
+        `for their temperament and needs, not derived from your own 5th house: Ascendant ` +
+        `${asString(ascendant?.sign, 'unknown')}, Moon Sign ${asString(moon?.sign, 'unknown')} ` +
+        `(Nakshatra ${asString(moon?.nakshatra, 'unknown')}), Sun Sign ${asString(sun?.sign, 'unknown')}.`,
+    ];
+  }
+
+  return [
+    `Chart snapshot for saved profile "${label}": Ascendant ${asString(ascendant?.sign, 'unknown')}, ` +
+      `Moon Sign ${asString(moon?.sign, 'unknown')}, Sun Sign ${asString(sun?.sign, 'unknown')}.`,
+  ];
+}
+
 export async function* chatStream(
   userId: string,
   message: string,
@@ -794,6 +897,7 @@ export async function* chatStream(
   detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
   locale: string = 'en',
+  birthProfileId?: string,
 ): AsyncGenerator<ChatStreamEvent> {
   // Death/self-harm policy gate — runs before checkTopicGate (and before any
   // chart/grounding work) so a self-harm message never reaches the topic
@@ -865,7 +969,15 @@ export async function* chatStream(
     place?.lat != null && place?.lon != null
       ? await buildChatPanchangFacts(place.lat, place.lon).catch(() => [])
       : [];
-  const extraFacts = [...profileFacts, ...panchangFacts];
+
+  // Second chart (partner/child/etc.) — only when the client explicitly asks
+  // for one via birthProfileId (see ChatRequestSchema). Best-effort: a bad id
+  // or an owner mismatch must never break the chat reply.
+  const secondChartFacts = birthProfileId
+    ? await buildSecondChartFacts(userId, groundingSource, birthProfileId).catch(() => [])
+    : [];
+
+  const extraFacts = [...profileFacts, ...panchangFacts, ...secondChartFacts];
 
   const tokenStream = scholarStream(
     state,
