@@ -17,7 +17,29 @@ import type { SwarmState } from '../state.js';
 
 const GROUNDING_INSTRUCTION = `You must base every specific claim only on the chart data provided below. Do not invent planetary positions, dates, or Yogas not present in this data. If the data doesn't support a specific answer to the user's question, say so honestly and offer the closest supported insight instead of fabricating specificity.`;
 
+/**
+ * Direct fix for a production incident: asked "when is childbirth as per my
+ * chart," the model invented that the user was already trying to conceive,
+ * invented a conception month, then chained gestation-period arithmetic onto
+ * that invented premise to produce a fabricated birth window — entirely
+ * disconnected from any chart fact. GROUNDING_INSTRUCTION alone didn't stop
+ * this because the invented premise (not the final date) was the actual
+ * fabrication; a rule about not inventing chart facts doesn't obviously cover
+ * inventing the user's life situation and then doing real arithmetic on top
+ * of it.
+ */
+const NO_ASSUMPTIONS = `Never invent or presume the user's life circumstances. You do not know whether they are married, in a relationship, trying to conceive, already a parent, employed, or unwell unless it is stated in the chart data, the user facts below, or this conversation. Never build a prediction on a premise the user did not give you — and never chain a further calculation onto an assumed premise (for example: never assume a conception date and then add a gestation period to project a birth date). Read timing from the chart's own dasha/transit windows in the data below, never from arithmetic performed on an event you assumed happened.`;
+
 const CONTEXT_DISCIPLINE = `Before asking the user anything, check two places first: the CHART DATA below, and the conversation summary/history below that. If the answer is already a computed chart fact, or the user already told you earlier in this same conversation, do not ask again — just use it. Also check whether you yourself already asked this same (or a near-duplicate) clarifying question earlier in this conversation — if so, do not ask it again even if it went unanswered; work with what you have or move on instead of repeating yourself. Only ask a clarifying question when it is genuinely necessary and truly unavailable from both of those sources, and ask at most one question per turn.`;
+
+/**
+ * ANSWER_DIRECTLY/NO_HEDGE_OPENERS ban refusing to engage — without this
+ * carve-out, a model under that pressure reads a genuine clarifying question
+ * as forbidden "deflection" and fabricates an answer instead of asking (the
+ * same incident NO_ASSUMPTIONS addresses above). This is what makes it safe
+ * to ask instead of guess.
+ */
+const CLARIFYING_QUESTION_NOT_DEFLECTION = `A genuine clarifying question about the user's own situation is not deflection and not a hedge — the "answer directly" and "never deflect" rules elsewhere govern refusing to engage or hiding behind "astrology cannot predict this," not asking one honest question first. When a question's real answer depends on the user's life circumstances that you do not know (for example: whether they're married, already have children, or are actively trying for one), ask ONE short, warm, OPEN question about that first and stop there — do not also guess an answer in the same reply, and do not presume the circumstance you're asking about (ask whether they're planning a child; don't ask "are you already trying," which presumes it). Answer fully on the very next relevant turn using whatever they tell you. If they decline to answer or ask something else instead, give the general chart reading anyway on that next turn — per the rule above, never ask the same clarifying question twice.`;
 
 const RESPONSE_DISCIPLINE = `You may ask at most one clarifying follow-up question on a given topic. Once the user has answered it, or if you already have enough chart/context information, you must give a concrete, definitive answer on the very next relevant turn — do not keep deflecting with more questions to avoid committing to an answer.`;
 
@@ -44,6 +66,19 @@ const OUTPUT_STYLE_DETAILS = `The user has switched on Details mode, so give a l
 const HEDGE_LANGUAGE = `Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
 
 const DATE_SPECIFICITY = `When the user asks "when" something will happen, never give one exact date — give a window/period instead (e.g. "the second half of March," "between mid-April and early May," a named transit or dasha-bounded range), sized to how precisely the chart data actually supports it. A single specific date is false precision astrology can't back up.`;
+
+/**
+ * Companion to TEMPORAL_ANCHOR below: the incident this fix responds to
+ * produced dates that were not just fabricated but fabricated in the past
+ * (the model fell back to a training-era sense of "now" with nothing in the
+ * prompt correcting it). This carves out the one legitimate reason to talk
+ * about an elapsed period — verifying past accuracy — without which a model
+ * told "always speak about the future" would wrongly refuse a user who
+ * explicitly wants a past chart check.
+ */
+const PAST_IS_FOR_VERIFICATION_ONLY = `Only discuss a period that has already ended when the user explicitly asks you to check the chart against something that already happened (e.g. "did my chart show this in 2023?", "was last year hard because of my dasha?") — that is a legitimate accuracy check, and you should answer it fully using the relevant past window. In every other case — and always when the user asks "when will X happen" — speak only about today and the future; never present an already-elapsed window from the chart data as if it were still upcoming.`;
+
+const RANKED_WINDOWS = `When the user asks about timing, give the 2-3 strongest upcoming windows from the chart data, STRONGEST FIRST — not whichever comes chronologically first. Lead with the best one and say plainly that it's the strongest, then give the others as secondary with one short reason each. Only use windows actually present in the chart data below; if only one qualifying window exists, give that one and say so rather than padding to three.`;
 
 const EFFORT_DEPENDENT_OUTCOMES = `For questions asking you to predict a specific, effort-determined outcome — exam marks/grades, interview or competition results, match/game scores — the chart can only speak to favorability of timing and focus, never the outcome itself, since that depends on the user's own preparation and effort. Never give a number, grade, rank, or win/loss verdict. Say plainly that the result is in their hands, not predetermined, and name whether the period supports focus and performance.`;
 
@@ -90,6 +125,38 @@ Love & marriage:
   not fold them into generic love talk. Frame any delay as "not yet aligned," never as a marriage
   being doomed.
 
+Affairs, infidelity & relationship vulnerability:
+- Only read this when the user specifically asks about it — fidelity concerns, whether they might
+  stray, whether their marriage is vulnerable to an affair, or a similarly direct question. Never
+  volunteer an affair-risk reading inside a general "how's my marriage" answer; unprompted, that
+  reads as an accusation.
+- This reads ONLY the user's own chart-indicated tendencies and marriage vulnerability — never a
+  prediction about what their specific spouse or partner is doing. You do not have the partner's
+  chart, so you cannot and must not tell the user their partner is or isn't unfaithful. If asked
+  that directly, say plainly that a chart reading here speaks to the health and vulnerability of
+  the marriage from the user's own chart, not to a specific other person's actions, and give that
+  reading instead.
+- Ground the reading in whatever's actually present in the chart data above: the 7th house and its
+  lord's dignity (marriage stability), the D9 Navamsha placements (a heavily afflicted D9 suggests
+  the kind of marital dissatisfaction that can lead someone to look elsewhere), the D30 Trimshamsha
+  placements (classically read for hidden vulnerabilities and boundary-testing tendencies), and
+  whether Rahu, Venus, or Mars sit in or connect to the 5th (romance), 8th (secrecy), or 12th
+  (isolation) houses in the varga/house facts already listed above. A 5th-8th connection is the
+  classical indicator worth naming if present; an afflicted Moon adds a restless, easily-bored
+  quality worth mentioning. If these specific connections aren't present in the data, say the chart
+  doesn't show a strong indication either way rather than inventing one.
+- Frame everything as a tendency or vulnerability to stay mindful of — the same caution framing as
+  the accidents domain below — never as a "best window" or something to look forward to, and never
+  as a flat verdict ("you will cheat," "your marriage will fail"). Name what the chart flags and,
+  where relevant, that awareness and honest communication are the traditional remedy; don't moralize
+  or lecture.
+- Never deflect with "astrology cannot predict this" — answer directly from the chart facts present,
+  same as every other domain.
+- Hard limit: never state as fact that the user's specific partner is or has been unfaithful — you
+  do not have their chart. Never suggest surveillance, confronting the partner, or any specific
+  action beyond the general remedy note above. This domain reads the vulnerability, never names a
+  culprit.
+
 Children & progeny:
 - Questions about children — whether they'll have them, how many, sons vs. daughters, timing, or
   difficulty conceiving — are a normal, core part of a Vedic reading, NOT a medical or
@@ -102,6 +169,13 @@ Children & progeny:
   progeny question to a doctor, fertility specialist, or counselor; never call it "family planning";
   and never say astrology "cannot predict" it. The "never give a number" rule for exams and
   competitions does NOT apply here — children are a chart matter, so read the indications directly.
+- Timing questions ("when will I have a child") depend on circumstances you are not told — whether
+  the user is married or partnered, already has children, or is actively trying. Never assume any of
+  this (see NO_ASSUMPTIONS below); if it's not already known from the chart/user facts/conversation,
+  use the clarifying-question allowance below with an open question like "are you currently planning
+  for a child, or asking about the general possibility ahead — and do you already have a child?" —
+  then give the full ranked reading on the next turn from whatever they say, or from the general
+  chart indications if they don't answer.
 
 Health:
 - Health questions are welcome — do NOT deflect them. Open with one brief, honest caveat that you
@@ -176,19 +250,49 @@ Off-topic questions:
 
 export type ChatDetailLevel = 'direct' | 'details';
 
-function systemPrompt(detailLevel: ChatDetailLevel): string {
+/**
+ * IST, not UTC — the production incident this responds to serves Indian
+ * users; a UTC date would read as tomorrow's date for roughly the second half
+ * of every IST day. `en-CA` is a locale trick, not a Canada-specific choice —
+ * it's the shortest built-in `toLocaleDateString` output that's already
+ * YYYY-MM-DD, avoiding a manual reparse of a DD/MM/YYYY or MM/DD/YYYY string.
+ */
+function todayIST(now: Date): string {
+  return now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+
+/**
+ * The model has no internal sense of "today" and falls back to a
+ * training-era date unless told otherwise — confirmed root cause of the
+ * incident this responds to (a childbirth-timing answer landed entirely in
+ * the past). Placed second-to-last in the joined prompt, immediately before
+ * the length/format rule that's deliberately kept last — per this file's own
+ * established finding that end-of-prompt instructions are followed far more
+ * reliably than ones buried mid-prompt, and a date error is at least as
+ * costly as a format miss.
+ */
+function temporalAnchor(now: Date): string {
+  return `TEMPORAL_ANCHOR: Today is ${todayIST(now)} (IST). Every date in the CHART DATA below is absolute — compare it to today before you speak. A window that ended before today has ALREADY PASSED; never present it as upcoming or as a future prediction (see PAST_IS_FOR_VERIFICATION_ONLY above for the one exception). All forward-looking timing must start from today or later.`;
+}
+
+function systemPrompt(detailLevel: ChatDetailLevel, now: Date): string {
   return [
     SYSTEM_ROLE,
     GROUNDING_INSTRUCTION,
+    NO_ASSUMPTIONS,
     CONTEXT_DISCIPLINE,
+    CLARIFYING_QUESTION_NOT_DEFLECTION,
     RESPONSE_DISCIPLINE,
     HEDGE_LANGUAGE,
     DATE_SPECIFICITY,
+    PAST_IS_FOR_VERIFICATION_ONLY,
+    RANKED_WINDOWS,
     EFFORT_DEPENDENT_OUTCOMES,
     ANSWER_DIRECTLY,
     NO_HEDGE_OPENERS,
     EMPATHY_BEAT,
     PERSONAL_TOUCH,
+    temporalAnchor(now),
     // Kept last, closest to generation: the length/formatting constraint is
     // the one the model most often ignores on broad questions (see
     // CHAT_PROFILE comment in config/llm.ts), and instructions near the end
@@ -199,13 +303,17 @@ function systemPrompt(detailLevel: ChatDetailLevel): string {
 
 /**
  * Cap the injected context block so a large chart can't blow the token
- * budget. Raised from the old persona-sliced 4000 to comfortably fit the now-
- * comprehensive fact set (all 10 domain houses, all 7 doshas, natal Venus/
- * Mars/Saturn/Jupiter, both transit-timing checks, broadened yoga list, and
- * the Ashtakavarga summary) while still leaving headroom for history +
- * CHAT_PROFILE's response tokens (see config/llm.ts).
+ * budget. Raised 7000 -> 24000: the fact set now includes all 24 divisional
+ * charts (~170 chars each, ~4000 chars alone), Chandra/Surya Kundali,
+ * Jaimini points, a full 9-planet Gochar snapshot, and per-domain confidence
+ * windows across every life domain (see dasha-confidence.ts DOMAIN_CONFIG) —
+ * on top of the original house/dosha/Ashtakavarga set that justified 7000.
+ * 24000 chars is roughly 6000 tokens, a rounding error against Gemini's
+ * context window and CHAT_PROFILE's budget (see config/llm.ts) — this is not
+ * a tight fit, it's headroom so the newly-added data (the whole point of this
+ * change) is never the thing silently cut by `clip()` below.
  */
-const MAX_CONTEXT_CHARS = 7000;
+const MAX_CONTEXT_CHARS = 24000;
 function clip(s: string, max = MAX_CONTEXT_CHARS): string {
   return s.length > max ? `${s.slice(0, max)}…[truncated]` : s;
 }
@@ -304,10 +412,11 @@ export function buildChatMessages(
   detailLevel: ChatDetailLevel = 'direct',
   locale: string = 'en',
   userFacts: string[] = [],
+  now: Date = new Date(),
 ): Array<{ role: string; content: string }> {
   const messages: Array<{ role: string; content: string }> = [];
 
-  messages.push({ role: 'system', content: systemPrompt(detailLevel) });
+  messages.push({ role: 'system', content: systemPrompt(detailLevel, now) });
 
   const noChartFallback = birthTimeUnknown
     ? `This user has told the app they don't know their exact birth time, so no chart, house, ascendant, or dasha data will ever be available for them. Do not invent chart facts. Answer using only traditional/general Vedic astrological knowledge (sun-sign-level guidance, general principles) when possible, and be upfront that chart-specific, personalized answers aren't possible without an exact birth time.`
@@ -626,7 +735,11 @@ export async function* scholarStream(
 ): AsyncGenerator<string, void, unknown> {
   logger.debug({ requestId: state.requestId, detailLevel }, 'scholar: starting stream');
 
-  const groundingFacts = [...(await buildGroundingFacts(groundingSource)), ...extraFacts];
+  const now = new Date();
+  const groundingFacts = [
+    ...(await buildGroundingFacts(groundingSource, undefined, now)),
+    ...extraFacts,
+  ];
   const messages = buildChatMessages(
     state,
     userMessage,
@@ -635,6 +748,7 @@ export async function* scholarStream(
     detailLevel,
     locale,
     userFacts,
+    now,
   );
 
   if (detailLevel === 'details') {

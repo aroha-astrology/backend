@@ -13,10 +13,27 @@
 
 import { dashaLordTransitQuality, SIGNS } from './astro-tools/index.js';
 import { dateToJulianDay, calculatePlanetPositions } from './astro-engine/index.js';
-import { findFavorableWindow } from './dasha-window.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
-import { scoreDomainWindow } from './astro-engine/dasha-confidence.js';
-import { calculateD9, calculateD10 } from './astro-engine/charts/divisionalCharts.js';
+import { scoreDomainWindows, DOMAIN_CONFIG, type Domain } from './astro-engine/dasha-confidence.js';
+import { buildSharedDashaTree } from './dasha-window.js';
+import { calculateAllDivisionalChartsWithLagna } from './astro-engine/charts/divisionalCharts.js';
+import type { ChartData } from '@aroha-astrology/shared';
+import {
+  calculateArudhaLagna,
+  calculateUpapadaLagna,
+  calculateAtmakaraka,
+  calculateKarakamshaSignIndex,
+} from './astro-engine/charts/jaiminiPoints.js';
+
+/**
+ * IST, not UTC — duplicated (not imported) from
+ * swarm/agents/scholar.ts's identical `todayIST` to avoid a circular import
+ * (scholar.ts already imports this file). Genuinely a one-line formatting
+ * rule; keep both in sync if it ever changes.
+ */
+function todayIST(now: Date): string {
+  return now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
 
 export interface GroundingSource {
   /** kundli.chartData — planets, houses (with lord), ascendant. */
@@ -387,19 +404,55 @@ export function buildProfileFacts(profile: {
 }
 
 /**
- * D9 Navamsa (marriage/inner-strength/dharma) and D10 Dasamsa (career)
- * divisional-chart facts, computed live from natal planet longitudes —
- * chat grounding previously had zero divisional-chart data at all (only the
- * D1/Rashi chart), so questions that traditionally lean on Navamsa/Dasamsa
- * (e.g. "how's my marriage looking") had no grounded facts to draw on
- * beyond the D1 7th house. The frontend already recomputes D1-D60 client-
- * side for display (`lib/divisional-charts.ts`) and the backend defines the
- * same varga math (`astro-engine/charts/divisionalCharts.ts`,
- * `calculateD9`/`calculateD10`) but never calls it during kundli generation
- * or storage — rather than adding a migration to persist all 24 vargas,
- * this computes just D9/D10 on the fly from `chart.planets[].longitude`
- * (already present on every stored chart), which is cheap (pure arithmetic,
- * no ephemeris lookup) and needs no schema change.
+ * Short domain tags for all 24 vargas this engine computes, used only to
+ * orient the astrologer on what each chart traditionally speaks to — the
+ * model still reads the actual placements, this doesn't pre-interpret them.
+ * D14/D21/D81/D108 are deliberately labeled "general" rather than given a
+ * specific claimed domain: their classical significations are not
+ * consistently sourced across texts, and asserting a confident domain for
+ * them would be exactly the kind of fabricated specificity this whole fact
+ * set exists to avoid.
+ */
+const VARGA_LABELS: Record<string, string> = {
+  D1: 'body, self, physical identity',
+  D2: 'wealth, financial stability, liquid assets',
+  D3: 'siblings, courage, short journeys',
+  D4: 'property, home, vehicles, general luck',
+  D5: 'fame, authority, destiny',
+  D6: 'health crises, litigation, visible enemies',
+  D7: 'children, progeny, creative output',
+  D8: 'longevity, sudden transformation, accidents',
+  D9: 'marriage, spouse, inner strength, dharma',
+  D10: 'career, profession, public status',
+  D11: 'sudden windfalls or losses',
+  D12: 'parents, ancestry',
+  D14: 'general/auxiliary — classical domain not confidently sourced',
+  D16: 'vehicles, comforts, material happiness',
+  D20: 'spirituality, religious devotion',
+  D21: 'general/auxiliary — classical domain not confidently sourced',
+  D24: 'education, learning, higher intelligence',
+  D27: 'stamina, general strength, resilience',
+  D30: 'hardships, health vulnerabilities, misfortune, hidden vices and boundary-testing tendencies',
+  D40: 'inherited patterns from the maternal line',
+  D45: 'character, ethics, paternal-line inheritance',
+  D60: 'overall karmic destiny — the most fine-grained varga, time-sensitive',
+  D81: 'advanced subdivision of D9 — classical domain not confidently sourced',
+  D108: 'advanced subdivision of D9 — classical domain not confidently sourced',
+};
+
+/**
+ * All 24 divisional-chart (varga) facts, computed live from natal planet
+ * longitudes via `calculateAllDivisionalChartsWithLagna` — chat grounding
+ * previously carried only D9/D10 (hand-rolled here), so any question landing
+ * on a different varga (progeny -> D7, career -> D10, health -> D30, etc.)
+ * had no grounded data to draw on. The frontend already recomputes these
+ * client-side for display and the backend defines the same varga math, but
+ * never persists them at kundli-generation time — rather than a migration +
+ * backfill, this computes all 24 on the fly from `chart.planets[].longitude`
+ * (already present on every existing stored chart, old and new users alike),
+ * which is pure arithmetic (no ephemeris lookup) and needs no schema change.
+ * Format is deliberately compact (`Sign-Sign-...` rather than a full
+ * sentence per planet) to keep 24 charts' worth of data within budget.
  */
 function divisionalChartFacts(chart: Record<string, unknown> | null): string[] {
   const rawPlanets = (chart?.planets ?? []) as Array<Record<string, unknown>>;
@@ -407,29 +460,143 @@ function divisionalChartFacts(chart: Record<string, unknown> | null): string[] {
   const ascSignIndex = asc?.signIndex != null ? Number(asc.signIndex) : null;
   if (rawPlanets.length === 0 || ascSignIndex == null) return [];
 
-  const ascLongitude = ascSignIndex * 30 + Number(asc?.degree ?? 0);
-  const withLongitude = rawPlanets.filter((p) => p.planet != null && p.longitude != null);
+  const withLongitude = rawPlanets
+    .filter((p) => p.planet != null && p.longitude != null)
+    .map((p) => ({ planet: String(p.planet), longitude: Number(p.longitude) }));
   if (withLongitude.length === 0) return [];
+
+  const chartData = {
+    planets: withLongitude,
+    ascendant: { signIndex: ascSignIndex, degree: Number(asc?.degree ?? 0) },
+  } as unknown as ChartData;
+
+  const allVargas = calculateAllDivisionalChartsWithLagna(chartData);
+
+  return Object.entries(allVargas).map(([chartKey, entry]) => {
+    const label = VARGA_LABELS[chartKey] ?? 'general';
+    const lagna = SIGNS[entry.ascendantSignIndex];
+    const placements = entry.planets.map((p) => `${p.planet}-${p.sign}`).join(' ');
+    return `${chartKey} (${label}): Lagna ${lagna} | ${placements}`;
+  });
+}
+
+/**
+ * Chandra Kundali (Moon chart) and Surya Kundali (Sun chart) — the D1 chart
+ * re-cast with the natal Moon or Sun, rather than the Ascendant, treated as
+ * the 1st house. Pure house-relabeling of already-known D1 placements (no
+ * new astronomical calculation), traditionally consulted for mental/
+ * emotional patterns (Chandra) and soul-purpose/vitality (Surya) alongside
+ * the standard Lagna-based reading.
+ */
+function chandraSuryaKundaliFacts(planets: PlanetFact[]): string[] {
+  const facts: string[] = [];
+  for (const [label, anchorPlanet, purpose] of [
+    [
+      'Chandra Kundali (Moon chart)',
+      'Moon',
+      'mental/emotional patterns, baseline for transit timing',
+    ],
+    ['Surya Kundali (Sun chart)', 'Sun', "soul's inner strength, ego, vitality, public honor"],
+  ] as const) {
+    const anchor = planetPlacement(planets, anchorPlanet);
+    if (!anchor) continue;
+    const placements = planets
+      .map((p) => `${p.planet}-house${((p.signIndex - anchor.signIndex + 12) % 12) + 1}`)
+      .join(' ');
+    facts.push(
+      `${label} (${purpose}): houses recast with ${anchorPlanet} as 1st house | ${placements}`,
+    );
+  }
+  return facts;
+}
+
+/**
+ * Jaimini special points — Arudha Lagna (worldly image/reputation), Upapada
+ * Lagna (marriage/spouse timing), and Karakamsha (soul purpose, via
+ * Atmakaraka's D9 placement). See `astro-engine/charts/jaiminiPoints.ts` for
+ * the verified formulas and what's deliberately NOT included (Varshaphala,
+ * Prashna).
+ */
+function jaiminiPointFacts(
+  chart: Record<string, unknown> | null,
+  ascSignIndex: number | null,
+): string[] {
+  const rawPlanets = (chart?.planets ?? []) as Array<Record<string, unknown>>;
+  const withLongitude = rawPlanets
+    .filter((p) => p.planet != null && p.longitude != null)
+    .map((p) => ({ planet: String(p.planet), longitude: Number(p.longitude) }));
+  if (withLongitude.length === 0 || ascSignIndex == null) return [];
 
   const facts: string[] = [];
 
-  const d9Lagna = SIGNS[calculateD9(ascLongitude)];
-  const d9Placements = withLongitude
-    .map((p) => `${String(p.planet)}-${SIGNS[calculateD9(Number(p.longitude))]}`)
-    .join(', ');
+  const arudhaSignIndex = calculateArudhaLagna(ascSignIndex, withLongitude);
   facts.push(
-    `D9 Navamsa divisional chart (marriage, spouse, inner strength, dharma — traditionally consulted alongside the D1 7th house for marriage questions): Navamsa Lagna is ${d9Lagna}. Planet placements: ${d9Placements}.`,
+    `Arudha Lagna (AL — worldly image, how others perceive you, material reputation): ${SIGNS[arudhaSignIndex]}`,
   );
 
-  const d10Lagna = SIGNS[calculateD10(ascLongitude)];
-  const d10Placements = withLongitude
-    .map((p) => `${String(p.planet)}-${SIGNS[calculateD10(Number(p.longitude))]}`)
-    .join(', ');
+  const upapadaSignIndex = calculateUpapadaLagna(ascSignIndex, withLongitude);
   facts.push(
-    `D10 Dasamsa divisional chart (career, profession, public status — traditionally consulted alongside the D1 10th house for career questions): Dasamsa Lagna is ${d10Lagna}. Planet placements: ${d10Placements}.`,
+    `Upapada Lagna (UL — spouse, marriage timing and quality; read alongside D9/D1 7th house): ${SIGNS[upapadaSignIndex]}`,
   );
+
+  const atmakaraka = calculateAtmakaraka(withLongitude);
+  const karakamshaSignIndex = calculateKarakamshaSignIndex(withLongitude);
+  if (atmakaraka && karakamshaSignIndex != null) {
+    facts.push(
+      `Atmakaraka (soul-significator planet, highest degree in its sign): ${atmakaraka}. Karakamsha (Atmakaraka's D9 sign — soul's ultimate direction, spiritual/career purpose): ${SIGNS[karakamshaSignIndex]}`,
+    );
+  }
 
   return facts;
+}
+
+const GOCHAR_PLANETS = [
+  'Sun',
+  'Moon',
+  'Mars',
+  'Mercury',
+  'Jupiter',
+  'Venus',
+  'Saturn',
+  'Rahu',
+  'Ketu',
+];
+
+/**
+ * Full Gochar (live transit) snapshot — every planet's current sign and house
+ * from the Ascendant, not just the Saturn/Jupiter sign-index checks and Moon
+ * detail already computed above for scoring/daily-signal purposes. A
+ * "what's the sky doing right now" question about any planet (not just the
+ * three already surfaced) previously had no grounded answer.
+ */
+async function fullGocharFacts(ascSignIndex: number | null, asOfDate?: string): Promise<string[]> {
+  if (ascSignIndex == null) return [];
+  try {
+    const dt = asOfDate ? parseDateMidday(asOfDate) : new Date();
+    const jd = await dateToJulianDay(
+      dt.getUTCFullYear(),
+      dt.getUTCMonth() + 1,
+      dt.getUTCDate(),
+      dt.getUTCHours(),
+      dt.getUTCMinutes(),
+      0,
+    );
+    const positions = (await calculatePlanetPositions(jd)) as unknown as Array<
+      Record<string, unknown>
+    >;
+    const label = asOfDate ? `as of ${asOfDate}` : 'currently';
+    const parts = GOCHAR_PLANETS.map((name) => {
+      const p = positions.find((x) => x.planet === name);
+      if (!p) return null;
+      const signIdx = Number(p.signIndex);
+      const houseFromAsc = ((signIdx - ascSignIndex + 12) % 12) + 1;
+      return `${name}-${SIGNS[signIdx]}(house${houseFromAsc})`;
+    }).filter(Boolean);
+    if (parts.length === 0) return [];
+    return [`Full Gochar (live transit snapshot, ${label}): ${parts.join(' ')}`];
+  } catch {
+    return []; // best-effort — a missing transit fact is fine, an invented one is not
+  }
 }
 
 /**
@@ -442,15 +609,30 @@ function divisionalChartFacts(chart: Record<string, unknown> | null): string[] {
  *                  (used by chat). Horoscope generation passes the period's
  *                  `forDate` so daily/tomorrow/weekly get date-specific
  *                  transit context instead of always seeing "today".
+ * @param now       The instant "today" means for this request. Threaded in
+ *                  from the caller (rather than each of this function and
+ *                  its callees independently calling `new Date()`) so every
+ *                  date comparison in a single chat turn — the anchor text,
+ *                  the elapsed/upcoming window filtering, the confidence
+ *                  scoring — uses the exact same instant. Defaults to now.
  */
 export async function buildGroundingFacts(
   src: GroundingSource,
   asOfDate?: string,
+  now: Date = new Date(),
 ): Promise<string[]> {
   const houses = getHouses(src.chart);
   const planets = getPlanets(src.chart);
   const dasha = currentDasha(src.dasha);
   const facts: string[] = [];
+
+  // --- Date anchor, always first: survives clip() truncation (which cuts
+  // from the tail), and is the single fact every temporal question depends
+  // on getting right — see scholar.ts's TEMPORAL_ANCHOR for the matching
+  // system-prompt instruction this reinforces.
+  facts.push(
+    `TODAY'S DATE: ${todayIST(now)} (IST). Any window below that ended before this date has already passed.`,
+  );
 
   // --- Active dasha -----------------------------------------------------
   if (dasha.mahadasha) {
@@ -540,7 +722,14 @@ export async function buildGroundingFacts(
     }
   }
 
-  // --- Confidence Scoring Engine (Career, Love, Health) -----
+  // --- Confidence Scoring Engine — every life domain, ranked best-first -----
+  // Was hardcoded to 3 domains (career/love/health); a childbirth question
+  // hit this with zero data because 'children' didn't exist as a domain at
+  // all — see DOMAIN_CONFIG in dasha-confidence.ts. `buildSharedDashaTree`
+  // builds the (expensive, forceFullDepth) sub-period tree once for this
+  // request and every domain below reuses it, instead of rebuilding it once
+  // per domain (14x the cost otherwise, on the streaming-latency-critical
+  // chat path).
   const houseLordsMap: Record<number, string> = {};
   for (const h of houses) houseLordsMap[h.house] = h.lord;
 
@@ -555,68 +744,38 @@ export async function buildGroundingFacts(
     jupiterSignIndex: jupiterSignIdx,
   };
 
-  const now = new Date();
+  const sharedDashaTree = buildSharedDashaTree(src.dasha, now);
 
-  const seventhOccupants = houseOccupantsMap[7] ?? [];
-  const marriageLords = [
-    ...new Set([seventhLord, 'Venus', ...seventhOccupants].filter(Boolean)),
-  ] as string[];
-  const loveScore = scoreDomainWindow(
-    'love',
-    marriageLords,
-    [7],
-    src.dasha,
-    ascSignIndex,
-    now,
-    transits,
-  );
-  if (loveScore.windowStartDate) {
-    facts.push(
-      `Relationship Window Confidence: ${loveScore.level} — ${loveScore.reasoning.join(' ')} approx ${loveScore.windowStartDate} to ${loveScore.windowEndDate}`,
-    );
-  }
+  for (const domain of Object.keys(DOMAIN_CONFIG) as Domain[]) {
+    const config = DOMAIN_CONFIG[domain];
+    const houseLords = config.natalHouses.map((h) => houseLordsMap[h]).filter(Boolean) as string[];
+    const houseOccupants = config.natalHouses.flatMap((h) => houseOccupantsMap[h] ?? []);
+    const significators = [...new Set([...houseLords, ...config.staticKarakas, ...houseOccupants])];
 
-  const tenthOccupants = houseOccupantsMap[10] ?? [];
-  const careerLords = [
-    ...new Set([tenthLord, 'Saturn', ...tenthOccupants].filter(Boolean)),
-  ] as string[];
-  const careerScore = scoreDomainWindow(
-    'career',
-    careerLords,
-    [10],
-    src.dasha,
-    ascSignIndex,
-    now,
-    transits,
-  );
-  if (careerScore.windowStartDate) {
-    facts.push(
-      `Career Window Confidence: ${careerScore.level} — ${careerScore.reasoning.join(' ')} approx ${careerScore.windowStartDate} to ${careerScore.windowEndDate}`,
+    const result = scoreDomainWindows(
+      domain,
+      significators,
+      src.dasha,
+      ascSignIndex,
+      now,
+      transits,
+      sharedDashaTree,
     );
-  }
 
-  const sixEightTwelveLords = [houseLordsMap[6], houseLordsMap[8], houseLordsMap[12]].filter(
-    Boolean,
-  );
-  const sixEightTwelveOccupants = [
-    ...(houseOccupantsMap[6] ?? []),
-    ...(houseOccupantsMap[8] ?? []),
-    ...(houseOccupantsMap[12] ?? []),
-  ];
-  const healthLords = [...new Set([...sixEightTwelveLords, ...sixEightTwelveOccupants])];
-  const healthScore = scoreDomainWindow(
-    'health',
-    healthLords,
-    [6, 8, 12],
-    src.dasha,
-    ascSignIndex,
-    now,
-    transits,
-  );
-  if (healthScore.windowStartDate) {
-    facts.push(
-      `Health Vigilance Required: ${healthScore.level} — ${healthScore.reasoning.join(' ')} approx ${healthScore.windowStartDate} to ${healthScore.windowEndDate}`,
-    );
+    if (result.windows.length === 0) {
+      facts.push(
+        `${config.label}: NONE — no favorable Vimshottari window found for this domain's significators within the near-term dasha lookahead. Do not invent a window here; say plainly that the chart data doesn't support a specific timing answer for this.`,
+      );
+      continue;
+    }
+
+    const rankedText = result.windows
+      .map((w, i) => {
+        const tag = i === 0 ? 'STRONGEST' : `#${i + 1}`;
+        return `${tag} ${w.level} (${w.reasoning.join(' ')}) approx ${w.startDate} to ${w.endDate}`;
+      })
+      .join(' | ');
+    facts.push(`${config.label} (cross-read with ${config.varga}): ${rankedText}`);
   }
 
   // --- All 7 traditional doshas ---------------------------------------------
@@ -626,8 +785,17 @@ export async function buildGroundingFacts(
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
   facts.push(...bhinnashtakavargaFacts(src.ashtakavarga, planets));
 
-  // --- D9 Navamsa / D10 Dasamsa divisional charts ----------------------------
+  // --- All 24 divisional (varga) charts --------------------------------------
   facts.push(...divisionalChartFacts(src.chart));
+
+  // --- Chandra/Surya Kundali (Moon/Sun as 1st house) --------------------------
+  facts.push(...chandraSuryaKundaliFacts(planets));
+
+  // --- Jaimini special points (Arudha Lagna, Upapada Lagna, Karakamsha) -------
+  facts.push(...jaiminiPointFacts(src.chart, ascSignIndex));
+
+  // --- Full Gochar (all-planet live transit snapshot) -------------------------
+  facts.push(...(await fullGocharFacts(ascSignIndex, asOfDate)));
 
   return facts;
 }
