@@ -46,9 +46,9 @@ legalRouter.openapi(currentLegalRoute, async (c) => {
   // TODO: read from config or database
   return c.json(
     {
-      terms: { version: '1.0.0', url: 'https://aroha.app/legal/terms' },
-      privacy: { version: '1.0.0', url: 'https://aroha.app/legal/privacy' },
-      disclaimer: { version: '1.0.0', url: 'https://aroha.app/legal/disclaimer' },
+      terms: { version: '1.0.0', url: 'https://arohaastrology.in/legal/terms' },
+      privacy: { version: '1.0.0', url: 'https://arohaastrology.in/legal/privacy' },
+      disclaimer: { version: '1.0.0', url: 'https://arohaastrology.in/legal/disclaimer' },
     },
     200,
   );

@@ -1,0 +1,38 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-audit:
+    name: Dependency audit (informational)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      # Reports only — does not fail the build. Several existing High/Critical
+      # advisories trace to the unwired legacy apps/api subsystem or to
+      # devDependency-only tooling; see SECURITY_AND_PRIVACY_AUDIT.md for the
+      # triaged list before flipping this to fail-on-finding.
+      - name: pnpm audit (report only)
+        run: pnpm audit --audit-level=high || true

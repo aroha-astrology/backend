@@ -178,21 +178,6 @@ export const ChartPreferencesSchema = z
   .strict()
   .openapi('ChartPreferences');
 
-export const AcquisitionAttributionSchema = z
-  .object({
-    utmSource: z.string().max(200).optional(),
-    utmMedium: z.string().max(200).optional(),
-    utmCampaign: z.string().max(200).optional(),
-    utmTerm: z.string().max(200).optional(),
-    utmContent: z.string().max(200).optional(),
-    gclid: z.string().max(200).optional(),
-    fbclid: z.string().max(200).optional(),
-    installId: z.string().max(200).optional(),
-    adgroup: z.string().max(200).optional(),
-  })
-  .strict()
-  .openapi('AcquisitionAttribution');
-
 /* -------------------------------------------------------------------------- */
 /* User DTO (read model)                                                       */
 /* -------------------------------------------------------------------------- */
@@ -377,7 +362,6 @@ export const UpdateMeBodySchema = z
     platform: PlatformSchema.optional(),
     referralSource: z.string().max(200).optional(),
     referredByCode: z.string().max(64).optional(),
-    acquisitionAttribution: AcquisitionAttributionSchema.optional(),
 
     // consent (handled specially by the service)
     consent: ConsentInputSchema.optional(),

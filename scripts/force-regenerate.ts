@@ -1,6 +1,7 @@
 import { db } from '../src/config/db.js';
-import { users, dailyHoroscopes, houseInsights } from '../src/db/schema.js';
+import { dailyHoroscopes, houseInsights } from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
+import { findUserByPhoneE164 } from '../src/modules/users/users.repo.js';
 import {
   requestHoroscopeGeneration,
   currentPeriodStart,
@@ -16,7 +17,9 @@ async function main() {
   const phone = process.argv[2];
   if (!phone) throw new Error('Usage: force-regenerate.ts <phoneE164>');
 
-  const [user] = await db.select().from(users).where(eq(users.phoneE164, phone)).limit(1);
+  // phoneE164 is encrypted at rest — go through the repo helper, which
+  // looks up by the deterministic hash index and decrypts the result.
+  const user = await findUserByPhoneE164(phone);
   if (!user) {
     console.log('No user found');
     return;

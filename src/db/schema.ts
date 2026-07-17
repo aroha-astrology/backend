@@ -230,19 +230,6 @@ export type ChartPreferences = {
   detectAspectPatterns?: boolean;
 };
 
-/** First-touch attribution payload (MMP/UTM). Write-once at signup. */
-export type AcquisitionAttribution = {
-  utmSource?: string;
-  utmMedium?: string;
-  utmCampaign?: string;
-  utmTerm?: string;
-  utmContent?: string;
-  gclid?: string;
-  fbclid?: string;
-  installId?: string;
-  adgroup?: string;
-};
-
 /* -------------------------------------------------------------------------- */
 /* users — the account holder                                                  */
 /* -------------------------------------------------------------------------- */
@@ -254,7 +241,12 @@ export const users = pgTable(
       .primaryKey()
       .default(sql`gen_random_uuid()`),
     firebaseUid: text('firebase_uid').notNull().unique(),
-    phoneE164: text('phone_e164').unique(),
+    // Encrypted at rest (field-level encryption, see src/lib/crypto). Lookups
+    // go through phoneE164Hash (a deterministic HMAC blind index) instead,
+    // since AES-GCM ciphertext is non-deterministic and can't back a unique
+    // constraint or an equality WHERE clause directly.
+    phoneE164: text('phone_e164'),
+    phoneE164Hash: text('phone_e164_hash').unique(),
 
     // --- identity / profile ------------------------------------------------
     displayName: text('display_name'),
@@ -262,10 +254,15 @@ export const users = pgTable(
     email: text('email'),
     avatarUrl: text('avatar_url'),
 
-    // --- birth event (chart inputs) ---------------------------------------
-    dateOfBirth: date('date_of_birth'),
-    timeOfBirth: time('time_of_birth'),
-    placeOfBirth: jsonb('place_of_birth').$type<PlaceOfBirth>(),
+    // --- birth event (chart inputs) -----------------------------------------
+    // dateOfBirth/timeOfBirth/placeOfBirth are `text` (not date/time/jsonb)
+    // because they hold an encrypted blob, not the raw value — the repo layer
+    // (users.repo.ts) transparently encrypts on write and decrypts on read,
+    // so every other layer of the app still sees a plain date/time string or
+    // PlaceOfBirth object exactly as before.
+    dateOfBirth: text('date_of_birth'),
+    timeOfBirth: text('time_of_birth'),
+    placeOfBirth: text('place_of_birth').$type<PlaceOfBirth>(),
     birthTimeAccuracy: birthTimeAccuracyEnum('birth_time_accuracy'),
     birthTimeSource: birthTimeSourceEnum('birth_time_source'),
     birthTimeRectified: boolean('birth_time_rectified'),
@@ -332,7 +329,6 @@ export const users = pgTable(
     referralSource: text('referral_source'),
     referredByCode: text('referred_by_code'),
     referralCode: text('referral_code'),
-    acquisitionAttribution: jsonb('acquisition_attribution').$type<AcquisitionAttribution>(),
 
     // --- consent (current effective state; history in user_consent_log) ----
     marketingConsentAt: timestamp('marketing_consent_at', { withTimezone: true }),
@@ -359,7 +355,7 @@ export const users = pgTable(
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => ({
-    // firebase_uid and phone_e164 are already backed by unique-constraint
+    // firebase_uid and phone_e164_hash are already backed by unique-constraint
     // indexes (.unique()), so no separate plain index is needed.
     emailLowerUnique: uniqueIndex('users_email_lower_unique')
       .on(sql`lower(${table.email})`)
@@ -390,9 +386,11 @@ export const birthProfiles = pgTable(
     relationship: birthProfileRelationshipEnum('relationship'),
     displayName: text('display_name'),
     gender: genderEnum('gender'),
-    dateOfBirth: date('date_of_birth'),
-    timeOfBirth: time('time_of_birth'),
-    placeOfBirth: jsonb('place_of_birth').$type<PlaceOfBirth>(),
+    // Encrypted at rest — same repo-layer transparent encrypt/decrypt as
+    // users.dateOfBirth/timeOfBirth/placeOfBirth, see the comment there.
+    dateOfBirth: text('date_of_birth'),
+    timeOfBirth: text('time_of_birth'),
+    placeOfBirth: text('place_of_birth').$type<PlaceOfBirth>(),
     birthTimeAccuracy: birthTimeAccuracyEnum('birth_time_accuracy'),
     birthTimeSource: birthTimeSourceEnum('birth_time_source'),
     birthLocationAccuracy: birthLocationAccuracyEnum('birth_location_accuracy'),
@@ -1199,9 +1197,10 @@ export const chatSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text('title').notNull().default('New Chat'),
-    history: jsonb('history')
-      .notNull()
-      .default(sql`'[]'::jsonb`),
+    // Encrypted at rest (full free-text transcript) — text, not jsonb; the
+    // repo layer (chat-sessions.repo.ts) serializes/encrypts on write and
+    // decrypts/parses on read, so callers still see a ChatHistoryTurn[].
+    history: text('history').notNull().default('[]'),
     summary: text('summary'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -1286,3 +1285,29 @@ export const userFacts = pgTable(
 
 export type UserFactRow = typeof userFacts.$inferSelect;
 export type NewUserFactRow = typeof userFacts.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* telegram_admin_audit_log — who ran what via the Telegram admin bot          */
+/* -------------------------------------------------------------------------- */
+
+export const telegramAdminAuditLog = pgTable(
+  'telegram_admin_audit_log',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    chatId: text('chat_id').notNull(),
+    tier: text('tier').notNull(), // 'admin' | 'readonly'
+    command: text('command').notNull(),
+    args: text('args'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    createdAtIdx: index('telegram_admin_audit_log_created_at_idx').on(table.createdAt),
+  }),
+);
+
+export type TelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferSelect;
+export type NewTelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferInsert;
