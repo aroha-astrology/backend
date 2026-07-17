@@ -53,12 +53,18 @@ describe('buildGroundingFacts forward-looking favorable windows', () => {
       ashtakavarga: null,
     };
     const facts = await buildGroundingFacts(src);
-    expect(facts.some((f) => /Nearest traditionally favorable window for marriage/.test(f))).toBe(
-      true,
-    );
+    // Current fact wording (see DOMAIN_CONFIG.love in dasha-confidence.ts):
+    // "Relationship Window Confidence (cross-read with D9): STRONGEST ...".
+    // This test predates the ranked-windows rewrite and pinned an older,
+    // never-actually-shipped wording -- updated to check the real contract
+    // (a ranked, non-NONE relationship window fact appears) rather than
+    // exact prose that was never correct to begin with.
+    expect(
+      facts.some((f) => f.startsWith('Relationship Window Confidence') && f.includes('STRONGEST')),
+    ).toBe(true);
   });
 
-  it('omits the marriage window fact when the dasha has no data', async () => {
+  it('surfaces an explicit NONE fact (not silence) when the dasha has no data', async () => {
     const src: GroundingSource = {
       chart: chartWithSeventhLordVenus(),
       dasha: null,
@@ -67,6 +73,12 @@ describe('buildGroundingFacts forward-looking favorable windows', () => {
       ashtakavarga: null,
     };
     const facts = await buildGroundingFacts(src);
-    expect(facts.some((f) => /favorable window/.test(f))).toBe(false);
+    // Every domain still gets a fact line -- absence is stated explicitly
+    // (Trap D in the plan this change implements: silence is what let the
+    // model invent a window in the first place), it just isn't a ranked one.
+    const loveFact = facts.find((f) => f.startsWith('Relationship Window Confidence'));
+    expect(loveFact).toBeDefined();
+    expect(loveFact).toContain('NONE');
+    expect(loveFact).not.toContain('STRONGEST');
   });
 });
