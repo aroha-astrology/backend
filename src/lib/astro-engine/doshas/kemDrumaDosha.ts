@@ -42,6 +42,7 @@ export function detectKemDrumaDosha(chartData: ChartData): KemDrumaDosha {
       present: false,
       cancellations: [],
       severity: 'none',
+      description: '',
     };
   }
 
@@ -69,6 +70,7 @@ export function detectKemDrumaDosha(chartData: ChartData): KemDrumaDosha {
       present: false,
       cancellations: [],
       severity: 'none',
+      description: '',
     };
   }
 
@@ -80,7 +82,7 @@ export function detectKemDrumaDosha(chartData: ChartData): KemDrumaDosha {
   const moonHouseFromLagna = getHouseFromSign(moonSignIndex, lagnaSignIndex);
   if ([1, 4, 7, 10].includes(moonHouseFromLagna)) {
     cancellations.push(
-      `Moon in Kendra (house ${moonHouseFromLagna}) from Lagna - cancellation applies`
+      `Moon in Kendra (house ${moonHouseFromLagna}) from Lagna - cancellation applies`,
     );
   }
 
@@ -91,7 +93,7 @@ export function detectKemDrumaDosha(chartData: ChartData): KemDrumaDosha {
 
   // 3. Moon conjunct Venus (same sign)
   const venusConjunct = chartData.planets.some(
-    (p) => p.planet === 'Venus' && p.signIndex === moonSignIndex
+    (p) => p.planet === 'Venus' && p.signIndex === moonSignIndex,
   );
   if (venusConjunct) {
     cancellations.push('Moon conjunct Venus - cancellation applies');
@@ -105,10 +107,14 @@ export function detectKemDrumaDosha(chartData: ChartData): KemDrumaDosha {
     severity = 'severe'; // Kemdrum without cancellation is severe
   }
 
+  const description = present
+    ? `No planet besides Sun, Rahu, or Ketu sits adjacent to (2nd/12th) or in an angular house from your Moon in ${moon.sign} — leaving it isolated with no supporting planetary strength. This is Kemdrum Dosha, traditionally linked to emotional isolation or delayed support despite effort.`
+    : '';
+
   return {
     present,
     cancellations,
     severity,
+    description,
   };
 }
-
