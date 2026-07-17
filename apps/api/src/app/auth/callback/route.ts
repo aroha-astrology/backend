@@ -1,7 +1,6 @@
-import { after, NextResponse, type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { notifyUserLogin, notifyNewSignup } from '@/lib/telegram';
-import { enrichUserFromApolloIfNeeded } from '@/lib/apollo';
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -32,7 +31,7 @@ export async function GET(request: NextRequest) {
           .from('users')
           .select('name')
           .eq('id', user.id)
-          .single();
+          .single<{ name: string | null }>();
 
         isNewUser = !existingRow?.name?.trim();
 
@@ -52,30 +51,15 @@ export async function GET(request: NextRequest) {
           // Row doesn't exist yet — upsert with email at minimum
           await supabase
             .from('users')
-            .upsert({ id: user.id, email: user.email, name: oauthName || user.email.split('@')[0] });
+            .upsert({
+              id: user.id,
+              email: user.email,
+              name: oauthName || user.email.split('@')[0],
+            });
           await notifyNewSignup(user.email, oauthName || user.email.split('@')[0]);
         } else if (user.email) {
           await notifyUserLogin(user.email, 'google');
         }
-      }
-
-      // Best-effort Apollo enrichment — runs after the redirect response is
-      // sent so login latency is unaffected. Idempotent: re-runs only if the
-      // user has no apollo_enriched_at yet.
-      if (user?.email) {
-        const userId = user.id;
-        const userEmail = user.email;
-        const userName =
-          (user.user_metadata?.full_name as string | undefined)?.trim() ||
-          (user.user_metadata?.name as string | undefined)?.trim() ||
-          null;
-        after(async () => {
-          try {
-            await enrichUserFromApolloIfNeeded({ userId, email: userEmail, name: userName });
-          } catch (err) {
-            console.warn('[auth/callback] apollo enrichment failed', err);
-          }
-        });
       }
 
       // Send new users to onboarding to collect birth details

@@ -12,7 +12,7 @@ import {
   findActiveUserById,
   revokeDeviceTokensByUser,
   softDeleteBirthProfilesByOwner,
-  softDeleteUserById,
+  anonymizeUserById,
   updateUserById,
   updateUserWithConsentLog,
 } from './users.repo.js';
@@ -173,7 +173,6 @@ const DIRECT_FIELDS = [
   'platform',
   'referralSource',
   'referredByCode',
-  'acquisitionAttribution',
 ] as const satisfies readonly (keyof NewUserRow & keyof UpdateMeBody)[];
 
 export type ConsentContext = { sourceIp?: string | null; userAgent?: string | null };
@@ -403,10 +402,12 @@ export async function updateMe(
 export async function deleteMe(userId: string): Promise<void> {
   const current = await findActiveUserById(userId);
   if (!current) throw Errors.notFound('User not found');
-  // Cascade: stop processing third-party birth data and pushing to devices.
+  // Cascade: stop processing third-party birth data and pushing to devices
+  // BEFORE anonymizing — anonymizeUserById relies on tokens already being
+  // revoked (it reuses their revoked-token uniqueness exemption).
   await softDeleteBirthProfilesByOwner(userId);
   await revokeDeviceTokensByUser(userId);
-  await softDeleteUserById(userId);
+  await anonymizeUserById(userId);
 }
 
 export async function unlockHouse(userId: string, houseNumber: number): Promise<void> {

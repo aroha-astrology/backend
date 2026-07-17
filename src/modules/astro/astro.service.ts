@@ -19,7 +19,7 @@ import {
   calculateFullPanchang,
   detectMangalDosha,
 } from '../../lib/astro-engine/index.js';
-import type { GroundingSource } from '../../lib/chat-grounding.js';
+import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { getKundliForUser } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
@@ -811,6 +811,10 @@ export async function* chatStream(
   }
   state.chatContext = { history: recentHistory, summary };
 
+  // Share-safe, non-identifying context (gender/relationship/interests) —
+  // does not touch the "never the name" rule, see buildProfileFacts's comment.
+  const profileFacts = user ? buildProfileFacts(user) : [];
+
   const tokenStream = scholarStream(
     state,
     message,
@@ -820,6 +824,7 @@ export async function* chatStream(
     signal,
     locale,
     userFacts,
+    profileFacts,
   );
   for await (const token of tokenStream) {
     yield { type: 'token', content: token };

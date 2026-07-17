@@ -480,10 +480,11 @@ export async function* scholarStream(
   signal?: AbortSignal,
   locale: string = 'en',
   userFacts: string[] = [],
+  extraFacts: string[] = [],
 ): AsyncGenerator<string, void, unknown> {
   logger.debug({ requestId: state.requestId, detailLevel }, 'scholar: starting stream');
 
-  const groundingFacts = await buildGroundingFacts(groundingSource);
+  const groundingFacts = [...(await buildGroundingFacts(groundingSource)), ...extraFacts];
   const messages = buildChatMessages(
     state,
     userMessage,

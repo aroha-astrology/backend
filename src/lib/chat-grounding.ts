@@ -329,6 +329,64 @@ function ashtakavargaFacts(
 }
 
 /**
+ * Bhinnashtakavarga (per-planet bindu strength) — how many points each
+ * planet has in the house it natally occupies, the single most commonly
+ * consulted per-planet AV number (self-support at its own placement).
+ * `ashtakavargaFacts` above only surfaces the Sarva (total) table; this adds
+ * the per-planet detail the interface already carries but nothing read.
+ */
+function bhinnashtakavargaFacts(
+  ashtakavarga: Record<string, unknown> | null,
+  planets: PlanetFact[],
+): string[] {
+  if (!ashtakavarga) return [];
+  const bhinna = ashtakavarga.bhinna as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(bhinna)) return [];
+
+  const lines: string[] = [];
+  for (const entry of bhinna) {
+    const planetName = String(entry.planet ?? '');
+    const bindus = Array.isArray(entry.bindus) ? (entry.bindus as number[]) : null;
+    if (!planetName || !bindus || bindus.length !== 12) continue;
+    const placement = planets.find((p) => p.planet === planetName);
+    if (!placement) continue;
+    const ownBindus = bindus[placement.signIndex] ?? 0;
+    lines.push(
+      `${planetName} has ${ownBindus} Bhinnashtakavarga bindus in its own natal house (house ${placement.house}, ${placement.sign}) — self-support at its own placement`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * Non-identifying user-context facts that improve narration without
+ * touching the "never the name" rule — gender, relationship status, and
+ * stated interest areas are all on the `users` row already, share-safe, and
+ * (per the 2026-07-17 audit) were captured but never reaching the chat
+ * prompt. Kept as a separate function from `buildGroundingFacts` (which
+ * horoscope generation also calls) so this only affects chat, where it's
+ * being added, and horoscope's existing bespoke relationship-status handling
+ * in `lib/llm/horoscope.ts` is untouched.
+ */
+export function buildProfileFacts(profile: {
+  gender?: string | null;
+  relationshipStatus?: string | null;
+  interestAreas?: string[] | null;
+}): string[] {
+  const facts: string[] = [];
+  if (profile.gender) facts.push(`User's gender: ${profile.gender}`);
+  if (profile.relationshipStatus) {
+    facts.push(
+      `User's relationship status: ${profile.relationshipStatus}. If single, do not assume a spouse/partner exists; if partnered, framing can reference the relationship.`,
+    );
+  }
+  if (profile.interestAreas && profile.interestAreas.length > 0) {
+    facts.push(`User's stated areas of interest: ${profile.interestAreas.join(', ')}.`);
+  }
+  return facts;
+}
+
+/**
  * D9 Navamsa (marriage/inner-strength/dharma) and D10 Dasamsa (career)
  * divisional-chart facts, computed live from natal planet longitudes —
  * chat grounding previously had zero divisional-chart data at all (only the
@@ -566,6 +624,7 @@ export async function buildGroundingFacts(
 
   // --- Ashtakavarga summary ---------------------------------------------------
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
+  facts.push(...bhinnashtakavargaFacts(src.ashtakavarga, planets));
 
   // --- D9 Navamsa / D10 Dasamsa divisional charts ----------------------------
   facts.push(...divisionalChartFacts(src.chart));

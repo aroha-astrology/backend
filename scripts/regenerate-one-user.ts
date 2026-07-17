@@ -2,9 +2,7 @@
  * One-off: force-regenerate every period for a single user, identified by phone.
  * Usage: npx tsx scripts/regenerate-one-user.ts "+919535960988"
  */
-import { db } from '../src/config/db.js';
-import { users } from '../src/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { findUserByPhoneE164 } from '../src/modules/users/users.repo.js';
 import {
   requestHoroscopeGeneration,
   currentPeriodStart,
@@ -16,7 +14,7 @@ async function main() {
   const phone = process.argv[2];
   if (!phone) throw new Error('Usage: regenerate-one-user.ts <phoneE164>');
 
-  const [user] = await db.select().from(users).where(eq(users.phoneE164, phone)).limit(1);
+  const user = await findUserByPhoneE164(phone);
   if (!user) {
     console.log(`No user found with phone ${phone}`);
     return;

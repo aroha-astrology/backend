@@ -9,6 +9,7 @@ import {
   type UserRow,
 } from '../../db/schema.js';
 import type { HoroscopePeriod } from './horoscope.schemas.js';
+import { decryptUserRow } from '../users/users.repo.js';
 
 /** Consider a 'generating' row abandoned (crashed mid-run, no heartbeat) after this long. */
 export const STALE_GENERATING_MS = 5 * 60_000;
@@ -21,7 +22,10 @@ export async function listActiveUsersAfter(
   const where = afterId
     ? and(isNull(users.deletedAt), gt(users.id, afterId))
     : isNull(users.deletedAt);
-  return db.select().from(users).where(where).orderBy(asc(users.id)).limit(limit);
+  const rows = await db.select().from(users).where(where).orderBy(asc(users.id)).limit(limit);
+  // users.dateOfBirth/timeOfBirth/placeOfBirth are encrypted at rest — this
+  // cron reads them to compute chart facts, so decrypt before returning.
+  return rows.map(decryptUserRow);
 }
 
 export async function findHoroscope(

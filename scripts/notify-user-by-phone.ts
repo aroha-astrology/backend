@@ -5,9 +5,10 @@
  * Usage: npx tsx scripts/notify-user-by-phone.ts "+919535960988" "Title" "Body"
  */
 import { db } from '../src/config/db.js';
-import { users, devicePushTokens } from '../src/db/schema.js';
+import { devicePushTokens } from '../src/db/schema.js';
 import { and, eq, isNull } from 'drizzle-orm';
 import { sendPushBatch } from '../src/lib/notifications/fcm.js';
+import { findUserByPhoneE164 } from '../src/modules/users/users.repo.js';
 
 async function main() {
   const phone = process.argv[2];
@@ -15,7 +16,7 @@ async function main() {
   const body = process.argv[4] ?? 'Hello! Welcome to Aroha Astrology.';
   if (!phone) throw new Error('Usage: notify-user-by-phone.ts <phoneE164> [title] [body]');
 
-  const [user] = await db.select().from(users).where(eq(users.phoneE164, phone)).limit(1);
+  const user = await findUserByPhoneE164(phone);
   if (!user) {
     console.log(`No user found with phone ${phone}`);
     return;

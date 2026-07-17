@@ -162,6 +162,13 @@
       "when": 1784229271789,
       "tag": "0022_square_miracleman",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784261286830,
+      "tag": "0023_security_hardening_2026_07_17",
+      "breakpoints": true
     }
   ]
 }

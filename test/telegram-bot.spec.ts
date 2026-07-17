@@ -7,11 +7,16 @@ const state = vi.hoisted(() => ({
   sendMessage: vi.fn(),
   listActiveCoupons: vi.fn(),
   insertCoupon: vi.fn(),
+  logTelegramAdminAction: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
   countUsers: state.countUsers,
   listUsersPage: state.listUsersPage,
+}));
+
+vi.mock('../src/modules/telegram-bot/telegram-bot.repo.js', () => ({
+  logTelegramAdminAction: state.logTelegramAdminAction,
 }));
 
 vi.mock('../src/modules/billing/billing.repo.js', () => ({
@@ -32,6 +37,7 @@ vi.mock('../src/config/env.js', () => ({
     TELEGRAM_WEBHOOK_SECRET: 'test-secret',
     TELEGRAM_ALERT_CHAT_ID: '12345',
     TELEGRAM_ADMIN_CHAT_IDS: ['67890'],
+    TELEGRAM_READONLY_CHAT_IDS: [],
     LOG_LEVEL: 'silent',
     CORS_ORIGINS: [],
   },

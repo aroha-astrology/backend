@@ -65,13 +65,34 @@ const EnvSchema = z
     // --- Redis -------------------------------------------------------------
     REDIS_URL: z.string().default('redis://localhost:6379/0'),
 
+    // --- Field-level encryption ---------------------------------------------
+    // Base64-encoded 32-byte keys (`openssl rand -base64 32`). ENCRYPTION_KEY
+    // encrypts birth data/gotra/chat transcripts at rest; ENCRYPTION_HASH_KEY
+    // is a separate key for the deterministic phone-number lookup index —
+    // keep them distinct so one leaking doesn't compromise the other.
+    ENCRYPTION_KEY: z.string().min(1).optional(),
+    ENCRYPTION_HASH_KEY: z.string().min(1).optional(),
+
     // --- Operations --------------------------------------------------------
     CRON_SECRET: z.string().min(1).optional(),
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
     TELEGRAM_ALERT_CHAT_ID: z.string().min(1).optional(),
     // Extra admin chat IDs allowed to use the /internal/telegram/webhook commands,
     // beyond TELEGRAM_ALERT_CHAT_ID (which stays the default outgoing-alert target).
+    // Admin tier can run every command, including /delete and /broadcast.
     TELEGRAM_ADMIN_CHAT_IDS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    // Read-only tier: /stats, /users, /user, /search, /jobs, /coupons — no
+    // /delete, /broadcast, or /newcoupon. A separate, lower-privilege
+    // allowlist from TELEGRAM_ADMIN_CHAT_IDS (RBAC, not just one flat list).
+    TELEGRAM_READONLY_CHAT_IDS: z
       .string()
       .default('')
       .transform((value) =>
