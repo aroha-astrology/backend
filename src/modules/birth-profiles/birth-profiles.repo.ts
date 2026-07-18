@@ -133,3 +133,31 @@ export async function softDeleteOwnedBirthProfile(
     return decryptRow(row);
   });
 }
+
+/**
+ * Hard-deletes the profile row outright — a real `DELETE`, not the soft
+ * delete above. Used by the newer `/v1/profiles` surface (switchable account
+ * profiles), whose whole point is to genuinely free up a deleted profile's
+ * kundli/horoscope/house-insight/gemstone/chat data via the `ON DELETE
+ * CASCADE` foreign keys already defined on those tables — Postgres handles
+ * that cascade, this function doesn't need to touch those tables itself.
+ *
+ * Because this is a real row delete (unlike the soft delete), `users
+ * .activeProfileId`'s `ON DELETE SET NULL` FK fires automatically at the DB
+ * level if the deleted profile was active — no manual transaction needed
+ * here (contrast `softDeleteOwnedBirthProfile`, which needs one specifically
+ * because a soft delete never triggers FK actions).
+ *
+ * `softDeleteOwnedBirthProfile` is intentionally left untouched — it keeps
+ * serving the existing `/v1/birth-profiles` matchmaking surface as-is.
+ */
+export async function hardDeleteOwnedBirthProfile(
+  id: string,
+  ownerUserId: string,
+): Promise<BirthProfileRow | undefined> {
+  const [row] = await db
+    .delete(birthProfiles)
+    .where(and(eq(birthProfiles.id, id), eq(birthProfiles.ownerUserId, ownerUserId)))
+    .returning();
+  return row ? decryptRow(row) : undefined;
+}
