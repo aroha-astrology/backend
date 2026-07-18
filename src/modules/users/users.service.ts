@@ -86,7 +86,7 @@ export function toUserDto(row: UserRow): UserDto {
     streakLastDay: row.streakLastDay,
     appVersion: row.appVersion,
     platform: row.platform,
-    credits: row.credits,
+    walletBalancePaise: row.walletBalancePaise,
     unlockedHouses: row.unlockedHouses ?? [1],
     gemstoneUnlocked: row.gemstoneUnlockedAt !== null,
 

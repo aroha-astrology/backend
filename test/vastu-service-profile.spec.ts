@@ -9,8 +9,8 @@ import type { VastuPlanRow } from '../src/db/schema.js';
 
 const state = vi.hoisted(() => ({
   findKundliByUserId: vi.fn(),
-  deductCredits: vi.fn(),
-  addCredits: vi.fn(),
+  deductWalletBalance: vi.fn(),
+  addWalletBalance: vi.fn(),
   insertPendingPlan: vi.fn(),
   findPlanForUser: vi.fn(),
   countRecentPlansForUser: vi.fn(),
@@ -27,8 +27,8 @@ vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
-  deductCredits: state.deductCredits,
-  addCredits: state.addCredits,
+  deductWalletBalance: state.deductWalletBalance,
+  addWalletBalance: state.addWalletBalance,
 }));
 
 vi.mock('../src/modules/vastu/vastu.repo.js', () => ({
@@ -75,8 +75,8 @@ function makePlanRow(overrides: Partial<VastuPlanRow> = {}): VastuPlanRow {
 
 beforeEach(() => {
   state.findKundliByUserId.mockReset().mockResolvedValue(undefined);
-  state.deductCredits.mockReset().mockResolvedValue(true);
-  state.addCredits.mockReset().mockResolvedValue(undefined);
+  state.deductWalletBalance.mockReset().mockResolvedValue(true);
+  state.addWalletBalance.mockReset().mockResolvedValue(undefined);
   state.insertPendingPlan.mockReset().mockResolvedValue(makePlanRow({ status: 'pending' }));
   state.findPlanForUser.mockReset();
   state.countRecentPlansForUser.mockReset().mockResolvedValue(0);

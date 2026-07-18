@@ -5,7 +5,7 @@ import {
   generateVastuAnswer,
   translateVastuContent,
 } from '../../lib/llm/vastu.js';
-import { deductCredits, addCredits } from '../users/users.repo.js';
+import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { evaluateRoomPlacement } from './vastu.rules.js';
 import {
@@ -24,7 +24,7 @@ import type { VastuPlanRow } from '../../db/schema.js';
 import type { AnalyzeVastuBody, VastuPlanDto } from './vastu.schemas.js';
 
 const DAILY_LIMIT = 20;
-export const VASTU_CREDIT_COST = 5;
+export const VASTU_COST_PAISE = 5000;
 
 /** Best-effort birth-chart summary for personalising the analysis. */
 function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>>): string {
@@ -73,7 +73,7 @@ export async function requestVastuAnalysis(
 
   // Charge up-front; refunded below if we can't even queue the job, or later if
   // the async generation fails.
-  const charged = await deductCredits(userId, VASTU_CREDIT_COST);
+  const charged = await deductWalletBalance(userId, VASTU_COST_PAISE);
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
   try {
@@ -107,7 +107,7 @@ export async function requestVastuAnalysis(
 
     return { planId: row.id };
   } catch (err) {
-    await addCredits(userId, VASTU_CREDIT_COST).catch(() => {});
+    await addWalletBalance(userId, VASTU_COST_PAISE).catch(() => {});
     throw err;
   }
 }
@@ -137,7 +137,7 @@ async function processAnalysis(
     logger.error({ err, planId }, 'vastu LLM analysis failed');
     await markError(planId, err instanceof Error ? err.message : 'Unknown error');
     // Don't charge for a report we couldn't produce.
-    await addCredits(userId, VASTU_CREDIT_COST).catch(() => {});
+    await addWalletBalance(userId, VASTU_COST_PAISE).catch(() => {});
   }
 }
 

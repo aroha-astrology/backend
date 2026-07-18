@@ -318,7 +318,7 @@ export const users = pgTable(
     streakLastDay: date('streak_last_day'),
     appVersion: text('app_version'),
     platform: platformEnum('platform'),
-    credits: integer('credits').notNull().default(50),
+    walletBalancePaise: integer('wallet_balance_paise').notNull().default(50000),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
@@ -567,8 +567,8 @@ export const userSubscriptions = pgTable(
 /* credit_transactions — token wallet ledger                                   */
 /* -------------------------------------------------------------------------- */
 
-export const creditTransactions = pgTable(
-  'credit_transactions',
+export const walletTransactions = pgTable(
+  'wallet_transactions',
   {
     id: uuid('id')
       .primaryKey()
@@ -584,7 +584,7 @@ export const creditTransactions = pgTable(
       .default(sql`now()`),
   },
   (table) => ({
-    userIdx: index('credit_transactions_user_id_idx').on(table.userId),
+    userIdx: index('wallet_transactions_user_id_idx').on(table.userId),
   }),
 );
 
@@ -639,7 +639,6 @@ export const orders = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     /** Matches an id in billing.service.ts's CREDIT_PACKS — not its own table since the catalog is small/static. */
     packId: text('pack_id').notNull(),
-    credits: integer('credits').notNull(),
     amountPaise: integer('amount_paise').notNull(),
     discountPaise: integer('discount_paise').notNull().default(0),
     finalAmountPaise: integer('final_amount_paise').notNull(),

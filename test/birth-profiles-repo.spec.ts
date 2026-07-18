@@ -18,7 +18,10 @@ import {
   unlockGemstoneForOwnedProfile,
   unlockHouseForOwnedProfile,
 } from '../src/modules/birth-profiles/birth-profiles.repo.js';
-import { GEMSTONE_UNLOCK_COST, HOUSE_UNLOCK_COST } from '../src/modules/users/users.repo.js';
+import {
+  GEMSTONE_UNLOCK_COST_PAISE,
+  HOUSE_UNLOCK_COST_PAISE,
+} from '../src/modules/users/users.repo.js';
 
 const dialect = new PgDialect();
 
@@ -217,8 +220,8 @@ describe('unlockGemstoneForOwnedProfile', () => {
     // Guarded on credits >= cost — the same invariant unlockGemstoneForUser
     // enforces with its raw-SQL WHERE, just expressed via the query builder.
     const usersQuery = compile(usersChain.calls.where);
-    expect(usersQuery.sql).toBe('("users"."id" = $1 and "users"."credits" >= $2)');
-    expect(usersQuery.params).toEqual(['user-1', GEMSTONE_UNLOCK_COST]);
+    expect(usersQuery.sql).toBe('("users"."id" = $1 and "users"."wallet_balance_paise" >= $2)');
+    expect(usersQuery.params).toEqual(['user-1', GEMSTONE_UNLOCK_COST_PAISE]);
 
     // Guarded on owned + not soft-deleted + not already unlocked.
     const profileQuery = compile(birthProfilesChain.calls.where);
@@ -284,9 +287,9 @@ describe('unlockHouseForOwnedProfile', () => {
     // Guarded on credits >= cost — same invariant unlockHouseForUser enforces
     // with its raw-SQL WHERE, just expressed via the query builder.
     const usersQuery = compile(usersChain.calls.where);
-    expect(usersQuery.sql).toBe('("users"."id" = $1 and "users"."credits" >= $2)');
-    expect(usersQuery.params).toEqual(['user-1', HOUSE_UNLOCK_COST]);
-    expect(usersChain.calls.set).toEqual({ credits: expect.anything() });
+    expect(usersQuery.sql).toBe('("users"."id" = $1 and "users"."wallet_balance_paise" >= $2)');
+    expect(usersQuery.params).toEqual(['user-1', HOUSE_UNLOCK_COST_PAISE]);
+    expect(usersChain.calls.set).toEqual({ walletBalancePaise: expect.anything() });
 
     // Guarded on owned + not soft-deleted + house not already present in
     // unlocked_houses (NULL-safe via coalesce — see the function's doc comment).

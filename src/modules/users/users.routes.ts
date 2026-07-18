@@ -65,7 +65,7 @@ const unlockHouseRoute = createRoute({
   method: 'post',
   path: '/me/unlock-house',
   tags: ['Users'],
-  summary: 'Unlock a house using credits',
+  summary: 'Unlock a house using wallet balance',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
   request: {
@@ -82,7 +82,7 @@ const unlockHouseRoute = createRoute({
       content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
     },
     401: errorResponse('Unauthorized'),
-    409: errorResponse('Conflict (Insufficient credits or already unlocked)'),
+    409: errorResponse('Conflict (Insufficient balance or already unlocked)'),
     422: errorResponse('Validation failed'),
   },
 });
@@ -91,7 +91,7 @@ const unlockGemstoneRoute = createRoute({
   method: 'post',
   path: '/me/unlock-gemstone',
   tags: ['Users'],
-  summary: 'Unlock the full gemstone report using credits (one-time, whole report)',
+  summary: 'Unlock the full gemstone report using wallet balance (one-time, whole report)',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
   responses: {
@@ -100,7 +100,7 @@ const unlockGemstoneRoute = createRoute({
       content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
     },
     401: errorResponse('Unauthorized'),
-    409: errorResponse('Conflict (Insufficient credits or already unlocked)'),
+    409: errorResponse('Conflict (Insufficient balance or already unlocked)'),
   },
 });
 

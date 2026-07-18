@@ -3,21 +3,23 @@ import { requireUser } from '../../middleware/auth.js';
 import {
   BillingPlanResponseSchema,
   BillingBalanceResponseSchema,
-  CreditPacksResponseSchema,
+  TopUpAmountsResponseSchema,
   ValidateCouponBodySchema,
   CouponValidationResponseSchema,
   CheckoutBodySchema,
   OrderSchema,
   OrderIdParamSchema,
+  OrdersResponseSchema,
   ConfirmOrderResponseSchema,
   ConfirmGooglePlayBodySchema,
 } from './billing.schemas.js';
 import {
-  getCreditPacks,
+  getTopUpAmounts,
   validateCoupon,
   checkout,
   confirmPayment,
   confirmGooglePlayPurchase,
+  listOrders,
   toOrderDto,
 } from './billing.service.js';
 
@@ -73,7 +75,7 @@ const balanceRoute = createRoute({
   method: 'get',
   path: '/billing/balance',
   tags: ['Billing'],
-  summary: "Get the authenticated user's credit balance",
+  summary: "Get the authenticated user's wallet balance",
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
@@ -86,7 +88,7 @@ const balanceRoute = createRoute({
 
 billingRouter.openapi(balanceRoute, async (c) => {
   // TODO: read from billing/credits table
-  return c.json({ credits: 0, currency: 'INR' }, 200);
+  return c.json({ walletBalancePaise: 0, currency: 'INR' }, 200);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -95,21 +97,21 @@ billingRouter.openapi(balanceRoute, async (c) => {
 
 const packsRoute = createRoute({
   method: 'get',
-  path: '/billing/packs',
+  path: '/billing/top-up-amounts',
   tags: ['Billing'],
-  summary: 'List purchasable credit packs',
+  summary: 'List purchasable top-up amounts',
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
       description: 'Credit packs',
-      content: { 'application/json': { schema: CreditPacksResponseSchema } },
+      content: { 'application/json': { schema: TopUpAmountsResponseSchema } },
     },
     401: errorResponse('Unauthorized'),
   },
 });
 
 billingRouter.openapi(packsRoute, async (c) => {
-  return c.json({ packs: getCreditPacks() as unknown as CreditPack[] }, 200);
+  return c.json({ amounts: getTopUpAmounts() as unknown as TopUpAmount[] }, 200);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -149,7 +151,7 @@ const checkoutRoute = createRoute({
   method: 'post',
   path: '/billing/checkout',
   tags: ['Billing'],
-  summary: 'Create a pending order for a credit pack (optionally with a coupon applied)',
+  summary: 'Create a pending order for a top-up amount (optionally with a coupon applied)',
   security: [{ bearerAuth: [] }],
   request: {
     body: { required: true, content: { 'application/json': { schema: CheckoutBodySchema } } },
@@ -172,6 +174,31 @@ billingRouter.openapi(checkoutRoute, async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* GET /billing/orders                                                        */
+/* -------------------------------------------------------------------------- */
+
+const ordersRoute = createRoute({
+  method: 'get',
+  path: '/billing/orders',
+  tags: ['Billing'],
+  summary: "The authenticated user's own recharge/order history, most recent first",
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'Order history',
+      content: { 'application/json': { schema: OrdersResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+billingRouter.openapi(ordersRoute, async (c) => {
+  const user = c.get('user');
+  const orders = await listOrders(user.id);
+  return c.json({ orders }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
 /* POST /billing/orders/{id}/confirm                                           */
 /* -------------------------------------------------------------------------- */
 
@@ -180,13 +207,13 @@ const confirmRoute = createRoute({
   path: '/billing/orders/{id}/confirm',
   tags: ['Billing'],
   summary:
-    'Confirm payment for a pending order and grant its credits. Currently always refuses — no ' +
+    'Confirm payment for a pending order and grant its wallet balance. Currently always refuses — no ' +
     'real payment gateway (Razorpay/Stripe) is wired up yet, so this cannot verify a real payment.',
   security: [{ bearerAuth: [] }],
   request: { params: OrderIdParamSchema },
   responses: {
     200: {
-      description: 'Order confirmed, credits granted',
+      description: 'Order confirmed, wallet balance granted',
       content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
     },
     401: errorResponse('Unauthorized'),
@@ -199,8 +226,8 @@ const confirmRoute = createRoute({
 billingRouter.openapi(confirmRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const { order, credits } = await confirmPayment(id, user.id);
-  return c.json({ order: toOrderDto(order), credits }, 200);
+  const { order, walletBalancePaise } = await confirmPayment(id, user.id);
+  return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -211,7 +238,7 @@ const confirmGooglePlayRoute = createRoute({
   method: 'post',
   path: '/billing/confirm-google-play',
   tags: ['Billing'],
-  summary: 'Confirm a Google Play purchase and grant its credits',
+  summary: 'Confirm a Google Play purchase and grant its wallet balance',
   security: [{ bearerAuth: [] }],
   request: {
     body: {
@@ -221,7 +248,7 @@ const confirmGooglePlayRoute = createRoute({
   },
   responses: {
     200: {
-      description: 'Order confirmed, credits granted',
+      description: 'Order confirmed, wallet balance granted',
       content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
     },
     401: errorResponse('Unauthorized'),
@@ -234,8 +261,11 @@ const confirmGooglePlayRoute = createRoute({
 billingRouter.openapi(confirmGooglePlayRoute, async (c) => {
   const user = c.get('user');
   const { purchaseToken, productId } = c.req.valid('json');
-  const { order, credits } = await confirmGooglePlayPurchase(user.id, { purchaseToken, productId });
-  return c.json({ order: toOrderDto(order), credits }, 200);
+  const { order, walletBalancePaise } = await confirmGooglePlayPurchase(user.id, {
+    purchaseToken,
+    productId,
+  });
+  return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
 });
 
-type CreditPack = z.infer<typeof CreditPacksResponseSchema>['packs'][number];
+type TopUpAmount = z.infer<typeof TopUpAmountsResponseSchema>['amounts'][number];

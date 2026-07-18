@@ -5,8 +5,8 @@ import { makeDecodedToken, makeUserRow } from './helpers/mocks.js';
 const state = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
   findUserByFirebaseUid: vi.fn(),
-  deductCredits: vi.fn(),
-  addCredits: vi.fn(),
+  deductWalletBalance: vi.fn(),
+  addWalletBalance: vi.fn(),
   updateUserById: vi.fn(),
   listBirthProfilesByOwner: vi.fn(),
   findOwnedBirthProfile: vi.fn(),
@@ -33,8 +33,8 @@ vi.mock('firebase-admin/auth', () => ({
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findUserByFirebaseUid: state.findUserByFirebaseUid,
-  deductCredits: state.deductCredits,
-  addCredits: state.addCredits,
+  deductWalletBalance: state.deductWalletBalance,
+  addWalletBalance: state.addWalletBalance,
   updateUserById: state.updateUserById,
 }));
 
@@ -95,8 +95,8 @@ beforeEach(() => {
   state.findUserByFirebaseUid
     .mockReset()
     .mockResolvedValue(makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' }));
-  state.deductCredits.mockReset();
-  state.addCredits.mockReset().mockResolvedValue(undefined);
+  state.deductWalletBalance.mockReset();
+  state.addWalletBalance.mockReset().mockResolvedValue(undefined);
   state.updateUserById.mockReset().mockResolvedValue(undefined);
   state.listBirthProfilesByOwner.mockReset().mockResolvedValue([]);
   state.findOwnedBirthProfile.mockReset();
@@ -145,8 +145,8 @@ describe('GET /v1/profiles', () => {
 });
 
 describe('POST /v1/profiles', () => {
-  it('charges PROFILE_CREATION_COST credits, creates the profile, makes it active, and fires kundli generation', async () => {
-    state.deductCredits.mockResolvedValue(true);
+  it('charges PROFILE_CREATION_COST_PAISE, creates the profile, makes it active, and fires kundli generation', async () => {
+    state.deductWalletBalance.mockResolvedValue(true);
     state.createBirthProfile.mockResolvedValue(makeBirthProfileRow({ id: 'new-profile' }));
 
     const res = await createApp().request('/v1/profiles', {
@@ -156,21 +156,21 @@ describe('POST /v1/profiles', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(state.deductCredits).toHaveBeenCalledWith('id-1', 20);
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('id-1', 20000);
     expect(state.createBirthProfile).toHaveBeenCalledWith(
       'id-1',
       expect.objectContaining(CREATE_BODY),
     );
     expect(state.updateUserById).toHaveBeenCalledWith('id-1', { activeProfileId: 'new-profile' });
     expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1', 'new-profile');
-    expect(state.addCredits).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
 
     const body = (await res.json()) as any;
     expect(body).toMatchObject({ id: 'new-profile', isPrimary: false, isActive: true });
   });
 
   it('returns 409 INSUFFICIENT_CREDITS and never creates a profile when the charge fails', async () => {
-    state.deductCredits.mockResolvedValue(false);
+    state.deductWalletBalance.mockResolvedValue(false);
 
     const res = await createApp().request('/v1/profiles', {
       method: 'POST',
@@ -182,11 +182,11 @@ describe('POST /v1/profiles', () => {
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toBe('INSUFFICIENT_CREDITS');
     expect(state.createBirthProfile).not.toHaveBeenCalled();
-    expect(state.addCredits).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
   });
 
   it('refunds the charge and rethrows when profile creation itself fails (no charge-without-profile)', async () => {
-    state.deductCredits.mockResolvedValue(true);
+    state.deductWalletBalance.mockResolvedValue(true);
     state.createBirthProfile.mockRejectedValue(new Error('db exploded'));
 
     const res = await createApp().request('/v1/profiles', {
@@ -196,13 +196,13 @@ describe('POST /v1/profiles', () => {
     });
 
     expect(res.status).toBe(500);
-    expect(state.addCredits).toHaveBeenCalledWith('id-1', 20);
+    expect(state.addWalletBalance).toHaveBeenCalledWith('id-1', 20000);
     expect(state.updateUserById).not.toHaveBeenCalled();
     expect(state.requestKundliGeneration).not.toHaveBeenCalled();
   });
 
   it('does not fail the request when the fire-and-forget kundli generation rejects', async () => {
-    state.deductCredits.mockResolvedValue(true);
+    state.deductWalletBalance.mockResolvedValue(true);
     state.createBirthProfile.mockResolvedValue(makeBirthProfileRow({ id: 'new-profile' }));
     state.requestKundliGeneration.mockRejectedValue(new Error('engine down'));
 
@@ -216,7 +216,7 @@ describe('POST /v1/profiles', () => {
   });
 
   it('still returns 201 (isActive: false) when the profile is created but activation fails — credits stay charged, not refunded', async () => {
-    state.deductCredits.mockResolvedValue(true);
+    state.deductWalletBalance.mockResolvedValue(true);
     state.createBirthProfile.mockResolvedValue(makeBirthProfileRow({ id: 'new-profile' }));
     state.updateUserById.mockRejectedValue(new Error('db exploded'));
 
@@ -230,7 +230,7 @@ describe('POST /v1/profiles', () => {
     const body = (await res.json()) as any;
     expect(body).toMatchObject({ id: 'new-profile', isPrimary: false, isActive: false });
     // The profile row is real — the charge is by design NOT refunded here.
-    expect(state.addCredits).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
     // Kundli generation still fires for the new (just not-yet-active) profile.
     expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1', 'new-profile');
   });

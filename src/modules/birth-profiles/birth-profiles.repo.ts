@@ -13,7 +13,7 @@ import {
   encryptJson,
   decryptJson,
 } from '../../lib/crypto/field-encryption.js';
-import { GEMSTONE_UNLOCK_COST, HOUSE_UNLOCK_COST } from '../users/users.repo.js';
+import { GEMSTONE_UNLOCK_COST_PAISE, HOUSE_UNLOCK_COST_PAISE } from '../users/users.repo.js';
 
 /**
  * dateOfBirth/timeOfBirth/placeOfBirth/gotra are encrypted at rest (third-
@@ -188,8 +188,12 @@ export async function unlockGemstoneForOwnedProfile(
     return await db.transaction(async (tx) => {
       const [charged] = await tx
         .update(users)
-        .set({ credits: sql`${users.credits} - ${GEMSTONE_UNLOCK_COST}` })
-        .where(and(eq(users.id, ownerUserId), gte(users.credits, GEMSTONE_UNLOCK_COST)))
+        .set({
+          walletBalancePaise: sql`${users.walletBalancePaise} - ${GEMSTONE_UNLOCK_COST_PAISE}`,
+        })
+        .where(
+          and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, GEMSTONE_UNLOCK_COST_PAISE)),
+        )
         .returning({ id: users.id });
       if (!charged) throw new UnlockGuardFailed();
 
@@ -253,8 +257,10 @@ export async function unlockHouseForOwnedProfile(
     return await db.transaction(async (tx) => {
       const [charged] = await tx
         .update(users)
-        .set({ credits: sql`${users.credits} - ${HOUSE_UNLOCK_COST}` })
-        .where(and(eq(users.id, ownerUserId), gte(users.credits, HOUSE_UNLOCK_COST)))
+        .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${HOUSE_UNLOCK_COST_PAISE}` })
+        .where(
+          and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, HOUSE_UNLOCK_COST_PAISE)),
+        )
         .returning({ id: users.id });
       if (!charged) throw new UnlockGuardFailed();
 

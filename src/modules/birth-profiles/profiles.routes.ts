@@ -7,7 +7,7 @@ import {
   ProfileSchema,
 } from './profiles.schemas.js';
 import {
-  PROFILE_CREATION_COST,
+  PROFILE_CREATION_COST_PAISE,
   activateProfile,
   createProfile,
   deleteProfile,
@@ -58,7 +58,7 @@ const createProfileRoute = createRoute({
   tags: ['Profiles'],
   summary: 'Create a new additional profile and make it active',
   description:
-    `Charges ${PROFILE_CREATION_COST} credits. The new profile becomes the ` +
+    `Charges Rs ${PROFILE_CREATION_COST_PAISE / 100}. The new profile becomes the ` +
     'active profile immediately and kundli generation starts in the ' +
     'background — poll GET /v1/kundli for status.',
   security: [{ bearerAuth: [] }],

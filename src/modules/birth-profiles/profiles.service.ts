@@ -1,7 +1,7 @@
 import type { BirthProfileRow, UserRow } from '../../db/schema.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
-import { addCredits, deductCredits, updateUserById } from '../users/users.repo.js';
+import { addWalletBalance, deductWalletBalance, updateUserById } from '../users/users.repo.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { createBirthProfile } from './birth-profiles.service.js';
 import {
@@ -20,8 +20,8 @@ import type { ProfileDto } from './profiles.schemas.js';
  * credit charge + auto-activate), listing, activation, and hard deletion.
  */
 
-/** Credits charged to create an additional (non-primary) profile. */
-export const PROFILE_CREATION_COST = 20;
+/** Cost in paise to create an additional (non-primary) profile (Rs 200 = 20 credits at the old rate). */
+export const PROFILE_CREATION_COST_PAISE = 20000;
 
 function primaryProfileDto(user: UserRow): ProfileDto {
   return {
@@ -66,7 +66,7 @@ export async function listProfiles(user: UserRow): Promise<ProfileDto[]> {
 }
 
 /**
- * Creates a new additional profile, charging `PROFILE_CREATION_COST` credits
+ * Creates a new additional profile, charging `PROFILE_CREATION_COST_PAISE`
  * up front. If profile creation itself fails, the charge is refunded and the
  * error rethrown — never leaves the user charged without a profile to show
  * for it.
@@ -94,14 +94,14 @@ export async function createProfile(
   user: UserRow,
   body: CreateBirthProfileBody,
 ): Promise<ProfileDto> {
-  const charged = await deductCredits(user.id, PROFILE_CREATION_COST);
+  const charged = await deductWalletBalance(user.id, PROFILE_CREATION_COST_PAISE);
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
   let created: BirthProfileRow;
   try {
     created = await createBirthProfile(user.id, body);
   } catch (err) {
-    await addCredits(user.id, PROFILE_CREATION_COST).catch(() => {});
+    await addWalletBalance(user.id, PROFILE_CREATION_COST_PAISE).catch(() => {});
     throw err;
   }
 

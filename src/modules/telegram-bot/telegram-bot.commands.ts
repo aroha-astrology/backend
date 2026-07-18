@@ -13,6 +13,12 @@ import { escapeMarkdown } from '../../lib/notifications/telegram.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 
+/** Formats an integer paise amount as a ₹ string for plain-text Telegram messages. */
+function formatRupees(paise: number): string {
+  const rupees = paise / 100;
+  return `₹${Number.isInteger(rupees) ? rupees : rupees.toFixed(2)}`;
+}
+
 export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
   const PAGE_SIZE = 20;
   const offset = parseInt(offsetArg || '0', 10) || 0;
@@ -27,7 +33,8 @@ export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
     const contact = escapeMarkdown(u.email || u.phoneE164 || 'No contact');
     const name = escapeMarkdown(u.displayName || 'No Name');
     const date = escapeMarkdown(u.createdAt.toISOString().split('T')[0]);
-    return `• *${name}* \\| ${contact} \\| ${date}`;
+    const balance = escapeMarkdown(formatRupees(u.walletBalancePaise));
+    return `• *${name}* \\| ${contact} \\| ${balance} \\| ${date}`;
   });
 
   const nextOffset = offset + PAGE_SIZE;
