@@ -7,6 +7,7 @@ import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
+import { unlockGemstoneForOwnedProfile } from '../birth-profiles/birth-profiles.repo.js';
 import type { ConsentInput, UpdateMeBody, UserDto } from './users.schemas.js';
 import {
   claimBirthDetailsEdit,
@@ -343,7 +344,7 @@ export async function updateMe(
     });
     // The gemstone report is derived from the same natal chart — wipe it too so
     // it regenerates against the new chart. The unlock flag stays set (no re-charge).
-    await deleteGemstoneForUser(userId).catch((err: unknown) => {
+    await deleteGemstoneForUser(userId, null).catch((err: unknown) => {
       logger.error({ err, userId }, 'gemstone invalidation after birth-detail edit failed');
     });
   }
@@ -425,9 +426,14 @@ export async function unlockHouse(userId: string, houseNumber: number): Promise<
   }
 }
 
-export async function unlockGemstone(userId: string): Promise<void> {
-  const { unlockGemstoneForUser } = await import('./users.repo.js');
-  const success = await unlockGemstoneForUser(userId);
+export async function unlockGemstone(userId: string, birthProfileId: string | null): Promise<void> {
+  let success: boolean;
+  if (birthProfileId === null) {
+    const { unlockGemstoneForUser } = await import('./users.repo.js');
+    success = await unlockGemstoneForUser(userId);
+  } else {
+    success = await unlockGemstoneForOwnedProfile(birthProfileId, userId);
+  }
   if (!success) {
     throw Errors.conflict('Insufficient credits or gemstone report already unlocked');
   }

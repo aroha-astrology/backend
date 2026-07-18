@@ -27,7 +27,9 @@ async function main() {
   let failed = 0;
 
   for (const { id: userId } of unlockedUsers) {
-    // Gemstone isn't profile-aware yet — always the primary/self chart.
+    // This backfill only targets `users.gemstoneUnlockedAt` (the primary/self
+    // profile) — additional birth_profiles reports aren't covered by this
+    // one-off script.
     const kundli = await findKundliByUserId(userId, null);
     if (!kundli || kundli.status !== 'ready') {
       console.log(`  ${userId}: skipped (no ready kundli)`);
@@ -37,6 +39,7 @@ async function main() {
     try {
       const result = await requestGemstoneGeneration(
         userId,
+        null,
         { chartData: kundli.chartData },
         { force: true },
       );

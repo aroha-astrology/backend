@@ -61,6 +61,7 @@ interface StoredAnalysis {
 
 async function runGemstoneGeneration(
   userId: string,
+  birthProfileId: string | null,
   kundli: KundliLike,
   claimedAt: Date,
 ): Promise<void> {
@@ -68,13 +69,18 @@ async function runGemstoneGeneration(
     const analyses = analyzePlanetStrengths(kundli.chartData);
     const result = await generateGemstoneReport({ chart: kundli.chartData, analyses });
     const analysis: StoredAnalysis = { intro: result.intro, notes: result.notes };
-    await markGemstoneReady(userId, claimedAt, {
+    await markGemstoneReady(userId, birthProfileId, claimedAt, {
       analysis: analysis as unknown as Record<string, unknown>,
       model: result.model,
     });
   } catch (err) {
-    logger.error({ err, userId }, 'gemstone report generation failed');
-    await markGemstoneFailed(userId, claimedAt, err instanceof Error ? err.message : String(err));
+    logger.error({ err, userId, birthProfileId }, 'gemstone report generation failed');
+    await markGemstoneFailed(
+      userId,
+      birthProfileId,
+      claimedAt,
+      err instanceof Error ? err.message : String(err),
+    );
   }
 }
 
@@ -86,12 +92,17 @@ async function runGemstoneGeneration(
  */
 export async function requestGemstoneGeneration(
   userId: string,
+  birthProfileId: string | null,
   kundli: KundliLike,
   opts: { force?: boolean } = {},
 ): Promise<'generated' | 'skipped'> {
-  const claimed = await claimGemstoneGeneration(userId, opts.force ? { force: true } : {});
+  const claimed = await claimGemstoneGeneration(
+    userId,
+    birthProfileId,
+    opts.force ? { force: true } : {},
+  );
   if (!claimed?.startedAt) return 'skipped';
-  await runGemstoneGeneration(userId, kundli, claimed.startedAt);
+  await runGemstoneGeneration(userId, birthProfileId, kundli, claimed.startedAt);
   return 'generated';
 }
 
@@ -147,6 +158,7 @@ export async function toGemstoneReportDtoForLanguage(
     const translated = await translateGemstoneContent(base, language);
     await saveGemstoneTranslation(
       row.userId,
+      row.birthProfileId,
       language,
       translated as unknown as Record<string, unknown>,
     );

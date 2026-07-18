@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { logger } from '../../lib/logger.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import {
   GemstoneReportSchema,
   GemstoneStatusSchema,
@@ -35,10 +36,11 @@ export const gemstoneRouter = new OpenAPIHono();
 /** Kick off report generation without blocking the response. */
 function fireGemstoneGeneration(
   userId: string,
+  birthProfileId: string | null,
   kundli: { chartData: Record<string, unknown> | null },
 ): void {
-  void requestGemstoneGeneration(userId, kundli).catch((err: unknown) => {
-    logger.error({ err, userId }, 'gemstone background generation errored');
+  void requestGemstoneGeneration(userId, birthProfileId, kundli).catch((err: unknown) => {
+    logger.error({ err, userId, birthProfileId }, 'gemstone background generation errored');
   });
 }
 
@@ -72,21 +74,21 @@ const getGemstoneRoute = createRoute({
 gemstoneRouter.openapi(getGemstoneRoute, async (c) => {
   const user = c.get('user');
   const { language } = c.req.valid('query');
+  const profile = await resolveActiveProfileContext(user);
 
-  if (user.gemstoneUnlockedAt === null) {
+  if (profile.gemstoneUnlockedAt === null) {
     return c.json(
       { error: { code: 'FORBIDDEN', message: 'The gemstone report is not unlocked yet.' } },
       403,
     );
   }
 
-  // Gemstone isn't profile-aware yet — always the primary/self chart.
-  const kundli = await findKundliByUserId(user.id, null);
+  const kundli = await findKundliByUserId(user.id, profile.birthProfileId);
   if (!kundli || kundli.status !== 'ready') {
     return c.json({ status: 'generating' as const }, 202);
   }
 
-  const existing = await findGemstoneRecommendation(user.id);
+  const existing = await findGemstoneRecommendation(user.id, profile.birthProfileId);
 
   if (existing?.status === 'ready') {
     return c.json(
@@ -99,6 +101,6 @@ gemstoneRouter.openapi(getGemstoneRoute, async (c) => {
     return c.json({ status: 'generating' as const }, 202);
   }
 
-  fireGemstoneGeneration(user.id, { chartData: kundli.chartData });
+  fireGemstoneGeneration(user.id, profile.birthProfileId, { chartData: kundli.chartData });
   return c.json({ status: 'generating' as const }, 202);
 });

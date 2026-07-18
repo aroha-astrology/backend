@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   birthProfiles,
@@ -13,6 +13,7 @@ import {
   encryptJson,
   decryptJson,
 } from '../../lib/crypto/field-encryption.js';
+import { GEMSTONE_UNLOCK_COST } from '../users/users.repo.js';
 
 /**
  * dateOfBirth/timeOfBirth/placeOfBirth/gotra are encrypted at rest (third-
@@ -160,4 +161,56 @@ export async function hardDeleteOwnedBirthProfile(
     .where(and(eq(birthProfiles.id, id), eq(birthProfiles.ownerUserId, ownerUserId)))
     .returning();
   return row ? decryptRow(row) : undefined;
+}
+
+/** Internal sentinel used to roll back `unlockGemstoneForOwnedProfile`'s transaction on a guard failure without treating it as a real error. */
+class UnlockGuardFailed extends Error {}
+
+/**
+ * Atomically spend the owner's credits to unlock an ADDITIONAL profile's
+ * gemstone report — the two-table sibling of `unlockGemstoneForUser`
+ * (users.repo.ts), which does the primary-profile case as a single raw
+ * UPDATE. Here credits live on `users` but the unlock flag lives on this
+ * `birth_profiles` row, so one UPDATE can't guard both invariants
+ * (sufficient credits, not already unlocked, still owned/not deleted) at
+ * once — this wraps two guarded updates in a transaction instead: charge the
+ * owner first (guarded on credits >= cost), then flip the flag (guarded on
+ * owned/not-deleted/not-already-unlocked). If either guard fails we throw to
+ * roll back the whole transaction, so a failed second step can never leave a
+ * charge behind — same "no charge on failure" semantics as
+ * `unlockGemstoneForUser`, just split across two statements instead of one.
+ */
+export async function unlockGemstoneForOwnedProfile(
+  id: string,
+  ownerUserId: string,
+): Promise<boolean> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [charged] = await tx
+        .update(users)
+        .set({ credits: sql`${users.credits} - ${GEMSTONE_UNLOCK_COST}` })
+        .where(and(eq(users.id, ownerUserId), gte(users.credits, GEMSTONE_UNLOCK_COST)))
+        .returning({ id: users.id });
+      if (!charged) throw new UnlockGuardFailed();
+
+      const [unlocked] = await tx
+        .update(birthProfiles)
+        .set({ gemstoneUnlockedAt: new Date(), updatedAt: new Date() })
+        .where(
+          and(
+            eq(birthProfiles.id, id),
+            eq(birthProfiles.ownerUserId, ownerUserId),
+            isNull(birthProfiles.deletedAt),
+            isNull(birthProfiles.gemstoneUnlockedAt),
+          ),
+        )
+        .returning({ id: birthProfiles.id });
+      if (!unlocked) throw new UnlockGuardFailed();
+
+      return true;
+    });
+  } catch (err) {
+    if (err instanceof UnlockGuardFailed) return false;
+    throw err;
+  }
 }

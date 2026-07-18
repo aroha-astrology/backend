@@ -13,7 +13,11 @@ vi.mock('../src/config/db.js', () => {
 });
 
 import { users, birthProfiles } from '../src/db/schema.js';
-import { softDeleteOwnedBirthProfile } from '../src/modules/birth-profiles/birth-profiles.repo.js';
+import {
+  softDeleteOwnedBirthProfile,
+  unlockGemstoneForOwnedProfile,
+} from '../src/modules/birth-profiles/birth-profiles.repo.js';
+import { GEMSTONE_UNLOCK_COST } from '../src/modules/users/users.repo.js';
 
 const dialect = new PgDialect();
 
@@ -169,5 +173,79 @@ describe('softDeleteOwnedBirthProfile', () => {
     await softDeleteOwnedBirthProfile('profile-1', 'user-1');
 
     expect(state.transaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('unlockGemstoneForOwnedProfile', () => {
+  beforeEach(() => {
+    state.transaction.mockReset();
+  });
+
+  /**
+   * Wires `tx.update(table)` to return a distinct fake chain per table so the
+   * test can assert on each update's own `set`/`where` independently — mirrors
+   * `softDeleteOwnedBirthProfile`'s `setupTransaction` above, plus surfaces a
+   * thrown error from inside the (real) transaction callback the way
+   * `db.transaction` would, so a guard failure correctly propagates out as a
+   * rejected promise for the repo function's try/catch to turn into `false`.
+   */
+  function setupTransaction(chargedResult: unknown[], unlockedResult: unknown[]) {
+    const usersChain = makeUpdateChain(chargedResult);
+    const birthProfilesChain = makeUpdateChain(unlockedResult);
+    const updateMock = vi.fn((table: unknown): FakeUpdateChain => {
+      if (table === users) return usersChain.chain;
+      if (table === birthProfiles) return birthProfilesChain.chain;
+      throw new Error(`unexpected table passed to tx.update: ${String(table)}`);
+    });
+    state.transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb({ update: updateMock }),
+    );
+    return { usersChain, birthProfilesChain, updateMock };
+  }
+
+  it('charges the owner and flips the flag when credits suffice and the profile is still locked', async () => {
+    const { usersChain, birthProfilesChain } = setupTransaction(
+      [{ id: 'user-1' }],
+      [{ id: 'profile-1' }],
+    );
+
+    const result = await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
+
+    expect(result).toBe(true);
+
+    // Guarded on credits >= cost — the same invariant unlockGemstoneForUser
+    // enforces with its raw-SQL WHERE, just expressed via the query builder.
+    const usersQuery = compile(usersChain.calls.where);
+    expect(usersQuery.sql).toBe('("users"."id" = $1 and "users"."credits" >= $2)');
+    expect(usersQuery.params).toEqual(['user-1', GEMSTONE_UNLOCK_COST]);
+
+    // Guarded on owned + not soft-deleted + not already unlocked.
+    const profileQuery = compile(birthProfilesChain.calls.where);
+    expect(profileQuery.sql).toBe(
+      '("birth_profiles"."id" = $1 and "birth_profiles"."owner_user_id" = $2 ' +
+        'and "birth_profiles"."deleted_at" is null and "birth_profiles"."gemstone_unlocked_at" is null)',
+    );
+    expect(profileQuery.params).toEqual(['profile-1', 'user-1']);
+  });
+
+  it('returns false without touching birth_profiles when the owner has insufficient credits', async () => {
+    const { updateMock } = setupTransaction([], [{ id: 'profile-1' }]);
+
+    const result = await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
+
+    expect(result).toBe(false);
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith(users);
+    expect(updateMock).not.toHaveBeenCalledWith(birthProfiles);
+  });
+
+  it('returns false when the profile is already unlocked (or not owned / deleted), even though credits were charged in this attempt', async () => {
+    const { updateMock } = setupTransaction([{ id: 'user-1' }], []);
+
+    const result = await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
+
+    expect(result).toBe(false);
+    expect(updateMock).toHaveBeenCalledWith(users);
+    expect(updateMock).toHaveBeenCalledWith(birthProfiles);
   });
 });

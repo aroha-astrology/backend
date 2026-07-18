@@ -1,5 +1,6 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
+import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { UpdateMeBodySchema, UserSchema } from './users.schemas.js';
 import { deleteMe, toUserDto, updateMe, unlockHouse, unlockGemstone } from './users.service.js';
 
@@ -146,6 +147,7 @@ usersRouter.openapi(unlockHouseRoute, async (c) => {
 
 usersRouter.openapi(unlockGemstoneRoute, async (c) => {
   const user = c.get('user');
-  await unlockGemstone(user.id);
+  const profile = await resolveActiveProfileContext(user);
+  await unlockGemstone(user.id, profile.birthProfileId);
   return c.json({ success: true }, 200);
 });
