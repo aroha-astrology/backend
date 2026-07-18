@@ -12,6 +12,14 @@ import {
 import type { CreateBirthProfileBody } from './birth-profiles.schemas.js';
 import type { ProfileDto } from './profiles.schemas.js';
 
+/**
+ * Switchable-account-profile business logic for `/v1/profiles`. Deliberately
+ * has no get-one/update-one operations: editing an existing additional
+ * profile's birth details still goes through `/v1/birth-profiles/{id}`
+ * (`birth-profiles.service.js`) — this module only owns creation (with the
+ * credit charge + auto-activate), listing, activation, and hard deletion.
+ */
+
 /** Credits charged to create an additional (non-primary) profile. */
 export const PROFILE_CREATION_COST = 20;
 
@@ -61,9 +69,26 @@ export async function listProfiles(user: UserRow): Promise<ProfileDto[]> {
  * Creates a new additional profile, charging `PROFILE_CREATION_COST` credits
  * up front. If profile creation itself fails, the charge is refunded and the
  * error rethrown — never leaves the user charged without a profile to show
- * for it. Once the profile row exists, it's made the active profile and
- * kundli generation is kicked off fire-and-forget (the frontend already
- * polls `GET /v1/kundli` for `generating` status).
+ * for it.
+ *
+ * Once the profile row exists, the charge is considered spent regardless of
+ * what happens next — the row is real. Making it the active profile is a
+ * separate call to a separate table with no shared transaction (deliberately;
+ * a full cross-module transaction here would be disproportionate), so its
+ * failure is handled locally rather than surfaced as a request-level error:
+ * on failure we log and return 201 with `isActive: false` instead of
+ * rethrowing into a bare 500 that would hide a real, paid-for profile from
+ * the client. `GET /v1/profiles` / `POST /v1/profiles/{id}/activate` remain
+ * available afterwards to retry activation.
+ *
+ * Kundli generation is kicked off fire-and-forget either way (the frontend
+ * already polls `GET /v1/kundli` for `generating` status). Unlike
+ * `vastu.service.ts`'s `requestVastuAnalysis` — which refunds if the AI
+ * generation it charged for fails, because the generated report *is* the
+ * paid-for product — the charge here is for the profile row itself, which
+ * already exists by this point; a failed/slow kundli generation is retried
+ * transparently by `GET /v1/kundli`'s self-heal, so it doesn't warrant a
+ * refund.
  */
 export async function createProfile(
   user: UserRow,
@@ -80,7 +105,16 @@ export async function createProfile(
     throw err;
   }
 
-  await updateUserById(user.id, { activeProfileId: created.id });
+  let activated = true;
+  try {
+    await updateUserById(user.id, { activeProfileId: created.id });
+  } catch (err) {
+    activated = false;
+    logger.error(
+      { err, userId: user.id, birthProfileId: created.id },
+      'profile-create: activation update failed after profile was created',
+    );
+  }
 
   void requestKundliGeneration(user.id, created.id).catch((err: unknown) => {
     logger.error(
@@ -89,13 +123,16 @@ export async function createProfile(
     );
   });
 
-  return additionalProfileDto(created, true);
+  return additionalProfileDto(created, activated);
 }
 
 /**
- * Switches the user's active profile. `id === 'primary'` clears
- * `activeProfileId` back to the primary/self profile; any other `id` must be
- * an owned, non-deleted `birth_profiles` row — 404s otherwise.
+ * Switches the user's active profile. The literal string `'primary'` is a
+ * route-boundary sentinel only — it doesn't exist in the DB or in
+ * `ProfileContext`/`resolveActiveProfileContext`, which use `null` for "the
+ * primary profile is active" (see `profile-context.ts`). `id === 'primary'`
+ * clears `activeProfileId` back to that `null`; any other `id` must be an
+ * owned, non-deleted `birth_profiles` row — 404s otherwise.
  */
 export async function activateProfile(user: UserRow, id: string): Promise<ProfileDto> {
   if (id === 'primary') {

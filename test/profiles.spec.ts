@@ -214,6 +214,26 @@ describe('POST /v1/profiles', () => {
 
     expect(res.status).toBe(201);
   });
+
+  it('still returns 201 (isActive: false) when the profile is created but activation fails — credits stay charged, not refunded', async () => {
+    state.deductCredits.mockResolvedValue(true);
+    state.createBirthProfile.mockResolvedValue(makeBirthProfileRow({ id: 'new-profile' }));
+    state.updateUserById.mockRejectedValue(new Error('db exploded'));
+
+    const res = await createApp().request('/v1/profiles', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify(CREATE_BODY),
+    });
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as any;
+    expect(body).toMatchObject({ id: 'new-profile', isPrimary: false, isActive: false });
+    // The profile row is real — the charge is by design NOT refunded here.
+    expect(state.addCredits).not.toHaveBeenCalled();
+    // Kundli generation still fires for the new (just not-yet-active) profile.
+    expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1', 'new-profile');
+  });
 });
 
 const PROFILE_UUID = '11111111-1111-1111-1111-111111111111';
@@ -251,7 +271,7 @@ describe('POST /v1/profiles/{id}/activate', () => {
     expect(body).toMatchObject({ id: 'primary', isPrimary: true, isActive: true });
   });
 
-  it('404s when the id is not owned or does not exist', async () => {
+  it('400s for a malformed (non-uuid, non-"primary") id', async () => {
     state.findOwnedBirthProfile.mockResolvedValue(undefined);
 
     const res = await createApp().request('/v1/profiles/not-mine-or-missing/activate', {
