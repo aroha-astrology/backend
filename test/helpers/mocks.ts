@@ -1,5 +1,6 @@
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { UserRow } from '../../src/db/schema.js';
+import type { ProfileContext } from '../../src/modules/birth-profiles/profile-context.js';
 
 export function makeUserRow(overrides: Partial<UserRow> = {}): UserRow {
   const now = new Date('2026-01-01T00:00:00Z');
@@ -69,6 +70,28 @@ export function makeUserRow(overrides: Partial<UserRow> = {}): UserRow {
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
+    // multi-profile: null = primary/self profile is active (see profile-context.ts).
+    activeProfileId: null,
+    unlockedHouses: null,
+    gemstoneUnlockedAt: null,
+    ...overrides,
+  };
+}
+
+/** Test fixture for the resolved profile bundle (see profile-context.ts). Defaults to an empty primary profile. */
+export function makeProfileContext(overrides: Partial<ProfileContext> = {}): ProfileContext {
+  return {
+    birthProfileId: null,
+    displayName: null,
+    gender: null,
+    dateOfBirth: null,
+    timeOfBirth: null,
+    placeOfBirth: null,
+    birthTimeAccuracy: null,
+    birthTimeSource: null,
+    birthLocationAccuracy: null,
+    unlockedHouses: [],
+    gemstoneUnlockedAt: null,
     ...overrides,
   };
 }

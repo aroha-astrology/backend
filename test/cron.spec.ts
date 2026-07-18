@@ -209,6 +209,7 @@ describe('GET /v1/horoscope', () => {
     expect((await res.json()) as { status: string }).toEqual({ status: 'generating' });
     expect(state.requestHoroscopeGeneration).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'id-1' }),
+      expect.objectContaining({ birthProfileId: null }),
       'daily',
       { retryForever: true },
     );

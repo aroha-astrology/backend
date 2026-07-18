@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   findUserByFirebaseUid: vi.fn(),
   getKundliForUser: vi.fn(),
   missingKundliParams: vi.fn(),
-  birthInputsForUser: vi.fn(),
+  birthInputsForProfile: vi.fn(),
   requestKundliGeneration: vi.fn(),
   regenerateKundli: vi.fn(),
   isStaleGenerating: vi.fn(),
@@ -49,7 +49,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   getKundliForUser: state.getKundliForUser,
   missingKundliParams: state.missingKundliParams,
-  birthInputsForUser: state.birthInputsForUser,
+  birthInputsForProfile: state.birthInputsForProfile,
   requestKundliGeneration: state.requestKundliGeneration,
   regenerateKundli: state.regenerateKundli,
   isStaleGenerating: state.isStaleGenerating,
@@ -71,7 +71,7 @@ beforeEach(() => {
     .mockResolvedValue(makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' }));
   state.getKundliForUser.mockReset();
   state.missingKundliParams.mockReset().mockReturnValue([]); // complete by default
-  state.birthInputsForUser.mockReset().mockReturnValue({ birthHash: 'h-current' });
+  state.birthInputsForProfile.mockReset().mockReturnValue({ birthHash: 'h-current' });
   state.requestKundliGeneration.mockReset().mockResolvedValue(undefined);
   state.regenerateKundli.mockReset();
   state.isStaleGenerating.mockReset().mockReturnValue(false);
@@ -101,7 +101,7 @@ describe('GET /v1/kundli', () => {
 
     const res = await createApp().request('/v1/kundli', { headers: AUTH });
     expect(res.status).toBe(202);
-    expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1');
+    expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1', null);
   });
 
   it('returns 202 (WIP) while generation is in progress', async () => {
@@ -118,7 +118,7 @@ describe('GET /v1/kundli', () => {
 
     const res = await createApp().request('/v1/kundli', { headers: AUTH });
     expect(res.status).toBe(202);
-    expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1');
+    expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1', null);
   });
 
   it('returns 422 with the missing parameters when birth data is incomplete', async () => {
@@ -138,7 +138,7 @@ describe('GET /v1/kundli', () => {
     const res = await createApp().request('/v1/kundli', { headers: AUTH });
     expect(res.status).toBe(202);
     expect(((await res.json()) as { status: string }).status).toBe('failed');
-    expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1');
+    expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1', null);
   });
 
   it('does NOT re-fire a recently-failed generation (cooldown)', async () => {
@@ -161,6 +161,7 @@ describe('POST /v1/kundli/regenerate', () => {
     });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { status: string }).status).toBe('ready');
+    expect(state.regenerateKundli).toHaveBeenCalledWith('id-1', null);
   });
 
   it('returns 422 with missing parameters when incomplete', async () => {

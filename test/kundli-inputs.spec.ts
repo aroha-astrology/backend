@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { birthInputsForUser, missingKundliParams } from '../src/modules/kundli/kundli.service.js';
-import { makeUserRow } from './helpers/mocks.js';
+import {
+  birthInputsForProfile,
+  missingKundliParams,
+} from '../src/modules/kundli/kundli.service.js';
+import { makeProfileContext, makeUserRow } from './helpers/mocks.js';
 
 const MUMBAI = { name: 'Mumbai', lat: 19.076, lon: 72.8777, tz: 'Asia/Kolkata' };
 
-function completeUser(overrides = {}) {
-  return makeUserRow({
+function completeProfile(overrides = {}) {
+  return makeProfileContext({
     displayName: 'Aanya',
     gender: 'female',
     dateOfBirth: '1990-05-20',
@@ -17,21 +20,23 @@ function completeUser(overrides = {}) {
 
 describe('missingKundliParams (strict required set)', () => {
   it('is empty when all required birth details are present', () => {
-    expect(missingKundliParams(completeUser())).toEqual([]);
+    expect(missingKundliParams(completeProfile())).toEqual([]);
   });
 
   it('reports exact birth time as missing when absent (no degraded chart)', () => {
-    expect(missingKundliParams(completeUser({ timeOfBirth: null }))).toEqual(['timeOfBirth']);
+    expect(missingKundliParams(completeProfile({ timeOfBirth: null }))).toEqual(['timeOfBirth']);
   });
 
   it("treats birthTimeAccuracy='unknown' as missing time even if a value is present", () => {
     expect(
-      missingKundliParams(completeUser({ timeOfBirth: '06:30:00', birthTimeAccuracy: 'unknown' })),
+      missingKundliParams(
+        completeProfile({ timeOfBirth: '06:30:00', birthTimeAccuracy: 'unknown' }),
+      ),
     ).toEqual(['timeOfBirth']);
   });
 
   it('reports every missing field for an empty profile', () => {
-    const missing = missingKundliParams(makeUserRow());
+    const missing = missingKundliParams(makeProfileContext());
     expect(missing).toEqual(
       expect.arrayContaining([
         'displayName',
@@ -45,15 +50,18 @@ describe('missingKundliParams (strict required set)', () => {
 
   it('reports placeOfBirth missing when coordinates/timezone are incomplete', () => {
     expect(
-      missingKundliParams(completeUser({ placeOfBirth: { name: 'X', lat: 19, lon: 72, tz: '' } })),
+      missingKundliParams(
+        completeProfile({ placeOfBirth: { name: 'X', lat: 19, lon: 72, tz: '' } }),
+      ),
     ).toEqual(['placeOfBirth']);
   });
 });
 
-describe('birthInputsForUser', () => {
-  it('builds inputs when complete; resolves tz/ayanamsa/house system', () => {
-    const inputs = birthInputsForUser(
-      completeUser({ preferredAyanamsa: 'raman', preferredHouseSystem: 'placidus' }),
+describe('birthInputsForProfile', () => {
+  it('builds inputs when complete; resolves tz/ayanamsa/house system from the owning user', () => {
+    const inputs = birthInputsForProfile(
+      completeProfile(),
+      makeUserRow({ preferredAyanamsa: 'raman', preferredHouseSystem: 'placidus' }),
     );
     expect(inputs).not.toBeNull();
     expect(inputs?.hour).toBe(6);
@@ -64,12 +72,12 @@ describe('birthInputsForUser', () => {
   });
 
   it('returns null when a required parameter (exact time) is missing', () => {
-    expect(birthInputsForUser(completeUser({ timeOfBirth: null }))).toBeNull();
+    expect(birthInputsForProfile(completeProfile({ timeOfBirth: null }), makeUserRow())).toBeNull();
   });
 
   it('changing birth inputs changes the birthHash (drives regeneration)', () => {
-    const a = birthInputsForUser(completeUser({ timeOfBirth: '06:30' }));
-    const b = birthInputsForUser(completeUser({ timeOfBirth: '07:30' }));
+    const a = birthInputsForProfile(completeProfile({ timeOfBirth: '06:30' }), makeUserRow());
+    const b = birthInputsForProfile(completeProfile({ timeOfBirth: '07:30' }), makeUserRow());
     expect(a?.birthHash).not.toBe(b?.birthHash);
   });
 });
