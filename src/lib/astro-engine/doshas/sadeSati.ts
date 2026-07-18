@@ -1,6 +1,7 @@
 // @ts-nocheck
 import type { SadeSati, ZodiacSign } from '@aroha-astrology/shared';
 import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
+import { dateToJulianDay, calculatePlanetPositions } from '../calculations/planetPositions';
 
 /**
  * Sade Sati Detection
@@ -119,4 +120,29 @@ export function detectSadeSati(moonSign: ZodiacSign, saturnLongitude: number): S
     moonSign,
     description,
   };
+}
+
+/**
+ * Saturn's live sidereal longitude as of `asOf` (default now). Unlike a
+ * natal chart's Saturn placement, this changes as Saturn actually transits —
+ * it's the only correct input for Sade Sati, which is a TRANSIT dosha.
+ */
+export async function getCurrentSaturnLongitude(asOf: Date = new Date()): Promise<number> {
+  const jd = await dateToJulianDay(
+    asOf.getUTCFullYear(),
+    asOf.getUTCMonth() + 1,
+    asOf.getUTCDate(),
+    asOf.getUTCHours(),
+    asOf.getUTCMinutes(),
+    0,
+  );
+  const positions = await calculatePlanetPositions(jd);
+  const saturn = positions.find((p) => p.planet === 'Saturn');
+  return saturn?.longitude ?? 0;
+}
+
+/** Sade Sati detection using Saturn's live transiting position (see `getCurrentSaturnLongitude`). */
+export async function detectCurrentSadeSati(moonSign: ZodiacSign, asOf?: Date): Promise<SadeSati> {
+  const saturnLongitude = await getCurrentSaturnLongitude(asOf);
+  return detectSadeSati(moonSign, saturnLongitude);
 }

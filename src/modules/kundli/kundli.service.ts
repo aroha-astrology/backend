@@ -6,7 +6,10 @@ import {
   detectAllYogas,
   analyzeAllDoshas,
   calculateAshtakavarga,
+  getCurrentSaturnLongitude,
+  detectCurrentSadeSati,
 } from '../../lib/astro-engine/index.js';
+import type { ZodiacSign } from '@aroha-astrology/shared';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -244,7 +247,6 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
     );
 
     const moon = chart.planets.find((p) => p.planet === 'Moon');
-    const saturn = chart.planets.find((p) => p.planet === 'Saturn');
     // True birth instant in UTC (server-tz-independent), consistent with the
     // chart's Julian-day computation.
     const birthDate = new Date(
@@ -254,10 +256,22 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
     const dasha = calculateVimshottariDasha(moon?.longitude ?? 0, birthDate);
     const yogini = calculateYoginiDasha(moon?.longitude ?? 0, birthDate);
 
+    // Sade Sati is a TRANSIT dosha — it needs Saturn's CURRENT sky position,
+    // not the natal chart's Saturn (which is where Saturn was at birth, a
+    // wholly different value). A failed live lookup falls back to 0 (=
+    // Aries), the same safe "no data" default the rest of this best-effort
+    // block uses; it just means Sade Sati won't be flagged, never a wrong one.
+    let currentSaturnLongitude = 0;
+    try {
+      currentSaturnLongitude = await getCurrentSaturnLongitude();
+    } catch (err) {
+      logger.warn({ err }, 'live Saturn transit lookup failed (Sade Sati skipped)');
+    }
+
     // Best-effort enrichment: a failure in any single (unvetted) calc must NOT
     // fail the whole kundli — the chart + dasha are the required payload.
     const yogas = tryCompute('yogas', () => detectAllYogas(chart));
-    const doshas = tryCompute('doshas', () => analyzeAllDoshas(chart, saturn?.longitude ?? 0));
+    const doshas = tryCompute('doshas', () => analyzeAllDoshas(chart, currentSaturnLongitude));
     const ashtakavarga = tryCompute('ashtakavarga', () => calculateAshtakavarga(chart));
 
     await markKundliReady(user.id, claimedAt, {
@@ -362,7 +376,31 @@ export async function getKundliForUser(userId: string): Promise<KundliRow | unde
   return findKundliByUserId(userId);
 }
 
-export function toKundliDto(row: KundliRow): KundliDto {
+/**
+ * Sade Sati is the one dosha whose correctness depends on TODAY, not the
+ * birth-chart snapshot taken at kundli-generation time — Saturn keeps
+ * transiting after that, so a value cached at generation goes stale and
+ * (unlike every other, natal dosha here) never self-corrects. Recompute it
+ * live on every read; leave the rest of doshaData (natal, unchanging) as-is.
+ * Same self-healing-at-read pattern as the 2026-07-17 gemstone fix.
+ */
+export async function withLiveSadeSati(
+  doshaData: Record<string, unknown> | null,
+  asOf?: Date,
+): Promise<Record<string, unknown> | null> {
+  if (!doshaData) return doshaData;
+  const cached = doshaData.sadeSati as { moonSign?: ZodiacSign } | undefined;
+  if (!cached?.moonSign) return doshaData;
+  try {
+    const sadeSati = await detectCurrentSadeSati(cached.moonSign, asOf);
+    return { ...doshaData, sadeSati };
+  } catch (err) {
+    logger.warn({ err }, 'live Sade Sati recompute failed at read time (serving cached value)');
+    return doshaData;
+  }
+}
+
+export async function toKundliDto(row: KundliRow): Promise<KundliDto> {
   return {
     status: 'ready',
     id: row.id,
@@ -372,7 +410,7 @@ export function toKundliDto(row: KundliRow): KundliDto {
     chart: row.chartData,
     dasha: row.dashaData,
     yogas: row.yogaData,
-    doshas: row.doshaData,
+    doshas: await withLiveSadeSati(row.doshaData),
     generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
   };
 }

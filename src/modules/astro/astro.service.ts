@@ -22,7 +22,7 @@ import {
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
-import { getKundliForUser } from '../kundli/kundli.service.js';
+import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
@@ -990,7 +990,9 @@ export async function* chatStream(
     chart: kundli?.status === 'ready' ? (kundli.chartData ?? null) : null,
     dasha: kundli?.status === 'ready' ? (kundli.dashaData ?? null) : null,
     yogas: kundli?.status === 'ready' ? (kundli.yogaData ?? null) : null,
-    doshas: kundli?.status === 'ready' ? (kundli.doshaData ?? null) : null,
+    // Sade Sati is transit-dependent — recompute it live so chat never tells
+    // a user their (possibly months/years-stale) cached phase.
+    doshas: kundli?.status === 'ready' ? await withLiveSadeSati(kundli.doshaData ?? null) : null,
     ashtakavarga: kundli?.status === 'ready' ? (kundli.ashtakavargaData ?? null) : null,
   };
   // A user who onboarded with an unknown birth time will NEVER get a ready

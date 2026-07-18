@@ -129,7 +129,7 @@ kundliRouter.openapi(getKundliRoute, async (c) => {
       fireGeneration(user.id);
       return c.json({ status: 'generating' as const }, 202);
     }
-    return c.json(toKundliDto(existing), 200);
+    return c.json(await toKundliDto(existing), 200);
   }
 
   // pending / generating / failed → ensure a run is (re)started (with a cooldown
@@ -184,7 +184,7 @@ kundliRouter.openapi(regenerateRoute, async (c) => {
     return c.json(missingResponseBody(result.missing), 422);
   }
   if (result.row.status === 'ready') {
-    return c.json(toKundliDto(result.row), 200);
+    return c.json(await toKundliDto(result.row), 200);
   }
   // 'failed' or still 'generating' (a concurrent run owns it).
   return c.json(
