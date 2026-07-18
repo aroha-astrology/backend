@@ -130,27 +130,28 @@ export async function updateUserById(
 }
 
 /**
- * Atomically deduct `amount` credits if (and only if) the user has enough.
- * Same claim-style primitive as `unlockHouseForUser` — the balance check and
- * the debit happen in one conditional UPDATE so two concurrent spends can
- * never both succeed against a balance that only covers one of them.
+ * Atomically deduct `amountPaise` from the wallet if (and only if) the user
+ * has enough. Same claim-style primitive as `unlockHouseForUser` — the
+ * balance check and the debit happen in one conditional UPDATE so two
+ * concurrent spends can never both succeed against a balance that only
+ * covers one of them.
  */
-export async function deductCredits(userId: string, amount: number): Promise<boolean> {
+export async function deductWalletBalance(userId: string, amountPaise: number): Promise<boolean> {
   const result = await db.execute(sql`
     UPDATE users
-    SET credits = credits - ${amount}
+    SET wallet_balance_paise = wallet_balance_paise - ${amountPaise}
     WHERE id = ${userId}
-      AND credits >= ${amount}
+      AND wallet_balance_paise >= ${amountPaise}
     RETURNING *;
   `);
   return result.length > 0;
 }
 
-/** Add `amount` credits back (e.g. refunding a charge whose async job failed). */
-export async function addCredits(userId: string, amount: number): Promise<void> {
+/** Add `amountPaise` back to the wallet (e.g. refunding a charge whose async job failed). */
+export async function addWalletBalance(userId: string, amountPaise: number): Promise<void> {
   await db.execute(sql`
     UPDATE users
-    SET credits = credits + ${amount}
+    SET wallet_balance_paise = wallet_balance_paise + ${amountPaise}
     WHERE id = ${userId};
   `);
 }
@@ -338,37 +339,38 @@ export async function listUsersPage(limit: number, offset: number) {
   return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
 }
 
+/** Cost in paise to unlock one kundli house's detail view (Rs 50 = 5 credits at the old rate). */
+export const HOUSE_UNLOCK_COST_PAISE = 5000;
+
 export async function unlockHouseForUser(userId: string, houseNumber: number) {
-  // Use raw sql to deduct credits and array_append to unlockedHouses
-  // ensure credits >= 5 and houseNumber is not already in unlockedHouses
   const result = await db.execute(sql`
     UPDATE users
-    SET credits = credits - 5,
+    SET wallet_balance_paise = wallet_balance_paise - ${HOUSE_UNLOCK_COST_PAISE},
         unlocked_houses = array_append(unlocked_houses, ${houseNumber})
     WHERE id = ${userId}
-      AND credits >= 5
+      AND wallet_balance_paise >= ${HOUSE_UNLOCK_COST_PAISE}
       AND NOT (${houseNumber} = ANY(unlocked_houses))
     RETURNING *;
   `);
   return result.length > 0;
 }
 
-/** Cost in credits to unlock the full gemstone report (whole report, one-time). */
-export const GEMSTONE_UNLOCK_COST = 10;
+/** Cost in paise to unlock the full gemstone report (whole report, one-time). Rs 100 = 10 credits at the old rate. */
+export const GEMSTONE_UNLOCK_COST_PAISE = 10000;
 
 /**
- * Atomically spend credits to unlock the gemstone report — same combined
- * deduct-and-guard primitive as `unlockHouseForUser`. Returns false if the
- * user has too few credits OR the report is already unlocked, so a second
- * click can never double-charge.
+ * Atomically spend wallet balance to unlock the gemstone report — same
+ * combined deduct-and-guard primitive as `unlockHouseForUser`. Returns false
+ * if the user has too little balance OR the report is already unlocked, so a
+ * second click can never double-charge.
  */
 export async function unlockGemstoneForUser(userId: string) {
   const result = await db.execute(sql`
     UPDATE users
-    SET credits = credits - ${GEMSTONE_UNLOCK_COST},
+    SET wallet_balance_paise = wallet_balance_paise - ${GEMSTONE_UNLOCK_COST_PAISE},
         gemstone_unlocked_at = now()
     WHERE id = ${userId}
-      AND credits >= ${GEMSTONE_UNLOCK_COST}
+      AND wallet_balance_paise >= ${GEMSTONE_UNLOCK_COST_PAISE}
       AND gemstone_unlocked_at IS NULL
     RETURNING *;
   `);

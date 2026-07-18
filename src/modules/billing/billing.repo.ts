@@ -4,7 +4,7 @@ import {
   coupons,
   orders,
   users,
-  creditTransactions,
+  walletTransactions,
   type CouponRow,
   type NewCouponRow,
   type OrderRow,
@@ -73,7 +73,7 @@ export async function confirmOrderAndGrantCredits(
   orderId: string,
   userId: string,
   gatewayPaymentId: string,
-): Promise<{ order: OrderRow; credits: number } | undefined> {
+): Promise<{ order: OrderRow; walletBalancePaise: number } | undefined> {
   return db.transaction(async (tx) => {
     const [order] = await tx
       .update(orders)
@@ -92,19 +92,22 @@ export async function confirmOrderAndGrantCredits(
 
     const [userRow] = await tx
       .update(users)
-      .set({ credits: sql`${users.credits} + ${order.credits}`, updatedAt: new Date() })
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} + ${order.finalAmountPaise}`,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId))
-      .returning({ credits: users.credits });
+      .returning({ walletBalancePaise: users.walletBalancePaise });
 
-    if (!userRow) throw new Error('User not found while granting purchased credits');
+    if (!userRow) throw new Error('User not found while granting purchased wallet balance');
 
-    await tx.insert(creditTransactions).values({
+    await tx.insert(walletTransactions).values({
       userId,
-      delta: order.credits,
+      delta: order.finalAmountPaise,
       reason: `purchase:${order.packId}`,
-      balanceAfter: userRow.credits,
+      balanceAfter: userRow.walletBalancePaise,
     });
 
-    return { order, credits: userRow.credits };
+    return { order, walletBalancePaise: userRow.walletBalancePaise };
   });
 }

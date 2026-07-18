@@ -12,31 +12,30 @@ import { logger } from '../../lib/logger.js';
 import { verifyGooglePlayPurchase, consumeGooglePlayPurchase } from './google-play-verifier.js';
 
 /**
- * Fixed credit-pack catalog. Small and rarely-changing enough to keep as code
- * rather than a DB table — bump prices/credits here, no migration needed.
+ * Fixed top-up catalog. Each entry is a 1:1 top-up (pay this amount, wallet
+ * gets exactly this amount) — the `id`s here MUST match real one-time
+ * product IDs configured in the Google Play Console with the same price,
+ * since Play Billing products are fixed-price (see Task D1 in the rollout
+ * plan). Small and rarely-changing enough to keep as code rather than a DB
+ * table — bump amounts here, no migration needed (but DOES need a matching
+ * Play Console product edit).
  */
-export const CREDIT_PACKS = [
-  { id: 'starter', credits: 60, priceInPaise: 4900, currency: 'INR', label: 'Starter' },
-  {
-    id: 'popular',
-    credits: 200,
-    priceInPaise: 14900,
-    currency: 'INR',
-    label: 'Popular',
-    popular: true,
-  },
-  { id: 'value', credits: 550, priceInPaise: 34900, currency: 'INR', label: 'Value' },
-  { id: 'mega', credits: 1200, priceInPaise: 69900, currency: 'INR', label: 'Mega' },
+export const TOP_UP_AMOUNTS = [
+  { id: 'topup_50', amountPaise: 5000, currency: 'INR', label: '₹50' },
+  { id: 'topup_100', amountPaise: 10000, currency: 'INR', label: '₹100' },
+  { id: 'topup_200', amountPaise: 20000, currency: 'INR', label: '₹200', popular: true },
+  { id: 'topup_500', amountPaise: 50000, currency: 'INR', label: '₹500' },
+  { id: 'topup_1000', amountPaise: 100000, currency: 'INR', label: '₹1000' },
 ] as const;
 
-export function getCreditPacks() {
-  return CREDIT_PACKS;
+export function getTopUpAmounts() {
+  return TOP_UP_AMOUNTS;
 }
 
-function findPack(packId: string) {
-  const pack = CREDIT_PACKS.find((p) => p.id === packId);
-  if (!pack) throw Errors.badRequest(`Unknown pack "${packId}"`);
-  return pack;
+function findTopUpAmount(id: string) {
+  const amount = TOP_UP_AMOUNTS.find((a) => a.id === id);
+  if (!amount) throw Errors.badRequest(`Unknown top-up amount "${id}"`);
+  return amount;
 }
 
 /** Discount amount in paise a coupon would apply to a given order amount, 0 if inapplicable. */
@@ -67,44 +66,43 @@ async function resolveCoupon(code: string, amountPaise: number) {
 }
 
 export async function validateCoupon(code: string, packId: string) {
-  const pack = findPack(packId);
-  const { coupon, error } = await resolveCoupon(code, pack.priceInPaise);
+  const amount = findTopUpAmount(packId);
+  const { coupon, error } = await resolveCoupon(code, amount.amountPaise);
   if (!coupon) {
     return { valid: false, code, message: error ?? 'Invalid coupon code' };
   }
-  const discountPaise = computeDiscountPaise(coupon, pack.priceInPaise);
+  const discountPaise = computeDiscountPaise(coupon, amount.amountPaise);
   return {
     valid: true,
     code: coupon.code,
     discountType: coupon.discountType,
     discountValue: coupon.discountValue,
     discountPaise,
-    finalAmountPaise: Math.max(pack.priceInPaise - discountPaise, 0),
+    finalAmountPaise: Math.max(amount.amountPaise - discountPaise, 0),
   };
 }
 
 export async function checkout(userId: string, packId: string, couponCode: string | undefined) {
-  const pack = findPack(packId);
+  const amount = findTopUpAmount(packId);
   let discountPaise = 0;
   let couponId: string | null = null;
   let resolvedCouponCode: string | null = null;
 
   if (couponCode) {
-    const { coupon, error } = await resolveCoupon(couponCode, pack.priceInPaise);
+    const { coupon, error } = await resolveCoupon(couponCode, amount.amountPaise);
     if (!coupon) throw Errors.badRequest(error ?? 'Invalid coupon code');
-    discountPaise = computeDiscountPaise(coupon, pack.priceInPaise);
+    discountPaise = computeDiscountPaise(coupon, amount.amountPaise);
     couponId = coupon.id;
     resolvedCouponCode = coupon.code;
   }
 
   const order = await insertOrder({
     userId,
-    packId: pack.id,
-    credits: pack.credits,
-    amountPaise: pack.priceInPaise,
+    packId: amount.id,
+    amountPaise: amount.amountPaise,
     discountPaise,
-    finalAmountPaise: Math.max(pack.priceInPaise - discountPaise, 0),
-    currency: pack.currency,
+    finalAmountPaise: Math.max(amount.amountPaise - discountPaise, 0),
+    currency: amount.currency,
     couponId,
     couponCode: resolvedCouponCode,
     status: 'pending',
@@ -126,16 +124,16 @@ export async function checkout(userId: string, packId: string, couponCode: strin
 export async function confirmPayment(
   orderId: string,
   userId: string,
-): Promise<{ order: OrderRow; credits: number }> {
+): Promise<{ order: OrderRow; walletBalancePaise: number }> {
   const order = await findOrderByIdForUser(orderId, userId);
   if (!order) throw Errors.notFound('Order not found');
   throw Errors.forbidden('Online payments are not live yet.');
 }
 
-async function getUserCredits(userId: string): Promise<number> {
+async function getUserWalletBalance(userId: string): Promise<number> {
   const user = await findActiveUserById(userId);
   if (!user) throw Errors.notFound('User not found');
-  return user.credits;
+  return user.walletBalancePaise;
 }
 
 /**
@@ -148,18 +146,12 @@ async function getUserCredits(userId: string): Promise<number> {
 export async function confirmGooglePlayPurchase(
   userId: string,
   { purchaseToken, productId }: { purchaseToken: string; productId: string },
-): Promise<{ order: OrderRow; credits: number }> {
+): Promise<{ order: OrderRow; walletBalancePaise: number }> {
   const order = await findLatestOrderForPack(userId, productId);
   if (!order) throw Errors.notFound('No matching order found for this purchase');
 
   if (order.status === 'paid') {
     if (order.gatewayPaymentId === purchaseToken) {
-      // A reconciler (Task 10) may replay this call for every purchase Google
-      // still reports as unconsumed — e.g. because a prior consume attempt
-      // failed. Retry it here too, best-effort, so a transient failure on
-      // the first attempt doesn't permanently strand the purchase as
-      // unconsumed (which would block the user from ever repurchasing this
-      // consumable pack again).
       try {
         await consumeGooglePlayPurchase({ productId, purchaseToken });
       } catch (err) {
@@ -168,8 +160,8 @@ export async function confirmGooglePlayPurchase(
           'Failed to consume Google Play purchase on idempotent replay',
         );
       }
-      const credits = await getUserCredits(userId);
-      return { order, credits };
+      const walletBalancePaise = await getUserWalletBalance(userId);
+      return { order, walletBalancePaise };
     }
     throw Errors.conflict('Order already confirmed with a different purchase');
   }
@@ -182,22 +174,17 @@ export async function confirmGooglePlayPurchase(
 
   const result = await confirmOrderAndGrantCredits(order.id, userId, purchaseToken);
   if (!result) {
-    // Lost a race with a concurrent confirm for the same order — the other
-    // call already granted credits. Return the now-paid order instead of
-    // erroring, since the purchase genuinely did succeed.
     const nowPaid = await findLatestOrderForPack(userId, productId);
     if (!nowPaid || nowPaid.status !== 'paid') {
       throw Errors.internal('Failed to confirm order');
     }
-    const credits = await getUserCredits(userId);
-    return { order: nowPaid, credits };
+    const walletBalancePaise = await getUserWalletBalance(userId);
+    return { order: nowPaid, walletBalancePaise };
   }
 
   try {
     await consumeGooglePlayPurchase({ productId, purchaseToken });
   } catch (err) {
-    // Credits are already granted — a failed consume is a Play-side
-    // bookkeeping issue, not a reason to fail the request.
     logger.warn({ err, purchaseToken, productId }, 'Failed to consume Google Play purchase');
   }
 
@@ -208,7 +195,6 @@ export function toOrderDto(order: OrderRow) {
   return {
     id: order.id,
     packId: order.packId,
-    credits: order.credits,
     amountPaise: order.amountPaise,
     discountPaise: order.discountPaise,
     finalAmountPaise: order.finalAmountPaise,
