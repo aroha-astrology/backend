@@ -140,10 +140,10 @@ export async function markHouseInsightReady(
 
 export async function saveHouseInsightTranslation(
   userId: string,
+  birthProfileId: string | null,
   house: number,
   language: string,
   translation: { text?: string; strengths?: string[]; weaknesses?: string[] },
-  birthProfileId: string | null,
 ): Promise<void> {
   const existing = await db
     .select({ translations: houseInsights.translations })

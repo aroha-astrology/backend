@@ -128,11 +128,11 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
           );
           await saveHoroscopeTranslation(
             user.id,
+            profile.birthProfileId,
             period,
             periodKey,
             lang,
             translated,
-            profile.birthProfileId,
           );
           dto = { ...dto, ...translated, dasha: mergeDasha(translated) };
         } catch (err) {

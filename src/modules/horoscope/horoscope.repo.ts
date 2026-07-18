@@ -219,6 +219,7 @@ export async function markHoroscopeFailed(
 
 export async function saveHoroscopeTranslation(
   userId: string,
+  birthProfileId: string | null,
   period: HoroscopePeriod,
   periodKey: string,
   language: string,
@@ -228,7 +229,6 @@ export async function saveHoroscopeTranslation(
     structured?: StructuredHoroscope;
     dasha?: { hook?: string; meaning?: string };
   },
-  birthProfileId: string | null,
 ): Promise<void> {
   const existing = await db
     .select({ translations: dailyHoroscopes.translations })

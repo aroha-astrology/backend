@@ -555,10 +555,10 @@ export async function toHouseInsightDtoForLanguage(
     );
     await saveHouseInsightTranslation(
       row.userId,
+      row.birthProfileId,
       row.house,
       language,
       translated,
-      row.birthProfileId,
     );
     return { ...dto, ...translated };
   } catch (err) {

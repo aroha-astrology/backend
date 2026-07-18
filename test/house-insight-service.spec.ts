@@ -94,19 +94,30 @@ describe('toHouseInsightDtoForLanguage', () => {
       { text: 'You value stability.', strengths: ['Steady income'], weaknesses: ['Overcautious'] },
       'hi',
     );
-    expect(state.saveHouseInsightTranslation).toHaveBeenCalledWith(
-      'user-1',
-      2,
-      'hi',
-      {
-        text: 'आप स्थिरता को महत्व देते हैं।',
-        strengths: ['स्थिर आय'],
-        weaknesses: ['अति सतर्क'],
-      },
-      null,
-    );
+    expect(state.saveHouseInsightTranslation).toHaveBeenCalledWith('user-1', null, 2, 'hi', {
+      text: 'आप स्थिरता को महत्व देते हैं।',
+      strengths: ['स्थिर आय'],
+      weaknesses: ['अति सतर्क'],
+    });
     expect(dto).toEqual({
       status: 'ready',
+      text: 'आप स्थिरता को महत्व देते हैं।',
+      strengths: ['स्थिर आय'],
+      weaknesses: ['अति सतर्क'],
+    });
+  });
+
+  it('persists the translation against the row’s own (non-null) birthProfileId for an additional profile', async () => {
+    state.translateHouseInsightContent.mockResolvedValueOnce({
+      text: 'आप स्थिरता को महत्व देते हैं।',
+      strengths: ['स्थिर आय'],
+      weaknesses: ['अति सतर्क'],
+    });
+    const row = makeRow({ birthProfileId: 'profile-a' });
+
+    await toHouseInsightDtoForLanguage(row, 'hi');
+
+    expect(state.saveHouseInsightTranslation).toHaveBeenCalledWith('user-1', 'profile-a', 2, 'hi', {
       text: 'आप स्थिरता को महत्व देते हैं।',
       strengths: ['स्थिर आय'],
       weaknesses: ['अति सतर्क'],
