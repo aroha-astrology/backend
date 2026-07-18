@@ -476,6 +476,9 @@ astroRouter.openapi(chatRoute, async (c) => {
         signal,
         body.locale,
         body.compareProfileId,
+        // Already resolved above (also used for chat-session scoping) —
+        // threaded through instead of letting chatStream re-resolve it.
+        profile,
       );
 
       let fullContent = '';

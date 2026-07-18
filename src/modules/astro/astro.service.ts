@@ -25,7 +25,7 @@ import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
-import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
+import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import {
   PANCHANG_REFERENCE_POINTS,
@@ -955,6 +955,14 @@ export async function* chatStream(
   signal?: AbortSignal,
   locale: string = 'en',
   compareProfileId?: string,
+  // The active profile (primary or an additional saved one), already resolved
+  // ONCE by the caller (astro.routes.ts's chatRoute — it needs the same
+  // resolution for chat-session scoping) and threaded through here rather
+  // than re-resolved internally. Every other profile-aware surface in this
+  // codebase follows this resolve-once-in-the-route pattern; chat used to be
+  // the one exception, doing a second, redundant `resolveActiveProfileContext`
+  // call on every single message.
+  profile?: ProfileContext,
 ): AsyncGenerator<ChatStreamEvent> {
   // Death/self-harm policy gate — runs before checkTopicGate (and before any
   // chart/grounding work) so a self-harm message never reaches the topic
@@ -980,16 +988,16 @@ export async function* chatStream(
 
   const state = newState({ userId, intent: 'chat', consent: true });
 
-  // Resolve the account and its currently-active profile FIRST — kundli and
-  // user-facts below are both scoped to profile.birthProfileId, so profile
-  // resolution can't run in parallel with them, only before. Best-effort:
-  // a missing/unreachable user, or a failed profile lookup (e.g. a transient
-  // DB blip on findOwnedBirthProfile), just means we ground on nothing
-  // profile-specific — same degrade-gracefully contract as every other fetch
-  // below (kundli/userFacts/panchang/secondChartFacts), never a hard failure
-  // of the whole chat turn.
+  // The account row is still fetched here — profileFacts below needs it
+  // alongside `profile` (e.g. relationshipStatus/interestAreas have no
+  // per-profile equivalent and stay account-level), and it's independent of
+  // profile resolution. `profile` itself is no longer resolved here: it's
+  // passed in already-resolved by the caller (see the parameter's doc
+  // comment above). Best-effort: a missing/unreachable user just means
+  // account-level facts are skipped — same degrade-gracefully contract as
+  // every other fetch below (kundli/userFacts/panchang/secondChartFacts),
+  // never a hard failure of the whole chat turn.
   const user = await findActiveUserById(userId).catch(() => undefined);
-  const profile = user ? await resolveActiveProfileContext(user).catch(() => undefined) : undefined;
 
   // Best-effort: an unready/missing kundli just means no chart facts get
   // injected (buildGroundingFacts degrades gracefully) — chat still works.

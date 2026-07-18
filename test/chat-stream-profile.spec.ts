@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Coverage for chatStream's multi-profile wiring (astro.service.ts): kundli
-// and user-facts must be fetched for the CURRENTLY ACTIVE profile (resolved
-// BEFORE those fetches, since both depend on profile.birthProfileId), and
-// birthTimeUnknown / the gender fact in extraFacts must come from the
-// resolved profile, not unconditionally from the account (`user`) row.
+// Coverage for chatStream's multi-profile wiring (astro.service.ts): the
+// active profile is now resolved ONCE by the caller (astro.routes.ts's
+// chatRoute) and passed in as the `profile` parameter — chatStream no longer
+// calls `resolveActiveProfileContext` itself. kundli and user-facts must be
+// fetched for whichever profile was passed in (profile.birthProfileId), and
+// birthTimeUnknown / the gender fact in extraFacts must come from that
+// profile, not unconditionally from the account (`user`) row.
 // Everything below `place`/panchang/relocation is left with no place of
 // birth so those best-effort paths short-circuit to `[]` and stay out of
 // scope for this test (they're not part of this task).
 
 const state = vi.hoisted(() => ({
   findActiveUserById: vi.fn(),
-  resolveActiveProfileContext: vi.fn(),
   getKundliForUser: vi.fn(),
   withLiveSadeSati: vi.fn(),
   getUserFacts: vi.fn(),
@@ -24,10 +25,6 @@ const state = vi.hoisted(() => ({
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findActiveUserById: state.findActiveUserById,
-}));
-
-vi.mock('../src/modules/birth-profiles/profile-context.js', () => ({
-  resolveActiveProfileContext: state.resolveActiveProfileContext,
 }));
 
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
@@ -73,7 +70,6 @@ async function drain<T>(gen: AsyncGenerator<T>): Promise<T[]> {
 
 beforeEach(() => {
   state.findActiveUserById.mockReset();
-  state.resolveActiveProfileContext.mockReset();
   state.getKundliForUser.mockReset().mockResolvedValue(undefined);
   state.withLiveSadeSati.mockReset().mockImplementation((d: unknown) => Promise.resolve(d));
   state.getUserFacts.mockReset().mockResolvedValue([]);
@@ -88,8 +84,8 @@ beforeEach(() => {
   });
 });
 
-describe('chatStream — profile resolution happens before kundli/facts fetch', () => {
-  it('defaults to the primary/self profile (birthProfileId: null) when none is active', async () => {
+describe('chatStream — grounds on the profile passed in by the caller (no internal re-resolution)', () => {
+  it('grounds on the primary/self profile when the caller passes birthProfileId: null', async () => {
     const user = makeUserRow({
       id: 'user-1',
       activeProfileId: null,
@@ -99,15 +95,14 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
       birthTimeAccuracy: 'exact',
     });
     state.findActiveUserById.mockResolvedValue(user);
-    state.resolveActiveProfileContext.mockResolvedValue(
-      makeProfileContext({
-        birthProfileId: null,
-        gender: 'male',
-        birthTimeAccuracy: 'exact',
-        placeOfBirth: null,
-      }),
-    );
     state.getUserFacts.mockResolvedValue(['likes hiking']);
+
+    const profile = makeProfileContext({
+      birthProfileId: null,
+      gender: 'male',
+      birthTimeAccuracy: 'exact',
+      placeOfBirth: null,
+    });
 
     const events = await drain(
       chatStream(
@@ -119,11 +114,11 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
         undefined,
         'en',
         undefined,
+        profile,
       ),
     );
 
     expect(events.some((e) => (e as { type: string }).type === 'token')).toBe(true);
-    expect(state.resolveActiveProfileContext).toHaveBeenCalledWith(user);
     expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', null);
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
 
@@ -134,7 +129,7 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
     expect(extraFacts).toContain("User's gender: male");
   });
 
-  it('grounds on the ACTIVE ADDITIONAL profile: kundli/facts scoped to it, gender pulled from the profile (not the account), birthTimeUnknown driven by the profile', async () => {
+  it('grounds on the ACTIVE ADDITIONAL profile passed in by the caller: kundli/facts scoped to it, gender pulled from the profile (not the account), birthTimeUnknown driven by the profile', async () => {
     const user = makeUserRow({
       id: 'user-1',
       activeProfileId: 'profile-a',
@@ -144,20 +139,19 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
       birthTimeAccuracy: 'exact', // account-level — must NOT drive birthTimeUnknown below
     });
     state.findActiveUserById.mockResolvedValue(user);
-    state.resolveActiveProfileContext.mockResolvedValue(
-      makeProfileContext({
-        birthProfileId: 'profile-a',
-        gender: 'female', // the child's OWN gender
-        birthTimeAccuracy: 'unknown', // the child's OWN (unknown) birth-time accuracy
-        placeOfBirth: null,
-      }),
-    );
     state.getUserFacts.mockResolvedValue(['loves painting']);
     state.compactHistory.mockResolvedValue({
       recentHistory: [],
       summary: '',
       changed: false,
       facts: ['new durable fact'],
+    });
+
+    const profile = makeProfileContext({
+      birthProfileId: 'profile-a',
+      gender: 'female', // the child's OWN gender
+      birthTimeAccuracy: 'unknown', // the child's OWN (unknown) birth-time accuracy
+      placeOfBirth: null,
     });
 
     await drain(
@@ -170,12 +164,13 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
         undefined,
         'en',
         undefined,
+        profile,
       ),
     );
 
     expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', 'profile-a');
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', 'profile-a');
-    // saveUserFacts must be tagged with the ACTIVE profile too, not the account.
+    // saveUserFacts must be tagged with the passed-in profile too, not the account.
     expect(state.saveUserFacts).toHaveBeenCalledWith('user-1', 'profile-a', ['new durable fact']);
 
     const call = state.scholarStream.mock.calls[0] as any[];
@@ -188,29 +183,7 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
     expect((extraFacts as string[]).some((f) => f.includes('married'))).toBe(true);
   });
 
-  it('degrades gracefully (no profile-specific grounding, primary-profile scoping) when the user lookup fails', async () => {
-    state.findActiveUserById.mockRejectedValue(new Error('db down'));
-
-    const events = await drain(
-      chatStream(
-        'user-1',
-        'What does my Jupiter transit mean?',
-        [],
-        undefined,
-        'direct',
-        undefined,
-        'en',
-        undefined,
-      ),
-    );
-
-    expect(events.some((e) => (e as { type: string }).type === 'token')).toBe(true);
-    expect(state.resolveActiveProfileContext).not.toHaveBeenCalled();
-    expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', null);
-    expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
-  });
-
-  it('degrades gracefully (falls back to primary-profile scoping) when the user resolves but resolveActiveProfileContext rejects (e.g. a transient DB blip on findOwnedBirthProfile)', async () => {
+  it('falls back to primary-profile scoping when no profile is passed in at all (e.g. a caller that never resolved one)', async () => {
     const user = makeUserRow({
       id: 'user-1',
       activeProfileId: 'profile-a',
@@ -218,7 +191,6 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
       birthTimeAccuracy: 'exact',
     });
     state.findActiveUserById.mockResolvedValue(user);
-    state.resolveActiveProfileContext.mockRejectedValue(new Error('db blip'));
 
     const events = await drain(
       chatStream(
@@ -230,19 +202,47 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
         undefined,
         'en',
         undefined,
+        // profile intentionally omitted
       ),
     );
 
-    // The whole turn must still produce a reply — not throw/error the stream —
-    // same degrade-gracefully contract as every other best-effort fetch here.
+    // The whole turn must still produce a reply — a missing `profile` arg
+    // must never throw or break the stream.
     expect(events.some((e) => (e as { type: string }).type === 'token')).toBe(true);
-    expect(state.resolveActiveProfileContext).toHaveBeenCalledWith(user);
-    // profile is undefined after the rejection -> falls back to primary-profile scoping.
+    // profile undefined -> `profile?.birthProfileId ?? null` falls back to primary scoping,
+    // regardless of the account's own (unrelated) activeProfileId.
     expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', null);
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
 
     const call = state.scholarStream.mock.calls[0] as any[];
     const [, , , birthTimeUnknown] = call;
     expect(birthTimeUnknown).toBe(false); // profile undefined -> falls back rather than throwing
+  });
+
+  it('degrades gracefully (still grounds on the passed-in profile) when the internal account-row lookup fails', async () => {
+    state.findActiveUserById.mockRejectedValue(new Error('db down'));
+
+    const profile = makeProfileContext({ birthProfileId: null, placeOfBirth: null });
+
+    const events = await drain(
+      chatStream(
+        'user-1',
+        'What does my Jupiter transit mean?',
+        [],
+        undefined,
+        'direct',
+        undefined,
+        'en',
+        undefined,
+        profile,
+      ),
+    );
+
+    // A failed account-row fetch must still produce a reply, and must not
+    // block grounding on the profile the caller already resolved — kundli/
+    // facts are scoped from `profile` directly, independent of `user`.
+    expect(events.some((e) => (e as { type: string }).type === 'token')).toBe(true);
+    expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', null);
+    expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
   });
 });
