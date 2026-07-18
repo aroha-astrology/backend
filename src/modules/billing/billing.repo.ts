@@ -48,6 +48,16 @@ export async function findOrderByIdForUser(
   return rows[0];
 }
 
+/** A user's full order history (any status), most recent first — powers the Settings > Recharge History screen. */
+export async function findOrdersForUser(userId: string, limit = 50): Promise<OrderRow[]> {
+  return db
+    .select()
+    .from(orders)
+    .where(eq(orders.userId, userId))
+    .orderBy(desc(orders.createdAt))
+    .limit(limit);
+}
+
 /** Most recent order (any status) for this user+pack — used to find the order a Google Play purchase belongs to without the client needing to remember an order ID. */
 export async function findLatestOrderForPack(
   userId: string,

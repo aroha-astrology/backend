@@ -9,6 +9,7 @@ import {
   CheckoutBodySchema,
   OrderSchema,
   OrderIdParamSchema,
+  OrdersResponseSchema,
   ConfirmOrderResponseSchema,
   ConfirmGooglePlayBodySchema,
 } from './billing.schemas.js';
@@ -18,6 +19,7 @@ import {
   checkout,
   confirmPayment,
   confirmGooglePlayPurchase,
+  listOrders,
   toOrderDto,
 } from './billing.service.js';
 
@@ -172,6 +174,31 @@ billingRouter.openapi(checkoutRoute, async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* GET /billing/orders                                                        */
+/* -------------------------------------------------------------------------- */
+
+const ordersRoute = createRoute({
+  method: 'get',
+  path: '/billing/orders',
+  tags: ['Billing'],
+  summary: "The authenticated user's own recharge/order history, most recent first",
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'Order history',
+      content: { 'application/json': { schema: OrdersResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+billingRouter.openapi(ordersRoute, async (c) => {
+  const user = c.get('user');
+  const orders = await listOrders(user.id);
+  return c.json({ orders }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
 /* POST /billing/orders/{id}/confirm                                           */
 /* -------------------------------------------------------------------------- */
 
@@ -234,7 +261,10 @@ const confirmGooglePlayRoute = createRoute({
 billingRouter.openapi(confirmGooglePlayRoute, async (c) => {
   const user = c.get('user');
   const { purchaseToken, productId } = c.req.valid('json');
-  const { order, walletBalancePaise } = await confirmGooglePlayPurchase(user.id, { purchaseToken, productId });
+  const { order, walletBalancePaise } = await confirmGooglePlayPurchase(user.id, {
+    purchaseToken,
+    productId,
+  });
   return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
 });
 

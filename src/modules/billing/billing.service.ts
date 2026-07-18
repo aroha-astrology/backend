@@ -4,6 +4,7 @@ import {
   findActiveCouponByCode,
   insertOrder,
   findOrderByIdForUser,
+  findOrdersForUser,
   findLatestOrderForPack,
   confirmOrderAndGrantCredits,
 } from './billing.repo.js';
@@ -202,6 +203,12 @@ export async function confirmGooglePlayPurchase(
   );
 
   return result;
+}
+
+/** A user's own recharge/order history, most recent first. */
+export async function listOrders(userId: string) {
+  const rows = await findOrdersForUser(userId);
+  return rows.map(toOrderDto);
 }
 
 export function toOrderDto(order: OrderRow) {

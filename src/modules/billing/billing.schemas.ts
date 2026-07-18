@@ -97,6 +97,10 @@ export const ConfirmOrderResponseSchema = z
   })
   .openapi('ConfirmOrderResponse');
 
+export const OrdersResponseSchema = z
+  .object({ orders: z.array(OrderSchema) })
+  .openapi('OrdersResponse');
+
 export const ConfirmGooglePlayBodySchema = z
   .object({
     purchaseToken: z.string().min(1),
