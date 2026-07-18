@@ -72,7 +72,7 @@ export function makeUserRow(overrides: Partial<UserRow> = {}): UserRow {
     deletedAt: null,
     // multi-profile: null = primary/self profile is active (see profile-context.ts).
     activeProfileId: null,
-    unlockedHouses: null,
+    unlockedHouses: [],
     gemstoneUnlockedAt: null,
     ...overrides,
   };
