@@ -184,6 +184,23 @@ export const MatchmakingResponseSchema = z
 
 export type MatchmakingResponse = z.infer<typeof MatchmakingResponseSchema>;
 
+export const RemedyItemSchema = z
+  .object({
+    planet: z.string().openapi({ example: 'Saturn' }),
+    title: z.string().openapi({ example: 'Pacify Saturn' }),
+    icon: z.string().openapi({ example: 'shield' }),
+    remedy: z.string().openapi({
+      example: 'Donate black sesame seeds, mustard oil, or iron items on Saturdays.',
+    }),
+  })
+  .openapi('RemedyItem');
+
+export const RemediesResponseSchema = z
+  .object({ remedies: z.array(RemedyItemSchema) })
+  .openapi('RemediesResponse');
+
+export type RemediesResponse = z.infer<typeof RemediesResponseSchema>;
+
 /* -------------------------------------------------------------------------- */
 /* Path-parameter schemas                                                      */
 /* -------------------------------------------------------------------------- */

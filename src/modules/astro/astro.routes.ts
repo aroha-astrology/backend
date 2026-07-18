@@ -27,6 +27,7 @@ import {
   ChatRequestSchema,
   ChatFeedbackRequestSchema,
   SignIndexParamSchema,
+  RemediesResponseSchema,
 } from './astro.schemas.js';
 
 /* -------------------------------------------------------------------------- */
@@ -671,4 +672,47 @@ astroRouter.openapi(chatSessionByIdRoute, async (c) => {
     throw Errors.notFound('Session not found');
   }
   return c.json(session, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /remedies                                                              */
+/* -------------------------------------------------------------------------- */
+
+const remediesRoute = createRoute({
+  method: 'get',
+  path: '/remedies',
+  tags: ['Astro'],
+  summary: 'Get planet-specific (or general) remedies for the active profile — free',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Remedies list',
+      content: { 'application/json': { schema: RemediesResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+astroRouter.openapi(remediesRoute, async (c) => {
+  const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
+
+  const birthData =
+    profile.dateOfBirth &&
+    profile.timeOfBirth &&
+    profile.placeOfBirth?.lat != null &&
+    profile.placeOfBirth?.lon != null &&
+    profile.placeOfBirth?.tz
+      ? {
+          date: profile.dateOfBirth,
+          time: profile.timeOfBirth,
+          latitude: profile.placeOfBirth.lat,
+          longitude: profile.placeOfBirth.lon,
+          timezone: profile.placeOfBirth.tz,
+        }
+      : undefined;
+
+  const remedies = await astroService.getRemedies(birthData);
+  return c.json({ remedies }, 200);
 });

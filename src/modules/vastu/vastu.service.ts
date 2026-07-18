@@ -61,6 +61,7 @@ function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>
 
 export async function requestVastuAnalysis(
   userId: string,
+  birthProfileId: string | null,
   body: AnalyzeVastuBody,
 ): Promise<{ planId: string }> {
   const recentCount = await countRecentPlansForUser(userId, 24);
@@ -77,8 +78,7 @@ export async function requestVastuAnalysis(
 
   try {
     const { roomScores, overallScore } = evaluateRoomPlacement(body.roomLayout);
-    // Vastu isn't profile-aware yet — always the primary/self chart.
-    const kundli = await findKundliByUserId(userId, null);
+    const kundli = await findKundliByUserId(userId, birthProfileId);
     const chartContext = buildChartContext(kundli);
     const houseShape = body.houseShape ?? 'rectangle';
     const roomDetails = { ...body.roomDetails, houseShape };
@@ -144,6 +144,7 @@ async function processAnalysis(
 export async function askVastuQuestion(
   planId: string,
   userId: string,
+  birthProfileId: string | null,
   question: string,
 ): Promise<VastuPlanDto> {
   const row = await findPlanForUser(planId, userId);
@@ -155,8 +156,7 @@ export async function askVastuQuestion(
     throw Errors.conflict('ALREADY_ASKED');
   }
 
-  // Vastu isn't profile-aware yet — always the primary/self chart.
-  const kundli = await findKundliByUserId(userId, null);
+  const kundli = await findKundliByUserId(userId, birthProfileId);
   const answer = await generateVastuAnswer({
     analysis: row.analysis,
     question,

@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
+import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import {
   AnalyzeVastuBodySchema,
   AskVastuBodySchema,
@@ -72,7 +73,8 @@ const analyzeRoute = createRoute({
 vastuRouter.openapi(analyzeRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
-  const result = await requestVastuAnalysis(user.id, body);
+  const profile = await resolveActiveProfileContext(user);
+  const result = await requestVastuAnalysis(user.id, profile.birthProfileId, body);
   return c.json(result, 200);
 });
 
@@ -102,7 +104,8 @@ vastuRouter.openapi(askRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
   const { question } = c.req.valid('json');
-  const plan = await askVastuQuestion(id, user.id, question);
+  const profile = await resolveActiveProfileContext(user);
+  const plan = await askVastuQuestion(id, user.id, profile.birthProfileId, question);
   return c.json(plan, 200);
 });
 
