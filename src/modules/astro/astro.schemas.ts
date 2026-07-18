@@ -90,7 +90,7 @@ export const ChatRequestSchema = z
     detailLevel: z.enum(['direct', 'details']).default('direct').openapi({
       description: 'Reply depth: "direct" (short, default) or "details" (long-form, structured).',
     }),
-    birthProfileId: z
+    compareProfileId: z
       .string()
       .uuid()
       .optional()
@@ -98,7 +98,9 @@ export const ChatRequestSchema = z
         description:
           'ID of a saved birth_profiles row (partner, child, etc.) to ground this turn against, ' +
           'in addition to the user’s own chart — powers synastry/compatibility and ' +
-          '"read my child’s chart" questions. Omit for the normal single-chart reading.',
+          '"read my child’s chart" questions. Omit for the normal single-chart reading. ' +
+          'Unrelated to the account-level active-profile concept (activeProfileId) — this is ' +
+          'always a SECOND, additional chart layered on top of whichever profile is active.',
       }),
   })
   .openapi('ChatRequest');

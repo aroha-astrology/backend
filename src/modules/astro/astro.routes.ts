@@ -6,6 +6,7 @@ import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
 import { deductCredits, addCredits } from '../users/users.repo.js';
+import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
 import { incrementFeedbackCounter, saveChatFeedbackReport } from './feedback.repo.js';
@@ -445,6 +446,9 @@ const chatRoute = createRoute({
 astroRouter.openapi(chatRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
+  // Resolves which profile (primary or an additional saved one) is currently
+  // active for this account — chat sessions and grounding are scoped to it.
+  const profile = await resolveActiveProfileContext(user);
   // Aborts when the client disconnects — propagated to the LLM so generation
   // (and its NIM inflight slot) stops instead of running on detached.
   const signal = c.req.raw.signal;
@@ -470,7 +474,7 @@ astroRouter.openapi(chatRoute, async (c) => {
         body.detailLevel,
         signal,
         body.locale,
-        body.birthProfileId,
+        body.compareProfileId,
       );
 
       let fullContent = '';
@@ -509,13 +513,20 @@ astroRouter.openapi(chatRoute, async (c) => {
         ] as { role: 'user' | 'assistant'; content: string }[]; // cast to avoid exact typing mismatch if any
 
         if (sessionId) {
-          await chatSessionsRepo.updateChatSession(sessionId, newHistory, currentSummary);
+          await chatSessionsRepo.updateChatSession(
+            sessionId,
+            user.id,
+            profile.birthProfileId,
+            newHistory,
+            currentSummary,
+          );
         } else {
           // generate a new session title based on the message
           const title =
             body.message.length > 50 ? body.message.substring(0, 47) + '...' : body.message;
           const session = await chatSessionsRepo.createChatSession(
             user.id,
+            profile.birthProfileId,
             title,
             newHistory,
             currentSummary,
@@ -617,7 +628,8 @@ const chatSessionsRoute = createRoute({
 
 astroRouter.openapi(chatSessionsRoute, async (c) => {
   const user = c.get('user');
-  const sessions = await chatSessionsRepo.getChatSessions(user.id);
+  const profile = await resolveActiveProfileContext(user);
+  const sessions = await chatSessionsRepo.getChatSessions(user.id, profile.birthProfileId);
   return c.json(sessions, 200);
 });
 
@@ -653,7 +665,8 @@ const chatSessionByIdRoute = createRoute({
 astroRouter.openapi(chatSessionByIdRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const session = await chatSessionsRepo.getChatSession(id, user.id);
+  const profile = await resolveActiveProfileContext(user);
+  const session = await chatSessionsRepo.getChatSession(id, user.id, profile.birthProfileId);
   if (!session) {
     throw Errors.notFound('Session not found');
   }
