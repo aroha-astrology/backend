@@ -2,6 +2,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   birthProfiles,
+  users,
   type BirthProfileRow,
   type NewBirthProfileRow,
   type PlaceOfBirth,
@@ -93,20 +94,42 @@ export async function updateOwnedBirthProfile(
   return row ? decryptRow(row) : undefined;
 }
 
+/**
+ * Soft-deletes the profile and, in the same transaction, clears
+ * `users.activeProfileId` back to null if (and only if) that user was
+ * actively pointing at this profile. This is a soft delete (sets
+ * `deletedAt`, doesn't drop the row), so the `active_profile_id` FK's
+ * `onDelete: 'set null'` never fires on its own — self-healing that pointer
+ * here, at the repo layer, means it can't be bypassed by calling this
+ * function through a different route (e.g. the legacy `/v1/birth-profiles`
+ * surface vs. the newer `/v1/profiles` surface both end up here).
+ */
 export async function softDeleteOwnedBirthProfile(
   id: string,
   ownerUserId: string,
 ): Promise<BirthProfileRow | undefined> {
-  const [row] = await db
-    .update(birthProfiles)
-    .set({ deletedAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(
-        eq(birthProfiles.id, id),
-        eq(birthProfiles.ownerUserId, ownerUserId),
-        isNull(birthProfiles.deletedAt),
-      ),
-    )
-    .returning();
-  return row ? decryptRow(row) : undefined;
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(birthProfiles)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(birthProfiles.id, id),
+          eq(birthProfiles.ownerUserId, ownerUserId),
+          isNull(birthProfiles.deletedAt),
+        ),
+      )
+      .returning();
+
+    if (!row) return undefined;
+
+    // No-op UPDATE (0 rows affected) when activeProfileId wasn't pointing at
+    // this profile — cheap, and avoids a separate read-then-write.
+    await tx
+      .update(users)
+      .set({ activeProfileId: null })
+      .where(and(eq(users.id, ownerUserId), eq(users.activeProfileId, id)));
+
+    return decryptRow(row);
+  });
 }

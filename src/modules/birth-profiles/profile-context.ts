@@ -13,6 +13,11 @@ import { findOwnedBirthProfile } from './birth-profiles.repo.js';
  * `birth_profiles` has no `birthDetailsEditedAt`/`canEditBirthDetails` —
  * those are primary-only concepts (the one-time self birth-detail edit) and
  * intentionally have no equivalent here.
+ *
+ * Internal service-to-service bundle only — NOT a route-response DTO (unlike
+ * this repo's `toBirthProfileDto` convention, e.g. dates here are `Date`
+ * objects, not `.toISOString()`'d strings). Don't return this directly from
+ * a route handler.
  */
 export interface ProfileContext {
   /** null = primary profile (the users row itself). */
