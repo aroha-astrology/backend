@@ -38,6 +38,11 @@ export async function claimGemstoneGeneration(
     .values({ userId, status: 'generating', startedAt: now, error: null })
     .onConflictDoUpdate({
       target: gemstoneRecommendations.userId,
+      // Must exactly match the partial `gemstone_recommendations_user_primary_unique`
+      // index's predicate — Postgres only infers a bare `ON CONFLICT (col)`
+      // target against a NON-partial unique index/constraint; a partial index
+      // needs its WHERE repeated here or the conflict target fails to resolve.
+      targetWhere: sql`${gemstoneRecommendations.birthProfileId} is null`,
       set: { status: 'generating', startedAt: now, error: null, updatedAt: now },
       setWhere,
     })

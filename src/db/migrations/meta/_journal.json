@@ -176,6 +176,13 @@
       "when": 1784352142894,
       "tag": "0024_volatile_kronos",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784353006959,
+      "tag": "0025_naive_sue_storm",
+      "breakpoints": true
     }
   ]
 }

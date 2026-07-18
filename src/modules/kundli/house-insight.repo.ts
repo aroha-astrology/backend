@@ -41,6 +41,11 @@ export async function claimHouseInsightGeneration(
     .values({ userId, house, status: 'generating', startedAt: now, error: null })
     .onConflictDoUpdate({
       target: [houseInsights.userId, houseInsights.house],
+      // Must exactly match the partial `house_insights_user_house_primary_unique`
+      // index's predicate — Postgres only infers a bare `ON CONFLICT (cols)`
+      // target against a NON-partial unique index/constraint; a partial index
+      // needs its WHERE repeated here or the conflict target fails to resolve.
+      targetWhere: sql`${houseInsights.birthProfileId} is null`,
       set: { status: 'generating', startedAt: now, error: null, updatedAt: now },
       setWhere,
     })

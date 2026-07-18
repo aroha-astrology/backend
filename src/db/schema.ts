@@ -819,10 +819,9 @@ export const kundlis = pgTable(
       .on(table.userId)
       .where(sql`${table.birthProfileId} is null`),
     // … and one kundli per (user, additional profile) otherwise.
-    userProfileUnique: uniqueIndex('kundlis_user_profile_unique').on(
-      table.userId,
-      table.birthProfileId,
-    ),
+    userProfileUnique: uniqueIndex('kundlis_user_profile_unique')
+      .on(table.userId, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
   }),
 );
 
@@ -953,12 +952,9 @@ export const dailyHoroscopes = pgTable(
     userPeriodKeyPrimaryUnique: uniqueIndex('daily_horoscopes_user_period_key_primary_unique')
       .on(table.userId, table.period, table.periodKey)
       .where(sql`${table.birthProfileId} is null`),
-    userPeriodKeyProfileUnique: uniqueIndex('daily_horoscopes_user_period_key_profile_unique').on(
-      table.userId,
-      table.period,
-      table.periodKey,
-      table.birthProfileId,
-    ),
+    userPeriodKeyProfileUnique: uniqueIndex('daily_horoscopes_user_period_key_profile_unique')
+      .on(table.userId, table.period, table.periodKey, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
   }),
 );
 
@@ -1017,11 +1013,9 @@ export const houseInsights = pgTable(
     userHousePrimaryUnique: uniqueIndex('house_insights_user_house_primary_unique')
       .on(table.userId, table.house)
       .where(sql`${table.birthProfileId} is null`),
-    userHouseProfileUnique: uniqueIndex('house_insights_user_house_profile_unique').on(
-      table.userId,
-      table.house,
-      table.birthProfileId,
-    ),
+    userHouseProfileUnique: uniqueIndex('house_insights_user_house_profile_unique')
+      .on(table.userId, table.house, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
   }),
 );
 
@@ -1075,10 +1069,9 @@ export const gemstoneRecommendations = pgTable(
     userPrimaryUnique: uniqueIndex('gemstone_recommendations_user_primary_unique')
       .on(table.userId)
       .where(sql`${table.birthProfileId} is null`),
-    userProfileUnique: uniqueIndex('gemstone_recommendations_user_profile_unique').on(
-      table.userId,
-      table.birthProfileId,
-    ),
+    userProfileUnique: uniqueIndex('gemstone_recommendations_user_profile_unique')
+      .on(table.userId, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
   }),
 );
 

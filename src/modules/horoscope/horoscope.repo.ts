@@ -85,6 +85,11 @@ export async function claimHoroscopeGeneration(
     })
     .onConflictDoUpdate({
       target: [dailyHoroscopes.userId, dailyHoroscopes.period, dailyHoroscopes.periodKey],
+      // Must exactly match the partial `daily_horoscopes_user_period_key_primary_unique`
+      // index's predicate — Postgres only infers a bare `ON CONFLICT (cols)`
+      // target against a NON-partial unique index/constraint; a partial index
+      // needs its WHERE repeated here or the conflict target fails to resolve.
+      targetWhere: sql`${dailyHoroscopes.birthProfileId} is null`,
       set: { status: 'generating', startedAt: now, error: null, updatedAt: now },
       setWhere,
     })

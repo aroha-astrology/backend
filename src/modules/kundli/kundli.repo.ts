@@ -51,6 +51,11 @@ export async function claimKundliGeneration(
     .values({ userId, status: 'generating', birthHash, startedAt: now, error: null })
     .onConflictDoUpdate({
       target: kundlis.userId,
+      // Must exactly match the partial `kundlis_user_primary_unique` index's
+      // predicate — Postgres only infers a bare `ON CONFLICT (col)` target
+      // against a NON-partial unique index/constraint; a partial index needs
+      // its WHERE repeated here or the conflict target fails to resolve.
+      targetWhere: sql`${kundlis.birthProfileId} is null`,
       set: { status: 'generating', birthHash, startedAt: now, error: null, updatedAt: now },
       setWhere,
     })

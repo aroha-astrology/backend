@@ -1,5 +1,5 @@
-ALTER TABLE "gemstone_recommendations" DROP CONSTRAINT "gemstone_recommendations_user_id_unique";--> statement-breakpoint
-ALTER TABLE "kundlis" DROP CONSTRAINT "kundlis_user_id_unique";--> statement-breakpoint
+ALTER TABLE "gemstone_recommendations" DROP CONSTRAINT IF EXISTS "gemstone_recommendations_user_id_unique";--> statement-breakpoint
+ALTER TABLE "kundlis" DROP CONSTRAINT IF EXISTS "kundlis_user_id_unique";--> statement-breakpoint
 DROP INDEX IF EXISTS "daily_horoscopes_user_period_key_unique";--> statement-breakpoint
 DROP INDEX IF EXISTS "house_insights_user_house_unique";--> statement-breakpoint
 ALTER TABLE "birth_profiles" ADD COLUMN "unlocked_houses" integer[];--> statement-breakpoint
