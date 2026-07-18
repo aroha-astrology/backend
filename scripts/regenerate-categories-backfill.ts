@@ -14,6 +14,7 @@ import {
   requestHoroscopeGeneration,
   currentPeriodStart,
 } from '../src/modules/horoscope/horoscope.service.js';
+import { resolveProfileContext } from '../src/modules/birth-profiles/profile-context.js';
 
 const PERIODS = ['weekly', 'monthly', 'yearly'] as const;
 const PAGE_SIZE = 50;
@@ -31,9 +32,12 @@ async function main() {
     for (const user of page) {
       userCount++;
       console.log(`\n[${userCount}] user ${user.id} (${user.displayName ?? 'unnamed'})`);
+      // This one-off script isn't profile-aware — always the primary/self
+      // profile, matching its pre-multi-profile behavior exactly.
+      const profile = await resolveProfileContext(user, null);
       for (const period of PERIODS) {
         try {
-          const result = await requestHoroscopeGeneration(user, period, {
+          const result = await requestHoroscopeGeneration(user, profile, period, {
             forDate: currentPeriodStart(period),
             force: true,
             retryForever: false,

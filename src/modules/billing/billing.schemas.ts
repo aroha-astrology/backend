@@ -10,7 +10,7 @@ export const BillingPlanResponseSchema = z
 
 export const BillingBalanceResponseSchema = z
   .object({
-    credits: z.number().openapi({ example: 0 }),
+    walletBalancePaise: z.number().openapi({ example: 0 }),
     currency: z.string().default('INR').openapi({ example: 'INR' }),
   })
   .openapi('BillingBalanceResponse');
@@ -19,20 +19,19 @@ export const BillingBalanceResponseSchema = z
 /* Credit packs                                                                */
 /* -------------------------------------------------------------------------- */
 
-export const CreditPackSchema = z
+export const TopUpAmountSchema = z
   .object({
-    id: z.string().openapi({ example: 'popular' }),
-    credits: z.number().openapi({ example: 200 }),
-    priceInPaise: z.number().openapi({ example: 14900 }),
+    id: z.string().openapi({ example: 'topup_200' }),
+    amountPaise: z.number().openapi({ example: 20000 }),
     currency: z.string().openapi({ example: 'INR' }),
-    label: z.string().openapi({ example: 'Popular' }),
+    label: z.string().openapi({ example: '₹200' }),
     popular: z.boolean().optional(),
   })
-  .openapi('CreditPack');
+  .openapi('TopUpAmount');
 
-export const CreditPacksResponseSchema = z
-  .object({ packs: z.array(CreditPackSchema) })
-  .openapi('CreditPacksResponse');
+export const TopUpAmountsResponseSchema = z
+  .object({ amounts: z.array(TopUpAmountSchema) })
+  .openapi('TopUpAmountsResponse');
 
 /* -------------------------------------------------------------------------- */
 /* Coupon validation                                                           */
@@ -72,7 +71,6 @@ export const OrderSchema = z
   .object({
     id: z.string(),
     packId: z.string(),
-    credits: z.number(),
     amountPaise: z.number(),
     discountPaise: z.number(),
     finalAmountPaise: z.number(),
@@ -95,9 +93,13 @@ export const OrderIdParamSchema = z.object({
 export const ConfirmOrderResponseSchema = z
   .object({
     order: OrderSchema,
-    credits: z.number().openapi({ description: "User's new credit balance" }),
+    walletBalancePaise: z.number().openapi({ description: "User's new wallet balance in paise" }),
   })
   .openapi('ConfirmOrderResponse');
+
+export const OrdersResponseSchema = z
+  .object({ orders: z.array(OrderSchema) })
+  .openapi('OrdersResponse');
 
 export const ConfirmGooglePlayBodySchema = z
   .object({

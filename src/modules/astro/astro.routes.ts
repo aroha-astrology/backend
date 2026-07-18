@@ -5,14 +5,15 @@ import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
-import { deductCredits, addCredits } from '../users/users.repo.js';
+import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
+import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
 import { incrementFeedbackCounter, saveChatFeedbackReport } from './feedback.repo.js';
 import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 
 /** Flat cost per chat question, charged atomically before generation starts. */
-const CHAT_MESSAGE_COST = 2;
+const CHAT_MESSAGE_COST_PAISE = 2000;
 
 /** Expensive LLM/swarm routes: cap per authenticated user. */
 const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20 });
@@ -26,6 +27,7 @@ import {
   ChatRequestSchema,
   ChatFeedbackRequestSchema,
   SignIndexParamSchema,
+  RemediesResponseSchema,
 } from './astro.schemas.js';
 
 /* -------------------------------------------------------------------------- */
@@ -445,6 +447,9 @@ const chatRoute = createRoute({
 astroRouter.openapi(chatRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
+  // Resolves which profile (primary or an additional saved one) is currently
+  // active for this account — chat sessions and grounding are scoped to it.
+  const profile = await resolveActiveProfileContext(user);
   // Aborts when the client disconnects — propagated to the LLM so generation
   // (and its NIM inflight slot) stops instead of running on detached.
   const signal = c.req.raw.signal;
@@ -455,7 +460,7 @@ astroRouter.openapi(chatRoute, async (c) => {
   // Refunded below (same fire-and-forget addCredits pattern as
   // vastu.service.ts) if generation throws or comes back with no content —
   // the user shouldn't pay for a question that got no answer.
-  const charged = await deductCredits(user.id, CHAT_MESSAGE_COST);
+  const charged = await deductWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE);
   if (!charged) {
     throw Errors.conflict('Not enough credits to ask a question');
   }
@@ -470,7 +475,10 @@ astroRouter.openapi(chatRoute, async (c) => {
         body.detailLevel,
         signal,
         body.locale,
-        body.birthProfileId,
+        body.compareProfileId,
+        // Already resolved above (also used for chat-session scoping) —
+        // threaded through instead of letting chatStream re-resolve it.
+        profile,
       );
 
       let fullContent = '';
@@ -497,7 +505,7 @@ astroRouter.openapi(chatRoute, async (c) => {
           // Generation "succeeded" with nothing to show (e.g. hit the
           // token ceiling before any content could be flushed) — don't
           // charge for a question that got no answer.
-          await addCredits(user.id, CHAT_MESSAGE_COST).catch(() => {});
+          await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE).catch(() => {});
         }
 
         // Save history
@@ -509,13 +517,20 @@ astroRouter.openapi(chatRoute, async (c) => {
         ] as { role: 'user' | 'assistant'; content: string }[]; // cast to avoid exact typing mismatch if any
 
         if (sessionId) {
-          await chatSessionsRepo.updateChatSession(sessionId, newHistory, currentSummary);
+          await chatSessionsRepo.updateChatSession(
+            sessionId,
+            user.id,
+            profile.birthProfileId,
+            newHistory,
+            currentSummary,
+          );
         } else {
           // generate a new session title based on the message
           const title =
             body.message.length > 50 ? body.message.substring(0, 47) + '...' : body.message;
           const session = await chatSessionsRepo.createChatSession(
             user.id,
+            profile.birthProfileId,
             title,
             newHistory,
             currentSummary,
@@ -531,7 +546,7 @@ astroRouter.openapi(chatRoute, async (c) => {
       // emit a terminal event (and never leak internals to the client).
       logger.error({ err, userId: user.id }, 'chat stream failed');
       // Don't charge for a question the LLM never actually answered.
-      await addCredits(user.id, CHAT_MESSAGE_COST).catch(() => {});
+      await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE).catch(() => {});
       if (!signal.aborted && !stream.aborted) {
         await stream.writeSSE({
           event: 'error',
@@ -617,7 +632,8 @@ const chatSessionsRoute = createRoute({
 
 astroRouter.openapi(chatSessionsRoute, async (c) => {
   const user = c.get('user');
-  const sessions = await chatSessionsRepo.getChatSessions(user.id);
+  const profile = await resolveActiveProfileContext(user);
+  const sessions = await chatSessionsRepo.getChatSessions(user.id, profile.birthProfileId);
   return c.json(sessions, 200);
 });
 
@@ -653,9 +669,53 @@ const chatSessionByIdRoute = createRoute({
 astroRouter.openapi(chatSessionByIdRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const session = await chatSessionsRepo.getChatSession(id, user.id);
+  const profile = await resolveActiveProfileContext(user);
+  const session = await chatSessionsRepo.getChatSession(id, user.id, profile.birthProfileId);
   if (!session) {
     throw Errors.notFound('Session not found');
   }
   return c.json(session, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /remedies                                                              */
+/* -------------------------------------------------------------------------- */
+
+const remediesRoute = createRoute({
+  method: 'get',
+  path: '/remedies',
+  tags: ['Astro'],
+  summary: 'Get planet-specific (or general) remedies for the active profile — free',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Remedies list',
+      content: { 'application/json': { schema: RemediesResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+astroRouter.openapi(remediesRoute, async (c) => {
+  const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
+
+  const birthData =
+    profile.dateOfBirth &&
+    profile.timeOfBirth &&
+    profile.placeOfBirth?.lat != null &&
+    profile.placeOfBirth?.lon != null &&
+    profile.placeOfBirth?.tz
+      ? {
+          date: profile.dateOfBirth,
+          time: profile.timeOfBirth,
+          latitude: profile.placeOfBirth.lat,
+          longitude: profile.placeOfBirth.lon,
+          timezone: profile.placeOfBirth.tz,
+        }
+      : undefined;
+
+  const remedies = await astroService.getRemedies(birthData);
+  return c.json({ remedies }, 200);
 });

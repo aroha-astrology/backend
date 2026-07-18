@@ -390,21 +390,28 @@ function bhinnashtakavargaFacts(
  * horoscope generation also calls) so this only affects chat, where it's
  * being added, and horoscope's existing bespoke relationship-status handling
  * in `lib/llm/horoscope.ts` is untouched.
+ *
+ * Split across two params, same `(profile, user)` shape as
+ * `kundli.service.ts`'s `birthInputsForProfile`: `gender` is read off the
+ * resolved (possibly non-primary) `profile` — if the active chat is grounded
+ * on a child/partner's saved profile, the gender that belongs in the prompt
+ * is THEIRS, not the account owner's. `relationshipStatus`/`interestAreas`
+ * have no per-profile equivalent (not on `ProfileContext`) and stay sourced
+ * from the account-level `user` row regardless of which profile is active.
  */
-export function buildProfileFacts(profile: {
-  gender?: string | null;
-  relationshipStatus?: string | null;
-  interestAreas?: string[] | null;
-}): string[] {
+export function buildProfileFacts(
+  profile: { gender?: string | null },
+  user: { relationshipStatus?: string | null; interestAreas?: string[] | null },
+): string[] {
   const facts: string[] = [];
   if (profile.gender) facts.push(`User's gender: ${profile.gender}`);
-  if (profile.relationshipStatus) {
+  if (user.relationshipStatus) {
     facts.push(
-      `User's relationship status: ${profile.relationshipStatus}. If single, do not assume a spouse/partner exists; if partnered, framing can reference the relationship.`,
+      `User's relationship status: ${user.relationshipStatus}. If single, do not assume a spouse/partner exists; if partnered, framing can reference the relationship.`,
     );
   }
-  if (profile.interestAreas && profile.interestAreas.length > 0) {
-    facts.push(`User's stated areas of interest: ${profile.interestAreas.join(', ')}.`);
+  if (user.interestAreas && user.interestAreas.length > 0) {
+    facts.push(`User's stated areas of interest: ${user.interestAreas.join(', ')}.`);
   }
   return facts;
 }

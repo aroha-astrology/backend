@@ -22,9 +22,10 @@ import {
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
-import { getKundliForUser } from '../kundli/kundli.service.js';
+import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
+import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import {
   PANCHANG_REFERENCE_POINTS,
@@ -953,7 +954,15 @@ export async function* chatStream(
   detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
   locale: string = 'en',
-  birthProfileId?: string,
+  compareProfileId?: string,
+  // The active profile (primary or an additional saved one), already resolved
+  // ONCE by the caller (astro.routes.ts's chatRoute — it needs the same
+  // resolution for chat-session scoping) and threaded through here rather
+  // than re-resolved internally. Every other profile-aware surface in this
+  // codebase follows this resolve-once-in-the-route pattern; chat used to be
+  // the one exception, doing a second, redundant `resolveActiveProfileContext`
+  // call on every single message.
+  profile?: ProfileContext,
 ): AsyncGenerator<ChatStreamEvent> {
   // Death/self-harm policy gate — runs before checkTopicGate (and before any
   // chart/grounding work) so a self-harm message never reaches the topic
@@ -979,25 +988,37 @@ export async function* chatStream(
 
   const state = newState({ userId, intent: 'chat', consent: true });
 
+  // The account row is still fetched here — profileFacts below needs it
+  // alongside `profile` (e.g. relationshipStatus/interestAreas have no
+  // per-profile equivalent and stay account-level), and it's independent of
+  // profile resolution. `profile` itself is no longer resolved here: it's
+  // passed in already-resolved by the caller (see the parameter's doc
+  // comment above). Best-effort: a missing/unreachable user just means
+  // account-level facts are skipped — same degrade-gracefully contract as
+  // every other fetch below (kundli/userFacts/panchang/secondChartFacts),
+  // never a hard failure of the whole chat turn.
+  const user = await findActiveUserById(userId).catch(() => undefined);
+
   // Best-effort: an unready/missing kundli just means no chart facts get
   // injected (buildGroundingFacts degrades gracefully) — chat still works.
-  const [kundli, user, userFacts] = await Promise.all([
-    getKundliForUser(userId).catch(() => undefined),
-    findActiveUserById(userId).catch(() => undefined),
-    getUserFacts(userId).catch(() => []),
+  const [kundli, userFacts] = await Promise.all([
+    getKundliForUser(userId, profile?.birthProfileId ?? null).catch(() => undefined),
+    getUserFacts(userId, profile?.birthProfileId ?? null).catch(() => []),
   ]);
   const groundingSource: GroundingSource = {
     chart: kundli?.status === 'ready' ? (kundli.chartData ?? null) : null,
     dasha: kundli?.status === 'ready' ? (kundli.dashaData ?? null) : null,
     yogas: kundli?.status === 'ready' ? (kundli.yogaData ?? null) : null,
-    doshas: kundli?.status === 'ready' ? (kundli.doshaData ?? null) : null,
+    // Sade Sati is transit-dependent — recompute it live so chat never tells
+    // a user their (possibly months/years-stale) cached phase.
+    doshas: kundli?.status === 'ready' ? await withLiveSadeSati(kundli.doshaData ?? null) : null,
     ashtakavarga: kundli?.status === 'ready' ? (kundli.ashtakavargaData ?? null) : null,
   };
-  // A user who onboarded with an unknown birth time will NEVER get a ready
-  // kundli (see kundli.service.ts#missingKundliParams) — distinct from one
-  // that's simply still generating, so the scholar can pick the right
+  // A profile that onboarded with an unknown birth time will NEVER get a
+  // ready kundli (see kundli.service.ts#missingKundliParams) — distinct from
+  // one that's simply still generating, so the scholar can pick the right
   // "no chart data" fallback copy instead of implying the chart is just late.
-  const birthTimeUnknown = user?.birthTimeAccuracy === 'unknown';
+  const birthTimeUnknown = profile?.birthTimeAccuracy === 'unknown';
 
   // Bound the prompt size regardless of how long this conversation has run —
   // keeps generation fast (timeout risk) and keeps the model from losing
@@ -1008,29 +1029,38 @@ export async function* chatStream(
   }
   if (facts.length > 0) {
     // Fire-and-forget — a facts-save failure must never break the chat reply.
-    void saveUserFacts(userId, facts).catch(() => {});
+    void saveUserFacts(userId, profile?.birthProfileId ?? null, facts).catch(() => {});
   }
   state.chatContext = { history: recentHistory, summary };
 
   // Share-safe, non-identifying context (gender/relationship/interests) —
-  // does not touch the "never the name" rule, see buildProfileFacts's comment.
-  const profileFacts = user ? buildProfileFacts(user) : [];
+  // does not touch the "never the name" rule, see buildProfileFacts's
+  // comment. gender comes from the active PROFILE (if chatting "as" a
+  // child/partner profile, gender should reflect them, not the account
+  // owner); relationshipStatus/interestAreas have no per-profile equivalent
+  // and stay sourced from the account-level user row.
+  const profileFacts = user && profile ? buildProfileFacts(profile, user) : [];
 
-  // Today's Panchang at the user's birth location — best-effort, never blocks
-  // the reply (a missing place of birth, or the panchang engine throwing,
-  // just means no muhurta facts get injected, same degrade-gracefully
-  // contract as groundingSource above).
-  const place = user?.placeOfBirth;
+  // Today's Panchang at the ACTIVE PROFILE's birth location — best-effort,
+  // never blocks the reply (a missing place of birth, or the panchang engine
+  // throwing, just means no muhurta facts get injected, same degrade-
+  // gracefully contract as groundingSource above). This is chat's own
+  // in-context "muhurta at your birth location" injection — unrelated to the
+  // standalone GET /panchang dashboard widget above, which is keyed on LIVE
+  // current location and is intentionally NOT profile-aware.
+  const place = profile?.placeOfBirth;
   const panchangFacts =
     place?.lat != null && place?.lon != null
       ? await buildChatPanchangFacts(place.lat, place.lon).catch(() => [])
       : [];
 
   // Second chart (partner/child/etc.) — only when the client explicitly asks
-  // for one via birthProfileId (see ChatRequestSchema). Best-effort: a bad id
-  // or an owner mismatch must never break the chat reply.
-  const secondChartFacts = birthProfileId
-    ? await buildSecondChartFacts(userId, groundingSource, birthProfileId).catch(() => [])
+  // for one via compareProfileId (see ChatRequestSchema). Unrelated to
+  // `profile`/the active profile above — always a SECOND, additional chart
+  // layered on top of whichever profile is active. Best-effort: a bad id or
+  // an owner mismatch must never break the chat reply.
+  const secondChartFacts = compareProfileId
+    ? await buildSecondChartFacts(userId, groundingSource, compareProfileId).catch(() => [])
     : [];
 
   // Relocation/astrocartography scan — only when the message actually asks a

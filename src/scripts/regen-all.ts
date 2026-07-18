@@ -6,6 +6,7 @@ import {
   requestHoroscopeGeneration,
   HOROSCOPE_PERIODS,
 } from '../modules/horoscope/horoscope.service.js';
+import { resolveProfileContext } from '../modules/birth-profiles/profile-context.js';
 
 async function main() {
   // dateOfBirth/timeOfBirth/placeOfBirth are encrypted at rest — decrypt
@@ -15,9 +16,12 @@ async function main() {
 
   for (const user of allUsers) {
     console.log(`User: ${user.id}`);
+    // This one-off script isn't profile-aware — always the primary/self
+    // profile, matching its pre-multi-profile behavior exactly.
+    const profile = await resolveProfileContext(user, null);
     for (const period of HOROSCOPE_PERIODS) {
       console.log(`  -> period: ${period}`);
-      await requestHoroscopeGeneration(user, period, { force: true });
+      await requestHoroscopeGeneration(user, profile, period, { force: true });
       // Add a small sleep to not overwhelm the LLM API
       await new Promise((r) => setTimeout(r, 1000));
     }

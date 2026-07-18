@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BirthProfileRow } from '../src/db/schema.js';
 import { makeDecodedToken, makeUserRow } from './helpers/mocks.js';
 
 const state = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
   findUserByFirebaseUid: vi.fn(),
+  findOwnedBirthProfile: vi.fn(),
   runHoroscopeBatch: vi.fn(),
   runAllHoroscopeBatches: vi.fn(),
   requestHoroscopeGeneration: vi.fn(),
@@ -62,9 +64,39 @@ vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
   findKundliByUserId: state.findKundliByUserId,
 }));
 
+vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
+  findOwnedBirthProfile: state.findOwnedBirthProfile,
+}));
+
 const { createApp } = await import('../src/app.js');
 
 const SECRET = 'test-cron-secret';
+
+function makeBirthProfileRow(overrides: Partial<BirthProfileRow> = {}): BirthProfileRow {
+  const now = new Date('2026-01-01T00:00:00Z');
+  return {
+    id: 'profile-a',
+    ownerUserId: 'id-1',
+    relationship: 'partner',
+    displayName: 'Bob',
+    gender: 'male',
+    dateOfBirth: '1990-05-10',
+    timeOfBirth: '08:15:00',
+    placeOfBirth: { name: 'Delhi', lat: 28.6, lon: 77.2, tz: 'Asia/Kolkata' },
+    birthTimeAccuracy: 'exact',
+    birthTimeSource: 'birth_certificate',
+    birthLocationAccuracy: 'exact',
+    gotra: null,
+    addedWithConsent: true,
+    notes: null,
+    unlockedHouses: [3],
+    gemstoneUnlockedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    ...overrides,
+  };
+}
 
 describe('POST /internal/cron/horoscopes', () => {
   beforeEach(() => {
@@ -197,6 +229,7 @@ describe('GET /v1/horoscope', () => {
     state.currentPeriodStart.mockReset().mockReturnValue('2026-06-26');
     state.periodKeyFor.mockReset().mockReturnValue('2026-06-26');
     state.findKundliByUserId.mockReset().mockResolvedValue(undefined);
+    state.findOwnedBirthProfile.mockReset();
   });
 
   const AUTH = { Authorization: 'Bearer token' } as const;
@@ -209,6 +242,7 @@ describe('GET /v1/horoscope', () => {
     expect((await res.json()) as { status: string }).toEqual({ status: 'generating' });
     expect(state.requestHoroscopeGeneration).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'id-1' }),
+      expect.objectContaining({ birthProfileId: null }),
       'daily',
       { retryForever: true },
     );
@@ -264,5 +298,61 @@ describe('GET /v1/horoscope', () => {
   it('requires auth', async () => {
     const res = await createApp().request('/v1/horoscope');
     expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /v1/horoscope — additional (non-primary) profile', () => {
+  beforeEach(() => {
+    state.verifyIdToken.mockReset().mockResolvedValue(makeDecodedToken('uid-1'));
+    state.findUserByFirebaseUid
+      .mockReset()
+      .mockResolvedValue(
+        makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', activeProfileId: 'profile-a' }),
+      );
+    state.findOwnedBirthProfile.mockReset().mockResolvedValue(makeBirthProfileRow());
+    state.findHoroscope.mockReset();
+    state.requestHoroscopeGeneration.mockReset().mockResolvedValue('generated');
+    state.toHoroscopeDto.mockReset();
+    state.isStaleGenerating.mockReset().mockReturnValue(false);
+    state.currentPeriodStart.mockReset().mockReturnValue('2026-06-26');
+    state.periodKeyFor.mockReset().mockReturnValue('2026-06-26');
+    state.findKundliByUserId.mockReset().mockResolvedValue(undefined);
+  });
+
+  const AUTH = { Authorization: 'Bearer token' } as const;
+
+  it('resolves the active additional profile and threads its birthProfileId through findHoroscope', async () => {
+    state.findHoroscope.mockResolvedValueOnce(undefined);
+
+    const res = await createApp().request('/v1/horoscope', { headers: AUTH });
+
+    expect(res.status).toBe(202);
+    expect(state.findOwnedBirthProfile).toHaveBeenCalledWith('profile-a', 'id-1');
+    expect(state.findHoroscope).toHaveBeenCalledWith('id-1', 'profile-a', 'daily', '2026-06-26');
+    expect(state.requestHoroscopeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'id-1' }),
+      expect.objectContaining({ birthProfileId: 'profile-a', displayName: 'Bob' }),
+      'daily',
+      { retryForever: true },
+    );
+  });
+
+  it('threads the additional profile’s birthProfileId through findKundliByUserId when the horoscope is ready', async () => {
+    state.findHoroscope.mockResolvedValueOnce({
+      status: 'ready',
+      forDate: '2026-06-26',
+      summary: 'Lorem',
+    });
+    state.toHoroscopeDto.mockReturnValueOnce({
+      forDate: '2026-06-26',
+      summary: 'Lorem',
+      model: 'stub',
+      generatedAt: 'x',
+    });
+
+    const res = await createApp().request('/v1/horoscope', { headers: AUTH });
+
+    expect(res.status).toBe(200);
+    expect(state.findKundliByUserId).toHaveBeenCalledWith('id-1', 'profile-a');
   });
 });

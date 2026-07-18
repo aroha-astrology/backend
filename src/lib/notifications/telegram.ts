@@ -34,6 +34,26 @@ export async function notifyNewSignup(fields: {
   return sendMessage(text);
 }
 
+function formatRupees(paise: number): string {
+  const rupees = paise / 100;
+  return `₹${Number.isInteger(rupees) ? rupees : rupees.toFixed(2)}`;
+}
+
+export async function notifyWalletTopUp(fields: {
+  userId: string;
+  contact?: string | null;
+  amountPaise: number;
+  newBalancePaise: number;
+}): Promise<boolean> {
+  const text =
+    `💰 *Wallet Top-Up*\n\n` +
+    `User: \`${escapeMarkdown(fields.userId)}\`\n` +
+    (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
+    `Added: ${escapeMarkdown(formatRupees(fields.amountPaise))}\n` +
+    `New balance: ${escapeMarkdown(formatRupees(fields.newBalancePaise))}`;
+  return sendMessage(text);
+}
+
 export async function notifyError(context: string, error: unknown): Promise<boolean> {
   const msg = error instanceof Error ? error.message : String(error);
   return sendAlert(`Error: ${context}`, msg);

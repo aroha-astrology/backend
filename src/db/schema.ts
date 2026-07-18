@@ -13,6 +13,7 @@ import {
   index,
   uniqueIndex,
   pgEnum,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import type { Category, CategoryReading, PanchangData } from '@aroha-astrology/shared';
 
@@ -317,13 +318,22 @@ export const users = pgTable(
     streakLastDay: date('streak_last_day'),
     appVersion: text('app_version'),
     platform: platformEnum('platform'),
-    credits: integer('credits').notNull().default(50),
+    walletBalancePaise: integer('wallet_balance_paise').notNull().default(50000),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
       .default(sql`ARRAY[]::integer[]`),
     /** Set the moment the user spends credits to unlock the gemstone report; null = still locked. One-time, whole-report unlock. */
     gemstoneUnlockedAt: timestamp('gemstone_unlocked_at', { withTimezone: true }),
+
+    // --- multi-profile (2026-07-18) ----------------------------------------
+    // NULL = the primary/self profile (this users row) is currently active;
+    // a non-null id points at a row in birth_profiles. birthProfiles is
+    // defined later in this file, so this uses Drizzle's forward-reference
+    // callback form (AnyPgColumn return type) rather than a direct `.id`.
+    activeProfileId: uuid('active_profile_id').references((): AnyPgColumn => birthProfiles.id, {
+      onDelete: 'set null',
+    }),
 
     // --- acquisition / referral -------------------------------------------
     referralSource: text('referral_source'),
@@ -398,6 +408,16 @@ export const birthProfiles = pgTable(
     /** Owner attests they may store this third party's birth data. */
     addedWithConsent: boolean('added_with_consent'),
     notes: text('notes'),
+    // --- multi-profile unlock state (2026-07-18) ---------------------------
+    // Mirrors users.unlockedHouses / users.gemstoneUnlockedAt for the primary
+    // profile — each additional profile tracks its own house/gemstone unlock
+    // state independently. Nullable (unlike the users columns, which are
+    // NOT NULL with defaults): a fresh additional profile simply has none
+    // unlocked yet, and service-layer code should treat null the same as an
+    // empty array / not-yet-unlocked.
+    unlockedHouses: integer('unlocked_houses').array(),
+    /** Set the moment the owner spends credits to unlock this profile's gemstone report; null = still locked. */
+    gemstoneUnlockedAt: timestamp('gemstone_unlocked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -547,8 +567,8 @@ export const userSubscriptions = pgTable(
 /* credit_transactions — token wallet ledger                                   */
 /* -------------------------------------------------------------------------- */
 
-export const creditTransactions = pgTable(
-  'credit_transactions',
+export const walletTransactions = pgTable(
+  'wallet_transactions',
   {
     id: uuid('id')
       .primaryKey()
@@ -564,7 +584,7 @@ export const creditTransactions = pgTable(
       .default(sql`now()`),
   },
   (table) => ({
-    userIdx: index('credit_transactions_user_id_idx').on(table.userId),
+    userIdx: index('wallet_transactions_user_id_idx').on(table.userId),
   }),
 );
 
@@ -619,7 +639,6 @@ export const orders = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     /** Matches an id in billing.service.ts's CREDIT_PACKS — not its own table since the catalog is small/static. */
     packId: text('pack_id').notNull(),
-    credits: integer('credits').notNull(),
     amountPaise: integer('amount_paise').notNull(),
     discountPaise: integer('discount_paise').notNull().default(0),
     finalAmountPaise: integer('final_amount_paise').notNull(),
@@ -746,41 +765,64 @@ export const kundliStatusEnum = pgEnum('kundli_status', [
   'failed',
 ]);
 
-export const kundlis = pgTable('kundlis', {
-  id: uuid('id')
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: uuid('user_id')
-    .notNull()
-    .unique()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  status: kundliStatusEnum('status').notNull().default('pending'),
-  /** Resolved ayanamsa actually used for the computation (engine-supported). */
-  ayanamsa: text('ayanamsa'),
-  /** Resolved house system actually used ('W' | 'P' | 'K' | 'E'). */
-  houseSystem: text('house_system'),
-  /**
-   * false when birth time was unknown → a degraded sign-level kundli with no
-   * ascendant/houses/dasha. Distinguishes a valid degraded chart from a bug.
-   */
-  timeKnown: boolean('time_known'),
-  /** Hash of the birth inputs this kundli was computed from (staleness/dedupe). */
-  birthHash: text('birth_hash'),
-  chartData: jsonb('chart_data').$type<Record<string, unknown>>(),
-  dashaData: jsonb('dasha_data').$type<Record<string, unknown>>(),
-  yogaData: jsonb('yoga_data').$type<Record<string, unknown>>(),
-  doshaData: jsonb('dosha_data').$type<Record<string, unknown>>(),
-  ashtakavargaData: jsonb('ashtakavarga_data').$type<Record<string, unknown>>(),
-  error: text('error'),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  generatedAt: timestamp('generated_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .default(sql`now()`),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .default(sql`now()`),
-});
+export const kundlis = pgTable(
+  'kundlis',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Which profile this kundli belongs to. NULL = the primary/self profile
+     * (the users row itself); non-null = an additional profile in
+     * birth_profiles. See the two partial unique indexes below — Postgres
+     * treats NULL as distinct from every other NULL, so a plain composite
+     * unique on (userId, birthProfileId) would NOT prevent duplicate primary
+     * rows, hence the split.
+     */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    status: kundliStatusEnum('status').notNull().default('pending'),
+    /** Resolved ayanamsa actually used for the computation (engine-supported). */
+    ayanamsa: text('ayanamsa'),
+    /** Resolved house system actually used ('W' | 'P' | 'K' | 'E'). */
+    houseSystem: text('house_system'),
+    /**
+     * false when birth time was unknown → a degraded sign-level kundli with no
+     * ascendant/houses/dasha. Distinguishes a valid degraded chart from a bug.
+     */
+    timeKnown: boolean('time_known'),
+    /** Hash of the birth inputs this kundli was computed from (staleness/dedupe). */
+    birthHash: text('birth_hash'),
+    chartData: jsonb('chart_data').$type<Record<string, unknown>>(),
+    dashaData: jsonb('dasha_data').$type<Record<string, unknown>>(),
+    yogaData: jsonb('yoga_data').$type<Record<string, unknown>>(),
+    doshaData: jsonb('dosha_data').$type<Record<string, unknown>>(),
+    ashtakavargaData: jsonb('ashtakavarga_data').$type<Record<string, unknown>>(),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    generatedAt: timestamp('generated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    // One kundli per user for the primary profile (birthProfileId is null) …
+    userPrimaryUnique: uniqueIndex('kundlis_user_primary_unique')
+      .on(table.userId)
+      .where(sql`${table.birthProfileId} is null`),
+    // … and one kundli per (user, additional profile) otherwise.
+    userProfileUnique: uniqueIndex('kundlis_user_profile_unique')
+      .on(table.userId, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
+  }),
+);
 
 export type KundliRow = typeof kundlis.$inferSelect;
 export type NewKundliRow = typeof kundlis.$inferInsert;
@@ -852,6 +894,10 @@ export const dailyHoroscopes = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
     /**
      * The period's start date (in the app's IST timezone): the day itself for
      * 'daily', the Monday for 'weekly', the 1st for 'monthly'/'yearly'. Always
@@ -899,11 +945,15 @@ export const dailyHoroscopes = pgTable(
   },
   (table) => ({
     // One horoscope per user per period+key — the upsert conflict target.
-    userPeriodKeyUnique: uniqueIndex('daily_horoscopes_user_period_key_unique').on(
-      table.userId,
-      table.period,
-      table.periodKey,
-    ),
+    // Split into a primary-profile partial index and a full-profile index
+    // (see kundlis above for why: NULL birthProfileId can't be deduped by a
+    // plain composite unique).
+    userPeriodKeyPrimaryUnique: uniqueIndex('daily_horoscopes_user_period_key_primary_unique')
+      .on(table.userId, table.period, table.periodKey)
+      .where(sql`${table.birthProfileId} is null`),
+    userPeriodKeyProfileUnique: uniqueIndex('daily_horoscopes_user_period_key_profile_unique')
+      .on(table.userId, table.period, table.periodKey, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
   }),
 );
 
@@ -931,6 +981,10 @@ export const houseInsights = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
     /** 1-12. */
     house: integer('house').notNull(),
     /** Plain-language personalized reading for this house — what it means for THIS chart, not a generic house description. Null while 'generating'. */
@@ -955,7 +1009,12 @@ export const houseInsights = pgTable(
       .default(sql`now()`),
   },
   (table) => ({
-    userHouseUnique: uniqueIndex('house_insights_user_house_unique').on(table.userId, table.house),
+    userHousePrimaryUnique: uniqueIndex('house_insights_user_house_primary_unique')
+      .on(table.userId, table.house)
+      .where(sql`${table.birthProfileId} is null`),
+    userHouseProfileUnique: uniqueIndex('house_insights_user_house_profile_unique')
+      .on(table.userId, table.house, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
   }),
 );
 
@@ -976,30 +1035,44 @@ export const gemstoneRecommendationStatusEnum = pgEnum('gemstone_recommendation_
  * care notes live in code (astro-engine/gemstones.ts); only the personalized
  * `intro` and per-gem narrative are model-generated and stored here.
  */
-export const gemstoneRecommendations = pgTable('gemstone_recommendations', {
-  id: uuid('id')
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: uuid('user_id')
-    .notNull()
-    .unique()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  /** The full computed report (deterministic gem facts + strength + AI intro/notes). Null while 'generating'. */
-  analysis: jsonb('analysis').$type<Record<string, unknown>>(),
-  /** Cached translations of the AI-authored fields by language code — same shape as vastu_plans.translations. */
-  translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
-  model: text('model'),
-  status: gemstoneRecommendationStatusEnum('status').notNull(),
-  /** Claim token, same fencing pattern as house_insights.startedAt. */
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  error: text('error'),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .default(sql`now()`),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .default(sql`now()`),
-});
+export const gemstoneRecommendations = pgTable(
+  'gemstone_recommendations',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /** The full computed report (deterministic gem facts + strength + AI intro/notes). Null while 'generating'. */
+    analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    /** Cached translations of the AI-authored fields by language code — same shape as vastu_plans.translations. */
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
+    model: text('model'),
+    status: gemstoneRecommendationStatusEnum('status').notNull(),
+    /** Claim token, same fencing pattern as house_insights.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userPrimaryUnique: uniqueIndex('gemstone_recommendations_user_primary_unique')
+      .on(table.userId)
+      .where(sql`${table.birthProfileId} is null`),
+    userProfileUnique: uniqueIndex('gemstone_recommendations_user_profile_unique')
+      .on(table.userId, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
+  }),
+);
 
 export type GemstoneRecommendationRow = typeof gemstoneRecommendations.$inferSelect;
 export type NewGemstoneRecommendationRow = typeof gemstoneRecommendations.$inferInsert;
@@ -1196,6 +1269,10 @@ export const chatSessions = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
     title: text('title').notNull().default('New Chat'),
     // Encrypted at rest (full free-text transcript) — text, not jsonb; the
     // repo layer (chat-sessions.repo.ts) serializes/encrypts on write and
@@ -1272,6 +1349,10 @@ export const userFacts = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
     fact: text('fact').notNull(),
     category: text('category'),
     createdAt: timestamp('created_at', { withTimezone: true })

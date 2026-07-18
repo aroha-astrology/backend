@@ -9,6 +9,7 @@
 
 import { findUserByPhoneE164 } from '../src/modules/users/users.repo.js';
 import { requestHoroscopeGeneration } from '../src/modules/horoscope/horoscope.service.js';
+import { resolveProfileContext } from '../src/modules/birth-profiles/profile-context.js';
 import type { HoroscopePeriod } from '../src/modules/horoscope/horoscope.schemas.js';
 
 const HOROSCOPE_PERIODS: readonly HoroscopePeriod[] = [
@@ -52,10 +53,13 @@ async function regenerateForUsers(phoneNumbers: string[], periods?: HoroscopePer
 
   for (const user of userRows) {
     console.log(`\n👤 Regenerating for: ${user.displayName || user.phoneE164}`);
+    // This one-off script isn't profile-aware — always the primary/self
+    // profile, matching its pre-multi-profile behavior exactly.
+    const profile = await resolveProfileContext(user, null);
 
     for (const period of periodsToGenerate) {
       try {
-        const result = await requestHoroscopeGeneration(user, period, { force: true });
+        const result = await requestHoroscopeGeneration(user, profile, period, { force: true });
         const icon = result === 'generated' ? '✅' : result === 'skipped' ? '⏭️ ' : '❌';
         console.log(`   ${icon} ${period.padEnd(10)} - ${result}`);
         if (result === 'generated') totalGenerated++;
