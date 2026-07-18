@@ -108,7 +108,8 @@ export async function requestPurchasePlanAnalysis(
     body.bookingDate,
     body.deliveryDate,
   );
-  const kundli = await findKundliByUserId(userId);
+  // Purchase plans aren't profile-aware yet — always the primary/self chart.
+  const kundli = await findKundliByUserId(userId, null);
 
   const row = await insertPendingPlan({
     userId,

@@ -242,11 +242,11 @@ export const UserSchema = z
     streakLastDay: z.string().nullable(),
     appVersion: z.string().nullable(),
     platform: PlatformSchema.nullable(),
-    credits: z.number().int(),
+    walletBalancePaise: z.number().int().describe('Wallet balance in paise (100 paise = Rs 1)'),
     unlockedHouses: z.array(z.number().int()),
     gemstoneUnlocked: z
       .boolean()
-      .describe('True once the user has spent credits to unlock the gemstone report'),
+      .describe('True once the user has spent wallet balance to unlock the gemstone report'),
 
     referralSource: z.string().nullable(),
     referredByCode: z.string().nullable(),

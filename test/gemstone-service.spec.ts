@@ -45,6 +45,7 @@ function makeRow(overrides: Partial<GemstoneRecommendationRow> = {}): GemstoneRe
   return {
     id: 'row-1',
     userId: 'user-1',
+    birthProfileId: null,
     // Simulates a row persisted by the OLD code, before this fix — a stale
     // "gems" blob baked in at generation time, which the fixed read path must
     // ignore entirely and recompute fresh instead.
@@ -118,11 +119,25 @@ describe('toGemstoneReportDtoForLanguage — self-healing read-time recompute', 
       },
       'hi',
     );
-    expect(state.saveGemstoneTranslation).toHaveBeenCalledWith('user-1', 'hi', {
+    expect(state.saveGemstoneTranslation).toHaveBeenCalledWith('user-1', null, 'hi', {
       intro: 'नमस्ते',
       notes: { Mars: 'मंगल नोट' },
     });
     expect(dto.intro).toBe('नमस्ते');
     expect(dto.gems.find((g) => g.planet === 'Mars')!.mantraPerDay).toBe(108);
+  });
+
+  it("threads an additional profile row's birthProfileId through to the translation save", async () => {
+    state.translateGemstoneContent.mockResolvedValueOnce({
+      intro: 'नमस्ते',
+      notes: { Mars: 'मंगल नोट' },
+    });
+    const row = makeRow({ birthProfileId: 'profile-1' });
+    await toGemstoneReportDtoForLanguage(row, 'hi', NEUTRAL_CHART);
+
+    expect(state.saveGemstoneTranslation).toHaveBeenCalledWith('user-1', 'profile-1', 'hi', {
+      intro: 'नमस्ते',
+      notes: { Mars: 'मंगल नोट' },
+    });
   });
 });

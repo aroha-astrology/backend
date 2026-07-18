@@ -1,14 +1,20 @@
 import * as dotenv from 'dotenv';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 
-dotenv.config({ path: resolve(__dirname, '../apps/web/.env.local') });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+dotenv.config({ path: resolve(__dirname, '../.env.local') });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local');
+  console.error(
+    'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local',
+  );
   process.exit(1);
 }
 
@@ -49,9 +55,13 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Found user ${user.id} (${user.email ?? user.phone}) — current credits: ${user.credits}`);
+  console.log(
+    `Found user ${user.id} (${user.email ?? user.phone}) — current credits: ${user.credits}`,
+  );
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- admin.rpc() returns `any` (untyped Supabase RPC response); user is also `any` from the earlier untyped .single() call
   const { data: newCredits, error: rpcErr } = await admin.rpc('increment_credits', {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     p_user_id: user.id,
     p_amount: AMOUNT,
   });

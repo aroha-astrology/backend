@@ -56,6 +56,10 @@ export const requireUser: MiddlewareHandler = async (c, next) => {
     );
   }
   c.set('user', user);
+  // Cheap to set — already a field on the loaded `user` row, no extra query.
+  // Route handlers that need the full resolved profile (birth data, etc.)
+  // call resolveActiveProfileContext(c.var.user) themselves.
+  c.set('activeProfileId', user.activeProfileId);
 
   await next();
 };

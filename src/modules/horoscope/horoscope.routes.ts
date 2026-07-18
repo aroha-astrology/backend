@@ -16,6 +16,10 @@ import {
 import { findHoroscope, saveHoroscopeTranslation } from './horoscope.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { translateHoroscopeContent } from '../../lib/llm/horoscope.js';
+import {
+  resolveActiveProfileContext,
+  type ProfileContext,
+} from '../birth-profiles/profile-context.js';
 import type { UserRow } from '../../db/schema.js';
 import type { HoroscopePeriod } from './horoscope.schemas.js';
 
@@ -43,10 +47,12 @@ export const horoscopeRouter = new OpenAPIHono();
 horoscopeRouter.use('*', requireUser);
 
 /** Kick off generation without blocking the response — always retries indefinitely on failure, since nothing else is waiting on this one user's run. */
-function fireGeneration(user: UserRow, period: HoroscopePeriod): void {
-  void requestHoroscopeGeneration(user, period, { retryForever: true }).catch((err: unknown) => {
-    logger.error({ err, userId: user.id, period }, 'horoscope background generation errored');
-  });
+function fireGeneration(user: UserRow, profile: ProfileContext, period: HoroscopePeriod): void {
+  void requestHoroscopeGeneration(user, profile, period, { retryForever: true }).catch(
+    (err: unknown) => {
+      logger.error({ err, userId: user.id, period }, 'horoscope background generation errored');
+    },
+  );
 }
 
 const getHoroscopeRoute = createRoute({
@@ -76,19 +82,20 @@ const getHoroscopeRoute = createRoute({
 
 horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
   const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
   const { period, language } = c.req.valid('query');
 
   const forDate = currentPeriodStart(period);
   const periodKey = periodKeyFor(period, forDate);
-  const existing = await findHoroscope(user.id, period, periodKey);
+  const existing = await findHoroscope(user.id, profile.birthProfileId, period, periodKey);
 
   if (!existing) {
-    fireGeneration(user, period);
+    fireGeneration(user, profile, period);
     return c.json({ status: 'generating' as const }, 202);
   }
 
   if (existing.status === 'ready') {
-    const kundli = await findKundliByUserId(user.id);
+    const kundli = await findKundliByUserId(user.id, profile.birthProfileId);
     const dashaData = kundli && kundli.status === 'ready' ? kundli.dashaData : null;
     let dto = toHoroscopeDto(existing, dashaData);
 
@@ -119,7 +126,14 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
             },
             lang,
           );
-          await saveHoroscopeTranslation(user.id, period, periodKey, lang, translated);
+          await saveHoroscopeTranslation(
+            user.id,
+            profile.birthProfileId,
+            period,
+            periodKey,
+            lang,
+            translated,
+          );
           dto = { ...dto, ...translated, dasha: mergeDasha(translated) };
         } catch (err) {
           logger.warn({ err, userId: user.id, lang }, 'failed to translate horoscope');
@@ -131,13 +145,13 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
   }
 
   if (existing.status === 'generating') {
-    if (isStaleGenerating(existing)) fireGeneration(user, period);
+    if (isStaleGenerating(existing)) fireGeneration(user, profile, period);
     return c.json({ status: 'generating' as const }, 202);
   }
 
   // 'failed'
   if (Date.now() - existing.updatedAt.getTime() > FAILED_RETRY_COOLDOWN_MS) {
-    fireGeneration(user, period);
+    fireGeneration(user, profile, period);
   }
   return c.json({ status: 'failed' as const }, 202);
 });

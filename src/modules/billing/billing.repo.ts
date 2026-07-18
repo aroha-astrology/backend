@@ -4,7 +4,7 @@ import {
   coupons,
   orders,
   users,
-  creditTransactions,
+  walletTransactions,
   type CouponRow,
   type NewCouponRow,
   type OrderRow,
@@ -48,6 +48,16 @@ export async function findOrderByIdForUser(
   return rows[0];
 }
 
+/** A user's full order history (any status), most recent first — powers the Settings > Recharge History screen. */
+export async function findOrdersForUser(userId: string, limit = 50): Promise<OrderRow[]> {
+  return db
+    .select()
+    .from(orders)
+    .where(eq(orders.userId, userId))
+    .orderBy(desc(orders.createdAt))
+    .limit(limit);
+}
+
 /** Most recent order (any status) for this user+pack — used to find the order a Google Play purchase belongs to without the client needing to remember an order ID. */
 export async function findLatestOrderForPack(
   userId: string,
@@ -73,7 +83,7 @@ export async function confirmOrderAndGrantCredits(
   orderId: string,
   userId: string,
   gatewayPaymentId: string,
-): Promise<{ order: OrderRow; credits: number } | undefined> {
+): Promise<{ order: OrderRow; walletBalancePaise: number } | undefined> {
   return db.transaction(async (tx) => {
     const [order] = await tx
       .update(orders)
@@ -92,19 +102,22 @@ export async function confirmOrderAndGrantCredits(
 
     const [userRow] = await tx
       .update(users)
-      .set({ credits: sql`${users.credits} + ${order.credits}`, updatedAt: new Date() })
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} + ${order.finalAmountPaise}`,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId))
-      .returning({ credits: users.credits });
+      .returning({ walletBalancePaise: users.walletBalancePaise });
 
-    if (!userRow) throw new Error('User not found while granting purchased credits');
+    if (!userRow) throw new Error('User not found while granting purchased wallet balance');
 
-    await tx.insert(creditTransactions).values({
+    await tx.insert(walletTransactions).values({
       userId,
-      delta: order.credits,
+      delta: order.finalAmountPaise,
       reason: `purchase:${order.packId}`,
-      balanceAfter: userRow.credits,
+      balanceAfter: userRow.walletBalancePaise,
     });
 
-    return { order, credits: userRow.credits };
+    return { order, walletBalancePaise: userRow.walletBalancePaise };
   });
 }

@@ -11,7 +11,7 @@ import {
   KundliStatusSchema,
 } from './kundli.schemas.js';
 import {
-  birthInputsForUser,
+  birthInputsForProfile,
   findHouseInsight,
   getKundliForUser,
   isHouseInsightStale,
@@ -24,6 +24,7 @@ import {
   toKundliDto,
   type KundliRequiredField,
 } from './kundli.service.js';
+import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 
 /** Don't re-run a failed generation on the engine more often than this. */
 const FAILED_RETRY_COOLDOWN_MS = 30_000;
@@ -67,9 +68,9 @@ export const kundliRouter = new OpenAPIHono();
 kundliRouter.use('*', requireUser);
 
 /** Kick off generation without blocking the response. */
-function fireGeneration(userId: string): void {
-  void requestKundliGeneration(userId).catch((err: unknown) => {
-    logger.error({ err, userId }, 'kundli background generation errored');
+function fireGeneration(userId: string, birthProfileId: string | null): void {
+  void requestKundliGeneration(userId, birthProfileId).catch((err: unknown) => {
+    logger.error({ err, userId, birthProfileId }, 'kundli background generation errored');
   });
 }
 
@@ -106,30 +107,31 @@ const getKundliRoute = createRoute({
 
 kundliRouter.openapi(getKundliRoute, async (c) => {
   const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
 
   // Strict: refuse and tell the FE exactly what's missing.
-  const missing = missingKundliParams(user);
+  const missing = missingKundliParams(profile);
   if (missing.length > 0) {
     return c.json(missingResponseBody(missing), 422);
   }
 
-  const existing = await getKundliForUser(user.id);
+  const existing = await getKundliForUser(user.id, profile.birthProfileId);
 
   if (!existing) {
     // Self-heal: nothing on record but the data is complete — start now.
-    fireGeneration(user.id);
+    fireGeneration(user.id, profile.birthProfileId);
     return c.json({ status: 'generating' as const }, 202);
   }
 
   if (existing.status === 'ready') {
     // Read-time staleness self-heal: if birth inputs changed since this was
     // computed, the stored chart is for old data — regenerate and report WIP.
-    const currentHash = birthInputsForUser(user)?.birthHash;
+    const currentHash = birthInputsForProfile(profile, user)?.birthHash;
     if (currentHash && existing.birthHash && existing.birthHash !== currentHash) {
-      fireGeneration(user.id);
+      fireGeneration(user.id, profile.birthProfileId);
       return c.json({ status: 'generating' as const }, 202);
     }
-    return c.json(toKundliDto(existing), 200);
+    return c.json(await toKundliDto(existing), 200);
   }
 
   // pending / generating / failed → ensure a run is (re)started (with a cooldown
@@ -137,10 +139,10 @@ kundliRouter.openapi(getKundliRoute, async (c) => {
   // report the ACTUAL status.
   const status = existing.status;
   if (status === 'pending' || isStaleGenerating(existing)) {
-    fireGeneration(user.id);
+    fireGeneration(user.id, profile.birthProfileId);
   } else if (status === 'failed') {
     if (Date.now() - existing.updatedAt.getTime() > FAILED_RETRY_COOLDOWN_MS) {
-      fireGeneration(user.id);
+      fireGeneration(user.id, profile.birthProfileId);
     }
   }
   return c.json({ status }, 202);
@@ -178,13 +180,14 @@ const regenerateRoute = createRoute({
 
 kundliRouter.openapi(regenerateRoute, async (c) => {
   const user = c.get('user');
-  const result = await regenerateKundli(user.id);
+  const profile = await resolveActiveProfileContext(user);
+  const result = await regenerateKundli(user.id, profile.birthProfileId);
 
   if (!result.ok) {
     return c.json(missingResponseBody(result.missing), 422);
   }
   if (result.row.status === 'ready') {
-    return c.json(toKundliDto(result.row), 200);
+    return c.json(await toKundliDto(result.row), 200);
   }
   // 'failed' or still 'generating' (a concurrent run owns it).
   return c.json(
@@ -210,7 +213,10 @@ function fireHouseInsightGeneration(
   kundliRow: NonNullable<Awaited<ReturnType<typeof getKundliForUser>>>,
 ): void {
   void requestHouseInsightGeneration(userId, house, kundliRow).catch((err: unknown) => {
-    logger.error({ err, userId, house }, 'house insight background generation errored');
+    logger.error(
+      { err, userId, house, birthProfileId: kundliRow.birthProfileId },
+      'house insight background generation errored',
+    );
   });
 }
 
@@ -241,23 +247,23 @@ const getHouseInsightRoute = createRoute({
 
 kundliRouter.openapi(getHouseInsightRoute, async (c) => {
   const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
   const { house } = c.req.valid('param');
   const { language } = c.req.valid('query');
 
-  const unlockedHouses = user.unlockedHouses ?? [];
-  if (!unlockedHouses.includes(house)) {
+  if (!profile.unlockedHouses.includes(house)) {
     return c.json(
       { error: { code: 'FORBIDDEN', message: 'This house is not unlocked yet.' } },
       403,
     );
   }
 
-  const kundli = await getKundliForUser(user.id);
+  const kundli = await getKundliForUser(user.id, profile.birthProfileId);
   if (!kundli || kundli.status !== 'ready') {
     return c.json({ status: 'generating' as const }, 202);
   }
 
-  const existing = await findHouseInsight(user.id, house);
+  const existing = await findHouseInsight(user.id, profile.birthProfileId, house);
 
   if (existing?.status === 'ready') {
     return c.json(await toHouseInsightDtoForLanguage(existing, language || 'en'), 200);

@@ -3,7 +3,7 @@ import type { ChartData, DoshaAnalysis, ZodiacSign } from '@aroha-astrology/shar
 
 export { detectMangalDosha } from './mangalDosha';
 export { detectKaalSarpDosha } from './kaalSarp';
-export { detectSadeSati } from './sadeSati';
+export { detectSadeSati, detectCurrentSadeSati, getCurrentSaturnLongitude } from './sadeSati';
 export { detectPitraDosha } from './pitraDosha';
 export { detectKemDrumaDosha } from './kemDrumaDosha';
 export { detectGrahanDosha } from './grahanDosha';
@@ -25,10 +25,7 @@ import { detectGuruChandalDosha } from './guruChandal';
  *                          needed for Sade Sati calculation
  * @returns Complete dosha analysis
  */
-export function analyzeAllDoshas(
-  chartData: ChartData,
-  saturnLongitude: number
-): DoshaAnalysis {
+export function analyzeAllDoshas(chartData: ChartData, saturnLongitude: number): DoshaAnalysis {
   const moon = chartData.planets.find((p) => p.planet === 'Moon');
   const moonSign: ZodiacSign = moon ? moon.sign : 'Aries';
 
@@ -42,4 +39,3 @@ export function analyzeAllDoshas(
     guruChandal: detectGuruChandalDosha(chartData),
   };
 }
-
