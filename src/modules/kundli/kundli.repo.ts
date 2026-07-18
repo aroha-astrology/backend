@@ -1,12 +1,26 @@
-import { and, eq, sql, count } from 'drizzle-orm';
+import { and, eq, isNull, sql, count } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { kundlis, type KundliRow, type NewKundliRow } from '../../db/schema.js';
 
 /** Consider a 'generating' row abandoned (crashed mid-run) after this long. */
 export const STALE_GENERATING_MS = 5 * 60_000;
 
-export async function findKundliByUserId(userId: string): Promise<KundliRow | undefined> {
-  const rows = await db.select().from(kundlis).where(eq(kundlis.userId, userId)).limit(1);
+/** `birthProfileId === null` filters to the primary/self profile; a non-null id filters to that additional profile. */
+function profileFilter(birthProfileId: string | null) {
+  return birthProfileId === null
+    ? isNull(kundlis.birthProfileId)
+    : eq(kundlis.birthProfileId, birthProfileId);
+}
+
+export async function findKundliByUserId(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<KundliRow | undefined> {
+  const rows = await db
+    .select()
+    .from(kundlis)
+    .where(and(eq(kundlis.userId, userId), profileFilter(birthProfileId)))
+    .limit(1);
   return rows[0];
 }
 
@@ -19,16 +33,19 @@ export async function countFailedKundlis(): Promise<number> {
 }
 
 /**
- * Atomically claim generation for a user. Returns the claimed row if THIS
- * caller won the claim (and should run generation), or `undefined` if there is
- * nothing to do — i.e. another run is already in progress (and not stale), or a
- * `ready` kundli already exists for this exact `birthHash`.
+ * Atomically claim generation for a user's profile (primary when
+ * `birthProfileId` is null, otherwise that additional profile). Returns the
+ * claimed row if THIS caller won the claim (and should run generation), or
+ * `undefined` if there is nothing to do — i.e. another run is already in
+ * progress (and not stale), or a `ready` kundli already exists for this exact
+ * `birthHash`.
  *
  * The conditional ON CONFLICT update is the dedupe mechanism, so it is correct
  * across multiple processes without relying on an external lock.
  */
 export async function claimKundliGeneration(
   userId: string,
+  birthProfileId: string | null,
   birthHash: string,
   opts: { force?: boolean } = {},
 ): Promise<KundliRow | undefined> {
@@ -46,26 +63,57 @@ export async function claimKundliGeneration(
     ? claimable
     : sql`${claimable} AND NOT (${kundlis.status} = 'ready' AND ${kundlis.birthHash} = ${birthHash})`;
 
-  const [row] = await db
-    .insert(kundlis)
-    .values({ userId, status: 'generating', birthHash, startedAt: now, error: null })
-    .onConflictDoUpdate({
-      target: kundlis.userId,
-      // Must exactly match the partial `kundlis_user_primary_unique` index's
-      // predicate — Postgres only infers a bare `ON CONFLICT (col)` target
-      // against a NON-partial unique index/constraint; a partial index needs
-      // its WHERE repeated here or the conflict target fails to resolve.
-      targetWhere: sql`${kundlis.birthProfileId} is null`,
-      set: { status: 'generating', birthHash, startedAt: now, error: null, updatedAt: now },
-      setWhere,
-    })
-    .returning();
+  const [row] =
+    birthProfileId === null
+      ? await db
+          .insert(kundlis)
+          .values({
+            userId,
+            birthProfileId: null,
+            status: 'generating',
+            birthHash,
+            startedAt: now,
+            error: null,
+          })
+          .onConflictDoUpdate({
+            target: kundlis.userId,
+            // Must exactly match the partial `kundlis_user_primary_unique` index's
+            // predicate — Postgres only infers a bare `ON CONFLICT (col)` target
+            // against a NON-partial unique index/constraint; a partial index needs
+            // its WHERE repeated here or the conflict target fails to resolve.
+            targetWhere: sql`${kundlis.birthProfileId} is null`,
+            set: { status: 'generating', birthHash, startedAt: now, error: null, updatedAt: now },
+            setWhere,
+          })
+          .returning()
+      : await db
+          .insert(kundlis)
+          .values({
+            userId,
+            birthProfileId,
+            status: 'generating',
+            birthHash,
+            startedAt: now,
+            error: null,
+          })
+          .onConflictDoUpdate({
+            // Matches the `kundlis_user_profile_unique` index's column set —
+            // (userId, birthProfileId) — for the non-null (additional-profile) side.
+            target: [kundlis.userId, kundlis.birthProfileId],
+            // Must exactly match that index's partial predicate, same reasoning
+            // as the primary-profile branch above.
+            targetWhere: sql`${kundlis.birthProfileId} is not null`,
+            set: { status: 'generating', birthHash, startedAt: now, error: null, updatedAt: now },
+            setWhere,
+          })
+          .returning();
 
   return row;
 }
 
 export async function markKundliReady(
   userId: string,
+  birthProfileId: string | null,
   claimedAt: Date,
   patch: Pick<
     NewKundliRow,
@@ -88,6 +136,7 @@ export async function markKundliReady(
     .where(
       and(
         eq(kundlis.userId, userId),
+        profileFilter(birthProfileId),
         eq(kundlis.status, 'generating'),
         eq(kundlis.startedAt, claimedAt),
       ),
@@ -96,6 +145,7 @@ export async function markKundliReady(
 
 export async function markKundliFailed(
   userId: string,
+  birthProfileId: string | null,
   claimedAt: Date,
   error: string,
 ): Promise<void> {
@@ -105,6 +155,7 @@ export async function markKundliFailed(
     .where(
       and(
         eq(kundlis.userId, userId),
+        profileFilter(birthProfileId),
         eq(kundlis.status, 'generating'),
         eq(kundlis.startedAt, claimedAt),
       ),

@@ -14,6 +14,13 @@ import { decryptUserRow } from '../users/users.repo.js';
 /** Consider a 'generating' row abandoned (crashed mid-run, no heartbeat) after this long. */
 export const STALE_GENERATING_MS = 5 * 60_000;
 
+/** `birthProfileId === null` filters to the primary/self profile; a non-null id filters to that additional profile. */
+function profileFilter(birthProfileId: string | null) {
+  return birthProfileId === null
+    ? isNull(dailyHoroscopes.birthProfileId)
+    : eq(dailyHoroscopes.birthProfileId, birthProfileId);
+}
+
 /** Keyset page of active users (deletedAt IS NULL), ordered by id for stable paging. */
 export async function listActiveUsersAfter(
   afterId: string | null,
@@ -30,6 +37,7 @@ export async function listActiveUsersAfter(
 
 export async function findHoroscope(
   userId: string,
+  birthProfileId: string | null,
   period: HoroscopePeriod,
   periodKey: string,
 ): Promise<DailyHoroscopeRow | undefined> {
@@ -39,6 +47,7 @@ export async function findHoroscope(
     .where(
       and(
         eq(dailyHoroscopes.userId, userId),
+        profileFilter(birthProfileId),
         eq(dailyHoroscopes.period, period),
         eq(dailyHoroscopes.periodKey, periodKey),
       ),
@@ -48,10 +57,11 @@ export async function findHoroscope(
 }
 
 /**
- * Atomically claim generation for a (userId, period, periodKey). Returns the
- * claimed row (with the fresh `startedAt` as the claim token) if THIS caller
- * won, or `undefined` if there's nothing to do — another run already owns it
- * (and isn't stale), or it's already `ready` (unless `force`).
+ * Atomically claim generation for a (userId, birthProfileId, period,
+ * periodKey). Returns the claimed row (with the fresh `startedAt` as the
+ * claim token) if THIS caller won, or `undefined` if there's nothing to do —
+ * another run already owns it (and isn't stale), or it's already `ready`
+ * (unless `force`).
  *
  * Unlike kundli (always exactly one row per user), a row for a brand-new
  * periodKey usually doesn't exist yet — the plain INSERT branch handles that
@@ -60,6 +70,7 @@ export async function findHoroscope(
  */
 export async function claimHoroscopeGeneration(
   userId: string,
+  birthProfileId: string | null,
   period: HoroscopePeriod,
   periodKey: string,
   forDate: string,
@@ -72,28 +83,60 @@ export async function claimHoroscopeGeneration(
     ? claimable
     : sql`${claimable} AND ${dailyHoroscopes.status} <> 'ready'`;
 
-  const [row] = await db
-    .insert(dailyHoroscopes)
-    .values({
-      userId,
-      forDate,
-      period,
-      periodKey,
-      status: 'generating',
-      startedAt: now,
-      error: null,
-    })
-    .onConflictDoUpdate({
-      target: [dailyHoroscopes.userId, dailyHoroscopes.period, dailyHoroscopes.periodKey],
-      // Must exactly match the partial `daily_horoscopes_user_period_key_primary_unique`
-      // index's predicate — Postgres only infers a bare `ON CONFLICT (cols)`
-      // target against a NON-partial unique index/constraint; a partial index
-      // needs its WHERE repeated here or the conflict target fails to resolve.
-      targetWhere: sql`${dailyHoroscopes.birthProfileId} is null`,
-      set: { status: 'generating', startedAt: now, error: null, updatedAt: now },
-      setWhere,
-    })
-    .returning();
+  const [row] =
+    birthProfileId === null
+      ? await db
+          .insert(dailyHoroscopes)
+          .values({
+            userId,
+            birthProfileId: null,
+            forDate,
+            period,
+            periodKey,
+            status: 'generating',
+            startedAt: now,
+            error: null,
+          })
+          .onConflictDoUpdate({
+            target: [dailyHoroscopes.userId, dailyHoroscopes.period, dailyHoroscopes.periodKey],
+            // Must exactly match the partial `daily_horoscopes_user_period_key_primary_unique`
+            // index's predicate — Postgres only infers a bare `ON CONFLICT (cols)`
+            // target against a NON-partial unique index/constraint; a partial index
+            // needs its WHERE repeated here or the conflict target fails to resolve.
+            targetWhere: sql`${dailyHoroscopes.birthProfileId} is null`,
+            set: { status: 'generating', startedAt: now, error: null, updatedAt: now },
+            setWhere,
+          })
+          .returning()
+      : await db
+          .insert(dailyHoroscopes)
+          .values({
+            userId,
+            birthProfileId,
+            forDate,
+            period,
+            periodKey,
+            status: 'generating',
+            startedAt: now,
+            error: null,
+          })
+          .onConflictDoUpdate({
+            // Matches the `daily_horoscopes_user_period_key_profile_unique`
+            // index's column set — (userId, period, periodKey, birthProfileId)
+            // — for the non-null (additional-profile) side.
+            target: [
+              dailyHoroscopes.userId,
+              dailyHoroscopes.period,
+              dailyHoroscopes.periodKey,
+              dailyHoroscopes.birthProfileId,
+            ],
+            // Must exactly match that index's partial predicate, same reasoning
+            // as the primary-profile branch above.
+            targetWhere: sql`${dailyHoroscopes.birthProfileId} is not null`,
+            set: { status: 'generating', startedAt: now, error: null, updatedAt: now },
+            setWhere,
+          })
+          .returning();
 
   return row;
 }
@@ -101,6 +144,7 @@ export async function claimHoroscopeGeneration(
 /** Heartbeat for a live retry-forever run — refreshes `updatedAt` without disturbing the `startedAt` claim token, so the staleness check never mistakes an active retry loop for an abandoned one. */
 export async function touchHoroscopeGenerating(
   userId: string,
+  birthProfileId: string | null,
   period: HoroscopePeriod,
   periodKey: string,
   claimedAt: Date,
@@ -111,6 +155,7 @@ export async function touchHoroscopeGenerating(
     .where(
       and(
         eq(dailyHoroscopes.userId, userId),
+        profileFilter(birthProfileId),
         eq(dailyHoroscopes.period, period),
         eq(dailyHoroscopes.periodKey, periodKey),
         eq(dailyHoroscopes.status, 'generating'),
@@ -121,6 +166,7 @@ export async function touchHoroscopeGenerating(
 
 export async function markHoroscopeReady(
   userId: string,
+  birthProfileId: string | null,
   period: HoroscopePeriod,
   periodKey: string,
   claimedAt: Date,
@@ -139,6 +185,7 @@ export async function markHoroscopeReady(
     .where(
       and(
         eq(dailyHoroscopes.userId, userId),
+        profileFilter(birthProfileId),
         eq(dailyHoroscopes.period, period),
         eq(dailyHoroscopes.periodKey, periodKey),
         eq(dailyHoroscopes.status, 'generating'),
@@ -149,6 +196,7 @@ export async function markHoroscopeReady(
 
 export async function markHoroscopeFailed(
   userId: string,
+  birthProfileId: string | null,
   period: HoroscopePeriod,
   periodKey: string,
   claimedAt: Date,
@@ -160,6 +208,7 @@ export async function markHoroscopeFailed(
     .where(
       and(
         eq(dailyHoroscopes.userId, userId),
+        profileFilter(birthProfileId),
         eq(dailyHoroscopes.period, period),
         eq(dailyHoroscopes.periodKey, periodKey),
         eq(dailyHoroscopes.status, 'generating'),
@@ -179,6 +228,7 @@ export async function saveHoroscopeTranslation(
     structured?: StructuredHoroscope;
     dasha?: { hook?: string; meaning?: string };
   },
+  birthProfileId: string | null,
 ): Promise<void> {
   const existing = await db
     .select({ translations: dailyHoroscopes.translations })
@@ -186,6 +236,7 @@ export async function saveHoroscopeTranslation(
     .where(
       and(
         eq(dailyHoroscopes.userId, userId),
+        profileFilter(birthProfileId),
         eq(dailyHoroscopes.period, period),
         eq(dailyHoroscopes.periodKey, periodKey),
       ),
@@ -204,6 +255,7 @@ export async function saveHoroscopeTranslation(
     .where(
       and(
         eq(dailyHoroscopes.userId, userId),
+        profileFilter(birthProfileId),
         eq(dailyHoroscopes.period, period),
         eq(dailyHoroscopes.periodKey, periodKey),
       ),
