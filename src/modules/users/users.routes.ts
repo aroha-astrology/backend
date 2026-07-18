@@ -141,7 +141,8 @@ usersRouter.openapi(deleteMeRoute, async (c) => {
 usersRouter.openapi(unlockHouseRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
-  await unlockHouse(user.id, body.houseNumber);
+  const profile = await resolveActiveProfileContext(user);
+  await unlockHouse(user.id, profile.birthProfileId, body.houseNumber);
   return c.json({ success: true }, 200);
 });
 

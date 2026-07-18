@@ -16,8 +16,9 @@ import { users, birthProfiles } from '../src/db/schema.js';
 import {
   softDeleteOwnedBirthProfile,
   unlockGemstoneForOwnedProfile,
+  unlockHouseForOwnedProfile,
 } from '../src/modules/birth-profiles/birth-profiles.repo.js';
-import { GEMSTONE_UNLOCK_COST } from '../src/modules/users/users.repo.js';
+import { GEMSTONE_UNLOCK_COST, HOUSE_UNLOCK_COST } from '../src/modules/users/users.repo.js';
 
 const dialect = new PgDialect();
 
@@ -247,5 +248,93 @@ describe('unlockGemstoneForOwnedProfile', () => {
     expect(result).toBe(false);
     expect(updateMock).toHaveBeenCalledWith(users);
     expect(updateMock).toHaveBeenCalledWith(birthProfiles);
+  });
+});
+
+describe('unlockHouseForOwnedProfile', () => {
+  beforeEach(() => {
+    state.transaction.mockReset();
+  });
+
+  /** Same fake-chain wiring as `unlockGemstoneForOwnedProfile`'s `setupTransaction` above. */
+  function setupTransaction(chargedResult: unknown[], unlockedResult: unknown[]) {
+    const usersChain = makeUpdateChain(chargedResult);
+    const birthProfilesChain = makeUpdateChain(unlockedResult);
+    const updateMock = vi.fn((table: unknown): FakeUpdateChain => {
+      if (table === users) return usersChain.chain;
+      if (table === birthProfiles) return birthProfilesChain.chain;
+      throw new Error(`unexpected table passed to tx.update: ${String(table)}`);
+    });
+    state.transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb({ update: updateMock }),
+    );
+    return { usersChain, birthProfilesChain, updateMock };
+  }
+
+  it('charges the owner and appends the house when credits suffice and the house is not yet unlocked', async () => {
+    const { usersChain, birthProfilesChain } = setupTransaction(
+      [{ id: 'user-1' }],
+      [{ id: 'profile-1' }],
+    );
+
+    const result = await unlockHouseForOwnedProfile('profile-1', 'user-1', 7);
+
+    expect(result).toBe(true);
+
+    // Guarded on credits >= cost — same invariant unlockHouseForUser enforces
+    // with its raw-SQL WHERE, just expressed via the query builder.
+    const usersQuery = compile(usersChain.calls.where);
+    expect(usersQuery.sql).toBe('("users"."id" = $1 and "users"."credits" >= $2)');
+    expect(usersQuery.params).toEqual(['user-1', HOUSE_UNLOCK_COST]);
+    expect(usersChain.calls.set).toEqual({ credits: expect.anything() });
+
+    // Guarded on owned + not soft-deleted + house not already present in
+    // unlocked_houses (NULL-safe via coalesce — see the function's doc comment).
+    const profileQuery = compile(birthProfilesChain.calls.where);
+    expect(profileQuery.sql).toBe(
+      '("birth_profiles"."id" = $1 and "birth_profiles"."owner_user_id" = $2 ' +
+        'and "birth_profiles"."deleted_at" is null and NOT ($3 = ANY(coalesce(' +
+        '"birth_profiles"."unlocked_houses", ARRAY[]::integer[]))))',
+    );
+    expect(profileQuery.params).toEqual(['profile-1', 'user-1', 7]);
+
+    // The append itself is also NULL-safe via the same coalesce, so a
+    // never-unlocked (null unlocked_houses) profile can still be unlocked.
+    const setPatch = birthProfilesChain.calls.set as { unlockedHouses: unknown };
+    const appendQuery = compile(setPatch.unlockedHouses);
+    expect(appendQuery.sql).toBe(
+      'array_append(coalesce("birth_profiles"."unlocked_houses", ARRAY[]::integer[]), $1)',
+    );
+    expect(appendQuery.params).toEqual([7]);
+  });
+
+  it('returns false without touching birth_profiles when the owner has insufficient credits', async () => {
+    const { updateMock } = setupTransaction([], [{ id: 'profile-1' }]);
+
+    const result = await unlockHouseForOwnedProfile('profile-1', 'user-1', 7);
+
+    expect(result).toBe(false);
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith(users);
+    expect(updateMock).not.toHaveBeenCalledWith(birthProfiles);
+  });
+
+  it('returns false when the house is already unlocked (or profile not owned / deleted), even though credits were charged in this attempt', async () => {
+    const { updateMock } = setupTransaction([{ id: 'user-1' }], []);
+
+    const result = await unlockHouseForOwnedProfile('profile-1', 'user-1', 7);
+
+    expect(result).toBe(false);
+    expect(updateMock).toHaveBeenCalledWith(users);
+    expect(updateMock).toHaveBeenCalledWith(birthProfiles);
+  });
+
+  it('guards against double-unlocking the same house — the ANY() membership check is keyed on the exact house number requested', async () => {
+    const { birthProfilesChain } = setupTransaction([{ id: 'user-1' }], [{ id: 'profile-1' }]);
+
+    await unlockHouseForOwnedProfile('profile-1', 'user-1', 3);
+
+    const profileQuery = compile(birthProfilesChain.calls.where);
+    expect(profileQuery.params).toEqual(['profile-1', 'user-1', 3]);
   });
 });

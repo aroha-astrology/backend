@@ -13,7 +13,7 @@ import {
   encryptJson,
   decryptJson,
 } from '../../lib/crypto/field-encryption.js';
-import { GEMSTONE_UNLOCK_COST } from '../users/users.repo.js';
+import { GEMSTONE_UNLOCK_COST, HOUSE_UNLOCK_COST } from '../users/users.repo.js';
 
 /**
  * dateOfBirth/timeOfBirth/placeOfBirth/gotra are encrypted at rest (third-
@@ -202,6 +202,74 @@ export async function unlockGemstoneForOwnedProfile(
             eq(birthProfiles.ownerUserId, ownerUserId),
             isNull(birthProfiles.deletedAt),
             isNull(birthProfiles.gemstoneUnlockedAt),
+          ),
+        )
+        .returning({ id: birthProfiles.id });
+      if (!unlocked) throw new UnlockGuardFailed();
+
+      return true;
+    });
+  } catch (err) {
+    if (err instanceof UnlockGuardFailed) return false;
+    throw err;
+  }
+}
+
+/**
+ * Atomically spend the owner's credits to unlock a single house's insight on
+ * an ADDITIONAL profile — the two-table sibling of `unlockHouseForUser`
+ * (users.repo.ts), which does the primary-profile case as a single raw
+ * UPDATE (deduct credits + `array_append` to `unlocked_houses` guarded in one
+ * statement). Here credits live on `users` but the unlocked-houses list lives
+ * on this `birth_profiles` row, so — same reasoning as
+ * `unlockGemstoneForOwnedProfile` right above — one UPDATE can't guard both
+ * invariants (sufficient credits; owned/not-deleted/house-not-already-
+ * unlocked) at once. This wraps two guarded updates in a transaction instead:
+ * charge the owner first (guarded on credits >= cost), then append the house
+ * number (guarded on owned/not-deleted/not-already-present in
+ * `unlocked_houses`). If either guard fails we throw to roll back the whole
+ * transaction, so a failed second step can never leave a charge behind — same
+ * "no charge on failure" semantics as `unlockHouseForUser`, just split across
+ * two statements instead of one.
+ *
+ * `birth_profiles.unlocked_houses` is nullable (unlike `users.unlocked_houses`,
+ * which is NOT NULL with an `ARRAY[]::integer[]` default) — a fresh additional
+ * profile simply has no houses unlocked yet. Both the "not already unlocked"
+ * guard and the `array_append` itself `coalesce` a null column to
+ * `ARRAY[]::integer[]` first: without that, `houseNumber = ANY(NULL)`
+ * evaluates to SQL NULL (not true/false), which Postgres treats as "no match"
+ * in a WHERE clause — i.e. the guard would silently and permanently block
+ * every unlock attempt on a profile that has never unlocked any house yet.
+ * Coalescing makes a never-unlocked profile behave exactly like one with an
+ * explicit empty array, matching the "treat null as empty" contract already
+ * documented on the schema column.
+ */
+export async function unlockHouseForOwnedProfile(
+  id: string,
+  ownerUserId: string,
+  houseNumber: number,
+): Promise<boolean> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [charged] = await tx
+        .update(users)
+        .set({ credits: sql`${users.credits} - ${HOUSE_UNLOCK_COST}` })
+        .where(and(eq(users.id, ownerUserId), gte(users.credits, HOUSE_UNLOCK_COST)))
+        .returning({ id: users.id });
+      if (!charged) throw new UnlockGuardFailed();
+
+      const [unlocked] = await tx
+        .update(birthProfiles)
+        .set({
+          unlockedHouses: sql`array_append(coalesce(${birthProfiles.unlockedHouses}, ARRAY[]::integer[]), ${houseNumber})`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(birthProfiles.id, id),
+            eq(birthProfiles.ownerUserId, ownerUserId),
+            isNull(birthProfiles.deletedAt),
+            sql`NOT (${houseNumber} = ANY(coalesce(${birthProfiles.unlockedHouses}, ARRAY[]::integer[])))`,
           ),
         )
         .returning({ id: birthProfiles.id });

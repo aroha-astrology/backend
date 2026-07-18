@@ -338,6 +338,9 @@ export async function listUsersPage(limit: number, offset: number) {
   return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
 }
 
+/** Cost in credits to unlock a single house's insight. Kept in sync with the hardcoded `5` below and reused by `unlockHouseForOwnedProfile` (birth-profiles.repo.ts) for the additional-profile case. */
+export const HOUSE_UNLOCK_COST = 5;
+
 export async function unlockHouseForUser(userId: string, houseNumber: number) {
   // Use raw sql to deduct credits and array_append to unlockedHouses
   // ensure credits >= 5 and houseNumber is not already in unlockedHouses
