@@ -209,4 +209,40 @@ describe('chatStream — profile resolution happens before kundli/facts fetch', 
     expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', null);
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
   });
+
+  it('degrades gracefully (falls back to primary-profile scoping) when the user resolves but resolveActiveProfileContext rejects (e.g. a transient DB blip on findOwnedBirthProfile)', async () => {
+    const user = makeUserRow({
+      id: 'user-1',
+      activeProfileId: 'profile-a',
+      gender: 'male',
+      birthTimeAccuracy: 'exact',
+    });
+    state.findActiveUserById.mockResolvedValue(user);
+    state.resolveActiveProfileContext.mockRejectedValue(new Error('db blip'));
+
+    const events = await drain(
+      chatStream(
+        'user-1',
+        'What does my Jupiter transit mean?',
+        [],
+        undefined,
+        'direct',
+        undefined,
+        'en',
+        undefined,
+      ),
+    );
+
+    // The whole turn must still produce a reply — not throw/error the stream —
+    // same degrade-gracefully contract as every other best-effort fetch here.
+    expect(events.some((e) => (e as { type: string }).type === 'token')).toBe(true);
+    expect(state.resolveActiveProfileContext).toHaveBeenCalledWith(user);
+    // profile is undefined after the rejection -> falls back to primary-profile scoping.
+    expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', null);
+    expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
+
+    const call = state.scholarStream.mock.calls[0] as any[];
+    const [, , , birthTimeUnknown] = call;
+    expect(birthTimeUnknown).toBe(false); // profile undefined -> falls back rather than throwing
+  });
 });

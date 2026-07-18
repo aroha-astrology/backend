@@ -983,10 +983,13 @@ export async function* chatStream(
   // Resolve the account and its currently-active profile FIRST — kundli and
   // user-facts below are both scoped to profile.birthProfileId, so profile
   // resolution can't run in parallel with them, only before. Best-effort:
-  // a missing/unreachable user just means we ground on nothing profile-
-  // specific, same degrade-gracefully contract as every fetch below.
+  // a missing/unreachable user, or a failed profile lookup (e.g. a transient
+  // DB blip on findOwnedBirthProfile), just means we ground on nothing
+  // profile-specific — same degrade-gracefully contract as every other fetch
+  // below (kundli/userFacts/panchang/secondChartFacts), never a hard failure
+  // of the whole chat turn.
   const user = await findActiveUserById(userId).catch(() => undefined);
-  const profile = user ? await resolveActiveProfileContext(user) : undefined;
+  const profile = user ? await resolveActiveProfileContext(user).catch(() => undefined) : undefined;
 
   // Best-effort: an unready/missing kundli just means no chart facts get
   // injected (buildGroundingFacts degrades gracefully) — chat still works.
