@@ -6,6 +6,7 @@ import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
+import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import type { ConsentInput, UpdateMeBody, UserDto } from './users.schemas.js';
 import {
   claimBirthDetailsEdit,
@@ -334,7 +335,10 @@ export async function updateMe(
   // (lazily, on next view) rather than silently serving stale content;
   // houses stay unlocked, no re-charge.
   if (isPostOnboardingBirthEdit) {
-    await deleteHouseInsightsForUser(userId).catch((err: unknown) => {
+    // This endpoint edits the `users` row itself (the primary/self profile) —
+    // always the primary (birthProfileId: null) side, never an additional
+    // birth_profiles entry.
+    await deleteHouseInsightsForUser(userId, null).catch((err: unknown) => {
       logger.error({ err, userId }, 'house insight invalidation after birth-detail edit failed');
     });
     // The gemstone report is derived from the same natal chart — wipe it too so
@@ -366,7 +370,8 @@ export async function updateMe(
     body.preferredAyanamsa !== undefined ||
     body.preferredHouseSystem !== undefined;
   if (next.profileCompletedAt !== null && (becameComplete || touchedBirth)) {
-    void requestKundliGeneration(userId).catch((err: unknown) => {
+    // Primary profile only — see the birthProfileId: null comment above.
+    void requestKundliGeneration(userId, null).catch((err: unknown) => {
       logger.error({ err, userId }, 'kundli generation trigger failed');
     });
   }
@@ -384,8 +389,10 @@ export async function updateMe(
     (becameComplete || touchedBirth) &&
     next.birthTimeAccuracy === 'unknown'
   ) {
+    // Primary profile only — see the birthProfileId: null comment above.
+    const primaryProfile = await resolveProfileContext(next, null);
     for (const period of HOROSCOPE_PERIODS) {
-      void requestHoroscopeGeneration(next, period, { retryForever: true }).catch(
+      void requestHoroscopeGeneration(next, primaryProfile, period, { retryForever: true }).catch(
         (err: unknown) => {
           logger.error(
             { err, userId, period },

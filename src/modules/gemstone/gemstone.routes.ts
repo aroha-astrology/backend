@@ -80,7 +80,8 @@ gemstoneRouter.openapi(getGemstoneRoute, async (c) => {
     );
   }
 
-  const kundli = await findKundliByUserId(user.id);
+  // Gemstone isn't profile-aware yet — always the primary/self chart.
+  const kundli = await findKundliByUserId(user.id, null);
   if (!kundli || kundli.status !== 'ready') {
     return c.json({ status: 'generating' as const }, 202);
   }

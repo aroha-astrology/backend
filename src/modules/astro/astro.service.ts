@@ -982,7 +982,8 @@ export async function* chatStream(
   // Best-effort: an unready/missing kundli just means no chart facts get
   // injected (buildGroundingFacts degrades gracefully) — chat still works.
   const [kundli, user, userFacts] = await Promise.all([
-    getKundliForUser(userId).catch(() => undefined),
+    // Chat isn't profile-aware yet — always the primary/self chart.
+    getKundliForUser(userId, null).catch(() => undefined),
     findActiveUserById(userId).catch(() => undefined),
     getUserFacts(userId).catch(() => []),
   ]);

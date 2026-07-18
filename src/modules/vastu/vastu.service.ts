@@ -77,7 +77,8 @@ export async function requestVastuAnalysis(
 
   try {
     const { roomScores, overallScore } = evaluateRoomPlacement(body.roomLayout);
-    const kundli = await findKundliByUserId(userId);
+    // Vastu isn't profile-aware yet — always the primary/self chart.
+    const kundli = await findKundliByUserId(userId, null);
     const chartContext = buildChartContext(kundli);
     const houseShape = body.houseShape ?? 'rectangle';
     const roomDetails = { ...body.roomDetails, houseShape };
@@ -154,7 +155,8 @@ export async function askVastuQuestion(
     throw Errors.conflict('ALREADY_ASKED');
   }
 
-  const kundli = await findKundliByUserId(userId);
+  // Vastu isn't profile-aware yet — always the primary/self chart.
+  const kundli = await findKundliByUserId(userId, null);
   const answer = await generateVastuAnswer({
     analysis: row.analysis,
     question,
