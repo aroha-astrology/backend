@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeUserRow, makeProfileContext } from './helpers/mocks.js';
 import type * as AstroService from '../src/modules/astro/astro.service.js';
+import type { PlaceOfBirth } from '../src/db/schema.js';
 
 // Coverage for the previously-missing GET /v1/remedies route (astro.routes.ts):
 // - requires auth (401 without a token), matching every other user-scoped route.
@@ -155,5 +156,50 @@ describe('GET /v1/remedies', () => {
     expect(res.status).toBe(200);
     expect(state.getRemedies).toHaveBeenCalledWith(undefined);
     expect(state.resolveActiveProfileContext).toHaveBeenCalledWith(user);
+  });
+
+  it('passes undefined when placeOfBirth is present but missing tz (partial/corrupted geocode data) — the boundary case that justifies checking lat/lon/tz separately rather than just placeOfBirth != null', async () => {
+    const user = makeUserRow({ id: 'user-1', activeProfileId: 'profile-a' });
+    state.findUserByFirebaseUid.mockResolvedValue(user);
+    state.resolveActiveProfileContext.mockResolvedValue(
+      makeProfileContext({
+        birthProfileId: 'profile-a',
+        dateOfBirth: '1992-08-15',
+        timeOfBirth: '09:00',
+        // Deliberately invalid-shaped fixture: lat/lon present, tz missing —
+        // simulates corrupted/partial geocode data. PlaceOfBirth's lat/lon/tz
+        // are non-optional, so the cast is needed to construct this on purpose.
+        placeOfBirth: { name: 'Delhi, India', lat: 28.6139, lon: 77.209 } as PlaceOfBirth,
+      }),
+    );
+    state.getRemedies.mockResolvedValue(GENERAL_REMEDIES);
+
+    const res = await callRemedies();
+
+    expect(res.status).toBe(200);
+    expect(state.getRemedies).toHaveBeenCalledWith(undefined);
+  });
+
+  it('passes undefined when placeOfBirth has lat but is missing lon', async () => {
+    const user = makeUserRow({ id: 'user-1', activeProfileId: 'profile-a' });
+    state.findUserByFirebaseUid.mockResolvedValue(user);
+    state.resolveActiveProfileContext.mockResolvedValue(
+      makeProfileContext({
+        birthProfileId: 'profile-a',
+        dateOfBirth: '1992-08-15',
+        timeOfBirth: '09:00',
+        placeOfBirth: {
+          name: 'Delhi, India',
+          lat: 28.6139,
+          tz: 'Asia/Kolkata',
+        } as PlaceOfBirth,
+      }),
+    );
+    state.getRemedies.mockResolvedValue(GENERAL_REMEDIES);
+
+    const res = await callRemedies();
+
+    expect(res.status).toBe(200);
+    expect(state.getRemedies).toHaveBeenCalledWith(undefined);
   });
 });
