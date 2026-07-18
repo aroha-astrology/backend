@@ -313,9 +313,14 @@ async function runGeneration(
 
     const readyKundli = await findKundliByUserId(user.id, profile.birthProfileId);
     if (readyKundli) {
-      // House 1 is always unlocked by default even if the resolved profile
-      // (primary or additional) has no explicit unlocks recorded yet.
-      const unlockedHouses = profile.unlockedHouses.length > 0 ? profile.unlockedHouses : [1];
+      // No [1]-fallback: profile.unlockedHouses is already normalized to
+      // number[] (never null) by resolveProfileContext, so this exactly
+      // reproduces today's real production behavior for the primary
+      // profile (unlockedHouses defaults to an empty array at the DB
+      // level, so the old `user.unlockedHouses ?? [1]` fallback never
+      // actually fired) and gives additional profiles the same starting
+      // behavior — no auto-generation until deliberately unlocked.
+      const unlockedHouses = profile.unlockedHouses;
       for (const house of unlockedHouses) {
         void requestHouseInsightGeneration(user.id, house, readyKundli).catch((err: unknown) => {
           logger.error({ err, userId: user.id, house }, 'post-kundli house insight trigger failed');
