@@ -663,6 +663,9 @@ export const orders = pgTable(
 export type OrderRow = typeof orders.$inferSelect;
 export type NewOrderRow = typeof orders.$inferInsert;
 
+export type WalletTransactionRow = typeof walletTransactions.$inferSelect;
+export type NewWalletTransactionRow = typeof walletTransactions.$inferInsert;
+
 /* -------------------------------------------------------------------------- */
 /* prediction_feedback — user feedback on predictions                          */
 /* -------------------------------------------------------------------------- */
