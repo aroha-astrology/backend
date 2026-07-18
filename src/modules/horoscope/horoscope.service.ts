@@ -8,6 +8,10 @@ import type {
   UserRow,
 } from '../../db/schema.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import {
+  resolveActiveProfileContext,
+  type ProfileContext,
+} from '../birth-profiles/profile-context.js';
 import type { HoroscopeDto, HoroscopePeriod } from './horoscope.schemas.js';
 import {
   claimHoroscopeGeneration,
@@ -95,6 +99,7 @@ export function currentPeriodStart(period: HoroscopePeriod): string {
 /** Assemble everything we know about the user for the LLM to personalize from. */
 function buildHoroscopeContext(
   user: UserRow,
+  profile: ProfileContext,
   kundli: KundliRow | undefined,
   forDate: string,
   period: HoroscopePeriod,
@@ -104,12 +109,12 @@ function buildHoroscopeContext(
     forDate,
     period,
     profile: {
-      displayName: user.displayName,
-      gender: user.gender,
-      dateOfBirth: user.dateOfBirth,
-      timeOfBirth: user.timeOfBirth,
-      birthTimeAccuracy: user.birthTimeAccuracy,
-      placeOfBirth: user.placeOfBirth,
+      displayName: profile.displayName,
+      gender: profile.gender,
+      dateOfBirth: profile.dateOfBirth,
+      timeOfBirth: profile.timeOfBirth,
+      birthTimeAccuracy: profile.birthTimeAccuracy,
+      placeOfBirth: profile.placeOfBirth,
       currentLocation: user.currentLocation,
       currentTimezone: user.currentTimezone,
       locale: user.locale,
@@ -172,6 +177,7 @@ export async function pushDailyHoroscopeReady(
 
 async function runHoroscopeGeneration(
   user: UserRow,
+  profile: ProfileContext,
   period: HoroscopePeriod,
   periodKey: string,
   forDate: string,
@@ -183,11 +189,11 @@ async function runHoroscopeGeneration(
   for (;;) {
     attempt++;
     try {
-      const kundli = await findKundliByUserId(user.id);
-      const context = buildHoroscopeContext(user, kundli, forDate, period);
+      const kundli = await findKundliByUserId(user.id, profile.birthProfileId);
+      const context = buildHoroscopeContext(user, profile, kundli, forDate, period);
       const { summary, model, monthlyBreakdown, structured } =
         await generateHoroscopeSummary(context);
-      await markHoroscopeReady(user.id, period, periodKey, claimedAt, {
+      await markHoroscopeReady(user.id, profile.birthProfileId, period, periodKey, claimedAt, {
         summary,
         model,
         ...(monthlyBreakdown !== undefined ? { monthlyBreakdown } : {}),
@@ -208,6 +214,7 @@ async function runHoroscopeGeneration(
       if (!retryForever || attempt >= MAX_RETRIES) {
         await markHoroscopeFailed(
           user.id,
+          profile.birthProfileId,
           period,
           periodKey,
           claimedAt,
@@ -217,7 +224,7 @@ async function runHoroscopeGeneration(
       }
       // Heartbeat before sleeping so the staleness check never mistakes this
       // live retry loop for an abandoned run and lets a second claim in.
-      await touchHoroscopeGenerating(user.id, period, periodKey, claimedAt);
+      await touchHoroscopeGenerating(user.id, profile.birthProfileId, period, periodKey, claimedAt);
       await sleep(RETRY_FOREVER_INTERVAL_MS);
     }
   }
@@ -238,7 +245,11 @@ async function sleepBetweenBatchRequests(): Promise<void> {
  * Returns true if reuse succeeded (daily now ready with yesterday's tomorrow),
  * false if reuse wasn't possible (missing, stale, or wrong period).
  */
-async function tryReuseYesterdaysTomorrow(userId: string, forDate: string): Promise<boolean> {
+async function tryReuseYesterdaysTomorrow(
+  userId: string,
+  birthProfileId: string | null,
+  forDate: string,
+): Promise<boolean> {
   // Yesterday's 'tomorrow' was generated with currentPeriodStart('tomorrow') =
   // addOneDay(yesterday) = today = forDate, and periodKeyFor returns forDate
   // as-is for 'tomorrow'. So the stored periodKey is `forDate` (today), not
@@ -246,7 +257,12 @@ async function tryReuseYesterdaysTomorrow(userId: string, forDate: string): Prom
   const yesterdayTomorrowKey = forDate;
 
   try {
-    const yesterdayTomorrow = await findHoroscope(userId, 'tomorrow', yesterdayTomorrowKey);
+    const yesterdayTomorrow = await findHoroscope(
+      userId,
+      birthProfileId,
+      'tomorrow',
+      yesterdayTomorrowKey,
+    );
 
     // Only reuse if it's ready and has content
     if (!yesterdayTomorrow || yesterdayTomorrow.status !== 'ready' || !yesterdayTomorrow.summary) {
@@ -258,9 +274,14 @@ async function tryReuseYesterdaysTomorrow(userId: string, forDate: string): Prom
     const todayDailyKey = periodKeyFor('daily', forDate);
 
     // Try to claim and immediately mark ready with copied data
-    const claimed = await claimHoroscopeGeneration(userId, 'daily', todayDailyKey, forDate, {
-      force: false,
-    });
+    const claimed = await claimHoroscopeGeneration(
+      userId,
+      birthProfileId,
+      'daily',
+      todayDailyKey,
+      forDate,
+      { force: false },
+    );
 
     if (!claimed?.startedAt) {
       // Another run already owns it or it's ready — let them handle it
@@ -268,7 +289,7 @@ async function tryReuseYesterdaysTomorrow(userId: string, forDate: string): Prom
     }
 
     // Mark it ready with yesterday's tomorrow content
-    await markHoroscopeReady(userId, 'daily', todayDailyKey, claimed.startedAt, {
+    await markHoroscopeReady(userId, birthProfileId, 'daily', todayDailyKey, claimed.startedAt, {
       summary: yesterdayTomorrow.summary,
       model: yesterdayTomorrow.model,
       ...(yesterdayTomorrow.monthlyBreakdown !== null
@@ -280,13 +301,13 @@ async function tryReuseYesterdaysTomorrow(userId: string, forDate: string): Prom
     });
 
     logger.info(
-      { userId, forDate, reusedFrom: yesterdayTomorrowKey },
+      { userId, birthProfileId, forDate, reusedFrom: yesterdayTomorrowKey },
       "reused yesterday's tomorrow as today's daily",
     );
     return true;
   } catch (err) {
     logger.warn(
-      { err, userId, forDate },
+      { err, userId, birthProfileId, forDate },
       "failed to reuse yesterday's tomorrow (will generate fresh)",
     );
     return false;
@@ -309,6 +330,7 @@ async function tryReuseYesterdaysTomorrow(userId: string, forDate: string): Prom
  */
 export async function requestHoroscopeGeneration(
   user: UserRow,
+  profile: ProfileContext,
   period: HoroscopePeriod,
   opts: { forDate?: string; force?: boolean; retryForever?: boolean } = {},
 ): Promise<'generated' | 'skipped' | 'failed'> {
@@ -317,12 +339,13 @@ export async function requestHoroscopeGeneration(
 
   // Optimization: for daily, try to reuse yesterday's tomorrow first
   if (period === 'daily' && !opts.force) {
-    const reused = await tryReuseYesterdaysTomorrow(user.id, forDate);
+    const reused = await tryReuseYesterdaysTomorrow(user.id, profile.birthProfileId, forDate);
     if (reused) return 'generated'; // Reuse counts as successful generation
   }
 
   const claimed = await claimHoroscopeGeneration(
     user.id,
+    profile.birthProfileId,
     period,
     periodKey,
     forDate,
@@ -331,6 +354,7 @@ export async function requestHoroscopeGeneration(
   if (!claimed?.startedAt) return 'skipped'; // another run owns it, or already ready
   return runHoroscopeGeneration(
     user,
+    profile,
     period,
     periodKey,
     forDate,
@@ -381,7 +405,14 @@ export async function runHoroscopeBatch(
     for (const user of batch) {
       processed++;
       try {
-        const outcome = await requestHoroscopeGeneration(user, period, { forDate, force });
+        // Batch only the ACTIVE profile — non-active profiles generate
+        // lazily on view instead, kept out of the nightly batch to avoid
+        // N×profiles cron cost.
+        const profile = await resolveActiveProfileContext(user);
+        const outcome = await requestHoroscopeGeneration(user, profile, period, {
+          forDate,
+          force,
+        });
         if (outcome === 'generated') generated++;
         else if (outcome === 'failed') failed++;
         else skipped++;

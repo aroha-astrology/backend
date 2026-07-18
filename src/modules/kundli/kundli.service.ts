@@ -14,6 +14,7 @@ import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
 import { findActiveUserById } from '../users/users.repo.js';
+import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
 import {
   STALE_GENERATING_MS,
   claimKundliGeneration,
@@ -66,16 +67,16 @@ function placeIsComplete(place: UserRow['placeOfBirth']): boolean {
   );
 }
 
-/** Required kundli fields that are absent on the user (empty = ready to compute). */
-export function missingKundliParams(user: UserRow): KundliRequiredField[] {
+/** Required kundli fields that are absent on the resolved profile (empty = ready to compute). */
+export function missingKundliParams(profile: ProfileContext): KundliRequiredField[] {
   const missing: KundliRequiredField[] = [];
-  if (!user.displayName) missing.push('displayName');
-  if (!user.gender) missing.push('gender');
-  if (!user.dateOfBirth) missing.push('dateOfBirth');
+  if (!profile.displayName) missing.push('displayName');
+  if (!profile.gender) missing.push('gender');
+  if (!profile.dateOfBirth) missing.push('dateOfBirth');
   // An EXACT time is required: a null time OR an explicitly 'unknown' accuracy
   // both count as missing (a disclaimed time can't yield lagna/houses/dasha).
-  if (!user.timeOfBirth || user.birthTimeAccuracy === 'unknown') missing.push('timeOfBirth');
-  if (!placeIsComplete(user.placeOfBirth)) missing.push('placeOfBirth');
+  if (!profile.timeOfBirth || profile.birthTimeAccuracy === 'unknown') missing.push('timeOfBirth');
+  if (!placeIsComplete(profile.placeOfBirth)) missing.push('placeOfBirth');
   return missing;
 }
 
@@ -170,18 +171,21 @@ type BirthInputs = {
 };
 
 /**
- * Build engine inputs from a user row, or null if ANY required parameter is
- * missing (use `missingKundliParams` to report exactly which). Exact birth
- * time is required.
+ * Build engine inputs from a resolved profile's birth data plus the owning
+ * user's account-level engine preferences (`preferredAyanamsa`/
+ * `preferredHouseSystem` remain shared across all of a user's profiles, not
+ * per-profile). Returns null if ANY required parameter is missing (use
+ * `missingKundliParams` to report exactly which). Exact birth time is
+ * required.
  */
-export function birthInputsForUser(user: UserRow): BirthInputs | null {
-  if (missingKundliParams(user).length > 0) return null;
+export function birthInputsForProfile(profile: ProfileContext, user: UserRow): BirthInputs | null {
+  if (missingKundliParams(profile).length > 0) return null;
 
   // Guaranteed present by the check above.
-  const place = user.placeOfBirth!;
-  const [year, month, day] = (user.dateOfBirth as string).split('-').map(Number);
+  const place = profile.placeOfBirth!;
+  const [year, month, day] = (profile.dateOfBirth as string).split('-').map(Number);
   if (!year || !month || !day) return null;
-  const [hh, mm] = (user.timeOfBirth as string).split(':').map(Number);
+  const [hh, mm] = (profile.timeOfBirth as string).split(':').map(Number);
   const hour = hh ?? 0;
   const minute = mm ?? 0;
 
@@ -194,9 +198,9 @@ export function birthInputsForUser(user: UserRow): BirthInputs | null {
     .createHash('sha256')
     .update(
       JSON.stringify({
-        d: user.dateOfBirth,
-        t: user.timeOfBirth,
-        acc: user.birthTimeAccuracy,
+        d: profile.dateOfBirth,
+        t: profile.timeOfBirth,
+        acc: profile.birthTimeAccuracy,
         lat: place.lat,
         lon: place.lon,
         tz: place.tz,
@@ -231,7 +235,12 @@ function tryCompute<T>(label: string, fn: () => T): T | null {
   }
 }
 
-async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date): Promise<void> {
+async function runGeneration(
+  user: UserRow,
+  profile: ProfileContext,
+  inputs: BirthInputs,
+  claimedAt: Date,
+): Promise<void> {
   try {
     const chart = await calculateChart(
       inputs.year,
@@ -274,7 +283,7 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
     const doshas = tryCompute('doshas', () => analyzeAllDoshas(chart, currentSaturnLongitude));
     const ashtakavarga = tryCompute('ashtakavarga', () => calculateAshtakavarga(chart));
 
-    await markKundliReady(user.id, claimedAt, {
+    await markKundliReady(user.id, profile.birthProfileId, claimedAt, {
       ayanamsa: inputs.ayanamsa,
       houseSystem: inputs.houseSystem,
       timeKnown: true,
@@ -294,16 +303,19 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
     // a stale reading if this run was a birth-data correction, not first-time
     // onboarding. `retryForever` because nothing else is blocked on this.
     for (const period of HOROSCOPE_PERIODS) {
-      void requestHoroscopeGeneration(user, period, { force: true, retryForever: true }).catch(
-        (err: unknown) => {
-          logger.error({ err, userId: user.id, period }, 'post-kundli horoscope trigger failed');
-        },
-      );
+      void requestHoroscopeGeneration(user, profile, period, {
+        force: true,
+        retryForever: true,
+      }).catch((err: unknown) => {
+        logger.error({ err, userId: user.id, period }, 'post-kundli horoscope trigger failed');
+      });
     }
 
-    const readyKundli = await findKundliByUserId(user.id);
+    const readyKundli = await findKundliByUserId(user.id, profile.birthProfileId);
     if (readyKundli) {
-      const unlockedHouses = user.unlockedHouses ?? [1];
+      // House 1 is always unlocked by default even if the resolved profile
+      // (primary or additional) has no explicit unlocks recorded yet.
+      const unlockedHouses = profile.unlockedHouses.length > 0 ? profile.unlockedHouses : [1];
       for (const house of unlockedHouses) {
         void requestHouseInsightGeneration(user.id, house, readyKundli).catch((err: unknown) => {
           logger.error({ err, userId: user.id, house }, 'post-kundli house insight trigger failed');
@@ -312,26 +324,37 @@ async function runGeneration(user: UserRow, inputs: BirthInputs, claimedAt: Date
     }
   } catch (err) {
     logger.error({ err, userId: user.id }, 'kundli generation failed');
-    await markKundliFailed(user.id, claimedAt, err instanceof Error ? err.message : String(err));
+    await markKundliFailed(
+      user.id,
+      profile.birthProfileId,
+      claimedAt,
+      err instanceof Error ? err.message : String(err),
+    );
   }
 }
 
 /**
- * Idempotently (re)generate a user's kundli. Safe to call fire-and-forget and
- * to call repeatedly — the DB claim dedupes concurrent/duplicate runs and skips
- * a kundli that is already up to date. No-op when a required parameter is
- * missing (the GET/regenerate endpoints report exactly what's missing).
+ * Idempotently (re)generate a kundli for one of a user's profiles (primary
+ * when `birthProfileId` is null, otherwise that additional profile). Safe to
+ * call fire-and-forget and to call repeatedly — the DB claim dedupes
+ * concurrent/duplicate runs and skips a kundli that is already up to date.
+ * No-op when a required parameter is missing (the GET/regenerate endpoints
+ * report exactly what's missing).
  */
-export async function requestKundliGeneration(userId: string): Promise<void> {
+export async function requestKundliGeneration(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<void> {
   const user = await findActiveUserById(userId);
   if (!user) return;
-  const inputs = birthInputsForUser(user);
+  const profile = await resolveProfileContext(user, birthProfileId);
+  const inputs = birthInputsForProfile(profile, user);
   if (!inputs) return; // a required parameter is missing
 
-  const claimed = await claimKundliGeneration(userId, inputs.birthHash);
+  const claimed = await claimKundliGeneration(userId, profile.birthProfileId, inputs.birthHash);
   if (!claimed?.startedAt) return; // another run owns it, or it's already ready for this hash
 
-  await runGeneration(user, inputs, claimed.startedAt);
+  await runGeneration(user, profile, inputs, claimed.startedAt);
 }
 
 export type RegenerateResult =
@@ -343,22 +366,28 @@ export type RegenerateResult =
  * test/regenerate endpoint — it awaits generation so the caller sees the fresh
  * kundli in one request. Reports missing required parameters instead.
  */
-export async function regenerateKundli(userId: string): Promise<RegenerateResult> {
+export async function regenerateKundli(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<RegenerateResult> {
   const user = await findActiveUserById(userId);
   if (!user) return { ok: false, missing: [...KUNDLI_REQUIRED_FIELDS] };
 
-  const missing = missingKundliParams(user);
+  const profile = await resolveProfileContext(user, birthProfileId);
+  const missing = missingKundliParams(profile);
   if (missing.length > 0) return { ok: false, missing };
 
-  const inputs = birthInputsForUser(user);
+  const inputs = birthInputsForProfile(profile, user);
   if (!inputs) return { ok: false, missing: [...KUNDLI_REQUIRED_FIELDS] };
 
-  const claimed = await claimKundliGeneration(userId, inputs.birthHash, { force: true });
+  const claimed = await claimKundliGeneration(userId, profile.birthProfileId, inputs.birthHash, {
+    force: true,
+  });
   if (claimed?.startedAt) {
-    await runGeneration(user, inputs, claimed.startedAt);
+    await runGeneration(user, profile, inputs, claimed.startedAt);
   }
 
-  const row = await findKundliByUserId(userId);
+  const row = await findKundliByUserId(userId, profile.birthProfileId);
   // Row always exists after a claim; fall back defensively.
   return row ? { ok: true, row } : { ok: false, missing: [...KUNDLI_REQUIRED_FIELDS] };
 }
@@ -372,8 +401,11 @@ export function isStaleGenerating(row: KundliRow): boolean {
   );
 }
 
-export async function getKundliForUser(userId: string): Promise<KundliRow | undefined> {
-  return findKundliByUserId(userId);
+export async function getKundliForUser(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<KundliRow | undefined> {
+  return findKundliByUserId(userId, birthProfileId);
 }
 
 /**
@@ -449,11 +481,12 @@ async function runHouseInsightGeneration(
       chart: kundli.chartData,
       dasha: kundli.dashaData,
     });
-    await markHouseInsightReady(userId, house, claimedAt, result);
+    await markHouseInsightReady(userId, kundli.birthProfileId, house, claimedAt, result);
   } catch (err) {
     logger.error({ err, userId, house }, 'house insight generation failed');
     await markHouseInsightFailed(
       userId,
+      kundli.birthProfileId,
       house,
       claimedAt,
       err instanceof Error ? err.message : String(err),
@@ -466,14 +499,16 @@ async function runHouseInsightGeneration(
  * single bounded attempt (no retry-forever loop; a user re-opening the house
  * drawer naturally retries), same as horoscope's on-demand weekly/monthly
  * periods. No-op (returns 'skipped') if another run already owns the claim
- * or a ready row already exists.
+ * or a ready row already exists. `kundli.birthProfileId` (not a separate
+ * parameter) identifies which profile this insight belongs to — the passed
+ * `kundli` row is always the profile-scoped one the caller already resolved.
  */
 export async function requestHouseInsightGeneration(
   userId: string,
   house: number,
   kundli: KundliRow,
 ): Promise<'generated' | 'skipped'> {
-  const claimed = await claimHouseInsightGeneration(userId, house);
+  const claimed = await claimHouseInsightGeneration(userId, kundli.birthProfileId, house);
   if (!claimed?.startedAt) return 'skipped';
   await runHouseInsightGeneration(userId, house, kundli, claimed.startedAt);
   return 'generated';
@@ -513,7 +548,13 @@ export async function toHouseInsightDtoForLanguage(
       { text: row.text ?? '', strengths: row.strengths ?? [], weaknesses: row.weaknesses ?? [] },
       language,
     );
-    await saveHouseInsightTranslation(row.userId, row.house, language, translated);
+    await saveHouseInsightTranslation(
+      row.userId,
+      row.house,
+      language,
+      translated,
+      row.birthProfileId,
+    );
     return { ...dto, ...translated };
   } catch (err) {
     logger.warn(
