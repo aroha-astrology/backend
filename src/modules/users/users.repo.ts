@@ -329,6 +329,7 @@ export async function listUsersPage(limit: number, offset: number) {
       displayName: users.displayName,
       phoneE164: users.phoneE164,
       email: users.email,
+      walletBalancePaise: users.walletBalancePaise,
       createdAt: users.createdAt,
     })
     .from(users)

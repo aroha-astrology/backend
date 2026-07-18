@@ -10,6 +10,7 @@ import {
 import { findActiveUserById } from '../users/users.repo.js';
 import { logger } from '../../lib/logger.js';
 import { verifyGooglePlayPurchase, consumeGooglePlayPurchase } from './google-play-verifier.js';
+import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
 
 /**
  * Fixed top-up catalog. Each entry is a 1:1 top-up (pay this amount, wallet
@@ -187,6 +188,18 @@ export async function confirmGooglePlayPurchase(
   } catch (err) {
     logger.warn({ err, purchaseToken, productId }, 'Failed to consume Google Play purchase');
   }
+
+  // Fresh grant only (not the idempotent-replay/already-paid branches above) —
+  // avoids sending a duplicate admin notification if this call gets retried.
+  const buyer = await findActiveUserById(userId);
+  notifyWalletTopUp({
+    userId,
+    contact: buyer?.phoneE164 ?? buyer?.email ?? null,
+    amountPaise: order.finalAmountPaise,
+    newBalancePaise: result.walletBalancePaise,
+  }).catch((err) =>
+    logger.warn({ err, userId }, 'Failed to send wallet top-up Telegram notification'),
+  );
 
   return result;
 }
