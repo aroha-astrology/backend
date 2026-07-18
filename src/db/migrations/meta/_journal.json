@@ -169,6 +169,13 @@
       "when": 1784261286830,
       "tag": "0023_security_hardening_2026_07_17",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784369032295,
+      "tag": "0024_credits_to_wallet_balance",
+      "breakpoints": true
     }
   ]
 }
