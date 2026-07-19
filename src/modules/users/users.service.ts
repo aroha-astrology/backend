@@ -326,65 +326,14 @@ export async function updateMe(
   const patch = buildPatch(body);
   const consentLogs = body.consent ? applyConsent(body.consent, patch, userId, ctx) : [];
 
-  // Referral Bonus logic: if they are setting a referredByCode for the first time
+  // Referral code validated up front (before the patch commits) so an unknown/self
+  // code is rejected outright rather than silently saved with no bonus ever applied.
+  let referrer: UserRow | undefined;
   if (patch.referredByCode && !current.referredByCode) {
-    const referrer = await findUserByReferralCode(patch.referredByCode);
-    if (referrer && referrer.id !== current.id) {
-      const bonusApplied = await applyReferralBonus(referrer.id, current.id);
-      if (bonusApplied) {
-        // Insert notifications for both users
-        await db.insert(notifications).values([
-          {
-            userId: referrer.id,
-            title: 'Referral Bonus!',
-            body: 'A friend signed up using your code. You earned ₹50!',
-            type: 'referral_bonus',
-          },
-          {
-            userId: current.id,
-            title: 'Welcome Bonus!',
-            body: 'You earned ₹50 for signing up with a referral code!',
-            type: 'referral_bonus',
-          },
-        ]);
-
-        // Dispatch Push Notifications
-        const pushTitle = 'Referral Bonus!';
-        const pushBodyRef = 'A friend signed up using your code. You earned ₹50!';
-        const pushBodyNew = 'You earned ₹50 for signing up with a referral code!';
-
-        try {
-          const referrerTokens = await db
-            .select({ token: devicePushTokens.token })
-            .from(devicePushTokens)
-            .where(
-              and(eq(devicePushTokens.userId, referrer.id), isNull(devicePushTokens.revokedAt)),
-            );
-          if (referrerTokens.length > 0) {
-            await sendPushBatch(
-              referrerTokens.map((t) => t.token),
-              pushTitle,
-              pushBodyRef,
-            );
-          }
-
-          const currentTokens = await db
-            .select({ token: devicePushTokens.token })
-            .from(devicePushTokens)
-            .where(
-              and(eq(devicePushTokens.userId, current.id), isNull(devicePushTokens.revokedAt)),
-            );
-          if (currentTokens.length > 0) {
-            await sendPushBatch(
-              currentTokens.map((t) => t.token),
-              'Welcome Bonus!',
-              pushBodyNew,
-            );
-          }
-        } catch (err) {
-          logger.error({ err, userId: current.id }, 'Failed to send referral push notifications');
-        }
-      }
+    referrer = await findUserByReferralCode(patch.referredByCode);
+    if (!referrer || referrer.id === current.id) {
+      referrer = undefined;
+      patch.referredByCode = null;
     }
   }
 
@@ -411,6 +360,62 @@ export async function updateMe(
     throw err;
   }
   if (!next) throw Errors.notFound('User not found');
+
+  // Referral bonus is granted only now that referredByCode is durably saved above —
+  // running this before the commit risked double-crediting both parties if a client
+  // retried a request whose patch commit failed for an unrelated reason.
+  if (referrer) {
+    try {
+      const { referrerBonus, refereeBonus } = await applyReferralBonus(referrer.id, current.id);
+      const recipients: { userId: string; title: string; body: string }[] = [];
+      if (referrerBonus) {
+        recipients.push({
+          userId: referrer.id,
+          title: 'Referral Bonus!',
+          body: 'A friend signed up using your code. You earned ₹50!',
+        });
+      }
+      if (refereeBonus) {
+        recipients.push({
+          userId: current.id,
+          title: 'Welcome Bonus!',
+          body: 'You earned ₹50 for signing up with a referral code!',
+        });
+      }
+      if (recipients.length > 0) {
+        await db.insert(notifications).values(
+          recipients.map((r) => ({
+            userId: r.userId,
+            title: r.title,
+            body: r.body,
+            type: 'referral_bonus',
+          })),
+        );
+      }
+      for (const r of recipients) {
+        try {
+          const tokens = await db
+            .select({ token: devicePushTokens.token })
+            .from(devicePushTokens)
+            .where(and(eq(devicePushTokens.userId, r.userId), isNull(devicePushTokens.revokedAt)));
+          if (tokens.length > 0) {
+            await sendPushBatch(
+              tokens.map((t) => t.token),
+              r.title,
+              r.body,
+            );
+          }
+        } catch (err) {
+          logger.error({ err, userId: r.userId }, 'Failed to send referral push notification');
+        }
+      }
+    } catch (err) {
+      logger.error(
+        { err, userId: current.id, referrerId: referrer.id },
+        'Failed to apply referral bonus',
+      );
+    }
+  }
 
   // The natal chart just changed under previously-unlocked houses — their
   // cached insight text no longer matches. Wipe it so it regenerates fresh
