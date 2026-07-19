@@ -269,7 +269,7 @@ export async function unlockHouseForOwnedProfile(
         .where(
           and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, HOUSE_UNLOCK_COST_PAISE)),
         )
-        .returning({ id: users.id });
+        .returning({ walletBalancePaise: users.walletBalancePaise });
       if (!charged) throw new UnlockGuardFailed();
 
       const [unlocked] = await tx
@@ -288,6 +288,13 @@ export async function unlockHouseForOwnedProfile(
         )
         .returning({ id: birthProfiles.id });
       if (!unlocked) throw new UnlockGuardFailed();
+
+      await tx.insert(walletTransactions).values({
+        userId: ownerUserId,
+        delta: -HOUSE_UNLOCK_COST_PAISE,
+        reason: `house_unlock:${houseNumber}:profile:${id}`,
+        balanceAfter: charged.walletBalancePaise,
+      });
 
       return true;
     });

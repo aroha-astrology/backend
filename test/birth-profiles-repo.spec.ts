@@ -277,20 +277,27 @@ describe('unlockHouseForOwnedProfile', () => {
   function setupTransaction(chargedResult: unknown[], unlockedResult: unknown[]) {
     const usersChain = makeUpdateChain(chargedResult);
     const birthProfilesChain = makeUpdateChain(unlockedResult);
+    const insertCalls: { values?: unknown } = {};
+    const insertMock = vi.fn(() => ({
+      values: vi.fn((v: unknown) => {
+        insertCalls.values = v;
+        return Promise.resolve(undefined);
+      }),
+    }));
     const updateMock = vi.fn((table: unknown): FakeUpdateChain => {
       if (table === users) return usersChain.chain;
       if (table === birthProfiles) return birthProfilesChain.chain;
       throw new Error(`unexpected table passed to tx.update: ${String(table)}`);
     });
     state.transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
-      cb({ update: updateMock }),
+      cb({ update: updateMock, insert: insertMock }),
     );
-    return { usersChain, birthProfilesChain, updateMock };
+    return { usersChain, birthProfilesChain, updateMock, insertMock, insertCalls };
   }
 
   it('charges the owner and appends the house when credits suffice and the house is not yet unlocked', async () => {
-    const { usersChain, birthProfilesChain } = setupTransaction(
-      [{ id: 'user-1' }],
+    const { usersChain, birthProfilesChain, insertCalls } = setupTransaction(
+      [{ walletBalancePaise: 40000 }],
       [{ id: 'profile-1' }],
     );
 
@@ -323,6 +330,13 @@ describe('unlockHouseForOwnedProfile', () => {
       'array_append(coalesce("birth_profiles"."unlocked_houses", ARRAY[]::integer[]), $1)',
     );
     expect(appendQuery.params).toEqual([7]);
+
+    expect(insertCalls.values).toEqual({
+      userId: 'user-1',
+      delta: -HOUSE_UNLOCK_COST_PAISE,
+      reason: 'house_unlock:7:profile:profile-1',
+      balanceAfter: 40000,
+    });
   });
 
   it('returns false without touching birth_profiles when the owner has insufficient credits', async () => {
@@ -337,7 +351,7 @@ describe('unlockHouseForOwnedProfile', () => {
   });
 
   it('returns false when the house is already unlocked (or profile not owned / deleted), even though credits were charged in this attempt', async () => {
-    const { updateMock } = setupTransaction([{ id: 'user-1' }], []);
+    const { updateMock } = setupTransaction([{ walletBalancePaise: 40000 }], []);
 
     const result = await unlockHouseForOwnedProfile('profile-1', 'user-1', 7);
 
@@ -347,7 +361,10 @@ describe('unlockHouseForOwnedProfile', () => {
   });
 
   it('guards against double-unlocking the same house — the ANY() membership check is keyed on the exact house number requested', async () => {
-    const { birthProfilesChain } = setupTransaction([{ id: 'user-1' }], [{ id: 'profile-1' }]);
+    const { birthProfilesChain } = setupTransaction(
+      [{ walletBalancePaise: 40000 }],
+      [{ id: 'profile-1' }],
+    );
 
     await unlockHouseForOwnedProfile('profile-1', 'user-1', 3);
 
