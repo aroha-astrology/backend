@@ -50,7 +50,7 @@ vi.mock('../src/lib/llm/vastu.js', () => ({
   translateVastuContent: vi.fn(),
 }));
 
-const { requestVastuAnalysis, askVastuQuestion } =
+const { requestVastuAnalysis, askVastuQuestion, VASTU_COST_PAISE } =
   await import('../src/modules/vastu/vastu.service.js');
 
 function makePlanRow(overrides: Partial<VastuPlanRow> = {}): VastuPlanRow {
@@ -97,6 +97,11 @@ describe('requestVastuAnalysis — birthProfileId wiring', () => {
     });
 
     expect(state.findKundliByUserId).toHaveBeenCalledWith('user-1', 'profile-a');
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(
+      expect.any(String),
+      VASTU_COST_PAISE,
+      'vastu_report',
+    );
   });
 
   it('looks up the primary chart when the active profile IS the primary (birthProfileId: null)', async () => {
@@ -127,5 +132,45 @@ describe('askVastuQuestion — birthProfileId wiring', () => {
     await askVastuQuestion('plan-1', 'user-1', null, 'What about the kitchen?');
 
     expect(state.findKundliByUserId).toHaveBeenCalledWith('user-1', null);
+  });
+});
+
+describe('requestVastuAnalysis — refund on failure', () => {
+  it('refunds the wallet charge with a refund reason when queuing the job fails synchronously', async () => {
+    state.insertPendingPlan.mockRejectedValueOnce(new Error('db insert failed'));
+
+    await expect(
+      requestVastuAnalysis('user-1', null, {
+        roomLayout: { kitchen: ['SE'] },
+        roomDetails: {},
+        language: 'en',
+      }),
+    ).rejects.toThrow('db insert failed');
+
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      expect.any(String),
+      VASTU_COST_PAISE,
+      'refund:vastu_report',
+    );
+  });
+
+  it('refunds the wallet charge with a refund reason when the background LLM analysis fails', async () => {
+    state.generateVastuAnalysis.mockRejectedValueOnce(new Error('llm failed'));
+
+    await requestVastuAnalysis('user-1', null, {
+      roomLayout: { kitchen: ['SE'] },
+      roomDetails: {},
+      language: 'en',
+    });
+
+    // processAnalysis runs in the background (fire-and-forget), so the refund
+    // happens asynchronously after requestVastuAnalysis has already resolved.
+    await vi.waitFor(() => {
+      expect(state.addWalletBalance).toHaveBeenCalledWith(
+        expect.any(String),
+        VASTU_COST_PAISE,
+        'refund:vastu_report',
+      );
+    });
   });
 });
