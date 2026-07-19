@@ -370,17 +370,32 @@ export async function listUsersPage(limit: number, offset: number) {
 /** Cost in paise to unlock one kundli house's detail view (Rs 50 = 5 credits at the old rate). Reused by `unlockHouseForOwnedProfile` (birth-profiles.repo.ts) for the additional-profile case. */
 export const HOUSE_UNLOCK_COST_PAISE = 5000;
 
-export async function unlockHouseForUser(userId: string, houseNumber: number) {
-  const result = await db.execute(sql`
-    UPDATE users
-    SET wallet_balance_paise = wallet_balance_paise - ${HOUSE_UNLOCK_COST_PAISE},
-        unlocked_houses = array_append(unlocked_houses, ${houseNumber})
-    WHERE id = ${userId}
-      AND wallet_balance_paise >= ${HOUSE_UNLOCK_COST_PAISE}
-      AND NOT (${houseNumber} = ANY(unlocked_houses))
-    RETURNING *;
-  `);
-  return result.length > 0;
+export async function unlockHouseForUser(userId: string, houseNumber: number): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [unlocked] = await tx
+      .update(users)
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} - ${HOUSE_UNLOCK_COST_PAISE}`,
+        unlockedHouses: sql`array_append(${users.unlockedHouses}, ${houseNumber})`,
+      })
+      .where(
+        and(
+          eq(users.id, userId),
+          gte(users.walletBalancePaise, HOUSE_UNLOCK_COST_PAISE),
+          sql`NOT (${houseNumber} = ANY(${users.unlockedHouses}))`,
+        ),
+      )
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!unlocked) return false;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: -HOUSE_UNLOCK_COST_PAISE,
+      reason: `house_unlock:${houseNumber}`,
+      balanceAfter: unlocked.walletBalancePaise,
+    });
+    return true;
+  });
 }
 
 /** Cost in paise to unlock the full gemstone report (whole report, one-time). Rs 100 = 10 credits at the old rate. */

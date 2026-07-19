@@ -12,9 +12,9 @@ vi.mock('../src/config/db.js', () => {
 });
 
 import { walletTransactions } from '../src/db/schema.js';
-/* eslint-disable @typescript-eslint/no-unused-vars -- unlockHouseForUser/unlockGemstoneForUser/
- * HOUSE_UNLOCK_COST_PAISE/GEMSTONE_UNLOCK_COST_PAISE aren't exercised by this task's tests yet;
- * later payment-history plan tasks (4-5) append describe blocks to this same file that use them. */
+/* eslint-disable @typescript-eslint/no-unused-vars -- unlockGemstoneForUser/GEMSTONE_UNLOCK_COST_PAISE
+ * aren't exercised by this task's tests yet; a later payment-history plan task (5) appends a
+ * describe block to this same file that uses them. */
 import {
   deductWalletBalance,
   addWalletBalance,
@@ -124,5 +124,32 @@ describe('addWalletBalance', () => {
       reason: 'refund:chat_message',
       balanceAfter: 10000,
     });
+  });
+});
+
+describe('unlockHouseForUser', () => {
+  it('charges, appends the house, and logs a house_unlock ledger row', async () => {
+    const { updateChain, insertChain } = setupTransaction([{ walletBalancePaise: 45000 }]);
+
+    const result = await unlockHouseForUser('user-1', 7);
+
+    expect(result).toBe(true);
+    const query = compile(updateChain.calls.where);
+    expect(query.params).toEqual(['user-1', HOUSE_UNLOCK_COST_PAISE, 7]);
+    expect(insertChain.calls.values).toEqual({
+      userId: 'user-1',
+      delta: -HOUSE_UNLOCK_COST_PAISE,
+      reason: 'house_unlock:7',
+      balanceAfter: 45000,
+    });
+  });
+
+  it('returns false and writes no ledger row when the guard fails', async () => {
+    const { insertMock } = setupTransaction([]);
+
+    const result = await unlockHouseForUser('user-1', 7);
+
+    expect(result).toBe(false);
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });
