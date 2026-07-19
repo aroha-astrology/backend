@@ -9,7 +9,7 @@ import {
   CheckoutBodySchema,
   OrderSchema,
   OrderIdParamSchema,
-  OrdersResponseSchema,
+  TransactionsResponseSchema,
   ConfirmOrderResponseSchema,
   ConfirmGooglePlayBodySchema,
 } from './billing.schemas.js';
@@ -19,7 +19,7 @@ import {
   checkout,
   confirmPayment,
   confirmGooglePlayPurchase,
-  listOrders,
+  listTransactions,
   toOrderDto,
 } from './billing.service.js';
 
@@ -174,28 +174,29 @@ billingRouter.openapi(checkoutRoute, async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* GET /billing/orders                                                        */
+/* GET /billing/transactions                                                  */
 /* -------------------------------------------------------------------------- */
 
-const ordersRoute = createRoute({
+const transactionsRoute = createRoute({
   method: 'get',
-  path: '/billing/orders',
+  path: '/billing/transactions',
   tags: ['Billing'],
-  summary: "The authenticated user's own recharge/order history, most recent first",
+  summary:
+    "The authenticated user's full payment history — recharges plus every spend and refund — most recent first",
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
-      description: 'Order history',
-      content: { 'application/json': { schema: OrdersResponseSchema } },
+      description: 'Payment history',
+      content: { 'application/json': { schema: TransactionsResponseSchema } },
     },
     401: errorResponse('Unauthorized'),
   },
 });
 
-billingRouter.openapi(ordersRoute, async (c) => {
+billingRouter.openapi(transactionsRoute, async (c) => {
   const user = c.get('user');
-  const orders = await listOrders(user.id);
-  return c.json({ orders }, 200);
+  const transactions = await listTransactions(user.id);
+  return c.json({ transactions }, 200);
 });
 
 /* -------------------------------------------------------------------------- */
