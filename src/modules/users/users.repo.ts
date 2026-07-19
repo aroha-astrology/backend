@@ -237,15 +237,6 @@ export async function applyReferralBonus(referrerId: string, refereeId: string):
   });
 }
 
-/** Get user wallet transactions */
-export async function getTransactionsForUser(userId: string) {
-  return db
-    .select()
-    .from(walletTransactions)
-    .where(eq(walletTransactions.userId, userId))
-    .orderBy(desc(walletTransactions.createdAt));
-}
-
 /** Get user notifications */
 export async function getNotificationsForUser(userId: string) {
   return db

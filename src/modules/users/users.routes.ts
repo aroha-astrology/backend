@@ -3,12 +3,7 @@ import crypto from 'node:crypto';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { updateUserById } from './users.repo.js';
-import {
-  UpdateMeBodySchema,
-  UserSchema,
-  NotificationSchema,
-  TransactionSchema,
-} from './users.schemas.js';
+import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
 import {
   deleteMe,
   toUserDto,
@@ -16,7 +11,6 @@ import {
   unlockHouse,
   unlockGemstone,
   getNotifications,
-  getTransactions,
   markNotificationsRead,
 } from './users.service.js';
 
@@ -165,22 +159,6 @@ const markNotificationsReadRoute = createRoute({
   },
 });
 
-const getTransactionsRoute = createRoute({
-  method: 'get',
-  path: '/me/transactions',
-  tags: ['Users'],
-  summary: 'Get user wallet transactions',
-  security: [{ bearerAuth: [] }],
-  middleware: [requireUser] as const,
-  responses: {
-    200: {
-      description: 'List of transactions',
-      content: { 'application/json': { schema: z.array(TransactionSchema) } },
-    },
-    401: errorResponse('Unauthorized'),
-  },
-});
-
 usersRouter.openapi(getMeRoute, async (c) => {
   const user = c.get('user');
 
@@ -236,10 +214,4 @@ usersRouter.openapi(markNotificationsReadRoute, async (c) => {
   const user = c.get('user');
   await markNotificationsRead(user.id);
   return c.json({ success: true }, 200);
-});
-
-usersRouter.openapi(getTransactionsRoute, async (c) => {
-  const user = c.get('user');
-  const transactions = await getTransactions(user.id);
-  return c.json(transactions, 200);
 });

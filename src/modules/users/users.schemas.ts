@@ -284,16 +284,6 @@ export const NotificationSchema = z
   })
   .openapi('Notification');
 
-export const TransactionSchema = z
-  .object({
-    id: z.string().uuid(),
-    delta: z.number().int(),
-    reason: z.string(),
-    balanceAfter: z.number().int(),
-    createdAt: z.string(),
-  })
-  .openapi('Transaction');
-
 /* -------------------------------------------------------------------------- */
 /* Consent input (translated to timestamps + audit log by the service)         */
 /* -------------------------------------------------------------------------- */

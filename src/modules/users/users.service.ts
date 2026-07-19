@@ -23,7 +23,6 @@ import {
   findUserByReferralCode,
   applyReferralBonus,
   getNotificationsForUser,
-  getTransactionsForUser,
   markNotificationsRead as markUserNotificationsRead,
 } from './users.repo.js';
 import { db } from '../../config/db.js';
@@ -544,15 +543,4 @@ export async function getNotifications(userId: string) {
 
 export async function markNotificationsRead(userId: string) {
   await markUserNotificationsRead(userId);
-}
-
-export async function getTransactions(userId: string) {
-  const rows = await getTransactionsForUser(userId);
-  return rows.map((r) => ({
-    id: r.id,
-    delta: r.delta,
-    reason: r.reason,
-    balanceAfter: r.balanceAfter,
-    createdAt: r.createdAt.toISOString(),
-  }));
 }
