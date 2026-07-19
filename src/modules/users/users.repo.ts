@@ -407,15 +407,30 @@ export const GEMSTONE_UNLOCK_COST_PAISE = 10000;
  * if the user has too little balance OR the report is already unlocked, so a
  * second click can never double-charge.
  */
-export async function unlockGemstoneForUser(userId: string) {
-  const result = await db.execute(sql`
-    UPDATE users
-    SET wallet_balance_paise = wallet_balance_paise - ${GEMSTONE_UNLOCK_COST_PAISE},
-        gemstone_unlocked_at = now()
-    WHERE id = ${userId}
-      AND wallet_balance_paise >= ${GEMSTONE_UNLOCK_COST_PAISE}
-      AND gemstone_unlocked_at IS NULL
-    RETURNING *;
-  `);
-  return result.length > 0;
+export async function unlockGemstoneForUser(userId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [unlocked] = await tx
+      .update(users)
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} - ${GEMSTONE_UNLOCK_COST_PAISE}`,
+        gemstoneUnlockedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(users.id, userId),
+          gte(users.walletBalancePaise, GEMSTONE_UNLOCK_COST_PAISE),
+          isNull(users.gemstoneUnlockedAt),
+        ),
+      )
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!unlocked) return false;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: -GEMSTONE_UNLOCK_COST_PAISE,
+      reason: 'gemstone_unlock',
+      balanceAfter: unlocked.walletBalancePaise,
+    });
+    return true;
+  });
 }

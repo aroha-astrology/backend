@@ -12,9 +12,6 @@ vi.mock('../src/config/db.js', () => {
 });
 
 import { walletTransactions } from '../src/db/schema.js';
-/* eslint-disable @typescript-eslint/no-unused-vars -- unlockGemstoneForUser/GEMSTONE_UNLOCK_COST_PAISE
- * aren't exercised by this task's tests yet; a later payment-history plan task (5) appends a
- * describe block to this same file that uses them. */
 import {
   deductWalletBalance,
   addWalletBalance,
@@ -23,7 +20,6 @@ import {
   HOUSE_UNLOCK_COST_PAISE,
   GEMSTONE_UNLOCK_COST_PAISE,
 } from '../src/modules/users/users.repo.js';
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 const dialect = new PgDialect();
 
@@ -151,5 +147,21 @@ describe('unlockHouseForUser', () => {
 
     expect(result).toBe(false);
     expect(insertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('unlockGemstoneForUser', () => {
+  it('charges, flips the flag, and logs a gemstone_unlock ledger row', async () => {
+    const { insertChain } = setupTransaction([{ walletBalancePaise: 90000 }]);
+
+    const result = await unlockGemstoneForUser('user-1');
+
+    expect(result).toBe(true);
+    expect(insertChain.calls.values).toEqual({
+      userId: 'user-1',
+      delta: -GEMSTONE_UNLOCK_COST_PAISE,
+      reason: 'gemstone_unlock',
+      balanceAfter: 90000,
+    });
   });
 });
