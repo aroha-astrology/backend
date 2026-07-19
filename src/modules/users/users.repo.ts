@@ -167,8 +167,16 @@ export async function addWalletBalance(userId: string, amountPaise: number): Pro
   `);
 }
 
-/** Atomically apply the referral bonus to both referrer and referee, keeping track of the cap. */
-export async function applyReferralBonus(referrerId: string, refereeId: string): Promise<boolean> {
+/**
+ * Atomically apply the referral bonus. The referee (whoever redeemed a code) always
+ * gets their one-time ₹50 for a valid, not-self code — the ₹2000 cap only limits how
+ * much the REFERRER can earn from referring others, so a referrer hitting their cap
+ * doesn't cost the new signup their welcome bonus.
+ */
+export async function applyReferralBonus(
+  referrerId: string,
+  refereeId: string,
+): Promise<{ referrerBonus: boolean; refereeBonus: boolean }> {
   const BONUS_PAISE = 5000;
   const CAP_PAISE = 200000;
 
@@ -178,36 +186,34 @@ export async function applyReferralBonus(referrerId: string, refereeId: string):
       SELECT referral_earnings_paise FROM users WHERE id = ${referrerId} FOR UPDATE;
     `);
 
-    if (!referrer || referrer.referral_earnings_paise >= CAP_PAISE) {
-      return false; // Cap reached, no bonus
+    const referrerBonus = !!referrer && referrer.referral_earnings_paise < CAP_PAISE;
+
+    if (referrerBonus) {
+      await tx.execute(sql`
+        UPDATE users
+        SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE},
+            referral_earnings_paise = referral_earnings_paise + ${BONUS_PAISE}
+        WHERE id = ${referrerId};
+      `);
+      await tx.execute(sql`
+        INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
+        VALUES (${referrerId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${referrerId}));
+      `);
     }
 
-    // Update referrer
+    // Referee's one-time welcome bonus for redeeming a valid code — unconditional,
+    // independent of the referrer's cap.
     await tx.execute(sql`
-      UPDATE users 
-      SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE},
-          referral_earnings_paise = referral_earnings_paise + ${BONUS_PAISE}
-      WHERE id = ${referrerId};
-    `);
-
-    // Update referee
-    await tx.execute(sql`
-      UPDATE users 
-      SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE},
-          referral_earnings_paise = referral_earnings_paise + ${BONUS_PAISE}
+      UPDATE users
+      SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE}
       WHERE id = ${refereeId};
     `);
-
-    // Ensure wallet_transactions table uses exact schema
-    // Since we don't have the generated types for wallet_transactions imported, we can just execute SQL or import it.
     await tx.execute(sql`
       INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
-      VALUES 
-      (${referrerId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${referrerId})),
-      (${refereeId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${refereeId}));
+      VALUES (${refereeId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${refereeId}));
     `);
 
-    return true;
+    return { referrerBonus, refereeBonus: true };
   });
 }
 
