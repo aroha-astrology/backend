@@ -1,4 +1,4 @@
-import { and, desc, eq, not, like, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, not, like, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -35,6 +35,18 @@ export async function insertOrder(values: NewOrderRow): Promise<OrderRow> {
   const [row] = await db.insert(orders).values(values).returning();
   if (!row) throw new Error('Failed to insert order');
   return row;
+}
+
+/** Sum + count of paid orders since local midnight — powers the Telegram /stats revenue line. */
+export async function sumPaidOrdersToday(): Promise<{ totalPaise: number; count: number }> {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const [res] = await db
+    .select({ total: sql<number>`coalesce(sum(${orders.finalAmountPaise}), 0)`, count: count() })
+    .from(orders)
+    .where(and(eq(orders.status, 'paid'), gte(orders.paidAt, startOfDay)));
+  return { totalPaise: Number(res?.total ?? 0), count: res?.count ?? 0 };
 }
 
 export async function findOrderByIdForUser(

@@ -438,6 +438,27 @@ export async function countNewUsersToday(): Promise<number> {
   return res?.count ?? 0;
 }
 
+export async function countNewUsersThisWeek(): Promise<number> {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.createdAt, sevenDaysAgo)));
+  return res?.count ?? 0;
+}
+
+/** Sum of every active user's wallet balance — the platform's outstanding liability. */
+export async function sumWalletBalanceOutstanding(): Promise<number> {
+  const [res] = await db
+    .select({ total: sql<number>`coalesce(sum(${users.walletBalancePaise}), 0)` })
+    .from(users)
+    .where(isNull(users.deletedAt));
+  return Number(res?.total ?? 0);
+}
+
 export async function listUsersPage(limit: number, offset: number) {
   const rows = await db
     .select({

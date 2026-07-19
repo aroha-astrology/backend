@@ -8,11 +8,26 @@ const state = vi.hoisted(() => ({
   listActiveCoupons: vi.fn(),
   insertCoupon: vi.fn(),
   logTelegramAdminAction: vi.fn().mockResolvedValue(undefined),
+  countNewUsersToday: vi.fn().mockResolvedValue(0),
+  countNewUsersThisWeek: vi.fn().mockResolvedValue(0),
+  sumWalletBalanceOutstanding: vi.fn().mockResolvedValue(0),
+  sumPaidOrdersToday: vi.fn().mockResolvedValue({ totalPaise: 0, count: 0 }),
+  findUserByPhoneE164: vi.fn(),
+  findActiveUserById: vi.fn(),
+  addWalletBalance: vi.fn().mockResolvedValue(undefined),
+  deductWalletBalance: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
   countUsers: state.countUsers,
   listUsersPage: state.listUsersPage,
+  countNewUsersToday: state.countNewUsersToday,
+  countNewUsersThisWeek: state.countNewUsersThisWeek,
+  sumWalletBalanceOutstanding: state.sumWalletBalanceOutstanding,
+  findUserByPhoneE164: state.findUserByPhoneE164,
+  findActiveUserById: state.findActiveUserById,
+  addWalletBalance: state.addWalletBalance,
+  deductWalletBalance: state.deductWalletBalance,
 }));
 
 vi.mock('../src/modules/telegram-bot/telegram-bot.repo.js', () => ({
@@ -22,6 +37,7 @@ vi.mock('../src/modules/telegram-bot/telegram-bot.repo.js', () => ({
 vi.mock('../src/modules/billing/billing.repo.js', () => ({
   listActiveCoupons: state.listActiveCoupons,
   insertCoupon: state.insertCoupon,
+  sumPaidOrdersToday: state.sumPaidOrdersToday,
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', async (importOriginal) => {
@@ -37,7 +53,7 @@ vi.mock('../src/config/env.js', () => ({
     TELEGRAM_WEBHOOK_SECRET: 'test-secret',
     TELEGRAM_ALERT_CHAT_ID: '12345',
     TELEGRAM_ADMIN_CHAT_IDS: ['67890'],
-    TELEGRAM_READONLY_CHAT_IDS: [],
+    TELEGRAM_READONLY_CHAT_IDS: ['11111'],
     LOG_LEVEL: 'silent',
     CORS_ORIGINS: [],
   },
@@ -294,5 +310,145 @@ describe('POST /internal/telegram/webhook', () => {
     const reply = state.sendMessage.mock.calls[0][0];
     expect(reply).toContain('SUMMER20');
     expect(reply.toLowerCase()).toContain('already exists');
+  });
+
+  it('handles /stats with the full metric set', async () => {
+    state.countUsers.mockResolvedValue(1234);
+    state.countNewUsersToday.mockResolvedValue(12);
+    state.countNewUsersThisWeek.mockResolvedValue(58);
+    state.sumPaidOrdersToday.mockResolvedValue({ totalPaise: 450000, count: 18 });
+    state.sumWalletBalanceOutstanding.mockResolvedValue(12345600);
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 12345 }, text: '/stats' } }),
+    });
+    expect(res.status).toBe(200);
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply).toContain('1234');
+    expect(reply).toContain('12');
+    expect(reply).toContain('58');
+    expect(reply).toContain('18');
+    expect(reply).toContain('4500');
+    expect(reply).toContain('123456');
+  });
+
+  it('grants money with /money +phone amount', async () => {
+    state.findUserByPhoneE164.mockResolvedValue({
+      id: 'u1',
+      displayName: 'Test User',
+      walletBalancePaise: 10000,
+    });
+    state.findActiveUserById.mockResolvedValue({ walletBalancePaise: 35000 });
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({
+        message: { chat: { id: 12345 }, text: '/money +919999999999 250' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.findUserByPhoneE164).toHaveBeenCalledWith('+919999999999');
+    expect(state.addWalletBalance).toHaveBeenCalledWith('u1', 25000, 'admin_grant');
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply).toContain('Added');
+    expect(reply).toContain('Test User');
+    expect(reply).toContain('350');
+  });
+
+  it('deducts money with a negative amount via /money', async () => {
+    state.findUserByPhoneE164.mockResolvedValue({
+      id: 'u1',
+      displayName: 'Test User',
+      walletBalancePaise: 50000,
+    });
+    state.deductWalletBalance.mockResolvedValue(true);
+    state.findActiveUserById.mockResolvedValue({ walletBalancePaise: 45000 });
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({
+        message: { chat: { id: 12345 }, text: '/money +919999999999 -50' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('u1', 5000, 'admin_deduction');
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply).toContain('Deducted');
+  });
+
+  it('rejects /money deduction when balance is insufficient', async () => {
+    state.findUserByPhoneE164.mockResolvedValue({
+      id: 'u1',
+      displayName: 'Test User',
+      walletBalancePaise: 1000,
+    });
+    state.deductWalletBalance.mockResolvedValue(false);
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({
+        message: { chat: { id: 12345 }, text: '/money +919999999999 -50' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply.toLowerCase()).toContain('cannot deduct');
+    expect(state.findActiveUserById).not.toHaveBeenCalled();
+  });
+
+  it('replies with "no user found" for /money on an unknown phone', async () => {
+    state.findUserByPhoneE164.mockResolvedValue(undefined);
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({
+        message: { chat: { id: 12345 }, text: '/money +910000000000 250' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply.toLowerCase()).toContain('no user found');
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('shows usage for /money with missing args', async () => {
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 12345 }, text: '/money +919999999999' } }),
+    });
+    expect(res.status).toBe(200);
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply.toLowerCase()).toContain('usage');
+    expect(state.findUserByPhoneE164).not.toHaveBeenCalled();
+  });
+
+  it('rejects /money from a readonly-tier chat', async () => {
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({
+        message: { chat: { id: 11111 }, text: '/money +919999999999 250' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.findUserByPhoneE164).not.toHaveBeenCalled();
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply.toLowerCase()).toContain('admin access');
   });
 });

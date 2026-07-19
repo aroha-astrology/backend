@@ -3,12 +3,17 @@ import {
   listUsersPage,
   hardDeleteUserById,
   countNewUsersToday,
+  countNewUsersThisWeek,
+  sumWalletBalanceOutstanding,
   findUserByEmail,
   findUserByPhoneE164,
+  findActiveUserById,
+  addWalletBalance,
+  deductWalletBalance,
 } from '../users/users.repo.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
-import { listActiveCoupons, insertCoupon } from '../billing/billing.repo.js';
+import { listActiveCoupons, insertCoupon, sumPaidOrdersToday } from '../billing/billing.repo.js';
 import { escapeMarkdown } from '../../lib/notifications/telegram.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
@@ -63,9 +68,61 @@ export async function cmdDeleteUser(idArg: string | undefined): Promise<string> 
 }
 
 export async function cmdStats(): Promise<string> {
-  const [totalUsers, newUsers] = await Promise.all([countUsers(), countNewUsersToday()]);
+  const [totalUsers, newUsersToday, newUsersWeek, revenue, outstanding] = await Promise.all([
+    countUsers(),
+    countNewUsersToday(),
+    countNewUsersThisWeek(),
+    sumPaidOrdersToday(),
+    sumWalletBalanceOutstanding(),
+  ]);
 
-  return `*App Stats*\n\nTotal Users: ${totalUsers}\nNew Users Today: ${newUsers}\n\n\\(More stats can be added here\\)`;
+  return (
+    `*App Stats*\n\n` +
+    `Total Users: ${totalUsers}\n` +
+    `New Users Today: ${newUsersToday}\n` +
+    `New Users This Week: ${newUsersWeek}\n\n` +
+    `Revenue Today: ${escapeMarkdown(formatRupees(revenue.totalPaise))} \\(${revenue.count} order${revenue.count === 1 ? '' : 's'}\\)\n` +
+    `Outstanding Wallet Balance: ${escapeMarkdown(formatRupees(outstanding))}`
+  );
+}
+
+const MONEY_USAGE =
+  'Usage: /money <phone> <amount> — e.g. /money +919999999999 250 (negative amount to deduct)';
+
+/** Admin-only wallet top-up/deduction, keyed by phone — the real prod credit-grant path. */
+export async function cmdMoney(args: string[]): Promise<string> {
+  const [phone, amountArg] = args;
+  if (!phone || !amountArg) return escapeMarkdown(MONEY_USAGE);
+
+  const amount = Number(amountArg);
+  if (!Number.isFinite(amount) || amount === 0) {
+    return escapeMarkdown('Amount must be a non-zero number of rupees, e.g. 250 or -50.');
+  }
+
+  const user = await findUserByPhoneE164(phone);
+  if (!user) return escapeMarkdown(`No user found with phone: ${phone}`);
+
+  const amountPaise = Math.round(Math.abs(amount) * 100);
+  const name = escapeMarkdown(user.displayName || phone);
+  const amountStr = escapeMarkdown(`₹${Math.abs(amount)}`);
+
+  if (amount > 0) {
+    await addWalletBalance(user.id, amountPaise, 'admin_grant');
+  } else {
+    const ok = await deductWalletBalance(user.id, amountPaise, 'admin_deduction');
+    if (!ok) {
+      return escapeMarkdown(
+        `Cannot deduct ₹${Math.abs(amount)} from ${user.displayName || phone} — balance is only ${formatRupees(user.walletBalancePaise)}.`,
+      );
+    }
+  }
+
+  const updated = await findActiveUserById(user.id);
+  const newBalance = escapeMarkdown(formatRupees(updated?.walletBalancePaise ?? 0));
+  const verb = amount > 0 ? 'Added' : 'Deducted';
+  const prep = amount > 0 ? 'to' : 'from';
+
+  return `${verb} ${amountStr} ${prep} *${name}* \\(${escapeMarkdown(phone)}\\)\nNew balance: ${newBalance}`;
 }
 
 export async function cmdSearch(query: string | undefined): Promise<string> {

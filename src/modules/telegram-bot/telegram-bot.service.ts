@@ -11,12 +11,13 @@ import {
   cmdBroadcast,
   cmdCoupons,
   cmdNewCoupon,
+  cmdMoney,
 } from './telegram-bot.commands.js';
 
 type Tier = 'admin' | 'readonly';
 
 /** Commands only the 'admin' tier may run — every mutating/destructive one. */
-const ADMIN_ONLY_COMMANDS = new Set(['/delete', '/broadcast', '/newcoupon']);
+const ADMIN_ONLY_COMMANDS = new Set(['/delete', '/broadcast', '/newcoupon', '/money']);
 
 function resolveTier(chatId: string): Tier | null {
   const adminIds = new Set(
@@ -61,7 +62,7 @@ export async function handleUpdate(update: unknown): Promise<void> {
     case '/start':
     case '/help':
       reply = escapeMarkdown(
-        `Available commands:\n/stats - App health\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user (admin only)\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification (admin only)\n/coupons - List active coupons\n/newcoupon [code] [percent] [value] [maxUses] [expireDays] - Create a coupon (admin only)`,
+        `Available commands:\n/stats - App health\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user (admin only)\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification (admin only)\n/coupons - List active coupons\n/newcoupon [code] [percent] [value] [maxUses] [expireDays] - Create a coupon (admin only)\n/money [phone] [amount] - Add/deduct wallet balance, e.g. /money +919999999999 250 (admin only)`,
       );
       break;
     case '/users':
@@ -90,6 +91,9 @@ export async function handleUpdate(update: unknown): Promise<void> {
       break;
     case '/newcoupon':
       reply = await cmdNewCoupon(args);
+      break;
+    case '/money':
+      reply = await cmdMoney(args);
       break;
     default:
       reply = escapeMarkdown(`Unknown command: ${command}`);
