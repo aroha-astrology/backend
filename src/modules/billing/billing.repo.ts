@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, not, like, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -9,6 +9,7 @@ import {
   type NewCouponRow,
   type OrderRow,
   type NewOrderRow,
+  type WalletTransactionRow,
 } from '../../db/schema.js';
 
 export async function findActiveCouponByCode(code: string): Promise<CouponRow | undefined> {
@@ -55,6 +56,31 @@ export async function findOrdersForUser(userId: string, limit = 50): Promise<Ord
     .from(orders)
     .where(eq(orders.userId, userId))
     .orderBy(desc(orders.createdAt))
+    .limit(limit);
+}
+
+/**
+ * A user's own wallet_transactions rows EXCEPT recharge grants (those are
+ * already represented by `findOrdersForUser`'s `orders` rows, and would be
+ * double-counted here) — every spend and every refund, most recent first.
+ * Filtered by reason prefix rather than `delta < 0` because a refund row has
+ * a POSITIVE delta but still needs to appear; only `purchase:*`-reason rows
+ * are excluded.
+ */
+export async function findDebitsForUser(
+  userId: string,
+  limit = 50,
+): Promise<WalletTransactionRow[]> {
+  return db
+    .select()
+    .from(walletTransactions)
+    .where(
+      and(
+        eq(walletTransactions.userId, userId),
+        not(like(walletTransactions.reason, 'purchase:%')),
+      ),
+    )
+    .orderBy(desc(walletTransactions.createdAt))
     .limit(limit);
 }
 
