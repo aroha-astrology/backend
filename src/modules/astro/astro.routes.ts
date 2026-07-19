@@ -460,7 +460,7 @@ astroRouter.openapi(chatRoute, async (c) => {
   // Refunded below (same fire-and-forget addCredits pattern as
   // vastu.service.ts) if generation throws or comes back with no content —
   // the user shouldn't pay for a question that got no answer.
-  const charged = await deductWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE);
+  const charged = await deductWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'chat_message');
   if (!charged) {
     throw Errors.conflict('Not enough credits to ask a question');
   }
@@ -505,7 +505,9 @@ astroRouter.openapi(chatRoute, async (c) => {
           // Generation "succeeded" with nothing to show (e.g. hit the
           // token ceiling before any content could be flushed) — don't
           // charge for a question that got no answer.
-          await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE).catch(() => {});
+          await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'refund:chat_message').catch(
+            () => {},
+          );
         }
 
         // Save history
@@ -546,7 +548,9 @@ astroRouter.openapi(chatRoute, async (c) => {
       // emit a terminal event (and never leak internals to the client).
       logger.error({ err, userId: user.id }, 'chat stream failed');
       // Don't charge for a question the LLM never actually answered.
-      await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE).catch(() => {});
+      await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'refund:chat_message').catch(
+        () => {},
+      );
       if (!signal.aborted && !stream.aborted) {
         await stream.writeSSE({
           event: 'error',
