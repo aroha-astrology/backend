@@ -12,10 +12,9 @@ vi.mock('../src/config/db.js', () => {
 });
 
 import { walletTransactions } from '../src/db/schema.js';
-/* eslint-disable @typescript-eslint/no-unused-vars -- addWalletBalance/unlockHouseForUser/
- * unlockGemstoneForUser/HOUSE_UNLOCK_COST_PAISE/GEMSTONE_UNLOCK_COST_PAISE aren't exercised by this
- * task's tests yet; later payment-history plan tasks (3-5) append describe blocks to this same file
- * that use them. */
+/* eslint-disable @typescript-eslint/no-unused-vars -- unlockHouseForUser/unlockGemstoneForUser/
+ * HOUSE_UNLOCK_COST_PAISE/GEMSTONE_UNLOCK_COST_PAISE aren't exercised by this task's tests yet;
+ * later payment-history plan tasks (4-5) append describe blocks to this same file that use them. */
 import {
   deductWalletBalance,
   addWalletBalance,
@@ -108,5 +107,22 @@ describe('deductWalletBalance', () => {
 
     expect(result).toBe(false);
     expect(insertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('addWalletBalance', () => {
+  it('increments the balance and logs a positive ledger row', async () => {
+    const { updateChain, insertChain } = setupTransaction([{ walletBalancePaise: 10000 }]);
+
+    await addWalletBalance('user-1', 2000, 'refund:chat_message');
+
+    const query = compile(updateChain.calls.where);
+    expect(query.params).toEqual(['user-1']);
+    expect(insertChain.calls.values).toEqual({
+      userId: 'user-1',
+      delta: 2000,
+      reason: 'refund:chat_message',
+      balanceAfter: 10000,
+    });
   });
 });

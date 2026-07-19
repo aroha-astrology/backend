@@ -161,12 +161,26 @@ export async function deductWalletBalance(
 }
 
 /** Add `amountPaise` back to the wallet (e.g. refunding a charge whose async job failed). */
-export async function addWalletBalance(userId: string, amountPaise: number): Promise<void> {
-  await db.execute(sql`
-    UPDATE users
-    SET wallet_balance_paise = wallet_balance_paise + ${amountPaise}
-    WHERE id = ${userId};
-  `);
+export async function addWalletBalance(
+  userId: string,
+  amountPaise: number,
+  reason: string,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(users)
+      .set({ walletBalancePaise: sql`${users.walletBalancePaise} + ${amountPaise}` })
+      .where(eq(users.id, userId))
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!updated) return;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: amountPaise,
+      reason,
+      balanceAfter: updated.walletBalancePaise,
+    });
+  });
 }
 
 /**
