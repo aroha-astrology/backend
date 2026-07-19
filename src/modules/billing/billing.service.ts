@@ -1,10 +1,11 @@
 import { Errors } from '../../lib/errors.js';
-import type { OrderRow } from '../../db/schema.js';
+import type { OrderRow, WalletTransactionRow } from '../../db/schema.js';
 import {
   findActiveCouponByCode,
   insertOrder,
   findOrderByIdForUser,
   findOrdersForUser,
+  findDebitsForUser,
   findLatestOrderForPack,
   confirmOrderAndGrantCredits,
 } from './billing.repo.js';
@@ -209,6 +210,106 @@ export async function confirmGooglePlayPurchase(
 export async function listOrders(userId: string) {
   const rows = await findOrdersForUser(userId);
   return rows.map(toOrderDto);
+}
+
+type TransactionKind =
+  | 'chat'
+  | 'vastu_report'
+  | 'gemstone_unlock'
+  | 'profile_creation'
+  | 'house_unlock';
+
+/**
+ * Maps a wallet_transactions `reason` string to its display kind. A leading
+ * `refund:` is stripped and reported separately via `isRefund` — the UI
+ * shows one generic "Refund" treatment regardless of what was refunded.
+ * `:profile:<id>` suffixes (owned-profile unlocks) are recognized but not
+ * surfaced — the UI shows the same label whichever profile it was for.
+ */
+export function parseReason(reason: string): {
+  kind: TransactionKind;
+  houseNumber?: number;
+  isRefund: boolean;
+} {
+  const isRefund = reason.startsWith('refund:');
+  const base = isRefund ? reason.slice('refund:'.length) : reason;
+
+  if (base === 'chat_message') return { kind: 'chat', isRefund };
+  if (base === 'vastu_report') return { kind: 'vastu_report', isRefund };
+  if (base === 'profile_creation') return { kind: 'profile_creation', isRefund };
+  if (base === 'gemstone_unlock' || base.startsWith('gemstone_unlock:profile:')) {
+    return { kind: 'gemstone_unlock', isRefund };
+  }
+  const houseMatch = base.match(/^house_unlock:(\d+)(?::profile:.+)?$/);
+  if (houseMatch) {
+    return { kind: 'house_unlock', houseNumber: Number(houseMatch[1]), isRefund };
+  }
+  throw new Error(`unrecognized wallet_transactions reason: ${reason}`);
+}
+
+interface RechargeTransaction {
+  id: string;
+  kind: 'recharge';
+  createdAt: string;
+  amountPaise: number;
+  status: OrderRow['status'];
+}
+
+interface DebitTransaction {
+  id: string;
+  kind: Exclude<TransactionKind, 'house_unlock'>;
+  createdAt: string;
+  amountPaise: number;
+  balanceAfterPaise: number;
+  isRefund: boolean;
+}
+
+interface HouseUnlockTransaction {
+  id: string;
+  kind: 'house_unlock';
+  createdAt: string;
+  amountPaise: number;
+  balanceAfterPaise: number;
+  isRefund: boolean;
+  houseNumber: number;
+}
+
+export type Transaction = RechargeTransaction | DebitTransaction | HouseUnlockTransaction;
+
+function toTransactionDto(row: OrderRow | WalletTransactionRow): Transaction {
+  if ('packId' in row) {
+    return {
+      id: row.id,
+      kind: 'recharge',
+      createdAt: row.createdAt.toISOString(),
+      amountPaise: row.finalAmountPaise,
+      status: row.status,
+    };
+  }
+  const { kind, houseNumber, isRefund } = parseReason(row.reason);
+  const base = {
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+    amountPaise: Math.abs(row.delta),
+    balanceAfterPaise: row.balanceAfter,
+    isRefund,
+  };
+  if (kind === 'house_unlock') {
+    return { ...base, kind, houseNumber: houseNumber as number };
+  }
+  return { ...base, kind };
+}
+
+/** A user's full payment history — recharges plus every spend and refund — most recent first. */
+export async function listTransactions(userId: string, limit = 50): Promise<Transaction[]> {
+  const [orderRows, debitRows] = await Promise.all([
+    findOrdersForUser(userId, limit),
+    findDebitsForUser(userId, limit),
+  ]);
+  return [...orderRows, ...debitRows]
+    .map(toTransactionDto)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, limit);
 }
 
 export function toOrderDto(order: OrderRow) {
