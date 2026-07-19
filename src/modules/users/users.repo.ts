@@ -468,6 +468,7 @@ export async function listUsersPage(limit: number, offset: number) {
       email: users.email,
       walletBalancePaise: users.walletBalancePaise,
       createdAt: users.createdAt,
+      lastActiveAt: users.lastActiveAt,
     })
     .from(users)
     .where(isNull(users.deletedAt))

@@ -39,7 +39,13 @@ export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
     const name = escapeMarkdown(u.displayName || 'No Name');
     const date = escapeMarkdown(u.createdAt.toISOString().split('T')[0]);
     const balance = escapeMarkdown(formatRupees(u.walletBalancePaise));
-    return `• *${name}* \\| ${contact} \\| ${balance} \\| ${date}`;
+    const lastActive = u.lastActiveAt
+      ? escapeMarkdown(u.lastActiveAt.toISOString().split('T')[0])
+      : 'Never';
+    return (
+      `• *${name}* \\| ${contact} \\| ${balance} \\| Joined ${date}\n` +
+      `  ID: \`${u.id}\` \\| Last login: ${lastActive}`
+    );
   });
 
   const nextOffset = offset + PAGE_SIZE;

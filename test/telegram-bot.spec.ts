@@ -128,7 +128,12 @@ describe('POST /internal/telegram/webhook', () => {
   it('handles /users command with pagination', async () => {
     state.countUsers.mockResolvedValue(100);
     state.listUsersPage.mockResolvedValue([
-      { id: 'u1', email: 'test@example.com', createdAt: new Date() },
+      {
+        id: 'u1-uuid',
+        email: 'test@example.com',
+        createdAt: new Date('2026-07-01T00:00:00Z'),
+        lastActiveAt: new Date('2026-07-18T00:00:00Z'),
+      },
     ]);
 
     const app = createApp();
@@ -143,6 +148,25 @@ describe('POST /internal/telegram/webhook', () => {
     expect(state.sendMessage).toHaveBeenCalledTimes(1);
     const reply = state.sendMessage.mock.calls[0][0];
     expect(reply).toContain('test@example');
+    expect(reply).toContain('u1-uuid');
+    expect(reply).toContain('2026\\-07\\-18');
+  });
+
+  it('shows "Never" for /users when a user has no lastActiveAt', async () => {
+    state.countUsers.mockResolvedValue(1);
+    state.listUsersPage.mockResolvedValue([
+      { id: 'u2-uuid', email: 'new@example.com', createdAt: new Date(), lastActiveAt: null },
+    ]);
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 12345 }, text: '/users' } }),
+    });
+    expect(res.status).toBe(200);
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply).toContain('Never');
   });
 
   it('handles /users <offset> command', async () => {
