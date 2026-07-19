@@ -34,7 +34,7 @@ export interface GemstoneResult extends GemstoneNarrative {
 const GROUNDING_RULE =
   'Base every claim only on the strength data provided below. Do not invent planetary positions, dates, or Yogas not present in this data. General guidance is fine; invented specifics are not.';
 const PLAIN_LANGUAGE_RULE =
-  'Write for someone with zero astrology background. Never use untranslated Sanskrit/technical terms (Mahadasha, dignity, combustion, etc.) — say what they MEAN in plain words. Talk about real-life themes, not planetary mechanics.';
+  'Write for someone with zero astrology background. Never use untranslated Sanskrit or dignity-jargon terms — this includes but is not limited to "debilitated", "exalted", "own sign", "enemy sign", "combust", "dignity", "Mahadasha". Say what the placement MEANS for the person\'s life instead of naming the technical condition. Talk about real-life themes (confidence, relationships, career, health, focus), not planetary mechanics.';
 const SAFETY_RULE =
   'These are advisory suggestions, never medical or financial advice and never a guaranteed cure. Never tell the user to buy from anyone. Use tendency language ("may help support"), never absolute promises. Do NOT restate wearing rules, mantras, or precautions — the app shows those separately.';
 
@@ -49,7 +49,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"intro": string, "perGem": [{"planet": string, "note": string}]}
 
 "intro": 2-3 sentences (under 55 words) — a warm overview of what this person's chart suggests about which planetary energies are strong vs. need support, and how gemstones fit in as one gentle, optional tool.
-"perGem": exactly one entry for each of the 9 planets (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, Ketu). Each "note" is 1-2 sentences (under 35 words) saying, in plain language, why this planet's stone is strongly recommended vs. optional for THIS chart (ground it in the strength reason given) and the real-life area it tends to support.
+"perGem": exactly one entry for each of the 9 planets (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, Ketu). Each "note" is 1-2 sentences (under 35 words) and must do two things in plain words: (1) explain WHY this stone matters for THIS person — translate the strength reason given into a plain-language life description (e.g. instead of "debilitated in Cancer", say something like "your drive and confidence could use extra support right now"), and (2) say WHAT IMPROVEMENT wearing it is believed to support in real life (e.g. more confidence, steadier relationships, sharper focus, better health). The app already shows a suitability percentage next to this note, so don't just restate a strength label — explain the why and the benefit in real terms.
 Second person, present tense, conversational. Never generic filler that would read the same for any chart.`;
 }
 
