@@ -6,7 +6,7 @@ import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
-import { resolveProfileContext } from '../birth-profiles/profile-context.js';
+import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
 import {
   unlockGemstoneForOwnedProfile,
   unlockHouseForOwnedProfile,
@@ -28,7 +28,13 @@ const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean =>
   grantedAt != null && revokedAt == null;
 
-export function toUserDto(row: UserRow): UserDto {
+/**
+ * `unlockedHouses`/`gemstoneUnlocked` are per-profile, not per-user — `profile`
+ * must be resolved via {@link resolveActiveProfileContext} (or an equivalent
+ * `resolveProfileContext` call) by the caller so a secondary profile's own
+ * unlock state is returned instead of the primary's.
+ */
+export function toUserDto(row: UserRow, profile: ProfileContext): UserDto {
   return {
     id: row.id,
     firebaseUid: row.firebaseUid,
@@ -87,8 +93,10 @@ export function toUserDto(row: UserRow): UserDto {
     appVersion: row.appVersion,
     platform: row.platform,
     walletBalancePaise: row.walletBalancePaise,
-    unlockedHouses: row.unlockedHouses ?? [1],
-    gemstoneUnlocked: row.gemstoneUnlockedAt !== null,
+    // `profile.unlockedHouses` is already normalized to `[]` (never null) by
+    // resolveProfileContext — no separate null-fallback needed here.
+    unlockedHouses: profile.unlockedHouses,
+    gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
 
     referralSource: row.referralSource,
     referredByCode: row.referredByCode,
