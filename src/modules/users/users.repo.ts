@@ -8,6 +8,7 @@ import {
   chatSessions,
   userFacts,
   chatFeedbackReports,
+  walletTransactions,
   type NewUserRow,
   type NewUserConsentLogRow,
   type UserRow,
@@ -136,15 +137,27 @@ export async function updateUserById(
  * concurrent spends can never both succeed against a balance that only
  * covers one of them.
  */
-export async function deductWalletBalance(userId: string, amountPaise: number): Promise<boolean> {
-  const result = await db.execute(sql`
-    UPDATE users
-    SET wallet_balance_paise = wallet_balance_paise - ${amountPaise}
-    WHERE id = ${userId}
-      AND wallet_balance_paise >= ${amountPaise}
-    RETURNING *;
-  `);
-  return result.length > 0;
+export async function deductWalletBalance(
+  userId: string,
+  amountPaise: number,
+  reason: string,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [charged] = await tx
+      .update(users)
+      .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${amountPaise}` })
+      .where(and(eq(users.id, userId), gte(users.walletBalancePaise, amountPaise)))
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!charged) return false;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: -amountPaise,
+      reason,
+      balanceAfter: charged.walletBalancePaise,
+    });
+    return true;
+  });
 }
 
 /** Add `amountPaise` back to the wallet (e.g. refunding a charge whose async job failed). */
