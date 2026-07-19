@@ -128,7 +128,8 @@ const listRoute = createRoute({
 vastuRouter.openapi(listRoute, async (c) => {
   const user = c.get('user');
   const { language } = c.req.valid('query');
-  const plans = await getPlansForUser(user.id, language);
+  const profile = await resolveActiveProfileContext(user);
+  const plans = await getPlansForUser(user.id, profile.birthProfileId, language);
   return c.json({ plans }, 200);
 });
 

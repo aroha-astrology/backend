@@ -85,6 +85,7 @@ export async function requestVastuAnalysis(
 
     const row = await insertPendingPlan({
       userId,
+      birthProfileId,
       layout: body.layout ?? null,
       roomLayout: body.roomLayout,
       roomDetails,
@@ -203,8 +204,12 @@ export async function toVastuPlanDtoForLanguage(
   }
 }
 
-export async function getPlansForUser(userId: string, language = 'en'): Promise<VastuPlanDto[]> {
-  const rows = await listPlansForUser(userId);
+export async function getPlansForUser(
+  userId: string,
+  birthProfileId: string | null,
+  language = 'en',
+): Promise<VastuPlanDto[]> {
+  const rows = await listPlansForUser(userId, birthProfileId);
   return Promise.all(rows.map((r) => toVastuPlanDtoForLanguage(r, language)));
 }
 

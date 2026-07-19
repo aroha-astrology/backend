@@ -1,6 +1,13 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { vastuPlans, type NewVastuPlanRow, type VastuPlanRow } from '../../db/schema.js';
+
+/** `birthProfileId === null` filters to the primary/self profile; a non-null id filters to that additional profile. */
+function profileFilter(birthProfileId: string | null) {
+  return birthProfileId === null
+    ? isNull(vastuPlans.birthProfileId)
+    : eq(vastuPlans.birthProfileId, birthProfileId);
+}
 
 export async function insertPendingPlan(row: NewVastuPlanRow): Promise<VastuPlanRow> {
   const [inserted] = await db.insert(vastuPlans).values(row).returning();
@@ -8,11 +15,15 @@ export async function insertPendingPlan(row: NewVastuPlanRow): Promise<VastuPlan
   return inserted;
 }
 
-export async function listPlansForUser(userId: string, limit = 10): Promise<VastuPlanRow[]> {
+export async function listPlansForUser(
+  userId: string,
+  birthProfileId: string | null,
+  limit = 10,
+): Promise<VastuPlanRow[]> {
   return db
     .select()
     .from(vastuPlans)
-    .where(eq(vastuPlans.userId, userId))
+    .where(and(eq(vastuPlans.userId, userId), profileFilter(birthProfileId)))
     .orderBy(desc(vastuPlans.createdAt))
     .limit(limit);
 }

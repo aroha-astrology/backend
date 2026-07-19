@@ -1193,6 +1193,10 @@ export const vastuPlans = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** null = primary profile, matching every other profile-scoped table's convention. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
     /** The full editable CAD plan (rooms/doors/windows/orientation) for reload. */
     layout: jsonb('layout').$type<Record<string, unknown>>(),
     /** room type → occupied direction(s), the rules-engine input. */

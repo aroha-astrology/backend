@@ -58,6 +58,7 @@ function makePlanRow(overrides: Partial<VastuPlanRow> = {}): VastuPlanRow {
   return {
     id: 'plan-1',
     userId: 'user-1',
+    birthProfileId: null,
     layout: null,
     roomLayout: { kitchen: ['SE'] },
     roomDetails: {},
