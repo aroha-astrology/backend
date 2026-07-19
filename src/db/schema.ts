@@ -339,6 +339,7 @@ export const users = pgTable(
     referralSource: text('referral_source'),
     referredByCode: text('referred_by_code'),
     referralCode: text('referral_code'),
+    referralEarningsPaise: integer('referral_earnings_paise').notNull().default(0),
 
     // --- consent (current effective state; history in user_consent_log) ----
     marketingConsentAt: timestamp('marketing_consent_at', { withTimezone: true }),
@@ -1395,3 +1396,32 @@ export const telegramAdminAuditLog = pgTable(
 
 export type TelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferSelect;
 export type NewTelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* notifications — push / bell notifications                                   */
+/* -------------------------------------------------------------------------- */
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    type: text('type').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('notifications_user_id_idx').on(table.userId),
+  }),
+);
+
+export type NotificationRow = typeof notifications.$inferSelect;
+export type NewNotificationRow = typeof notifications.$inferInsert;

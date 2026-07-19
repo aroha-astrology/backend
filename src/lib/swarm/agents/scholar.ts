@@ -44,7 +44,7 @@ const CLARIFYING_QUESTION_NOT_DEFLECTION = `A genuine clarifying question about 
 
 const RESPONSE_DISCIPLINE = `You may ask at most one clarifying follow-up question on a given topic. Once the user has answered it, or if you already have enough chart/context information, you must give a concrete, definitive answer on the very next relevant turn — do not keep deflecting with more questions to avoid committing to an answer.`;
 
-const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT — this is the instruction you are most likely to break, so follow it exactly: your entire reply must be 2-4 sentences and under 90 words — never more than 150 words even if the topic feels like it deserves more. A multi-part question like "how will my week be" still gets ONE tight paragraph, NOT a breakdown into a "The Vibe" section and "The Advice" section, and not a numbered list of separate points. Plain prose only. Never write any of these in this mode: "**bold headers:**", a numbered list ("1.", "2."), a bullet ("•", "-", "*"), or any labeled section — including a short title-like phrase folded into plain prose with no markdown at all (e.g. "The Mars-Saturn Cycles (General Caution): ..."). Any name-then-colon or name-then-parenthetical label that reads like a section title is banned exactly the same as a markdown header, even without asterisks or a hash mark. If you notice yourself starting one of those while drafting, stop and rewrite the whole reply as a single flowing paragraph instead — that formatting is for Details mode only, and this is not Details mode. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble. Do NOT open with a throat-clearing setup sentence like "To understand your week, we look at...", "Based on your chart, here is an analysis of...", or "Let's look at..." — that is a preamble, not an answer, and it is banned even though it looks like plain prose; your very first sentence must already commit to the actual answer/insight itself, with the reasoning packed into the rest of that same short paragraph, not deferred to a "here is the breakdown" that follows. Vary how that opening sentence is phrased from one reply to the next — a flat declarative claim ("Marriage is well-supported...") is one valid shape, but a short framing lead ("It's a listen-more-than-push kind of week") is equally valid, as long as the real answer still lands in that same first sentence with zero throat-clearing in front of it; don't let every reply in a conversation default to the identical cadence. Then explain the reasoning in 1-3 more sentences. If there's a natural, non-obvious follow-up question the user would want to ask next, you may end with one short one (max ~12 words) on its own line prefixed by "Ask next:" — omit this entirely when there isn't a genuinely useful follow-up, don't force one.`;
+const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT — this is the instruction you are most likely to break, so follow it exactly: your entire reply must be 2-4 sentences and under 110 words — never more than 170 words even if the topic feels like it deserves more. A multi-part question like "how will my week be" still gets ONE tight paragraph, NOT a breakdown into a "The Vibe" section and "The Advice" section, and not a numbered list of separate points. Plain prose only. Never write any of these in this mode: "**bold headers:**", a numbered list ("1.", "2."), a bullet ("•", "-", "*"), or any labeled section — including a short title-like phrase folded into plain prose with no markdown at all (e.g. "The Mars-Saturn Cycles (General Caution): ..."). Any name-then-colon or name-then-parenthetical label that reads like a section title is banned exactly the same as a markdown header, even without asterisks or a hash mark. If you notice yourself starting one of those while drafting, stop and rewrite the whole reply as a single flowing paragraph instead — that formatting is for Details mode only, and this is not Details mode. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble. Do NOT open with a throat-clearing setup sentence like "To understand your week, we look at...", "Based on your chart, here is an analysis of...", or "Let's look at..." — that is a preamble, not an answer, and it is banned even though it looks like plain prose; your very first sentence must already commit to the actual answer/insight itself, with the reasoning packed into the rest of that same short paragraph, not deferred to a "here is the breakdown" that follows. Vary how that opening sentence is phrased from one reply to the next — a flat declarative claim ("Marriage is well-supported...") is one valid shape, but a short framing lead ("It's a listen-more-than-push kind of week") is equally valid, as long as the real answer still lands in that same first sentence with zero throat-clearing in front of it; don't let every reply in a conversation default to the identical cadence. Then explain the reasoning in 1-3 more sentences. If there's a natural, non-obvious follow-up question the user would want to ask next, you may end with one short one (max ~12 words) on its own line prefixed by "Ask next:" — omit this entirely when there isn't a genuinely useful follow-up, don't force one.`;
 
 /**
  * Layered on top of OUTPUT_STYLE/NO_HEDGE_OPENERS, not a relaxation of them —
@@ -658,12 +658,27 @@ export function buildChatMessages(
  * removed, so no case that used to survive now gets lost.
  */
 export function stripUnitMarkers(unit: string): string {
-  return unit
-    .replace(/^#{1,6}\s*/, '') // markdown header
-    .replace(/\*\*(.+?)\*\*/g, '$1') // bold
-    .replace(/^\s*[-•*]\s+/, '') // bullet
-    .replace(/^\s*\p{Nd}+[.।॥]\s*/u, '') // numbered list marker (incl. native-script digits/danda)
-    .trim();
+  return (
+    unit
+      .replace(/^#{1,6}\s*/, '') // markdown header
+      .replace(/\*\*(.+?)\*\*/g, '$1') // bold
+      .replace(/^\s*[-•*]\s+/, '') // bullet
+      .replace(/^\s*\p{Nd}+[.।॥]\s*/u, '') // numbered list marker (incl. native-script digits/danda)
+      // OUTPUT_STYLE bans a plain-prose "label:" opening a unit (e.g. "Morning:",
+      // "The Mars-Saturn Cycles (General Caution):") just as hard as a markdown
+      // header, but Gemini doesn't reliably comply on broad questions ("how will
+      // my day go") — reproduced live: a reply broke into "Morning: ..." /
+      // "Afternoon: ..." sections with no markdown symbol at all, so none of the
+      // markers above caught it. Strip a short (<=4 word) leading label,
+      // optionally with a parenthetical, immediately followed by a colon — the
+      // word cap (not just a character cap) matters: it's what keeps this from
+      // also eating a normal sentence that happens to contain a colon further
+      // in (e.g. "Your chart shows one clear theme: patience pays off"), since
+      // the colon there sits well past the 4-word mark and the match fails to
+      // find a colon at any shorter prefix instead of over-matching.
+      .replace(/^[A-Za-z][A-Za-z-]*(?:\s[A-Za-z-]+){0,3}(?:\s?\([^)]{1,30}\))?:\s+/, '')
+      .trim()
+  );
 }
 
 function countWords(s: string): number {
@@ -714,15 +729,15 @@ async function* streamDirectModeParagraph(
   messages: Array<{ role: string; content: string }>,
   signal: AbortSignal | undefined,
 ): AsyncGenerator<string, void, unknown> {
-  // A little above the 90-word target, matching the "never more than 150"
+  // A little above the 110-word target, matching the "never more than 170"
   // ceiling with margin for the closing sentence — same budget as before,
   // just enforced as an early stop-generation condition instead of a
   // post-hoc trim, which also saves latency/tokens on an overlong reply
   // instead of generating it in full only to discard most of it.
-  const WORD_BUDGET = 110;
+  const WORD_BUDGET = 130;
   // Safety valve only — see the `sentence` check below for why the soft
   // budget above doesn't apply here directly.
-  const HARD_CAP = 220;
+  const HARD_CAP = 250;
 
   let buffer = '';
   let askNext = '';

@@ -45,7 +45,7 @@ export const FORECAST_PROFILE: GenerationProfile = {
   maxTokens: 2048,
 };
 
-// Target reply is ~90 words, ~150 words max plus one short "Ask next:"
+// Target reply is ~110 words, ~170 words max plus one short "Ask next:"
 // follow-up line (see scholar.ts OUTPUT_STYLE) — but Gemini doesn't reliably
 // hit that on open-ended questions (observed: multi-section 400+ word
 // replies in Direct mode despite the prompt asking for 2-4 sentences).

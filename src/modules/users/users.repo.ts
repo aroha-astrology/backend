@@ -1,4 +1,5 @@
 import { and, eq, isNull, count, desc, gte, sql } from 'drizzle-orm';
+import crypto from 'crypto';
 import { db } from '../../config/db.js';
 import {
   users,
@@ -8,6 +9,7 @@ import {
   chatSessions,
   userFacts,
   chatFeedbackReports,
+  notifications,
   walletTransactions,
   type NewUserRow,
   type NewUserConsentLogRow,
@@ -92,6 +94,11 @@ export async function findUserByEmail(email: string): Promise<UserRow | undefine
   return rows[0] ? decryptUserRow(rows[0]) : undefined;
 }
 
+export async function findUserByReferralCode(code: string): Promise<UserRow | undefined> {
+  const rows = await db.select().from(users).where(eq(users.referralCode, code)).limit(1);
+  return rows[0] ? decryptUserRow(rows[0]) : undefined;
+}
+
 export async function findActiveUserByFirebaseUid(
   firebaseUid: string,
 ): Promise<UserRow | undefined> {
@@ -113,6 +120,9 @@ export async function findActiveUserById(id: string): Promise<UserRow | undefine
 }
 
 export async function insertUser(values: NewUserRow): Promise<UserRow> {
+  if (!values.referralCode) {
+    values.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+  }
   const [row] = await db.insert(users).values(encryptUserPatch(values)).returning();
   if (!row) throw new Error('Failed to insert user');
   return decryptUserRow(row);
@@ -181,6 +191,76 @@ export async function addWalletBalance(
       balanceAfter: updated.walletBalancePaise,
     });
   });
+}
+
+/** Atomically apply the referral bonus to both referrer and referee, keeping track of the cap. */
+export async function applyReferralBonus(referrerId: string, refereeId: string): Promise<boolean> {
+  const BONUS_PAISE = 5000;
+  const CAP_PAISE = 200000;
+
+  return db.transaction(async (tx) => {
+    // Lock and check referrer cap
+    const [referrer] = await tx.execute<{ referral_earnings_paise: number }>(sql`
+      SELECT referral_earnings_paise FROM users WHERE id = ${referrerId} FOR UPDATE;
+    `);
+
+    if (!referrer || referrer.referral_earnings_paise >= CAP_PAISE) {
+      return false; // Cap reached, no bonus
+    }
+
+    // Update referrer
+    await tx.execute(sql`
+      UPDATE users 
+      SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE},
+          referral_earnings_paise = referral_earnings_paise + ${BONUS_PAISE}
+      WHERE id = ${referrerId};
+    `);
+
+    // Update referee
+    await tx.execute(sql`
+      UPDATE users 
+      SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE},
+          referral_earnings_paise = referral_earnings_paise + ${BONUS_PAISE}
+      WHERE id = ${refereeId};
+    `);
+
+    // Ensure wallet_transactions table uses exact schema
+    // Since we don't have the generated types for wallet_transactions imported, we can just execute SQL or import it.
+    await tx.execute(sql`
+      INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
+      VALUES 
+      (${referrerId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${referrerId})),
+      (${refereeId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${refereeId}));
+    `);
+
+    return true;
+  });
+}
+
+/** Get user wallet transactions */
+export async function getTransactionsForUser(userId: string) {
+  return db
+    .select()
+    .from(walletTransactions)
+    .where(eq(walletTransactions.userId, userId))
+    .orderBy(desc(walletTransactions.createdAt));
+}
+
+/** Get user notifications */
+export async function getNotificationsForUser(userId: string) {
+  return db
+    .select()
+    .from(notifications)
+    .where(eq(notifications.userId, userId))
+    .orderBy(desc(notifications.createdAt));
+}
+
+/** Mark all user notifications as read */
+export async function markNotificationsRead(userId: string): Promise<void> {
+  await db
+    .update(notifications)
+    .set({ readAt: new Date() })
+    .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
 }
 
 /**
