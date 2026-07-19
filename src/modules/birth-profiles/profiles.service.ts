@@ -94,14 +94,20 @@ export async function createProfile(
   user: UserRow,
   body: CreateBirthProfileBody,
 ): Promise<ProfileDto> {
-  const charged = await deductWalletBalance(user.id, PROFILE_CREATION_COST_PAISE);
+  const charged = await deductWalletBalance(
+    user.id,
+    PROFILE_CREATION_COST_PAISE,
+    'profile_creation',
+  );
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
   let created: BirthProfileRow;
   try {
     created = await createBirthProfile(user.id, body);
   } catch (err) {
-    await addWalletBalance(user.id, PROFILE_CREATION_COST_PAISE).catch(() => {});
+    await addWalletBalance(user.id, PROFILE_CREATION_COST_PAISE, 'refund:profile_creation').catch(
+      () => {},
+    );
     throw err;
   }
 

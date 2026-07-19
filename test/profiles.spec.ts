@@ -156,7 +156,7 @@ describe('POST /v1/profiles', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('id-1', 20000);
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('id-1', 20000, 'profile_creation');
     expect(state.createBirthProfile).toHaveBeenCalledWith(
       'id-1',
       expect.objectContaining(CREATE_BODY),
@@ -196,7 +196,7 @@ describe('POST /v1/profiles', () => {
     });
 
     expect(res.status).toBe(500);
-    expect(state.addWalletBalance).toHaveBeenCalledWith('id-1', 20000);
+    expect(state.addWalletBalance).toHaveBeenCalledWith('id-1', 20000, 'refund:profile_creation');
     expect(state.updateUserById).not.toHaveBeenCalled();
     expect(state.requestKundliGeneration).not.toHaveBeenCalled();
   });
