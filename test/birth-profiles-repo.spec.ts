@@ -196,20 +196,27 @@ describe('unlockGemstoneForOwnedProfile', () => {
   function setupTransaction(chargedResult: unknown[], unlockedResult: unknown[]) {
     const usersChain = makeUpdateChain(chargedResult);
     const birthProfilesChain = makeUpdateChain(unlockedResult);
+    const insertCalls: { values?: unknown } = {};
+    const insertMock = vi.fn(() => ({
+      values: vi.fn((v: unknown) => {
+        insertCalls.values = v;
+        return Promise.resolve(undefined);
+      }),
+    }));
     const updateMock = vi.fn((table: unknown): FakeUpdateChain => {
       if (table === users) return usersChain.chain;
       if (table === birthProfiles) return birthProfilesChain.chain;
       throw new Error(`unexpected table passed to tx.update: ${String(table)}`);
     });
     state.transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
-      cb({ update: updateMock }),
+      cb({ update: updateMock, insert: insertMock }),
     );
-    return { usersChain, birthProfilesChain, updateMock };
+    return { usersChain, birthProfilesChain, updateMock, insertMock, insertCalls };
   }
 
   it('charges the owner and flips the flag when credits suffice and the profile is still locked', async () => {
-    const { usersChain, birthProfilesChain } = setupTransaction(
-      [{ id: 'user-1' }],
+    const { usersChain, birthProfilesChain, insertCalls } = setupTransaction(
+      [{ walletBalancePaise: 76000 }],
       [{ id: 'profile-1' }],
     );
 
@@ -230,6 +237,13 @@ describe('unlockGemstoneForOwnedProfile', () => {
         'and "birth_profiles"."deleted_at" is null and "birth_profiles"."gemstone_unlocked_at" is null)',
     );
     expect(profileQuery.params).toEqual(['profile-1', 'user-1']);
+
+    expect(insertCalls.values).toEqual({
+      userId: 'user-1',
+      delta: -GEMSTONE_UNLOCK_COST_PAISE,
+      reason: 'gemstone_unlock:profile:profile-1',
+      balanceAfter: 76000,
+    });
   });
 
   it('returns false without touching birth_profiles when the owner has insufficient credits', async () => {
@@ -244,7 +258,7 @@ describe('unlockGemstoneForOwnedProfile', () => {
   });
 
   it('returns false when the profile is already unlocked (or not owned / deleted), even though credits were charged in this attempt', async () => {
-    const { updateMock } = setupTransaction([{ id: 'user-1' }], []);
+    const { updateMock } = setupTransaction([{ walletBalancePaise: 76000 }], []);
 
     const result = await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
 

@@ -3,6 +3,7 @@ import { db } from '../../config/db.js';
 import {
   birthProfiles,
   users,
+  walletTransactions,
   type BirthProfileRow,
   type NewBirthProfileRow,
   type PlaceOfBirth,
@@ -194,7 +195,7 @@ export async function unlockGemstoneForOwnedProfile(
         .where(
           and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, GEMSTONE_UNLOCK_COST_PAISE)),
         )
-        .returning({ id: users.id });
+        .returning({ walletBalancePaise: users.walletBalancePaise });
       if (!charged) throw new UnlockGuardFailed();
 
       const [unlocked] = await tx
@@ -210,6 +211,13 @@ export async function unlockGemstoneForOwnedProfile(
         )
         .returning({ id: birthProfiles.id });
       if (!unlocked) throw new UnlockGuardFailed();
+
+      await tx.insert(walletTransactions).values({
+        userId: ownerUserId,
+        delta: -GEMSTONE_UNLOCK_COST_PAISE,
+        reason: `gemstone_unlock:profile:${id}`,
+        balanceAfter: charged.walletBalancePaise,
+      });
 
       return true;
     });
