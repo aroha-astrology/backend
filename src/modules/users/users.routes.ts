@@ -1,8 +1,22 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
-import { UpdateMeBodySchema, UserSchema } from './users.schemas.js';
-import { deleteMe, toUserDto, updateMe, unlockHouse, unlockGemstone } from './users.service.js';
+import {
+  UpdateMeBodySchema,
+  UserSchema,
+  NotificationSchema,
+  TransactionSchema,
+} from './users.schemas.js';
+import {
+  deleteMe,
+  toUserDto,
+  updateMe,
+  unlockHouse,
+  unlockGemstone,
+  getNotifications,
+  getTransactions,
+  markNotificationsRead,
+} from './users.service.js';
 
 const ErrorSchema = z
   .object({
@@ -117,6 +131,54 @@ const deleteMeRoute = createRoute({
   },
 });
 
+const getNotificationsRoute = createRoute({
+  method: 'get',
+  path: '/me/notifications',
+  tags: ['Users'],
+  summary: 'Get user notifications',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'List of notifications',
+      content: { 'application/json': { schema: z.array(NotificationSchema) } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+const markNotificationsReadRoute = createRoute({
+  method: 'patch',
+  path: '/me/notifications/read',
+  tags: ['Users'],
+  summary: 'Mark all user notifications as read',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Success',
+      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+const getTransactionsRoute = createRoute({
+  method: 'get',
+  path: '/me/transactions',
+  tags: ['Users'],
+  summary: 'Get user wallet transactions',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'List of transactions',
+      content: { 'application/json': { schema: z.array(TransactionSchema) } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
 usersRouter.openapi(getMeRoute, async (c) => {
   const user = c.get('user');
   const profile = await resolveActiveProfileContext(user);
@@ -153,4 +215,22 @@ usersRouter.openapi(unlockGemstoneRoute, async (c) => {
   const profile = await resolveActiveProfileContext(user);
   await unlockGemstone(user.id, profile.birthProfileId);
   return c.json({ success: true }, 200);
+});
+
+usersRouter.openapi(getNotificationsRoute, async (c) => {
+  const user = c.get('user');
+  const notifications = await getNotifications(user.id);
+  return c.json(notifications, 200);
+});
+
+usersRouter.openapi(markNotificationsReadRoute, async (c) => {
+  const user = c.get('user');
+  await markNotificationsRead(user.id);
+  return c.json({ success: true }, 200);
+});
+
+usersRouter.openapi(getTransactionsRoute, async (c) => {
+  const user = c.get('user');
+  const transactions = await getTransactions(user.id);
+  return c.json(transactions, 200);
 });

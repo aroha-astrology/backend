@@ -20,7 +20,16 @@ import {
   anonymizeUserById,
   updateUserById,
   updateUserWithConsentLog,
+  findUserByReferralCode,
+  applyReferralBonus,
+  getNotificationsForUser,
+  getTransactionsForUser,
+  markNotificationsRead as markUserNotificationsRead,
 } from './users.repo.js';
+import { db } from '../../config/db.js';
+import { notifications, devicePushTokens } from '../../db/schema.js';
+import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { eq, isNull, and } from 'drizzle-orm';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
@@ -318,6 +327,68 @@ export async function updateMe(
   const patch = buildPatch(body);
   const consentLogs = body.consent ? applyConsent(body.consent, patch, userId, ctx) : [];
 
+  // Referral Bonus logic: if they are setting a referredByCode for the first time
+  if (patch.referredByCode && !current.referredByCode) {
+    const referrer = await findUserByReferralCode(patch.referredByCode);
+    if (referrer && referrer.id !== current.id) {
+      const bonusApplied = await applyReferralBonus(referrer.id, current.id);
+      if (bonusApplied) {
+        // Insert notifications for both users
+        await db.insert(notifications).values([
+          {
+            userId: referrer.id,
+            title: 'Referral Bonus!',
+            body: 'A friend signed up using your code. You earned ₹50!',
+            type: 'referral_bonus',
+          },
+          {
+            userId: current.id,
+            title: 'Welcome Bonus!',
+            body: 'You earned ₹50 for signing up with a referral code!',
+            type: 'referral_bonus',
+          },
+        ]);
+
+        // Dispatch Push Notifications
+        const pushTitle = 'Referral Bonus!';
+        const pushBodyRef = 'A friend signed up using your code. You earned ₹50!';
+        const pushBodyNew = 'You earned ₹50 for signing up with a referral code!';
+
+        try {
+          const referrerTokens = await db
+            .select({ token: devicePushTokens.token })
+            .from(devicePushTokens)
+            .where(
+              and(eq(devicePushTokens.userId, referrer.id), isNull(devicePushTokens.revokedAt)),
+            );
+          if (referrerTokens.length > 0) {
+            await sendPushBatch(
+              referrerTokens.map((t) => t.token),
+              pushTitle,
+              pushBodyRef,
+            );
+          }
+
+          const currentTokens = await db
+            .select({ token: devicePushTokens.token })
+            .from(devicePushTokens)
+            .where(
+              and(eq(devicePushTokens.userId, current.id), isNull(devicePushTokens.revokedAt)),
+            );
+          if (currentTokens.length > 0) {
+            await sendPushBatch(
+              currentTokens.map((t) => t.token),
+              'Welcome Bonus!',
+              pushBodyNew,
+            );
+          }
+        } catch (err) {
+          logger.error({ err, userId: current.id }, 'Failed to send referral push notifications');
+        }
+      }
+    }
+  }
+
   // Stamp the funnel-completion time server-side the first time the client
   // reports a terminal onboarding status (the column is otherwise never set).
   if (
@@ -457,4 +528,31 @@ export async function unlockGemstone(userId: string, birthProfileId: string | nu
   if (!success) {
     throw Errors.conflict('Insufficient credits or gemstone report already unlocked');
   }
+}
+
+export async function getNotifications(userId: string) {
+  const rows = await getNotificationsForUser(userId);
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    body: r.body,
+    type: r.type,
+    readAt: iso(r.readAt),
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export async function markNotificationsRead(userId: string) {
+  await markUserNotificationsRead(userId);
+}
+
+export async function getTransactions(userId: string) {
+  const rows = await getTransactionsForUser(userId);
+  return rows.map((r) => ({
+    id: r.id,
+    delta: r.delta,
+    reason: r.reason,
+    balanceAfter: r.balanceAfter,
+    createdAt: r.createdAt.toISOString(),
+  }));
 }
