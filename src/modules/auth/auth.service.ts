@@ -2,6 +2,7 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { UserRow } from '../../db/schema.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import {
+  ensureReferralCode,
   findUserByFirebaseUid,
   findUserByPhoneE164,
   insertUser,
@@ -48,9 +49,10 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
 
   if (existing) {
     if (existing.deletedAt !== null) {
-      return { user: await resurrect(existing), created: false };
+      const resurrected = await resurrect(existing);
+      return { user: await ensureReferralCode(resurrected), created: false };
     }
-    return { user: existing, created: false };
+    return { user: await ensureReferralCode(existing), created: false };
   }
 
   const phoneE164 = typeof token.phone_number === 'string' ? token.phone_number : null;

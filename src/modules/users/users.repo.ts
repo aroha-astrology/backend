@@ -128,6 +128,18 @@ export async function insertUser(values: NewUserRow): Promise<UserRow> {
   return decryptUserRow(row);
 }
 
+/**
+ * Backfill a referralCode for a user row created before the referral feature
+ * shipped. Called from both session-establishment and GET /me so every path
+ * that can hand a user object to the frontend guarantees one is present.
+ */
+export async function ensureReferralCode(user: UserRow): Promise<UserRow> {
+  if (user.referralCode) return user;
+  const referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const updated = await updateUserById(user.id, { referralCode });
+  return updated ?? { ...user, referralCode };
+}
+
 export async function updateUserById(
   id: string,
   patch: Partial<NewUserRow>,

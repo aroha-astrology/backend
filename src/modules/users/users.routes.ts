@@ -1,8 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
-import crypto from 'node:crypto';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
-import { updateUserById } from './users.repo.js';
+import { ensureReferralCode } from './users.repo.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
 import {
   deleteMe,
@@ -160,14 +159,7 @@ const markNotificationsReadRoute = createRoute({
 });
 
 usersRouter.openapi(getMeRoute, async (c) => {
-  const user = c.get('user');
-
-  // Lazy initialization of referralCode for existing users
-  if (!user.referralCode) {
-    user.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
-    await updateUserById(user.id, { referralCode: user.referralCode });
-  }
-
+  const user = await ensureReferralCode(c.get('user'));
   const profile = await resolveActiveProfileContext(user);
   return c.json(toUserDto(user, profile), 200);
 });
