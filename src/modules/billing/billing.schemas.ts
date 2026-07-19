@@ -112,7 +112,13 @@ export const TransactionSchema = z
     }),
     z.object({
       id: z.string(),
-      kind: z.enum(['chat', 'vastu_report', 'gemstone_unlock', 'profile_creation']),
+      kind: z.enum([
+        'chat',
+        'vastu_report',
+        'gemstone_unlock',
+        'profile_creation',
+        'referral_bonus',
+      ]),
       createdAt: z.string(),
       amountPaise: z.number(),
       balanceAfterPaise: z.number(),

@@ -42,6 +42,10 @@ describe('parseReason', () => {
   it('throws on an unrecognized reason', () => {
     expect(() => parseReason('something_else')).toThrow('unrecognized wallet_transactions reason');
   });
+
+  it('parses a referral bonus as a credit, never a refund', () => {
+    expect(parseReason('referral_bonus')).toEqual({ kind: 'referral_bonus', isRefund: false });
+  });
 });
 
 const baseOrder = {

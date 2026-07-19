@@ -217,7 +217,8 @@ type TransactionKind =
   | 'vastu_report'
   | 'gemstone_unlock'
   | 'profile_creation'
-  | 'house_unlock';
+  | 'house_unlock'
+  | 'referral_bonus';
 
 /**
  * Maps a wallet_transactions `reason` string to its display kind. A leading
@@ -234,6 +235,7 @@ export function parseReason(reason: string): {
   const isRefund = reason.startsWith('refund:');
   const base = isRefund ? reason.slice('refund:'.length) : reason;
 
+  if (base === 'referral_bonus') return { kind: 'referral_bonus', isRefund: false };
   if (base === 'chat_message') return { kind: 'chat', isRefund };
   if (base === 'vastu_report') return { kind: 'vastu_report', isRefund };
   if (base === 'profile_creation') return { kind: 'profile_creation', isRefund };
