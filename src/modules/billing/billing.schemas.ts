@@ -101,6 +101,39 @@ export const OrdersResponseSchema = z
   .object({ orders: z.array(OrderSchema) })
   .openapi('OrdersResponse');
 
+export const TransactionSchema = z
+  .discriminatedUnion('kind', [
+    z.object({
+      id: z.string(),
+      kind: z.literal('recharge'),
+      createdAt: z.string(),
+      amountPaise: z.number(),
+      status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
+    }),
+    z.object({
+      id: z.string(),
+      kind: z.enum(['chat', 'vastu_report', 'gemstone_unlock', 'profile_creation']),
+      createdAt: z.string(),
+      amountPaise: z.number(),
+      balanceAfterPaise: z.number(),
+      isRefund: z.boolean(),
+    }),
+    z.object({
+      id: z.string(),
+      kind: z.literal('house_unlock'),
+      createdAt: z.string(),
+      amountPaise: z.number(),
+      balanceAfterPaise: z.number(),
+      isRefund: z.boolean(),
+      houseNumber: z.number(),
+    }),
+  ])
+  .openapi('Transaction');
+
+export const TransactionsResponseSchema = z
+  .object({ transactions: z.array(TransactionSchema) })
+  .openapi('TransactionsResponse');
+
 export const ConfirmGooglePlayBodySchema = z
   .object({
     purchaseToken: z.string().min(1),
