@@ -1,3 +1,4 @@
+import pLimit from 'p-limit';
 import { logger } from '../../lib/logger.js';
 import { generateHoroscopeSummary, type HoroscopeContext } from '../../lib/llm/horoscope.js';
 import { buildDashaReading } from '../../lib/astro-tools/dasha-reading.js';
@@ -21,9 +22,15 @@ import {
   markHoroscopeReady,
   touchHoroscopeGenerating,
   STALE_GENERATING_MS,
+  getOrCreateBatchRun,
+  checkpointBatchRun,
+  completeBatchRun,
+  failBatchRun,
+  resetBatchRun,
 } from './horoscope.repo.js';
 import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { notifyError } from '../../lib/notifications/telegram.js';
 
 /** The app's reference timezone — horoscopes are dated by the IST calendar day. */
 const APP_TZ = 'Asia/Kolkata';
@@ -230,12 +237,14 @@ async function runHoroscopeGeneration(
   }
 }
 
-/** Add small delay between batch requests to avoid rate limiting. */
-async function sleepBetweenBatchRequests(): Promise<void> {
-  const baseDelayMs = 100;
-  const jitterMs = Math.random() * 50;
-  await sleep(baseDelayMs + jitterMs);
-}
+/**
+ * Concurrent user-slots for the nightly batch. Kept well under the prod DB
+ * pool's `max: 10` (src/config/db.ts) so the batch never starves live
+ * traffic/health checks sharing that same pool while it runs.
+ */
+const BATCH_CONCURRENCY = 5;
+
+const CRON_BATCH_JOB_NAME = 'horoscope-batch';
 
 /**
  * Optimization: for 'daily' horoscopes, try to reuse yesterday's 'tomorrow'
@@ -389,51 +398,93 @@ export async function runHoroscopeBatch(
   const forDate = opts.forDate ?? currentPeriodStart(period);
   const force = opts.force ?? false;
   const PAGE = 200;
+  const limit = pLimit(BATCH_CONCURRENCY);
 
-  let lastId: string | null = null;
+  let run = await getOrCreateBatchRun(CRON_BATCH_JOB_NAME, period, forDate);
+  // A 'completed' row means this (period, forDate) already fully ran — always
+  // rescan from scratch (matches the pre-checkpoint self-heal behavior; cheap
+  // since already-ready users are skipped near-instantly via the idempotent
+  // per-user claim). `force` means the caller wants to ignore any prior
+  // progress regardless of status.
+  if (force || run.status === 'completed') {
+    run = await resetBatchRun(CRON_BATCH_JOB_NAME, period, forDate);
+  }
+
+  let lastId: string | null = run.lastId;
+  const priorProcessed = run.processed;
+  const priorGenerated = run.generated;
+  const priorSkipped = run.skipped;
+  const priorFailed = run.failed;
   let processed = 0;
   let generated = 0;
   let skipped = 0;
   let failed = 0;
 
-  for (;;) {
-    const remaining = opts.limit ? opts.limit - processed : PAGE;
-    if (remaining <= 0) break;
-    const batch = await listActiveUsersAfter(lastId, Math.min(PAGE, remaining));
-    if (batch.length === 0) break;
+  try {
+    for (;;) {
+      const remaining = opts.limit ? opts.limit - processed : PAGE;
+      if (remaining <= 0) break;
+      const batch = await listActiveUsersAfter(lastId, Math.min(PAGE, remaining));
+      if (batch.length === 0) break;
 
-    for (const user of batch) {
-      processed++;
-      try {
-        // Batch only the ACTIVE profile — non-active profiles generate
-        // lazily on view instead, kept out of the nightly batch to avoid
-        // N×profiles cron cost.
-        const profile = await resolveActiveProfileContext(user);
-        const outcome = await requestHoroscopeGeneration(user, profile, period, {
-          forDate,
-          force,
-        });
+      const outcomes = await Promise.all(
+        batch.map((user) =>
+          limit(async () => {
+            try {
+              // Batch only the ACTIVE profile — non-active profiles generate
+              // lazily on view instead, kept out of the nightly batch to
+              // avoid N×profiles cron cost.
+              const profile = await resolveActiveProfileContext(user);
+              return await requestHoroscopeGeneration(user, profile, period, {
+                forDate,
+                force,
+              });
+            } catch (err) {
+              logger.error(
+                { err, userId: user.id, period, forDate },
+                'horoscope batch failed for user',
+              );
+              return 'failed' as const;
+            }
+          }),
+        ),
+      );
+
+      processed += outcomes.length;
+      for (const outcome of outcomes) {
         if (outcome === 'generated') generated++;
         else if (outcome === 'failed') failed++;
         else skipped++;
-        // Small delay to avoid rate limiting the LLM API during batch runs.
-        await sleepBetweenBatchRequests();
-      } catch (err) {
-        failed++;
-        logger.error({ err, userId: user.id, period, forDate }, 'horoscope batch failed for user');
       }
-    }
 
-    const last = batch[batch.length - 1];
-    if (!last) break;
-    lastId = last.id;
-    if (batch.length < Math.min(PAGE, remaining)) break;
+      const last = batch[batch.length - 1];
+      if (!last) break;
+      lastId = last.id;
+
+      await checkpointBatchRun(run.id, {
+        lastId,
+        processed: priorProcessed + processed,
+        generated: priorGenerated + generated,
+        skipped: priorSkipped + skipped,
+        failed: priorFailed + failed,
+      });
+
+      if (batch.length < Math.min(PAGE, remaining)) break;
+    }
+  } catch (err) {
+    await failBatchRun(run.id, err instanceof Error ? err.message : String(err));
+    throw err;
   }
 
-  logger.info(
-    { period, forDate, processed, generated, skipped, failed },
-    'horoscope batch run complete',
-  );
+  const totals = {
+    processed: priorProcessed + processed,
+    generated: priorGenerated + generated,
+    skipped: priorSkipped + skipped,
+    failed: priorFailed + failed,
+  };
+  await completeBatchRun(run.id, totals);
+
+  logger.info({ period, forDate, ...totals }, 'horoscope batch run complete');
   return { period, forDate, processed, generated, skipped, failed };
 }
 
@@ -455,8 +506,16 @@ export async function runAllHoroscopeBatches(
     } catch (err) {
       logger.error({ err, period }, 'horoscope batch crashed for period');
       results.push({ period, forDate: '', processed: 0, generated: 0, skipped: 0, failed: 0 });
+      void notifyError(`horoscope batch crashed: ${period}`, err);
     }
   }
+
+  const withFailures = results.filter((r) => r.failed > 0);
+  if (withFailures.length > 0) {
+    const summary = withFailures.map((r) => `${r.period}: ${r.failed} failed`).join(', ');
+    void notifyError('horoscope batch completed with failures', summary);
+  }
+
   return results;
 }
 

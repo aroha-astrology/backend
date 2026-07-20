@@ -759,6 +759,52 @@ export const precomputeJobs = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* cron_batch_runs — resumable pagination checkpoint for nightly cron batches  */
+/* -------------------------------------------------------------------------- */
+
+export const cronBatchRunStatusEnum = pgEnum('cron_batch_run_status', [
+  'running',
+  'completed',
+  'failed',
+]);
+
+export const cronBatchRuns = pgTable(
+  'cron_batch_runs',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    jobName: text('job_name').notNull(),
+    period: text('period').notNull(),
+    forDate: text('for_date').notNull(),
+    status: cronBatchRunStatusEnum('status').notNull().default('running'),
+    // Cursor into the paginated scan — a users.id value, but stored with no FK:
+    // it's just a bookmark, shouldn't cascade on user deletion, and needs no
+    // referential integrity.
+    lastId: uuid('last_id'),
+    processed: integer('processed').notNull().default(0),
+    generated: integer('generated').notNull().default(0),
+    skipped: integer('skipped').notNull().default(0),
+    failed: integer('failed').notNull().default(0),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    jobPeriodDateIdx: uniqueIndex('cron_batch_runs_job_period_date_idx').on(
+      table.jobName,
+      table.period,
+      table.forDate,
+    ),
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
 /* kundlis — one precomputed natal kundli per account holder                   */
 /* -------------------------------------------------------------------------- */
 

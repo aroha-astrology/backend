@@ -1,6 +1,7 @@
 import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
+  cronBatchRuns,
   dailyHoroscopes,
   users,
   type DailyHoroscopeRow,
@@ -260,4 +261,165 @@ export async function saveHoroscopeTranslation(
         eq(dailyHoroscopes.periodKey, periodKey),
       ),
     );
+}
+
+/* -------------------------------------------------------------------------- */
+/* cron_batch_runs — resumable pagination checkpoint for the nightly cron     */
+/* batch (implemented elsewhere); this file only owns the DB layer.          */
+/* -------------------------------------------------------------------------- */
+
+export interface CronBatchRunRow {
+  id: string;
+  status: 'running' | 'completed' | 'failed';
+  lastId: string | null;
+  processed: number;
+  generated: number;
+  skipped: number;
+  failed: number;
+}
+
+function toCronBatchRunRow(row: {
+  id: string;
+  status: 'running' | 'completed' | 'failed';
+  lastId: string | null;
+  processed: number;
+  generated: number;
+  skipped: number;
+  failed: number;
+}): CronBatchRunRow {
+  return {
+    id: row.id,
+    status: row.status,
+    lastId: row.lastId,
+    processed: row.processed,
+    generated: row.generated,
+    skipped: row.skipped,
+    failed: row.failed,
+  };
+}
+
+function batchRunKey(jobName: string, period: string, forDate: string) {
+  return and(
+    eq(cronBatchRuns.jobName, jobName),
+    eq(cronBatchRuns.period, period),
+    eq(cronBatchRuns.forDate, forDate),
+  );
+}
+
+/**
+ * Upsert-or-fetch: creates a fresh 'running' row if none exists for this
+ * (jobName, period, forDate); otherwise returns the existing row unchanged
+ * (does NOT reset an existing row's progress).
+ *
+ * Race-safety: `onConflictDoNothing` on the unique (jobName, period, forDate)
+ * index means at most one caller's INSERT wins; the follow-up SELECT then
+ * reads back whichever row exists — the just-inserted one, or a pre-existing
+ * one from an earlier/concurrent caller. This cron runs once nightly plus
+ * rare manual triggers, so this is deliberately not more heavily locked than
+ * that.
+ */
+export async function getOrCreateBatchRun(
+  jobName: string,
+  period: string,
+  forDate: string,
+): Promise<CronBatchRunRow> {
+  await db
+    .insert(cronBatchRuns)
+    .values({ jobName, period, forDate, status: 'running' })
+    .onConflictDoNothing({
+      target: [cronBatchRuns.jobName, cronBatchRuns.period, cronBatchRuns.forDate],
+    });
+
+  const [row] = await db
+    .select()
+    .from(cronBatchRuns)
+    .where(batchRunKey(jobName, period, forDate))
+    .limit(1);
+
+  if (!row) {
+    // Should be unreachable: the insert above either created the row or lost
+    // a race to another caller who did — either way a row must now exist.
+    throw new Error(
+      `getOrCreateBatchRun: no row found for ${jobName}/${period}/${forDate} after upsert`,
+    );
+  }
+
+  return toCronBatchRunRow(row);
+}
+
+/** Called once per page (not per user) to persist pagination progress. Bumps updatedAt. */
+export async function checkpointBatchRun(
+  id: string,
+  counts: {
+    lastId: string | null;
+    processed: number;
+    generated: number;
+    skipped: number;
+    failed: number;
+  },
+): Promise<void> {
+  await db
+    .update(cronBatchRuns)
+    .set({ ...counts, updatedAt: new Date() })
+    .where(eq(cronBatchRuns.id, id));
+}
+
+/** Terminal: marks the row 'completed', sets completedAt. */
+export async function completeBatchRun(
+  id: string,
+  counts: { processed: number; generated: number; skipped: number; failed: number },
+): Promise<void> {
+  const now = new Date();
+  await db
+    .update(cronBatchRuns)
+    .set({ ...counts, status: 'completed', completedAt: now, updatedAt: now })
+    .where(eq(cronBatchRuns.id, id));
+}
+
+/** Terminal: marks the row 'failed', sets completedAt and the error message. */
+export async function failBatchRun(id: string, error: string): Promise<void> {
+  const now = new Date();
+  await db
+    .update(cronBatchRuns)
+    .set({ status: 'failed', error: error.slice(0, 1000), completedAt: now, updatedAt: now })
+    .where(eq(cronBatchRuns.id, id));
+}
+
+/**
+ * Resets an existing row back to a fresh 'running' state with null
+ * cursor/zeroed counts — used when the caller passes `force: true` and wants
+ * to ignore any prior progress for this (jobName, period, forDate).
+ */
+export async function resetBatchRun(
+  jobName: string,
+  period: string,
+  forDate: string,
+): Promise<CronBatchRunRow> {
+  const now = new Date();
+  const [row] = await db
+    .insert(cronBatchRuns)
+    .values({ jobName, period, forDate, status: 'running', startedAt: now, updatedAt: now })
+    .onConflictDoUpdate({
+      target: [cronBatchRuns.jobName, cronBatchRuns.period, cronBatchRuns.forDate],
+      set: {
+        status: 'running',
+        lastId: null,
+        processed: 0,
+        generated: 0,
+        skipped: 0,
+        failed: 0,
+        error: null,
+        startedAt: now,
+        updatedAt: now,
+        completedAt: null,
+      },
+    })
+    .returning();
+
+  if (!row) {
+    // Unreachable: an upsert with .returning() always yields the affected row.
+    throw new Error(`resetBatchRun: no row returned for ${jobName}/${period}/${forDate}`);
+  }
+
+  return toCronBatchRunRow(row);
 }
