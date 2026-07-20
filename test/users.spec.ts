@@ -43,6 +43,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   softDeleteBirthProfilesByOwner: vi.fn().mockResolvedValue(undefined),
   revokeDeviceTokensByUser: vi.fn().mockResolvedValue(undefined),
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
+  ensureReferralCode: vi.fn((user) => Promise.resolve(user)),
 }));
 
 const { createApp } = await import('../src/app.js');
