@@ -16,6 +16,11 @@ const state = vi.hoisted(() => ({
   findActiveUserById: vi.fn(),
   addWalletBalance: vi.fn().mockResolvedValue(undefined),
   deductWalletBalance: vi.fn().mockResolvedValue(true),
+  getFeedbackVoteCountsByUser: vi.fn(),
+}));
+
+vi.mock('../src/modules/astro/feedback.repo.js', () => ({
+  getFeedbackVoteCountsByUser: state.getFeedbackVoteCountsByUser,
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
@@ -474,5 +479,75 @@ describe('POST /internal/telegram/webhook', () => {
     expect(state.findUserByPhoneE164).not.toHaveBeenCalled();
     const reply = state.sendMessage.mock.calls[0][0];
     expect(reply.toLowerCase()).toContain('admin access');
+  });
+
+  it('handles /feedback with per-user thumbs up/down counts', async () => {
+    state.getFeedbackVoteCountsByUser.mockResolvedValue({
+      rows: [
+        {
+          userId: 'u1-uuid',
+          displayName: 'Test User',
+          phoneE164: '+919999999999',
+          email: null,
+          upVotes: 5,
+          downVotes: 2,
+        },
+      ],
+      totalUserCount: 1,
+    });
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 12345 }, text: '/feedback' } }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.getFeedbackVoteCountsByUser).toHaveBeenCalledWith(20, 0);
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply).toContain('Test User');
+    expect(reply).toContain('u1-uuid');
+    expect(reply).toContain('👍 5');
+    expect(reply).toContain('👎 2');
+  });
+
+  it('handles /feedback <offset> pagination', async () => {
+    state.getFeedbackVoteCountsByUser.mockResolvedValue({ rows: [], totalUserCount: 50 });
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 12345 }, text: '/feedback 20' } }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.getFeedbackVoteCountsByUser).toHaveBeenCalledWith(20, 20);
+  });
+
+  it('shows "no feedback" message for /feedback when no votes exist', async () => {
+    state.getFeedbackVoteCountsByUser.mockResolvedValue({ rows: [], totalUserCount: 0 });
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 12345 }, text: '/feedback' } }),
+    });
+    expect(res.status).toBe(200);
+    const reply = state.sendMessage.mock.calls[0][0];
+    expect(reply.toLowerCase()).toContain('no chat feedback');
+  });
+
+  it('allows /feedback from a readonly-tier chat (read-only, not admin-only)', async () => {
+    state.getFeedbackVoteCountsByUser.mockResolvedValue({ rows: [], totalUserCount: 0 });
+
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 11111 }, text: '/feedback' } }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.getFeedbackVoteCountsByUser).toHaveBeenCalled();
   });
 });

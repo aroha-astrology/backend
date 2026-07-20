@@ -1,7 +1,10 @@
 import type { MiddlewareHandler } from 'hono';
 import { getFirebaseAuth } from '../config/firebase.js';
 import { Errors } from '../lib/errors.js';
-import { findUserByFirebaseUid } from '../modules/users/users.repo.js';
+import { findUserByFirebaseUid, touchUserLastActive } from '../modules/users/users.repo.js';
+
+/** Only bump `lastActiveAt` this often per user, so a hot API path doesn't turn into a write on every request. */
+const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000;
 
 function extractBearer(header: string | undefined): string | null {
   if (!header) return null;
@@ -60,6 +63,13 @@ export const requireUser: MiddlewareHandler = async (c, next) => {
   // Route handlers that need the full resolved profile (birth data, etc.)
   // call resolveActiveProfileContext(c.var.user) themselves.
   c.set('activeProfileId', user.activeProfileId);
+
+  const isStale =
+    !user.lastActiveAt || Date.now() - user.lastActiveAt.getTime() > LAST_ACTIVE_THROTTLE_MS;
+  if (isStale) {
+    // Fire-and-forget — must never add latency or failure risk to the request itself.
+    void touchUserLastActive(user.id).catch(() => {});
+  }
 
   await next();
 };

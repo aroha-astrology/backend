@@ -12,6 +12,7 @@ import {
   deductWalletBalance,
 } from '../users/users.repo.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
+import { getFeedbackVoteCountsByUser } from '../astro/feedback.repo.js';
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
 import { listActiveCoupons, insertCoupon, sumPaidOrdersToday } from '../billing/billing.repo.js';
 import { escapeMarkdown } from '../../lib/notifications/telegram.js';
@@ -253,6 +254,38 @@ export async function cmdNewCoupon(args: string[]): Promise<string> {
     const msg = error instanceof Error ? error.message : String(error);
     return escapeMarkdown(`Failed to create coupon: ${msg}`);
   }
+}
+
+export async function cmdFeedback(offsetArg: string | undefined): Promise<string> {
+  const PAGE_SIZE = 20;
+  const offset = parseInt(offsetArg || '0', 10) || 0;
+
+  const { rows, totalUserCount } = await getFeedbackVoteCountsByUser(PAGE_SIZE, offset);
+
+  if (rows.length === 0) {
+    return offset === 0
+      ? escapeMarkdown('No chat feedback votes recorded yet.')
+      : escapeMarkdown('No more users.');
+  }
+
+  const lines = rows.map((r) => {
+    const contact = escapeMarkdown(r.email || r.phoneE164 || 'No contact');
+    const name = escapeMarkdown(r.displayName || 'No Name');
+    return (
+      `• *${name}* \\| ${contact}\n` +
+      `  ID: \`${r.userId}\` \\| 👍 ${r.upVotes} \\| 👎 ${r.downVotes}`
+    );
+  });
+
+  const nextOffset = offset + PAGE_SIZE;
+  const hasMore = nextOffset < totalUserCount;
+
+  let reply = `*Chat Feedback by User \\(${offset + 1}\\-${offset + rows.length} of ${totalUserCount}\\)*\n\n${lines.join('\n')}`;
+  if (hasMore) {
+    reply += `\n\nNext page: \`/feedback ${nextOffset}\``;
+  }
+
+  return reply;
 }
 
 export async function cmdBroadcast(message: string | undefined): Promise<string> {

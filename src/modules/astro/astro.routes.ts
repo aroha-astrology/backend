@@ -9,7 +9,11 @@ import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
-import { incrementFeedbackCounter, saveChatFeedbackReport } from './feedback.repo.js';
+import {
+  incrementFeedbackCounter,
+  saveChatFeedbackReport,
+  recordChatFeedbackVote,
+} from './feedback.repo.js';
 import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 
 /** Flat cost per chat question, charged atomically before generation starts. */
@@ -593,6 +597,7 @@ astroRouter.openapi(chatFeedbackRoute, async (c) => {
   const body = c.req.valid('json');
 
   await incrementFeedbackCounter(body.vote === 'up' ? 'chat_thumbs_up' : 'chat_thumbs_down');
+  await recordChatFeedbackVote({ userId: user.id, vote: body.vote, sessionId: body.sessionId });
 
   if (body.vote === 'down' && body.question && body.answer) {
     await saveChatFeedbackReport({

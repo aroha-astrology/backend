@@ -38,6 +38,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   updateUserById: state.updateUserById,
   updateUserWithConsentLog: vi.fn(),
   softDeleteUserById: vi.fn(),
+  touchUserLastActive: vi.fn().mockResolvedValue(undefined),
 }));
 
 const { createApp } = await import('../src/app.js');

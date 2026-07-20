@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   updateUserById: vi.fn(),
   updateUserWithConsentLog: vi.fn(),
   anonymizeUserById: vi.fn(),
+  touchUserLastActive: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -41,6 +42,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   anonymizeUserById: state.anonymizeUserById,
   softDeleteBirthProfilesByOwner: vi.fn().mockResolvedValue(undefined),
   revokeDeviceTokensByUser: vi.fn().mockResolvedValue(undefined),
+  touchUserLastActive: vi.fn().mockResolvedValue(undefined),
 }));
 
 const { createApp } = await import('../src/app.js');

@@ -1345,6 +1345,33 @@ export type ChatFeedbackReportRow = typeof chatFeedbackReports.$inferSelect;
 export type NewChatFeedbackReportRow = typeof chatFeedbackReports.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* chat_feedback_votes — every thumbs up/down, attributed to the voting user  */
+/* -------------------------------------------------------------------------- */
+
+export const chatFeedbackVotes = pgTable(
+  'chat_feedback_votes',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    vote: text('vote').notNull(),
+    sessionId: uuid('session_id'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('chat_feedback_votes_user_id_idx').on(table.userId),
+  }),
+);
+
+export type ChatFeedbackVoteRow = typeof chatFeedbackVotes.$inferSelect;
+export type NewChatFeedbackVoteRow = typeof chatFeedbackVotes.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* user_facts — durable personal facts extracted from AI chat conversations    */
 /* -------------------------------------------------------------------------- */
 

@@ -197,6 +197,13 @@
       "when": 1784449074894,
       "tag": "0027_add_vastu_plans_birth_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784559846987,
+      "tag": "0028_chat_feedback_votes",
+      "breakpoints": true
     }
   ]
 }

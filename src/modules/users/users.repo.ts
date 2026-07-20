@@ -422,6 +422,11 @@ export async function revokeDeviceTokensByUser(userId: string): Promise<void> {
     .where(and(eq(devicePushTokens.userId, userId), isNull(devicePushTokens.revokedAt)));
 }
 
+/** Bumps `lastActiveAt` on any authenticated request — called fire-and-forget from `requireUser`. */
+export async function touchUserLastActive(userId: string): Promise<void> {
+  await db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, userId));
+}
+
 export async function countUsers(): Promise<number> {
   const [res] = await db.select({ count: count() }).from(users).where(isNull(users.deletedAt));
   return res?.count ?? 0;

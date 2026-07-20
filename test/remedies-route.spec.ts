@@ -30,6 +30,7 @@ vi.mock('firebase-admin/auth', () => ({
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findUserByFirebaseUid: state.findUserByFirebaseUid,
+  touchUserLastActive: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/modules/birth-profiles/profile-context.js', () => ({

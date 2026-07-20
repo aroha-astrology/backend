@@ -46,6 +46,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   softDeleteUserById: vi.fn(),
   softDeleteBirthProfilesByOwner: vi.fn(),
   revokeDeviceTokensByUser: vi.fn(),
+  touchUserLastActive: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
