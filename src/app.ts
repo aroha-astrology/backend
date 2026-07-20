@@ -1,5 +1,7 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
+import { compress } from 'hono/compress';
+import { bodyLimit } from 'hono/body-limit';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
@@ -21,6 +23,7 @@ import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { corsMiddleware } from './middleware/cors.js';
+import { rateLimiter } from './middleware/rate-limit.js';
 import { isProduction } from './config/env.js';
 
 export function createApp(): OpenAPIHono {
@@ -31,6 +34,14 @@ export function createApp(): OpenAPIHono {
 
   app.use('*', corsMiddleware);
   app.use('*', requestLogger);
+  app.use('*', compress());
+  app.use('*', bodyLimit({ maxSize: 1 * 1024 * 1024 })); // 1 MB — oversized bodies get a 413 via the global HTTPException handler
+  // Baseline abuse guard for every /v1 route (previously only chat/vastu/purchase-plan
+  // had any limit at all — GET /v1/kundli, /v1/me, /v1/horoscope, /v1/billing/*, etc. were
+  // completely unlimited). Runs before any router's own `requireUser`, so it's keyed by IP
+  // rather than user id here — the route-specific limiters below (which run after auth)
+  // still apply their own, stricter, per-user limits on top of this.
+  app.use('/v1/*', rateLimiter({ windowMs: 60_000, max: 60 }));
 
   app.route('/', healthRouter);
   app.route('/v1/auth', authRouter);

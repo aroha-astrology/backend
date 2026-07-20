@@ -61,7 +61,7 @@ echo "▶ build"; npm run build >/dev/null
 if [ "$need_migrate" = "true" ]; then echo "▶ migrations changed → db:migrate"; npm run db:migrate; fi
 echo "$REV" > .deployed-rev
 echo "▶ reload pm2"
-pm2 reload "$APP" >/dev/null 2>&1 || pm2 start dist/index.js --name "$APP" -i 1
+pm2 reload "$APP" >/dev/null 2>&1 || pm2 start dist/index.js --name "$APP" -i max
 pm2 save >/dev/null
 REMOTE
 
