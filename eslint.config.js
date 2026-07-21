@@ -4,7 +4,16 @@ import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'src/db/migrations/**'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'coverage/**',
+      'src/db/migrations/**',
+      // Plain-JS worker_threads fixtures/entries must run untranspiled — not
+      // part of the tsconfig TS program (no allowJs), so typed-linting them
+      // fails with a "project service" parse error rather than a real lint issue.
+      'test/fixtures/**/*.mjs',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
