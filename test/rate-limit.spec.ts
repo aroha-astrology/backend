@@ -14,15 +14,23 @@ vi.mock('../src/config/env.js', () => ({
   isTest: true,
 }));
 
+// The limiter's alertThrottled() call on rejection shares this same mocked
+// client with a 2-key Lua script — pass those through inertly so they don't
+// pollute `evalCalls`, which this suite uses to assert on rate-limit keying.
 vi.mock('../src/config/redis.js', () => ({
   getRedis: () => ({
-    eval: (_script: string, _numKeys: number, key: string, windowMs: number) => {
+    eval: (_script: string, numKeys: number, key: string, windowMs: number) => {
+      if (numKeys !== 1) return Promise.resolve([1, 0] as [number, number]);
       evalCalls.push(key);
       const count = (store.get(key) ?? 0) + 1;
       store.set(key, count);
       return Promise.resolve([count, Number(windowMs)] as [number, number]);
     },
   }),
+}));
+
+vi.mock('../src/lib/notifications/telegram.js', () => ({
+  sendAlert: () => Promise.resolve(true),
 }));
 
 const { rateLimiter } = await import('../src/middleware/rate-limit.js');

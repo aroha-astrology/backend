@@ -4,6 +4,7 @@ import { getRedis } from '../config/redis.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { Errors } from '../lib/errors.js';
+import { alertThrottled } from '../lib/notifications/alerts.js';
 
 /**
  * Atomic increment-and-set-TTL-once, single round trip so concurrent requests
@@ -131,6 +132,18 @@ export function rateLimiter(options: {
       const retryAfter = Math.ceil(ttlMs / 1000);
       c.header('Retry-After', String(retryAfter));
       logger.warn({ key, count, max, path: c.req.path }, 'rateLimiter: request rejected');
+
+      // Real users being turned away is worth waking someone up for: the
+      // limiter is the one failure mode that produces no 500s at all, so
+      // nothing else here would notice. Keyed by limiter name only, so a
+      // burst across many routes is one alert carrying the true count.
+      void alertThrottled(
+        `ratelimit:${name}`,
+        `Rate limit rejecting traffic (${name})`,
+        `${c.req.method} ${c.req.path} — ${count} requests against a ${max}/` +
+          `${Math.round(windowMs / 1000)}s limit. Retry-After ${retryAfter}s.`,
+      );
+
       throw Errors.tooManyRequests(`Rate limit exceeded. Try again in ${retryAfter} seconds.`);
     }
 
