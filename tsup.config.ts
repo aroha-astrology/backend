@@ -2,7 +2,10 @@ import { defineConfig } from 'tsup';
 import { resolve } from 'path';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: {
+    index: 'src/index.ts',
+    'ephemeris-worker': 'src/lib/astro-engine/calculations/ephemeris-worker.ts',
+  },
   format: ['esm'],
   target: 'node20',
   outDir: 'dist',
