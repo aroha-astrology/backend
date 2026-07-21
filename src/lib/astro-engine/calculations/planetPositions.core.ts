@@ -1,6 +1,8 @@
 // @ts-nocheck
 // =============================================================================
 // Planet Position Calculations using Swiss Ephemeris (swisseph-wasm)
+// Raw, uncached compute — do not call directly from route/service code.
+// Wrapped by planetPositions.ts (cache + optional worker-pool dispatch).
 // =============================================================================
 
 import type {
@@ -12,7 +14,6 @@ import type {
   PlanetPosition,
   HouseData,
   AscendantData,
-  ChartData,
 } from '@aroha-astrology/shared';
 
 import {
@@ -32,7 +33,7 @@ import {
 let sweInstance: any = null;
 let initPromise: Promise<void> | null = null;
 
-async function getSwe() {
+export async function getSwe() {
   if (sweInstance) return sweInstance;
   if (initPromise) {
     await initPromise;
@@ -75,7 +76,7 @@ const SE_SIDM_B_V_RAMAN = 3;
 // Ayanamsa Mapping
 // =============================================================================
 
-const AYANAMSA_MAP: Record<Ayanamsa, number> = {
+export const AYANAMSA_MAP: Record<Ayanamsa, number> = {
   lahiri: SE_SIDM_LAHIRI,
   krishnamurti: SE_SIDM_KRISHNAMURTI,
   raman: SE_SIDM_B_V_RAMAN,
@@ -320,7 +321,7 @@ export async function calculateAscendant(
  * map breaks whenever a sign is intercepted (two cusps in one sign), silently
  * leaving planets in house 0.
  */
-function assignPlanetsToHouses(planets: PlanetPosition[], houses: HouseData[]): void {
+export function assignPlanetsToHouses(planets: PlanetPosition[], houses: HouseData[]): void {
   for (const planet of planets) {
     const lon = normalizeDegree(planet.longitude);
     let assignedHouse = houses[0].house; // sane fallback (house 1)
@@ -339,45 +340,4 @@ function assignPlanetsToHouses(planets: PlanetPosition[], houses: HouseData[]): 
     planet.house = assignedHouse;
     houses[assignedHouse - 1].planets.push(planet.planet);
   }
-}
-
-/**
- * Generate a complete chart with planets, houses, and ascendant.
- */
-export async function calculateChart(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  min: number,
-  timezone: number,
-  lat: number,
-  lng: number,
-  ayanamsa: Ayanamsa = 'lahiri',
-  houseSystem: HouseSystem = 'W',
-): Promise<ChartData> {
-  const swe = await getSwe();
-
-  const sidMode = AYANAMSA_MAP[ayanamsa];
-  swe.set_sid_mode(sidMode, 0, 0);
-
-  const jd = await dateToJulianDay(year, month, day, hour, min, timezone);
-  const [planets, houses, ascendant] = await Promise.all([
-    calculatePlanetPositions(jd, ayanamsa),
-    calculateHouses(jd, lat, lng, houseSystem, ayanamsa),
-    calculateAscendant(jd, lat, lng, ayanamsa),
-  ]);
-
-  assignPlanetsToHouses(planets, houses);
-
-  const ayanamsaValue = swe.get_ayanamsa(jd);
-
-  return {
-    planets,
-    houses,
-    ascendant,
-    ayanamsa,
-    ayanamsaValue,
-    julianDay: jd,
-  };
 }
