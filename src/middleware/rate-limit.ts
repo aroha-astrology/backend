@@ -1,6 +1,7 @@
-import type { MiddlewareHandler } from 'hono';
-import crypto from 'node:crypto';
+import type { Context, MiddlewareHandler } from 'hono';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { getRedis } from '../config/redis.js';
+import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { Errors } from '../lib/errors.js';
 
@@ -42,24 +43,65 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Redis-backed rate limiter keyed by authenticated userId (or IP as a
- * fallback for unauthenticated routes). Replaces the old in-memory `Map`
- * implementation so the limit is shared correctly across pm2 cluster
+ * Identify the caller for bucketing purposes.
+ *
+ * Order matters. An authenticated user id is the most precise identity we
+ * have, but the baseline limiter runs before any router's `requireUser`, so
+ * for most requests we fall through to the network peer.
+ *
+ * `x-forwarded-for` is only consulted when TRUST_PROXY says something
+ * upstream actually sets it. Read unconditionally it is worse than useless:
+ * with no proxy deployed the header is pure client input, so an abuser gets
+ * an unlimited supply of buckets while every honest client — none of which
+ * sends the header — collapses into one shared counter.
+ */
+function identify(c: Context): string {
+  const user = c.get('user') as { id?: string } | undefined;
+  if (user?.id) return `u:${user.id}`;
+
+  if (env.TRUST_PROXY) {
+    // The header is a chain — "client, proxy1, proxy2" — and only the
+    // left-most entry is the originating client.
+    const forwarded = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+    if (forwarded) return `ip:${forwarded}`;
+  }
+
+  // The real TCP peer. getConnInfo reaches into the Node adapter's `incoming`
+  // socket, which isn't present under every runtime/test harness, so treat a
+  // failure as "unknown peer" rather than letting it 500 the request.
+  try {
+    const address = getConnInfo(c).remote.address;
+    if (address) return `ip:${address}`;
+  } catch {
+    /* fall through */
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Redis-backed rate limiter keyed by authenticated userId (or the client's IP
+ * as a fallback for unauthenticated routes). Redis-backed rather than an
+ * in-memory `Map` so the limit is shared correctly across pm2 cluster
  * instances instead of being multiplied by the process count.
  *
- * @param options.windowMs - Sliding window duration in milliseconds
+ * @param options.windowMs - Fixed window duration in milliseconds
  * @param options.max      - Maximum requests allowed per window
+ * @param options.name     - Stable identifier for this limiter. Every call
+ *   site needs its own so independently configured limiters never share a
+ *   counter for the same caller — but it MUST be stable across processes and
+ *   restarts, or each pm2 worker silently gets its own private quota and the
+ *   effective limit becomes `max × workerCount`.
  */
-export function rateLimiter(options: { windowMs: number; max: number }): MiddlewareHandler {
-  const { windowMs, max } = options;
-  // Each call site gets its own Redis key namespace so independently
-  // configured limiters (e.g. a route-specific limit vs. the global
-  // baseline) never share a counter for the same user.
-  const namespace = crypto.randomUUID();
+export function rateLimiter(options: {
+  windowMs: number;
+  max: number;
+  name: string;
+}): MiddlewareHandler {
+  const { windowMs, max, name } = options;
 
   return async (c, next) => {
-    const user = c.get('user');
-    const key = `ratelimit:${namespace}:${user?.id ?? c.req.header('x-forwarded-for') ?? 'anonymous'}`;
+    const key = `ratelimit:${name}:${identify(c)}`;
 
     let count: number;
     let ttlMs: number;
@@ -88,6 +130,7 @@ export function rateLimiter(options: { windowMs: number; max: number }): Middlew
     if (count > max) {
       const retryAfter = Math.ceil(ttlMs / 1000);
       c.header('Retry-After', String(retryAfter));
+      logger.warn({ key, count, max, path: c.req.path }, 'rateLimiter: request rejected');
       throw Errors.tooManyRequests(`Rate limit exceeded. Try again in ${retryAfter} seconds.`);
     }
 

@@ -65,6 +65,16 @@ const EnvSchema = z
     // --- Redis -------------------------------------------------------------
     REDIS_URL: z.string().default('redis://localhost:6379/0'),
 
+    // Whether an upstream reverse proxy (ALB/nginx/Cloudflare) terminates
+    // connections and sets `x-forwarded-for`. Defaults to false because the
+    // production box is currently addressed directly on :3000 — trusting the
+    // header without a proxy in front lets any client forge a fresh identity
+    // per request and walk straight through the rate limiter.
+    TRUST_PROXY: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+
     // --- Field-level encryption ---------------------------------------------
     // Base64-encoded 32-byte keys (`openssl rand -base64 32`). ENCRYPTION_KEY
     // encrypts birth data/gotra/chat transcripts at rest; ENCRYPTION_HASH_KEY

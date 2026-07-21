@@ -20,7 +20,7 @@ import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 const CHAT_MESSAGE_COST_PAISE = 2000;
 
 /** Expensive LLM/swarm routes: cap per authenticated user. */
-const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20 });
+const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20, name: 'astro-llm' });
 import {
   OnboardingRequestSchema,
   OnboardingResponseSchema,

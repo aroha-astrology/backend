@@ -41,7 +41,13 @@ export function createApp(): OpenAPIHono {
   // completely unlimited). Runs before any router's own `requireUser`, so it's keyed by IP
   // rather than user id here — the route-specific limiters below (which run after auth)
   // still apply their own, stricter, per-user limits on top of this.
-  app.use('/v1/*', rateLimiter({ windowMs: 60_000, max: 60 }));
+  //
+  // The ceiling is deliberately generous: one app open fans out to ~16-20 calls
+  // (12 × /v1/forecast/moon-sign/N for the horoscope slider, plus /v1/me,
+  // /v1/kundli, /v1/horoscope, panchang), and several of those screens then
+  // poll while content generates. At 60/min a single user refreshing twice was
+  // enough to trip it. This is an abuse guard, not a quota.
+  app.use('/v1/*', rateLimiter({ windowMs: 60_000, max: 300, name: 'baseline' }));
 
   app.route('/', healthRouter);
   app.route('/v1/auth', authRouter);

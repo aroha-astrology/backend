@@ -31,7 +31,7 @@ const errorResponse = (description: string) => ({
 });
 
 /** Independent of the general astro LLM rate limit — this is its own expensive call. */
-const analyzeRateLimit = rateLimiter({ windowMs: 60_000, max: 5 });
+const analyzeRateLimit = rateLimiter({ windowMs: 60_000, max: 5, name: 'purchase-plan-analyze' });
 
 export const purchasePlanRouter = new OpenAPIHono();
 
