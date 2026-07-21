@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   periodKeyFor: vi.fn(),
   findHoroscope: vi.fn(),
   findKundliByUserId: vi.fn(),
+  broadcastPeriodReading: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -67,6 +68,10 @@ vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
 
 vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
   findOwnedBirthProfile: state.findOwnedBirthProfile,
+}));
+
+vi.mock('../src/modules/cron/broadcast.service.js', () => ({
+  broadcastPeriodReading: state.broadcastPeriodReading,
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -355,5 +360,86 @@ describe('GET /v1/horoscope — additional (non-primary) profile', () => {
 
     expect(res.status).toBe(200);
     expect(state.findKundliByUserId).toHaveBeenCalledWith('id-1', 'profile-a');
+  });
+});
+
+describe('POST /internal/cron/broadcast-reading', () => {
+  const SUCCESS_RESULT = {
+    period: 'daily',
+    skipped: false,
+    tokensFound: 10,
+    success: 10,
+    failure: 0,
+  };
+
+  beforeEach(() => {
+    state.broadcastPeriodReading.mockReset().mockResolvedValue(SUCCESS_RESULT);
+  });
+
+  it('rejects with 403 when the cron secret is missing', async () => {
+    const res = await createApp().request('/internal/cron/broadcast-reading', { method: 'POST' });
+    expect(res.status).toBe(403);
+    expect(state.broadcastPeriodReading).not.toHaveBeenCalled();
+  });
+
+  it('defaults to period "daily" and force false when the body is omitted', async () => {
+    const res = await createApp().request('/internal/cron/broadcast-reading', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET },
+    });
+    expect(res.status).toBe(200);
+    expect(state.broadcastPeriodReading).toHaveBeenCalledWith('daily', { force: false });
+  });
+
+  it('passes through an explicit period and force', async () => {
+    await createApp().request('/internal/cron/broadcast-reading', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ period: 'weekly', force: true }),
+    });
+    expect(state.broadcastPeriodReading).toHaveBeenCalledWith('weekly', { force: true });
+  });
+
+  it('returns the service result as-is (including skipped runs)', async () => {
+    state.broadcastPeriodReading.mockResolvedValueOnce({
+      period: 'weekly',
+      skipped: true,
+      reason: 'not-scheduled-today',
+      tokensFound: 0,
+      success: 0,
+      failure: 0,
+    });
+
+    const res = await createApp().request('/internal/cron/broadcast-reading', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ period: 'weekly' }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skipped: boolean; reason: string };
+    expect(body.skipped).toBe(true);
+    expect(body.reason).toBe('not-scheduled-today');
+  });
+});
+
+describe('POST /internal/cron/broadcast-daily-reading (deprecated alias)', () => {
+  beforeEach(() => {
+    state.broadcastPeriodReading.mockReset().mockResolvedValue({
+      period: 'daily',
+      skipped: false,
+      tokensFound: 5,
+      success: 5,
+      failure: 0,
+    });
+  });
+
+  it('delegates to broadcastPeriodReading("daily")', async () => {
+    const res = await createApp().request('/internal/cron/broadcast-daily-reading', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET },
+    });
+    expect(res.status).toBe(200);
+    expect(state.broadcastPeriodReading).toHaveBeenCalledWith('daily');
   });
 });

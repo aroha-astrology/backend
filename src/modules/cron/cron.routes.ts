@@ -10,7 +10,8 @@ import { runAllHoroscopeBatches, runHoroscopeBatch } from '../horoscope/horoscop
 import { PanchangWarmupBodySchema, PanchangWarmupResultSchema } from '../astro/astro.schemas.js';
 import { warmupPanchangCache } from '../astro/astro.service.js';
 import { runHealthReport } from '../health-report/health-report.service.js';
-import { broadcastDailyReading } from './broadcast.service.js';
+import { broadcastPeriodReading } from './broadcast.service.js';
+import { BroadcastReadingBodySchema, BroadcastReadingResultSchema } from './broadcast.schemas.js';
 
 const ErrorSchema = z
   .object({
@@ -148,40 +149,72 @@ cronRouter.openapi(healthReportRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Broadcast: "Today's Reading is Ready" — fires at 07:00 IST (01:30 UTC)
+// Broadcast: "Your reading is ready" — daily/weekly/monthly/yearly, each
+// wired to its own crontab line (see scripts/cron-broadcast-reading.sh):
+//   daily   07:00 IST   — every day
+//   weekly  10:00 IST   — Mondays
+//   monthly 11:00 IST   — the 1st of the month
+//   yearly  18:00 IST   — Jan 1
+// shouldBroadcast() in broadcast.service.ts is the actual source of truth
+// for "does today count" — a mis-scheduled crontab line is a harmless no-op
+// against it rather than a duplicate/wrong-day send.
 // ---------------------------------------------------------------------------
 
+const broadcastReadingRoute = createRoute({
+  method: 'post',
+  path: '/cron/broadcast-reading',
+  tags: ['Cron'],
+  summary: 'Broadcast "your reading is ready" to all active device tokens',
+  description:
+    'Sends a localized FCM push (grouped by device locale, English fallback) to every ' +
+    'un-revoked, push-enabled device token — including dormant users, since the copy is ' +
+    'templated and reveals no generated content. Idempotent per (period, IST date) via ' +
+    "cron_batch_runs; a no-op if `shouldBroadcast(period)` says today is not that period's " +
+    'scheduled day, unless `force`. Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: {
+      required: false,
+      content: { 'application/json': { schema: BroadcastReadingBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Broadcast completed (or skipped — see `skipped`/`reason`)',
+      content: { 'application/json': { schema: BroadcastReadingResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(broadcastReadingRoute, async (c) => {
+  const body = c.req.valid('json') ?? {};
+  const result = await broadcastPeriodReading(body.period ?? 'daily', {
+    force: body.force ?? false,
+  });
+  return c.json(result, 200);
+});
+
+/**
+ * @deprecated Thin alias for the old daily-only route, kept for one deploy
+ * cycle so the EC2 crontab update isn't a hard cutover with the app deploy.
+ * Remove once scripts/cron-broadcast-reading.sh is confirmed switched over
+ * to hitting /cron/broadcast-reading directly.
+ */
 const broadcastDailyReadingRoute = createRoute({
   method: 'post',
   path: '/cron/broadcast-daily-reading',
   tags: ['Cron'],
-  summary: "Broadcast \"Today's Reading is Ready\" to all active device tokens",
-  description:
-    'Sends an eye-catching FCM push notification to every un-revoked, push-enabled device token. ' +
-    'Uses a rotating set of 7 Vedic-themed hook messages (one per day of the week) so the copy ' +
-    'is never the same two days in a row. Deep-links users to the Horoscope screen on tap. ' +
-    'Designed to run at 01:30 UTC (07:00 IST) — well after the 00:01 IST horoscope generation ' +
-    'cron, so readings are always ready before the notification lands. ' +
-    'Authenticated via the X-Cron-Secret header.',
+  summary: '[Deprecated] Use POST /cron/broadcast-reading instead',
   responses: {
     200: {
       description: 'Broadcast completed',
-      content: {
-        'application/json': {
-          schema: z.object({
-            hook: z.string().describe('Notification title used today'),
-            tokensFound: z.number().int(),
-            success: z.number().int(),
-            failure: z.number().int(),
-          }),
-        },
-      },
+      content: { 'application/json': { schema: BroadcastReadingResultSchema } },
     },
     403: errorResponse('Invalid or missing cron secret'),
   },
 });
 
 cronRouter.openapi(broadcastDailyReadingRoute, async (c) => {
-  const result = await broadcastDailyReading();
+  const result = await broadcastPeriodReading('daily');
   return c.json(result, 200);
 });

@@ -6,6 +6,7 @@ import {
   findUserByFirebaseUid,
   findUserByPhoneE164,
   insertUser,
+  touchUserLastActive,
   updateUserById,
 } from '../users/users.repo.js';
 
@@ -50,15 +51,15 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
   if (existing) {
     if (existing.deletedAt !== null) {
       const resurrected = await resurrect(existing);
-      return { user: await ensureReferralCode(resurrected), created: false };
+      return finish(await ensureReferralCode(resurrected), false);
     }
-    return { user: await ensureReferralCode(existing), created: false };
+    return finish(await ensureReferralCode(existing), false);
   }
 
   const phoneE164 = typeof token.phone_number === 'string' ? token.phone_number : null;
   try {
     const created = await insertUser({ firebaseUid: token.uid, phoneE164 });
-    return { user: created, created: true };
+    return finish(created, true);
   } catch (err) {
     // A row already holds this phone (Firebase reissued the UID for the same
     // number). Reclaim that row under the new UID instead of crashing.
@@ -69,9 +70,22 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
           firebaseUid: token.uid,
           deletedAt: null,
         });
-        return { user: reclaimed ?? byPhone, created: false };
+        return finish(reclaimed ?? byPhone, false);
       }
     }
     throw err;
   }
+}
+
+/**
+ * Every return path funnels through here so `lastActiveAt` is recorded on
+ * every app launch. This route runs under `requireFirebaseToken`, not
+ * `requireUser` — the only authed route that skips the latter's automatic
+ * heartbeat bump — and the nightly horoscope batch's dormant-user filter
+ * (see horoscope.repo.ts `listRecentlyActiveUsersAfter`) depends on this
+ * being current. Fire-and-forget: a heartbeat failure must never fail login.
+ */
+function finish(user: EstablishSessionResult['user'], created: boolean): EstablishSessionResult {
+  void touchUserLastActive(user.id).catch(() => {});
+  return { user, created };
 }

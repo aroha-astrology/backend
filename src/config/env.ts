@@ -125,6 +125,13 @@ const EnvSchema = z
           .filter(Boolean),
       ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+    // Nightly horoscope batch skips users with no activity in this many days
+    // (lastActiveAt, falling back to createdAt) — a dormant user's reading is
+    // instead generated on the fly the next time they actually open the app
+    // (GET /v1/horoscope's existing cache-miss path). See horoscope.repo.ts
+    // listRecentlyActiveUsersAfter.
+    HOROSCOPE_ACTIVE_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
   })
   .superRefine((value, ctx) => {
     const hasPath = Boolean(value.FIREBASE_SERVICE_ACCOUNT_PATH);

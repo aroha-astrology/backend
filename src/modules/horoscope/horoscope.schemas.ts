@@ -134,6 +134,13 @@ export const HoroscopeRunBodySchema = z
       .describe('Override the date; defaults to the current period (IST).'),
     force: z.boolean().optional().describe('Regenerate even if one already exists for the period.'),
     limit: z.number().int().positive().max(100000).optional().describe('Cap users processed.'),
+    includeDormant: z
+      .boolean()
+      .optional()
+      .describe(
+        'Include users with no activity in HOROSCOPE_ACTIVE_WINDOW_DAYS (default: excluded). ' +
+          'For admin backfills that intentionally want to reach every user.',
+      ),
   })
   .strict()
   .openapi('HoroscopeRunBody');

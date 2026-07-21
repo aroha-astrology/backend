@@ -6,7 +6,7 @@ import { makeUserRow, makeProfileContext } from './helpers/mocks.js';
 // checkpoint (replacing the old in-memory-only `lastId`).
 
 const state = vi.hoisted(() => ({
-  listActiveUsersAfter: vi.fn(),
+  listRecentlyActiveUsersAfter: vi.fn(),
   claimHoroscopeGeneration: vi.fn(),
   findHoroscope: vi.fn(),
   markHoroscopeReady: vi.fn(),
@@ -22,7 +22,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock('../src/modules/horoscope/horoscope.repo.js', () => ({
-  listActiveUsersAfter: state.listActiveUsersAfter,
+  listRecentlyActiveUsersAfter: state.listRecentlyActiveUsersAfter,
   claimHoroscopeGeneration: state.claimHoroscopeGeneration,
   findHoroscope: state.findHoroscope,
   markHoroscopeReady: state.markHoroscopeReady,
@@ -87,7 +87,7 @@ describe('runHoroscopeBatch', () => {
 
   it('processes a page with bounded concurrency, not one user at a time', async () => {
     const users = Array.from({ length: 8 }, (_, i) => makeUserRow({ id: `user-${i}` }));
-    state.listActiveUsersAfter.mockResolvedValueOnce(users).mockResolvedValueOnce([]);
+    state.listRecentlyActiveUsersAfter.mockResolvedValueOnce(users).mockResolvedValueOnce([]);
 
     const releasers: Array<() => void> = [];
     state.claimHoroscopeGeneration.mockImplementation(
@@ -114,7 +114,7 @@ describe('runHoroscopeBatch', () => {
 
   it('checkpoints lastId and cumulative counts once per page', async () => {
     const users = [makeUserRow({ id: 'user-a' }), makeUserRow({ id: 'user-b' })];
-    state.listActiveUsersAfter.mockResolvedValueOnce(users).mockResolvedValueOnce([]);
+    state.listRecentlyActiveUsersAfter.mockResolvedValueOnce(users).mockResolvedValueOnce([]);
     state.claimHoroscopeGeneration.mockResolvedValue({ startedAt: null });
 
     const result = await runHoroscopeBatch('daily', { forDate: '2026-07-20' });
@@ -136,11 +136,13 @@ describe('runHoroscopeBatch', () => {
     state.getOrCreateBatchRun.mockResolvedValue(
       freshRun({ status: 'running', lastId: 'user-50', processed: 50, skipped: 50 }),
     );
-    state.listActiveUsersAfter.mockResolvedValue([]);
+    state.listRecentlyActiveUsersAfter.mockResolvedValue([]);
 
     await runHoroscopeBatch('daily', { forDate: '2026-07-20' });
 
-    expect(state.listActiveUsersAfter).toHaveBeenCalledWith('user-50', expect.any(Number));
+    expect(state.listRecentlyActiveUsersAfter).toHaveBeenCalledWith('user-50', expect.any(Number), {
+      includeDormant: false,
+    });
     expect(state.resetBatchRun).not.toHaveBeenCalled();
     expect(state.completeBatchRun).toHaveBeenCalledWith(
       'run-1',
@@ -153,12 +155,14 @@ describe('runHoroscopeBatch', () => {
       freshRun({ status: 'completed', lastId: 'user-999', processed: 999 }),
     );
     state.resetBatchRun.mockResolvedValue(freshRun());
-    state.listActiveUsersAfter.mockResolvedValue([]);
+    state.listRecentlyActiveUsersAfter.mockResolvedValue([]);
 
     await runHoroscopeBatch('daily', { forDate: '2026-07-20' });
 
     expect(state.resetBatchRun).toHaveBeenCalledWith('horoscope-batch', 'daily', '2026-07-20');
-    expect(state.listActiveUsersAfter).toHaveBeenCalledWith(null, expect.any(Number));
+    expect(state.listRecentlyActiveUsersAfter).toHaveBeenCalledWith(null, expect.any(Number), {
+      includeDormant: false,
+    });
   });
 
   it('resets progress when force is true, even if a running row has prior progress', async () => {
@@ -166,16 +170,18 @@ describe('runHoroscopeBatch', () => {
       freshRun({ status: 'running', lastId: 'user-50', processed: 50 }),
     );
     state.resetBatchRun.mockResolvedValue(freshRun());
-    state.listActiveUsersAfter.mockResolvedValue([]);
+    state.listRecentlyActiveUsersAfter.mockResolvedValue([]);
 
     await runHoroscopeBatch('daily', { forDate: '2026-07-20', force: true });
 
     expect(state.resetBatchRun).toHaveBeenCalledWith('horoscope-batch', 'daily', '2026-07-20');
-    expect(state.listActiveUsersAfter).toHaveBeenCalledWith(null, expect.any(Number));
+    expect(state.listRecentlyActiveUsersAfter).toHaveBeenCalledWith(null, expect.any(Number), {
+      includeDormant: false,
+    });
   });
 
   it('marks the run failed and rethrows when a page read fails', async () => {
-    state.listActiveUsersAfter.mockRejectedValueOnce(new Error('db down'));
+    state.listRecentlyActiveUsersAfter.mockRejectedValueOnce(new Error('db down'));
 
     await expect(runHoroscopeBatch('daily', { forDate: '2026-07-20' })).rejects.toThrow('db down');
 
@@ -190,7 +196,7 @@ describe('runAllHoroscopeBatches', () => {
     state.getOrCreateBatchRun.mockResolvedValue(freshRun());
     state.resolveActiveProfileContext.mockResolvedValue(makeProfileContext());
     state.findHoroscope.mockResolvedValue(undefined);
-    state.listActiveUsersAfter.mockResolvedValue([]);
+    state.listRecentlyActiveUsersAfter.mockResolvedValue([]);
   });
 
   it('alerts via notifyError when a period crashes, but still runs the remaining periods', async () => {
@@ -222,7 +228,7 @@ describe('runAllHoroscopeBatches', () => {
 
   it('sends a summary alert when any period completes with failures', async () => {
     const user = makeUserRow({ id: 'user-x' });
-    state.listActiveUsersAfter.mockResolvedValueOnce([user]).mockResolvedValue([]);
+    state.listRecentlyActiveUsersAfter.mockResolvedValueOnce([user]).mockResolvedValue([]);
     state.resolveActiveProfileContext.mockRejectedValueOnce(new Error('profile fetch failed'));
 
     await runAllHoroscopeBatches();

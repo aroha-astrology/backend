@@ -7,6 +7,8 @@ const state = vi.hoisted(() => ({
   insertUser: vi.fn(),
   updateUserById: vi.fn(),
   notifyNewSignup: vi.fn(),
+  ensureReferralCode: vi.fn((user: unknown) => Promise.resolve(user)),
+  touchUserLastActive: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', () => ({
@@ -38,7 +40,11 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   updateUserById: state.updateUserById,
   updateUserWithConsentLog: vi.fn(),
   softDeleteUserById: vi.fn(),
-  touchUserLastActive: vi.fn().mockResolvedValue(undefined),
+  // Identity pass-through — matches the real implementation's behavior when
+  // the row already has a referralCode (every makeUserRow fixture has none
+  // set explicitly, but establishSession doesn't care which branch runs).
+  ensureReferralCode: state.ensureReferralCode,
+  touchUserLastActive: state.touchUserLastActive,
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -50,6 +56,10 @@ describe('POST /v1/auth/session', () => {
     state.insertUser.mockReset();
     state.updateUserById.mockReset();
     state.notifyNewSignup.mockReset().mockResolvedValue(true);
+    state.ensureReferralCode
+      .mockReset()
+      .mockImplementation((user: unknown) => Promise.resolve(user));
+    state.touchUserLastActive.mockReset().mockResolvedValue(undefined);
   });
 
   it('returns 401 when the Authorization header is missing', async () => {
@@ -131,5 +141,26 @@ describe('POST /v1/auth/session', () => {
     });
     expect(res.status).toBe(200);
     expect(state.updateUserById).toHaveBeenCalledWith('id-deleted', { deletedAt: null });
+  });
+
+  it('records lastActiveAt on every session exchange, not just via a later /v1/me call', async () => {
+    // POST /v1/auth/session runs under requireFirebaseToken, not requireUser
+    // — so it's the one authed route that does NOT get the requireUser
+    // heartbeat bump for free. The nightly horoscope batch's dormant-user
+    // filter (listRecentlyActiveUsersAfter) reads lastActiveAt, so app
+    // launch must record it directly rather than relying on whatever the
+    // client happens to fetch next.
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-existing'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(
+      makeUserRow({ id: 'id-existing', firebaseUid: 'uid-existing' }),
+    );
+
+    const app = createApp();
+    await app.request('/v1/auth/session', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer good-token' },
+    });
+
+    expect(state.touchUserLastActive).toHaveBeenCalledWith('id-existing');
   });
 });

@@ -1,5 +1,6 @@
 import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
+import { env } from '../../config/env.js';
 import {
   cronBatchRuns,
   dailyHoroscopes,
@@ -22,15 +23,41 @@ function profileFilter(birthProfileId: string | null) {
     : eq(dailyHoroscopes.birthProfileId, birthProfileId);
 }
 
-/** Keyset page of active users (deletedAt IS NULL), ordered by id for stable paging. */
-export async function listActiveUsersAfter(
+/**
+ * Keyset page of active users (deletedAt IS NULL), ordered by id for stable
+ * paging. By default also excludes users with no activity in the last
+ * `HOROSCOPE_ACTIVE_WINDOW_DAYS` — the nightly batch shouldn't spend an LLM
+ * call generating for someone who hasn't opened the app in a week; their
+ * reading is instead generated on the fly the next time they do (see
+ * requestHoroscopeGeneration's cache-miss path in horoscope.service.ts).
+ *
+ * `COALESCE(lastActiveAt, createdAt)` is essential: `lastActiveAt` is only
+ * populated once a heartbeat has landed (requireUser / establishSession), so
+ * a plain `lastActiveAt > cutoff` would incorrectly exclude both brand-new
+ * signups (no heartbeat yet) and any legacy row predating that column.
+ *
+ * `includeDormant: true` skips the activity filter entirely — for admin
+ * backfills (e.g. scripts/regenerate-all-horoscopes.sh) that intentionally
+ * want to reach every user regardless of recent activity.
+ */
+export async function listRecentlyActiveUsersAfter(
   afterId: string | null,
   limit: number,
+  opts: { includeDormant?: boolean } = {},
 ): Promise<UserRow[]> {
-  const where = afterId
-    ? and(isNull(users.deletedAt), gt(users.id, afterId))
-    : isNull(users.deletedAt);
-  const rows = await db.select().from(users).where(where).orderBy(asc(users.id)).limit(limit);
+  const conditions = [isNull(users.deletedAt)];
+  if (afterId) conditions.push(gt(users.id, afterId));
+  if (!opts.includeDormant) {
+    conditions.push(
+      sql`coalesce(${users.lastActiveAt}, ${users.createdAt}) > now() - ${env.HOROSCOPE_ACTIVE_WINDOW_DAYS} * interval '1 day'`,
+    );
+  }
+  const rows = await db
+    .select()
+    .from(users)
+    .where(and(...conditions))
+    .orderBy(asc(users.id))
+    .limit(limit);
   // users.dateOfBirth/timeOfBirth/placeOfBirth are encrypted at rest — this
   // cron reads them to compute chart facts, so decrypt before returning.
   return rows.map(decryptUserRow);
