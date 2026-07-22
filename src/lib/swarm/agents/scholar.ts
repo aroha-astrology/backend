@@ -88,6 +88,21 @@ const ANSWER_DIRECTLY = `Within the life topics you cover, answer the question t
 const NO_HEDGE_OPENERS = `Never open a reply with meta-commentary about what astrology "cannot predict," "does not predict in the literal sense," or "isn't a predictive science for X" — that is a disclaimer standing in for an answer, not an answer, and it is banned as an opener even when the topic is a sensitive one like accidents or health. If a caveat is genuinely needed (e.g. "I'm not a doctor"), keep it to one short clause and move immediately into the actual chart-based insight in that same first sentence — never spend the whole opening explaining the limits of astrology before getting to the point.`;
 
 /**
+ * Direct fix for a production incident: told a prior yes/no travel
+ * prediction was wrong, the model apologized by inventing a brand-new
+ * chart-based explanation ("I misread the Saturnian influence as an obstacle
+ * when it actually meant successful execution of the trip") that (a) wasn't
+ * grounded in any real fact from the data below — the grounding facts only
+ * ever emit clinical labels like "Transit gating," never narrative phrases
+ * like that — and (b) didn't even logically reconcile with its own prior
+ * answer. ANSWER_DIRECTLY/RESPONSE_DISCIPLINE push toward always committing
+ * to a confident claim, and nothing elsewhere in this prompt says what to do
+ * when the user reports that a prior claim didn't hold — so the model
+ * improvised a second fabrication to explain away the first.
+ */
+const CORRECTION_HONESTY = `If the user tells you a prediction or claim you made earlier in this conversation turned out to be wrong, do not invent a new chart-based explanation to retroactively make the old answer fit what actually happened — that compounds the original mistake with a fabricated one. Acknowledge plainly and briefly, without over-apologizing or getting defensive, that the specific claim didn't hold. Then either give an honest reading grounded only in real facts from the chart data below, or say plainly that this particular outcome falls outside what the data can pin down — never reinterpret a planet's or transit's established meaning on the spot (e.g. claiming a placement you called an obstacle actually "meant" success all along) just to sound consistent. If you don't have a real, chart-grounded reason the outcome differed, say so honestly instead of manufacturing one.`;
+
+/**
  * The single astrologer's role and scope. Merges what used to be 4 separate
  * persona prompts: the `general` persona's full domain list (education,
  * legal, parents, remedies) plus the domain-specific handling rules that
@@ -376,6 +391,7 @@ function systemPrompt(detailLevel: ChatDetailLevel, now: Date): string {
     EFFORT_DEPENDENT_OUTCOMES,
     ANSWER_DIRECTLY,
     NO_HEDGE_OPENERS,
+    CORRECTION_HONESTY,
     EMPATHY_BEAT,
     PERSONAL_TOUCH,
     temporalAnchor(now),
