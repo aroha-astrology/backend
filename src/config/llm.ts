@@ -254,3 +254,26 @@ export const GEMSTONE_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 4096,
 };
+
+/**
+ * Transit pre-alert push copy — a title plus a body of at most 170 characters,
+ * written per (transit event × natal Moon sign × language).
+ *
+ * Temperature is high by this codebase's standards on purpose: the whole point
+ * of the format is copy sharp enough that people screenshot it, and 0.4 gives
+ * the same seven bland sentences every month.
+ *
+ * 512 tokens is far more than 170 characters needs, and that is deliberate.
+ * Non-Latin scripts inflate token counts several-fold, and a ceiling sized
+ * from the English character count is precisely what produced the empty
+ * Bengali chat replies (see CHAT_PROFILE's 700->2048 history). Truncation here
+ * would be worse than elsewhere — the output is unrecallable once pushed — so
+ * the ceiling is set where it can never be the binding constraint.
+ */
+export const TRANSIT_ALERT_PROFILE: GenerationProfile = {
+  name: 'transit-alert',
+  temperature: 0.9,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 512,
+};

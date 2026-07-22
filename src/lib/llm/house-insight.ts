@@ -64,7 +64,7 @@ function getPlanets(chart: Record<string, unknown> | null): PlanetFact[] {
 }
 
 /** Traditional significations, plain-language — same list the (deleted) HouseDetails.tsx used. */
-const HOUSE_SIGNIFICATIONS: Record<number, string> = {
+export const HOUSE_SIGNIFICATIONS: Record<number, string> = {
   1: 'self, body, personality, and how you present to the world',
   2: 'wealth, family, speech, and accumulated values',
   3: 'courage, siblings, communication, and short journeys',

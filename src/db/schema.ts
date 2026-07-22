@@ -1497,8 +1497,139 @@ export const notifications = pgTable(
   },
   (table) => ({
     userIdx: index('notifications_user_id_idx').on(table.userId),
+    // Supports the transit-alert dormancy throttle, which asks "has this user
+    // had a notification of this type in the last 15 days" for every candidate
+    // recipient on every send.
+    userTypeCreatedIdx: index('notifications_user_type_created_idx').on(
+      table.userId,
+      table.type,
+      table.createdAt,
+    ),
   }),
 );
 
 export type NotificationRow = typeof notifications.$inferSelect;
 export type NewNotificationRow = typeof notifications.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* transit_events — computed planetary ingress / station calendar              */
+/* -------------------------------------------------------------------------- */
+
+export const transitEventTypeEnum = pgEnum('transit_event_type', [
+  'ingress',
+  'retrograde',
+  'direct',
+]);
+
+export const transitEventStatusEnum = pgEnum('transit_event_status', [
+  /** Detected and stored, but not yet chosen for delivery. */
+  'detected',
+  /** Chosen for delivery and copy has been generated. */
+  'drafted',
+  /** Push has gone out. */
+  'sent',
+  /** Deliberately not pushed — see skipReason (e.g. lost a collision). */
+  'skipped',
+]);
+
+/**
+ * The app's own transit calendar, computed from the bundled Swiss Ephemeris by
+ * findTransitEvents() — never scraped. Published transit calendars are usually
+ * tropical or use a different ayanamsa; ours is Lahiri sidereal, so an external
+ * date would contradict the Kundli and Sade Sati pages by days.
+ *
+ * Every detected event is stored, including ones that will never be pushed —
+ * they are still true, and still useful to show in-app.
+ */
+export const transitEvents = pgTable(
+  'transit_events',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    planet: text('planet').notNull(),
+    eventType: transitEventTypeEnum('event_type').notNull(),
+    /** Sign being left (ingress) or stood in (station). */
+    fromSign: text('from_sign').notNull(),
+    /** Sign being entered. Null for stations — nothing is entered. */
+    toSign: text('to_sign'),
+    /** The moment the event completes, accurate to ~5 seconds. */
+    exactAt: timestamp('exact_at', { withTimezone: true }).notNull(),
+    /** IST calendar date of exactAt (YYYY-MM-DD) — the date the copy talks about. */
+    forDate: text('for_date').notNull(),
+    /** When the pre-alert should be sent: 19:00 IST, two days before forDate. */
+    pushAt: timestamp('push_at', { withTimezone: true }).notNull(),
+    /** Collision priority — slow/rare planets outrank fast/frequent ones. */
+    weight: integer('weight').notNull().default(0),
+    status: transitEventStatusEnum('status').notNull().default('detected'),
+    skipReason: text('skip_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    // Re-running detection over an already-scanned window must be a no-op, not
+    // a duplicate calendar. A planet can only do a given thing once per day.
+    planetTypeDateUnique: uniqueIndex('transit_events_planet_type_date_idx').on(
+      table.planet,
+      table.eventType,
+      table.forDate,
+    ),
+    pushAtIdx: index('transit_events_push_at_idx').on(table.pushAt),
+  }),
+);
+
+export type TransitEventRow = typeof transitEvents.$inferSelect;
+export type NewTransitEventRow = typeof transitEvents.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* transit_alert_copy — AI-written push copy per (event, moon sign, language)  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per (event × moon sign × language) actually needed — the drafting
+ * job asks the database which combinations have live device tokens first, so a
+ * language nobody uses is never generated and never paid for.
+ *
+ * `isFallback` records that generation or validation failed and the static
+ * hand-written copy was substituted. That distinction matters: a spike in
+ * fallbacks is the signal that the prompt or the model has regressed, and
+ * without the flag it would be invisible.
+ */
+export const transitAlertCopy = pgTable(
+  'transit_alert_copy',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => transitEvents.id, { onDelete: 'cascade' }),
+    /** Natal Moon sign this copy is written for. Null = users with no chart yet. */
+    moonSign: text('moon_sign'),
+    lang: text('lang').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    isFallback: boolean('is_fallback').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    // Postgres treats NULLs as distinct, so the no-chart (moonSign IS NULL)
+    // variant needs its own partial unique index — exactly the same split the
+    // kundlis table uses for its null birthProfileId.
+    eventSignLangUnique: uniqueIndex('transit_alert_copy_event_sign_lang_idx')
+      .on(table.eventId, table.moonSign, table.lang)
+      .where(sql`${table.moonSign} is not null`),
+    eventLangNoSignUnique: uniqueIndex('transit_alert_copy_event_lang_nosign_idx')
+      .on(table.eventId, table.lang)
+      .where(sql`${table.moonSign} is null`),
+  }),
+);
+
+export type TransitAlertCopyRow = typeof transitAlertCopy.$inferSelect;
+export type NewTransitAlertCopyRow = typeof transitAlertCopy.$inferInsert;
