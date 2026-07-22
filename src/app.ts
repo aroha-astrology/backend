@@ -9,6 +9,7 @@ import { birthProfilesRouter } from './modules/birth-profiles/birth-profiles.rou
 import { profilesRouter } from './modules/birth-profiles/profiles.routes.js';
 import { deviceTokensRouter } from './modules/device-tokens/device-tokens.routes.js';
 import { astroRouter } from './modules/astro/astro.routes.js';
+import { publicRouter } from './modules/public/public.routes.js';
 import { legalRouter } from './modules/legal/legal.routes.js';
 import { billingRouter } from './modules/billing/billing.routes.js';
 import { preferencesRouter } from './modules/preferences/preferences.routes.js';
@@ -52,6 +53,7 @@ export function createApp(): OpenAPIHono {
   app.route('/', healthRouter);
   app.route('/v1/auth', authRouter);
   app.route('/v1', astroRouter);
+  app.route('/v1', publicRouter);
   app.route('/v1', legalRouter);
   app.route('/v1', usersRouter);
   app.route('/v1', birthProfilesRouter);
