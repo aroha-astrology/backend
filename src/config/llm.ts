@@ -438,3 +438,21 @@ export const KP_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 3000,
 };
+
+/** Flagship report's Ascendant Analysis section — personality/appearance/temperament narrative from the Ascendant sign + its lord's placement. */
+export const FLAGSHIP_ASCENDANT_PROFILE: GenerationProfile = {
+  name: 'flagship-ascendant',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 1500,
+};
+
+/** Flagship report's Executive Summary — a short synthesis written AFTER every other section already exists, so it can reference concrete highlights instead of generic language. */
+export const FLAGSHIP_SUMMARY_PROFILE: GenerationProfile = {
+  name: 'flagship-summary',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 1500,
+};
