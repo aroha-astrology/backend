@@ -26,6 +26,12 @@ import {
   translateRemediesContent,
   type RemediesNarrative,
 } from '../../lib/llm/remedies-report.js';
+import {
+  generateCompatibilityNarrative,
+  translateCompatibilityContent,
+  type CompatibilityNarrative,
+} from '../../lib/llm/compatibility-report.js';
+import { computeCompatibilityFacts } from '../../lib/astro-engine/compatibility.js';
 import { getRemedies } from '../astro/astro.service.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
@@ -178,6 +184,44 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
         language,
       );
       return translated as unknown as Record<string, unknown>;
+    },
+  },
+  compatibility: {
+    reportType: 'compatibility',
+    title: 'Compatibility Report (Guna Milan)',
+    pricePaise: 2500,
+    async generate(userId, profile) {
+      if (!profile.birthProfileId) {
+        throw new Error(
+          'Switch to a saved partner/friend profile first to check compatibility with them',
+        );
+      }
+      const [selfKundli, partnerKundli] = await Promise.all([
+        getKundliForUser(userId, null),
+        getKundliForUser(userId, profile.birthProfileId),
+      ]);
+      if (!selfKundli || selfKundli.status !== 'ready') {
+        throw new Error('Compatibility report requires your own completed birth chart');
+      }
+      if (!partnerKundli || partnerKundli.status !== 'ready') {
+        throw new Error(
+          'Compatibility report requires a completed birth chart for the selected profile',
+        );
+      }
+      const facts = computeCompatibilityFacts(
+        selfKundli.chartData ?? null,
+        partnerKundli.chartData ?? null,
+      );
+      const { model, ...narrative } = await generateCompatibilityNarrative({
+        facts,
+        partnerLabel: profile.displayName ?? 'this profile',
+      });
+      return { content: { ...facts, narrative }, model };
+    },
+    async translate(content, language) {
+      const c = content as { narrative: CompatibilityNarrative; [key: string]: unknown };
+      const translatedNarrative = await translateCompatibilityContent(c.narrative, language);
+      return { ...c, narrative: translatedNarrative };
     },
   },
   ...Object.fromEntries(LIFE_AREAS.map((area) => [area, makeLifeAreaDefinition(area)])),

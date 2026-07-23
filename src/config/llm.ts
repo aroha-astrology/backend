@@ -339,3 +339,19 @@ export const REMEDIES_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 2000,
 };
+
+/**
+ * Personalized compatibility (Guna Milan) report narrative — the Ashtakoota
+ * score/koota breakdown/dosha flags/recommendation are 100% deterministic
+ * (compatibility.ts); this profile is only for the warmer narrative layer on
+ * top. Generated lazily the first time the unlocked report is viewed for a
+ * given partner profile, cached forever after (both charts are natal and
+ * never change on their own).
+ */
+export const COMPATIBILITY_REPORT_PROFILE: GenerationProfile = {
+  name: 'compatibility-report',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 2000,
+};
