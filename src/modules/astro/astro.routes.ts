@@ -458,6 +458,31 @@ astroRouter.openapi(chatRoute, async (c) => {
   // (and its NIM inflight slot) stops instead of running on detached.
   const signal = c.req.raw.signal;
 
+  // The server — not the client — is the source of truth for the durable
+  // transcript. `body.history`/`body.summary` are accepted for backward
+  // compatibility with old app builds but are otherwise IGNORED: they used
+  // to be re-persisted verbatim, which meant the client's own compaction
+  // bookkeeping (a buffer it resets to just the latest turn once the
+  // backend signals compaction — see chat-compaction.ts and
+  // ChatConversation.tsx) silently became the permanent record, deleting
+  // every older turn from chat_sessions.history. Loading the STORED history
+  // here and basing both the model prompt and the persisted write on it
+  // keeps compaction purely a model-context concern.
+  let storedHistory: { role: 'user' | 'assistant'; content: string }[] = [];
+  let storedSummary: string | undefined;
+  if (body.sessionId) {
+    const existing = await chatSessionsRepo.getChatSession(
+      body.sessionId,
+      user.id,
+      profile.birthProfileId,
+    );
+    if (!existing) {
+      throw Errors.notFound('Chat session not found');
+    }
+    storedHistory = existing.history;
+    storedSummary = existing.summary ?? undefined;
+  }
+
   // Charge atomically before any generation starts — same balance-check-and-
   // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
   // sends can't both succeed against a balance that only covers one.
@@ -474,8 +499,8 @@ astroRouter.openapi(chatRoute, async (c) => {
       const events = astroService.chatStream(
         user.id,
         body.message,
-        body.history,
-        body.summary,
+        storedHistory,
+        storedSummary,
         body.detailLevel,
         signal,
         body.locale,
@@ -486,7 +511,7 @@ astroRouter.openapi(chatRoute, async (c) => {
       );
 
       let fullContent = '';
-      let currentSummary = body.summary;
+      let currentSummary = storedSummary;
 
       for await (const event of events) {
         if (signal.aborted || stream.aborted) break;
@@ -514,10 +539,13 @@ astroRouter.openapi(chatRoute, async (c) => {
           );
         }
 
-        // Save history
+        // Save history — appended onto the STORED full transcript (not
+        // body.history), so a compacted model-context window never leaks
+        // into what's persisted. See the comment above where storedHistory
+        // is loaded.
         let sessionId = body.sessionId;
         const newHistory = [
-          ...body.history,
+          ...storedHistory,
           { role: 'user', content: body.message },
           { role: 'assistant', content: fullContent },
         ] as { role: 'user' | 'assistant'; content: string }[]; // cast to avoid exact typing mismatch if any
