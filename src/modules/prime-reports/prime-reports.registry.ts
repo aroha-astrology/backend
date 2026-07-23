@@ -15,6 +15,14 @@ import {
   translateNameCorrectionContent,
   type NameCorrectionNarrative,
 } from '../../lib/llm/name-correction-report.js';
+import {
+  generateLifeAreaReport,
+  translateLifeAreaContent,
+  type LifeArea,
+  type LifeAreaNarrative,
+} from '../../lib/llm/life-area-report.js';
+import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
+import type { GroundingSource } from '../../lib/chat-grounding.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 
 export interface PrimeReportGenerateResult {
@@ -35,6 +43,59 @@ export interface PrimeReportDefinition {
 }
 
 const NUMEROLOGY_UNLOCK_COST_PAISE = 2500;
+
+/** Aroha Prime pricing sheet, 2026-07-23: standard reports are ₹25 = 2500 paise. */
+const LIFE_AREA_PRICE_PAISE = 2500;
+
+const LIFE_AREA_TITLES: Record<LifeArea, string> = {
+  career: 'Career Report',
+  finance: 'Financial Report',
+  health: 'Health Report',
+  relationship: 'Relationship Report',
+  marriage: 'Marriage Report',
+  love: 'Love Report',
+  education: 'Education Report',
+};
+
+const LIFE_AREAS: LifeArea[] = [
+  'career',
+  'finance',
+  'health',
+  'relationship',
+  'marriage',
+  'love',
+  'education',
+];
+
+function makeLifeAreaDefinition(area: LifeArea): PrimeReportDefinition {
+  return {
+    reportType: area,
+    title: LIFE_AREA_TITLES[area],
+    pricePaise: LIFE_AREA_PRICE_PAISE,
+    async generate(userId, profile) {
+      const kundli = await getKundliForUser(userId, profile.birthProfileId);
+      if (!kundli || kundli.status !== 'ready') {
+        throw new Error(`${LIFE_AREA_TITLES[area]} requires a completed birth chart`);
+      }
+      const grounding: GroundingSource = {
+        chart: kundli.chartData ?? null,
+        dasha: kundli.dashaData ?? null,
+        yogas: kundli.yogaData ?? null,
+        doshas: await withLiveSadeSati(kundli.doshaData ?? null),
+        ashtakavarga: kundli.ashtakavargaData ?? null,
+      };
+      const { model, ...content } = await generateLifeAreaReport({ area, grounding });
+      return { content, model };
+    },
+    async translate(content, language) {
+      const translated = await translateLifeAreaContent(
+        content as unknown as LifeAreaNarrative,
+        language,
+      );
+      return translated as unknown as Record<string, unknown>;
+    },
+  };
+}
 
 export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
   numerology: {
@@ -81,6 +142,7 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
       return translated as unknown as Record<string, unknown>;
     },
   },
+  ...Object.fromEntries(LIFE_AREAS.map((area) => [area, makeLifeAreaDefinition(area)])),
 };
 
 export function getPrimeReportDefinition(reportType: string): PrimeReportDefinition | undefined {

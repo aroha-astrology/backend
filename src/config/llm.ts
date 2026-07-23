@@ -307,3 +307,21 @@ export const NAME_CORRECTION_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 1800,
 };
+
+/**
+ * Personalized life-area report (career/finance/health/relationship/
+ * marriage/love/education) — one structured JSON verdict (intro,
+ * currentPhase, strengths, challenges, guidance), generated lazily the first
+ * time each unlocked report is viewed and cached forever after (the natal
+ * chart never changes on its own). Grounded in the same comprehensive fact
+ * set as AI chat (buildGroundingFacts) which is itself already a "large
+ * schema" tier input, so this gets the same generous ceiling as
+ * GEMSTONE_PROFILE despite a smaller (5-field) output schema.
+ */
+export const LIFE_AREA_REPORT_PROFILE: GenerationProfile = {
+  name: 'life-area-report',
+  temperature: 0.4,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 2500,
+};
