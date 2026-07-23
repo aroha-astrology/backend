@@ -10,6 +10,11 @@ import {
   translateNumerologyContent,
   type NumerologyNarrative,
 } from '../../lib/llm/numerology-report.js';
+import {
+  generateNameCorrectionReport,
+  translateNameCorrectionContent,
+  type NameCorrectionNarrative,
+} from '../../lib/llm/name-correction-report.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 
 export interface PrimeReportGenerateResult {
@@ -49,6 +54,28 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     async translate(content, language) {
       const translated = await translateNumerologyContent(
         content as unknown as NumerologyNarrative,
+        language,
+      );
+      return translated as unknown as Record<string, unknown>;
+    },
+  },
+  'name-correction': {
+    reportType: 'name-correction',
+    title: 'Name Correction Report',
+    pricePaise: 2500,
+    async generate(_userId, profile) {
+      if (!profile.dateOfBirth || !profile.displayName) {
+        throw new Error('Name Correction report requires a date of birth and a name');
+      }
+      const { model, ...content } = await generateNameCorrectionReport({
+        dateOfBirth: profile.dateOfBirth,
+        fullName: profile.displayName,
+      });
+      return { content, model };
+    },
+    async translate(content, language) {
+      const translated = await translateNameCorrectionContent(
+        content as unknown as NameCorrectionNarrative,
         language,
       );
       return translated as unknown as Record<string, unknown>;

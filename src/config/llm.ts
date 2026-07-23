@@ -292,3 +292,18 @@ export const NUMEROLOGY_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 1500,
 };
+
+/**
+ * Personalized name-correction report — one structured JSON verdict (an
+ * intro + analysis + up to 5 variant notes), generated lazily the first time
+ * the unlocked report is viewed and cached forever after (date of birth and
+ * name never change on their own — see prime_reports's invalidation hook for
+ * the one case that DOES invalidate it, a post-onboarding name edit).
+ */
+export const NAME_CORRECTION_REPORT_PROFILE: GenerationProfile = {
+  name: 'name-correction-report',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 1800,
+};
