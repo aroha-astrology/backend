@@ -424,3 +424,17 @@ export const PALM_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 2500,
 };
+
+/**
+ * KP System report — a structured JSON verdict (intro + one note per
+ * significator: Ascendant + up to 9 planets), generated lazily the first
+ * time the unlocked report is viewed and cached forever after. Premium tier
+ * (₹49), same schema-size class as gemstone's 9-entry perGem array.
+ */
+export const KP_REPORT_PROFILE: GenerationProfile = {
+  name: 'kp-report',
+  temperature: 0.4,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 3000,
+};

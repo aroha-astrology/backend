@@ -58,6 +58,8 @@ import {
   type PalmNarrative,
 } from '../../lib/llm/palm-report.js';
 import { findPendingPalmPhoto, deletePalmPhoto } from '../palm/palm-photo.repo.js';
+import { generateKpReport, translateKpContent, type KpNarrative } from '../../lib/llm/kp-report.js';
+import { computeKpSignificators } from '../../lib/astro-engine/kpSubLord.js';
 import { getRemedies } from '../astro/astro.service.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
@@ -371,6 +373,27 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     },
     async translate(content, language) {
       const translated = await translatePalmContent(content as unknown as PalmNarrative, language);
+      return translated as unknown as Record<string, unknown>;
+    },
+  },
+  kp: {
+    reportType: 'kp',
+    title: 'KP System Report',
+    pricePaise: 4900,
+    async generate(userId, profile, _period) {
+      const kundli = await getKundliForUser(userId, profile.birthProfileId);
+      if (!kundli || kundli.status !== 'ready') {
+        throw new Error('KP System report requires a completed birth chart');
+      }
+      const significators = computeKpSignificators(kundli.chartData ?? null);
+      if (significators.length === 0) {
+        throw new Error('KP System report requires chart placement data');
+      }
+      const { model, ...content } = await generateKpReport({ significators });
+      return { content, model };
+    },
+    async translate(content, language) {
+      const translated = await translateKpContent(content as unknown as KpNarrative, language);
       return translated as unknown as Record<string, unknown>;
     },
   },
