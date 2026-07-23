@@ -1,0 +1,196 @@
+import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
+import { requireUser } from '../../middleware/auth.js';
+import { logger } from '../../lib/logger.js';
+import {
+  resolveActiveProfileContext,
+  type ProfileContext,
+} from '../birth-profiles/profile-context.js';
+import { getPrimeReportDefinition, listPrimeReportDefinitions } from './prime-reports.registry.js';
+import {
+  findPrimeReport,
+  isReportStale,
+  requestReportGeneration,
+  toReportDtoForLanguage,
+  unlockReport,
+  LIFETIME_PERIOD,
+} from './prime-reports.service.js';
+import {
+  PrimeReportCatalogueSchema,
+  PrimeReportDtoSchema,
+  PrimeReportStatusSchema,
+  PrimeReportUnlockResponseSchema,
+  ReportTypeParamSchema,
+} from './prime-reports.schemas.js';
+import { LanguageQuerySchema } from '../gemstone/gemstone.schemas.js';
+
+const ErrorSchema = z
+  .object({
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+      details: z.unknown().optional(),
+      requestId: z.string().optional(),
+    }),
+  })
+  .openapi('Error');
+
+const errorResponse = (description: string) => ({
+  description,
+  content: { 'application/json': { schema: ErrorSchema } },
+});
+
+export const primeReportsRouter = new OpenAPIHono();
+
+function fireGeneration(userId: string, profile: ProfileContext, reportType: string): void {
+  void requestReportGeneration(userId, profile, reportType).catch((err: unknown) => {
+    logger.error({ err, userId, reportType }, 'prime report background generation errored');
+  });
+}
+
+const catalogueRoute = createRoute({
+  method: 'get',
+  path: '/prime/reports',
+  tags: ['Prime Reports'],
+  summary: 'List the Aroha Prime report catalogue with per-report unlock state',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Report catalogue',
+      content: { 'application/json': { schema: PrimeReportCatalogueSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+primeReportsRouter.openapi(catalogueRoute, async (c) => {
+  const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
+  const defs = listPrimeReportDefinitions();
+  const items = await Promise.all(
+    defs.map(async (def) => {
+      const row = await findPrimeReport(
+        user.id,
+        profile.birthProfileId,
+        def.reportType,
+        LIFETIME_PERIOD,
+      );
+      return {
+        reportType: def.reportType,
+        title: def.title,
+        pricePaise: def.pricePaise,
+        unlocked: !!row,
+      };
+    }),
+  );
+  return c.json({ items }, 200);
+});
+
+const getReportRoute = createRoute({
+  method: 'get',
+  path: '/prime/reports/{reportType}',
+  tags: ['Prime Reports'],
+  summary: 'Get a specific Prime report for the active profile',
+  description:
+    'Returns 200 with the report when ready, 202 while it is still being generated ' +
+    '(poll again), or 403 if the report has not been unlocked ' +
+    '(spend credits via POST /v1/prime/reports/{reportType}/unlock first).',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: { params: ReportTypeParamSchema, query: LanguageQuerySchema },
+  responses: {
+    200: {
+      description: 'Prime report',
+      content: { 'application/json': { schema: PrimeReportDtoSchema } },
+    },
+    202: {
+      description: 'Generation in progress or last attempt failed — poll again',
+      content: { 'application/json': { schema: PrimeReportStatusSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Report is not unlocked'),
+    404: errorResponse('Unknown report type'),
+  },
+});
+
+primeReportsRouter.openapi(getReportRoute, async (c) => {
+  const user = c.get('user');
+  const { reportType } = c.req.valid('param');
+  const { language } = c.req.valid('query');
+
+  if (!getPrimeReportDefinition(reportType)) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: `Unknown report type: ${reportType}` } },
+      404,
+    );
+  }
+
+  const profile = await resolveActiveProfileContext(user);
+  const existing = await findPrimeReport(
+    user.id,
+    profile.birthProfileId,
+    reportType,
+    LIFETIME_PERIOD,
+  );
+
+  if (!existing) {
+    return c.json(
+      { error: { code: 'FORBIDDEN', message: 'This report is not unlocked yet.' } },
+      403,
+    );
+  }
+
+  if (existing.status === 'ready') {
+    return c.json(await toReportDtoForLanguage(existing, reportType, language || 'en'), 200);
+  }
+
+  if (existing.status === 'generating' && !isReportStale(existing)) {
+    return c.json({ status: 'generating' as const }, 202);
+  }
+
+  fireGeneration(user.id, profile, reportType);
+  return c.json({ status: 'generating' as const }, 202);
+});
+
+const unlockRoute = createRoute({
+  method: 'post',
+  path: '/prime/reports/{reportType}/unlock',
+  tags: ['Prime Reports'],
+  summary: 'Spend wallet credits to unlock a Prime report',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: { params: ReportTypeParamSchema },
+  responses: {
+    200: {
+      description: 'Unlock result',
+      content: { 'application/json': { schema: PrimeReportUnlockResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Unknown report type'),
+    409: errorResponse('Already unlocked or insufficient wallet balance'),
+  },
+});
+
+primeReportsRouter.openapi(unlockRoute, async (c) => {
+  const user = c.get('user');
+  const { reportType } = c.req.valid('param');
+
+  if (!getPrimeReportDefinition(reportType)) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: `Unknown report type: ${reportType}` } },
+      404,
+    );
+  }
+
+  const profile = await resolveActiveProfileContext(user);
+  const result = await unlockReport(user.id, profile, reportType);
+
+  if (result === 'already_unlocked_or_insufficient_balance') {
+    return c.json(
+      { error: { code: 'CONFLICT', message: 'Already unlocked or insufficient wallet balance.' } },
+      409,
+    );
+  }
+
+  return c.json({ status: 'unlocked' as const }, 200);
+});
