@@ -30,7 +30,7 @@
       namingSyllable: string;
       moonSign: string;
       moonNakshatra: string;
-    };
+    } | null; // computeAvkahadaChakra returns null when the stored chart is missing Moon data — guard this, don't assume it's always present
     planetPositions: Array<{
       planet: string;
       sign: string;
@@ -697,7 +697,7 @@ export async function renderFlagshipReportPdf(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm vitest run test/flagship-pdfRenderer.spec.ts`
-Expected: PASS (12 tests). If `pdf-parse` throws an import error, confirm `package.json` pinned exactly `pdf-parse@1.1.4` (not `^1.1.4`, which could still resolve wrong if a 2.x prerelease matches — check `pnpm-lock.yaml` shows `pdf-parse: 1.1.4` resolved) and that the import is `import pdfParse from 'pdf-parse'` (default export, CJS interop).
+Expected: PASS (11 tests). If `pdf-parse` throws an import error, confirm `package.json` pinned exactly `pdf-parse@1.1.4` (not `^1.1.4`, which could still resolve wrong if a 2.x prerelease matches — check `pnpm-lock.yaml` shows `pdf-parse: 1.1.4` resolved) and that the import is `import pdfParse from 'pdf-parse'` (default export, CJS interop).
 
 - [ ] **Step 5: Typecheck**
 
