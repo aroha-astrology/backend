@@ -1163,7 +1163,7 @@ export const primeReports = pgTable(
     reportType: text('report_type').notNull(),
     period: text('period').notNull().default('lifetime'),
     unlockedAt: timestamp('unlocked_at', { withTimezone: true }).notNull(),
-    /** The AI-generated narrative only — deterministic facts are recomputed fresh on every read, never persisted (see gemstone_recommendations for the same policy). Null while 'generating'. */
+    /** The AI-generated narrative only. NOTE: unlike gemstone_recommendations, the deterministic facts feeding a given report type are NOT necessarily recomputed on every read — for numerology specifically they are baked in at generation time (see the header comment in src/lib/llm/numerology-report.ts) and go stale on a birth-detail/name edit, which is why users.service.ts calls invalidatePrimeReportsForUser() to reset this row on such an edit. Null while 'generating'. */
     analysis: jsonb('analysis').$type<Record<string, unknown>>(),
     /** Cached translations of the AI-authored fields by language code — same shape as gemstone_recommendations.translations. */
     translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),

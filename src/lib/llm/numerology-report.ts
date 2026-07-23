@@ -1,13 +1,26 @@
 // =============================================================================
 // Personalized numerology report (LLM) — one call per user, generated lazily
-// after unlock and cached forever (date of birth and name never change once
-// set). Same discipline as gemstone.ts: no fallback filler — an unparseable
-// response throws so we never cache generic text.
+// after unlock. Same discipline as gemstone.ts: no fallback filler — an
+// unparseable response throws so we never cache generic text.
 //
 // The numbers themselves (Life Path, Expression, Soul Urge, Personality,
-// lucky numbers) are deterministic and recomputed fresh from
-// astro-engine/numerology on every read (see prime-reports.registry.ts) —
-// only the personalized narrative is model-generated and persisted here.
+// lucky numbers) are computed via calculateFullNumerology() exactly ONCE, at
+// generation time, purely to build the grounding context fed to the LLM
+// prompt (see buildFacts() below) — they are NOT persisted and NOT
+// recomputed on read. Only the resulting narrative (intro/lifePathStory/
+// expressionStory/soulUrgeStory/personalityStory) is what actually gets
+// cached, in prime_reports.analysis.
+//
+// Because the numbers are baked into that cached narrative at generation
+// time, this report goes stale if EITHER dateOfBirth (Life Path) OR
+// displayName (Expression/Soul Urge/Personality/name number) changes after
+// generation. That is NOT handled by a recompute-on-read pattern (unlike
+// gemstone's toGemstoneReportDtoForLanguage, which calls buildDeterministicGems()
+// fresh on every read) — instead, users.service.ts calls
+// invalidatePrimeReportsForUser() whenever a post-onboarding edit touches
+// dateOfBirth/timeOfBirth/placeOfBirth or displayName, which nulls out the
+// cached content and flips status back to 'failed' so the next GET
+// regenerates this report from scratch against the new inputs.
 // =============================================================================
 
 import { generate } from './gemini-client.js';

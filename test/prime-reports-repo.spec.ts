@@ -24,6 +24,7 @@ vi.mock('../src/config/db.js', () => {
 
 import {
   findPrimeReport,
+  invalidatePrimeReportsForUser,
   unlockPrimeReport,
 } from '../src/modules/prime-reports/prime-reports.repo.js';
 
@@ -91,6 +92,8 @@ describe('unlockPrimeReport — atomic debit + row creation', () => {
     existing: unknown[];
     walletUpdateResult: unknown[];
     insertResult: unknown[];
+    /** When set, the final prime_reports INSERT's `.returning()` rejects with this instead of resolving — simulates a concurrent-unlock race losing on the unique index. */
+    insertError?: Error;
   }) {
     const existingSelect = makeSelectChain(opts.existing);
     const walletUpdateChain: { set: unknown; where: unknown; returning: () => Promise<unknown[]> } =
@@ -105,7 +108,9 @@ describe('unlockPrimeReport — atomic debit + row creation', () => {
     const insertLedgerChain = { values: vi.fn(() => Promise.resolve(undefined)) };
     const insertReportChain: { values: unknown; returning: () => Promise<unknown[]> } = {
       values: undefined,
-      returning: vi.fn(() => Promise.resolve(opts.insertResult)),
+      returning: vi.fn(() =>
+        opts.insertError ? Promise.reject(opts.insertError) : Promise.resolve(opts.insertResult),
+      ),
     };
     insertReportChain.values = vi.fn(() => insertReportChain);
 
@@ -158,5 +163,95 @@ describe('unlockPrimeReport — atomic debit + row creation', () => {
     const result = await unlockPrimeReport('user-1', null, 'numerology', 'lifetime', 2500);
 
     expect(result).toMatchObject({ id: 'new-row', status: 'generating' });
+  });
+
+  /** Shape of what the `postgres` driver throws for SQLSTATE 23505 — an Error with `.code` set. */
+  function makeUniqueViolationError(): Error {
+    return Object.assign(new Error('duplicate key value violates unique constraint'), {
+      code: '23505',
+    });
+  }
+
+  it('resolves to undefined (not a rejection) when the final insert loses a concurrent-unlock race on the unique index', async () => {
+    const tx = makeTx({
+      existing: [],
+      walletUpdateResult: [{ walletBalancePaise: 7500 }],
+      insertResult: [],
+      insertError: makeUniqueViolationError(),
+    });
+    state.transaction.mockImplementationOnce((cb: (tx: unknown) => unknown) => cb(tx));
+
+    const result = await unlockPrimeReport('user-1', null, 'numerology', 'lifetime', 2500);
+
+    expect(result).toBeUndefined();
+  });
+
+  it('rethrows a non-unique-violation error from the insert instead of swallowing it', async () => {
+    const tx = makeTx({
+      existing: [],
+      walletUpdateResult: [{ walletBalancePaise: 7500 }],
+      insertResult: [],
+      insertError: new Error('connection reset'),
+    });
+    state.transaction.mockImplementationOnce((cb: (tx: unknown) => unknown) => cb(tx));
+
+    await expect(unlockPrimeReport('user-1', null, 'numerology', 'lifetime', 2500)).rejects.toThrow(
+      'connection reset',
+    );
+  });
+});
+
+describe('invalidatePrimeReportsForUser — content wipe on birth/name edit, unlock preserved', () => {
+  function makeUpdateChain() {
+    const calls: { set?: unknown; where?: unknown } = {};
+    const chain = {
+      set: vi.fn((patch: unknown) => {
+        calls.set = patch;
+        return chain;
+      }),
+      where: vi.fn((cond: unknown) => {
+        calls.where = cond;
+        return Promise.resolve(undefined);
+      }),
+    };
+    return { chain, calls };
+  }
+
+  it('issues an UPDATE (never a DELETE) that nulls content/translations and resets status to a re-claimable state, scoped to the primary profile', async () => {
+    const { chain, calls } = makeUpdateChain();
+    state.update.mockReturnValue(chain);
+
+    await invalidatePrimeReportsForUser('user-1', null);
+
+    expect(state.update).toHaveBeenCalledTimes(1);
+    expect(calls.set).toMatchObject({
+      analysis: null,
+      translations: null,
+      status: 'failed',
+      startedAt: null,
+      error: null,
+    });
+    expect((calls.set as { updatedAt: Date }).updatedAt).toBeInstanceOf(Date);
+
+    // Scoped by user + profile only — NOT by reportType/period, so every
+    // report type/period for this profile is invalidated in one statement.
+    const query = compile(calls.where);
+    expect(query.sql).toBe(
+      '("prime_reports"."user_id" = $1 and "prime_reports"."birth_profile_id" is null)',
+    );
+    expect(query.params).toEqual(['user-1']);
+  });
+
+  it('scopes to a single additional profile, leaving a sibling profile untouched', async () => {
+    const { chain, calls } = makeUpdateChain();
+    state.update.mockReturnValue(chain);
+
+    await invalidatePrimeReportsForUser('user-1', 'profile-a');
+
+    const query = compile(calls.where);
+    expect(query.sql).toBe(
+      '("prime_reports"."user_id" = $1 and "prime_reports"."birth_profile_id" = $2)',
+    );
+    expect(query.params).toEqual(['user-1', 'profile-a']);
   });
 });
