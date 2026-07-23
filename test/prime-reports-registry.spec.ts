@@ -43,6 +43,7 @@ describe('prime report registry', () => {
 
     const def = getPrimeReportDefinition('numerology')!;
     const result = await def.generate(
+      'user-1',
       makeProfileContext({ dateOfBirth: '1993-04-17', displayName: 'Subir Dutta' }),
     );
 
@@ -62,7 +63,7 @@ describe('prime report registry', () => {
 
   it('generate() throws when the profile has no date of birth or name yet', async () => {
     const def = getPrimeReportDefinition('numerology')!;
-    await expect(def.generate(makeProfileContext())).rejects.toThrow(
+    await expect(def.generate('user-1', makeProfileContext())).rejects.toThrow(
       'Numerology report requires a date of birth and a name',
     );
     expect(state.generateNumerologyReport).not.toHaveBeenCalled();

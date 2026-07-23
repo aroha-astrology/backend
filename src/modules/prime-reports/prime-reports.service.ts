@@ -28,7 +28,7 @@ async function runGeneration(
   const def = getPrimeReportDefinition(reportType);
   if (!def) return;
   try {
-    const { content, model } = await def.generate(profile);
+    const { content, model } = await def.generate(userId, profile);
     await markPrimeReportReady(userId, birthProfileId, reportType, period, claimedAt, {
       analysis: content,
       model,

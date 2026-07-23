@@ -22,7 +22,7 @@ export interface PrimeReportDefinition {
   title: string;
   /** Aroha Prime pricing sheet, 2026-07-23: standard reports are ₹25 = 2500 paise. */
   pricePaise: number;
-  generate: (profile: ProfileContext) => Promise<PrimeReportGenerateResult>;
+  generate: (userId: string, profile: ProfileContext) => Promise<PrimeReportGenerateResult>;
   translate: (
     content: Record<string, unknown>,
     language: string,
@@ -36,7 +36,7 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     reportType: 'numerology',
     title: 'Numerology Report',
     pricePaise: NUMEROLOGY_UNLOCK_COST_PAISE,
-    async generate(profile) {
+    async generate(_userId, profile) {
       if (!profile.dateOfBirth || !profile.displayName) {
         throw new Error('Numerology report requires a date of birth and a name');
       }
