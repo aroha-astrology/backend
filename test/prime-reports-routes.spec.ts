@@ -132,6 +132,135 @@ describe('GET /v1/prime/reports/:reportType', () => {
   });
 });
 
+const MINIMAL_FLAGSHIP_CONTENT = {
+  avkahada: {
+    varna: 'Kshatriya',
+    vashya: 'Chatushpada',
+    yoni: 'Ashwa',
+    gana: 'Deva',
+    nadi: 'Antya',
+    paya: 'Gold',
+    namingSyllable: 'Ro',
+    moonSign: 'Taurus',
+    moonNakshatra: 'Rohini',
+  },
+  planetPositions: [],
+  houseTable: [],
+  yogas: [],
+  doshas: [],
+  dashaTimeline: [],
+  ashtakavarga: { bySign: [] },
+  shadbala: [],
+  ascendant: { intro: 'i', personalityTraits: 't', appearance: 'a', temperament: 'te', model: 'm' },
+  numerology: {
+    intro: 'i',
+    lifePathStory: 'l',
+    expressionStory: 'e',
+    soulUrgeStory: 's',
+    personalityStory: 'p',
+    model: 'm',
+  },
+  career: {
+    intro: 'i',
+    currentPhase: 'c',
+    strengths: 's',
+    challenges: 'ch',
+    guidance: 'g',
+    model: 'm',
+  },
+  finance: {
+    intro: 'i',
+    currentPhase: 'c',
+    strengths: 's',
+    challenges: 'ch',
+    guidance: 'g',
+    model: 'm',
+  },
+  health: {
+    intro: 'i',
+    currentPhase: 'c',
+    strengths: 's',
+    challenges: 'ch',
+    guidance: 'g',
+    model: 'm',
+  },
+  love: {
+    intro: 'i',
+    currentPhase: 'c',
+    strengths: 's',
+    challenges: 'ch',
+    guidance: 'g',
+    model: 'm',
+  },
+  education: {
+    intro: 'i',
+    currentPhase: 'c',
+    strengths: 's',
+    challenges: 'ch',
+    guidance: 'g',
+    model: 'm',
+  },
+  remedies: { intro: 'i', notes: {}, model: 'm' },
+  executiveSummary: {
+    overallSummary: 'o',
+    keyStrengths: 'k',
+    areasToWatch: 'a',
+    closingGuidance: 'c',
+    model: 'm',
+  },
+};
+
+describe('GET /v1/prime/reports/flagship-life-report/pdf', () => {
+  it('returns 404 for a report type that does not support PDF', async () => {
+    const res = await createApp().request('/v1/prime/reports/numerology/pdf', { headers: AUTH });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 403 when the flagship report has not been unlocked', async () => {
+    state.findPrimeReport.mockResolvedValueOnce(undefined);
+
+    const res = await createApp().request('/v1/prime/reports/flagship-life-report/pdf', {
+      headers: AUTH,
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 409 when the flagship report is not yet ready', async () => {
+    state.findPrimeReport.mockResolvedValueOnce({
+      status: 'generating',
+      analysis: null,
+    });
+
+    const res = await createApp().request('/v1/prime/reports/flagship-life-report/pdf', {
+      headers: AUTH,
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it('returns a PDF binary with the right content-type when the report is ready', async () => {
+    state.findPrimeReport.mockResolvedValueOnce({
+      status: 'ready',
+      analysis: MINIMAL_FLAGSHIP_CONTENT,
+    });
+    // The file's shared `beforeEach` defaults resolveActiveProfileContext to
+    // makeProfileContext() with displayName/dateOfBirth both null (see the
+    // top of this file) — override here so the route's own
+    // "profile is missing name/date of birth" guard doesn't fire and turn
+    // this into an accidental 500 instead of testing the real 200 path.
+    state.resolveActiveProfileContext.mockResolvedValueOnce(
+      makeProfileContext({ displayName: 'Test User', dateOfBirth: '1990-01-01' }),
+    );
+
+    const res = await createApp().request('/v1/prime/reports/flagship-life-report/pdf', {
+      headers: AUTH,
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    const buf = Buffer.from(await res.arrayBuffer());
+    expect(buf.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+  });
+});
+
 describe('POST /v1/prime/reports/:reportType/unlock', () => {
   it('404s for an unknown report type', async () => {
     state.getPrimeReportDefinition.mockReturnValue(undefined);

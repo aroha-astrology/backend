@@ -23,6 +23,8 @@ import {
   ReportTypeParamSchema,
 } from './prime-reports.schemas.js';
 import { LanguageQuerySchema } from '../gemstone/gemstone.schemas.js';
+import { renderFlagshipReportPdf } from '../../lib/flagship/pdfRenderer.js';
+import type { FlagshipReportContent } from '../../lib/flagship/orchestrator.js';
 
 const ErrorSchema = z
   .object({
@@ -41,6 +43,8 @@ const errorResponse = (description: string) => ({
 });
 
 export const primeReportsRouter = new OpenAPIHono();
+
+const FLAGSHIP_PDF_REPORT_TYPE = 'flagship-life-report';
 
 function fireGeneration(
   userId: string,
@@ -206,4 +210,73 @@ primeReportsRouter.openapi(unlockRoute, async (c) => {
   }
 
   return c.json({ status: 'unlocked' as const }, 200);
+});
+
+// Plain (non-`.openapi()`) route: this repo has no existing pattern for a
+// Zod-validated `application/pdf` binary response, so this follows the
+// existing plain-route-with-positional-middleware pattern already used at
+// src/modules/telegram-bot/telegram-bot.routes.ts:8 instead of inventing one.
+primeReportsRouter.get('/prime/reports/:reportType/pdf', requireUser, async (c) => {
+  const reportType = c.req.param('reportType');
+  if (reportType !== FLAGSHIP_PDF_REPORT_TYPE) {
+    return c.json(
+      {
+        error: {
+          code: 'NOT_FOUND',
+          message: 'PDF rendering is not available for this report type.',
+        },
+      },
+      404,
+    );
+  }
+
+  const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
+  const existing = await findPrimeReport(
+    user.id,
+    profile.birthProfileId,
+    reportType,
+    LIFETIME_PERIOD,
+  );
+
+  if (!existing) {
+    return c.json(
+      { error: { code: 'FORBIDDEN', message: 'This report is not unlocked yet.' } },
+      403,
+    );
+  }
+
+  if (existing.status !== 'ready' || !existing.analysis) {
+    return c.json(
+      {
+        error: {
+          code: 'CONFLICT',
+          message:
+            'This report is still generating or failed — check GET /v1/prime/reports/flagship-life-report first.',
+        },
+      },
+      409,
+    );
+  }
+
+  if (!profile.displayName || !profile.dateOfBirth) {
+    throw new Error('Flagship report exists but the active profile is missing name/date of birth');
+  }
+
+  const pdfBuffer = await renderFlagshipReportPdf(
+    existing.analysis as unknown as FlagshipReportContent,
+    {
+      fullName: profile.displayName,
+      dateOfBirth: profile.dateOfBirth,
+      gender: profile.gender,
+    },
+  );
+
+  // `Buffer`'s `ArrayBufferLike` backing type isn't assignable to Hono's
+  // `Uint8Array<ArrayBuffer>` body type (it could theoretically be backed by
+  // a SharedArrayBuffer) — copy into a plain Uint8Array to satisfy that.
+  return c.body(new Uint8Array(pdfBuffer), 200, {
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': 'attachment; filename="aroha-prime-life-report.pdf"',
+  });
 });
