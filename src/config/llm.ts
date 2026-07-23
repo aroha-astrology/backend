@@ -384,3 +384,21 @@ export const TAROT_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 2000,
 };
+
+/**
+ * Baby name suggestions — unlike every other report profile, the AI here is
+ * generating genuinely creative content (actual candidate names), not just
+ * narrating around fixed facts. The only deterministic constraint is the
+ * required starting syllable (babyNameSyllables.ts), enforced in code by
+ * filtering out any suggestion that doesn't match — never trusted blindly
+ * from the model. Generated once per (user, profile, style) and cached
+ * forever after (each style is a separately unlocked/priced variant, see
+ * prime-reports.registry.ts's `allowedPeriods` on the `baby-name` entry).
+ */
+export const BABY_NAME_REPORT_PROFILE: GenerationProfile = {
+  name: 'baby-name-report',
+  temperature: 0.7,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 2000,
+};

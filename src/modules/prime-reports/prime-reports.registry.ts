@@ -44,6 +44,14 @@ import {
   type TarotNarrative,
 } from '../../lib/llm/tarot-report.js';
 import { drawThreeCardSpread } from '../../lib/tarot/deck.js';
+import {
+  generateBabyNameReport,
+  translateBabyNameContent,
+  BABY_NAME_STYLES,
+  type BabyNameStyle,
+  type BabyNameNarrative,
+} from '../../lib/llm/baby-name-report.js';
+import { getNamingSyllable } from '../../lib/astro-engine/babyNameSyllables.js';
 import { getRemedies } from '../astro/astro.service.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
@@ -292,6 +300,43 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
         language,
       );
       return { cards, ...translated };
+    },
+  },
+  'baby-name': {
+    reportType: 'baby-name',
+    title: 'Baby Name Suggestions',
+    pricePaise: 2500,
+    allowedPeriods: BABY_NAME_STYLES,
+    async generate(userId, profile, period) {
+      const style = period as BabyNameStyle;
+      if (!BABY_NAME_STYLES.includes(style)) {
+        throw new Error(
+          `Baby Name report requires choosing a style: ${BABY_NAME_STYLES.join(', ')}`,
+        );
+      }
+      const kundli = await getKundliForUser(userId, profile.birthProfileId);
+      if (!kundli || kundli.status !== 'ready') {
+        throw new Error('Baby Name report requires a completed birth chart');
+      }
+      const chart = kundli.chartData;
+      const planets = (chart?.planets ?? []) as Array<Record<string, unknown>>;
+      const moon = planets.find((p) => p.planet === 'Moon');
+      if (!moon || moon.nakshatraIndex == null || moon.nakshatraPada == null) {
+        throw new Error('Baby Name report requires Moon nakshatra/pada data');
+      }
+      const syllable = getNamingSyllable(Number(moon.nakshatraIndex), Number(moon.nakshatraPada));
+      const { model, ...narrative } = await generateBabyNameReport({
+        syllable,
+        style,
+        gender: profile.gender ?? null,
+      });
+      return { content: { syllable, style, ...narrative }, model };
+    },
+    async translate(content, language) {
+      const c = content as unknown as { syllable: string; style: string } & BabyNameNarrative;
+      const { syllable, style, ...narrative } = c;
+      const translated = await translateBabyNameContent(narrative, language);
+      return { syllable, style, ...translated };
     },
   },
   ...Object.fromEntries(LIFE_AREAS.map((area) => [area, makeLifeAreaDefinition(area)])),
