@@ -204,6 +204,7 @@ describe('assembleFlagshipReport', () => {
     expect(content.doshas.length).toBeGreaterThan(0);
     expect(content.dashaTimeline.length).toBeGreaterThan(0);
     expect(content.ashtakavarga.bySign.length).toBeGreaterThan(0);
+    expect(content.shadbala.length).toBeGreaterThan(0);
     expect(content.ascendant).toEqual(makeAscendantResult());
     expect(content.numerology).toEqual(makeNumerologyResult());
     expect(content.career).toEqual(makeLifeAreaResult('career'));

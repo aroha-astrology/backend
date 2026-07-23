@@ -27,6 +27,7 @@ import {
   buildDoshaList,
   buildDashaTimeline,
   buildAshtakavargaSummary,
+  buildShadbalaSummary,
 } from './chartSummary.js';
 import type { GroundingSource } from '../chat-grounding.js';
 import { getRemedies } from '../../modules/astro/astro.service.js';
@@ -47,6 +48,7 @@ export interface FlagshipReportContent {
   doshas: ReturnType<typeof buildDoshaList>;
   dashaTimeline: ReturnType<typeof buildDashaTimeline>;
   ashtakavarga: ReturnType<typeof buildAshtakavargaSummary>;
+  shadbala: ReturnType<typeof buildShadbalaSummary>;
   ascendant: Awaited<ReturnType<typeof generateAscendantReport>>;
   numerology: Awaited<ReturnType<typeof generateNumerologyReport>>;
   career: Awaited<ReturnType<typeof generateLifeAreaReport>>;
@@ -74,6 +76,7 @@ export async function assembleFlagshipReport(
   const doshas = buildDoshaList(input.grounding.doshas);
   const dashaTimeline = buildDashaTimeline(input.grounding.dasha);
   const ashtakavarga = buildAshtakavargaSummary(input.grounding.ashtakavarga);
+  const shadbala = buildShadbalaSummary(chart);
 
   // --- Ascendant Analysis (needs the ascendant + its lord's placement) ---
   const ascendantSign = String(
@@ -130,6 +133,7 @@ export async function assembleFlagshipReport(
     doshas,
     dashaTimeline,
     ashtakavarga,
+    shadbala,
     ascendant,
     numerology,
     career,
