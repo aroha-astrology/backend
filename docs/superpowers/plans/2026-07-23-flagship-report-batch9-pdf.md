@@ -763,6 +763,14 @@ describe('GET /v1/prime/reports/flagship-life-report/pdf', () => {
       status: 'ready',
       analysis: MINIMAL_FLAGSHIP_CONTENT,
     });
+    // The file's shared `beforeEach` defaults resolveActiveProfileContext to
+    // makeProfileContext() with displayName/dateOfBirth both null (see the
+    // top of this file) — override here so the route's own
+    // "profile is missing name/date of birth" guard doesn't fire and turn
+    // this into an accidental 500 instead of testing the real 200 path.
+    state.resolveActiveProfileContext.mockResolvedValueOnce(
+      makeProfileContext({ displayName: 'Test User', dateOfBirth: '1990-01-01' }),
+    );
 
     const res = await app.request('/v1/prime/reports/flagship-life-report/pdf', {
       headers: { Authorization: 'Bearer test-token' },
