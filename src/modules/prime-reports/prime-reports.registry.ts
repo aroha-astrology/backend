@@ -64,6 +64,7 @@ import { getRemedies } from '../astro/astro.service.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
+import { assembleFlagshipReport } from '../../lib/flagship/orchestrator.js';
 
 export interface PrimeReportGenerateResult {
   content: Record<string, unknown>;
@@ -414,6 +415,56 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     async translate(content, language) {
       const translated = await translateKpContent(content as unknown as KpNarrative, language);
       return translated as unknown as Record<string, unknown>;
+    },
+  },
+  'flagship-life-report': {
+    reportType: 'flagship-life-report',
+    title: 'Complete Life Report',
+    pricePaise: 14900,
+    async generate(userId, profile, _period) {
+      if (!profile.dateOfBirth || !profile.displayName) {
+        throw new Error('Flagship Life Report requires a date of birth and a name');
+      }
+      const kundli = await getKundliForUser(userId, profile.birthProfileId);
+      if (!kundli || kundli.status !== 'ready') {
+        throw new Error('Flagship Life Report requires a completed birth chart');
+      }
+      if (
+        !profile.timeOfBirth ||
+        profile.placeOfBirth?.lat == null ||
+        profile.placeOfBirth?.lon == null ||
+        !profile.placeOfBirth?.tz
+      ) {
+        throw new Error('Flagship Life Report requires complete birth details (time and place)');
+      }
+      const grounding: GroundingSource = {
+        chart: kundli.chartData ?? null,
+        dasha: kundli.dashaData ?? null,
+        yogas: kundli.yogaData ?? null,
+        doshas: await withLiveSadeSati(kundli.doshaData ?? null),
+        ashtakavarga: kundli.ashtakavargaData ?? null,
+      };
+      const content = await assembleFlagshipReport({
+        dateOfBirth: profile.dateOfBirth,
+        fullName: profile.displayName,
+        gender: profile.gender ?? null,
+        grounding,
+        birthData: {
+          date: profile.dateOfBirth,
+          time: profile.timeOfBirth,
+          latitude: profile.placeOfBirth.lat,
+          longitude: profile.placeOfBirth.lon,
+          timezone: profile.placeOfBirth.tz,
+        },
+      });
+      return { content: content as unknown as Record<string, unknown>, model: 'multiple' };
+    },
+    translate(content, _language) {
+      // Translation for a 9-section assembled report is a larger, separate
+      // concern (translating each embedded section's narrative fields
+      // individually) — deliberately deferred to a follow-up task, not part
+      // of this foundation batch. English-only for now: return unchanged.
+      return Promise.resolve(content);
     },
   },
   ...Object.fromEntries(LIFE_AREAS.map((area) => [area, makeLifeAreaDefinition(area)])),
