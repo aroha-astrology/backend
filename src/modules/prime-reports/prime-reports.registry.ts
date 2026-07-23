@@ -32,6 +32,12 @@ import {
   type CompatibilityNarrative,
 } from '../../lib/llm/compatibility-report.js';
 import { computeCompatibilityFacts } from '../../lib/astro-engine/compatibility.js';
+import {
+  generatePoojaReport,
+  translatePoojaContent,
+  type PoojaNarrative,
+} from '../../lib/llm/pooja-report.js';
+import { getPoojaRecommendations } from '../../lib/astro-engine/poojaRecommendations.js';
 import { getRemedies } from '../astro/astro.service.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
@@ -222,6 +228,28 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
       const c = content as { narrative: CompatibilityNarrative; [key: string]: unknown };
       const translatedNarrative = await translateCompatibilityContent(c.narrative, language);
       return { ...c, narrative: translatedNarrative };
+    },
+  },
+  pooja: {
+    reportType: 'pooja',
+    title: 'Pooja Guidance Report',
+    pricePaise: 2500,
+    async generate(userId, profile) {
+      const kundli = await getKundliForUser(userId, profile.birthProfileId);
+      if (!kundli || kundli.status !== 'ready') {
+        throw new Error('Pooja Guidance report requires a completed birth chart');
+      }
+      const doshas = await withLiveSadeSati(kundli.doshaData ?? null);
+      const recommendations = getPoojaRecommendations(doshas);
+      const { model, ...content } = await generatePoojaReport({ recommendations });
+      return { content, model };
+    },
+    async translate(content, language) {
+      const translated = await translatePoojaContent(
+        content as unknown as PoojaNarrative,
+        language,
+      );
+      return translated as unknown as Record<string, unknown>;
     },
   },
   ...Object.fromEntries(LIFE_AREAS.map((area) => [area, makeLifeAreaDefinition(area)])),

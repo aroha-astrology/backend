@@ -355,3 +355,17 @@ export const COMPATIBILITY_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 2000,
 };
+
+/**
+ * Personalized pooja guidance report — wraps the deterministic pooja-
+ * recommendation engine (poojaRecommendations.ts) with a short intro + one
+ * note per recommended pooja. Generated lazily the first time the unlocked
+ * report is viewed and cached forever after.
+ */
+export const POOJA_REPORT_PROFILE: GenerationProfile = {
+  name: 'pooja-report',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 2000,
+};
