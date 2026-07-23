@@ -96,8 +96,23 @@ export interface PrimeReportDefinition {
 
 const NUMEROLOGY_UNLOCK_COST_PAISE = 2500;
 
-/** Aroha Prime pricing sheet, 2026-07-23: standard reports are ₹25 = 2500 paise. */
-const LIFE_AREA_PRICE_PAISE = 2500;
+/**
+ * Aroha Prime pricing sheet, 2026-07-23: the original 7 life-area reports
+ * are standard tier (₹25 = 2500 paise). Past-Life and Kundalini are premium
+ * tier (₹49 = 4900 paise), same tier as KP — per-area pricing replaces the
+ * old single flat constant.
+ */
+const LIFE_AREA_PRICES: Record<LifeArea, number> = {
+  career: 2500,
+  finance: 2500,
+  health: 2500,
+  relationship: 2500,
+  marriage: 2500,
+  love: 2500,
+  education: 2500,
+  'past-life': 4900,
+  kundalini: 4900,
+};
 
 const LIFE_AREA_TITLES: Record<LifeArea, string> = {
   career: 'Career Report',
@@ -107,6 +122,8 @@ const LIFE_AREA_TITLES: Record<LifeArea, string> = {
   marriage: 'Marriage Report',
   love: 'Love Report',
   education: 'Education Report',
+  'past-life': 'Past-Life Report',
+  kundalini: 'Kundalini & Spiritual Awakening Report',
 };
 
 const LIFE_AREAS: LifeArea[] = [
@@ -117,13 +134,15 @@ const LIFE_AREAS: LifeArea[] = [
   'marriage',
   'love',
   'education',
+  'past-life',
+  'kundalini',
 ];
 
 function makeLifeAreaDefinition(area: LifeArea): PrimeReportDefinition {
   return {
     reportType: area,
     title: LIFE_AREA_TITLES[area],
-    pricePaise: LIFE_AREA_PRICE_PAISE,
+    pricePaise: LIFE_AREA_PRICES[area],
     async generate(userId, profile, _period) {
       const kundli = await getKundliForUser(userId, profile.birthProfileId);
       if (!kundli || kundli.status !== 'ready') {

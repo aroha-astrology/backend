@@ -27,7 +27,9 @@ export type LifeArea =
   | 'relationship'
   | 'marriage'
   | 'love'
-  | 'education';
+  | 'education'
+  | 'past-life'
+  | 'kundalini';
 
 export interface LifeAreaLlmContext {
   area: LifeArea;
@@ -81,6 +83,16 @@ const AREA_COPY: Record<LifeArea, { title: string; focus: string }> = {
     title: 'Education Report',
     focus:
       'learning style, academic strengths, and favorable periods for study or exams — read the 4th, 5th, and 9th houses, Mercury and Jupiter, the D24 (Siddhamsa) chart, and the Education domain-confidence windows.',
+  },
+  'past-life': {
+    title: 'Past-Life Report',
+    focus:
+      "karmic patterns traditionally read as carried from past lives — read Rahu and Ketu's axis and house placement, the 12th house and its lord, and any karmic doshas (Pitra Dosha) present. Frame this explicitly as a traditional karmic-astrology lens for reflection, never a literal historical claim about a specific past life.",
+  },
+  kundalini: {
+    title: 'Kundalini & Spiritual Awakening Report',
+    focus:
+      "spiritual awakening potential and inner growth — read the 12th house and its lord, Ketu's placement, and any yogas related to detachment, renunciation, or moksha. Frame this explicitly as traditional spiritual-astrology guidance, never a medical, psychological, or clinical claim.",
   },
 };
 
