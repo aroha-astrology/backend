@@ -1193,6 +1193,41 @@ export type PrimeReportRow = typeof primeReports.$inferSelect;
 export type NewPrimeReportRow = typeof primeReports.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* palm_photos — short-lived (48h) staging area for palm-reading photo uploads */
+/* -------------------------------------------------------------------------- */
+
+export const palmPhotos = pgTable(
+  'palm_photos',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    imageBase64: text('image_base64').notNull(),
+    mimeType: text('mime_type').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    primaryUnique: uniqueIndex('palm_photos_primary_unique')
+      .on(table.userId)
+      .where(sql`${table.birthProfileId} is null`),
+    profileUnique: uniqueIndex('palm_photos_profile_unique')
+      .on(table.userId, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
+  }),
+);
+export type PalmPhotoRow = typeof palmPhotos.$inferSelect;
+export type NewPalmPhotoRow = typeof palmPhotos.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* panchang_cache — one row per (date, reference point), shared by all users   */
 /* -------------------------------------------------------------------------- */
 
