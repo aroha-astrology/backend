@@ -52,6 +52,12 @@ import {
   type BabyNameNarrative,
 } from '../../lib/llm/baby-name-report.js';
 import { getNamingSyllable } from '../../lib/astro-engine/babyNameSyllables.js';
+import {
+  generatePalmReport,
+  translatePalmContent,
+  type PalmNarrative,
+} from '../../lib/llm/palm-report.js';
+import { findPendingPalmPhoto, deletePalmPhoto } from '../palm/palm-photo.repo.js';
 import { getRemedies } from '../astro/astro.service.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
@@ -337,6 +343,35 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
       const { syllable, style, ...narrative } = c;
       const translated = await translateBabyNameContent(narrative, language);
       return { syllable, style, ...translated };
+    },
+  },
+  palm: {
+    reportType: 'palm',
+    title: 'Palm Reading',
+    pricePaise: 2500,
+    async generate(userId, profile, _period) {
+      const photo = await findPendingPalmPhoto(userId, profile.birthProfileId);
+      if (!photo) {
+        throw new Error(
+          'Upload a palm photo first via POST /v1/prime/palm/photo before unlocking this report',
+        );
+      }
+      const { model, ...narrative } = await generatePalmReport({
+        imageBase64: photo.imageBase64,
+        mimeType: photo.mimeType,
+      });
+      // Consumed successfully — delete now rather than waiting for the 48h
+      // cleanup window. (If markPrimeReportReady somehow fails right after
+      // this returns, the photo is already gone and a retry would need a
+      // fresh upload — an accepted, narrow edge case: a DB write failing
+      // immediately after a successful read-and-delete is rare, and no
+      // simpler alternative avoids it without meaningfully more complexity.)
+      await deletePalmPhoto(photo.id);
+      return { content: narrative, model };
+    },
+    async translate(content, language) {
+      const translated = await translatePalmContent(content as unknown as PalmNarrative, language);
+      return translated as unknown as Record<string, unknown>;
     },
   },
   ...Object.fromEntries(LIFE_AREAS.map((area) => [area, makeLifeAreaDefinition(area)])),

@@ -11,9 +11,15 @@ export interface GenerationProfile {
   maxTokens: number;
 }
 
+/** A single part of a multi-part (vision) message — Gemini's OpenAI-compatible endpoint accepts this same shape OpenAI's vision API uses. */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: string;
-  content: string;
+  /** Plain string for every text-only report (the vast majority). An array of parts ONLY for vision calls (currently just palm-report.ts) — gemini-client.ts passes `messages` straight through to the API body unmodified, so no other change is needed to support this. */
+  content: string | ContentPart[];
 }
 
 export interface LLMRequestOptions {
@@ -401,4 +407,20 @@ export const BABY_NAME_REPORT_PROFILE: GenerationProfile = {
   jsonMode: true,
   stream: false,
   maxTokens: 2000,
+};
+
+/**
+ * Palm reading (vision) — the only Prime report whose messages carry an
+ * image (see ChatMessage's `content: string | ContentPart[]` above).
+ * Generated once per unlock; the uploaded photo (palm_photos table) is
+ * deleted immediately on success, or left in place for a bounded retry
+ * window on failure — see lib/llm/palm-report.ts and
+ * modules/palm/palm-photo.repo.ts.
+ */
+export const PALM_REPORT_PROFILE: GenerationProfile = {
+  name: 'palm-report',
+  temperature: 0.4,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 2500,
 };
