@@ -21,6 +21,12 @@ import {
   type LifeArea,
   type LifeAreaNarrative,
 } from '../../lib/llm/life-area-report.js';
+import {
+  generateRemediesReport,
+  translateRemediesContent,
+  type RemediesNarrative,
+} from '../../lib/llm/remedies-report.js';
+import { getRemedies } from '../astro/astro.service.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
@@ -137,6 +143,38 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     async translate(content, language) {
       const translated = await translateNameCorrectionContent(
         content as unknown as NameCorrectionNarrative,
+        language,
+      );
+      return translated as unknown as Record<string, unknown>;
+    },
+  },
+  remedies: {
+    reportType: 'remedies',
+    title: 'Remedies Report',
+    pricePaise: 2500,
+    async generate(_userId, profile) {
+      const birthData =
+        profile.dateOfBirth &&
+        profile.timeOfBirth &&
+        profile.placeOfBirth?.lat != null &&
+        profile.placeOfBirth?.lon != null &&
+        profile.placeOfBirth?.tz
+          ? {
+              date: profile.dateOfBirth,
+              time: profile.timeOfBirth,
+              latitude: profile.placeOfBirth.lat,
+              longitude: profile.placeOfBirth.lon,
+              timezone: profile.placeOfBirth.tz,
+            }
+          : undefined;
+      if (!birthData) throw new Error('Remedies report requires complete birth details');
+      const remedies = await getRemedies(birthData);
+      const { model, ...content } = await generateRemediesReport({ remedies });
+      return { content, model };
+    },
+    async translate(content, language) {
+      const translated = await translateRemediesContent(
+        content as unknown as RemediesNarrative,
         language,
       );
       return translated as unknown as Record<string, unknown>;

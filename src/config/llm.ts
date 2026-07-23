@@ -325,3 +325,17 @@ export const LIFE_AREA_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 2500,
 };
+
+/**
+ * Personalized remedies report — wraps the existing deterministic remedies
+ * engine (astro.service.ts#getRemedies) with a short intro + one note per
+ * remedy. Generated lazily the first time the unlocked report is viewed and
+ * cached forever after.
+ */
+export const REMEDIES_REPORT_PROFILE: GenerationProfile = {
+  name: 'remedies-report',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 2000,
+};
