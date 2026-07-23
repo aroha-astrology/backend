@@ -277,3 +277,18 @@ export const TRANSIT_ALERT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 512,
 };
+
+/**
+ * Personalized numerology report — one structured JSON verdict (a short
+ * intro + one story per number: Life Path, Expression, Soul Urge,
+ * Personality), generated lazily the first time the unlocked report is
+ * viewed and cached forever after (date of birth and name never change).
+ * Small schema (4 short stories), so a modest ceiling is enough.
+ */
+export const NUMEROLOGY_REPORT_PROFILE: GenerationProfile = {
+  name: 'numerology-report',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 1500,
+};
