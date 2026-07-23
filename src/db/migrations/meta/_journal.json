@@ -218,6 +218,13 @@
       "when": 1784660000000,
       "tag": "0030_transit_events",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1784797168367,
+      "tag": "0031_regular_shard",
+      "breakpoints": true
     }
   ]
 }

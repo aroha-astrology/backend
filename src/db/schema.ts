@@ -1127,6 +1127,71 @@ export const gemstoneRecommendations = pgTable(
 export type GemstoneRecommendationRow = typeof gemstoneRecommendations.$inferSelect;
 export type NewGemstoneRecommendationRow = typeof gemstoneRecommendations.$inferInsert;
 
+export const primeReportStatusEnum = pgEnum('prime_report_status', [
+  'generating',
+  'ready',
+  'failed',
+]);
+
+/**
+ * Generic pay-to-unlock AI report row for Aroha Prime — one row per (user,
+ * profile, reportType, period). A row's EXISTENCE means the report was
+ * purchased: `unlockPrimeReport` (prime-reports.repo.ts) creates the row and
+ * debits the wallet in the same transaction, so there is never a "locked"
+ * placeholder row for a report nobody paid for.
+ *
+ * `period` is 'lifetime' for a one-time-unlock report or 'YYYY-MM' for a
+ * monthly report — always a non-null string (see file-level note on why:
+ * a nullable period would break the uniqueness guarantee below). The set of
+ * valid `reportType` values lives in code, in
+ * prime-reports.registry.ts — not as a DB enum, so new report types can ship
+ * without a migration.
+ */
+export const primeReports = pgTable(
+  'prime_reports',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    reportType: text('report_type').notNull(),
+    period: text('period').notNull().default('lifetime'),
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }).notNull(),
+    /** The AI-generated narrative only — deterministic facts are recomputed fresh on every read, never persisted (see gemstone_recommendations for the same policy). Null while 'generating'. */
+    analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    /** Cached translations of the AI-authored fields by language code — same shape as gemstone_recommendations.translations. */
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
+    model: text('model'),
+    status: primeReportStatusEnum('status').notNull(),
+    /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    primaryUnique: uniqueIndex('prime_reports_primary_unique')
+      .on(table.userId, table.reportType, table.period)
+      .where(sql`${table.birthProfileId} is null`),
+    profileUnique: uniqueIndex('prime_reports_profile_unique')
+      .on(table.userId, table.birthProfileId, table.reportType, table.period)
+      .where(sql`${table.birthProfileId} is not null`),
+  }),
+);
+
+export type PrimeReportRow = typeof primeReports.$inferSelect;
+export type NewPrimeReportRow = typeof primeReports.$inferInsert;
+
 /* -------------------------------------------------------------------------- */
 /* panchang_cache — one row per (date, reference point), shared by all users   */
 /* -------------------------------------------------------------------------- */
