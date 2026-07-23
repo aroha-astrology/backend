@@ -38,6 +38,12 @@ import {
   type PoojaNarrative,
 } from '../../lib/llm/pooja-report.js';
 import { getPoojaRecommendations } from '../../lib/astro-engine/poojaRecommendations.js';
+import {
+  generateTarotReport,
+  translateTarotContent,
+  type TarotNarrative,
+} from '../../lib/llm/tarot-report.js';
+import { drawThreeCardSpread } from '../../lib/tarot/deck.js';
 import { getRemedies } from '../astro/astro.service.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
@@ -250,6 +256,30 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
         language,
       );
       return translated as unknown as Record<string, unknown>;
+    },
+  },
+  tarot: {
+    reportType: 'tarot',
+    title: 'Tarot Reading (Past-Present-Future)',
+    pricePaise: 2500,
+    async generate(_userId, _profile) {
+      const drawn = drawThreeCardSpread();
+      const cards = drawn.map((d) => ({
+        name: d.card.name,
+        reversed: d.reversed,
+        position: d.position,
+      }));
+      const { model, ...narrative } = await generateTarotReport({ drawn });
+      return { content: { cards, ...narrative }, model };
+    },
+    async translate(content, language) {
+      const c = content as { cards: unknown; [key: string]: unknown };
+      const { cards, ...narrative } = c;
+      const translated = await translateTarotContent(
+        narrative as unknown as TarotNarrative,
+        language,
+      );
+      return { cards, ...translated };
     },
   },
   ...Object.fromEntries(LIFE_AREAS.map((area) => [area, makeLifeAreaDefinition(area)])),

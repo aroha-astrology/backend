@@ -369,3 +369,18 @@ export const POOJA_REPORT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 2000,
 };
+
+/**
+ * Tarot reading narrative — the 3 drawn cards (which cards, upright/reversed,
+ * past/present/future position) are 100% deterministic, fixed once at
+ * generation time (see lib/tarot/deck.ts#drawThreeCardSpread) and never
+ * re-rolled; this profile is only for the AI's interpretation of that fixed
+ * draw. Generated once per unlock, cached forever after.
+ */
+export const TAROT_REPORT_PROFILE: GenerationProfile = {
+  name: 'tarot-report',
+  temperature: 0.6,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 2000,
+};
