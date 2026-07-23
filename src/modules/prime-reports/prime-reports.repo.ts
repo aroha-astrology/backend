@@ -39,11 +39,12 @@ export async function findPrimeReport(
  * `undefined` if a row already exists for this (user, profile, reportType,
  * period), the wallet balance is insufficient, OR a concurrent unlock
  * request wins a genuine race on the final INSERT (unique-violation on one
- * of the two partial unique indexes below) — so a double-click, or two
- * truly concurrent requests, can never double-charge or create a duplicate
- * row. In the race case the whole transaction (charge + ledger row +
- * insert) rolls back before this resolves, so the loser is never actually
- * charged — see the outer catch below.
+ * of `prime_reports_primary_unique` / `prime_reports_profile_unique` in
+ * schema.ts) — so a double-click, or two truly concurrent requests, can
+ * never double-charge or create a duplicate row. In the race case the whole
+ * transaction (charge + ledger row + insert) rolls back before this
+ * resolves, so the loser is never actually charged — see the outer catch
+ * below.
  */
 export async function unlockPrimeReport(
   userId: string,
