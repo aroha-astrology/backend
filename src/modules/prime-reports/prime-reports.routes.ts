@@ -15,6 +15,7 @@ import {
   LIFETIME_PERIOD,
 } from './prime-reports.service.js';
 import {
+  PeriodQuerySchema,
   PrimeReportCatalogueSchema,
   PrimeReportDtoSchema,
   PrimeReportStatusSchema,
@@ -41,8 +42,13 @@ const errorResponse = (description: string) => ({
 
 export const primeReportsRouter = new OpenAPIHono();
 
-function fireGeneration(userId: string, profile: ProfileContext, reportType: string): void {
-  void requestReportGeneration(userId, profile, reportType).catch((err: unknown) => {
+function fireGeneration(
+  userId: string,
+  profile: ProfileContext,
+  reportType: string,
+  period: string,
+): void {
+  void requestReportGeneration(userId, profile, reportType, period).catch((err: unknown) => {
     logger.error({ err, userId, reportType }, 'prime report background generation errored');
   });
 }
@@ -97,7 +103,10 @@ const getReportRoute = createRoute({
     '(spend credits via POST /v1/prime/reports/{reportType}/unlock first).',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
-  request: { params: ReportTypeParamSchema, query: LanguageQuerySchema },
+  request: {
+    params: ReportTypeParamSchema,
+    query: z.object({ ...LanguageQuerySchema.shape, ...PeriodQuerySchema.shape }),
+  },
   responses: {
     200: {
       description: 'Prime report',
@@ -116,7 +125,8 @@ const getReportRoute = createRoute({
 primeReportsRouter.openapi(getReportRoute, async (c) => {
   const user = c.get('user');
   const { reportType } = c.req.valid('param');
-  const { language } = c.req.valid('query');
+  const { language, period } = c.req.valid('query');
+  const effectivePeriod = period ?? LIFETIME_PERIOD;
 
   if (!getPrimeReportDefinition(reportType)) {
     return c.json(
@@ -130,7 +140,7 @@ primeReportsRouter.openapi(getReportRoute, async (c) => {
     user.id,
     profile.birthProfileId,
     reportType,
-    LIFETIME_PERIOD,
+    effectivePeriod,
   );
 
   if (!existing) {
@@ -148,7 +158,7 @@ primeReportsRouter.openapi(getReportRoute, async (c) => {
     return c.json({ status: 'generating' as const }, 202);
   }
 
-  fireGeneration(user.id, profile, reportType);
+  fireGeneration(user.id, profile, reportType, effectivePeriod);
   return c.json({ status: 'generating' as const }, 202);
 });
 
@@ -159,12 +169,13 @@ const unlockRoute = createRoute({
   summary: 'Spend wallet credits to unlock a Prime report',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
-  request: { params: ReportTypeParamSchema },
+  request: { params: ReportTypeParamSchema, query: PeriodQuerySchema },
   responses: {
     200: {
       description: 'Unlock result',
       content: { 'application/json': { schema: PrimeReportUnlockResponseSchema } },
     },
+    400: errorResponse('Invalid period for this report type'),
     401: errorResponse('Unauthorized'),
     404: errorResponse('Unknown report type'),
     409: errorResponse('Already unlocked or insufficient wallet balance'),
@@ -174,6 +185,8 @@ const unlockRoute = createRoute({
 primeReportsRouter.openapi(unlockRoute, async (c) => {
   const user = c.get('user');
   const { reportType } = c.req.valid('param');
+  const { period } = c.req.valid('query');
+  const effectivePeriod = period ?? LIFETIME_PERIOD;
 
   if (!getPrimeReportDefinition(reportType)) {
     return c.json(
@@ -183,7 +196,7 @@ primeReportsRouter.openapi(unlockRoute, async (c) => {
   }
 
   const profile = await resolveActiveProfileContext(user);
-  const result = await unlockReport(user.id, profile, reportType);
+  const result = await unlockReport(user.id, profile, reportType, effectivePeriod);
 
   if (result === 'already_unlocked_or_insufficient_balance') {
     return c.json(

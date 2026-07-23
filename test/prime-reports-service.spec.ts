@@ -141,6 +141,37 @@ describe('unlockReport', () => {
       'LLM exploded',
     );
   });
+
+  it('throws a BAD_REQUEST AppError when the period is not "lifetime" and the report type declares no allowedPeriods', async () => {
+    state.getPrimeReportDefinition.mockReturnValue({ pricePaise: 2500, generate: vi.fn() });
+
+    await expect(
+      unlockReport('user-1', makeProfileContext(), 'numerology', 'some-other-period'),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(state.unlockPrimeReport).not.toHaveBeenCalled();
+  });
+
+  it("allows a period listed in the report type's allowedPeriods", async () => {
+    const generate = vi.fn().mockResolvedValue({ content: { intro: 'hi' }, model: 'gemini' });
+    state.getPrimeReportDefinition.mockReturnValue({
+      pricePaise: 2500,
+      allowedPeriods: ['western', 'ancient-indian'],
+      generate,
+    });
+    const claimedAt = new Date('2026-01-01T00:00:00Z');
+    state.unlockPrimeReport.mockResolvedValueOnce({ id: 'row-1', startedAt: claimedAt });
+
+    const result = await unlockReport('user-1', makeProfileContext(), 'baby-name', 'western');
+
+    expect(result).toBe('unlocked');
+    expect(state.unlockPrimeReport).toHaveBeenCalledWith(
+      'user-1',
+      null,
+      'baby-name',
+      'western',
+      2500,
+    );
+  });
 });
 
 describe('requestReportGeneration', () => {

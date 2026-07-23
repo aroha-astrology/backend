@@ -11,11 +11,25 @@ import {
 } from './prime-reports.repo.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import type { PrimeReportRow } from '../../db/schema.js';
+import { Errors } from '../../lib/errors.js';
+import type { PrimeReportDefinition } from './prime-reports.registry.js';
 
 /** Sentinel `period` for one-time-unlock reports (as opposed to 'YYYY-MM' for monthly reports, added in a later phase). */
 export const LIFETIME_PERIOD = 'lifetime';
 
 export type UnlockResult = 'unlocked' | 'already_unlocked_or_insufficient_balance';
+
+/**
+ * A period is valid for a report type if it's the universal default
+ * ('lifetime') OR explicitly declared in that report's `allowedPeriods`.
+ * Report types that never declare `allowedPeriods` (all 13 existing ones as
+ * of this writing) can therefore ONLY ever be unlocked/generated under
+ * 'lifetime' — this is what stops a client from unlocking, say, numerology
+ * twice by passing an arbitrary ?period= value and getting double-charged.
+ */
+function isPeriodAllowed(def: PrimeReportDefinition, period: string): boolean {
+  return def.allowedPeriods ? def.allowedPeriods.includes(period) : period === LIFETIME_PERIOD;
+}
 
 async function runGeneration(
   userId: string,
@@ -28,7 +42,7 @@ async function runGeneration(
   const def = getPrimeReportDefinition(reportType);
   if (!def) return;
   try {
-    const { content, model } = await def.generate(userId, profile);
+    const { content, model } = await def.generate(userId, profile, period);
     await markPrimeReportReady(userId, birthProfileId, reportType, period, claimedAt, {
       analysis: content,
       model,
@@ -60,6 +74,9 @@ export async function unlockReport(
 ): Promise<UnlockResult> {
   const def = getPrimeReportDefinition(reportType);
   if (!def) throw new Error(`Unknown report type: ${reportType}`);
+  if (!isPeriodAllowed(def, period)) {
+    throw Errors.badRequest(`Report type "${reportType}" does not support period "${period}"`);
+  }
 
   const row = await unlockPrimeReport(
     userId,

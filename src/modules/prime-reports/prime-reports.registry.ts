@@ -59,7 +59,19 @@ export interface PrimeReportDefinition {
   title: string;
   /** Aroha Prime pricing sheet, 2026-07-23: standard reports are ₹25 = 2500 paise. */
   pricePaise: number;
-  generate: (userId: string, profile: ProfileContext) => Promise<PrimeReportGenerateResult>;
+  /**
+   * Periods (beyond the universal default `'lifetime'`) this report type
+   * supports as separately-priced, separately-unlocked variants — e.g.
+   * baby-name's naming-style choices. Omitted = this report type ONLY
+   * supports `'lifetime'`; requesting any other period is rejected before
+   * any wallet charge (see prime-reports.service.ts#isPeriodAllowed).
+   */
+  allowedPeriods?: string[];
+  generate: (
+    userId: string,
+    profile: ProfileContext,
+    period: string,
+  ) => Promise<PrimeReportGenerateResult>;
   translate: (
     content: Record<string, unknown>,
     language: string,
@@ -96,7 +108,7 @@ function makeLifeAreaDefinition(area: LifeArea): PrimeReportDefinition {
     reportType: area,
     title: LIFE_AREA_TITLES[area],
     pricePaise: LIFE_AREA_PRICE_PAISE,
-    async generate(userId, profile) {
+    async generate(userId, profile, _period) {
       const kundli = await getKundliForUser(userId, profile.birthProfileId);
       if (!kundli || kundli.status !== 'ready') {
         throw new Error(`${LIFE_AREA_TITLES[area]} requires a completed birth chart`);
@@ -126,7 +138,7 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     reportType: 'numerology',
     title: 'Numerology Report',
     pricePaise: NUMEROLOGY_UNLOCK_COST_PAISE,
-    async generate(_userId, profile) {
+    async generate(_userId, profile, _period) {
       if (!profile.dateOfBirth || !profile.displayName) {
         throw new Error('Numerology report requires a date of birth and a name');
       }
@@ -148,7 +160,7 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     reportType: 'name-correction',
     title: 'Name Correction Report',
     pricePaise: 2500,
-    async generate(_userId, profile) {
+    async generate(_userId, profile, _period) {
       if (!profile.dateOfBirth || !profile.displayName) {
         throw new Error('Name Correction report requires a date of birth and a name');
       }
@@ -170,7 +182,7 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     reportType: 'remedies',
     title: 'Remedies Report',
     pricePaise: 2500,
-    async generate(_userId, profile) {
+    async generate(_userId, profile, _period) {
       const birthData =
         profile.dateOfBirth &&
         profile.timeOfBirth &&
@@ -202,7 +214,7 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     reportType: 'compatibility',
     title: 'Compatibility Report (Guna Milan)',
     pricePaise: 2500,
-    async generate(userId, profile) {
+    async generate(userId, profile, _period) {
       if (!profile.birthProfileId) {
         throw new Error(
           'Switch to a saved partner/friend profile first to check compatibility with them',
@@ -240,7 +252,7 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     reportType: 'pooja',
     title: 'Pooja Guidance Report',
     pricePaise: 2500,
-    async generate(userId, profile) {
+    async generate(userId, profile, _period) {
       const kundli = await getKundliForUser(userId, profile.birthProfileId);
       if (!kundli || kundli.status !== 'ready') {
         throw new Error('Pooja Guidance report requires a completed birth chart');
@@ -262,7 +274,7 @@ export const PRIME_REPORT_DEFINITIONS: Record<string, PrimeReportDefinition> = {
     reportType: 'tarot',
     title: 'Tarot Reading (Past-Present-Future)',
     pricePaise: 2500,
-    async generate(_userId, _profile) {
+    async generate(_userId, _profile, _period) {
       const drawn = drawThreeCardSpread();
       const cards = drawn.map((d) => ({
         name: d.card.name,

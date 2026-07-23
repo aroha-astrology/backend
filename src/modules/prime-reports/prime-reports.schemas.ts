@@ -32,3 +32,17 @@ export const PrimeReportStatusSchema = z
 export const PrimeReportUnlockResponseSchema = z
   .object({ status: z.literal('unlocked') })
   .openapi('PrimeReportUnlockResponse');
+
+export const PeriodQuerySchema = z.object({
+  period: z
+    .string()
+    .min(1)
+    .max(60)
+    .optional()
+    .openapi({
+      param: { name: 'period', in: 'query' },
+      example: 'western',
+      description:
+        'Report variant/period key. Most report types ignore this (always treated as "lifetime"). Report types that support multiple variants (e.g. baby-name style choices) require a value from their own supported list, and reject any other value before charging.',
+    }),
+});
