@@ -1758,3 +1758,97 @@ export const transitAlertCopy = pgTable(
 
 export type TransitAlertCopyRow = typeof transitAlertCopy.$inferSelect;
 export type NewTransitAlertCopyRow = typeof transitAlertCopy.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* shagun_products — curated affiliate catalog for auspicious ceremonial gifts */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Mirrors (and extends with 'gift-set') the categories already used by the
+ * AI chat product detector — see src/lib/shared/lib/productDetect.ts's
+ * ProductCategory type. Keep these two lists in sync.
+ */
+export const shagunProductCategoryEnum = pgEnum('shagun_product_category', [
+  'gemstone',
+  'rudraksha',
+  'yantra',
+  'mala',
+  'idol',
+  'puja-item',
+  'gift-set',
+]);
+
+/**
+ * A curated, seed-script-managed catalog of third-party affiliate products
+ * (see scripts/seed-shagun-products.ts) — there is no admin UI for this yet.
+ * Aroha never sells or ships these itself; it earns a referral commission
+ * when a user clicks through via GET /v1/shagun/products/{id}/redirect
+ * (shagun.routes.ts), which is why there's no price/inventory/order data
+ * here — only a display-only `priceRangeText` and the outbound
+ * `affiliateUrl`.
+ */
+export const shagunProducts = pgTable(
+  'shagun_products',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    category: shagunProductCategoryEnum('category').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    imageUrl: text('image_url'),
+    /** Display-only text like "₹500–1500" — never a real chargeable price. */
+    priceRangeText: text('price_range_text'),
+    affiliateUrl: text('affiliate_url').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    /** Ascending display order within a category listing. */
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    activeCategorySortIdx: index('shagun_products_active_category_sort_idx')
+      .on(table.category, table.sortOrder)
+      .where(sql`${table.isActive} = true`),
+  }),
+);
+
+export type ShagunProductRow = typeof shagunProducts.$inferSelect;
+export type NewShagunProductRow = typeof shagunProducts.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* shagun_click_events — click-through log for the Shagun affiliate catalog   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per click on GET /v1/shagun/products/{id}/redirect — enough for
+ * basic per-product click-count analytics. No session/referrer tracking by
+ * design. `userId` is nullable for forward-compatibility with a possible
+ * future logged-out surface, even though v1 only ever reaches this route
+ * through `requireUser`.
+ */
+export const shagunClickEvents = pgTable(
+  'shagun_click_events',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => shagunProducts.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    clickedAt: timestamp('clicked_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    productIdx: index('shagun_click_events_product_id_idx').on(table.productId),
+  }),
+);
+
+export type ShagunClickEventRow = typeof shagunClickEvents.$inferSelect;
+export type NewShagunClickEventRow = typeof shagunClickEvents.$inferInsert;

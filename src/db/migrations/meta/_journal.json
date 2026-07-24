@@ -239,6 +239,13 @@
       "when": 1784865205874,
       "tag": "0033_far_killraven",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784868168751,
+      "tag": "0034_add_shagun_shop",
+      "breakpoints": true
     }
   ]
 }
