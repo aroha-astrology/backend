@@ -1886,6 +1886,16 @@ export const astrologers = pgTable(
       .notNull()
       .default(sql`ARRAY[]::text[]`),
     photoUrl: text('photo_url'),
+    /**
+     * Ops contact / login number for the provider portal — set by an admin
+     * via the create/update routes, then used verbatim as the Firebase Auth
+     * `phoneNumber` at invite time (see adminInviteAstrologer,
+     * astrologers.service.ts). E.164, India-only (`+91` + 10 digits starting
+     * 6-9) — same format the live customer app already validates against.
+     * Deliberately NOT exposed on AstrologerSchema, the public DTO
+     * `GET /v1/astrologers` returns — this is PII, admin-only visibility.
+     */
+    phone: text('phone'),
     /** Flat price per booking, NOT per-minute — there is no live-call infra to meter minutes against in this batch. */
     ratePaisePerSession: integer('rate_paise_per_session').notNull(),
     verified: boolean('verified').notNull().default(false),
@@ -2105,14 +2115,15 @@ export type NewPoojaCatalogRow = typeof poojaCatalog.$inferInsert;
 /* vetting — there is no self-onboarding route, so "verified" simply means    */
 /* "an admin added this row", unlike the abandoned reference app's            */
 /* self-signup-with-hardcoded-verified-true model, which had no real vetting  */
-/* behind that flag at all. `phone` is nullable and remains an ops contact    */
-/* number only — never a login credential. `email` is ALSO nullable, but for  */
-/* a different reason: pandits now DO get a real login (Firebase Auth, via    */
-/* POST /admin/pandits/:id/invite — see pooja-bookings.admin.routes.ts),      */
-/* provisioned admin-invite-only, same as the roster itself. `email` is       */
-/* populated at invite time from whatever address the admin supplies there,  */
-/* not at roster-creation time — a pandit can sit on the roster a while with  */
-/* no login before an admin decides to invite them.                          */
+/* behind that flag at all. `phone` is nullable and serves BOTH as an ops     */
+/* contact number AND, once set, as the pandit's provider-portal login        */
+/* identity: POST /admin/pandits/:id/invite (see                             */
+/* pooja-bookings.admin.routes.ts) reads this same column and passes it to    */
+/* Firebase Auth as `phoneNumber` — phone+OTP, exactly like customer login,   */
+/* no password to generate or relay off-platform. There is no self-onboarding */
+/* route; an admin sets `phone` at roster-creation/update time, then invites  */
+/* separately once ready. (No `email` column — the old email+password invite */
+/* flow this table briefly carried has been removed in favor of phone+OTP.)  */
 /* -------------------------------------------------------------------------- */
 
 export const pandits = pgTable('pandits', {
@@ -2121,7 +2132,6 @@ export const pandits = pgTable('pandits', {
     .default(sql`gen_random_uuid()`),
   displayName: text('display_name').notNull(),
   phone: text('phone'),
-  email: text('email'),
   city: text('city').notNull(),
   languages: text('languages')
     .array()

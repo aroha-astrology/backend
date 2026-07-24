@@ -281,6 +281,13 @@
       "when": 1784873794223,
       "tag": "0039_elite_squadron_sinister",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784898991071,
+      "tag": "0040_nappy_sheva_callister",
+      "breakpoints": true
     }
   ]
 }
