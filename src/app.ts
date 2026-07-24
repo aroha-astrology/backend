@@ -22,6 +22,7 @@ import { gemstoneRouter } from './modules/gemstone/gemstone.routes.js';
 import { primeReportsRouter } from './modules/prime-reports/prime-reports.routes.js';
 import { palmPhotoRouter } from './modules/palm/palm-photo.routes.js';
 import { poojaBookingsRouter } from './modules/pooja-bookings/pooja-bookings.routes.js';
+import { poojaBookingsAdminRouter } from './modules/pooja-bookings/pooja-bookings.admin.routes.js';
 import { shagunRouter } from './modules/shagun/shagun.routes.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
 import { astrologersRouter } from './modules/astrologers/astrologers.routes.js';
@@ -111,6 +112,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', primeReportsRouter);
   app.route('/v1', palmPhotoRouter);
   app.route('/v1', poojaBookingsRouter);
+  app.route('/v1', poojaBookingsAdminRouter);
   app.route('/v1', shagunRouter);
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
