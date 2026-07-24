@@ -98,7 +98,7 @@ describe('GET /v1/shagun/products', () => {
 });
 
 describe('GET /v1/shagun/products/:id/redirect', () => {
-  it('302s to the affiliate URL and logs the click', async () => {
+  it('200s with the affiliate URL as JSON and logs the click', async () => {
     state.recordShagunClickAndGetRedirectUrl.mockResolvedValueOnce(
       'https://affiliate.example.com/p1?ref=aroha',
     );
@@ -107,8 +107,10 @@ describe('GET /v1/shagun/products/:id/redirect', () => {
       headers: AUTH,
     });
 
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('https://affiliate.example.com/p1?ref=aroha');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      redirectUrl: 'https://affiliate.example.com/p1?ref=aroha',
+    });
     expect(state.recordShagunClickAndGetRedirectUrl).toHaveBeenCalledWith(PRODUCT_ID, 'id-1');
   });
 

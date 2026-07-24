@@ -49,3 +49,13 @@ export const ShagunProductIdParamSchema = z.object({
     .uuid()
     .openapi({ param: { name: 'id', in: 'path' } }),
 });
+
+/**
+ * A client-side caller (a plain `<a href>`/`window.open`) can't attach a
+ * Bearer token to a browser navigation, so this route can't be a raw 302 —
+ * it returns the target URL as JSON to an authenticated `fetch()` instead,
+ * and the caller opens it itself. See shagun.routes.ts's redirect route.
+ */
+export const ShagunRedirectResponseSchema = z
+  .object({ redirectUrl: z.string().url() })
+  .openapi('ShagunRedirectResponse');

@@ -4,6 +4,7 @@ import {
   ShagunProductIdParamSchema,
   ShagunProductListQuerySchema,
   ShagunProductListSchema,
+  ShagunRedirectResponseSchema,
 } from './shagun.schemas.js';
 import { listShagunProducts, recordShagunClickAndGetRedirectUrl } from './shagun.service.js';
 
@@ -74,27 +75,52 @@ shagunRouter.openapi(
   },
 );
 
-// Plain (non-`.openapi()`) route: a 302 redirect has no JSON response body,
-// which doesn't fit the typed `.openapi()` response contract — same reasoning
-// as the PDF route at prime-reports.routes.ts, which established this
-// plain-route-with-positional-middleware pattern for the same kind of
-// non-JSON response.
-shagunRouter.get('/shagun/products/:id/redirect', requireUser, async (c) => {
-  const user = c.get('user');
-  const parsedId = ShagunProductIdParamSchema.safeParse({ id: c.req.param('id') });
-  if (!parsedId.success) {
-    return c.json(
-      {
-        error: {
-          code: 'UNPROCESSABLE',
-          message: 'Validation failed',
-          details: parsedId.error.flatten(),
-        },
-      },
-      422,
-    );
-  }
-
-  const affiliateUrl = await recordShagunClickAndGetRedirectUrl(parsedId.data.id, user.id);
-  return c.redirect(affiliateUrl, 302);
+// Returns the affiliate URL as JSON rather than issuing a raw 302. This
+// route is Firebase-authenticated (requireUser), but a browser navigation
+// (a plain `<a href>` or `window.open(url)`) can't attach a Bearer token —
+// so a real redirect here would be unreachable from the client that's
+// supposed to use it. The frontend instead does an authenticated fetch()
+// against this route, then opens `redirectUrl` itself (see
+// ShagunRedirectResponseSchema's doc comment).
+const redirectRoute = createRoute({
+  method: 'get',
+  path: '/shagun/products/{id}/redirect',
+  tags: ['Shagun'],
+  summary: 'Log a click and return the affiliate URL to open',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: { params: ShagunProductIdParamSchema },
+  responses: {
+    200: {
+      description: 'Affiliate URL to open client-side',
+      content: { 'application/json': { schema: ShagunRedirectResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Product not found'),
+    422: errorResponse('Invalid id'),
+  },
 });
+
+shagunRouter.openapi(
+  redirectRoute,
+  async (c) => {
+    const user = c.get('user');
+    const { id } = c.req.valid('param');
+    const redirectUrl = await recordShagunClickAndGetRedirectUrl(id, user.id);
+    return c.json({ redirectUrl }, 200);
+  },
+  (result, c) => {
+    if (!result.success) {
+      return c.json(
+        {
+          error: {
+            code: 'UNPROCESSABLE',
+            message: 'Validation failed',
+            details: result.error.flatten(),
+          },
+        },
+        422,
+      );
+    }
+  },
+);
