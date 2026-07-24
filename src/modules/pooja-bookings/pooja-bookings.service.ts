@@ -9,8 +9,8 @@
 // — a failed push never fails the underlying booking action.
 // =============================================================================
 
-import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
+import { Errors } from '../../lib/errors.js';
 import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
 import { getFirebaseAuth } from '../../config/firebase.js';
@@ -27,7 +27,7 @@ import {
   listPoojaBookingsForUser,
   listActivePoojas,
 } from './pooja-bookings.repo.js';
-import { findPanditById, updatePanditEmail } from './pandits.repo.js';
+import { findPanditById } from './pandits.repo.js';
 import type { PoojaBookingRow, PoojaCatalogRow } from '../../db/schema.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 
@@ -162,33 +162,33 @@ export async function adminCompleteBooking(
 }
 
 export type InvitePanditResult =
-  | { outcome: 'invited'; email: string; temporaryPassword: string }
+  | { outcome: 'invited'; phoneE164: string }
   | { outcome: 'unknown_pandit' }
   | { outcome: 'already_invited' };
 
 /**
- * Provisions a real login for a pandit: a Firebase Auth user plus a shared
- * `provider_accounts` row (kind: 'pandit') — mirrors the astrologer invite
- * endpoint from the Marketplace Batch 1 plan exactly. `email` is supplied by
- * the calling admin at invite time (see pooja-bookings.admin.routes.ts) and
- * is persisted onto the pandit's own row via updatePanditEmail so there is a
- * durable record of what address the login was created under. The temporary
- * password is generated here (never chosen by the pandit) and returned once
- * for ops to relay off-platform — same manual-relay gap already documented
- * for pandit payouts elsewhere in this plan; there is no email-sending
- * integration in this batch.
+ * Provisions a real login for a pandit: phone+OTP, exactly like customer
+ * login — a Firebase Auth user keyed on the pandit's own stored `phone` plus
+ * a shared `provider_accounts` row (kind: 'pandit'), mirroring the astrologer
+ * invite flow (astrologers.service.ts#adminInviteAstrologer) exactly. No
+ * password to generate or relay off-platform: `phone` was already set on the
+ * pandit's row at roster-creation/update time, not supplied here.
  */
-export async function invitePandit(panditId: string, email: string): Promise<InvitePanditResult> {
+export async function invitePandit(panditId: string): Promise<InvitePanditResult> {
   const pandit = await findPanditById(panditId);
   if (!pandit) return { outcome: 'unknown_pandit' };
+
+  if (!pandit.phone) {
+    throw Errors.badRequest(
+      'This pandit has no phone number on file — set one via the create/update admin routes before inviting.',
+    );
+  }
 
   const existing = await findProviderAccountByKindAndRefId('pandit', panditId);
   if (existing) return { outcome: 'already_invited' };
 
-  const temporaryPassword = crypto.randomBytes(18).toString('base64url');
-  const created = await getFirebaseAuth().createUser({ email, password: temporaryPassword });
+  const created = await getFirebaseAuth().createUser({ phoneNumber: pandit.phone });
 
-  await updatePanditEmail(panditId, email);
   await createProviderAccount({
     kind: 'pandit',
     refId: panditId,
@@ -196,5 +196,5 @@ export async function invitePandit(panditId: string, email: string): Promise<Inv
     displayName: pandit.displayName,
   });
 
-  return { outcome: 'invited', email, temporaryPassword };
+  return { outcome: 'invited', phoneE164: pandit.phone };
 }

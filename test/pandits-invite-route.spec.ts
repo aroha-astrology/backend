@@ -70,27 +70,18 @@ beforeEach(() => {
 });
 
 describe('POST /v1/admin/pandits/:id/invite', () => {
-  const BODY = { email: 'ravi.shastri@example.com' };
-
-  it('200s with the temporary password for an admin caller', async () => {
-    state.invitePandit.mockResolvedValueOnce({
-      outcome: 'invited',
-      email: 'ravi.shastri@example.com',
-      temporaryPassword: 'tmp-pw-123',
-    });
+  it('200s with the phone that was used, for an admin caller, with no request body', async () => {
+    state.invitePandit.mockResolvedValueOnce({ outcome: 'invited', phoneE164: '+919876543210' });
 
     const res = await createApp().request(
       '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
-      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify(BODY) },
+      { method: 'POST', headers: ADMIN_AUTH },
     );
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { email: string; temporaryPassword: string };
-    expect(body).toEqual({ email: 'ravi.shastri@example.com', temporaryPassword: 'tmp-pw-123' });
-    expect(state.invitePandit).toHaveBeenCalledWith(
-      '11111111-1111-1111-1111-111111111111',
-      'ravi.shastri@example.com',
-    );
+    const body = (await res.json()) as { phoneE164: string };
+    expect(body).toEqual({ phoneE164: '+919876543210' });
+    expect(state.invitePandit).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111');
   });
 
   it('404s for an unknown pandit', async () => {
@@ -98,7 +89,7 @@ describe('POST /v1/admin/pandits/:id/invite', () => {
 
     const res = await createApp().request(
       '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
-      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify(BODY) },
+      { method: 'POST', headers: ADMIN_AUTH },
     );
 
     expect(res.status).toBe(404);
@@ -109,7 +100,7 @@ describe('POST /v1/admin/pandits/:id/invite', () => {
 
     const res = await createApp().request(
       '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
-      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify(BODY) },
+      { method: 'POST', headers: ADMIN_AUTH },
     );
 
     expect(res.status).toBe(409);
@@ -120,7 +111,7 @@ describe('POST /v1/admin/pandits/:id/invite', () => {
 
     const res = await createApp().request(
       '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
-      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify(BODY) },
+      { method: 'POST', headers: ADMIN_AUTH },
     );
 
     expect(res.status).toBe(403);
@@ -130,21 +121,8 @@ describe('POST /v1/admin/pandits/:id/invite', () => {
   it('401s without a bearer token', async () => {
     const res = await createApp().request(
       '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(BODY),
-      },
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
     );
     expect(res.status).toBe(401);
-  });
-
-  it('422s on an invalid email', async () => {
-    const res = await createApp().request(
-      '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
-      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify({ email: 'not-an-email' }) },
-    );
-    expect(res.status).toBe(422);
-    expect(state.invitePandit).not.toHaveBeenCalled();
   });
 });

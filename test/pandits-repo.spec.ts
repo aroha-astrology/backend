@@ -4,23 +4,18 @@ import { PgDialect } from 'drizzle-orm/pg-core/dialect';
 const state = vi.hoisted(() => ({
   insert: vi.fn(),
   select: vi.fn(),
-  update: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
   const sqlClient: any = (..._args: unknown[]) => Promise.resolve([]);
   sqlClient.end = vi.fn().mockResolvedValue(undefined);
   return {
-    db: { insert: state.insert, select: state.select, update: state.update },
+    db: { insert: state.insert, select: state.select },
     sqlClient,
   };
 });
 
-import {
-  createPandit,
-  findPanditById,
-  updatePanditEmail,
-} from '../src/modules/pooja-bookings/pandits.repo.js';
+import { createPandit, findPanditById } from '../src/modules/pooja-bookings/pandits.repo.js';
 
 const dialect = new PgDialect();
 function compile(cond: unknown) {
@@ -49,7 +44,6 @@ function makeSelectChain(result: unknown[]) {
 beforeEach(() => {
   state.insert.mockReset();
   state.select.mockReset();
-  state.update.mockReset();
 });
 
 describe('createPandit', () => {
@@ -126,44 +120,5 @@ describe('findPanditById', () => {
     const query = compile(calls.where);
     expect(query.sql).toBe('"pandits"."id" = $1');
     expect(query.params).toEqual(['pandit-1']);
-  });
-});
-
-function makeUpdateChain(result: unknown[]) {
-  const calls: { set?: unknown; where?: unknown } = {};
-  const chain = {
-    set: vi.fn((patch: unknown) => {
-      calls.set = patch;
-      return chain;
-    }),
-    where: vi.fn((cond: unknown) => {
-      calls.where = cond;
-      return chain;
-    }),
-    returning: vi.fn(() => Promise.resolve(result)),
-  };
-  return { chain, calls };
-}
-
-describe('updatePanditEmail', () => {
-  it("scopes the UPDATE's WHERE to this pandit id and sets the email", async () => {
-    const { chain, calls } = makeUpdateChain([]);
-    state.update.mockReturnValue(chain);
-
-    await updatePanditEmail('pandit-1', 'ravi.shastri@example.com');
-
-    expect(calls.set).toMatchObject({ email: 'ravi.shastri@example.com' });
-    const query = compile(calls.where);
-    expect(query.sql).toBe('"pandits"."id" = $1');
-    expect(query.params).toEqual(['pandit-1']);
-  });
-
-  it('returns the updated row on success', async () => {
-    const { chain } = makeUpdateChain([{ id: 'pandit-1', email: 'ravi.shastri@example.com' }]);
-    state.update.mockReturnValue(chain);
-
-    const result = await updatePanditEmail('pandit-1', 'ravi.shastri@example.com');
-
-    expect(result).toMatchObject({ id: 'pandit-1', email: 'ravi.shastri@example.com' });
   });
 });

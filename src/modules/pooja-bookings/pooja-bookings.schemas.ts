@@ -1,4 +1,5 @@
 import { z } from '@hono/zod-openapi';
+import { PHONE_E164_IN_REGEX } from '../astrologers/astrologers.schemas.js';
 
 export const PoojaCatalogItemSchema = z
   .object({
@@ -65,7 +66,11 @@ export const AssignPanditRequestSchema = z
 export const CreatePanditRequestSchema = z
   .object({
     displayName: z.string().min(1).max(200),
-    phone: z.string().max(20).optional(),
+    /** Provider-portal login number (phone+OTP, admin-set) — same E.164 India-only format as astrologers.phone. */
+    phone: z
+      .string()
+      .regex(PHONE_E164_IN_REGEX, 'Must be an Indian E.164 number, e.g. +919876543210')
+      .optional(),
     city: z.string().min(1).max(100),
     languages: z.array(z.string().min(1)).default([]),
   })
@@ -88,13 +93,11 @@ export const PanditIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
-export const InvitePanditRequestSchema = z
-  .object({ email: z.string().email() })
-  .openapi('InvitePanditRequest');
-
+// No request body for the invite route anymore — the phone number is
+// already on the pandit's stored row (set via the create route above), not
+// supplied at invite time. See invitePandit, pooja-bookings.service.ts.
 export const InvitePanditResponseSchema = z
   .object({
-    email: z.string().email(),
-    temporaryPassword: z.string(),
+    phoneE164: z.string(),
   })
   .openapi('InvitePanditResponse');
