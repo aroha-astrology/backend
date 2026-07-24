@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { env } from '../../config/env.js';
 import {
@@ -40,6 +40,20 @@ function profileFilter(birthProfileId: string | null) {
  * backfills (e.g. scripts/regenerate-all-horoscopes.sh) that intentionally
  * want to reach every user regardless of recent activity.
  */
+/**
+ * Every horoscope row for this user across all profiles/periods, newest
+ * first — exactly scripts/inspect-user.ts's own query (no birthProfileId
+ * filter, since this is a diagnostic dump, not a serving path). Used by the
+ * admin diagnostic dump (GET /v1/admin/users/:phone/inspect).
+ */
+export async function listHoroscopesByUserId(userId: string): Promise<DailyHoroscopeRow[]> {
+  return db
+    .select()
+    .from(dailyHoroscopes)
+    .where(eq(dailyHoroscopes.userId, userId))
+    .orderBy(desc(dailyHoroscopes.updatedAt));
+}
+
 export async function listRecentlyActiveUsersAfter(
   afterId: string | null,
   limit: number,
