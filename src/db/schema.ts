@@ -1973,3 +1973,43 @@ export const astrologerBookings = pgTable(
 
 export type AstrologerBookingRow = typeof astrologerBookings.$inferSelect;
 export type NewAstrologerBookingRow = typeof astrologerBookings.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* provider_accounts — self-serve login for admin-invited astrologers/pandits  */
+/* -------------------------------------------------------------------------- */
+
+export const providerKindEnum = pgEnum('provider_kind', ['astrologer', 'pandit']);
+
+/**
+ * Links a Firebase-authenticated login to EITHER an `astrologers` row or a
+ * (future) `pandits` row, without needing both tables to exist at once — no
+ * DB-level FK to either, polymorphic-by-convention (validated at the service
+ * layer), same reasoning `astrologer_bookings` already uses for its own
+ * optional refs. Rows are created exclusively via the admin-invite flow
+ * (POST /v1/admin/astrologers/{id}/invite, astrologers.service.ts) — there is
+ * no self-registration in this batch.
+ */
+export const providerAccounts = pgTable(
+  'provider_accounts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    kind: providerKindEnum('kind').notNull(),
+    /** Points at astrologers.id or pandits.id depending on `kind`. No DB-level FK — polymorphic, validated at the service layer, same reasoning as booking_messages.bookingId below. */
+    refId: uuid('ref_id').notNull(),
+    firebaseUid: text('firebase_uid').notNull(),
+    /** Denormalized snapshot of the astrologer/pandit's display name at invite time, so /provider/me doesn't need a join. */
+    displayName: text('display_name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    firebaseUidUnique: uniqueIndex('provider_accounts_firebase_uid_unique').on(table.firebaseUid),
+    refIdx: index('provider_accounts_ref_idx').on(table.kind, table.refId),
+  }),
+);
+
+export type ProviderAccountRow = typeof providerAccounts.$inferSelect;
+export type NewProviderAccountRow = typeof providerAccounts.$inferInsert;

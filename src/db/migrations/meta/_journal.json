@@ -253,6 +253,13 @@
       "when": 1784869468764,
       "tag": "0035_absurd_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784870249569,
+      "tag": "0036_pale_paper_doll",
+      "breakpoints": true
     }
   ]
 }
