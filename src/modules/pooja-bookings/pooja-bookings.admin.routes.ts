@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireAdmin } from '../../middleware/auth.js';
 import { createPandit } from './pandits.repo.js';
-import { adminAssignPandit, adminCompleteBooking } from './pooja-bookings.service.js';
+import { adminAssignPandit, adminCompleteBooking, invitePandit } from './pooja-bookings.service.js';
 import type { PoojaBookingRow } from '../../db/schema.js';
 import {
   CreatePanditRequestSchema,
@@ -9,6 +9,9 @@ import {
   AssignPanditRequestSchema,
   PoojaBookingDtoSchema,
   BookingIdParamSchema,
+  PanditIdParamSchema,
+  InvitePanditRequestSchema,
+  InvitePanditResponseSchema,
 } from './pooja-bookings.schemas.js';
 
 const ErrorSchema = z
@@ -184,3 +187,65 @@ poojaBookingsAdminRouter.openapi(completeRoute, async (c) => {
   }
   return c.json(toBookingDto(result), 200);
 });
+
+const invitePanditRoute = createRoute({
+  method: 'post',
+  path: '/admin/pandits/{id}/invite',
+  tags: ['Admin — Pooja Bookings'],
+  summary:
+    'Admin-only: provision a real login for a pandit (Firebase Auth + a shared provider_accounts row) — mirrors the astrologer invite endpoint from the Marketplace Batch 1 plan',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    params: PanditIdParamSchema,
+    body: { content: { 'application/json': { schema: InvitePanditRequestSchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Pandit invited — relay the temporary password to them off-platform',
+      content: { 'application/json': { schema: InvitePanditResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Not an admin'),
+    404: errorResponse('Unknown pandit'),
+    409: errorResponse('This pandit already has a provider account'),
+    422: errorResponse('Invalid request body'),
+  },
+});
+
+poojaBookingsAdminRouter.openapi(
+  invitePanditRoute,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { email } = c.req.valid('json');
+
+    const result = await invitePandit(id, email);
+    if (result.outcome === 'unknown_pandit') {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Unknown pandit.' } }, 404);
+    }
+    if (result.outcome === 'already_invited') {
+      return c.json(
+        { error: { code: 'CONFLICT', message: 'This pandit already has a provider account.' } },
+        409,
+      );
+    }
+    return c.json({ email: result.email, temporaryPassword: result.temporaryPassword }, 200);
+  },
+  // Same @hono/zod-openapi validation-hook gotcha as the other routes in this
+  // module — this route's 422 IS covered by a test (test/pandits-invite-route.spec.ts),
+  // so the hook is required, not just documentation.
+  (result, c) => {
+    if (!result.success) {
+      return c.json(
+        {
+          error: {
+            code: 'UNPROCESSABLE',
+            message: 'Validation failed',
+            details: result.error.flatten(),
+          },
+        },
+        422,
+      );
+    }
+  },
+);

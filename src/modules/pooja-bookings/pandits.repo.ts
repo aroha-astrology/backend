@@ -22,3 +22,12 @@ export async function findPanditById(id: string): Promise<PanditRow | undefined>
   const rows = await db.select().from(pandits).where(eq(pandits.id, id)).limit(1);
   return rows[0];
 }
+
+export async function updatePanditEmail(id: string, email: string): Promise<PanditRow | undefined> {
+  const [row] = await db
+    .update(pandits)
+    .set({ email, updatedAt: new Date() })
+    .where(eq(pandits.id, id))
+    .returning();
+  return row;
+}

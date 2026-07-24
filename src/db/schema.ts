@@ -2105,9 +2105,14 @@ export type NewPoojaCatalogRow = typeof poojaCatalog.$inferInsert;
 /* vetting — there is no self-onboarding route, so "verified" simply means    */
 /* "an admin added this row", unlike the abandoned reference app's            */
 /* self-signup-with-hardcoded-verified-true model, which had no real vetting  */
-/* behind that flag at all. `phone` is nullable and is an ops contact number  */
-/* only — NOT a login credential; there is no pandit-facing portal in this    */
-/* batch.                                                                     */
+/* behind that flag at all. `phone` is nullable and remains an ops contact    */
+/* number only — never a login credential. `email` is ALSO nullable, but for  */
+/* a different reason: pandits now DO get a real login (Firebase Auth, via    */
+/* POST /admin/pandits/:id/invite — see pooja-bookings.admin.routes.ts),      */
+/* provisioned admin-invite-only, same as the roster itself. `email` is       */
+/* populated at invite time from whatever address the admin supplies there,  */
+/* not at roster-creation time — a pandit can sit on the roster a while with  */
+/* no login before an admin decides to invite them.                          */
 /* -------------------------------------------------------------------------- */
 
 export const pandits = pgTable('pandits', {
@@ -2116,6 +2121,7 @@ export const pandits = pgTable('pandits', {
     .default(sql`gen_random_uuid()`),
   displayName: text('display_name').notNull(),
   phone: text('phone'),
+  email: text('email'),
   city: text('city').notNull(),
   languages: text('languages')
     .array()

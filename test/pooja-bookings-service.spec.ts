@@ -10,8 +10,12 @@ const state = vi.hoisted(() => ({
   listPoojaBookingsForUser: vi.fn(),
   listActivePoojas: vi.fn(),
   findPanditById: vi.fn(),
+  updatePanditEmail: vi.fn(),
   findActiveTokensForUser: vi.fn(),
   sendPushBatch: vi.fn(),
+  findProviderAccountByKindAndRefId: vi.fn(),
+  createProviderAccount: vi.fn(),
+  createFirebaseUser: vi.fn(),
 }));
 
 vi.mock('../src/modules/pooja-bookings/pooja-bookings.repo.js', () => ({
@@ -26,6 +30,7 @@ vi.mock('../src/modules/pooja-bookings/pooja-bookings.repo.js', () => ({
 
 vi.mock('../src/modules/pooja-bookings/pandits.repo.js', () => ({
   findPanditById: state.findPanditById,
+  updatePanditEmail: state.updatePanditEmail,
 }));
 
 vi.mock('../src/modules/device-tokens/device-tokens.repo.js', () => ({
@@ -40,6 +45,15 @@ vi.mock('../src/lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('../src/modules/providers/provider-accounts.repo.js', () => ({
+  findProviderAccountByKindAndRefId: state.findProviderAccountByKindAndRefId,
+  createProviderAccount: state.createProviderAccount,
+}));
+
+vi.mock('../src/config/firebase.js', () => ({
+  getFirebaseAuth: () => ({ createUser: state.createFirebaseUser }),
+}));
+
 const {
   bookPooja,
   cancelBooking,
@@ -47,6 +61,7 @@ const {
   adminAssignPandit,
   adminCompleteBooking,
   listCatalog,
+  invitePandit,
 } = await import('../src/modules/pooja-bookings/pooja-bookings.service.js');
 const { logger } = await import('../src/lib/logger.js');
 
@@ -292,5 +307,51 @@ describe('adminCompleteBooking', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(state.sendPushBatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('invitePandit', () => {
+  it('returns unknown_pandit when the pandit does not exist', async () => {
+    state.findPanditById.mockResolvedValueOnce(undefined);
+
+    const result = await invitePandit('pandit-1', 'ravi.shastri@example.com');
+
+    expect(result).toEqual({ outcome: 'unknown_pandit' });
+    expect(state.createFirebaseUser).not.toHaveBeenCalled();
+  });
+
+  it('returns already_invited when a provider_accounts row already exists for this pandit', async () => {
+    state.findPanditById.mockResolvedValueOnce({ id: 'pandit-1', displayName: 'Ravi Shastri' });
+    state.findProviderAccountByKindAndRefId.mockResolvedValueOnce({ id: 'pa-1' });
+
+    const result = await invitePandit('pandit-1', 'ravi.shastri@example.com');
+
+    expect(result).toEqual({ outcome: 'already_invited' });
+    expect(state.findProviderAccountByKindAndRefId).toHaveBeenCalledWith('pandit', 'pandit-1');
+    expect(state.createFirebaseUser).not.toHaveBeenCalled();
+  });
+
+  it('creates the Firebase user, records the email, creates the provider account, and returns the temporary password', async () => {
+    state.findPanditById.mockResolvedValueOnce({ id: 'pandit-1', displayName: 'Ravi Shastri' });
+    state.findProviderAccountByKindAndRefId.mockResolvedValueOnce(undefined);
+    state.createFirebaseUser.mockResolvedValueOnce({ uid: 'firebase-uid-1' });
+
+    const result = await invitePandit('pandit-1', 'ravi.shastri@example.com');
+
+    expect(state.createFirebaseUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'ravi.shastri@example.com' }),
+    );
+    expect(state.updatePanditEmail).toHaveBeenCalledWith('pandit-1', 'ravi.shastri@example.com');
+    expect(state.createProviderAccount).toHaveBeenCalledWith({
+      kind: 'pandit',
+      refId: 'pandit-1',
+      firebaseUid: 'firebase-uid-1',
+      displayName: 'Ravi Shastri',
+    });
+    expect(result).toEqual({
+      outcome: 'invited',
+      email: 'ravi.shastri@example.com',
+      temporaryPassword: expect.any(String),
+    });
   });
 });

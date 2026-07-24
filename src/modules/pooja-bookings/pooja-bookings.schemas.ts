@@ -83,3 +83,18 @@ export const PanditDtoSchema = z
     createdAt: z.string(),
   })
   .openapi('PanditDto');
+
+export const PanditIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export const InvitePanditRequestSchema = z
+  .object({ email: z.string().email() })
+  .openapi('InvitePanditRequest');
+
+export const InvitePanditResponseSchema = z
+  .object({
+    email: z.string().email(),
+    temporaryPassword: z.string(),
+  })
+  .openapi('InvitePanditResponse');

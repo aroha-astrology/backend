@@ -274,6 +274,13 @@
       "when": 1784872570298,
       "tag": "0038_premium_energizer",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784873794223,
+      "tag": "0039_elite_squadron_sinister",
+      "breakpoints": true
     }
   ]
 }

@@ -9,9 +9,15 @@
 // — a failed push never fails the underlying booking action.
 // =============================================================================
 
+import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
 import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { getFirebaseAuth } from '../../config/firebase.js';
+import {
+  findProviderAccountByKindAndRefId,
+  createProviderAccount,
+} from '../providers/provider-accounts.repo.js';
 import {
   createPoojaBooking,
   refundPoojaBooking,
@@ -21,7 +27,7 @@ import {
   listPoojaBookingsForUser,
   listActivePoojas,
 } from './pooja-bookings.repo.js';
-import { findPanditById } from './pandits.repo.js';
+import { findPanditById, updatePanditEmail } from './pandits.repo.js';
 import type { PoojaBookingRow, PoojaCatalogRow } from '../../db/schema.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 
@@ -153,4 +159,42 @@ export async function adminCompleteBooking(
     );
   }
   return updated;
+}
+
+export type InvitePanditResult =
+  | { outcome: 'invited'; email: string; temporaryPassword: string }
+  | { outcome: 'unknown_pandit' }
+  | { outcome: 'already_invited' };
+
+/**
+ * Provisions a real login for a pandit: a Firebase Auth user plus a shared
+ * `provider_accounts` row (kind: 'pandit') — mirrors the astrologer invite
+ * endpoint from the Marketplace Batch 1 plan exactly. `email` is supplied by
+ * the calling admin at invite time (see pooja-bookings.admin.routes.ts) and
+ * is persisted onto the pandit's own row via updatePanditEmail so there is a
+ * durable record of what address the login was created under. The temporary
+ * password is generated here (never chosen by the pandit) and returned once
+ * for ops to relay off-platform — same manual-relay gap already documented
+ * for pandit payouts elsewhere in this plan; there is no email-sending
+ * integration in this batch.
+ */
+export async function invitePandit(panditId: string, email: string): Promise<InvitePanditResult> {
+  const pandit = await findPanditById(panditId);
+  if (!pandit) return { outcome: 'unknown_pandit' };
+
+  const existing = await findProviderAccountByKindAndRefId('pandit', panditId);
+  if (existing) return { outcome: 'already_invited' };
+
+  const temporaryPassword = crypto.randomBytes(18).toString('base64url');
+  const created = await getFirebaseAuth().createUser({ email, password: temporaryPassword });
+
+  await updatePanditEmail(panditId, email);
+  await createProviderAccount({
+    kind: 'pandit',
+    refId: panditId,
+    firebaseUid: created.uid,
+    displayName: pandit.displayName,
+  });
+
+  return { outcome: 'invited', email, temporaryPassword };
 }

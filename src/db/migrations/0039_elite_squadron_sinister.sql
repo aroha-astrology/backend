@@ -1,0 +1,1 @@
+ALTER TABLE "pandits" ADD COLUMN "email" text;
