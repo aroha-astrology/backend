@@ -21,6 +21,7 @@ import { vastuRouter } from './modules/vastu/vastu.routes.js';
 import { gemstoneRouter } from './modules/gemstone/gemstone.routes.js';
 import { primeReportsRouter } from './modules/prime-reports/prime-reports.routes.js';
 import { palmPhotoRouter } from './modules/palm/palm-photo.routes.js';
+import { adminRouter } from './modules/admin/admin.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -58,6 +59,16 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', publicRouter);
   app.route('/v1', legalRouter);
   app.route('/v1', usersRouter);
+  // adminRouter is mounted here, BEFORE any router below that registers its
+  // own `.use('*', requireUser)` wildcard (birthProfilesRouter is the first
+  // of nine that do). Hono composes every mounted sub-router's middleware
+  // into one ordered dispatch chain per path, in MOUNT order — an earlier
+  // wildcard intercepts ANY /v1/* path, including a later-mounted, unrelated
+  // router's own routes. Harmless for admin (every admin caller already has
+  // a `users` row, so the wildcard's requireUser just redundantly succeeds),
+  // but this position matters a lot more for anything mounted later that
+  // authenticates callers who are NOT in the `users` table.
+  app.route('/v1', adminRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', profilesRouter);
   app.route('/v1', deviceTokensRouter);
