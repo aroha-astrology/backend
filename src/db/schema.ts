@@ -1575,6 +1575,31 @@ export type TelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferSelect
 export type NewTelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* admin_audit_log — who called what via the /v1/admin/* HTTP admin console    */
+/* -------------------------------------------------------------------------- */
+
+export const adminAuditLog = pgTable(
+  'admin_audit_log',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    adminFirebaseUid: text('admin_firebase_uid').notNull(),
+    route: text('route').notNull(),
+    params: jsonb('params').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    createdAtIdx: index('admin_audit_log_created_at_idx').on(table.createdAt),
+  }),
+);
+
+export type AdminAuditLogRow = typeof adminAuditLog.$inferSelect;
+export type NewAdminAuditLogRow = typeof adminAuditLog.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* notifications — push / bell notifications                                   */
 /* -------------------------------------------------------------------------- */
 
