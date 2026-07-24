@@ -29,6 +29,7 @@ import {
   findOwnedBooking,
   insertAstrologer,
   listBookableAstrologers,
+  listBookingsForAstrologer,
   listBookingsForUser,
   refundBooking,
   requestAstrologerBooking,
@@ -408,5 +409,18 @@ describe('listBookingsForUser / findOwnedBooking', () => {
     );
     expect(query.params).toEqual(['booking-1', 'user-1']);
     expect(row).toEqual({ id: 'booking-1', userId: 'user-1' });
+  });
+});
+
+describe('listBookingsForAstrologer', () => {
+  it('filters on astrologerId, newest first', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await listBookingsForAstrologer('astro-1');
+
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"astrologer_bookings"."astrologer_id" = $1');
+    expect(query.params).toEqual(['astro-1']);
   });
 });

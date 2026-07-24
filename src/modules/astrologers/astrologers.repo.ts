@@ -241,6 +241,16 @@ export async function listBookingsForUser(userId: string): Promise<AstrologerBoo
     .orderBy(desc(astrologerBookings.createdAt));
 }
 
+export async function listBookingsForAstrologer(
+  astrologerId: string,
+): Promise<AstrologerBookingRow[]> {
+  return db
+    .select()
+    .from(astrologerBookings)
+    .where(eq(astrologerBookings.astrologerId, astrologerId))
+    .orderBy(desc(astrologerBookings.createdAt));
+}
+
 export async function findOwnedBooking(
   bookingId: string,
   userId: string,
