@@ -23,6 +23,7 @@ import { primeReportsRouter } from './modules/prime-reports/prime-reports.routes
 import { palmPhotoRouter } from './modules/palm/palm-photo.routes.js';
 import { shagunRouter } from './modules/shagun/shagun.routes.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
+import { astrologersRouter } from './modules/astrologers/astrologers.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -70,6 +71,20 @@ export function createApp(): OpenAPIHono {
   // but this position matters a lot more for anything mounted later that
   // authenticates callers who are NOT in the `users` table.
   app.route('/v1', adminRouter);
+  // astrologersRouter is ALSO mounted here, before birthProfilesRouter, for
+  // the same reason as adminRouter above — even though every astrologersRouter
+  // route in Batch 1 (customer + requireAdmin) still authenticates against
+  // the `users` table, this position is REQUIRED once providerRouter and
+  // messagingRouter (marketplace Batch 1's provider-portal and two-sided-chat
+  // routes, mounted right below) land here too: those routers authenticate
+  // callers via `requireProvider`/`requireUserOrProvider` against the new
+  // `provider_accounts` table instead, and a provider has NO `users` row at
+  // all. If birthProfilesRouter's wildcard `requireUser` ran first, it would
+  // 401 a provider caller before that request ever reached this module's own
+  // provider-auth check. Keeping all three marketplace routers mounted
+  // together, ahead of the wildcard block, avoids splitting this invariant
+  // across two different places in the file.
+  app.route('/v1', astrologersRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', profilesRouter);
   app.route('/v1', deviceTokensRouter);

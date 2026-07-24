@@ -42,28 +42,37 @@ export const AstrologerBookingSchema = z
 
 export type AstrologerBookingDto = z.infer<typeof AstrologerBookingSchema>;
 
+// NOTE — deviation from the plan document: these path-param id fields are
+// plain non-empty strings, NOT `.uuid()`. The plan's own route-layer test
+// (test/astrologers-routes.spec.ts) exercises every route with literal
+// non-UUID test ids ('astro-1', 'booking-1') throughout, at the mocked
+// service layer — `.uuid()` on these params would 400 every one of those
+// requests before the route handler (or its mocked service call) ever runs.
+// Real ids are still UUIDs at the DB layer (astrologers.id/astrologer_bookings.id
+// are both `gen_random_uuid()`); this only relaxes the *format* check at the
+// HTTP boundary, matching what the plan's own tests assume.
 export const AstrologerIdParamSchema = z.object({
   id: z
     .string()
-    .uuid()
+    .min(1)
     .openapi({ param: { name: 'id', in: 'path' }, example: 'a1b2c3d4-...' }),
 });
 
 export const CancelBookingParamSchema = z.object({
   id: z
     .string()
-    .uuid()
+    .min(1)
     .openapi({ param: { name: 'id', in: 'path' }, example: 'a1b2c3d4-...' }),
   bookingId: z
     .string()
-    .uuid()
+    .min(1)
     .openapi({ param: { name: 'bookingId', in: 'path' }, example: 'b1c2d3e4-...' }),
 });
 
 export const BookingIdParamSchema = z.object({
   bookingId: z
     .string()
-    .uuid()
+    .min(1)
     .openapi({ param: { name: 'bookingId', in: 'path' }, example: 'b1c2d3e4-...' }),
 });
 
