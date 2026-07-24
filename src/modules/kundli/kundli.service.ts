@@ -9,7 +9,7 @@ import {
   getCurrentSaturnLongitude,
   detectCurrentSadeSati,
 } from '../../lib/astro-engine/index.js';
-import type { ChartData, ZodiacSign } from '@aroha-astrology/shared';
+import type { ZodiacSign } from '@aroha-astrology/shared';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -21,7 +21,6 @@ import {
   findKundliByUserId,
   markKundliFailed,
   markKundliReady,
-  updateKundliDoshaData,
 } from './kundli.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import { generateHouseInsight, translateHouseInsightContent } from '../../lib/llm/house-insight.js';
@@ -412,32 +411,6 @@ export async function getKundliForUser(
   birthProfileId: string | null,
 ): Promise<KundliRow | undefined> {
   return findKundliByUserId(userId, birthProfileId);
-}
-
-/**
- * Admin-console single-user dosha recompute (POST /v1/admin/users/:phone/regenerate
- * with category 'dosha'). Mirrors scripts/regenerate-all-doshas.ts's per-row
- * logic exactly — deterministic recompute from the already-stored chart, no
- * LLM call, doesn't touch horoscopes/house-insights — but scoped to one
- * kundli row via updateKundliDoshaData (see that function's docstring for why).
- *
- * Uses the NATAL Saturn longitude off the stored chart, same as the script.
- * This only affects the STORED sadeSati snapshot — the served value is always
- * recomputed live from TODAY's Saturn position on every read regardless (see
- * withLiveSadeSati below), so this doesn't change what's actually shown.
- */
-export async function regenerateDoshaForUser(
-  userId: string,
-  birthProfileId: string | null,
-): Promise<'updated' | 'skipped'> {
-  const kundli = await findKundliByUserId(userId, birthProfileId);
-  const chart = kundli?.chartData as unknown as ChartData | null;
-  const saturn = chart?.planets?.find((p) => p.planet === 'Saturn');
-  if (!kundli || !chart || !saturn) return 'skipped';
-
-  const doshas = analyzeAllDoshas(chart, saturn.longitude);
-  await updateKundliDoshaData(kundli.id, doshas as unknown as Record<string, unknown>);
-  return 'updated';
 }
 
 /**

@@ -1,4 +1,4 @@
-import { and, count, eq, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   devicePushTokens,
@@ -101,22 +101,4 @@ export async function revokeOwnedDeviceToken(
     )
     .returning();
   return row;
-}
-
-/**
- * Active (unrevoked) device-token counts grouped by platform — porting
- * scripts/count-device-tokens.ts's query (which fetches every unrevoked row
- * and reduces in JS) into a single GROUP BY, for GET /v1/admin/device-tokens/stats.
- * Deliberately NOT filtered by pushEnabled (unlike findActiveTokensForUser) —
- * this is a registration/health count, not a "would receive a push" count,
- * matching the script's own semantics exactly.
- */
-export async function countActiveDeviceTokensByPlatform(): Promise<
-  Array<{ platform: DevicePushTokenRow['platform']; count: number }>
-> {
-  return db
-    .select({ platform: devicePushTokens.platform, count: count() })
-    .from(devicePushTokens)
-    .where(isNull(devicePushTokens.revokedAt))
-    .groupBy(devicePushTokens.platform);
 }

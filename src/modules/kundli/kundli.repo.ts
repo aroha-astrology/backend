@@ -24,34 +24,6 @@ export async function findKundliByUserId(
   return rows[0];
 }
 
-/**
- * Every kundli row for this user, across all profiles (primary + additional).
- * Used by the admin diagnostic dump (GET /v1/admin/users/:phone/inspect) —
- * unlike scripts/inspect-user.ts's `.limit(1)` (which non-deterministically
- * picks an arbitrary single profile's row once a user has more than one),
- * this intentionally returns every profile's kundli.
- */
-export async function listKundlisByUserId(userId: string): Promise<KundliRow[]> {
-  return db.select().from(kundlis).where(eq(kundlis.userId, userId));
-}
-
-/**
- * Single-field, single-row write used by the admin 'dosha' regenerate
- * category (kundli.service.ts regenerateDoshaForUser). Scoped by kundli id
- * (not userId) — scripts/regenerate-all-doshas.ts updates by userId alone,
- * which would silently touch every profile's kundli for a multi-profile user;
- * this avoids that.
- */
-export async function updateKundliDoshaData(
-  kundliId: string,
-  doshaData: Record<string, unknown>,
-): Promise<void> {
-  await db
-    .update(kundlis)
-    .set({ doshaData, updatedAt: new Date() })
-    .where(eq(kundlis.id, kundliId));
-}
-
 export async function countFailedKundlis(): Promise<number> {
   const [res] = await db
     .select({ count: count() })

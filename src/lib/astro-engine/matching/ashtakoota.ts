@@ -67,7 +67,7 @@ function compatibilityLabel(score: number, max: number): 'excellent' | 'good' | 
 //
 // Boy's varna >= Girl's varna = 1 point, else 0.
 
-export function getVarnaRank(sign: ZodiacSign): number {
+function getVarnaRank(sign: ZodiacSign): number {
   const element = signElement(sign);
   // Fire=0 -> Kshatriya(2), Earth=1 -> Vaishya(1), Air=2 -> Shudra(0), Water=3 -> Brahmin(3)
   const ranks = [2, 1, 0, 3];
@@ -83,8 +83,9 @@ function calculateVarna(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaScor
     koota: 'Varna',
     maxScore: KOOTA_MAX_SCORES.Varna,
     score,
-    description:
-      score === 1 ? 'Varna of boy is equal or higher than girl' : 'Varna of boy is lower than girl',
+    description: score === 1
+      ? 'Varna of boy is equal or higher than girl'
+      : 'Varna of boy is lower than girl',
     compatibility: score === 1 ? 'excellent' : 'poor',
   };
 }
@@ -102,7 +103,7 @@ function calculateVarna(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaScor
 // Simplified classical mapping per sign:
 // Same group = 2, one is vashya to other = 1, food relation = 0.5, no relation = 0
 
-export const VASHYA_GROUP: Record<ZodiacSign, string> = {
+const VASHYA_GROUP: Record<ZodiacSign, string> = {
   Aries: 'Chatushpada',
   Taurus: 'Chatushpada',
   Gemini: 'Manava',
@@ -144,12 +145,11 @@ function calculateVashya(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaSco
     koota: 'Vashya',
     maxScore: KOOTA_MAX_SCORES.Vashya,
     score,
-    description:
-      score >= 2
-        ? 'Good mutual attraction and compatibility'
-        : score >= 1
-          ? 'Moderate vashya compatibility'
-          : 'Lack of vashya compatibility',
+    description: score >= 2
+      ? 'Good mutual attraction and compatibility'
+      : score >= 1
+        ? 'Moderate vashya compatibility'
+        : 'Lack of vashya compatibility',
     compatibility: compatibilityLabel(score, 2),
   };
 }
@@ -180,12 +180,11 @@ function calculateTara(nakshatraIndex1: number, nakshatraIndex2: number): KootaS
     koota: 'Tara',
     maxScore: KOOTA_MAX_SCORES.Tara,
     score,
-    description:
-      score === 3
-        ? 'Tara is favorable in both directions'
-        : score >= 1.5
-          ? 'Tara is favorable in one direction'
-          : 'Tara is unfavorable in both directions',
+    description: score === 3
+      ? 'Tara is favorable in both directions'
+      : score >= 1.5
+        ? 'Tara is favorable in one direction'
+        : 'Tara is unfavorable in both directions',
     compatibility: compatibilityLabel(score, 3),
   };
 }
@@ -290,7 +289,10 @@ function calculateYoni(nakshatraIndex1: number, nakshatraIndex2: number): KootaS
 // Both friends = 5, One friend one neutral = 4, Both neutral = 3,
 // One friend one enemy = 1, One neutral one enemy = 0.5, Both enemies = 0
 
-function getPlanetRelation(planet1: Planet, planet2: Planet): 'friend' | 'neutral' | 'enemy' {
+function getPlanetRelation(
+  planet1: Planet,
+  planet2: Planet,
+): 'friend' | 'neutral' | 'enemy' {
   if (planet1 === planet2) return 'friend';
   if (PLANET_FRIENDS[planet1]?.includes(planet2)) return 'friend';
   if (PLANET_ENEMIES[planet1]?.includes(planet2)) return 'enemy';
@@ -406,7 +408,10 @@ function calculateBhakoot(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaSc
 
   let isBad = false;
   for (const [a, b] of inauspiciousPairs) {
-    if ((dist === a && reverseDist === b) || (dist === b && reverseDist === a)) {
+    if (
+      (dist === a && reverseDist === b) ||
+      (dist === b && reverseDist === a)
+    ) {
       isBad = true;
       break;
     }
@@ -455,11 +460,11 @@ function calculateNadi(nakshatraIndex1: number, nakshatraIndex2: number): KootaS
 function overallCompatibility(
   total: number,
 ): 'excellent' | 'good' | 'average' | 'below_average' | 'poor' {
-  if (total >= 28) return 'excellent'; // 28-36
-  if (total >= 21) return 'good'; // 21-27
-  if (total >= 18) return 'average'; // 18-20 (minimum acceptable)
+  if (total >= 28) return 'excellent';    // 28-36
+  if (total >= 21) return 'good';         // 21-27
+  if (total >= 18) return 'average';      // 18-20 (minimum acceptable)
   if (total >= 14) return 'below_average'; // 14-17
-  return 'poor'; // <14
+  return 'poor';                           // <14
 }
 
 // =============================================================================
@@ -509,3 +514,4 @@ export function calculateAshtakoota(
     overallCompatibility: overallCompatibility(totalScore),
   };
 }
+

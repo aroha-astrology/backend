@@ -19,15 +19,6 @@ import { horoscopeRouter } from './modules/horoscope/horoscope.routes.js';
 import { purchasePlanRouter } from './modules/purchase-plan/purchase-plan.routes.js';
 import { vastuRouter } from './modules/vastu/vastu.routes.js';
 import { gemstoneRouter } from './modules/gemstone/gemstone.routes.js';
-import { primeReportsRouter } from './modules/prime-reports/prime-reports.routes.js';
-import { palmPhotoRouter } from './modules/palm/palm-photo.routes.js';
-import { poojaBookingsRouter } from './modules/pooja-bookings/pooja-bookings.routes.js';
-import { poojaBookingsAdminRouter } from './modules/pooja-bookings/pooja-bookings.admin.routes.js';
-import { shagunRouter } from './modules/shagun/shagun.routes.js';
-import { adminRouter } from './modules/admin/admin.routes.js';
-import { astrologersRouter } from './modules/astrologers/astrologers.routes.js';
-import { providerRouter } from './modules/providers/provider.routes.js';
-import { messagingRouter } from './modules/messaging/messaging.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -65,39 +56,6 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', publicRouter);
   app.route('/v1', legalRouter);
   app.route('/v1', usersRouter);
-  // adminRouter is mounted here, BEFORE any router below that registers its
-  // own `.use('*', requireUser)` wildcard (birthProfilesRouter is the first
-  // of nine that do). Hono composes every mounted sub-router's middleware
-  // into one ordered dispatch chain per path, in MOUNT order — an earlier
-  // wildcard intercepts ANY /v1/* path, including a later-mounted, unrelated
-  // router's own routes. Harmless for admin (every admin caller already has
-  // a `users` row, so the wildcard's requireUser just redundantly succeeds),
-  // but this position matters a lot more for anything mounted later that
-  // authenticates callers who are NOT in the `users` table.
-  app.route('/v1', adminRouter);
-  // astrologersRouter is ALSO mounted here, before birthProfilesRouter, for
-  // the same reason as adminRouter above — even though every astrologersRouter
-  // route in Batch 1 (customer + requireAdmin) still authenticates against
-  // the `users` table, this position is REQUIRED once providerRouter and
-  // messagingRouter (marketplace Batch 1's provider-portal and two-sided-chat
-  // routes, mounted right below) land here too: those routers authenticate
-  // callers via `requireProvider`/`requireUserOrProvider` against the new
-  // `provider_accounts` table instead, and a provider has NO `users` row at
-  // all. If birthProfilesRouter's wildcard `requireUser` ran first, it would
-  // 401 a provider caller before that request ever reached this module's own
-  // provider-auth check. Keeping all three marketplace routers mounted
-  // together, ahead of the wildcard block, avoids splitting this invariant
-  // across two different places in the file.
-  app.route('/v1', astrologersRouter);
-  // providerRouter is the FIRST router whose routes actually rely on this
-  // position — requireProvider authenticates against provider_accounts, not
-  // users, so a provider caller has no `users` row at all. It MUST stay
-  // mounted here, ahead of birthProfilesRouter's wildcard requireUser.
-  app.route('/v1', providerRouter);
-  // messagingRouter ALSO uses requireUserOrProvider (booking chat, reachable
-  // by either a customer or their assigned provider) — same requirement as
-  // providerRouter above, must stay ahead of birthProfilesRouter's wildcard.
-  app.route('/v1', messagingRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', profilesRouter);
   app.route('/v1', deviceTokensRouter);
@@ -109,11 +67,6 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', purchasePlanRouter);
   app.route('/v1', vastuRouter);
   app.route('/v1', gemstoneRouter);
-  app.route('/v1', primeReportsRouter);
-  app.route('/v1', palmPhotoRouter);
-  app.route('/v1', poojaBookingsRouter);
-  app.route('/v1', poojaBookingsAdminRouter);
-  app.route('/v1', shagunRouter);
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);

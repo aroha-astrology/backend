@@ -5,7 +5,6 @@ import { logger } from '../../lib/logger.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
-import { invalidatePrimeReportsForUser } from '../prime-reports/prime-reports.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
 import {
@@ -433,19 +432,6 @@ export async function updateMe(
     // it regenerates against the new chart. The unlock flag stays set (no re-charge).
     await deleteGemstoneForUser(userId, null).catch((err: unknown) => {
       logger.error({ err, userId }, 'gemstone invalidation after birth-detail edit failed');
-    });
-  }
-
-  // Numerology (and any future prime-report type) depends on dateOfBirth
-  // and/or displayName — broader than the chart-only touchedBirthEvent check
-  // above, so this gets its own condition rather than widening that shared
-  // one (which also gates gemstone/house-insight, neither of which depends
-  // on the name).
-  const touchedPrimeReportInputs =
-    (touchedBirthEvent || body.displayName !== undefined) && current.profileCompletedAt !== null;
-  if (touchedPrimeReportInputs) {
-    await invalidatePrimeReportsForUser(userId, null).catch((err: unknown) => {
-      logger.error({ err, userId }, 'prime report invalidation after birth/name edit failed');
     });
   }
 
