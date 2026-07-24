@@ -95,7 +95,7 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
       birthTimeAccuracy: 'exact',
     });
     state.findActiveUserById.mockResolvedValue(user);
-    state.getUserFacts.mockResolvedValue(['likes hiking']);
+    state.getUserFacts.mockResolvedValue([{ fact: 'likes hiking', followUpQuestion: null }]);
 
     const profile = makeProfileContext({
       birthProfileId: null,
@@ -125,7 +125,7 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     const call = state.scholarStream.mock.calls[0] as any[];
     const [, , , birthTimeUnknown, , , , userFacts, extraFacts] = call;
     expect(birthTimeUnknown).toBe(false);
-    expect(userFacts).toEqual(['likes hiking']);
+    expect(userFacts).toEqual([{ fact: 'likes hiking', followUpQuestion: null }]);
     expect(extraFacts).toContain("User's gender: male");
   });
 
@@ -139,12 +139,12 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
       birthTimeAccuracy: 'exact', // account-level — must NOT drive birthTimeUnknown below
     });
     state.findActiveUserById.mockResolvedValue(user);
-    state.getUserFacts.mockResolvedValue(['loves painting']);
+    state.getUserFacts.mockResolvedValue([{ fact: 'loves painting', followUpQuestion: null }]);
     state.compactHistory.mockResolvedValue({
       recentHistory: [],
       summary: '',
       changed: false,
-      facts: ['new durable fact'],
+      facts: [{ fact: 'new durable fact', followUpQuestion: null }],
     });
 
     const profile = makeProfileContext({
@@ -171,12 +171,14 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', 'profile-a');
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', 'profile-a');
     // saveUserFacts must be tagged with the passed-in profile too, not the account.
-    expect(state.saveUserFacts).toHaveBeenCalledWith('user-1', 'profile-a', ['new durable fact']);
+    expect(state.saveUserFacts).toHaveBeenCalledWith('user-1', 'profile-a', [
+      { fact: 'new durable fact', followUpQuestion: null },
+    ]);
 
     const call = state.scholarStream.mock.calls[0] as any[];
     const [, , , birthTimeUnknown, , , , userFacts, extraFacts] = call;
     expect(birthTimeUnknown).toBe(true); // from the profile, not the account's 'exact'
-    expect(userFacts).toEqual(['loves painting']);
+    expect(userFacts).toEqual([{ fact: 'loves painting', followUpQuestion: null }]);
     expect(extraFacts).toContain("User's gender: female");
     expect(extraFacts).not.toContain("User's gender: male");
     // relationshipStatus has no per-profile equivalent — still sourced from the account.

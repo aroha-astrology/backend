@@ -1436,6 +1436,8 @@ export const userFacts = pgTable(
     }),
     fact: text('fact').notNull(),
     category: text('category'),
+    /** Encrypted like `fact`. A natural, non-intrusive question worth asking again once this topic recurs (e.g. "Did the new job start yet?") — null when the fact needs no follow-up. */
+    followUpQuestion: text('follow_up_question'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
