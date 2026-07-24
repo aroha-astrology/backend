@@ -2013,3 +2013,54 @@ export const providerAccounts = pgTable(
 
 export type ProviderAccountRow = typeof providerAccounts.$inferSelect;
 export type NewProviderAccountRow = typeof providerAccounts.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* booking_messages — shared chat between a customer and their provider       */
+/* -------------------------------------------------------------------------- */
+
+export const bookingMessageTypeEnum = pgEnum('booking_message_type', ['astrologer', 'pooja']);
+export const bookingMessageSenderRoleEnum = pgEnum('booking_message_sender_role', [
+  'customer',
+  'provider',
+]);
+
+/**
+ * A single chat message on a booking. Polymorphic across booking types
+ * (`bookingType`/`bookingId` point at either astrologer_bookings.id or, once
+ * it exists, pooja_bookings.id — no DB-level FK, validated at the service
+ * layer, same reasoning as astrologer_bookings' own optional refs). Only the
+ * `astrologer` bookingType is wired up end-to-end in this batch — see
+ * messaging.service.ts#resolveBookingParty for the extension point the
+ * Pooja Booking Batch 1 plan adds a second branch to.
+ */
+export const bookingMessages = pgTable(
+  'booking_messages',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    bookingType: bookingMessageTypeEnum('booking_type').notNull(),
+    /** Points at astrologer_bookings.id or pooja_bookings.id depending on bookingType. No DB-level FK — polymorphic, validated at the service layer. */
+    bookingId: uuid('booking_id').notNull(),
+    senderRole: bookingMessageSenderRoleEnum('sender_role').notNull(),
+    /** Set when senderRole = 'customer'. */
+    senderUserId: uuid('sender_user_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Set when senderRole = 'provider' — points at provider_accounts.id. No DB-level FK (same polymorphic reasoning). */
+    senderProviderAccountId: uuid('sender_provider_account_id'),
+    body: text('body').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    bookingIdx: index('booking_messages_booking_idx').on(
+      table.bookingType,
+      table.bookingId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export type BookingMessageRow = typeof bookingMessages.$inferSelect;
+export type NewBookingMessageRow = typeof bookingMessages.$inferInsert;
