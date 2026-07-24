@@ -31,6 +31,7 @@ import {
   completePoojaBooking,
   findOwnedPoojaBooking,
   listPoojaBookingsForUser,
+  listPoojaBookingsForPandit,
 } from '../src/modules/pooja-bookings/pooja-bookings.repo.js';
 
 const dialect = new PgDialect();
@@ -354,6 +355,20 @@ describe('listPoojaBookingsForUser', () => {
     const query = compile(calls.where);
     expect(query.sql).toBe('"pooja_bookings"."user_id" = $1');
     expect(query.params).toEqual(['user-1']);
+    expect(chain.orderBy).toHaveBeenCalled();
+  });
+});
+
+describe('listPoojaBookingsForPandit', () => {
+  it('filters on pandit_id and orders newest-first', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await listPoojaBookingsForPandit('pandit-1');
+
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"pooja_bookings"."pandit_id" = $1');
+    expect(query.params).toEqual(['pandit-1']);
     expect(chain.orderBy).toHaveBeenCalled();
   });
 });

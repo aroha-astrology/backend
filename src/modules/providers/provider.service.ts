@@ -10,7 +10,9 @@
 
 import { findAstrologerById, listBookingsForAstrologer } from '../astrologers/astrologers.repo.js';
 import { toAstrologerDto, toBookingDto } from '../astrologers/astrologers.service.js';
+import { listPoojaBookingsForPandit } from '../pooja-bookings/pooja-bookings.repo.js';
 import type { AstrologerBookingDto } from '../astrologers/astrologers.schemas.js';
+import type { PoojaBookingRow } from '../../db/schema.js';
 import type { ProviderMeDto } from './provider.schemas.js';
 
 export interface ProviderIdentity {
@@ -35,15 +37,40 @@ export async function getProviderMe(provider: ProviderIdentity): Promise<Provide
   };
 }
 
+/**
+ * DTO mapper for a pooja booking returned by GET /v1/provider/bookings for a
+ * pandit provider. Same field shape as PoojaBookingDtoSchema
+ * (pooja-bookings.schemas.ts) and the toBookingDto already duplicated
+ * locally in pooja-bookings.routes.ts / pooja-bookings.admin.routes.ts — kept
+ * local here too rather than newly exported from the pooja-bookings module,
+ * matching that existing per-file convention instead of introducing a new
+ * cross-module shared export for it.
+ */
+function toPoojaBookingDto(row: PoojaBookingRow) {
+  return {
+    id: row.id,
+    poojaId: row.poojaId,
+    panditId: row.panditId,
+    preferredDate: row.preferredDate,
+    shipAddress: row.shipAddress,
+    shipPincode: row.shipPincode,
+    status: row.status,
+    pricePaisePaid: row.pricePaisePaid,
+    requestedAt: row.requestedAt.toISOString(),
+    assignedAt: row.assignedAt ? row.assignedAt.toISOString() : null,
+    completedAt: row.completedAt ? row.completedAt.toISOString() : null,
+    notes: row.notes,
+  };
+}
+
 /** GET /v1/provider/bookings. */
 export async function listProviderBookings(
   provider: Pick<ProviderIdentity, 'kind' | 'refId'>,
-): Promise<AstrologerBookingDto[]> {
+): Promise<(AstrologerBookingDto | ReturnType<typeof toPoojaBookingDto>)[]> {
   if (provider.kind === 'astrologer') {
     const rows = await listBookingsForAstrologer(provider.refId);
     return rows.map(toBookingDto);
   }
-  // TODO(pooja-booking plan): add a kind === 'pandit' branch here listing
-  // pooja_bookings by panditId, once that table/repo exists.
-  return [];
+  const rows = await listPoojaBookingsForPandit(provider.refId);
+  return rows.map(toPoojaBookingDto);
 }

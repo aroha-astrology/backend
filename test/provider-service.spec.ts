@@ -4,6 +4,7 @@ import type { AstrologerBookingRow, AstrologerRow } from '../src/db/schema.js';
 const state = vi.hoisted(() => ({
   findAstrologerById: vi.fn(),
   listBookingsForAstrologer: vi.fn(),
+  listPoojaBookingsForPandit: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -15,6 +16,10 @@ vi.mock('../src/config/db.js', () => {
 vi.mock('../src/modules/astrologers/astrologers.repo.js', () => ({
   findAstrologerById: state.findAstrologerById,
   listBookingsForAstrologer: state.listBookingsForAstrologer,
+}));
+
+vi.mock('../src/modules/pooja-bookings/pooja-bookings.repo.js', () => ({
+  listPoojaBookingsForPandit: state.listPoojaBookingsForPandit,
 }));
 
 const { getProviderMe, listProviderBookings } =
@@ -59,9 +64,33 @@ function makeBookingRow(overrides: Partial<AstrologerBookingRow> = {}): Astrolog
   };
 }
 
+function makePoojaBookingRow(overrides: Record<string, unknown> = {}) {
+  const now = new Date('2026-01-01T00:00:00Z');
+  return {
+    id: 'pooja-booking-1',
+    userId: 'user-1',
+    birthProfileId: null,
+    poojaId: 'pooja-1',
+    panditId: 'pandit-1',
+    preferredDate: '2026-08-01',
+    shipAddress: '123 MG Road',
+    shipPincode: '560001',
+    status: 'assigned',
+    pricePaisePaid: 110000,
+    requestedAt: now,
+    assignedAt: now,
+    completedAt: null,
+    notes: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   state.findAstrologerById.mockReset();
   state.listBookingsForAstrologer.mockReset();
+  state.listPoojaBookingsForPandit.mockReset();
 });
 
 describe('getProviderMe', () => {
@@ -107,10 +136,16 @@ describe('listProviderBookings', () => {
     expect(result).toEqual([expect.objectContaining({ id: 'booking-1', astrologerId: 'astro-1' })]);
   });
 
-  it("returns an empty list for kind 'pandit' (no pooja_bookings repo query exists yet)", async () => {
+  it("lists the pandit's own pooja bookings when kind is pandit", async () => {
+    const booking = makePoojaBookingRow();
+    state.listPoojaBookingsForPandit.mockResolvedValueOnce([booking]);
+
     const result = await listProviderBookings({ kind: 'pandit', refId: 'pandit-1' });
 
-    expect(result).toEqual([]);
+    expect(state.listPoojaBookingsForPandit).toHaveBeenCalledWith('pandit-1');
     expect(state.listBookingsForAstrologer).not.toHaveBeenCalled();
+    expect(result).toEqual([
+      expect.objectContaining({ id: 'pooja-booking-1', panditId: 'pandit-1' }),
+    ]);
   });
 });

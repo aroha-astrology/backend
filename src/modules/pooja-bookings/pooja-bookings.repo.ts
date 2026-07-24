@@ -207,3 +207,18 @@ export async function listPoojaBookingsForUser(userId: string): Promise<PoojaBoo
     .where(eq(poojaBookings.userId, userId))
     .orderBy(desc(poojaBookings.createdAt));
 }
+
+/**
+ * Newest-first list of a pandit's assigned/completed/cancelled bookings —
+ * powers the `kind === 'pandit'` branch of the shared
+ * GET /v1/provider/bookings route (src/modules/providers/provider.service.ts,
+ * built by the Astrologer Marketplace Batch 1 plan). Same shape as
+ * listPoojaBookingsForUser, just scoped by pandit_id instead of user_id.
+ */
+export async function listPoojaBookingsForPandit(panditId: string): Promise<PoojaBookingRow[]> {
+  return db
+    .select()
+    .from(poojaBookings)
+    .where(eq(poojaBookings.panditId, panditId))
+    .orderBy(desc(poojaBookings.createdAt));
+}

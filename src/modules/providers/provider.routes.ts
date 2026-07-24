@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireProvider } from '../../middleware/auth.js';
 import { AstrologerBookingSchema } from '../astrologers/astrologers.schemas.js';
+import { PoojaBookingDtoSchema } from '../pooja-bookings/pooja-bookings.schemas.js';
 import { getProviderMe, listProviderBookings } from './provider.service.js';
 import { ProviderMeSchema } from './provider.schemas.js';
 
@@ -54,7 +55,11 @@ const bookingsRoute = createRoute({
   responses: {
     200: {
       description: 'Booking list',
-      content: { 'application/json': { schema: z.array(AstrologerBookingSchema) } },
+      content: {
+        'application/json': {
+          schema: z.array(z.union([AstrologerBookingSchema, PoojaBookingDtoSchema])),
+        },
+      },
     },
     401: errorResponse('Unauthorized'),
   },
