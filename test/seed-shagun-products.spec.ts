@@ -25,7 +25,10 @@ describe('SEED_SHAGUN_PRODUCTS', () => {
   });
 
   it('gives every product a unique, ascending sortOrder starting at 0', () => {
-    const sortOrders = SEED_SHAGUN_PRODUCTS.map((p) => p.sortOrder).sort((a, b) => a - b);
+    // `?? 0` only narrows the type for strict TS (Drizzle's inferred insert
+    // type marks `sortOrder` optional because the column has a DB default) —
+    // every seed product sets it explicitly, so the fallback is never hit.
+    const sortOrders = SEED_SHAGUN_PRODUCTS.map((p) => p.sortOrder ?? 0).sort((a, b) => a - b);
     expect(sortOrders).toEqual(SEED_SHAGUN_PRODUCTS.map((_, i) => i));
   });
 

@@ -136,12 +136,18 @@ async function main() {
         .update(shagunProducts)
         .set({
           category: p.category,
-          description: p.description,
-          imageUrl: p.imageUrl,
-          priceRangeText: p.priceRangeText,
+          // `?? null`/`?? true`/`?? 0` only narrow the type for strict TS
+          // (`exactOptionalPropertyTypes` — Drizzle's inferred insert type
+          // marks these columns optional because they're nullable or have a
+          // DB default, so `p.description` etc. type as `T | undefined`,
+          // which `.set()`'s target type rejects). Every SEED_SHAGUN_PRODUCTS
+          // entry sets these explicitly, so the fallback is never hit.
+          description: p.description ?? null,
+          imageUrl: p.imageUrl ?? null,
+          priceRangeText: p.priceRangeText ?? null,
           affiliateUrl: p.affiliateUrl,
-          isActive: p.isActive,
-          sortOrder: p.sortOrder,
+          isActive: p.isActive ?? true,
+          sortOrder: p.sortOrder ?? 0,
           updatedAt: new Date(),
         })
         .where(eq(shagunProducts.id, existing.id));
