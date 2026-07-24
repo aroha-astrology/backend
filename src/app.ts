@@ -24,6 +24,7 @@ import { palmPhotoRouter } from './modules/palm/palm-photo.routes.js';
 import { shagunRouter } from './modules/shagun/shagun.routes.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
 import { astrologersRouter } from './modules/astrologers/astrologers.routes.js';
+import { providerRouter } from './modules/providers/provider.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -85,6 +86,11 @@ export function createApp(): OpenAPIHono {
   // together, ahead of the wildcard block, avoids splitting this invariant
   // across two different places in the file.
   app.route('/v1', astrologersRouter);
+  // providerRouter is the FIRST router whose routes actually rely on this
+  // position — requireProvider authenticates against provider_accounts, not
+  // users, so a provider caller has no `users` row at all. It MUST stay
+  // mounted here, ahead of birthProfilesRouter's wildcard requireUser.
+  app.route('/v1', providerRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', profilesRouter);
   app.route('/v1', deviceTokensRouter);

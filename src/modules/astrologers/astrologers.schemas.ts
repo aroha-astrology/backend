@@ -118,3 +118,21 @@ export const UpdateAstrologerBodySchema = z
   .openapi('UpdateAstrologerBody');
 
 export type UpdateAstrologerBody = z.infer<typeof UpdateAstrologerBodySchema>;
+
+export const InviteAstrologerBodySchema = z
+  .object({
+    email: z.string().email(),
+  })
+  .strict()
+  .openapi('InviteAstrologerBody');
+
+export type InviteAstrologerBody = z.infer<typeof InviteAstrologerBodySchema>;
+
+export const InviteAstrologerResponseSchema = z
+  .object({
+    email: z.string().email(),
+    temporaryPassword: z.string(),
+  })
+  .openapi('InviteAstrologerResponse');
+
+export type InviteAstrologerResponse = z.infer<typeof InviteAstrologerResponseSchema>;

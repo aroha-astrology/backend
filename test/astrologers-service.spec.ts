@@ -15,6 +15,9 @@ const state = vi.hoisted(() => ({
   listBookingsForUser: vi.fn(),
   findActiveTokensForUser: vi.fn(),
   sendPushBatch: vi.fn(),
+  createUser: vi.fn(),
+  findProviderAccountByKindAndRefId: vi.fn(),
+  createProviderAccount: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -44,6 +47,15 @@ vi.mock('../src/lib/notifications/fcm.js', () => ({
   sendPushBatch: state.sendPushBatch,
 }));
 
+vi.mock('../src/config/firebase.js', () => ({
+  getFirebaseAuth: () => ({ createUser: state.createUser }),
+}));
+
+vi.mock('../src/modules/providers/provider-accounts.repo.js', () => ({
+  findProviderAccountByKindAndRefId: state.findProviderAccountByKindAndRefId,
+  createProviderAccount: state.createProviderAccount,
+}));
+
 const {
   createBooking,
   cancelBooking,
@@ -51,6 +63,7 @@ const {
   adminUpdateAstrologer,
   adminConfirmBooking,
   adminCompleteBooking,
+  adminInviteAstrologer,
   notifyBookingStatus,
   toAstrologerDto,
   toBookingDto,
@@ -308,5 +321,62 @@ describe('toAstrologerDto / toBookingDto', () => {
     expect(dto.confirmedAt).toBeNull();
     expect(dto.completedAt).toBeNull();
     expect(dto.requestedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+});
+
+describe('adminInviteAstrologer', () => {
+  it('404s when the astrologer does not exist', async () => {
+    state.findAstrologerById.mockResolvedValueOnce(undefined);
+
+    await expect(adminInviteAstrologer('astro-1', 'guru@example.com')).rejects.toThrow(
+      'Astrologer not found',
+    );
+    expect(state.createUser).not.toHaveBeenCalled();
+  });
+
+  it('409s when the astrologer has already been invited', async () => {
+    state.findAstrologerById.mockResolvedValueOnce(makeAstrologerRow());
+    state.findProviderAccountByKindAndRefId.mockResolvedValueOnce({
+      id: 'provider-1',
+      kind: 'astrologer',
+      refId: 'astro-1',
+      firebaseUid: 'fb-1',
+      displayName: 'Guru Ji',
+      createdAt: new Date(),
+    });
+
+    await expect(adminInviteAstrologer('astro-1', 'guru@example.com')).rejects.toThrow(
+      'Astrologer has already been invited',
+    );
+    expect(state.createUser).not.toHaveBeenCalled();
+  });
+
+  it('creates a Firebase user + provider_accounts row and returns the temporary credentials', async () => {
+    state.findAstrologerById.mockResolvedValueOnce(makeAstrologerRow({ displayName: 'Guru Ji' }));
+    state.findProviderAccountByKindAndRefId.mockResolvedValueOnce(undefined);
+    state.createUser.mockResolvedValueOnce({ uid: 'fb-new-uid-1' });
+    state.createProviderAccount.mockResolvedValueOnce({
+      id: 'provider-1',
+      kind: 'astrologer',
+      refId: 'astro-1',
+      firebaseUid: 'fb-new-uid-1',
+      displayName: 'Guru Ji',
+      createdAt: new Date(),
+    });
+
+    const result = await adminInviteAstrologer('astro-1', 'guru@example.com');
+
+    expect(state.createUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'guru@example.com' }),
+    );
+    expect(state.createProviderAccount).toHaveBeenCalledWith({
+      kind: 'astrologer',
+      refId: 'astro-1',
+      firebaseUid: 'fb-new-uid-1',
+      displayName: 'Guru Ji',
+    });
+    expect(result.email).toBe('guru@example.com');
+    expect(typeof result.temporaryPassword).toBe('string');
+    expect(result.temporaryPassword.length).toBeGreaterThan(0);
   });
 });

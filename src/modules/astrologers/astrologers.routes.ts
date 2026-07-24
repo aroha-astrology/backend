@@ -5,6 +5,7 @@ import {
   adminCompleteBooking,
   adminConfirmBooking,
   adminCreateAstrologer,
+  adminInviteAstrologer,
   adminUpdateAstrologer,
   cancelBooking,
   createBooking,
@@ -21,6 +22,8 @@ import {
   CancelBookingParamSchema,
   CreateAstrologerBodySchema,
   CreateBookingBodySchema,
+  InviteAstrologerBodySchema,
+  InviteAstrologerResponseSchema,
   UpdateAstrologerBodySchema,
 } from './astrologers.schemas.js';
 
@@ -294,6 +297,62 @@ astrologersRouter.openapi(
     const body = c.req.valid('json');
     const row = await adminUpdateAstrologer(id, body);
     return c.json(toAstrologerDto(row), 200);
+  },
+  // See bookRoute's identical comment above — 422 is this route's documented
+  // contract for validation failures, not @hono/zod-openapi's plain 400 default.
+  (result, c) => {
+    if (!result.success) {
+      return c.json(
+        {
+          error: {
+            code: 'UNPROCESSABLE',
+            message: 'Validation failed',
+            details: result.error.flatten(),
+          },
+        },
+        422,
+      );
+    }
+  },
+);
+
+const adminInviteRoute = createRoute({
+  method: 'post',
+  path: '/admin/astrologers/{id}/invite',
+  tags: ['Astrologers Admin'],
+  summary: 'Invite an existing astrologer profile to the self-serve provider portal',
+  description:
+    'Creates a Firebase Auth login + provider_accounts row and returns a one-time ' +
+    'temporary password — ops relays it to the astrologer off-platform (phone/WhatsApp).',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    params: AstrologerIdParamSchema,
+    body: {
+      required: true,
+      content: { 'application/json': { schema: InviteAstrologerBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Invite created — temporary credentials to relay off-platform',
+      content: { 'application/json': { schema: InviteAstrologerResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+    404: errorResponse('Astrologer not found'),
+    409: errorResponse('Astrologer has already been invited'),
+    422: errorResponse('Validation failed'),
+  },
+});
+
+astrologersRouter.openapi(
+  adminInviteRoute,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { email } = c.req.valid('json');
+    const result = await adminInviteAstrologer(id, email);
+    return c.json(result, 200);
   },
   // See bookRoute's identical comment above — 422 is this route's documented
   // contract for validation failures, not @hono/zod-openapi's plain 400 default.

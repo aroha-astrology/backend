@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   adminUpdateAstrologer: vi.fn(),
   adminConfirmBooking: vi.fn(),
   adminCompleteBooking: vi.fn(),
+  adminInviteAstrologer: vi.fn(),
   toAstrologerDto: vi.fn(),
   toBookingDto: vi.fn(),
 }));
@@ -51,6 +52,7 @@ vi.mock('../src/modules/astrologers/astrologers.service.js', () => ({
   adminUpdateAstrologer: state.adminUpdateAstrologer,
   adminConfirmBooking: state.adminConfirmBooking,
   adminCompleteBooking: state.adminCompleteBooking,
+  adminInviteAstrologer: state.adminInviteAstrologer,
   toAstrologerDto: state.toAstrologerDto,
   toBookingDto: state.toBookingDto,
 }));
@@ -110,6 +112,7 @@ beforeEach(() => {
   state.adminUpdateAstrologer.mockReset();
   state.adminConfirmBooking.mockReset();
   state.adminCompleteBooking.mockReset();
+  state.adminInviteAstrologer.mockReset();
   state.toAstrologerDto.mockReset().mockReturnValue(ASTROLOGER_DTO);
   state.toBookingDto.mockReset().mockReturnValue(BOOKING_DTO);
 });
@@ -303,5 +306,41 @@ describe('POST /v1/admin/astrologers/bookings/:bookingId/complete', () => {
 
     expect(res.status).toBe(200);
     expect(state.adminCompleteBooking).toHaveBeenCalledWith('booking-1');
+  });
+});
+
+describe('POST /v1/admin/astrologers/:id/invite', () => {
+  it('200s for an allowlisted admin and returns the temporary credentials', async () => {
+    state.findUserByFirebaseUid.mockResolvedValue(
+      makeUserRow({ id: 'id-1', firebaseUid: 'admin-uid-1' }),
+    );
+    state.adminInviteAstrologer.mockResolvedValueOnce({
+      email: 'guru@example.com',
+      temporaryPassword: 'a-temp-password',
+    });
+
+    const res = await createApp().request('/v1/admin/astrologers/astro-1/invite', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({ email: 'guru@example.com' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(state.adminInviteAstrologer).toHaveBeenCalledWith('astro-1', 'guru@example.com');
+    expect(await res.json()).toEqual({
+      email: 'guru@example.com',
+      temporaryPassword: 'a-temp-password',
+    });
+  });
+
+  it('403s for a non-admin user', async () => {
+    const res = await createApp().request('/v1/admin/astrologers/astro-1/invite', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({ email: 'guru@example.com' }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(state.adminInviteAstrologer).not.toHaveBeenCalled();
   });
 });

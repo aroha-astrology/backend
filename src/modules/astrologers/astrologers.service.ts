@@ -23,12 +23,18 @@
 //     session has no in-app path in this batch (known limitation).
 // =============================================================================
 
+import { randomBytes } from 'node:crypto';
 import type { AstrologerBookingRow, AstrologerRow } from '../../db/schema.js';
+import { getFirebaseAuth } from '../../config/firebase.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
 import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
+import {
+  createProviderAccount,
+  findProviderAccountByKindAndRefId,
+} from '../providers/provider-accounts.repo.js';
 import {
   confirmBooking,
   completeBooking,
@@ -47,6 +53,7 @@ import type {
   AstrologerDto,
   CreateAstrologerBody,
   CreateBookingBody,
+  InviteAstrologerResponse,
   UpdateAstrologerBody,
 } from './astrologers.schemas.js';
 
@@ -211,6 +218,38 @@ export async function adminUpdateAstrologer(
   const row = await updateAstrologer(id, buildAstrologerPatch(body));
   if (!row) throw Errors.notFound('Astrologer not found');
   return row;
+}
+
+/**
+ * Self-serve provider portal admin-invite flow (see requireProvider,
+ * src/middleware/auth.ts). Generates a one-time temporary password and
+ * creates BOTH a Firebase Auth user and the linking provider_accounts row.
+ * Ops relays the returned credentials to the astrologer off-platform
+ * (phone/WhatsApp) — same manual-relay pattern this file's header already
+ * documents for astrologer payouts; there is no in-app credential delivery
+ * in this batch.
+ */
+export async function adminInviteAstrologer(
+  astrologerId: string,
+  email: string,
+): Promise<InviteAstrologerResponse> {
+  const astrologer = await findAstrologerById(astrologerId);
+  if (!astrologer) throw Errors.notFound('Astrologer not found');
+
+  const existing = await findProviderAccountByKindAndRefId('astrologer', astrologerId);
+  if (existing) throw Errors.conflict('Astrologer has already been invited');
+
+  const temporaryPassword = randomBytes(12).toString('base64url');
+  const createdUser = await getFirebaseAuth().createUser({ email, password: temporaryPassword });
+
+  await createProviderAccount({
+    kind: 'astrologer',
+    refId: astrologerId,
+    firebaseUid: createdUser.uid,
+    displayName: astrologer.displayName,
+  });
+
+  return { email, temporaryPassword };
 }
 
 /** Admin manually confirms a REQUESTED booking on the astrologer's behalf — see this file's header for why (no astrologer self-service portal in this batch). */
