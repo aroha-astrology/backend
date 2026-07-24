@@ -1852,3 +1852,124 @@ export const shagunClickEvents = pgTable(
 
 export type ShagunClickEventRow = typeof shagunClickEvents.$inferSelect;
 export type NewShagunClickEventRow = typeof shagunClickEvents.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* astrologers — admin-curated marketplace roster (Batch 1: FOUNDATION)        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A bookable human astrologer's public profile. `userId` is nullable: this
+ * v1 roster is entirely admin-curated (see requireAdmin / POST
+ * /v1/admin/astrologers) — an admin can add a real astrologer's profile
+ * without that astrologer ever signing up for an Aroha account themselves.
+ * A future self-service batch would populate `userId` when/if an astrologer
+ * claims or creates their own account; nothing in this batch requires it.
+ * `onDelete: 'set null'` so deleting the linked user account (if any) never
+ * cascades into deleting the public profile or its booking history.
+ */
+export const astrologers = pgTable(
+  'astrologers',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    displayName: text('display_name').notNull(),
+    bio: text('bio'),
+    /** Simple free-form tags (e.g. 'career', 'marriage', 'health', 'vedic', 'tarot') — no separate taxonomy table in v1. */
+    specialties: text('specialties')
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    languages: text('languages')
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    photoUrl: text('photo_url'),
+    /** Flat price per booking, NOT per-minute — there is no live-call infra to meter minutes against in this batch. */
+    ratePaisePerSession: integer('rate_paise_per_session').notNull(),
+    verified: boolean('verified').notNull().default(false),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    // Backs the public directory listing (GET /v1/astrologers), which only
+    // ever shows verified && active rows.
+    verifiedActiveIdx: index('astrologers_verified_active_idx').on(table.verified, table.active),
+  }),
+);
+
+export type AstrologerRow = typeof astrologers.$inferSelect;
+export type NewAstrologerRow = typeof astrologers.$inferInsert;
+
+export const astrologerBookingStatusEnum = pgEnum('astrologer_booking_status', [
+  'requested',
+  'confirmed',
+  'completed',
+  'declined',
+  'cancelled',
+  'refunded',
+]);
+
+/**
+ * A scheduled-callback booking request between a customer and an astrologer.
+ * Wallet-only payment: `pricePaisePaid` is charged upfront the moment a
+ * booking is REQUESTED (see requestAstrologerBooking in astrologers.repo.ts)
+ * — the same "charge on unlock/request, not on fulfillment" model
+ * prime_reports uses. There is no live video/chat delivery in this batch;
+ * `confirmed`/`completed` are both set by an admin manually
+ * (POST /v1/admin/astrologers/bookings/{bookingId}/confirm|complete) since
+ * there is no astrologer self-service portal and no automated
+ * call-completion signal without real telephony/video infra.
+ */
+export const astrologerBookings = pgTable(
+  'astrologer_bookings',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // RESTRICT, not CASCADE: booking history must survive even if an
+    // astrologer row is ever hard-deleted (no delete route exists in this
+    // batch, but this keeps the invariant safe for whenever one is added).
+    astrologerId: uuid('astrologer_id')
+      .notNull()
+      .references(() => astrologers.id, { onDelete: 'restrict' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles — same convention as prime_reports.birthProfileId. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /** Free-form v1 scheduling, e.g. "weekday evenings IST" — real bookable calendar slots are a later batch. */
+    preferredTimeWindow: text('preferred_time_window').notNull(),
+    status: astrologerBookingStatusEnum('status').notNull().default('requested'),
+    /** Snapshot of what was actually charged (astrologers.ratePaisePerSession at request time) — protects the historical record if the astrologer's rate later changes. */
+    pricePaisePaid: integer('price_paise_paid').notNull(),
+    requestedAt: timestamp('requested_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    /** The customer's message to the astrologer at booking time. */
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('astrologer_bookings_user_id_idx').on(table.userId),
+    astrologerIdx: index('astrologer_bookings_astrologer_id_idx').on(table.astrologerId),
+  }),
+);
+
+export type AstrologerBookingRow = typeof astrologerBookings.$inferSelect;
+export type NewAstrologerBookingRow = typeof astrologerBookings.$inferInsert;
