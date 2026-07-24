@@ -4,7 +4,7 @@
 
 **Goal:** Ship a deliberately small "concierge pilot" pooja-booking subsystem — admin-vetted pandits, single-member bookings, wallet-debit-on-request, manual admin completion — reusing the existing curated pooja list rather than inventing a new catalog.
 
-**Architecture:** Three new tables (`pooja_catalog`, `pandits`, `pooja_bookings`) live alongside the existing `users`/`birth_profiles`/`wallet_transactions` tables in `src/db/schema.ts`. A new `src/modules/pooja-bookings/` module holds the repo/service/routes/schemas, following the exact conventions already proven by `src/modules/prime-reports/`: the wallet debit at booking time reuses `unlockPrimeReport`'s atomic "balance-guarded UPDATE + ledger insert + row insert, all in one `db.transaction`" shape, and the new `refundPoojaBooking()` primitive uses the same "conditional UPDATE is the concurrency guard" idea as `claimPrimeReportGeneration`. A minimal `requireAdmin` middleware (env-var Firebase-UID allowlist, mirroring the Telegram bot's tier-resolution pattern) gates the three ops-only routes. No pandit self-onboarding, no multi-member bookings, no offerings catalog, no video-proof, no automated fulfillment tracking — see "Explicitly deferred" below.
+**Architecture:** Three new tables (`pooja_catalog`, `pandits`, `pooja_bookings`) live alongside the existing `users`/`birth_profiles`/`wallet_transactions` tables in `src/db/schema.ts`. A new `src/modules/pooja-bookings/` module holds the repo/service/routes/schemas, following the exact conventions already proven by `src/modules/prime-reports/`: the wallet debit at booking time reuses `unlockPrimeReport`'s atomic "balance-guarded UPDATE + ledger insert + row insert, all in one `db.transaction`" shape, and the new `refundPoojaBooking()` primitive uses the same "conditional UPDATE is the concurrency guard" idea as `claimPrimeReportGeneration`. The three ops-only routes are gated by the canonical `requireAdmin` middleware from `src/middleware/auth.ts` — built by the Admin Console Foundation plan, reused here directly rather than redefined. Pandits also get real accounts and genuine chat with their customers: instead of building a second provider-auth/messaging system, this plan adds a pandit-specific invite endpoint and a `pooja` branch on top of the shared `provider_accounts`/`booking_messages` infrastructure built by the Astrologer Marketplace Batch 1 plan (see "Provider accounts and chat for pandits" near the end). No pandit self-onboarding, no multi-member bookings, no offerings catalog, no video-proof, no automated fulfillment tracking — see "Explicitly deferred" below.
 
 **Tech Stack:** Hono + `@hono/zod-openapi`, Drizzle/Postgres, Firebase Auth, Vitest.
 
@@ -22,50 +22,66 @@
   - `deductWalletBalance`/`addWalletBalance` (`src/modules/users/users.repo.ts`, verified in full) — confirms the sign convention: a debit's ledger row has a **negative** `delta`, a credit/refund's ledger row has a **positive** `delta`. `refundPoojaBooking()` in Task 4 follows this exactly (a positive `delta` that negates the original booking charge). Note this plan's `createPoojaBooking`/`refundPoojaBooking` do NOT call these two generic helpers directly — they inline the same balance-guarded-update + ledger-insert logic combined with the booking row write in ONE transaction, for the same reason `unlockPrimeReport` doesn't call them either: the wallet update and the booking-row write must commit or roll back together, which isn't possible across two separate transactions.
   - `walletTransactions` table (`src/db/schema.ts`, verified: `id`, `userId`, `delta`, `reason`, `balanceAfter`, `createdAt`) — exactly the shape this plan's ledger inserts use.
   - `resolveActiveProfileContext()` (`src/modules/birth-profiles/profile-context.ts`) — resolves which birth profile (self or a saved family member) a booking is made for.
-  - `requireUser` (`src/middleware/auth.ts`) — sets `c.var.user` (a `UserRow`), which `requireAdmin` (Task 2) reads.
+  - `requireUser` (`src/middleware/auth.ts`) — sets `c.var.user` (a `UserRow`). `requireAdmin` (also in `src/middleware/auth.ts`, built by the Admin Console Foundation plan and reused as-is — not built by this plan) calls `requireUser`'s logic INTERNALLY and reads `c.var.user` itself — it is not re-chained after `requireUser` on a route. Every admin route in this plan uses `middleware: [requireAdmin] as const` only, NEVER `[requireUser, requireAdmin]` (that would run the user-lookup twice and is the wrong pattern — see Task 6 and Task 8 for the corrected form).
   - `resolveTier()` (`src/modules/telegram-bot/telegram-bot.service.ts`) — the comma-separated-env-var-allowlist pattern `requireAdmin` mirrors.
   - `sendPush`/`sendPushBatch` (`src/lib/notifications/fcm.ts`) and `notifyPurchasePlanReady` (`src/modules/purchase-plan/purchase-plan.service.ts`) — the "look up active device tokens, batch-send, never let a push failure fail the underlying action" pattern.
   - `scripts/seed-coupons.ts` — the idempotent look-up-by-name-then-update-or-insert seed-script convention.
   - `src/app.ts` — routers are mounted via `app.route('/v1', someRouter)`, each router's own paths omit the `/v1` prefix.
   - `date` (for `preferredDate`, a day-scheduled not minute-scheduled column) is already imported in `src/db/schema.ts` from `drizzle-orm/pg-core` — no new import needed for it.
-- **Possible naming collision with the Admin Console plan:** if `docs/superpowers/plans/2026-07-24-admin-console-foundation.md` has already landed on this branch, it introduces its OWN `requireAdmin` (in `src/middleware/auth.ts`, keyed off `ADMIN_FIREBASE_UIDS`) and its OWN `ADMIN_FIREBASE_UIDS` env var. **Before starting Task 2, check whether `requireAdmin` and `ADMIN_FIREBASE_UIDS` already exist** (`grep -rn "requireAdmin\|ADMIN_FIREBASE_UIDS" src/`). If they do, **skip Task 2 entirely and reuse the existing `requireAdmin` from `src/middleware/auth.ts`** instead of creating a second, redundant `src/middleware/admin.ts` — adjust Task 7's import accordingly (`import { requireAdmin } from '../../middleware/auth.js';` instead of `'../../middleware/admin.js'`). If they don't exist yet, proceed with Task 2 as written below.
+- **Admin auth is built by a different plan, not this one.** Implementation order across the four plans accumulating on this branch is fixed: **Admin Console Foundation → Shagun Affiliate Shop → Astrologer Marketplace Batch 1 → Pooja Booking Batch 1 (this plan, implemented last)**. By the time this plan is implemented, the Admin Console Foundation plan has already added `requireAdmin` (keyed off `ADMIN_FIREBASE_UIDS`) to `src/middleware/auth.ts`. This plan's admin-only routes (Task 6) import and reuse that `requireAdmin` directly — there is no `src/middleware/admin.ts` and no `ADMIN_FIREBASE_UIDS`-defining task in this plan.
+- **Provider auth and chat for pandits are built on top of a different plan, not this one.** The Astrologer Marketplace Batch 1 plan (implemented immediately before this one) builds a shared `provider_accounts` table, `requireProvider`/`requireUserOrProvider` middleware, `src/modules/providers/`, and `src/modules/messaging/` — see "Provider accounts and chat for pandits" near the end of this plan for the exact contract this plan builds on top of.
 - **Note on unrelated leftover scripts:** `scripts/seed-puja-images.ts` and `scripts/smoke-test-puja-booking.ts` already exist in this repo's `scripts/` folder, but they are leftovers from the abandoned Supabase-based `apps/api`/`apps/web` reference implementation (they import `@supabase/supabase-js`, read `apps/web/.env.local`, and reference tables like `puja_offerings`/`booking_members`/`pandit_profiles` that do not exist in this Postgres/Drizzle backend). Do NOT modify, run, or treat these as related to this plan's work — they are dead code from a different, unbuilt system.
 
 **Explicitly deferred to a later batch (not part of this plan):**
 
-- Pandit self-onboarding (this batch is admin-vetted roster only — no login, no self-service portal, no approval workflow beyond "an admin added the row").
+- Pandit self-onboarding (this batch is admin-vetted roster only — no self-service portal, no approval workflow beyond "an admin added the row". A pandit DOES get a real login now — see "Provider accounts and chat for pandits" near the end — but strictly admin-invite-only, never a self-signup flow: a pandit gets an account only after an admin both adds their roster row AND calls the invite endpoint).
 - Multi-member sankalp bookings (one profile per booking only).
 - An offerings/add-ons catalog.
 - Video-proof-of-ritual upload requirement.
 - An automated pandit-decline/reassignment flow (there is no "pandit declines" state in this batch — an admin either successfully assigns a pandit or the booking stays `requested` until manually handled).
 - Pandit payouts (ops handles this manually outside the app — a known, documented gap, matching this repo's existing pattern of manual-process gaps in other batch plans).
-- Real-time delivery of any kind (this is an async/scheduled physical-world service, unlike the separate astrologer-consultation batch).
 - A separate ops-initiated refund route (only the customer-initiated cancel route in this batch calls `refundPoojaBooking()`; the primitive itself is written to be reusable from a future admin route, but no such route is wired up here).
+- Typing indicators and read receipts beyond the shared messaging system's `readAt` timestamp (no "seen" ticks, no live typing state).
+- File/image attachments in chat (text-only messages, same as the shared messaging system's astrologer-consultation branch).
+- Guaranteed push delivery to pandits for new messages (best-effort only via `sendPush`/`sendPushBatch` — same caveat as every other push-notification path in this and the Marketplace plan).
+- The actual pandit-facing or customer-facing chat UI (this plan, like every other plan in this batch of four, ships backend API only — no frontend/portal work).
 
 ---
 
 ## File structure
 
-| File                                                        | Action                                                    | Responsibility                                                                                                                      |
-| ----------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `src/db/schema.ts`                                          | Modify                                                    | Add `poojaCatalog`, `pandits`, `poojaBookingStatusEnum`, `poojaBookings` tables                                                     |
-| `src/db/migrations/<next>_<generated>.sql`                  | Create (generated)                                        | DDL for the 3 new tables + 1 enum                                                                                                   |
-| `src/config/env.ts`                                         | Modify (skip if already present — see "Before you start") | Add `ADMIN_FIREBASE_UIDS` allowlist env var                                                                                         |
-| `src/middleware/admin.ts`                                   | Create (skip if already present)                          | `requireAdmin` middleware                                                                                                           |
-| `test/admin-middleware.spec.ts`                             | Create (skip if already present)                          | Tests for `requireAdmin`                                                                                                            |
-| `src/modules/pooja-bookings/pandits.repo.ts`                | Create                                                    | `createPandit`, `findPanditById`                                                                                                    |
-| `test/pandits-repo.spec.ts`                                 | Create                                                    | Tests for the pandits repo                                                                                                          |
-| `src/modules/pooja-bookings/pooja-bookings.repo.ts`         | Create                                                    | Catalog reads, atomic `createPoojaBooking`, atomic `refundPoojaBooking`, `assignPanditToBooking`, `completePoojaBooking`, list/find |
-| `test/pooja-bookings-repo.spec.ts`                          | Create                                                    | Tests for the pooja-bookings repo, including the race-safety of the refund transaction                                              |
-| `src/modules/pooja-bookings/pooja-bookings.service.ts`      | Create                                                    | Business logic + fire-and-forget push notifications                                                                                 |
-| `test/pooja-bookings-service.spec.ts`                       | Create                                                    | Tests for the service layer                                                                                                         |
-| `src/modules/pooja-bookings/pooja-bookings.schemas.ts`      | Create                                                    | Zod/OpenAPI request/response schemas                                                                                                |
-| `src/modules/pooja-bookings/pooja-bookings.routes.ts`       | Create                                                    | Customer-facing routes                                                                                                              |
-| `test/pooja-bookings-routes.spec.ts`                        | Create                                                    | Tests for the customer-facing routes                                                                                                |
-| `src/modules/pooja-bookings/pooja-bookings.admin.routes.ts` | Create                                                    | Admin-only routes                                                                                                                   |
-| `test/pooja-bookings-admin-routes.spec.ts`                  | Create                                                    | Tests for the admin routes                                                                                                          |
-| `src/app.ts`                                                | Modify                                                    | Mount `poojaBookingsRouter` and `poojaBookingsAdminRouter`                                                                          |
-| `scripts/seed-pooja-catalog.ts`                             | Create                                                    | Idempotent seed script using the real 9 curated pooja names                                                                         |
+| File                                                        | Action                                                                    | Responsibility                                                                                                                                                             |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/db/schema.ts`                                          | Modify                                                                    | Add `poojaCatalog`, `pandits`, `poojaBookingStatusEnum`, `poojaBookings` tables                                                                                            |
+| `src/db/migrations/<next>_<generated>.sql`                  | Create (generated)                                                        | DDL for the 3 new tables + 1 enum                                                                                                                                          |
+| `src/modules/pooja-bookings/pandits.repo.ts`                | Create                                                                    | `createPandit`, `findPanditById`                                                                                                                                           |
+| `test/pandits-repo.spec.ts`                                 | Create                                                                    | Tests for the pandits repo                                                                                                                                                 |
+| `src/modules/pooja-bookings/pooja-bookings.repo.ts`         | Create                                                                    | Catalog reads, atomic `createPoojaBooking`, atomic `refundPoojaBooking`, `assignPanditToBooking`, `completePoojaBooking`, list/find                                        |
+| `test/pooja-bookings-repo.spec.ts`                          | Create                                                                    | Tests for the pooja-bookings repo, including the race-safety of the refund transaction                                                                                     |
+| `src/modules/pooja-bookings/pooja-bookings.service.ts`      | Create                                                                    | Business logic + fire-and-forget push notifications                                                                                                                        |
+| `test/pooja-bookings-service.spec.ts`                       | Create                                                                    | Tests for the service layer                                                                                                                                                |
+| `src/modules/pooja-bookings/pooja-bookings.schemas.ts`      | Create                                                                    | Zod/OpenAPI request/response schemas                                                                                                                                       |
+| `src/modules/pooja-bookings/pooja-bookings.routes.ts`       | Create                                                                    | Customer-facing routes                                                                                                                                                     |
+| `test/pooja-bookings-routes.spec.ts`                        | Create                                                                    | Tests for the customer-facing routes                                                                                                                                       |
+| `src/modules/pooja-bookings/pooja-bookings.admin.routes.ts` | Create                                                                    | Admin-only routes                                                                                                                                                          |
+| `test/pooja-bookings-admin-routes.spec.ts`                  | Create                                                                    | Tests for the admin routes                                                                                                                                                 |
+| `src/app.ts`                                                | Modify                                                                    | Mount `poojaBookingsRouter` and `poojaBookingsAdminRouter`                                                                                                                 |
+| `scripts/seed-pooja-catalog.ts`                             | Create                                                                    | Idempotent seed script using the real 9 curated pooja names                                                                                                                |
+| `src/db/schema.ts`                                          | Modify (again, in the new tasks below)                                    | Add nullable `email` column to `pandits`; update the now-stale "NOT a login credential" comment                                                                            |
+| `src/db/migrations/<next>_<generated>.sql`                  | Create (generated, again)                                                 | DDL for `pandits.email`                                                                                                                                                    |
+| `src/modules/pooja-bookings/pandits.repo.ts`                | Modify (again)                                                            | Add `updatePanditEmail`                                                                                                                                                    |
+| `test/pandits-repo.spec.ts`                                 | Modify (again)                                                            | Add coverage for `updatePanditEmail`                                                                                                                                       |
+| `src/modules/pooja-bookings/pooja-bookings.schemas.ts`      | Modify (again)                                                            | Add `PanditIdParamSchema`, `InvitePanditRequestSchema`, `InvitePanditResponseSchema`                                                                                       |
+| `src/modules/pooja-bookings/pooja-bookings.service.ts`      | Modify (again)                                                            | Add `invitePandit`                                                                                                                                                         |
+| `test/pooja-bookings-service.spec.ts`                       | Modify (again)                                                            | Add coverage for `invitePandit`                                                                                                                                            |
+| `src/modules/pooja-bookings/pooja-bookings.admin.routes.ts` | Modify (again)                                                            | Add `POST /v1/admin/pandits/{id}/invite`                                                                                                                                   |
+| `test/pandits-invite-route.spec.ts`                         | Create                                                                    | Tests for the pandit invite endpoint                                                                                                                                       |
+| `src/modules/pooja-bookings/pooja-bookings.repo.ts`         | Modify (again)                                                            | Add `listPoojaBookingsForPandit` and `findPoojaBookingById` for the provider-bookings and messaging extensions                                                             |
+| `test/pooja-bookings-repo.spec.ts`                          | Modify (again)                                                            | Add coverage for `listPoojaBookingsForPandit` and `findPoojaBookingById`                                                                                                   |
+| `src/modules/providers/provider.service.ts`                 | Modify — created by the Astrologer Marketplace Batch 1 plan, not this one | Add the `kind === 'pandit'` branch to `listProviderBookings`, and broaden its return type from `AstrologerBookingDto[]` to include the new local `toPoojaBookingDto` shape |
+| `test/provider-service.spec.ts`                             | Modify — created by the Astrologer Marketplace Batch 1 plan, not this one | Replace the "empty list for kind pandit" case with real pandit-branch coverage                                                                                             |
+| `src/modules/messaging/messaging.service.ts`                | Modify — created by the Astrologer Marketplace Batch 1 plan, not this one | Add a `pooja` branch to `resolveBookingParty`; generalize the `'astrologer'`-literal checks in `assertCallerIsParty` and `notifyOtherParty`                                |
+| `test/messaging-service.spec.ts`                            | Modify — created by the Astrologer Marketplace Batch 1 plan, not this one | Replace the "rejects bookingType pooja" case with real pooja-branch coverage                                                                                               |
 
 ---
 
@@ -250,159 +266,7 @@ git commit -m "feat(pooja-bookings): add pooja_catalog, pandits, pooja_bookings 
 
 ---
 
-### Task 2: Admin auth — `ADMIN_FIREBASE_UIDS` env var + `requireAdmin` middleware
-
-**SKIP THIS TASK ENTIRELY if `requireAdmin`/`ADMIN_FIREBASE_UIDS` already exist** (check per "Before you start" above — the Admin Console Foundation plan introduces the same thing in `src/middleware/auth.ts`). If skipping, adjust Task 7's import to `import { requireAdmin } from '../../middleware/auth.js';`.
-
-**Why (if not already present):** The three admin-only routes in Task 7 need a gate. Mirrors the exact env-var-allowlist pattern already proven in `src/modules/telegram-bot/telegram-bot.service.ts#resolveTier` (`TELEGRAM_ADMIN_CHAT_IDS`), just keyed by Firebase UID instead of Telegram chat ID.
-
-**Files:**
-
-- Modify: `src/config/env.ts`
-- Create: `src/middleware/admin.ts`
-- Create: `test/admin-middleware.spec.ts`
-
-- [ ] **Step 1: Write the failing test**
-
-Create `test/admin-middleware.spec.ts`:
-
-```ts
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Hono } from 'hono';
-import type { UserRow } from '../src/db/schema.js';
-
-const fakeEnv: { ADMIN_FIREBASE_UIDS: string[] } = { ADMIN_FIREBASE_UIDS: [] };
-vi.mock('../src/config/env.js', () => ({
-  env: fakeEnv,
-  isProduction: false,
-  isTest: true,
-}));
-
-const { requireAdmin } = await import('../src/middleware/admin.js');
-const { errorHandler } = await import('../src/middleware/error.js');
-
-function makeApp(user: Pick<UserRow, 'firebaseUid'>) {
-  const app = new Hono();
-  app.onError(errorHandler);
-  app.use('*', async (c, next) => {
-    c.set('user' as never, user as never);
-    await next();
-  });
-  app.get('/admin-only', requireAdmin, (c) => c.json({ ok: true }));
-  return app;
-}
-
-beforeEach(() => {
-  fakeEnv.ADMIN_FIREBASE_UIDS = [];
-});
-
-describe('requireAdmin', () => {
-  it('403s when ADMIN_FIREBASE_UIDS is empty (fails closed)', async () => {
-    const app = makeApp({ firebaseUid: 'uid-1' });
-
-    const res = await app.request('/admin-only');
-
-    expect(res.status).toBe(403);
-  });
-
-  it("403s when the signed-in user's firebaseUid is not in the allowlist", async () => {
-    fakeEnv.ADMIN_FIREBASE_UIDS = ['uid-admin'];
-    const app = makeApp({ firebaseUid: 'uid-1' });
-
-    const res = await app.request('/admin-only');
-
-    expect(res.status).toBe(403);
-  });
-
-  it("200s when the signed-in user's firebaseUid IS in the allowlist", async () => {
-    fakeEnv.ADMIN_FIREBASE_UIDS = ['uid-admin', 'uid-1'];
-    const app = makeApp({ firebaseUid: 'uid-1' });
-
-    const res = await app.request('/admin-only');
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
-  });
-});
-```
-
-- [ ] **Step 2: Run the test to verify it fails**
-
-Run: `pnpm test test/admin-middleware.spec.ts`
-Expected: FAIL — `src/middleware/admin.js` does not exist yet.
-
-- [ ] **Step 3: Add the env var and implement the middleware**
-
-In `src/config/env.ts`, inside the `EnvSchema` object, immediately after the `HOROSCOPE_ACTIVE_WINDOW_DAYS` field (the last field before the schema's closing `})`), add:
-
-```ts
-    // Firebase UIDs allowed to call the pooja-booking concierge pilot's
-    // /v1/admin/* routes (src/middleware/admin.ts#requireAdmin) — same
-    // comma-separated-allowlist shape as TELEGRAM_ADMIN_CHAT_IDS, just keyed
-    // by Firebase UID instead of Telegram chat id. Empty by default so admin
-    // routes fail closed until explicitly configured.
-    ADMIN_FIREBASE_UIDS: z
-      .string()
-      .default('')
-      .transform((value) =>
-        value
-          .split(',')
-          .map((id) => id.trim())
-          .filter(Boolean),
-      ),
-```
-
-Create `src/middleware/admin.ts`:
-
-```ts
-import type { MiddlewareHandler } from 'hono';
-import { env } from '../config/env.js';
-import { Errors } from '../lib/errors.js';
-
-/**
- * Admin allowlist gate for the pooja-booking concierge pilot's ops routes
- * (POST /v1/admin/pandits, POST /v1/admin/pooja-bookings/:id/assign|complete).
- * Mirrors the env-var-allowlist pattern already proven in
- * src/modules/telegram-bot/telegram-bot.service.ts#resolveTier
- * (comma-separated env var -> Set, membership check) rather than inventing a
- * DB-backed roles table for what is, in this batch, a handful of trusted ops
- * staff.
- *
- * MUST run after `requireUser` (reads `c.var.user`, set there) — checks the
- * signed-in user's Firebase UID against ADMIN_FIREBASE_UIDS. FAILS CLOSED:
- * an unset/empty allowlist rejects every request (never open by default),
- * same failure posture as requireCronSecret.
- */
-export const requireAdmin: MiddlewareHandler = async (c, next) => {
-  const user = c.get('user');
-  const admins = new Set(env.ADMIN_FIREBASE_UIDS);
-  if (admins.size === 0 || !admins.has(user.firebaseUid)) {
-    throw Errors.forbidden('Admin access required');
-  }
-  await next();
-};
-```
-
-- [ ] **Step 4: Run the test to verify it passes**
-
-Run: `pnpm test test/admin-middleware.spec.ts`
-Expected: PASS (all 3 cases).
-
-- [ ] **Step 5: Run the full test suite + typecheck**
-
-Run: `pnpm test && pnpm typecheck`
-Expected: baseline + 3 new passing (same pre-existing failures), no new typecheck errors.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/config/env.ts src/middleware/admin.ts test/admin-middleware.spec.ts
-git commit -m "feat(pooja-bookings): add ADMIN_FIREBASE_UIDS allowlist + requireAdmin middleware"
-```
-
----
-
-### Task 3: Pandits repo
+### Task 2: Pandits repo
 
 **Why:** The smallest, most independent piece — admin-only creation and lookup, no self-onboarding.
 
@@ -589,7 +453,7 @@ git commit -m "feat(pooja-bookings): add pandits repo (admin-only creation, no s
 
 ---
 
-### Task 4: Pooja-bookings repo — catalog, atomic create/debit, atomic refund, assign, complete
+### Task 3: Pooja-bookings repo — catalog, atomic create/debit, atomic refund, assign, complete
 
 **Why:** The core of this batch. `createPoojaBooking` reuses `unlockPrimeReport`'s proven atomic transaction shape. `refundPoojaBooking` is the genuinely new primitive — its status-flip UPDATE's `WHERE status IN ('requested','assigned')` clause is itself the concurrency guard, so two racing refund attempts on the same booking can never both succeed and double-credit the wallet.
 
@@ -1185,7 +1049,7 @@ git commit -m "feat(pooja-bookings): add pooja-bookings repo (atomic debit + rac
 
 ---
 
-### Task 5: Pooja-bookings service layer + push notifications
+### Task 4: Pooja-bookings service layer + push notifications
 
 **Why:** Wires the repo functions into the business logic the routes will call — resolving price from the catalog server-side (never trusting a client-supplied price), and firing a best-effort push notification on `assigned`/`completed`/`refunded`, following the exact fire-and-forget-with-error-logging convention already used in `prime-reports.service.ts`.
 
@@ -1679,7 +1543,7 @@ git commit -m "feat(pooja-bookings): add service layer with fire-and-forget push
 
 ---
 
-### Task 6: Customer-facing routes + `app.ts` mounting
+### Task 5: Customer-facing routes + `app.ts` mounting
 
 **Why:** The customer surface: browse the catalog, book (debits wallet), cancel (refunds), and view booking history. Follows the `.openapi()`/`createRoute`/`errorResponse` conventions from `prime-reports.routes.ts`.
 
@@ -2239,9 +2103,9 @@ git commit -m "feat(pooja-bookings): add customer-facing routes (catalog, book, 
 
 ---
 
-### Task 7: Admin-facing routes + `app.ts` mounting
+### Task 6: Admin-facing routes + `app.ts` mounting
 
-**Why:** The three ops actions: add a pre-vetted pandit, assign one to a booking, and manually acknowledge completion. Gated by `requireAdmin` from Task 2 (or reused from the Admin Console plan if that landed first — see "Before you start").
+**Why:** The three ops actions: add a pre-vetted pandit, assign one to a booking, and manually acknowledge completion. Gated by the canonical `requireAdmin` from `src/middleware/auth.ts`, built by the Admin Console Foundation plan and reused here directly (see "Before you start").
 
 **Files:**
 
@@ -2517,12 +2381,11 @@ Expected: FAIL — `src/modules/pooja-bookings/pooja-bookings.admin.routes.js` d
 
 - [ ] **Step 3: Implement `pooja-bookings.admin.routes.ts` and mount it**
 
-Create `src/modules/pooja-bookings/pooja-bookings.admin.routes.ts`. **Import `requireAdmin` from wherever it actually ended up** — `../../middleware/admin.js` if Task 2 was run in this plan, or `../../middleware/auth.js` if it was skipped because the Admin Console plan's `requireAdmin` already exists (see "Before you start"):
+Create `src/modules/pooja-bookings/pooja-bookings.admin.routes.ts`, importing `requireAdmin` from `src/middleware/auth.ts` (the canonical middleware built by the Admin Console Foundation plan — see "Before you start"). `requireAdmin` already wraps `requireUser` internally, so this file imports `requireAdmin` only — do NOT also import or chain `requireUser` here:
 
 ```ts
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
-import { requireUser } from '../../middleware/auth.js';
-import { requireAdmin } from '../../middleware/admin.js'; // or '../../middleware/auth.js' — see note above
+import { requireAdmin } from '../../middleware/auth.js';
 import { createPandit } from './pandits.repo.js';
 import { adminAssignPandit, adminCompleteBooking } from './pooja-bookings.service.js';
 import type { PoojaBookingRow } from '../../db/schema.js';
@@ -2575,7 +2438,7 @@ const createPanditRoute = createRoute({
   tags: ['Admin — Pooja Bookings'],
   summary: 'Admin-only: add a pre-vetted pandit to the roster (no self-onboarding in this batch)',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireAdmin] as const,
+  middleware: [requireAdmin] as const,
   request: {
     body: { content: { 'application/json': { schema: CreatePanditRequestSchema } } },
   },
@@ -2621,7 +2484,7 @@ const assignRoute = createRoute({
   tags: ['Admin — Pooja Bookings'],
   summary: 'Admin-only: assign a pandit to a requested booking',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireAdmin] as const,
+  middleware: [requireAdmin] as const,
   request: {
     params: BookingIdParamSchema,
     body: { content: { 'application/json': { schema: AssignPanditRequestSchema } } },
@@ -2662,7 +2525,7 @@ const completeRoute = createRoute({
   summary:
     'Admin-only: manually acknowledge a pooja was performed — a trust-the-admin/ops-process step, no video-proof requirement in this batch',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireAdmin] as const,
+  middleware: [requireAdmin] as const,
   request: { params: BookingIdParamSchema },
   responses: {
     200: {
@@ -2719,7 +2582,7 @@ git commit -m "feat(pooja-bookings): add admin routes (add pandit, assign, compl
 
 ---
 
-### Task 8: Seed script — `pooja_catalog` from the existing curated pooja list
+### Task 7: Seed script — `pooja_catalog` from the existing curated pooja list
 
 **Why:** Populates `pooja_catalog` with the real 9 poojas already defined in `src/lib/astro-engine/poojaRecommendations.ts` — a deliberate synergy with the existing free/AI pooja-guidance report, not a new invented catalog. Mirrors `scripts/seed-coupons.ts`'s idempotent look-up-then-update-or-insert convention exactly. Like `seed-coupons.ts`, this is an ops script with no automated test (it requires a live `DATABASE_URL`) — this is a deliberate, precedented deviation from TDD for ops-runbook scripts, not an oversight.
 
@@ -2873,11 +2736,1504 @@ git commit -m "feat(pooja-bookings): add idempotent seed script for pooja_catalo
 
 ---
 
-## After all 8 tasks: final review checklist (not a subagent task)
+## Provider accounts and chat for pandits
+
+**DEPENDENCY:** these tasks require the Astrologer Marketplace Batch 1 plan's provider-auth/messaging tasks to be implemented first (they create `provider_accounts`, `requireProvider`, `requireUserOrProvider`, `src/modules/providers/`, and `src/modules/messaging/`). Implementation order for the 4 plans on this branch: **Admin Console Foundation → Shagun Affiliate Shop → Astrologer Marketplace Batch 1 → Pooja Booking Batch 1 (this plan, last)**.
+
+**What already exists by the time these tasks run** (built by the Astrologer Marketplace Batch 1 plan — do not recreate any of it, reuse it exactly as named below):
+
+- Table `provider_accounts` (`src/db/schema.ts`): `providerKindEnum = pgEnum('provider_kind', ['astrologer', 'pandit'])`; `providerAccounts` table with columns `id, kind, refId (uuid, no FK — polymorphic, points at astrologers.id or pandits.id depending on kind), firebaseUid (unique), displayName, createdAt`.
+- `src/modules/providers/provider-accounts.repo.ts`: `findProviderAccountByFirebaseUid`, `findProviderAccountByKindAndRefId`, `createProviderAccount`.
+- `src/middleware/auth.ts`: `requireProvider` (verifies the Firebase token, looks up `provider_accounts` by uid, sets `c.var.provider = { id, kind, refId, displayName }`) and `requireUserOrProvider` (tries `findUserByFirebaseUid` first, falls back to a provider lookup, sets whichever matched — after this middleware exactly one of `c.var.user` / `c.var.provider` is set, never both).
+- `src/modules/providers/provider.routes.ts` + `provider.service.ts`: `GET /v1/provider/me` and `GET /v1/provider/bookings` (both `requireProvider`), the latter carrying an explicit `// TODO(pooja-booking plan): add a kind === 'pandit' branch here` marker inside its bookings-listing logic.
+- Table `booking_messages` (`src/db/schema.ts`): `bookingMessageTypeEnum = pgEnum('booking_message_type', ['astrologer', 'pooja'])`, `bookingMessageSenderRoleEnum = pgEnum(..., ['customer', 'provider'])`; `bookingMessages` table with `id, bookingType, bookingId (uuid, no FK), senderRole, senderUserId (nullable FK→users), senderProviderAccountId (nullable uuid, no FK), body, readAt (nullable), createdAt`.
+- `src/modules/messaging/` (`messaging.schemas.ts`, `messaging.repo.ts`, `messaging.service.ts`, `messaging.routes.ts`): repo has `createMessage`, `listMessagesForBooking`, `markMessagesRead`. Service has `sendMessage(caller, bookingType, bookingId, body)` and `listMessages(caller, bookingType, bookingId)`, which authorize the caller against the actual booking's customer/provider, then (for `sendMessage`) fire-and-forget push-notify the other party via `sendPush`/`sendPushBatch`. The astrologer plan's implementation currently throws `Errors.badRequest('pooja booking chat not yet available')` for `bookingType === 'pooja'`, structured as a small, obviously-extend-me early-return branch — not a full rewrite. Routes already mounted: `POST/GET /v1/bookings/:bookingType/:bookingId/messages`, `GET /v1/bookings/:bookingType/:bookingId/messages/stream` (SSE, server-side polling of the messages table).
+
+**Why pandits get this at all:** the project owner decided pandits get real Firebase accounts and genuine chat with their customer, the same tier as astrologers — not an admin-relay, not magic links. Rather than build a second provider-auth/messaging stack, this plan's job is narrow: (1) a pandit-specific invite endpoint that provisions a `provider_accounts` row (Task 8), and (2) a `pooja` branch on each of the two shared functions above (Tasks 9 and 10). Unlike astrologer consultations (live back-and-forth during a paid session), pooja-booking chat is lower-frequency and logistics-oriented — confirming address/timing, sharing prep instructions, arranging a video call if the customer wants one — but it is the exact same generic messaging primitive underneath, just used less chattily. That's a usage-pattern difference, not a code difference — it's the reason this plan is content to reuse the shared mechanism rather than build a second one, not a reason to special-case it.
+
+**A note on Tasks 9 and 10 specifically:** `provider.service.ts` and `messaging.service.ts` are owned by (and created by) the Astrologer Marketplace Batch 1 plan. Everything reused below — table/column names, middleware names, repo/service/route function names and signatures — comes from that plan's actual, implemented code, quoted verbatim in Tasks 9 and 10 below (not paraphrased, and not a guess at their shape). Both extension points turned out to need one small additional generalization beyond the single documented TODO/early-return line — `provider.service.ts#listProviderBookings`'s return type was pinned to `AstrologerBookingDto[]` and needed broadening, and `messaging.service.ts#assertCallerIsParty`/`notifyOtherParty` each hardcoded the literal `'astrologer'` in one place and needed it replaced with the resolved party's own `providerKind` — both are called out explicitly in Tasks 9 and 10 below, with the real before/after code, not left as an open assumption:
+
+- Task 9: when `provider.kind === 'pandit'`, the bookings list comes from this plan's own `listPoojaBookingsForPandit(provider.refId)`, newest first.
+- Task 10: for `bookingType === 'pooja'`, the caller is authorized as either the booking's customer (`booking.userId === user.id`) or its assigned pandit (`booking.panditId === provider.refId`, only when the caller is a provider of `kind === 'pandit'`), then proceeds through the same create/list/push-notify logic already used for `bookingType === 'astrologer'`.
+
+---
+
+### Task 8: Pandit login provisioning — `pandits.email` + `POST /v1/admin/pandits/{id}/invite`
+
+**Why:** Gives pandits a real account. Mirrors the astrologer invite endpoint from the Marketplace Batch 1 plan exactly: 404 for an unknown pandit, 409 if already invited, otherwise a Firebase user + a `provider_accounts` row, with a one-time temporary password handed back to ops to relay off-platform (there is no email-sending integration in this batch — same manual-relay gap already documented elsewhere in this plan, e.g. pandit payouts). `pandits.phone` stays an ops-only contact number; `pandits.email`, added by this task, is the address the login gets created under — populated at invite time, not at roster-creation time, since a pandit can sit on the roster for a while before an admin decides to invite them.
+
+**Files:**
+
+- Modify: `src/db/schema.ts`
+- Create: `src/db/migrations/<next>_<generated>.sql` (generated)
+- Modify: `src/modules/pooja-bookings/pandits.repo.ts`
+- Modify: `test/pandits-repo.spec.ts`
+- Modify: `src/modules/pooja-bookings/pooja-bookings.schemas.ts`
+- Modify: `src/modules/pooja-bookings/pooja-bookings.service.ts`
+- Modify: `test/pooja-bookings-service.spec.ts`
+- Modify: `src/modules/pooja-bookings/pooja-bookings.admin.routes.ts`
+- Create: `test/pandits-invite-route.spec.ts`
+
+- [ ] **Step 1: Add the `email` column to `pandits` in `src/db/schema.ts`**
+
+Replace the `pandits` comment block and add an `email` field right after `phone`:
+
+```ts
+/* -------------------------------------------------------------------------- */
+/* pandits — the concierge pilot's admin-vetted pandit roster. Deliberately   */
+/* separate from any `astrologers` table (a parallel, independent effort is   */
+/* planning astrologer consultations separately) — pandits are a distinct    */
+/* role, not unified with astrologers. `verified` defaults to true because,   */
+/* in THIS batch, every pandit is added by an admin after off-platform        */
+/* vetting — there is no self-onboarding route, so "verified" simply means    */
+/* "an admin added this row", unlike the abandoned reference app's            */
+/* self-signup-with-hardcoded-verified-true model, which had no real vetting  */
+/* behind that flag at all. `phone` is nullable and remains an ops contact    */
+/* number only — never a login credential. `email` is ALSO nullable, but for  */
+/* a different reason: pandits now DO get a real login (Firebase Auth, via    */
+/* POST /admin/pandits/:id/invite — see pooja-bookings.admin.routes.ts),      */
+/* provisioned admin-invite-only, same as the roster itself. `email` is       */
+/* populated at invite time from whatever address the admin supplies there,  */
+/* not at roster-creation time — a pandit can sit on the roster a while with  */
+/* no login before an admin decides to invite them.                          */
+/* -------------------------------------------------------------------------- */
+
+export const pandits = pgTable('pandits', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  displayName: text('display_name').notNull(),
+  phone: text('phone'),
+  email: text('email'),
+  city: text('city').notNull(),
+  languages: text('languages')
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
+  verified: boolean('verified').notNull().default(true),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export type PanditRow = typeof pandits.$inferSelect;
+export type NewPanditRow = typeof pandits.$inferInsert;
+```
+
+- [ ] **Step 2: Generate and verify the migration**
+
+Run: `pnpm db:generate`
+
+Open the generated `.sql` file and confirm it contains ONLY:
+
+- `ALTER TABLE "pandits" ADD COLUMN "email" text;`
+
+If it contains any other statement, STOP and report BLOCKED — same snapshot-drift caution as Task 1, Step 2.
+
+- [ ] **Step 3: Typecheck**
+
+Run: `pnpm typecheck`
+Expected: no new errors (same baseline as before this task).
+
+- [ ] **Step 4: Write the failing test for `updatePanditEmail`**
+
+In `test/pandits-repo.spec.ts`, change the top of the file (the hoisted mock state, the `db.js` mock, and the repo import) from:
+
+```ts
+const state = vi.hoisted(() => ({
+  insert: vi.fn(),
+  select: vi.fn(),
+}));
+
+vi.mock('../src/config/db.js', () => {
+  const sqlClient: any = (..._args: unknown[]) => Promise.resolve([]);
+  sqlClient.end = vi.fn().mockResolvedValue(undefined);
+  return {
+    db: { insert: state.insert, select: state.select },
+    sqlClient,
+  };
+});
+
+import { createPandit, findPanditById } from '../src/modules/pooja-bookings/pandits.repo.js';
+```
+
+to:
+
+```ts
+const state = vi.hoisted(() => ({
+  insert: vi.fn(),
+  select: vi.fn(),
+  update: vi.fn(),
+}));
+
+vi.mock('../src/config/db.js', () => {
+  const sqlClient: any = (..._args: unknown[]) => Promise.resolve([]);
+  sqlClient.end = vi.fn().mockResolvedValue(undefined);
+  return {
+    db: { insert: state.insert, select: state.select, update: state.update },
+    sqlClient,
+  };
+});
+
+import {
+  createPandit,
+  findPanditById,
+  updatePanditEmail,
+} from '../src/modules/pooja-bookings/pandits.repo.js';
+```
+
+Add `state.update.mockReset();` to the existing `beforeEach`:
+
+```ts
+beforeEach(() => {
+  state.insert.mockReset();
+  state.select.mockReset();
+  state.update.mockReset();
+});
+```
+
+Then append this to the end of the file:
+
+```ts
+function makeUpdateChain(result: unknown[]) {
+  const calls: { set?: unknown; where?: unknown } = {};
+  const chain = {
+    set: vi.fn((patch: unknown) => {
+      calls.set = patch;
+      return chain;
+    }),
+    where: vi.fn((cond: unknown) => {
+      calls.where = cond;
+      return chain;
+    }),
+    returning: vi.fn(() => Promise.resolve(result)),
+  };
+  return { chain, calls };
+}
+
+describe('updatePanditEmail', () => {
+  it("scopes the UPDATE's WHERE to this pandit id and sets the email", async () => {
+    const { chain, calls } = makeUpdateChain([]);
+    state.update.mockReturnValue(chain);
+
+    await updatePanditEmail('pandit-1', 'ravi.shastri@example.com');
+
+    expect(calls.set).toMatchObject({ email: 'ravi.shastri@example.com' });
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"pandits"."id" = $1');
+    expect(query.params).toEqual(['pandit-1']);
+  });
+
+  it('returns the updated row on success', async () => {
+    const { chain } = makeUpdateChain([{ id: 'pandit-1', email: 'ravi.shastri@example.com' }]);
+    state.update.mockReturnValue(chain);
+
+    const result = await updatePanditEmail('pandit-1', 'ravi.shastri@example.com');
+
+    expect(result).toMatchObject({ id: 'pandit-1', email: 'ravi.shastri@example.com' });
+  });
+});
+```
+
+- [ ] **Step 5: Run the test to verify it fails**
+
+Run: `pnpm test test/pandits-repo.spec.ts`
+Expected: FAIL — `updatePanditEmail` is not exported yet.
+
+- [ ] **Step 6: Implement `updatePanditEmail` in `src/modules/pooja-bookings/pandits.repo.ts`**
+
+Append to the file (imports are unchanged — `eq` and `db` are already imported):
+
+```ts
+export async function updatePanditEmail(id: string, email: string): Promise<PanditRow | undefined> {
+  const [row] = await db
+    .update(pandits)
+    .set({ email, updatedAt: new Date() })
+    .where(eq(pandits.id, id))
+    .returning();
+  return row;
+}
+```
+
+- [ ] **Step 7: Run the test to verify it passes**
+
+Run: `pnpm test test/pandits-repo.spec.ts`
+Expected: PASS (all cases, including the two new `updatePanditEmail` cases).
+
+- [ ] **Step 8: Write the failing test for `invitePandit` (service layer)**
+
+In `test/pooja-bookings-service.spec.ts`, extend the hoisted `state` object and add three new `vi.mock` calls. Change:
+
+```ts
+const state = vi.hoisted(() => ({
+  findPoojaCatalogItem: vi.fn(),
+  createPoojaBooking: vi.fn(),
+  refundPoojaBooking: vi.fn(),
+  assignPanditToBooking: vi.fn(),
+  completePoojaBooking: vi.fn(),
+  listPoojaBookingsForUser: vi.fn(),
+  listActivePoojas: vi.fn(),
+  findPanditById: vi.fn(),
+  findActiveTokensForUser: vi.fn(),
+  sendPushBatch: vi.fn(),
+}));
+```
+
+to:
+
+```ts
+const state = vi.hoisted(() => ({
+  findPoojaCatalogItem: vi.fn(),
+  createPoojaBooking: vi.fn(),
+  refundPoojaBooking: vi.fn(),
+  assignPanditToBooking: vi.fn(),
+  completePoojaBooking: vi.fn(),
+  listPoojaBookingsForUser: vi.fn(),
+  listActivePoojas: vi.fn(),
+  findPanditById: vi.fn(),
+  updatePanditEmail: vi.fn(),
+  findActiveTokensForUser: vi.fn(),
+  sendPushBatch: vi.fn(),
+  findProviderAccountByKindAndRefId: vi.fn(),
+  createProviderAccount: vi.fn(),
+  createFirebaseUser: vi.fn(),
+}));
+```
+
+Update the `pandits.repo.js` mock to also export `updatePanditEmail`:
+
+```ts
+vi.mock('../src/modules/pooja-bookings/pandits.repo.js', () => ({
+  findPanditById: state.findPanditById,
+  updatePanditEmail: state.updatePanditEmail,
+}));
+```
+
+Add two new `vi.mock` calls (alongside the existing ones):
+
+```ts
+vi.mock('../src/modules/providers/provider-accounts.repo.js', () => ({
+  findProviderAccountByKindAndRefId: state.findProviderAccountByKindAndRefId,
+  createProviderAccount: state.createProviderAccount,
+}));
+
+vi.mock('../src/config/firebase.js', () => ({
+  getFirebaseAuth: () => ({ createUser: state.createFirebaseUser }),
+}));
+```
+
+Add `invitePandit` to the destructured import from the module under test:
+
+```ts
+const {
+  bookPooja,
+  cancelBooking,
+  listMyBookings,
+  adminAssignPandit,
+  adminCompleteBooking,
+  listCatalog,
+  invitePandit,
+} = await import('../src/modules/pooja-bookings/pooja-bookings.service.js');
+```
+
+Then append this to the end of the file:
+
+```ts
+describe('invitePandit', () => {
+  it('returns unknown_pandit when the pandit does not exist', async () => {
+    state.findPanditById.mockResolvedValueOnce(undefined);
+
+    const result = await invitePandit('pandit-1', 'ravi.shastri@example.com');
+
+    expect(result).toEqual({ outcome: 'unknown_pandit' });
+    expect(state.createFirebaseUser).not.toHaveBeenCalled();
+  });
+
+  it('returns already_invited when a provider_accounts row already exists for this pandit', async () => {
+    state.findPanditById.mockResolvedValueOnce({ id: 'pandit-1', displayName: 'Ravi Shastri' });
+    state.findProviderAccountByKindAndRefId.mockResolvedValueOnce({ id: 'pa-1' });
+
+    const result = await invitePandit('pandit-1', 'ravi.shastri@example.com');
+
+    expect(result).toEqual({ outcome: 'already_invited' });
+    expect(state.findProviderAccountByKindAndRefId).toHaveBeenCalledWith('pandit', 'pandit-1');
+    expect(state.createFirebaseUser).not.toHaveBeenCalled();
+  });
+
+  it('creates the Firebase user, records the email, creates the provider account, and returns the temporary password', async () => {
+    state.findPanditById.mockResolvedValueOnce({ id: 'pandit-1', displayName: 'Ravi Shastri' });
+    state.findProviderAccountByKindAndRefId.mockResolvedValueOnce(undefined);
+    state.createFirebaseUser.mockResolvedValueOnce({ uid: 'firebase-uid-1' });
+
+    const result = await invitePandit('pandit-1', 'ravi.shastri@example.com');
+
+    expect(state.createFirebaseUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'ravi.shastri@example.com' }),
+    );
+    expect(state.updatePanditEmail).toHaveBeenCalledWith('pandit-1', 'ravi.shastri@example.com');
+    expect(state.createProviderAccount).toHaveBeenCalledWith({
+      kind: 'pandit',
+      refId: 'pandit-1',
+      firebaseUid: 'firebase-uid-1',
+      displayName: 'Ravi Shastri',
+    });
+    expect(result).toEqual({
+      outcome: 'invited',
+      email: 'ravi.shastri@example.com',
+      temporaryPassword: expect.any(String),
+    });
+  });
+});
+```
+
+- [ ] **Step 9: Run the test to verify it fails**
+
+Run: `pnpm test test/pooja-bookings-service.spec.ts`
+Expected: FAIL — `invitePandit` is not exported yet.
+
+- [ ] **Step 10: Implement `invitePandit` in `src/modules/pooja-bookings/pooja-bookings.service.ts`**
+
+Change the import block from:
+
+```ts
+import { logger } from '../../lib/logger.js';
+import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
+import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import {
+  createPoojaBooking,
+  refundPoojaBooking,
+  assignPanditToBooking,
+  completePoojaBooking,
+  findPoojaCatalogItem,
+  listPoojaBookingsForUser,
+  listActivePoojas,
+} from './pooja-bookings.repo.js';
+import { findPanditById } from './pandits.repo.js';
+import type { PoojaBookingRow, PoojaCatalogRow } from '../../db/schema.js';
+import type { ProfileContext } from '../birth-profiles/profile-context.js';
+```
+
+to:
+
+```ts
+import crypto from 'node:crypto';
+import { logger } from '../../lib/logger.js';
+import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
+import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { getFirebaseAuth } from '../../config/firebase.js';
+import {
+  findProviderAccountByKindAndRefId,
+  createProviderAccount,
+} from '../providers/provider-accounts.repo.js';
+import {
+  createPoojaBooking,
+  refundPoojaBooking,
+  assignPanditToBooking,
+  completePoojaBooking,
+  findPoojaCatalogItem,
+  listPoojaBookingsForUser,
+  listActivePoojas,
+} from './pooja-bookings.repo.js';
+import { findPanditById, updatePanditEmail } from './pandits.repo.js';
+import type { PoojaBookingRow, PoojaCatalogRow } from '../../db/schema.js';
+import type { ProfileContext } from '../birth-profiles/profile-context.js';
+```
+
+Then append this to the end of the file:
+
+```ts
+export type InvitePanditResult =
+  | { outcome: 'invited'; email: string; temporaryPassword: string }
+  | { outcome: 'unknown_pandit' }
+  | { outcome: 'already_invited' };
+
+/**
+ * Provisions a real login for a pandit: a Firebase Auth user plus a shared
+ * `provider_accounts` row (kind: 'pandit') — mirrors the astrologer invite
+ * endpoint from the Marketplace Batch 1 plan exactly. `email` is supplied by
+ * the calling admin at invite time (see pooja-bookings.admin.routes.ts) and
+ * is persisted onto the pandit's own row via updatePanditEmail so there is a
+ * durable record of what address the login was created under. The temporary
+ * password is generated here (never chosen by the pandit) and returned once
+ * for ops to relay off-platform — same manual-relay gap already documented
+ * for pandit payouts elsewhere in this plan; there is no email-sending
+ * integration in this batch.
+ */
+export async function invitePandit(panditId: string, email: string): Promise<InvitePanditResult> {
+  const pandit = await findPanditById(panditId);
+  if (!pandit) return { outcome: 'unknown_pandit' };
+
+  const existing = await findProviderAccountByKindAndRefId('pandit', panditId);
+  if (existing) return { outcome: 'already_invited' };
+
+  const temporaryPassword = crypto.randomBytes(18).toString('base64url');
+  const created = await getFirebaseAuth().createUser({ email, password: temporaryPassword });
+
+  await updatePanditEmail(panditId, email);
+  await createProviderAccount({
+    kind: 'pandit',
+    refId: panditId,
+    firebaseUid: created.uid,
+    displayName: pandit.displayName,
+  });
+
+  return { outcome: 'invited', email, temporaryPassword };
+}
+```
+
+- [ ] **Step 11: Run the test to verify it passes**
+
+Run: `pnpm test test/pooja-bookings-service.spec.ts`
+Expected: PASS (all cases, including the three new `invitePandit` cases).
+
+- [ ] **Step 12: Write the failing test for the invite route**
+
+Create `test/pandits-invite-route.spec.ts`:
+
+```ts
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeDecodedToken, makeUserRow } from './helpers/mocks.js';
+import type * as EnvModule from '../src/config/env.js';
+
+const state = vi.hoisted(() => ({
+  verifyIdToken: vi.fn(),
+  findUserByFirebaseUid: vi.fn(),
+  invitePandit: vi.fn(),
+}));
+
+vi.mock('../src/config/db.js', () => {
+  const sqlClient: any = (..._args: unknown[]) => Promise.resolve([]);
+  sqlClient.end = vi.fn().mockResolvedValue(undefined);
+  return { db: {}, sqlClient };
+});
+
+// Partial mock: keep every real env field and only override
+// ADMIN_FIREBASE_UIDS — same importOriginal technique already used in
+// test/pooja-bookings-admin-routes.spec.ts.
+vi.mock('../src/config/env.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof EnvModule>();
+  return {
+    ...actual,
+    env: { ...actual.env, ADMIN_FIREBASE_UIDS: ['admin-uid'] },
+  };
+});
+
+vi.mock('firebase-admin/app', () => ({
+  cert: vi.fn(() => ({})),
+  getApps: vi.fn(() => []),
+  initializeApp: vi.fn(() => ({})),
+}));
+
+vi.mock('firebase-admin/auth', () => ({
+  getAuth: vi.fn(() => ({ verifyIdToken: state.verifyIdToken })),
+}));
+
+vi.mock('../src/modules/users/users.repo.js', () => ({
+  findUserByFirebaseUid: state.findUserByFirebaseUid,
+  touchUserLastActive: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../src/modules/pooja-bookings/pandits.repo.js', () => ({
+  createPandit: vi.fn(),
+}));
+
+vi.mock('../src/modules/pooja-bookings/pooja-bookings.service.js', () => ({
+  adminAssignPandit: vi.fn(),
+  adminCompleteBooking: vi.fn(),
+  invitePandit: state.invitePandit,
+}));
+
+const { createApp } = await import('../src/app.js');
+
+const ADMIN_AUTH = {
+  Authorization: 'Bearer admin-token',
+  'Content-Type': 'application/json',
+} as const;
+
+function setSignedInUser(firebaseUid: string) {
+  state.verifyIdToken.mockResolvedValue(makeDecodedToken(firebaseUid));
+  state.findUserByFirebaseUid.mockResolvedValue(makeUserRow({ id: 'id-1', firebaseUid }));
+}
+
+beforeEach(() => {
+  state.verifyIdToken.mockReset();
+  state.findUserByFirebaseUid.mockReset();
+  state.invitePandit.mockReset();
+  setSignedInUser('admin-uid');
+});
+
+describe('POST /v1/admin/pandits/:id/invite', () => {
+  const BODY = { email: 'ravi.shastri@example.com' };
+
+  it('200s with the temporary password for an admin caller', async () => {
+    state.invitePandit.mockResolvedValueOnce({
+      outcome: 'invited',
+      email: 'ravi.shastri@example.com',
+      temporaryPassword: 'tmp-pw-123',
+    });
+
+    const res = await createApp().request(
+      '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
+      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify(BODY) },
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { email: string; temporaryPassword: string };
+    expect(body).toEqual({ email: 'ravi.shastri@example.com', temporaryPassword: 'tmp-pw-123' });
+    expect(state.invitePandit).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      'ravi.shastri@example.com',
+    );
+  });
+
+  it('404s for an unknown pandit', async () => {
+    state.invitePandit.mockResolvedValueOnce({ outcome: 'unknown_pandit' });
+
+    const res = await createApp().request(
+      '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
+      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify(BODY) },
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it('409s when the pandit already has a provider account', async () => {
+    state.invitePandit.mockResolvedValueOnce({ outcome: 'already_invited' });
+
+    const res = await createApp().request(
+      '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
+      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify(BODY) },
+    );
+
+    expect(res.status).toBe(409);
+  });
+
+  it('403s for a non-admin caller', async () => {
+    setSignedInUser('not-an-admin');
+
+    const res = await createApp().request(
+      '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
+      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify(BODY) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(state.invitePandit).not.toHaveBeenCalled();
+  });
+
+  it('401s without a bearer token', async () => {
+    const res = await createApp().request(
+      '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(BODY),
+      },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('422s on an invalid email', async () => {
+    const res = await createApp().request(
+      '/v1/admin/pandits/11111111-1111-1111-1111-111111111111/invite',
+      { method: 'POST', headers: ADMIN_AUTH, body: JSON.stringify({ email: 'not-an-email' }) },
+    );
+    expect(res.status).toBe(422);
+    expect(state.invitePandit).not.toHaveBeenCalled();
+  });
+});
+```
+
+- [ ] **Step 13: Run the test to verify it fails**
+
+Run: `pnpm test test/pandits-invite-route.spec.ts`
+Expected: FAIL — the route doesn't exist yet.
+
+- [ ] **Step 14: Add the schemas and the route**
+
+In `src/modules/pooja-bookings/pooja-bookings.schemas.ts`, append:
+
+```ts
+export const PanditIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export const InvitePanditRequestSchema = z
+  .object({ email: z.string().email() })
+  .openapi('InvitePanditRequest');
+
+export const InvitePanditResponseSchema = z
+  .object({
+    email: z.string().email(),
+    temporaryPassword: z.string(),
+  })
+  .openapi('InvitePanditResponse');
+```
+
+In `src/modules/pooja-bookings/pooja-bookings.admin.routes.ts`, change the imports from:
+
+```ts
+import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
+import { requireAdmin } from '../../middleware/auth.js';
+import { createPandit } from './pandits.repo.js';
+import { adminAssignPandit, adminCompleteBooking } from './pooja-bookings.service.js';
+import type { PoojaBookingRow } from '../../db/schema.js';
+import {
+  CreatePanditRequestSchema,
+  PanditDtoSchema,
+  AssignPanditRequestSchema,
+  PoojaBookingDtoSchema,
+  BookingIdParamSchema,
+} from './pooja-bookings.schemas.js';
+```
+
+to:
+
+```ts
+import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
+import { requireAdmin } from '../../middleware/auth.js';
+import { createPandit } from './pandits.repo.js';
+import { adminAssignPandit, adminCompleteBooking, invitePandit } from './pooja-bookings.service.js';
+import type { PoojaBookingRow } from '../../db/schema.js';
+import {
+  CreatePanditRequestSchema,
+  PanditDtoSchema,
+  AssignPanditRequestSchema,
+  PoojaBookingDtoSchema,
+  BookingIdParamSchema,
+  PanditIdParamSchema,
+  InvitePanditRequestSchema,
+  InvitePanditResponseSchema,
+} from './pooja-bookings.schemas.js';
+```
+
+Then append this to the end of the file (after the existing `completeRoute` handler):
+
+```ts
+const invitePanditRoute = createRoute({
+  method: 'post',
+  path: '/admin/pandits/{id}/invite',
+  tags: ['Admin — Pooja Bookings'],
+  summary:
+    'Admin-only: provision a real login for a pandit (Firebase Auth + a shared provider_accounts row) — mirrors the astrologer invite endpoint from the Marketplace Batch 1 plan',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    params: PanditIdParamSchema,
+    body: { content: { 'application/json': { schema: InvitePanditRequestSchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Pandit invited — relay the temporary password to them off-platform',
+      content: { 'application/json': { schema: InvitePanditResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Not an admin'),
+    404: errorResponse('Unknown pandit'),
+    409: errorResponse('This pandit already has a provider account'),
+    422: errorResponse('Invalid request body'),
+  },
+});
+
+poojaBookingsAdminRouter.openapi(invitePanditRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const { email } = c.req.valid('json');
+
+  const result = await invitePandit(id, email);
+  if (result.outcome === 'unknown_pandit') {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Unknown pandit.' } }, 404);
+  }
+  if (result.outcome === 'already_invited') {
+    return c.json(
+      { error: { code: 'CONFLICT', message: 'This pandit already has a provider account.' } },
+      409,
+    );
+  }
+  return c.json({ email: result.email, temporaryPassword: result.temporaryPassword }, 200);
+});
+```
+
+- [ ] **Step 15: Run the test to verify it passes**
+
+Run: `pnpm test test/pandits-invite-route.spec.ts`
+Expected: PASS (all cases).
+
+- [ ] **Step 16: Run the full test suite + typecheck**
+
+Run: `pnpm test && pnpm typecheck`
+Expected: all passing (baseline + this task's new tests), no new typecheck errors.
+
+- [ ] **Step 17: Commit**
+
+```bash
+git add src/db/schema.ts src/db/migrations/ src/modules/pooja-bookings/pandits.repo.ts test/pandits-repo.spec.ts src/modules/pooja-bookings/pooja-bookings.schemas.ts src/modules/pooja-bookings/pooja-bookings.service.ts test/pooja-bookings-service.spec.ts src/modules/pooja-bookings/pooja-bookings.admin.routes.ts test/pandits-invite-route.spec.ts
+git commit -m "feat(pooja-bookings): add pandit login provisioning (pandits.email + invite endpoint)"
+```
+
+---
+
+### Task 9: Extend `GET /v1/provider/bookings` with a `kind === 'pandit'` branch
+
+**Why:** So a pandit signed in through the shared provider-portal auth can see their own assigned poojas. This plan owns the new `listPoojaBookingsForPandit` query (fully concrete, TDD'd below), plus a real (not assumed) patch to `provider.service.ts`'s TODO marker — see Step 3, which quotes and edits the actual `provider.service.ts` code from the Astrologer Marketplace Batch 1 plan's Task 6. Step 3 also patches `provider.routes.ts`'s `GET /v1/provider/bookings` response schema, which was pinned to `z.array(AstrologerBookingSchema)` — needed or the pandit branch's differently-shaped rows fail `pnpm typecheck` against that route's declared response type, and the OpenAPI doc would misdescribe the pandit response shape.
+
+**Files:**
+
+- Modify: `src/modules/pooja-bookings/pooja-bookings.repo.ts`
+- Modify: `test/pooja-bookings-repo.spec.ts`
+- Modify: `src/modules/providers/provider.service.ts` (created by the Astrologer Marketplace Batch 1 plan, not this one)
+- Modify: `test/provider-service.spec.ts` (created by the Astrologer Marketplace Batch 1 plan's Task 6, not this one)
+- Modify: `src/modules/providers/provider.routes.ts` (created by the Astrologer Marketplace Batch 1 plan's Task 7, not this one)
+
+- [ ] **Step 1: Write the failing test for `listPoojaBookingsForPandit`**
+
+In `test/pooja-bookings-repo.spec.ts`, add `listPoojaBookingsForPandit` to the existing import from the module under test:
+
+```ts
+import {
+  listActivePoojas,
+  findPoojaCatalogItem,
+  createPoojaBooking,
+  refundPoojaBooking,
+  assignPanditToBooking,
+  completePoojaBooking,
+  findOwnedPoojaBooking,
+  listPoojaBookingsForUser,
+  listPoojaBookingsForPandit,
+} from '../src/modules/pooja-bookings/pooja-bookings.repo.js';
+```
+
+Then append this to the end of the file:
+
+```ts
+describe('listPoojaBookingsForPandit', () => {
+  it('filters on pandit_id and orders newest-first', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await listPoojaBookingsForPandit('pandit-1');
+
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"pooja_bookings"."pandit_id" = $1');
+    expect(query.params).toEqual(['pandit-1']);
+    expect(chain.orderBy).toHaveBeenCalled();
+  });
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test test/pooja-bookings-repo.spec.ts`
+Expected: FAIL — `listPoojaBookingsForPandit` is not exported yet.
+
+- [ ] **Step 3: Implement `listPoojaBookingsForPandit` and wire it into the provider-bookings branch**
+
+Append to `src/modules/pooja-bookings/pooja-bookings.repo.ts` (no new imports needed — `eq` and `desc` are already imported):
+
+```ts
+/**
+ * Newest-first list of a pandit's assigned/completed/cancelled bookings —
+ * powers the `kind === 'pandit'` branch of the shared
+ * GET /v1/provider/bookings route (src/modules/providers/provider.service.ts,
+ * built by the Astrologer Marketplace Batch 1 plan). Same shape as
+ * listPoojaBookingsForUser, just scoped by pandit_id instead of user_id.
+ */
+export async function listPoojaBookingsForPandit(panditId: string): Promise<PoojaBookingRow[]> {
+  return db
+    .select()
+    .from(poojaBookings)
+    .where(eq(poojaBookings.panditId, panditId))
+    .orderBy(desc(poojaBookings.createdAt));
+}
+```
+
+**Verified against the real `provider.service.ts`** (Astrologer Marketplace Batch 1 plan, Task 6, Step 8 — quoted here exactly, not paraphrased):
+
+```ts
+import { findAstrologerById, listBookingsForAstrologer } from '../astrologers/astrologers.repo.js';
+import { toAstrologerDto, toBookingDto } from '../astrologers/astrologers.service.js';
+import type { AstrologerBookingDto } from '../astrologers/astrologers.schemas.js';
+import type { ProviderMeDto } from './provider.schemas.js';
+
+export interface ProviderIdentity {
+  kind: 'astrologer' | 'pandit';
+  refId: string;
+  displayName: string;
+}
+
+// ... getProviderMe unchanged ...
+
+/** GET /v1/provider/bookings. */
+export async function listProviderBookings(
+  provider: Pick<ProviderIdentity, 'kind' | 'refId'>,
+): Promise<AstrologerBookingDto[]> {
+  if (provider.kind === 'astrologer') {
+    const rows = await listBookingsForAstrologer(provider.refId);
+    return rows.map(toBookingDto);
+  }
+  // TODO(pooja-booking plan): add a kind === 'pandit' branch here listing
+  // pooja_bookings by panditId, once that table/repo exists.
+  return [];
+}
+```
+
+It's a plain `if`/return (not a switch or lookup table), and the return type is currently pinned to `AstrologerBookingDto[]` — a pandit branch returning pooja-booking DTOs needs that type broadened too, not just the new branch. In `src/modules/providers/provider.service.ts`, change the imports from:
+
+```ts
+import { findAstrologerById, listBookingsForAstrologer } from '../astrologers/astrologers.repo.js';
+import { toAstrologerDto, toBookingDto } from '../astrologers/astrologers.service.js';
+import type { AstrologerBookingDto } from '../astrologers/astrologers.schemas.js';
+import type { ProviderMeDto } from './provider.schemas.js';
+```
+
+to:
+
+```ts
+import { findAstrologerById, listBookingsForAstrologer } from '../astrologers/astrologers.repo.js';
+import { toAstrologerDto, toBookingDto } from '../astrologers/astrologers.service.js';
+import { listPoojaBookingsForPandit } from '../pooja-bookings/pooja-bookings.repo.js';
+import type { AstrologerBookingDto } from '../astrologers/astrologers.schemas.js';
+import type { PoojaBookingRow } from '../../db/schema.js';
+import type { ProviderMeDto } from './provider.schemas.js';
+```
+
+Then replace `listProviderBookings` (leave `getProviderMe` untouched) with:
+
+```ts
+/**
+ * DTO mapper for a pooja booking returned by GET /v1/provider/bookings for a
+ * pandit provider. Same field shape as PoojaBookingDtoSchema
+ * (pooja-bookings.schemas.ts) and the toBookingDto already duplicated
+ * locally in pooja-bookings.routes.ts / pooja-bookings.admin.routes.ts — kept
+ * local here too rather than newly exported from the pooja-bookings module,
+ * matching that existing per-file convention instead of introducing a new
+ * cross-module shared export for it.
+ */
+function toPoojaBookingDto(row: PoojaBookingRow) {
+  return {
+    id: row.id,
+    poojaId: row.poojaId,
+    panditId: row.panditId,
+    preferredDate: row.preferredDate,
+    shipAddress: row.shipAddress,
+    shipPincode: row.shipPincode,
+    status: row.status,
+    pricePaisePaid: row.pricePaisePaid,
+    requestedAt: row.requestedAt.toISOString(),
+    assignedAt: row.assignedAt ? row.assignedAt.toISOString() : null,
+    completedAt: row.completedAt ? row.completedAt.toISOString() : null,
+    notes: row.notes,
+  };
+}
+
+/** GET /v1/provider/bookings. */
+export async function listProviderBookings(
+  provider: Pick<ProviderIdentity, 'kind' | 'refId'>,
+): Promise<(AstrologerBookingDto | ReturnType<typeof toPoojaBookingDto>)[]> {
+  if (provider.kind === 'astrologer') {
+    const rows = await listBookingsForAstrologer(provider.refId);
+    return rows.map(toBookingDto);
+  }
+  const rows = await listPoojaBookingsForPandit(provider.refId);
+  return rows.map(toPoojaBookingDto);
+}
+```
+
+In `test/provider-service.spec.ts` (Astrologer Marketplace Batch 1 plan, Task 6, Step 5 — quoted exactly), add `listPoojaBookingsForPandit` to the hoisted state and mock it. Change:
+
+```ts
+const state = vi.hoisted(() => ({
+  findAstrologerById: vi.fn(),
+  listBookingsForAstrologer: vi.fn(),
+}));
+```
+
+to:
+
+```ts
+const state = vi.hoisted(() => ({
+  findAstrologerById: vi.fn(),
+  listBookingsForAstrologer: vi.fn(),
+  listPoojaBookingsForPandit: vi.fn(),
+}));
+```
+
+Add a new mock alongside the existing `astrologers.repo.js` mock:
+
+```ts
+vi.mock('../src/modules/pooja-bookings/pooja-bookings.repo.js', () => ({
+  listPoojaBookingsForPandit: state.listPoojaBookingsForPandit,
+}));
+```
+
+Add `state.listPoojaBookingsForPandit.mockReset();` to the existing `beforeEach`. Add a fixture helper next to `makeBookingRow`:
+
+```ts
+function makePoojaBookingRow(overrides: Record<string, unknown> = {}) {
+  const now = new Date('2026-01-01T00:00:00Z');
+  return {
+    id: 'pooja-booking-1',
+    userId: 'user-1',
+    birthProfileId: null,
+    poojaId: 'pooja-1',
+    panditId: 'pandit-1',
+    preferredDate: '2026-08-01',
+    shipAddress: '123 MG Road',
+    shipPincode: '560001',
+    status: 'assigned',
+    pricePaisePaid: 110000,
+    requestedAt: now,
+    assignedAt: now,
+    completedAt: null,
+    notes: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+```
+
+Replace the existing `"returns an empty list for kind 'pandit' (no pooja_bookings repo query exists yet)"` test (that behavior no longer holds once this task lands) with:
+
+```ts
+it("lists the pandit's own pooja bookings when kind is pandit", async () => {
+  const booking = makePoojaBookingRow();
+  state.listPoojaBookingsForPandit.mockResolvedValueOnce([booking]);
+
+  const result = await listProviderBookings({ kind: 'pandit', refId: 'pandit-1' });
+
+  expect(state.listPoojaBookingsForPandit).toHaveBeenCalledWith('pandit-1');
+  expect(state.listBookingsForAstrologer).not.toHaveBeenCalled();
+  expect(result).toEqual([
+    expect.objectContaining({ id: 'pooja-booking-1', panditId: 'pandit-1' }),
+  ]);
+});
+```
+
+**Also patch `provider.routes.ts`'s response schema.** Verified against the real file (Astrologer Marketplace Batch 1 plan, Task 7, Step 9 — quoted exactly): `GET /v1/provider/bookings`'s declared 200 response is `z.array(AstrologerBookingSchema)`, hardcoded to the astrologer shape:
+
+```ts
+import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
+import { requireProvider } from '../../middleware/auth.js';
+import { AstrologerBookingSchema } from '../astrologers/astrologers.schemas.js';
+import { getProviderMe, listProviderBookings } from './provider.service.js';
+import { ProviderMeSchema } from './provider.schemas.js';
+```
+
+```ts
+const bookingsRoute = createRoute({
+  method: 'get',
+  path: '/provider/bookings',
+  tags: ['Provider'],
+  summary: "The logged-in provider's own booking list",
+  security: [{ bearerAuth: [] }],
+  middleware: [requireProvider] as const,
+  responses: {
+    200: {
+      description: 'Booking list',
+      content: { 'application/json': { schema: z.array(AstrologerBookingSchema) } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+```
+
+Left as-is, this doesn't just misdescribe the OpenAPI doc for a pandit caller — `listProviderBookings`'s now-broadened return type no longer matches what this route's declared response schema infers, so `c.json(rows, 200)` fails `pnpm typecheck`. In `src/modules/providers/provider.routes.ts`, change the import from:
+
+```ts
+import { AstrologerBookingSchema } from '../astrologers/astrologers.schemas.js';
+```
+
+to:
+
+```ts
+import { AstrologerBookingSchema } from '../astrologers/astrologers.schemas.js';
+import { PoojaBookingDtoSchema } from '../pooja-bookings/pooja-bookings.schemas.js';
+```
+
+Then change the response schema from:
+
+```ts
+      content: { 'application/json': { schema: z.array(AstrologerBookingSchema) } },
+```
+
+to:
+
+```ts
+      content: {
+        'application/json': {
+          schema: z.array(z.union([AstrologerBookingSchema, PoojaBookingDtoSchema])),
+        },
+      },
+```
+
+Nothing else in `provider.routes.ts` changes — `bookingsRoute`'s handler already just forwards `listProviderBookings(provider)`'s result verbatim via `c.json(rows, 200)`.
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `pnpm test test/pooja-bookings-repo.spec.ts`
+Expected: PASS (all cases, including the new `listPoojaBookingsForPandit` case).
+
+Also run: `pnpm test test/provider-service.spec.ts test/provider-routes.spec.ts`
+Expected: PASS (all cases, including the updated pandit-branch case).
+
+- [ ] **Step 5: Run the full test suite + typecheck**
+
+Run: `pnpm test && pnpm typecheck`
+Expected: all passing (baseline + this task's new tests), no new typecheck errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/modules/pooja-bookings/pooja-bookings.repo.ts test/pooja-bookings-repo.spec.ts src/modules/providers/provider.service.ts test/provider-service.spec.ts src/modules/providers/provider.routes.ts
+git commit -m "feat(pooja-bookings): add pandit branch to GET /v1/provider/bookings"
+```
+
+---
+
+### Task 10: Extend the messaging service for `bookingType === 'pooja'`
+
+**Why:** Turns on real chat between a customer and their assigned pandit, reusing the shared messaging primitive built by the Astrologer Marketplace Batch 1 plan rather than a second system. As with Task 9, the concrete edit target (`messaging.service.ts`) is owned by that plan — Step 3 below quotes and edits its actual code (Task 9, Step 8) rather than guessing its shape. Framing note: unlike astrologer consultations (live back-and-forth during a paid session), pooja-booking chat is lower-frequency and logistics-oriented — confirming address/timing, sharing prep instructions, arranging a video call if the customer wants one. That's purely a usage-pattern difference; the code is identical, which is exactly why this task extends the existing primitive instead of building a pooja-specific one.
+
+**Files:**
+
+- Modify: `src/modules/pooja-bookings/pooja-bookings.repo.ts`
+- Modify: `test/pooja-bookings-repo.spec.ts`
+- Modify: `src/modules/messaging/messaging.service.ts` (created by the Astrologer Marketplace Batch 1 plan, not this one)
+- Modify: `test/messaging-service.spec.ts` (created by the Astrologer Marketplace Batch 1 plan's Task 9, not this one)
+
+- [ ] **Step 1: Write the failing test for `findPoojaBookingById`**
+
+Unlike `findOwnedPoojaBooking` (owner-scoped, used by the customer-facing cancel route), the messaging branch needs an unscoped lookup by id, since it must authorize the caller as _either_ the booking's customer _or_ its assigned pandit — it can't filter by `user_id` up front. In `test/pooja-bookings-repo.spec.ts`, add `findPoojaBookingById` to the existing import from the module under test:
+
+```ts
+import {
+  listActivePoojas,
+  findPoojaCatalogItem,
+  createPoojaBooking,
+  refundPoojaBooking,
+  assignPanditToBooking,
+  completePoojaBooking,
+  findOwnedPoojaBooking,
+  findPoojaBookingById,
+  listPoojaBookingsForUser,
+  listPoojaBookingsForPandit,
+} from '../src/modules/pooja-bookings/pooja-bookings.repo.js';
+```
+
+Then append this to the end of the file:
+
+```ts
+describe('findPoojaBookingById', () => {
+  it('filters on id only (no owner scoping — the messaging branch authorizes customer OR pandit)', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await findPoojaBookingById('booking-1');
+
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"pooja_bookings"."id" = $1');
+    expect(query.params).toEqual(['booking-1']);
+  });
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test test/pooja-bookings-repo.spec.ts`
+Expected: FAIL — `findPoojaBookingById` is not exported yet.
+
+- [ ] **Step 3: Implement `findPoojaBookingById` and wire it into the messaging service's `pooja` branch**
+
+Append to `src/modules/pooja-bookings/pooja-bookings.repo.ts` (no new imports needed):
+
+```ts
+/**
+ * Unscoped-by-owner lookup, used by the shared messaging service's `pooja`
+ * branch (src/modules/messaging/messaging.service.ts, built by the
+ * Astrologer Marketplace Batch 1 plan) to authorize a chat participant who
+ * may be EITHER the booking's customer OR its assigned pandit — unlike
+ * findOwnedPoojaBooking, which only ever checks one specific user_id.
+ */
+export async function findPoojaBookingById(
+  bookingId: string,
+): Promise<PoojaBookingRow | undefined> {
+  const rows = await db
+    .select()
+    .from(poojaBookings)
+    .where(eq(poojaBookings.id, bookingId))
+    .limit(1);
+  return rows[0];
+}
+```
+
+**Verified against the real `messaging.service.ts`** (Astrologer Marketplace Batch 1 plan, Task 9, Step 8 — quoted exactly). There is no `loadBookingParticipants` helper; the real extension point is `resolveBookingParty`, which currently throws for `bookingType === 'pooja'`:
+
+```ts
+interface ResolvedParty {
+  booking: AstrologerBookingRow;
+  customerUserId: string;
+  providerRefId: string;
+}
+
+async function resolveBookingParty(
+  bookingType: BookingType,
+  bookingId: string,
+): Promise<ResolvedParty> {
+  if (bookingType === 'pooja') {
+    throw Errors.badRequest('pooja booking chat not yet available');
+  }
+  const booking = await findBookingById(bookingId);
+  if (!booking) throw Errors.notFound('Booking not found');
+  return { booking, customerUserId: booking.userId, providerRefId: booking.astrologerId };
+}
+
+function assertCallerIsParty(caller: Caller, party: ResolvedParty): void {
+  if (caller.role === 'customer') {
+    if (party.customerUserId !== caller.userId) throw Errors.forbidden('Not your booking');
+    return;
+  }
+  if (caller.providerKind !== 'astrologer' || party.providerRefId !== caller.providerRefId) {
+    throw Errors.forbidden('Not your assigned booking');
+  }
+}
+```
+
+Two things to correct here, both real, not hypothetical:
+
+1. `resolveBookingParty`'s `pooja` branch is indeed the intended extension point (matches `bookingMessages`'s own doc comment in `src/db/schema.ts`, "see `messaging.service.ts#resolveBookingParty` for the extension point the Pooja Booking Batch 1 plan adds a second branch to").
+2. `assertCallerIsParty` hardcodes `caller.providerKind !== 'astrologer'`. Left as-is, a signed-in `pandit` provider would ALWAYS fail this check regardless of what `resolveBookingParty` returns — the astrologer literal must become a comparison against the resolved party's own kind. This is a genuinely necessary second edit, not a scope-creep addition: without it, pandit chat cannot work. `notifyOtherParty` (below) similarly hardcodes `'astrologer'` twice (for the push lookup and the push copy) and needs the same generalization. `resolveBookingParty` stays the ONLY function that loads booking data differently per `bookingType`; these two are edited only to replace a literal `'astrologer'` with the resolved party's own `providerKind` — no new `bookingType`-specific branching is added to either.
+
+In `src/modules/messaging/messaging.service.ts`, change the type-only import from:
+
+```ts
+import type { AstrologerBookingRow, BookingMessageRow } from '../../db/schema.js';
+```
+
+to:
+
+```ts
+import type { AstrologerBookingRow, BookingMessageRow, PoojaBookingRow } from '../../db/schema.js';
+```
+
+and add a new import alongside the existing ones:
+
+```ts
+import { findPoojaBookingById } from '../pooja-bookings/pooja-bookings.repo.js';
+```
+
+Then replace `ResolvedParty`, `resolveBookingParty`, and `assertCallerIsParty` with:
+
+```ts
+interface ResolvedParty {
+  booking: AstrologerBookingRow | PoojaBookingRow;
+  customerUserId: string;
+  /** What assertCallerIsParty checks the caller's own providerKind against — 'astrologer' for bookingType 'astrologer', 'pandit' for bookingType 'pooja'. */
+  providerKind: 'astrologer' | 'pandit';
+  /** Null when a pooja booking hasn't been assigned a pandit yet. assertCallerIsParty fails closed in that case (no caller.providerRefId can equal null), same as any other mismatch — no extra null-check needed there. */
+  providerRefId: string | null;
+}
+
+async function resolveBookingParty(
+  bookingType: BookingType,
+  bookingId: string,
+): Promise<ResolvedParty> {
+  if (bookingType === 'pooja') {
+    const booking = await findPoojaBookingById(bookingId);
+    if (!booking) throw Errors.notFound('Booking not found');
+    return {
+      booking,
+      customerUserId: booking.userId,
+      providerKind: 'pandit',
+      providerRefId: booking.panditId,
+    };
+  }
+  const booking = await findBookingById(bookingId);
+  if (!booking) throw Errors.notFound('Booking not found');
+  return {
+    booking,
+    customerUserId: booking.userId,
+    providerKind: 'astrologer',
+    providerRefId: booking.astrologerId,
+  };
+}
+
+function assertCallerIsParty(caller: Caller, party: ResolvedParty): void {
+  if (caller.role === 'customer') {
+    if (party.customerUserId !== caller.userId) throw Errors.forbidden('Not your booking');
+    return;
+  }
+  if (caller.providerKind !== party.providerKind || party.providerRefId !== caller.providerRefId) {
+    throw Errors.forbidden('Not your assigned booking');
+  }
+}
+```
+
+`sendMessage` and `listMessages` themselves call `resolveBookingParty`/`assertCallerIsParty` and otherwise stay `bookingType`-agnostic — no changes needed to either function.
+
+`notifyOtherParty` hardcodes `'astrologer'` for the provider-account lookup kind and the push copy text; it also needs a null guard now that `party.providerRefId` can be `null` (an unassigned pooja booking has nobody to notify on the provider side yet). Replace it with:
+
+```ts
+async function notifyOtherParty(caller: Caller, party: ResolvedParty): Promise<void> {
+  if (caller.role === 'customer') {
+    if (!party.providerRefId) return; // no provider assigned yet — nobody to notify
+    const account = await findProviderAccountByKindAndRefId(
+      party.providerKind,
+      party.providerRefId,
+    );
+    if (!account) return;
+    const tokens = await findActiveTokensForUser(account.id);
+    if (tokens.length === 0) return;
+    await sendPushBatch(
+      tokens.map((t) => t.token),
+      '💬 New message from your customer',
+      'You have a new message on a booking.',
+      { type: 'booking_message', bookingId: party.booking.id },
+    );
+    return;
+  }
+
+  const tokens = await findActiveTokensForUser(party.customerUserId);
+  if (tokens.length === 0) return;
+  await sendPushBatch(
+    tokens.map((t) => t.token),
+    party.providerKind === 'pandit'
+      ? '💬 New message from your pandit'
+      : '💬 New message from your astrologer',
+    'You have a new message on your booking.',
+    { type: 'booking_message', bookingId: party.booking.id },
+  );
+}
+```
+
+In `test/messaging-service.spec.ts` (Astrologer Marketplace Batch 1 plan, Task 9, Step 5 — quoted exactly), add `findPoojaBookingById` to the hoisted state and mock it. Change:
+
+```ts
+const state = vi.hoisted(() => ({
+  findBookingById: vi.fn(),
+  findProviderAccountByKindAndRefId: vi.fn(),
+  createMessage: vi.fn(),
+  listMessagesForBooking: vi.fn(),
+  markMessagesRead: vi.fn(),
+  findActiveTokensForUser: vi.fn(),
+  sendPushBatch: vi.fn(),
+}));
+```
+
+to:
+
+```ts
+const state = vi.hoisted(() => ({
+  findBookingById: vi.fn(),
+  findPoojaBookingById: vi.fn(),
+  findProviderAccountByKindAndRefId: vi.fn(),
+  createMessage: vi.fn(),
+  listMessagesForBooking: vi.fn(),
+  markMessagesRead: vi.fn(),
+  findActiveTokensForUser: vi.fn(),
+  sendPushBatch: vi.fn(),
+}));
+```
+
+Add a new mock alongside the existing `astrologers.repo.js` one:
+
+```ts
+vi.mock('../src/modules/pooja-bookings/pooja-bookings.repo.js', () => ({
+  findPoojaBookingById: state.findPoojaBookingById,
+}));
+```
+
+Add a `makePoojaBooking` fixture next to the existing `makeBooking`:
+
+```ts
+function makePoojaBooking(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'pooja-booking-1',
+    userId: 'user-1',
+    birthProfileId: null,
+    poojaId: 'pooja-1',
+    panditId: 'pandit-1',
+    preferredDate: '2026-08-01',
+    shipAddress: '123 MG Road',
+    shipPincode: '560001',
+    status: 'assigned',
+    pricePaisePaid: 110000,
+    requestedAt: new Date('2026-01-01T00:00:00Z'),
+    assignedAt: new Date('2026-01-01T00:00:00Z'),
+    completedAt: null,
+    notes: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+```
+
+`beforeEach` already does `Object.values(state).forEach((fn) => fn.mockReset())`, so the new `findPoojaBookingById` mock is reset automatically — no change needed there. Replace the existing `"rejects bookingType 'pooja' — not yet implemented (extension point for the Pooja Booking plan)"` test (that behavior no longer holds once this task lands) with:
+
+```ts
+describe('sendMessage / listMessages — bookingType: pooja', () => {
+  it('sendMessage succeeds for the booking customer', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+    state.createMessage.mockResolvedValueOnce(
+      makeMessage({ bookingType: 'pooja', bookingId: 'pooja-booking-1' }),
+    );
+    state.findActiveTokensForUser.mockResolvedValueOnce([]);
+
+    const dto = await sendMessage(
+      { role: 'customer', userId: 'user-1' },
+      'pooja',
+      'pooja-booking-1',
+      'hello',
+    );
+
+    expect(state.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingType: 'pooja', bookingId: 'pooja-booking-1' }),
+    );
+    expect(dto).toMatchObject({ body: 'hello' });
+  });
+
+  it("sendMessage succeeds for the booking's assigned pandit", async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+    state.createMessage.mockResolvedValueOnce(
+      makeMessage({ bookingType: 'pooja', bookingId: 'pooja-booking-1', senderRole: 'provider' }),
+    );
+    state.findActiveTokensForUser.mockResolvedValueOnce([]);
+
+    await sendMessage(
+      {
+        role: 'provider',
+        providerId: 'provider-1',
+        providerKind: 'pandit',
+        providerRefId: 'pandit-1',
+      },
+      'pooja',
+      'pooja-booking-1',
+      'namaste',
+    );
+
+    expect(state.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ senderRole: 'provider', senderProviderAccountId: 'provider-1' }),
+    );
+  });
+
+  it('rejects a caller who is neither the customer nor the assigned pandit', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+
+    await expect(
+      sendMessage(
+        {
+          role: 'provider',
+          providerId: 'provider-2',
+          providerKind: 'pandit',
+          providerRefId: 'pandit-OTHER',
+        },
+        'pooja',
+        'pooja-booking-1',
+        'hi',
+      ),
+    ).rejects.toThrow('Not your assigned booking');
+  });
+
+  it('rejects an astrologer provider even if the refId happens to collide', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+
+    await expect(
+      sendMessage(
+        {
+          role: 'provider',
+          providerId: 'provider-3',
+          providerKind: 'astrologer',
+          providerRefId: 'pandit-1',
+        },
+        'pooja',
+        'pooja-booking-1',
+        'hi',
+      ),
+    ).rejects.toThrow('Not your assigned booking');
+  });
+
+  it('rejects any provider when the pooja booking has no pandit assigned yet', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking({ panditId: null }));
+
+    await expect(
+      sendMessage(
+        {
+          role: 'provider',
+          providerId: 'provider-1',
+          providerKind: 'pandit',
+          providerRefId: 'pandit-1',
+        },
+        'pooja',
+        'pooja-booking-1',
+        'hi',
+      ),
+    ).rejects.toThrow('Not your assigned booking');
+  });
+
+  it('404s when the pooja booking does not exist', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(undefined);
+
+    await expect(
+      sendMessage({ role: 'customer', userId: 'user-1' }, 'pooja', 'missing-booking', 'hi'),
+    ).rejects.toThrow('Booking not found');
+  });
+
+  it('listMessages returns the transcript for the assigned pandit', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+    state.listMessagesForBooking.mockResolvedValueOnce([
+      makeMessage({ bookingType: 'pooja', bookingId: 'pooja-booking-1' }),
+    ]);
+
+    const rows = await listMessages(
+      {
+        role: 'provider',
+        providerId: 'provider-1',
+        providerKind: 'pandit',
+        providerRefId: 'pandit-1',
+      },
+      'pooja',
+      'pooja-booking-1',
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(state.markMessagesRead).toHaveBeenCalledWith('pooja', 'pooja-booking-1', 'provider');
+  });
+});
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `pnpm test test/pooja-bookings-repo.spec.ts`
+Expected: PASS (all cases, including the new `findPoojaBookingById` case).
+
+Also run: `pnpm test test/messaging-service.spec.ts`
+Expected: PASS (all cases, including the new pooja-branch cases).
+
+- [ ] **Step 5: Run the full test suite + typecheck**
+
+Run: `pnpm test && pnpm typecheck`
+Expected: all passing (baseline + this task's new tests), no new typecheck errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/modules/pooja-bookings/pooja-bookings.repo.ts test/pooja-bookings-repo.spec.ts src/modules/messaging/messaging.service.ts test/messaging-service.spec.ts
+git commit -m "feat(pooja-bookings): implement pooja-booking chat via the shared messaging service"
+```
+
+---
+
+## After all 10 tasks: final review checklist (not a subagent task)
 
 - `pnpm test && pnpm typecheck && pnpm lint` all clean — same pre-existing test failures and same (or fewer) pre-existing typecheck errors, no new ones.
-- `GET /v1/pooja-bookings/catalog` returns exactly the 9 poojas seeded in Task 8 once Task 8's script has been run against the target database.
-- Every admin route (`POST /v1/admin/pandits`, `POST /v1/admin/pooja-bookings/:id/assign`, `POST /v1/admin/pooja-bookings/:id/complete`) 403s for a non-allowlisted caller and fails closed when `ADMIN_FIREBASE_UIDS` is unset.
-- `refundPoojaBooking()`'s status-flip UPDATE is confirmed to be the sole concurrency guard (re-read the docstring and the Task 4 test asserting the exact `WHERE ... status IN ('requested','assigned')` clause) — no separate row-level lock or advisory lock was needed or added.
-- Confirm the deferred-items list (pandit self-onboarding, multi-member sankalp, offerings/add-ons, video-proof, automated decline/reassignment, pandit payouts, real-time delivery) is NOT accidentally implemented by any task above — this batch is intentionally the small concierge pilot.
+- `GET /v1/pooja-bookings/catalog` returns exactly the 9 poojas seeded in Task 7 once Task 7's script has been run against the target database.
+- Every admin route (`POST /v1/admin/pandits`, `POST /v1/admin/pandits/:id/invite`, `POST /v1/admin/pooja-bookings/:id/assign`, `POST /v1/admin/pooja-bookings/:id/complete`) 403s for a non-allowlisted caller and fails closed when `ADMIN_FIREBASE_UIDS` is unset. This plan does not define `requireAdmin` itself — confirm it really is being imported from `src/middleware/auth.ts` everywhere, not re-implemented.
+- `refundPoojaBooking()`'s status-flip UPDATE is confirmed to be the sole concurrency guard (re-read the docstring and the Task 3 test asserting the exact `WHERE ... status IN ('requested','assigned')` clause) — no separate row-level lock or advisory lock was needed or added.
+- `POST /v1/admin/pandits/:id/invite` 404s for an unknown pandit, 409s when a `provider_accounts` row already exists for `(kind: 'pandit', refId: id)`, and on success neither logs nor otherwise persists the plaintext temporary password anywhere but the single API response.
+- `GET /v1/provider/bookings` for a signed-in pandit provider returns only that pandit's own bookings (via `listPoojaBookingsForPandit`), newest first — Task 9's wiring into `provider.service.ts` was written against that file's real, verified code (not an assumed shape); re-confirm at implementation time only that `provider.service.ts` hasn't drifted further since this plan was last updated. Also confirm `provider.routes.ts`'s response schema was updated to the `z.union([AstrologerBookingSchema, PoojaBookingDtoSchema])` shape (Task 9) — without it, `pnpm typecheck` fails once `listProviderBookings`'s return type is broadened.
+- Pooja-booking chat (`POST/GET /v1/bookings/pooja/:bookingId/messages`) is reachable by the booking's customer and by its assigned pandit, and rejected for anyone else (a different customer, an unrelated pandit, an astrologer) — Task 10's wiring into `messaging.service.ts` was written against that file's real, verified code (not an assumed shape), including the `assertCallerIsParty`/`notifyOtherParty` generalizations it required beyond the single `resolveBookingParty` TODO; re-confirm at implementation time only that `messaging.service.ts` hasn't drifted further since this plan was last updated.
+- Confirm the deferred-items list (pandit self-onboarding, multi-member sankalp, offerings/add-ons, video-proof, automated decline/reassignment, pandit payouts, a separate ops-initiated refund route, typing indicators/read receipts beyond `readAt`, file/image attachments, guaranteed push delivery, and any portal frontend UI) is NOT accidentally implemented by any task above — this batch is intentionally the small concierge pilot, now with real pandit accounts and chat bolted onto the shared provider system, nothing more.
 - Do NOT merge `feat/prime-reports-batch2` to `main` — continue accumulating on this branch as with every prior batch on it.

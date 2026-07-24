@@ -1641,16 +1641,35 @@ const { createApp } = await import('../src/app.js');
 const ADMIN_AUTH = { Authorization: 'Bearer admin-token' } as const;
 const NON_ADMIN_AUTH = { Authorization: 'Bearer plain-token' } as const;
 
+// Persistent mocks (mockResolvedValue, not mockResolvedValueOnce) — matches
+// the convention already established in test/palm-photo-routes.spec.ts.
+// requireAdmin wraps requireUser internally, and depending on router mount
+// order relative to the other /v1 routers that register their own
+// `.use('*', requireUser)` wildcard, requireUser can run more than once per
+// request — a one-shot mock would starve the second call. (This tripped up
+// the first draft of this test file — mockResolvedValueOnce() left a second
+// requireUser call with no queued token/user and every route came back 401
+// instead of the expected 403/200. Root cause, verified with a minimal Hono
+// repro: Hono composes every mounted sub-router's middleware into one
+// dispatch chain per path in MOUNT order, so an earlier-mounted router's
+// `'*'` wildcard intercepts ANY /v1/* path, including a later-mounted
+// router's own routes, unless the later router is mounted first. Fixed here
+// by mounting adminRouter before the first such wildcard router in app.ts
+// AND keeping these mocks persistent as defense-in-depth. This same
+// mount-order requirement is load-bearing — not just a test nicety — for the
+// Astrologer Marketplace plan's requireProvider/requireUserOrProvider
+// routes, since a provider caller has no `users` row at all and would be
+// hard-401'd by a leaked wildcard before ever reaching its own auth check.)
 function mockAsAdmin() {
-  state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('admin-uid-1'));
-  state.findUserByFirebaseUid.mockResolvedValueOnce(
+  state.verifyIdToken.mockResolvedValue(makeDecodedToken('admin-uid-1'));
+  state.findUserByFirebaseUid.mockResolvedValue(
     makeUserRow({ id: 'admin-id-1', firebaseUid: 'admin-uid-1' }),
   );
 }
 
 function mockAsNonAdmin() {
-  state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('plain-uid'));
-  state.findUserByFirebaseUid.mockResolvedValueOnce(
+  state.verifyIdToken.mockResolvedValue(makeDecodedToken('plain-uid'));
+  state.findUserByFirebaseUid.mockResolvedValue(
     makeUserRow({ id: 'plain-id-1', firebaseUid: 'plain-uid' }),
   );
 }
@@ -1917,17 +1936,41 @@ const regenerateRoute = createRoute({
   },
 });
 
-adminRouter.openapi(regenerateRoute, async (c) => {
-  const { phone } = c.req.valid('param');
-  const { category } = c.req.valid('json');
-  await logAdminAction({
-    adminFirebaseUid: c.get('user').firebaseUid,
-    route: 'POST /v1/admin/users/:phone/regenerate',
-    params: { phone, category },
-  });
-  await startRegeneration(phone, category);
-  return c.json({ status: 'started' as const }, 200);
-});
+adminRouter.openapi(
+  regenerateRoute,
+  async (c) => {
+    const { phone } = c.req.valid('param');
+    const { category } = c.req.valid('json');
+    await logAdminAction({
+      adminFirebaseUid: c.get('user').firebaseUid,
+      route: 'POST /v1/admin/users/:phone/regenerate',
+      params: { phone, category },
+    });
+    await startRegeneration(phone, category);
+    return c.json({ status: 'started' as const }, 200);
+  },
+  // @hono/zod-openapi's own default (no hook passed) resolves a failed request
+  // validation to a plain `c.json(result, 400)` — it never throws, so it
+  // never reaches errorHandler's `AppError`/`ZodError` branches. This route's
+  // documented contract above is 422, so map validation failures to that
+  // shape explicitly, same as palm-photo.routes.ts's uploadRoute (this exact
+  // gap — no hook, so `category: 'not-a-real-category'` came back 400 not
+  // 422 — was caught only once real tests ran; verified/fixed post-hoc).
+  (result, c) => {
+    if (!result.success) {
+      return c.json(
+        {
+          error: {
+            code: 'UNPROCESSABLE',
+            message: 'Validation failed',
+            details: result.error.flatten(),
+          },
+        },
+        422,
+      );
+    }
+  },
+);
 
 const notifyRoute = createRoute({
   method: 'post',

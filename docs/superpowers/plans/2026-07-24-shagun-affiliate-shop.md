@@ -24,6 +24,7 @@ Measured directly in the worktree (`C:\dev\aroha-astrology\jyotish-backend\.work
 - **Error helper (verified against real source):** `src/lib/errors.ts` exports `AppError` (a class with `code`/`status`/`details`) and an `Errors` factory object with `Errors.notFound(message)` → `new AppError('NOT_FOUND', message)`, mapped to HTTP 404. The global `app.onError(errorHandler)` (registered in `src/app.ts`) catches any thrown `AppError` and formats the response — route/service code just throws, it never has to format the error response itself.
 - **`.openapi()` 3-argument validation-hook pattern — verified precedent exists**: `src/modules/palm/palm-photo.routes.ts` and `src/modules/public/public.routes.ts` both already call `.openapi(route, handler, (result, c) => {...})` to override the library's default 400-on-invalid-query-param behavior with a custom 422 response shape. This plan's list route follows the same established pattern.
 - **Drizzle-kit fact confirmed against precedent migrations** (`0030_transit_events.sql`, `0032_even_menace.sql`, etc.): a `pgEnum` + two `pgTable`s with an FK and a partial `index(...).where(...)` reliably generates `CREATE TYPE ... AS ENUM(...)` wrapped in a `DO $$ ... EXCEPTION WHEN duplicate_object THEN null; END $$;` block, `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY`, and `CREATE INDEX IF NOT EXISTS ... WHERE ...` statements, each separated by `--> statement-breakpoint`.
+- **Confirmed decision (2026-07-24): no Amazon PA-API integration, now or as a near-term fast-follow.** There is no Amazon Associates account yet, and PA-API 5.0 access itself is gated behind 3 qualifying sales within 180 days of joining Associates — so even signing up today wouldn't unlock the API before this feature needs to ship. This plan's design already never depended on PA-API (`affiliateUrl` is a generic field, seed-script managed, no live pricing/inventory sync) — that design is correct as-is and needs no rework. The only production-readiness action item, and it's a manual data step, not code: once an Amazon Associates account exists (free, instant signup, no qualifying-sales requirement for a basic tracking ID), swap the placeholder `tag=arohaastrology-21` query param in Task 6's seed data for the real tracking ID before seeding production — see the updated comment in Task 6. Revisit true PA-API (live price/availability sync) only after the qualifying-sales gate clears, as a separate future plan.
 
 ## File structure
 
@@ -1253,8 +1254,14 @@ Create `scripts/seed-shagun-products.ts`:
  * re-running updates existing rows (matched by product name) instead of
  * duplicating. The `affiliateUrl` values below are placeholders — replace
  * them with real negotiated affiliate/commission links before seeding a
- * production database. There is no admin UI for this catalog (out of scope
- * for this feature) — edit this file and re-run to change the catalog.
+ * production database. In particular, every `tag=arohaastrology-21` below is
+ * a PLACEHOLDER Amazon Associates tracking ID — before seeding production,
+ * sign up for a real Amazon Associates account (free, instant — no
+ * qualifying-sales requirement for a basic tracking ID/tag; that requirement
+ * only gates PA-API programmatic access, which this feature deliberately
+ * does not use, see "Before you start") and swap in the real tag. There is
+ * no admin UI for this catalog (out of scope for this feature) — edit this
+ * file and re-run to change the catalog.
  * Usage: npx tsx scripts/seed-shagun-products.ts
  */
 import { pathToFileURL } from 'node:url';
