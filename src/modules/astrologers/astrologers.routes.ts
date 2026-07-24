@@ -22,7 +22,6 @@ import {
   CancelBookingParamSchema,
   CreateAstrologerBodySchema,
   CreateBookingBodySchema,
-  InviteAstrologerBodySchema,
   InviteAstrologerResponseSchema,
   UpdateAstrologerBodySchema,
 } from './astrologers.schemas.js';
@@ -322,55 +321,33 @@ const adminInviteRoute = createRoute({
   tags: ['Astrologers Admin'],
   summary: 'Invite an existing astrologer profile to the self-serve provider portal',
   description:
-    'Creates a Firebase Auth login + provider_accounts row and returns a one-time ' +
-    'temporary password — ops relays it to the astrologer off-platform (phone/WhatsApp).',
+    'Phone+OTP login, exactly like customer login — creates a Firebase Auth user keyed on ' +
+    "the astrologer's already-stored phone number plus a provider_accounts row. No request " +
+    'body: the phone must already be set on the astrologer profile (via the create/update ' +
+    'admin routes) before inviting.',
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   request: {
     params: AstrologerIdParamSchema,
-    body: {
-      required: true,
-      content: { 'application/json': { schema: InviteAstrologerBodySchema } },
-    },
   },
   responses: {
     200: {
-      description: 'Invite created — temporary credentials to relay off-platform',
+      description: 'Invite created — confirms the phone number the login was provisioned for',
       content: { 'application/json': { schema: InviteAstrologerResponseSchema } },
     },
+    400: errorResponse('Astrologer has no phone number on file'),
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
     404: errorResponse('Astrologer not found'),
     409: errorResponse('Astrologer has already been invited'),
-    422: errorResponse('Validation failed'),
   },
 });
 
-astrologersRouter.openapi(
-  adminInviteRoute,
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const { email } = c.req.valid('json');
-    const result = await adminInviteAstrologer(id, email);
-    return c.json(result, 200);
-  },
-  // See bookRoute's identical comment above — 422 is this route's documented
-  // contract for validation failures, not @hono/zod-openapi's plain 400 default.
-  (result, c) => {
-    if (!result.success) {
-      return c.json(
-        {
-          error: {
-            code: 'UNPROCESSABLE',
-            message: 'Validation failed',
-            details: result.error.flatten(),
-          },
-        },
-        422,
-      );
-    }
-  },
-);
+astrologersRouter.openapi(adminInviteRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const result = await adminInviteAstrologer(id);
+  return c.json(result, 200);
+});
 
 const adminConfirmRoute = createRoute({
   method: 'post',

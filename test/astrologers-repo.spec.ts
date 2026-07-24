@@ -153,6 +153,16 @@ describe('insertAstrologer / updateAstrologer', () => {
     expect(query.params).toEqual(['astro-1']);
     expect(row).toEqual({ id: 'astro-1', verified: true });
   });
+
+  it('accepts phone in the update patch (provider-portal login number)', async () => {
+    const { chain, calls } = makeUpdateChain([{ id: 'astro-1', phone: '+919876543210' }]);
+    state.update.mockReturnValue(chain);
+
+    const row = await updateAstrologer('astro-1', { phone: '+919876543210' });
+
+    expect(calls.set).toMatchObject({ phone: '+919876543210' });
+    expect(row).toEqual({ id: 'astro-1', phone: '+919876543210' });
+  });
 });
 
 describe('requestAstrologerBooking — atomic debit + booking creation', () => {

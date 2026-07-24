@@ -58,6 +58,7 @@ const _ASTROLOGER_UPDATABLE_FIELDS = [
   'specialties',
   'languages',
   'photoUrl',
+  'phone',
   'ratePaisePerSession',
   'verified',
   'active',

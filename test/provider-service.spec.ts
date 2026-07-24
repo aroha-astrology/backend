@@ -35,6 +35,7 @@ function makeAstrologerRow(overrides: Partial<AstrologerRow> = {}): AstrologerRo
     specialties: ['career'],
     languages: ['en'],
     photoUrl: null,
+    phone: '+919876543210',
     ratePaisePerSession: 50000,
     verified: true,
     active: true,

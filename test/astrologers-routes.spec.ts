@@ -310,34 +310,26 @@ describe('POST /v1/admin/astrologers/bookings/:bookingId/complete', () => {
 });
 
 describe('POST /v1/admin/astrologers/:id/invite', () => {
-  it('200s for an allowlisted admin and returns the temporary credentials', async () => {
+  it('200s for an allowlisted admin with no request body and returns the phone that was used', async () => {
     state.findUserByFirebaseUid.mockResolvedValue(
       makeUserRow({ id: 'id-1', firebaseUid: 'admin-uid-1' }),
     );
-    state.adminInviteAstrologer.mockResolvedValueOnce({
-      email: 'guru@example.com',
-      temporaryPassword: 'a-temp-password',
-    });
+    state.adminInviteAstrologer.mockResolvedValueOnce({ phoneE164: '+919876543210' });
 
     const res = await createApp().request('/v1/admin/astrologers/astro-1/invite', {
       method: 'POST',
       headers: AUTH,
-      body: JSON.stringify({ email: 'guru@example.com' }),
     });
 
     expect(res.status).toBe(200);
-    expect(state.adminInviteAstrologer).toHaveBeenCalledWith('astro-1', 'guru@example.com');
-    expect(await res.json()).toEqual({
-      email: 'guru@example.com',
-      temporaryPassword: 'a-temp-password',
-    });
+    expect(state.adminInviteAstrologer).toHaveBeenCalledWith('astro-1');
+    expect(await res.json()).toEqual({ phoneE164: '+919876543210' });
   });
 
   it('403s for a non-admin user', async () => {
     const res = await createApp().request('/v1/admin/astrologers/astro-1/invite', {
       method: 'POST',
       headers: AUTH,
-      body: JSON.stringify({ email: 'guru@example.com' }),
     });
 
     expect(res.status).toBe(403);

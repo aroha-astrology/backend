@@ -23,7 +23,6 @@
 //     session has no in-app path in this batch (known limitation).
 // =============================================================================
 
-import { randomBytes } from 'node:crypto';
 import type { AstrologerBookingRow, AstrologerRow } from '../../db/schema.js';
 import { getFirebaseAuth } from '../../config/firebase.js';
 import { Errors } from '../../lib/errors.js';
@@ -182,6 +181,7 @@ export async function adminCreateAstrologer(body: CreateAstrologerBody): Promise
     specialties: body.specialties ?? [],
     languages: body.languages ?? [],
     photoUrl: body.photoUrl ?? null,
+    phone: body.phone ?? null,
     ratePaisePerSession: body.ratePaisePerSession,
     verified: body.verified ?? false,
     active: body.active ?? true,
@@ -194,6 +194,7 @@ const ADMIN_UPDATE_FIELDS = [
   'specialties',
   'languages',
   'photoUrl',
+  'phone',
   'ratePaisePerSession',
   'verified',
   'active',
@@ -222,25 +223,28 @@ export async function adminUpdateAstrologer(
 
 /**
  * Self-serve provider portal admin-invite flow (see requireProvider,
- * src/middleware/auth.ts). Generates a one-time temporary password and
- * creates BOTH a Firebase Auth user and the linking provider_accounts row.
- * Ops relays the returned credentials to the astrologer off-platform
- * (phone/WhatsApp) — same manual-relay pattern this file's header already
- * documents for astrologer payouts; there is no in-app credential delivery
- * in this batch.
+ * src/middleware/auth.ts). Phone+OTP login, exactly like customer login —
+ * NOT email+password: there is no temporary password to generate or relay
+ * off-platform. Reads the astrologer's own stored `phone` (set earlier via
+ * the create/update admin routes) and creates BOTH a Firebase Auth user
+ * (keyed on that phone number) and the linking provider_accounts row.
  */
 export async function adminInviteAstrologer(
   astrologerId: string,
-  email: string,
 ): Promise<InviteAstrologerResponse> {
   const astrologer = await findAstrologerById(astrologerId);
   if (!astrologer) throw Errors.notFound('Astrologer not found');
 
+  if (!astrologer.phone) {
+    throw Errors.badRequest(
+      'This astrologer has no phone number on file — set one via the create/update admin routes before inviting.',
+    );
+  }
+
   const existing = await findProviderAccountByKindAndRefId('astrologer', astrologerId);
   if (existing) throw Errors.conflict('Astrologer has already been invited');
 
-  const temporaryPassword = randomBytes(12).toString('base64url');
-  const createdUser = await getFirebaseAuth().createUser({ email, password: temporaryPassword });
+  const createdUser = await getFirebaseAuth().createUser({ phoneNumber: astrologer.phone });
 
   await createProviderAccount({
     kind: 'astrologer',
@@ -249,7 +253,7 @@ export async function adminInviteAstrologer(
     displayName: astrologer.displayName,
   });
 
-  return { email, temporaryPassword };
+  return { phoneE164: astrologer.phone };
 }
 
 /** Admin manually confirms a REQUESTED booking on the astrologer's behalf — see this file's header for why (no astrologer self-service portal in this batch). */

@@ -79,6 +79,7 @@ function makeAstrologerRow(overrides: Partial<AstrologerRow> = {}): AstrologerRo
     specialties: ['career'],
     languages: ['en'],
     photoUrl: null,
+    phone: '+919876543210',
     ratePaisePerSession: 50000,
     verified: true,
     active: true,
@@ -209,7 +210,7 @@ describe('cancelBooking', () => {
 });
 
 describe('adminCreateAstrologer', () => {
-  it('defaults optional fields (specialties/languages to [], verified to false, active to true)', async () => {
+  it('defaults optional fields (specialties/languages to [], phone to null, verified to false, active to true)', async () => {
     state.insertAstrologer.mockResolvedValueOnce(makeAstrologerRow());
 
     await adminCreateAstrologer({ displayName: 'Guru Ji', ratePaisePerSession: 50000 });
@@ -221,10 +222,25 @@ describe('adminCreateAstrologer', () => {
       specialties: [],
       languages: [],
       photoUrl: null,
+      phone: null,
       ratePaisePerSession: 50000,
       verified: false,
       active: true,
     });
+  });
+
+  it('forwards a supplied phone through to the repo insert', async () => {
+    state.insertAstrologer.mockResolvedValueOnce(makeAstrologerRow());
+
+    await adminCreateAstrologer({
+      displayName: 'Guru Ji',
+      ratePaisePerSession: 50000,
+      phone: '+919876543210',
+    });
+
+    expect(state.insertAstrologer).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: '+919876543210' }),
+    );
   });
 });
 
@@ -328,10 +344,18 @@ describe('adminInviteAstrologer', () => {
   it('404s when the astrologer does not exist', async () => {
     state.findAstrologerById.mockResolvedValueOnce(undefined);
 
-    await expect(adminInviteAstrologer('astro-1', 'guru@example.com')).rejects.toThrow(
-      'Astrologer not found',
+    await expect(adminInviteAstrologer('astro-1')).rejects.toThrow('Astrologer not found');
+    expect(state.createUser).not.toHaveBeenCalled();
+  });
+
+  it('400s with a clear message when the astrologer has no phone on file', async () => {
+    state.findAstrologerById.mockResolvedValueOnce(makeAstrologerRow({ phone: null }));
+
+    await expect(adminInviteAstrologer('astro-1')).rejects.toThrow(
+      'This astrologer has no phone number on file',
     );
     expect(state.createUser).not.toHaveBeenCalled();
+    expect(state.findProviderAccountByKindAndRefId).not.toHaveBeenCalled();
   });
 
   it('409s when the astrologer has already been invited', async () => {
@@ -345,14 +369,16 @@ describe('adminInviteAstrologer', () => {
       createdAt: new Date(),
     });
 
-    await expect(adminInviteAstrologer('astro-1', 'guru@example.com')).rejects.toThrow(
+    await expect(adminInviteAstrologer('astro-1')).rejects.toThrow(
       'Astrologer has already been invited',
     );
     expect(state.createUser).not.toHaveBeenCalled();
   });
 
-  it('creates a Firebase user + provider_accounts row and returns the temporary credentials', async () => {
-    state.findAstrologerById.mockResolvedValueOnce(makeAstrologerRow({ displayName: 'Guru Ji' }));
+  it('creates a Firebase user keyed on the stored phone + provider_accounts row, and returns the phone', async () => {
+    state.findAstrologerById.mockResolvedValueOnce(
+      makeAstrologerRow({ displayName: 'Guru Ji', phone: '+919876543210' }),
+    );
     state.findProviderAccountByKindAndRefId.mockResolvedValueOnce(undefined);
     state.createUser.mockResolvedValueOnce({ uid: 'fb-new-uid-1' });
     state.createProviderAccount.mockResolvedValueOnce({
@@ -364,19 +390,15 @@ describe('adminInviteAstrologer', () => {
       createdAt: new Date(),
     });
 
-    const result = await adminInviteAstrologer('astro-1', 'guru@example.com');
+    const result = await adminInviteAstrologer('astro-1');
 
-    expect(state.createUser).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'guru@example.com' }),
-    );
+    expect(state.createUser).toHaveBeenCalledWith({ phoneNumber: '+919876543210' });
     expect(state.createProviderAccount).toHaveBeenCalledWith({
       kind: 'astrologer',
       refId: 'astro-1',
       firebaseUid: 'fb-new-uid-1',
       displayName: 'Guru Ji',
     });
-    expect(result.email).toBe('guru@example.com');
-    expect(typeof result.temporaryPassword).toBe('string');
-    expect(result.temporaryPassword.length).toBeGreaterThan(0);
+    expect(result).toEqual({ phoneE164: '+919876543210' });
   });
 });

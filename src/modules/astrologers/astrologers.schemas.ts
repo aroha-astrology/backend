@@ -1,5 +1,14 @@
 import { z } from '@hono/zod-openapi';
 
+// E.164, India-only: '+91' followed by a 10-digit number starting 6-9 — the
+// same format the live customer app already validates against (see
+// usePhoneAuth.ts's `/^[6-9]\d{9}$/` local-number check + its own '+91'
+// prefix). Used for astrologers.phone (below) and pandits.phone
+// (pooja-bookings.schemas.ts) — both now provider-portal login numbers, not
+// just ops contact numbers.
+export const PHONE_E164_IN_REGEX = /^\+91[6-9]\d{9}$/;
+const PHONE_E164_IN_MESSAGE = 'Must be an Indian E.164 number, e.g. +919876543210';
+
 export const AstrologerSchema = z
   .object({
     id: z.string().uuid(),
@@ -94,6 +103,8 @@ export const CreateAstrologerBodySchema = z
     specialties: z.array(z.string().min(1).max(60)).max(20).optional(),
     languages: z.array(z.string().min(1).max(60)).max(20).optional(),
     photoUrl: z.string().url().max(2048).optional(),
+    /** Provider-portal login number (phone+OTP, admin-set) — see PHONE_E164_IN_REGEX above. Not returned on the public AstrologerSchema DTO. */
+    phone: z.string().regex(PHONE_E164_IN_REGEX, PHONE_E164_IN_MESSAGE).optional(),
     ratePaisePerSession: z.number().int().positive(),
     verified: z.boolean().optional(),
     active: z.boolean().optional(),
@@ -110,6 +121,8 @@ export const UpdateAstrologerBodySchema = z
     specialties: z.array(z.string().min(1).max(60)).max(20).optional(),
     languages: z.array(z.string().min(1).max(60)).max(20).optional(),
     photoUrl: z.string().url().max(2048).optional(),
+    /** Provider-portal login number (phone+OTP, admin-set) — see PHONE_E164_IN_REGEX above. Not returned on the public AstrologerSchema DTO. */
+    phone: z.string().regex(PHONE_E164_IN_REGEX, PHONE_E164_IN_MESSAGE).optional(),
     ratePaisePerSession: z.number().int().positive().optional(),
     verified: z.boolean().optional(),
     active: z.boolean().optional(),
@@ -119,19 +132,12 @@ export const UpdateAstrologerBodySchema = z
 
 export type UpdateAstrologerBody = z.infer<typeof UpdateAstrologerBodySchema>;
 
-export const InviteAstrologerBodySchema = z
-  .object({
-    email: z.string().email(),
-  })
-  .strict()
-  .openapi('InviteAstrologerBody');
-
-export type InviteAstrologerBody = z.infer<typeof InviteAstrologerBodySchema>;
-
+// No request body for the invite route anymore — the phone number is already
+// on the astrologer's stored row (set via the create/update routes above),
+// not supplied at invite time. See adminInviteAstrologer, astrologers.service.ts.
 export const InviteAstrologerResponseSchema = z
   .object({
-    email: z.string().email(),
-    temporaryPassword: z.string(),
+    phoneE164: z.string(),
   })
   .openapi('InviteAstrologerResponse');
 
