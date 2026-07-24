@@ -241,6 +241,18 @@ export async function listBookingsForUser(userId: string): Promise<AstrologerBoo
     .orderBy(desc(astrologerBookings.createdAt));
 }
 
+/** Unscoped by userId — used by messaging authorization (messaging.service.ts), which must load a booking on behalf of EITHER its customer or its assigned astrologer, not just the customer. */
+export async function findBookingById(
+  bookingId: string,
+): Promise<AstrologerBookingRow | undefined> {
+  const rows = await db
+    .select()
+    .from(astrologerBookings)
+    .where(eq(astrologerBookings.id, bookingId))
+    .limit(1);
+  return rows[0];
+}
+
 export async function listBookingsForAstrologer(
   astrologerId: string,
 ): Promise<AstrologerBookingRow[]> {

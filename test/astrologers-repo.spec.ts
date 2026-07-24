@@ -26,6 +26,7 @@ import {
   completeBooking,
   confirmBooking,
   findAstrologerById,
+  findBookingById,
   findOwnedBooking,
   insertAstrologer,
   listBookableAstrologers,
@@ -422,5 +423,19 @@ describe('listBookingsForAstrologer', () => {
     const query = compile(calls.where);
     expect(query.sql).toBe('"astrologer_bookings"."astrologer_id" = $1');
     expect(query.params).toEqual(['astro-1']);
+  });
+});
+
+describe('findBookingById', () => {
+  it('filters on id only (unscoped by userId — used by messaging authorization, which must load a booking on behalf of either party)', async () => {
+    const { chain, calls } = makeSelectChain([{ id: 'booking-1', astrologerId: 'astro-1' }]);
+    state.select.mockReturnValue(chain);
+
+    const row = await findBookingById('booking-1');
+
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"astrologer_bookings"."id" = $1');
+    expect(query.params).toEqual(['booking-1']);
+    expect(row).toEqual({ id: 'booking-1', astrologerId: 'astro-1' });
   });
 });
