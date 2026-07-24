@@ -2064,3 +2064,136 @@ export const bookingMessages = pgTable(
 
 export type BookingMessageRow = typeof bookingMessages.$inferSelect;
 export type NewBookingMessageRow = typeof bookingMessages.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* pooja_catalog — the fixed list of poojas bookable via the concierge pilot. */
+/* Deliberately reuses the SAME curated names/descriptions already used by    */
+/* the free/AI pooja-guidance report (astro-engine/poojaRecommendations.ts)   */
+/* rather than inventing a new catalog — see scripts/seed-pooja-catalog.ts.   */
+/* -------------------------------------------------------------------------- */
+
+export const poojaCatalog = pgTable(
+  'pooja_catalog',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    deity: text('deity'),
+    basePricePaise: integer('base_price_paise').notNull(),
+    durationMinutes: integer('duration_minutes').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('pooja_catalog_name_unique').on(sql`lower(${table.name})`),
+  }),
+);
+
+export type PoojaCatalogRow = typeof poojaCatalog.$inferSelect;
+export type NewPoojaCatalogRow = typeof poojaCatalog.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* pandits — the concierge pilot's admin-vetted pandit roster. Deliberately   */
+/* separate from any `astrologers` table (a parallel, independent effort is   */
+/* planning astrologer consultations separately) — pandits are a distinct    */
+/* role, not unified with astrologers. `verified` defaults to true because,   */
+/* in THIS batch, every pandit is added by an admin after off-platform        */
+/* vetting — there is no self-onboarding route, so "verified" simply means    */
+/* "an admin added this row", unlike the abandoned reference app's            */
+/* self-signup-with-hardcoded-verified-true model, which had no real vetting  */
+/* behind that flag at all. `phone` is nullable and is an ops contact number  */
+/* only — NOT a login credential; there is no pandit-facing portal in this    */
+/* batch.                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const pandits = pgTable('pandits', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  displayName: text('display_name').notNull(),
+  phone: text('phone'),
+  city: text('city').notNull(),
+  languages: text('languages')
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
+  verified: boolean('verified').notNull().default(true),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export type PanditRow = typeof pandits.$inferSelect;
+export type NewPanditRow = typeof pandits.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* pooja_bookings — one row per booked pooja. Wallet is debited at            */
+/* `requested` time (see pooja-bookings.repo.ts#createPoojaBooking); a        */
+/* booking starts with `panditId: null` and no automated fulfillment          */
+/* tracking beyond admin actions (assign, complete). No "pandit declines"     */
+/* state in this batch.                                                      */
+/* -------------------------------------------------------------------------- */
+
+export const poojaBookingStatusEnum = pgEnum('pooja_booking_status', [
+  'requested',
+  'assigned',
+  'completed',
+  'cancelled',
+  'refunded',
+]);
+
+export const poojaBookings = pgTable(
+  'pooja_bookings',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles — same nullable-FK convention as prime_reports.birthProfileId. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    poojaId: uuid('pooja_id')
+      .notNull()
+      .references(() => poojaCatalog.id),
+    /** Nullable — a booking starts unassigned; an admin assigns a pandit afterward. */
+    panditId: uuid('pandit_id').references(() => pandits.id, { onDelete: 'set null' }),
+    /** Day-scheduled, not minute-scheduled — a `date` column, not `timestamp`. */
+    preferredDate: date('preferred_date').notNull(),
+    shipAddress: text('ship_address').notNull(),
+    shipPincode: text('ship_pincode').notNull(),
+    status: poojaBookingStatusEnum('status').notNull().default('requested'),
+    /** Snapshot of pooja_catalog.base_price_paise at booking time — the catalog price may change later without altering what was actually charged. */
+    pricePaisePaid: integer('price_paise_paid').notNull(),
+    requestedAt: timestamp('requested_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('pooja_bookings_user_id_idx').on(table.userId, table.createdAt),
+    panditIdx: index('pooja_bookings_pandit_id_idx').on(table.panditId),
+    statusIdx: index('pooja_bookings_status_idx').on(table.status),
+  }),
+);
+
+export type PoojaBookingRow = typeof poojaBookings.$inferSelect;
+export type NewPoojaBookingRow = typeof poojaBookings.$inferInsert;
