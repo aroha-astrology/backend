@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   findBookingById: vi.fn(),
+  findPoojaBookingById: vi.fn(),
   findProviderAccountByKindAndRefId: vi.fn(),
   createMessage: vi.fn(),
   listMessagesForBooking: vi.fn(),
@@ -18,6 +19,10 @@ vi.mock('../src/config/db.js', () => {
 
 vi.mock('../src/modules/astrologers/astrologers.repo.js', () => ({
   findBookingById: state.findBookingById,
+}));
+
+vi.mock('../src/modules/pooja-bookings/pooja-bookings.repo.js', () => ({
+  findPoojaBookingById: state.findPoojaBookingById,
 }));
 
 vi.mock('../src/modules/providers/provider-accounts.repo.js', () => ({
@@ -51,6 +56,28 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
     pricePaisePaid: 50000,
     requestedAt: new Date('2026-01-01T00:00:00Z'),
     confirmedAt: new Date('2026-01-01T00:00:00Z'),
+    completedAt: null,
+    notes: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+function makePoojaBooking(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'pooja-booking-1',
+    userId: 'user-1',
+    birthProfileId: null,
+    poojaId: 'pooja-1',
+    panditId: 'pandit-1',
+    preferredDate: '2026-08-01',
+    shipAddress: '123 MG Road',
+    shipPincode: '560001',
+    status: 'assigned',
+    pricePaisePaid: 110000,
+    requestedAt: new Date('2026-01-01T00:00:00Z'),
+    assignedAt: new Date('2026-01-01T00:00:00Z'),
     completedAt: null,
     notes: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -93,12 +120,6 @@ describe('sendMessage', () => {
       sendMessage({ role: 'customer', userId: 'user-1' }, 'not-a-real-type', 'booking-1', 'hi'),
     ).rejects.toThrow('Invalid booking type: not-a-real-type');
     expect(state.findBookingById).not.toHaveBeenCalled();
-  });
-
-  it("rejects bookingType 'pooja' — not yet implemented (extension point for the Pooja Booking plan)", async () => {
-    await expect(
-      sendMessage({ role: 'customer', userId: 'user-1' }, 'pooja', 'booking-1', 'hi'),
-    ).rejects.toThrow('pooja booking chat not yet available');
   });
 
   it('404s when the astrologer booking does not exist', async () => {
@@ -232,5 +253,134 @@ describe('listMessages', () => {
         'booking-1',
       ),
     ).rejects.toThrow('Not your assigned booking');
+  });
+});
+
+describe('sendMessage / listMessages — bookingType: pooja', () => {
+  it('sendMessage succeeds for the booking customer', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+    state.createMessage.mockResolvedValueOnce(
+      makeMessage({ bookingType: 'pooja', bookingId: 'pooja-booking-1' }),
+    );
+    state.findActiveTokensForUser.mockResolvedValueOnce([]);
+
+    const dto = await sendMessage(
+      { role: 'customer', userId: 'user-1' },
+      'pooja',
+      'pooja-booking-1',
+      'hello',
+    );
+
+    expect(state.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingType: 'pooja', bookingId: 'pooja-booking-1' }),
+    );
+    expect(dto).toMatchObject({ body: 'hello' });
+  });
+
+  it("sendMessage succeeds for the booking's assigned pandit", async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+    state.createMessage.mockResolvedValueOnce(
+      makeMessage({ bookingType: 'pooja', bookingId: 'pooja-booking-1', senderRole: 'provider' }),
+    );
+    state.findActiveTokensForUser.mockResolvedValueOnce([]);
+
+    await sendMessage(
+      {
+        role: 'provider',
+        providerId: 'provider-1',
+        providerKind: 'pandit',
+        providerRefId: 'pandit-1',
+      },
+      'pooja',
+      'pooja-booking-1',
+      'namaste',
+    );
+
+    expect(state.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ senderRole: 'provider', senderProviderAccountId: 'provider-1' }),
+    );
+  });
+
+  it('rejects a caller who is neither the customer nor the assigned pandit', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+
+    await expect(
+      sendMessage(
+        {
+          role: 'provider',
+          providerId: 'provider-2',
+          providerKind: 'pandit',
+          providerRefId: 'pandit-OTHER',
+        },
+        'pooja',
+        'pooja-booking-1',
+        'hi',
+      ),
+    ).rejects.toThrow('Not your assigned booking');
+  });
+
+  it('rejects an astrologer provider even if the refId happens to collide', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+
+    await expect(
+      sendMessage(
+        {
+          role: 'provider',
+          providerId: 'provider-3',
+          providerKind: 'astrologer',
+          providerRefId: 'pandit-1',
+        },
+        'pooja',
+        'pooja-booking-1',
+        'hi',
+      ),
+    ).rejects.toThrow('Not your assigned booking');
+  });
+
+  it('rejects any provider when the pooja booking has no pandit assigned yet', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking({ panditId: null }));
+
+    await expect(
+      sendMessage(
+        {
+          role: 'provider',
+          providerId: 'provider-1',
+          providerKind: 'pandit',
+          providerRefId: 'pandit-1',
+        },
+        'pooja',
+        'pooja-booking-1',
+        'hi',
+      ),
+    ).rejects.toThrow('Not your assigned booking');
+  });
+
+  it('404s when the pooja booking does not exist', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(undefined);
+
+    await expect(
+      sendMessage({ role: 'customer', userId: 'user-1' }, 'pooja', 'missing-booking', 'hi'),
+    ).rejects.toThrow('Booking not found');
+  });
+
+  it('listMessages returns the transcript for the assigned pandit', async () => {
+    state.findPoojaBookingById.mockResolvedValueOnce(makePoojaBooking());
+    state.listMessagesForBooking.mockResolvedValueOnce([
+      makeMessage({ bookingType: 'pooja', bookingId: 'pooja-booking-1' }),
+    ]);
+
+    const rows = await listMessages(
+      {
+        role: 'provider',
+        providerId: 'provider-1',
+        providerKind: 'pandit',
+        providerRefId: 'pandit-1',
+      },
+      'pooja',
+      'pooja-booking-1',
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(state.markMessagesRead).toHaveBeenCalledWith('pooja', 'pooja-booking-1', 'provider');
   });
 });

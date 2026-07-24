@@ -222,3 +222,21 @@ export async function listPoojaBookingsForPandit(panditId: string): Promise<Pooj
     .where(eq(poojaBookings.panditId, panditId))
     .orderBy(desc(poojaBookings.createdAt));
 }
+
+/**
+ * Unscoped-by-owner lookup, used by the shared messaging service's `pooja`
+ * branch (src/modules/messaging/messaging.service.ts, built by the
+ * Astrologer Marketplace Batch 1 plan) to authorize a chat participant who
+ * may be EITHER the booking's customer OR its assigned pandit — unlike
+ * findOwnedPoojaBooking, which only ever checks one specific user_id.
+ */
+export async function findPoojaBookingById(
+  bookingId: string,
+): Promise<PoojaBookingRow | undefined> {
+  const rows = await db
+    .select()
+    .from(poojaBookings)
+    .where(eq(poojaBookings.id, bookingId))
+    .limit(1);
+  return rows[0];
+}

@@ -19,7 +19,8 @@ import { sendPushBatch } from '../../lib/notifications/fcm.js';
 import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
 import { findBookingById } from '../astrologers/astrologers.repo.js';
 import { findProviderAccountByKindAndRefId } from '../providers/provider-accounts.repo.js';
-import type { AstrologerBookingRow, BookingMessageRow } from '../../db/schema.js';
+import { findPoojaBookingById } from '../pooja-bookings/pooja-bookings.repo.js';
+import type { AstrologerBookingRow, BookingMessageRow, PoojaBookingRow } from '../../db/schema.js';
 import { createMessage, listMessagesForBooking, markMessagesRead } from './messaging.repo.js';
 import type { BookingMessageDto, BookingType } from './messaging.schemas.js';
 
@@ -40,20 +41,23 @@ export function assertValidBookingType(bookingType: string): asserts bookingType
 }
 
 interface ResolvedParty {
-  booking: AstrologerBookingRow;
+  booking: AstrologerBookingRow | PoojaBookingRow;
   customerUserId: string;
-  providerRefId: string;
+  /** What assertCallerIsParty checks the caller's own providerKind against — 'astrologer' for bookingType 'astrologer', 'pandit' for bookingType 'pooja'. */
+  providerKind: 'astrologer' | 'pandit';
+  /** Null when a pooja booking hasn't been assigned a pandit yet. assertCallerIsParty fails closed in that case (no caller.providerRefId can equal null), same as any other mismatch — no extra null-check needed there. */
+  providerRefId: string | null;
 }
 
 /**
  * Loads the underlying booking and resolves who its two chat participants
  * are, so callers can be authorized against it.
  *
- * `bookingType === 'pooja'` intentionally throws — this `if`/`throw` is the
- * exact extension point the Pooja Booking Batch 1 plan turns into a second
- * branch (loading from a pooja_bookings repo query instead). That plan's
- * Task 10 also makes two small follow-on edits elsewhere in this file
- * (assertCallerIsParty and notifyOtherParty each hardcode the literal
+ * `bookingType === 'pooja'` loads from the pooja_bookings repo instead of
+ * astrologer_bookings — this is the extension point the Pooja Booking Batch
+ * 1 plan's Task 10 turns into a second branch. That plan's Task 10 also
+ * makes two small follow-on edits elsewhere in this file
+ * (assertCallerIsParty and notifyOtherParty each hardcoded the literal
  * 'astrologer' once) — see that task for the exact diff.
  */
 async function resolveBookingParty(
@@ -61,11 +65,23 @@ async function resolveBookingParty(
   bookingId: string,
 ): Promise<ResolvedParty> {
   if (bookingType === 'pooja') {
-    throw Errors.badRequest('pooja booking chat not yet available');
+    const booking = await findPoojaBookingById(bookingId);
+    if (!booking) throw Errors.notFound('Booking not found');
+    return {
+      booking,
+      customerUserId: booking.userId,
+      providerKind: 'pandit',
+      providerRefId: booking.panditId,
+    };
   }
   const booking = await findBookingById(bookingId);
   if (!booking) throw Errors.notFound('Booking not found');
-  return { booking, customerUserId: booking.userId, providerRefId: booking.astrologerId };
+  return {
+    booking,
+    customerUserId: booking.userId,
+    providerKind: 'astrologer',
+    providerRefId: booking.astrologerId,
+  };
 }
 
 function assertCallerIsParty(caller: Caller, party: ResolvedParty): void {
@@ -73,7 +89,7 @@ function assertCallerIsParty(caller: Caller, party: ResolvedParty): void {
     if (party.customerUserId !== caller.userId) throw Errors.forbidden('Not your booking');
     return;
   }
-  if (caller.providerKind !== 'astrologer' || party.providerRefId !== caller.providerRefId) {
+  if (caller.providerKind !== party.providerKind || party.providerRefId !== caller.providerRefId) {
     throw Errors.forbidden('Not your assigned booking');
   }
 }
@@ -150,7 +166,11 @@ export async function listMessages(
  */
 async function notifyOtherParty(caller: Caller, party: ResolvedParty): Promise<void> {
   if (caller.role === 'customer') {
-    const account = await findProviderAccountByKindAndRefId('astrologer', party.providerRefId);
+    if (!party.providerRefId) return; // no provider assigned yet — nobody to notify
+    const account = await findProviderAccountByKindAndRefId(
+      party.providerKind,
+      party.providerRefId,
+    );
     if (!account) return;
     const tokens = await findActiveTokensForUser(account.id);
     if (tokens.length === 0) return;
@@ -167,7 +187,9 @@ async function notifyOtherParty(caller: Caller, party: ResolvedParty): Promise<v
   if (tokens.length === 0) return;
   await sendPushBatch(
     tokens.map((t) => t.token),
-    '💬 New message from your astrologer',
+    party.providerKind === 'pandit'
+      ? '💬 New message from your pandit'
+      : '💬 New message from your astrologer',
     'You have a new message on your booking.',
     { type: 'booking_message', bookingId: party.booking.id },
   );

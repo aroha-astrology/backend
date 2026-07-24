@@ -30,6 +30,7 @@ import {
   assignPanditToBooking,
   completePoojaBooking,
   findOwnedPoojaBooking,
+  findPoojaBookingById,
   listPoojaBookingsForUser,
   listPoojaBookingsForPandit,
 } from '../src/modules/pooja-bookings/pooja-bookings.repo.js';
@@ -370,5 +371,18 @@ describe('listPoojaBookingsForPandit', () => {
     expect(query.sql).toBe('"pooja_bookings"."pandit_id" = $1');
     expect(query.params).toEqual(['pandit-1']);
     expect(chain.orderBy).toHaveBeenCalled();
+  });
+});
+
+describe('findPoojaBookingById', () => {
+  it('filters on id only (no owner scoping — the messaging branch authorizes customer OR pandit)', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await findPoojaBookingById('booking-1');
+
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"pooja_bookings"."id" = $1');
+    expect(query.params).toEqual(['booking-1']);
   });
 });
