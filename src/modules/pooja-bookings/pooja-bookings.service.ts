@@ -61,7 +61,10 @@ export interface BookPoojaInput {
   preferredDate: string;
   shipAddress: string;
   shipPincode: string;
-  notes?: string | null;
+  // `| undefined` explicitly, not just an optional key — matches Zod's
+  // `.optional()` output shape under this repo's `exactOptionalPropertyTypes`
+  // tsconfig (same class of fix as the Shagun plan's seed-script deviation).
+  notes?: string | null | undefined;
 }
 
 export type BookPoojaResult =
