@@ -25,6 +25,7 @@ import { shagunRouter } from './modules/shagun/shagun.routes.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
 import { astrologersRouter } from './modules/astrologers/astrologers.routes.js';
 import { providerRouter } from './modules/providers/provider.routes.js';
+import { messagingRouter } from './modules/messaging/messaging.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -91,6 +92,10 @@ export function createApp(): OpenAPIHono {
   // users, so a provider caller has no `users` row at all. It MUST stay
   // mounted here, ahead of birthProfilesRouter's wildcard requireUser.
   app.route('/v1', providerRouter);
+  // messagingRouter ALSO uses requireUserOrProvider (booking chat, reachable
+  // by either a customer or their assigned provider) — same requirement as
+  // providerRouter above, must stay ahead of birthProfilesRouter's wildcard.
+  app.route('/v1', messagingRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', profilesRouter);
   app.route('/v1', deviceTokensRouter);

@@ -31,12 +31,17 @@ export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
 // deliberate 400 via Errors.badRequest (see
 // messaging.service.ts#assertValidBookingType), not the framework's default
 // 422 zod-validation-failure path a z.enum() path param would trigger.
+//
+// bookingId is likewise a plain non-empty string, NOT `.uuid()` — same
+// deviation as astrologers.schemas.ts's id params (see that file's note):
+// this plan's own route tests exercise every messaging route with a literal
+// non-UUID id ('booking-1') at the mocked-service layer.
 export const MessagingParamSchema = z.object({
   bookingType: z
     .string()
     .openapi({ param: { name: 'bookingType', in: 'path' }, example: 'astrologer' }),
   bookingId: z
     .string()
-    .uuid()
+    .min(1)
     .openapi({ param: { name: 'bookingId', in: 'path' }, example: 'b1c2d3e4-...' }),
 });
