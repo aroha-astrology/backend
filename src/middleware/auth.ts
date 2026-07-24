@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { getFirebaseAuth } from '../config/firebase.js';
+import { env } from '../config/env.js';
 import { Errors } from '../lib/errors.js';
 import { findUserByFirebaseUid, touchUserLastActive } from '../modules/users/users.repo.js';
 
@@ -72,4 +73,27 @@ export const requireUser: MiddlewareHandler = async (c, next) => {
   }
 
   await next();
+};
+
+/**
+ * `requireUser` PLUS a Firebase-UID allowlist check — for the `/v1/admin/*`
+ * HTTP admin console routes. Mirrors the Telegram admin bot's chat-ID
+ * allowlist pattern (see telegram-bot.service.ts resolveTier) but keyed off
+ * the caller's own Firebase UID instead of a Telegram chat ID, since these
+ * routes are reached with a normal Firebase ID token, not a Telegram webhook
+ * update.
+ *
+ * Wraps requireUser (rather than duplicating its token-verification/user-
+ * lookup logic) so `c.var.user`/`c.var.firebaseToken` end up set exactly the
+ * same way as on every other authenticated route.
+ */
+export const requireAdmin: MiddlewareHandler = async (c, next) => {
+  await requireUser(c, async () => {
+    const user = c.get('user');
+    const adminUids = new Set(env.ADMIN_FIREBASE_UIDS);
+    if (!adminUids.has(user.firebaseUid)) {
+      throw Errors.forbidden('Admin access required');
+    }
+    await next();
+  });
 };

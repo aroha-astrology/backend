@@ -126,6 +126,21 @@ const EnvSchema = z
       ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
 
+    // Firebase UIDs allowed to call the /v1/admin/* HTTP endpoints (see
+    // src/middleware/auth.ts requireAdmin). Comma-separated, same
+    // split/trim/filter convention as TELEGRAM_ADMIN_CHAT_IDS — deliberately
+    // a separate allowlist from the Telegram one, since these are reached
+    // with a normal Firebase ID token, not a Telegram chat id.
+    ADMIN_FIREBASE_UIDS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+
     // Nightly horoscope batch skips users with no activity in this many days
     // (lastActiveAt, falling back to createdAt) — a dormant user's reading is
     // instead generated on the fly the next time they actually open the app
