@@ -455,6 +455,24 @@ export async function countNewUsersThisWeek(): Promise<number> {
   return res?.count ?? 0;
 }
 
+/** Active in the last N minutes — the "logged in simultaneously" signal for admin-alerts.service.ts. */
+export async function countUsersActiveSince(since: Date): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.lastActiveAt, since)));
+  return res?.count ?? 0;
+}
+
+/** Generic version of `countNewUsersToday` — powers the new-user-burst check in admin-alerts.service.ts. */
+export async function countNewUsersSince(since: Date): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.createdAt, since)));
+  return res?.count ?? 0;
+}
+
 /** Sum of every active user's wallet balance — the platform's outstanding liability. */
 export async function sumWalletBalanceOutstanding(): Promise<number> {
   const [res] = await db
