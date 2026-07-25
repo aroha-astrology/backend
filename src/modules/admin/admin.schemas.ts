@@ -1,0 +1,157 @@
+import { z } from '@hono/zod-openapi';
+
+/* -------------------------------------------------------------------------- */
+/* Shared date-range query                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const DateRangeQuerySchema = z.object({
+  preset: z
+    .string()
+    .default('last30d')
+    .openapi({
+      example: 'last30d',
+      description:
+        'today | yesterday | last7d | last15d | last30d | this_month | last_month | ' +
+        'last90d | this_quarter | this_year | lifetime | custom (requires from/to)',
+    }),
+  from: z.string().optional().openapi({ example: '2026-07-01', description: 'YYYY-MM-DD, required when preset=custom' }),
+  to: z.string().optional().openapi({ example: '2026-07-08', description: 'YYYY-MM-DD, required when preset=custom' }),
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/overview                                                        */
+/* -------------------------------------------------------------------------- */
+
+const TimeSeriesPointSchema = z.object({
+  bucketStart: z.string(),
+  totalPaise: z.number(),
+  count: z.number(),
+});
+
+const SpendByFeatureEntrySchema = z.object({
+  reasonPrefix: z.string(),
+  totalPaise: z.number(),
+  count: z.number(),
+});
+
+const TopUpFunnelEntrySchema = z.object({
+  status: z.string(),
+  count: z.number(),
+});
+
+const LlmCostEntrySchema = z.object({
+  agent: z.string(),
+  tokensIn: z.number(),
+  tokensOut: z.number(),
+  calls: z.number(),
+});
+
+export const OverviewResponseSchema = z
+  .object({
+    range: z.object({ from: z.string(), to: z.string() }),
+    cashInPaise: z.number(),
+    orderCount: z.number(),
+    walletSpendPaise: z.number(),
+    walletLiabilityPaise: z.number(),
+    payingUsers: z.number(),
+    arpuPaise: z.number(),
+    newUsers: z.number(),
+    activeUsers: z.number(),
+    timeSeries: z.array(TimeSeriesPointSchema),
+    spendByFeature: z.array(SpendByFeatureEntrySchema),
+    topUpFunnel: z.array(TopUpFunnelEntrySchema),
+    llmCostByAgent: z.array(LlmCostEntrySchema),
+  })
+  .openapi('AdminOverviewResponse');
+
+/* -------------------------------------------------------------------------- */
+/* GET/PUT /admin/features                                                    */
+/* -------------------------------------------------------------------------- */
+
+export const AdminFeatureRowSchema = z
+  .object({
+    key: z.string(),
+    label: z.string(),
+    group: z.string(),
+    enabled: z.boolean(),
+    pricePaise: z.number().int().nullable(),
+  })
+  .openapi('AdminFeatureRow');
+
+export const AdminFeaturesResponseSchema = z
+  .object({ features: z.array(AdminFeatureRowSchema) })
+  .openapi('AdminFeaturesResponse');
+
+export const UpdateFeatureBodySchema = z
+  .object({
+    key: z.string().min(1),
+    enabled: z.boolean(),
+    pricePaise: z.number().int().nullable().optional(),
+  })
+  .openapi('UpdateFeatureBody');
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/users                                                           */
+/* -------------------------------------------------------------------------- */
+
+export const AdminUsersQuerySchema = z.object({
+  q: z.string().optional(),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const AdminUserRowSchema = z.object({
+  id: z.string(),
+  displayName: z.string().nullable(),
+  phoneE164: z.string().nullable(),
+  email: z.string().nullable(),
+  walletBalancePaise: z.number(),
+  createdAt: z.string(),
+  lastActiveAt: z.string().nullable(),
+});
+
+export const AdminUsersResponseSchema = z
+  .object({
+    users: z.array(AdminUserRowSchema),
+    total: z.number(),
+    offset: z.number(),
+    limit: z.number(),
+  })
+  .openapi('AdminUsersResponse');
+
+/* -------------------------------------------------------------------------- */
+/* POST /admin/users/:id/wallet                                               */
+/* -------------------------------------------------------------------------- */
+
+export const AdminUserIdParamSchema = z.object({
+  id: z
+    .string()
+    .uuid()
+    .openapi({ param: { name: 'id', in: 'path' } }),
+});
+
+export const AdjustWalletBodySchema = z
+  .object({
+    deltaPaise: z
+      .number()
+      .int()
+      .refine((value) => value !== 0, 'deltaPaise must be non-zero'),
+    note: z.string().min(1).max(500),
+  })
+  .openapi('AdjustWalletBody');
+
+export const AdjustWalletResponseSchema = z
+  .object({ walletBalancePaise: z.number() })
+  .openapi('AdjustWalletResponse');
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/reports                                                         */
+/* -------------------------------------------------------------------------- */
+
+export const AdminReportsResponseSchema = z
+  .object({
+    reports: z.array(
+      z.object({ reportKey: z.string(), totalPaise: z.number(), count: z.number() }),
+    ),
+  })
+  .openapi('AdminReportsResponse');

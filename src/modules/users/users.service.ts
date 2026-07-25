@@ -1,4 +1,5 @@
 import type { NewUserRow, NewUserConsentLogRow, UserRow } from '../../db/schema.js';
+import { env } from '../../config/env.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -117,6 +118,10 @@ export function toUserDto(
     gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
 
     features,
+
+    // UI affordance only (see the field's schema doc) — the DB column is fine
+    // to read here since this never gates a request, unlike requireAdmin.
+    isAdmin: env.ADMIN_PHONE_E164.includes(row.phoneE164 ?? ''),
 
     referralSource: row.referralSource,
     referredByCode: row.referredByCode,

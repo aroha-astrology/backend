@@ -12,6 +12,7 @@ import { astroRouter } from './modules/astro/astro.routes.js';
 import { publicRouter } from './modules/public/public.routes.js';
 import { legalRouter } from './modules/legal/legal.routes.js';
 import { billingRouter } from './modules/billing/billing.routes.js';
+import { adminRouter } from './modules/admin/admin.routes.js';
 import { preferencesRouter } from './modules/preferences/preferences.routes.js';
 import { feedbackRouter } from './modules/feedback/feedback.routes.js';
 import { kundliRouter } from './modules/kundli/kundli.routes.js';
@@ -60,6 +61,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', profilesRouter);
   app.route('/v1', deviceTokensRouter);
   app.route('/v1', billingRouter);
+  app.route('/v1', adminRouter);
   app.route('/v1', preferencesRouter);
   app.route('/v1', feedbackRouter);
   app.route('/v1', kundliRouter);

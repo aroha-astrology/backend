@@ -10,6 +10,7 @@ import { env } from '../../config/env.js';
 import { type LLMRequestOptions } from '../../config/llm.js';
 import { logger } from '../logger.js';
 import { alertThrottled } from '../notifications/alerts.js';
+import { insertAiUsage } from '../../modules/admin/ai-usage.repo.js';
 
 export class GeminiError extends Error {
   constructor(
@@ -119,7 +120,12 @@ function doRequest(
 
 export async function generate(opts: LLMRequestOptions): Promise<string> {
   let rateLimitWaits = 0;
+  const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
+  // Mirrors doRequest()'s own model resolution — duplicated rather than
+  // returned from doRequest() to avoid changing its signature for every
+  // caller, just for this one telemetry field.
+  const model = opts.model ?? env.GEMINI_MODEL;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineAt) {
@@ -210,6 +216,19 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
         'Gemini generate() hit max_tokens — reply was truncated' +
           (content ? ' mid-generation' : ' to empty'),
       );
+    }
+    if (data.usage) {
+      // Fire-and-forget — telemetry must never throw or add latency to the
+      // caller's response, so a DB failure here is logged and swallowed,
+      // never propagated.
+      void insertAiUsage({
+        userId: opts.userId ?? null,
+        agent: opts.profile.name,
+        model,
+        tokensIn: data.usage.prompt_tokens,
+        tokensOut: data.usage.completion_tokens,
+        durationMs: Date.now() - startedAt,
+      }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed'));
     }
     return content;
   }

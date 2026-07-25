@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, not, like, sql } from 'drizzle-orm';
+import { and, desc, eq, not, like, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -11,6 +11,7 @@ import {
   type NewOrderRow,
   type WalletTransactionRow,
 } from '../../db/schema.js';
+import { resolveDateRangePreset, sumPaidOrdersBetween } from '../admin/admin.repo.js';
 
 export async function findActiveCouponByCode(code: string): Promise<CouponRow | undefined> {
   const rows = await db
@@ -37,16 +38,16 @@ export async function insertOrder(values: NewOrderRow): Promise<OrderRow> {
   return row;
 }
 
-/** Sum + count of paid orders since local midnight — powers the Telegram /stats revenue line. */
+/**
+ * Sum + count of paid orders since IST midnight — powers the Telegram /stats
+ * revenue line. Delegates to the same IST-anchored primitive the admin
+ * dashboard uses (admin.repo.ts) rather than computing "today" independently
+ * — this used to be `new Date(); setHours(0,0,0,0)`, which is server-LOCAL
+ * midnight and off by 5:30 on a UTC box (see admin.repo.ts's module comment).
+ * One code path now, so this fix applies here for free.
+ */
 export async function sumPaidOrdersToday(): Promise<{ totalPaise: number; count: number }> {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-
-  const [res] = await db
-    .select({ total: sql<number>`coalesce(sum(${orders.finalAmountPaise}), 0)`, count: count() })
-    .from(orders)
-    .where(and(eq(orders.status, 'paid'), gte(orders.paidAt, startOfDay)));
-  return { totalPaise: Number(res?.total ?? 0), count: res?.count ?? 0 };
+  return sumPaidOrdersBetween(resolveDateRangePreset('today'));
 }
 
 export async function findOrderByIdForUser(

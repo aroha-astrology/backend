@@ -27,6 +27,13 @@ export interface LLMRequestOptions {
   signal?: AbortSignal | undefined;
   /** Override default timeout for this call (e.g. a large background job). */
   timeoutMs?: number;
+  /**
+   * Attributes this call's `ai_usage` telemetry row (see gemini-client.ts's
+   * `generate()`) to a user. Optional and not yet threaded through every
+   * existing call site — new callers (e.g. the reports feature) can start
+   * passing it; omitted calls just record `userId: null`.
+   */
+  userId?: string | null;
 }
 
 export const ROUTING_PROFILE: GenerationProfile = {

@@ -218,7 +218,11 @@ type TransactionKind =
   | 'gemstone_unlock'
   | 'profile_creation'
   | 'house_unlock'
-  | 'referral_bonus';
+  | 'referral_bonus'
+  | 'admin_adjustment'
+  | 'report_unlock';
+
+const REPORT_UNLOCK_RE = /^report_unlock:([a-z_]+)(?::(\d{4}-\d{2}))?(?::bundle:(\d+))?$/;
 
 /**
  * Maps a wallet_transactions `reason` string to its display kind. A leading
@@ -226,10 +230,20 @@ type TransactionKind =
  * shows one generic "Refund" treatment regardless of what was refunded.
  * `:profile:<id>` suffixes (owned-profile unlocks) are recognized but not
  * surfaced — the UI shows the same label whichever profile it was for.
+ *
+ * Never throws on an unrecognized reason — this used to throw, which meant
+ * GET /v1/billing/transactions 500'd for any user who'd ever received a
+ * Telegram /money admin grant/deduction (those reasons weren't recognized
+ * here at all). An unknown reason now falls back to 'admin_adjustment'
+ * (the closest "generic ledger entry" bucket) rather than crashing the
+ * whole transaction list over one unparseable row.
  */
 export function parseReason(reason: string): {
   kind: TransactionKind;
   houseNumber?: number;
+  reportKey?: string;
+  periodMonth?: string;
+  bundleMonths?: number;
   isRefund: boolean;
 } {
   const isRefund = reason.startsWith('refund:');
@@ -246,7 +260,29 @@ export function parseReason(reason: string): {
   if (houseMatch) {
     return { kind: 'house_unlock', houseNumber: Number(houseMatch[1]), isRefund };
   }
-  throw new Error(`unrecognized wallet_transactions reason: ${reason}`);
+  if (base === 'admin_grant' || base === 'admin_deduction') {
+    return { kind: 'admin_adjustment', isRefund };
+  }
+  const reportMatch = base.match(REPORT_UNLOCK_RE);
+  if (reportMatch) {
+    // Group 1 (the report key) is mandatory in REPORT_UNLOCK_RE, so it's
+    // always present once the overall match succeeds — the `!` just works
+    // around noUncheckedIndexedAccess not knowing that. Groups 2/3 (period
+    // month, bundle months) ARE optional, hence the undefined checks below.
+    const reportKey = reportMatch[1]!;
+    const periodMonth = reportMatch[2];
+    const bundleMonths = reportMatch[3];
+    return {
+      kind: 'report_unlock',
+      isRefund,
+      reportKey,
+      ...(periodMonth !== undefined ? { periodMonth } : {}),
+      ...(bundleMonths !== undefined ? { bundleMonths: Number(bundleMonths) } : {}),
+    };
+  }
+  // Fallback for anything else unrecognized (e.g. a future reason shape
+  // added elsewhere before this parser is updated) — see doc comment above.
+  return { kind: 'admin_adjustment', isRefund };
 }
 
 interface RechargeTransaction {
@@ -259,7 +295,7 @@ interface RechargeTransaction {
 
 interface DebitTransaction {
   id: string;
-  kind: Exclude<TransactionKind, 'house_unlock'>;
+  kind: Exclude<TransactionKind, 'house_unlock' | 'report_unlock'>;
   createdAt: string;
   amountPaise: number;
   balanceAfterPaise: number;
@@ -276,7 +312,23 @@ interface HouseUnlockTransaction {
   houseNumber: number;
 }
 
-export type Transaction = RechargeTransaction | DebitTransaction | HouseUnlockTransaction;
+interface ReportUnlockTransaction {
+  id: string;
+  kind: 'report_unlock';
+  createdAt: string;
+  amountPaise: number;
+  balanceAfterPaise: number;
+  isRefund: boolean;
+  reportKey: string;
+  periodMonth?: string;
+  bundleMonths?: number;
+}
+
+export type Transaction =
+  | RechargeTransaction
+  | DebitTransaction
+  | HouseUnlockTransaction
+  | ReportUnlockTransaction;
 
 function toTransactionDto(row: OrderRow | WalletTransactionRow): Transaction {
   if ('packId' in row) {
@@ -288,7 +340,9 @@ function toTransactionDto(row: OrderRow | WalletTransactionRow): Transaction {
       status: row.status,
     };
   }
-  const { kind, houseNumber, isRefund } = parseReason(row.reason);
+  const { kind, houseNumber, reportKey, periodMonth, bundleMonths, isRefund } = parseReason(
+    row.reason,
+  );
   const base = {
     id: row.id,
     createdAt: row.createdAt.toISOString(),
@@ -298,6 +352,15 @@ function toTransactionDto(row: OrderRow | WalletTransactionRow): Transaction {
   };
   if (kind === 'house_unlock') {
     return { ...base, kind, houseNumber: houseNumber as number };
+  }
+  if (kind === 'report_unlock') {
+    return {
+      ...base,
+      kind,
+      reportKey: reportKey as string,
+      ...(periodMonth !== undefined ? { periodMonth } : {}),
+      ...(bundleMonths !== undefined ? { bundleMonths } : {}),
+    };
   }
   return { ...base, kind };
 }

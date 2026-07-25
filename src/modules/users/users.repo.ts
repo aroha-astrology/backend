@@ -1,4 +1,5 @@
-import { and, eq, isNull, count, desc, gte, sql } from 'drizzle-orm';
+import { and, eq, ilike, isNull, count, desc, gte, lt, or, sql } from 'drizzle-orm';
+import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
 import { db } from '../../config/db.js';
 import {
@@ -473,6 +474,37 @@ export async function countNewUsersSince(since: Date): Promise<number> {
   return res?.count ?? 0;
 }
 
+/**
+ * `DateRange`-bounded sibling of `countUsersActiveSince` — added alongside it
+ * (not a replacement) so admin-alerts.service.ts's existing open-ended
+ * "since" call keeps working unchanged. Powers the admin dashboard's active-
+ * users metric, which needs a closed [from, to) window rather than "since".
+ */
+export async function usersActiveBetween(range: DateRange): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(
+      and(
+        isNull(users.deletedAt),
+        gte(users.lastActiveAt, range.from),
+        lt(users.lastActiveAt, range.to),
+      ),
+    );
+  return res?.count ?? 0;
+}
+
+/** `DateRange`-bounded sibling of `countNewUsersSince` — see `usersActiveBetween`'s comment. */
+export async function usersCreatedBetween(range: DateRange): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(
+      and(isNull(users.deletedAt), gte(users.createdAt, range.from), lt(users.createdAt, range.to)),
+    );
+  return res?.count ?? 0;
+}
+
 /** Sum of every active user's wallet balance — the platform's outstanding liability. */
 export async function sumWalletBalanceOutstanding(): Promise<number> {
   const [res] = await db
@@ -482,7 +514,30 @@ export async function sumWalletBalanceOutstanding(): Promise<number> {
   return Number(res?.total ?? 0);
 }
 
-export async function listUsersPage(limit: number, offset: number) {
+/**
+ * `q`'s search behavior is asymmetric across columns because phoneE164 is
+ * encrypted at rest (non-deterministic ciphertext — see decryptUserRow's
+ * doc comment): displayName/email are plaintext columns and can be ILIKE'd
+ * for a partial match, but phone can only be matched EXACTLY via its
+ * deterministic lookup hash (the same primitive findUserByPhoneE164 uses),
+ * never partially.
+ */
+function userSearchWhere(q?: string) {
+  const notDeleted = isNull(users.deletedAt);
+  if (!q) return notDeleted;
+  const like = `%${q}%`;
+  return and(
+    notDeleted,
+    or(
+      ilike(users.displayName, like),
+      ilike(users.email, like),
+      eq(users.phoneE164Hash, hashForLookup(q)),
+    ),
+  );
+}
+
+/** Powers both the Telegram `/users` command (no `q`) and the admin dashboard's `GET /v1/admin/users?q=` search. */
+export async function listUsersPage(limit: number, offset: number, q?: string) {
   const rows = await db
     .select({
       id: users.id,
@@ -494,11 +549,17 @@ export async function listUsersPage(limit: number, offset: number) {
       lastActiveAt: users.lastActiveAt,
     })
     .from(users)
-    .where(isNull(users.deletedAt))
+    .where(userSearchWhere(q))
     .orderBy(desc(users.createdAt))
     .limit(limit)
     .offset(offset);
   return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
+}
+
+/** Total matching `listUsersPage`'s own search predicate — powers the admin dashboard's pagination total. */
+export async function countUsersMatching(q?: string): Promise<number> {
+  const [res] = await db.select({ count: count() }).from(users).where(userSearchWhere(q));
+  return res?.count ?? 0;
 }
 
 /** Cost in paise to unlock one kundli house's detail view (Rs 50 = 5 credits at the old rate). Reused by `unlockHouseForOwnedProfile` (birth-profiles.repo.ts) for the additional-profile case. */

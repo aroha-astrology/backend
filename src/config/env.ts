@@ -126,6 +126,23 @@ const EnvSchema = z
       ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
 
+    // Phone allowlist (E.164) gating the HTTP admin API (/v1/admin/*) — see
+    // requireAdmin in middleware/auth.ts. Checked against the Firebase ID
+    // token's own `phone_number` claim, NOT a DB column (a DB column would
+    // let phone-recycling silently hand admin access to whoever picks up a
+    // once-admin number later — see the phone-recycling-takeover finding in
+    // the 2026-07-17 security audit). Same comma-split/trim/filter/default
+    // pattern as TELEGRAM_ADMIN_CHAT_IDS above.
+    ADMIN_PHONE_E164: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean),
+      ),
+
     // Nightly horoscope batch skips users with no activity in this many days
     // (lastActiveAt, falling back to createdAt) — a dormant user's reading is
     // instead generated on the fly the next time they actually open the app

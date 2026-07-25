@@ -255,6 +255,13 @@ export const UserSchema = z
           'The client must hide UI for any key with enabled: false AND never call its API — the ' +
           'server also enforces this independently via requireFeature() middleware.',
       ),
+    isAdmin: z
+      .boolean()
+      .describe(
+        'UI affordance only (whether to render the /admin link) — derived from the DB phone ' +
+          'column, NOT the authorization boundary. requireAdmin (the real gate on /v1/admin/*) ' +
+          "checks the Firebase ID token's own phone_number claim instead.",
+      ),
 
     referralSource: z.string().nullable(),
     referredByCode: z.string().nullable(),
