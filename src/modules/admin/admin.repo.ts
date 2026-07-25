@@ -156,7 +156,9 @@ export async function sumPaidOrdersBetween(
   const [res] = await db
     .select({ total: sql<number>`coalesce(sum(${orders.finalAmountPaise}), 0)`, count: count() })
     .from(orders)
-    .where(and(eq(orders.status, 'paid'), gte(orders.paidAt, range.from), lt(orders.paidAt, range.to)));
+    .where(
+      and(eq(orders.status, 'paid'), gte(orders.paidAt, range.from), lt(orders.paidAt, range.to)),
+    );
   return { totalPaise: Number(res?.total ?? 0), count: res?.count ?? 0 };
 }
 
@@ -165,7 +167,17 @@ export async function revenueTimeSeries(
   range: DateRange,
   bucket: 'day' | 'week' | 'month',
 ): Promise<{ bucketStart: string; totalPaise: number; count: number }[]> {
-  const bucketExpr = sql<string>`date_trunc(${bucket}, ${orders.paidAt} at time zone 'Asia/Kolkata')`;
+  // `bucket` is bound as a query parameter (`${bucket}`) rather than inlined,
+  // so Drizzle emits a fresh placeholder each time this SQL fragment object
+  // is spliced into the query (select vs. groupBy vs. orderBy) — Postgres's
+  // GROUP BY validation matches expressions by parse tree BEFORE parameter
+  // binding, so three placeholders bound to the same runtime string still
+  // read as three different expressions, and it rejects `orders.paid_at` as
+  // "not in GROUP BY" even though the bucketed expression is identical every
+  // time. `bucket` only ever comes from bucketForPreset() (one of exactly
+  // three hardcoded literals, never user input), so sql.raw() here carries
+  // no injection risk and sidesteps the parameter-identity mismatch entirely.
+  const bucketExpr = sql<string>`date_trunc(${sql.raw(`'${bucket}'`)}, ${orders.paidAt} at time zone 'Asia/Kolkata')`;
   const rows = await db
     .select({
       bucketStart: bucketExpr,
@@ -173,7 +185,9 @@ export async function revenueTimeSeries(
       count: count(),
     })
     .from(orders)
-    .where(and(eq(orders.status, 'paid'), gte(orders.paidAt, range.from), lt(orders.paidAt, range.to)))
+    .where(
+      and(eq(orders.status, 'paid'), gte(orders.paidAt, range.from), lt(orders.paidAt, range.to)),
+    )
     .groupBy(bucketExpr)
     .orderBy(bucketExpr);
   return rows.map((row) => ({
@@ -247,9 +261,7 @@ export async function spendByReportKey(
 }
 
 /** Orders within `range` (by `createdAt`), grouped by status — the top-up funnel breakdown. */
-export async function topUpFunnel(
-  range: DateRange,
-): Promise<{ status: string; count: number }[]> {
+export async function topUpFunnel(range: DateRange): Promise<{ status: string; count: number }[]> {
   const rows = await db
     .select({ status: orders.status, count: count() })
     .from(orders)
@@ -263,7 +275,9 @@ export async function payingUserCount(range: DateRange): Promise<number> {
   const [res] = await db
     .select({ count: sql<number>`count(distinct ${orders.userId})` })
     .from(orders)
-    .where(and(eq(orders.status, 'paid'), gte(orders.paidAt, range.from), lt(orders.paidAt, range.to)));
+    .where(
+      and(eq(orders.status, 'paid'), gte(orders.paidAt, range.from), lt(orders.paidAt, range.to)),
+    );
   return Number(res?.count ?? 0);
 }
 

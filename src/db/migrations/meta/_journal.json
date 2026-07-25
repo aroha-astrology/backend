@@ -246,6 +246,13 @@
       "when": 1784999862732,
       "tag": "0034_acoustic_tiger_shark",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1785008368049,
+      "tag": "0036_fix_admin_audit_log_columns",
+      "breakpoints": true
     }
   ]
 }
