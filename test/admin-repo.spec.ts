@@ -130,8 +130,14 @@ describe('revenueTimeSeries', () => {
 
     await revenueTimeSeries(range, 'month');
 
+    // 'month' is inlined via sql.raw() (not bound as a parameter) — see the
+    // fix in revenueTimeSeries's doc comment: a bound parameter gets a fresh
+    // placeholder each time the same SQL fragment is reused across
+    // select/groupBy/orderBy, which made Postgres reject orders.paid_at as
+    // "not in GROUP BY" despite the expression being identical every time.
     const compiled = compile(calls.groupBy);
-    expect(compiled.params).toContain('month');
+    expect(compiled.sql).toContain("'month'");
+    expect(compiled.params).not.toContain('month');
   });
 });
 
@@ -254,8 +260,6 @@ describe('logAdminAction', () => {
 
     await logAdminAction('+919999111111', 'GET /v1/admin/overview', undefined);
 
-    expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({ params: null }),
-    );
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ params: null }));
   });
 });

@@ -19,7 +19,7 @@ import {
   type ReportDef,
   type ReportKey,
 } from '../../config/reports.js';
-import { resolveFeatures } from '../features/features.service.js';
+import { resolveFeaturesForUser } from '../features/features.service.js';
 import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
@@ -211,7 +211,7 @@ export async function purchaseReport(
   const def = getReportDef(body.reportKey);
   if (!def) throw Errors.notFound(`Unknown report key: ${body.reportKey}`);
 
-  const features = await resolveFeatures();
+  const features = await resolveFeaturesForUser(user.id);
   if (features[def.featureFlagKey]?.enabled === false) {
     throw Errors.forbidden('FEATURE_DISABLED');
   }
@@ -298,7 +298,7 @@ export async function getReportCatalogueForUser(
   birthProfileId: string | null,
 ): Promise<ReportCatalogueEntryDto[]> {
   const [features, rows] = await Promise.all([
-    resolveFeatures(),
+    resolveFeaturesForUser(user.id),
     listReportsForUser(user.id, birthProfileId),
   ]);
 
@@ -318,9 +318,7 @@ export async function getReportCatalogueForUser(
   });
 }
 
-async function recomputeScoresForRead(
-  row: ReportRow,
-): Promise<Record<string, unknown>> {
+async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, unknown>> {
   const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
   if (!generator) return {};
 
@@ -366,7 +364,12 @@ export async function getReportForUser(
   const englishSections = content.sections ?? [];
   const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
 
-  const readyBase = { status: 'ready' as const, reportKey: row.reportKey, periodMonth: row.periodMonth, scores };
+  const readyBase = {
+    status: 'ready' as const,
+    reportKey: row.reportKey,
+    periodMonth: row.periodMonth,
+    scores,
+  };
 
   if (language === 'en' || !generator) {
     return { ...readyBase, sections: englishSections };

@@ -19,7 +19,7 @@ const state = vi.hoisted(() => {
     markReportReady: vi.fn(),
     markReportFailed: vi.fn(),
     saveReportTranslation: vi.fn(),
-    resolveFeatures: vi.fn(),
+    resolveFeaturesForUser: vi.fn(),
     deductWalletBalance: vi.fn(),
     addWalletBalance: vi.fn(),
     findKundliByUserId: vi.fn(),
@@ -40,7 +40,7 @@ vi.mock('../src/modules/reports/reports.repo.js', () => ({
 }));
 
 vi.mock('../src/modules/features/features.service.js', () => ({
-  resolveFeatures: state.resolveFeatures,
+  resolveFeaturesForUser: state.resolveFeaturesForUser,
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
@@ -73,9 +73,8 @@ vi.mock('../src/modules/reports/report-generator.types.js', async () => {
   };
 });
 
-const { purchaseReport, getReportCatalogueForUser, getReportForUser } = await import(
-  '../src/modules/reports/reports.service.js'
-);
+const { purchaseReport, getReportCatalogueForUser, getReportForUser } =
+  await import('../src/modules/reports/reports.service.js');
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
   return { id: 'user-1', ...overrides } as unknown as UserRow;
@@ -112,7 +111,7 @@ beforeEach(() => {
   state.markReportReady.mockReset().mockResolvedValue(undefined);
   state.markReportFailed.mockReset().mockResolvedValue(undefined);
   state.saveReportTranslation.mockReset().mockResolvedValue(undefined);
-  state.resolveFeatures.mockReset().mockResolvedValue({});
+  state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
   state.deductWalletBalance.mockReset().mockResolvedValue(true);
   state.addWalletBalance.mockReset().mockResolvedValue(undefined);
   state.findKundliByUserId.mockReset().mockResolvedValue(undefined);
@@ -128,7 +127,9 @@ describe('purchaseReport — validation', () => {
   });
 
   it('throws FORBIDDEN (FEATURE_DISABLED) when the feature flag is off', async () => {
-    state.resolveFeatures.mockResolvedValue({ 'reports.marriage': { enabled: false, pricePaise: null } });
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.marriage': { enabled: false, pricePaise: null },
+    });
     await expect(purchaseReport(makeUser(), { reportKey: 'marriage' })).rejects.toMatchObject({
       code: 'FORBIDDEN',
       message: 'FEATURE_DISABLED',
@@ -136,9 +137,11 @@ describe('purchaseReport — validation', () => {
   });
 
   it('throws BAD_REQUEST when a monthly report has no months', async () => {
-    await expect(purchaseReport(makeUser(), { reportKey: 'health_monthly' })).rejects.toMatchObject({
-      code: 'BAD_REQUEST',
-    });
+    await expect(purchaseReport(makeUser(), { reportKey: 'health_monthly' })).rejects.toMatchObject(
+      {
+        code: 'BAD_REQUEST',
+      },
+    );
   });
 
   it('throws BAD_REQUEST when a one-time report includes months', async () => {
@@ -184,7 +187,11 @@ describe('purchaseReport — pricing and row shape', () => {
 
     const result = await purchaseReport(makeUser(), { reportKey: 'marriage' });
 
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 9900, 'report_unlock:marriage');
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'report_unlock:marriage',
+    );
     expect(state.claimReportRow).toHaveBeenCalledTimes(1);
     expect(state.claimReportRow).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -196,7 +203,9 @@ describe('purchaseReport — pricing and row shape', () => {
         pricePaidPaise: 9900,
       }),
     );
-    expect(result.reports).toEqual([{ id: 'r1', reportKey: 'marriage', periodMonth: null, status: 'generating' }]);
+    expect(result.reports).toEqual([
+      { id: 'r1', reportKey: 'marriage', periodMonth: null, status: 'generating' },
+    ]);
   });
 
   it('kundli_milan: forwards partner birth details as `input` and prices as a flat one-time report', async () => {
@@ -213,15 +222,27 @@ describe('purchaseReport — pricing and row shape', () => {
 
     await purchaseReport(makeUser(), { reportKey: 'kundli_milan', partner });
 
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 9900, 'report_unlock:kundli_milan');
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'report_unlock:kundli_milan',
+    );
     expect(state.claimReportRow).toHaveBeenCalledWith(
       expect.objectContaining({ reportKey: 'kundli_milan', input: partner, periodMonth: null }),
     );
   });
 
   it('monthly bundle of 3 months uses monthlyBundlePricePaise(3)=6500, split with the remainder on the first row', async () => {
-    state.claimReportRow.mockImplementation((c: { periodMonth: string | null; pricePaidPaise: number }) =>
-      Promise.resolve(makeReportRow({ id: `m-${c.periodMonth}`, reportKey: 'health_monthly', periodMonth: c.periodMonth, pricePaidPaise: c.pricePaidPaise })),
+    state.claimReportRow.mockImplementation(
+      (c: { periodMonth: string | null; pricePaidPaise: number }) =>
+        Promise.resolve(
+          makeReportRow({
+            id: `m-${c.periodMonth}`,
+            reportKey: 'health_monthly',
+            periodMonth: c.periodMonth,
+            pricePaidPaise: c.pricePaidPaise,
+          }),
+        ),
     );
 
     await purchaseReport(makeUser(), {
@@ -244,7 +265,12 @@ describe('purchaseReport — pricing and row shape', () => {
 
   it('a single-month monthly purchase uses the plain YYYY-MM reason suffix, not :bundle:1', async () => {
     state.claimReportRow.mockResolvedValue(
-      makeReportRow({ id: 'm1', reportKey: 'health_monthly', periodMonth: '2026-07-01', pricePaidPaise: 2500 }),
+      makeReportRow({
+        id: 'm1',
+        reportKey: 'health_monthly',
+        periodMonth: '2026-07-01',
+        pricePaidPaise: 2500,
+      }),
     );
 
     await purchaseReport(makeUser(), { reportKey: 'health_monthly', months: ['2026-07'] });
@@ -259,11 +285,18 @@ describe('purchaseReport — pricing and row shape', () => {
   it('scales the whole monthly bundle ladder proportionally when the admin has overridden the per-month price', async () => {
     // Admin doubled the per-month price (2500 -> 5000): ratio 2x, so the 3-month bundle
     // (normally 6500) should cost exactly double (13000), preserving the discount curve.
-    state.resolveFeatures.mockResolvedValue({
+    state.resolveFeaturesForUser.mockResolvedValue({
       'reports.health_monthly': { enabled: true, pricePaise: 5000 },
     });
-    state.claimReportRow.mockImplementation((c: { periodMonth: string | null; pricePaidPaise: number }) =>
-      Promise.resolve(makeReportRow({ id: `m-${c.periodMonth}`, periodMonth: c.periodMonth, pricePaidPaise: c.pricePaidPaise })),
+    state.claimReportRow.mockImplementation(
+      (c: { periodMonth: string | null; pricePaidPaise: number }) =>
+        Promise.resolve(
+          makeReportRow({
+            id: `m-${c.periodMonth}`,
+            periodMonth: c.periodMonth,
+            pricePaidPaise: c.pricePaidPaise,
+          }),
+        ),
     );
 
     await purchaseReport(makeUser(), {
@@ -288,24 +321,39 @@ describe('purchaseReport — duplicate purchase reuse and refunds', () => {
 
     const result = await purchaseReport(makeUser(), { reportKey: 'marriage' });
 
-    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 9900, 'refund:report_unlock:marriage');
-    expect(result.reports).toEqual([{ id: 'existing-1', reportKey: 'marriage', periodMonth: null, status: 'ready' }]);
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'refund:report_unlock:marriage',
+    );
+    expect(result.reports).toEqual([
+      { id: 'existing-1', reportKey: 'marriage', periodMonth: null, status: 'ready' },
+    ]);
   });
 
   it('refunds the full charge when claimReportRow throws before any row succeeds', async () => {
     state.claimReportRow.mockRejectedValue(new Error('db down'));
 
     await expect(purchaseReport(makeUser(), { reportKey: 'marriage' })).rejects.toThrow('db down');
-    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 9900, 'refund:report_unlock:marriage');
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'refund:report_unlock:marriage',
+    );
   });
 
   it('refunds only the unprocessed rows when claimReportRow throws partway through a multi-month bundle', async () => {
     state.claimReportRow
-      .mockResolvedValueOnce(makeReportRow({ id: 'm1', periodMonth: '2026-07-01', pricePaidPaise: 2168 }))
+      .mockResolvedValueOnce(
+        makeReportRow({ id: 'm1', periodMonth: '2026-07-01', pricePaidPaise: 2168 }),
+      )
       .mockRejectedValueOnce(new Error('db blip'));
 
     await expect(
-      purchaseReport(makeUser(), { reportKey: 'health_monthly', months: ['2026-07', '2026-08', '2026-09'] }),
+      purchaseReport(makeUser(), {
+        reportKey: 'health_monthly',
+        months: ['2026-07', '2026-08', '2026-09'],
+      }),
     ).rejects.toThrow('db blip');
 
     // Rows 2 and 3 (2166 + 2166 = 4332) never got claimed — row 1 (2168) already succeeded and
@@ -333,7 +381,11 @@ describe('purchaseReport — background generation safety net', () => {
         expect.stringContaining('No generator registered'),
       );
     });
-    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 9900, 'refund:report_unlock:wealth');
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'refund:report_unlock:wealth',
+    );
   });
 
   it('marks the row failed and refunds when the birth chart is not ready yet', async () => {
@@ -349,9 +401,17 @@ describe('purchaseReport — background generation safety net', () => {
     await purchaseReport(makeUser(), { reportKey: 'marriage' });
 
     await vi.waitFor(() => {
-      expect(state.markReportFailed).toHaveBeenCalledWith('m1', expect.any(Date), 'Birth chart is not ready yet');
+      expect(state.markReportFailed).toHaveBeenCalledWith(
+        'm1',
+        expect.any(Date),
+        'Birth chart is not ready yet',
+      );
     });
-    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 9900, 'refund:report_unlock:marriage');
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'refund:report_unlock:marriage',
+    );
   });
 
   it('marks the row failed and refunds when the registered generator throws during narrative generation', async () => {
@@ -369,7 +429,11 @@ describe('purchaseReport — background generation safety net', () => {
     await vi.waitFor(() => {
       expect(state.markReportFailed).toHaveBeenCalledWith('m2', expect.any(Date), 'LLM exploded');
     });
-    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 9900, 'refund:report_unlock:marriage');
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'refund:report_unlock:marriage',
+    );
   });
 
   it('computes the partner chart via computeMetrology and marks the row ready on success', async () => {
@@ -410,8 +474,8 @@ describe('purchaseReport — background generation safety net', () => {
 });
 
 describe('getReportCatalogueForUser', () => {
-  it('merges the catalogue with resolved feature pricing and the user\'s own purchases', async () => {
-    state.resolveFeatures.mockResolvedValue({
+  it("merges the catalogue with resolved feature pricing and the user's own purchases", async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
       'reports.marriage': { enabled: true, pricePaise: 12000 },
     });
     state.listReportsForUser.mockResolvedValue([
@@ -432,12 +496,16 @@ describe('getReportCatalogueForUser', () => {
 describe('getReportForUser', () => {
   it('throws NOT_FOUND when the row does not exist', async () => {
     state.findReportById.mockResolvedValue(undefined);
-    await expect(getReportForUser('missing', 'user-1', 'en')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(getReportForUser('missing', 'user-1', 'en')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
   });
 
   it('throws NOT_FOUND (not FORBIDDEN) when the row belongs to a different user — avoids leaking existence', async () => {
     state.findReportById.mockResolvedValue(makeReportRow({ userId: 'someone-else' }));
-    await expect(getReportForUser('report-1', 'user-1', 'en')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(getReportForUser('report-1', 'user-1', 'en')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
   });
 
   it('returns {status: generating} without touching chart/generator lookups', async () => {
@@ -462,7 +530,10 @@ describe('getReportForUser', () => {
     };
     state.findKundliByUserId.mockResolvedValue({ chartData: { planets: [] } });
     state.findReportById.mockResolvedValue(
-      makeReportRow({ status: 'ready', content: { sections: [{ heading: 'H', paragraphs: ['p'] }] } }),
+      makeReportRow({
+        status: 'ready',
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      }),
     );
 
     const dto = await getReportForUser('report-1', 'user-1', 'en');
@@ -496,7 +567,9 @@ describe('getReportForUser', () => {
   });
 
   it('translates and persists on first request for a new language', async () => {
-    const translateNarrative = vi.fn().mockResolvedValue([{ heading: 'हिंदी', paragraphs: ['पैरा'] }]);
+    const translateNarrative = vi
+      .fn()
+      .mockResolvedValue([{ heading: 'हिंदी', paragraphs: ['पैरा'] }]);
     state.REPORT_GENERATORS.marriage = {
       key: 'marriage',
       computeScores: vi.fn().mockReturnValue({}),
@@ -505,7 +578,10 @@ describe('getReportForUser', () => {
     };
     state.findKundliByUserId.mockResolvedValue({ chartData: {} });
     state.findReportById.mockResolvedValue(
-      makeReportRow({ status: 'ready', content: { sections: [{ heading: 'H', paragraphs: ['p'] }] } }),
+      makeReportRow({
+        status: 'ready',
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      }),
     );
 
     const dto = await getReportForUser('report-1', 'user-1', 'hi');
@@ -526,7 +602,10 @@ describe('getReportForUser', () => {
     };
     state.findKundliByUserId.mockResolvedValue({ chartData: {} });
     state.findReportById.mockResolvedValue(
-      makeReportRow({ status: 'ready', content: { sections: [{ heading: 'H', paragraphs: ['p'] }] } }),
+      makeReportRow({
+        status: 'ready',
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      }),
     );
 
     const dto = await getReportForUser('report-1', 'user-1', 'hi');
