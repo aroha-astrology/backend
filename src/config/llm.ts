@@ -284,3 +284,39 @@ export const TRANSIT_ALERT_PROFILE: GenerationProfile = {
   stream: false,
   maxTokens: 512,
 };
+
+/**
+ * Purchased report narrative (marriage, kundli milan, wealth, monthly
+ * reports, etc.) — one or more structured JSON section arrays generated
+ * lazily the first time a paid report is generated. Same "large schema" tier
+ * as PURCHASE_PLAN/VASTU/GEMSTONE: a report can have several named sections
+ * each with multiple paragraphs, and generation always runs in a background
+ * fire-and-forget job, never in a blocking request path.
+ */
+export const REPORT_PROFILE: GenerationProfile = {
+  name: 'report',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 4096,
+};
+
+/**
+ * Report translation — re-emits a full section array (heading + paragraphs
+ * per section) in the target language. Same non-Latin-script token inflation
+ * problem documented on HOUSE_INSIGHT_TRANSLATION_PROFILE/
+ * FORECAST_TRANSLATION_PROFILE above: a ceiling sized for the *English*
+ * original routinely truncates a Hindi/Bengali/Tamil re-emission of the same
+ * content mid-JSON. Matches REPORT_PROFILE's own 4096 generation ceiling
+ * rather than trying to size a smaller "translation only" budget, for the
+ * same reason those other translation profiles don't undercut their English
+ * counterpart either. Cached forever per (report, language) after the first
+ * successful call, so the larger ceiling is not a recurring per-request cost.
+ */
+export const REPORT_TRANSLATION_PROFILE: GenerationProfile = {
+  name: 'report-translation',
+  temperature: 0.3,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 4096,
+};

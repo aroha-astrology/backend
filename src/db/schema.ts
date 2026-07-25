@@ -1271,6 +1271,103 @@ export type VastuPlanRow = typeof vastuPlans.$inferSelect;
 export type NewVastuPlanRow = typeof vastuPlans.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* reports — purchased AI-generated reports (one-time + monthly)              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per purchased report — either a one-time report (periodMonth null)
+ * or a single month of a monthly report (periodMonth = first-of-month). Same
+ * generating/ready/failed lifecycle as gemstone_recommendations, claim-fenced
+ * the same way (see claimReportRow in reports.repo.ts).
+ *
+ * `input` carries partner birth details for kundli_milan ONLY — every other
+ * report key always has `input: null`. A user can buy kundli_milan repeatedly
+ * against different partners, so those rows are deliberately EXCLUDED from
+ * the uniqueness constraints below (see the four partial indexes) rather than
+ * being deduped like every other report key.
+ *
+ * NULL handling: Postgres never treats two NULLs as equal within a unique
+ * index, so a single composite index across (birthProfileId, periodMonth) —
+ * both independently nullable — would fail to dedupe rows where either is
+ * NULL. Same problem gemstone_recommendations solves with two partial
+ * indexes for its one nullable dimension (birthProfileId); this table has
+ * TWO nullable dimensions (birthProfileId, periodMonth) that both matter for
+ * uniqueness, so it needs the full 2x2 cross of that same technique: a
+ * column is only ever INCLUDED in an index when that index's WHERE clause
+ * guarantees it's non-null for every row the index covers (never both
+ * include a nullable column AND rely on it being null — that column is
+ * simply omitted from that index instead, exactly like
+ * gemstone_recommendations_user_primary_unique omits birth_profile_id).
+ */
+export const reportStatusEnum = pgEnum('report_status', ['generating', 'ready', 'failed']);
+
+export const reports = pgTable(
+  'reports',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    reportKey: text('report_key').notNull(),
+    /** First-of-month for monthly reports; null for one-time reports. */
+    periodMonth: date('period_month'),
+    status: reportStatusEnum('status').notNull().default('generating'),
+    /** Canonical English structured sections — shape is defined per report type (see
+     * ReportGenerator in reports/report-generator.types.ts), not by this table. Null while
+     * 'generating'/'failed'. */
+    content: jsonb('content').$type<Record<string, unknown>>(),
+    /** Cached translations of `content` by language code — same shape convention as every
+     * other translate-on-read table in this schema (gemstone_recommendations, vastu_plans). */
+    translations: jsonb('translations')
+      .notNull()
+      .default({})
+      .$type<Record<string, Record<string, unknown>>>(),
+    /** Partner birth details — kundli_milan only, null for every other report key. */
+    input: jsonb('input').$type<Record<string, unknown>>(),
+    model: text('model'),
+    pricePaidPaise: integer('price_paid_paise').notNull(),
+    /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userReportKeyIdx: index('reports_user_idx').on(table.userId, table.reportKey),
+    // The 2x2 cross described in the table doc comment above — one-time vs.
+    // monthly (periodMonth null/not-null) crossed with primary vs. additional
+    // profile (birthProfileId null/not-null), each ALSO gated by
+    // `input IS NULL` so kundli_milan's repeat-purchase-per-partner rows are
+    // excluded from every one of these four indexes (see NewReportRow docs).
+    uniqPrimaryOnetime: uniqueIndex('reports_uniq_primary_onetime')
+      .on(table.userId, table.reportKey)
+      .where(sql`${table.birthProfileId} is null and ${table.periodMonth} is null and ${table.input} is null`),
+    uniqPrimaryMonthly: uniqueIndex('reports_uniq_primary_monthly')
+      .on(table.userId, table.reportKey, table.periodMonth)
+      .where(sql`${table.birthProfileId} is null and ${table.periodMonth} is not null and ${table.input} is null`),
+    uniqProfileOnetime: uniqueIndex('reports_uniq_profile_onetime')
+      .on(table.userId, table.birthProfileId, table.reportKey)
+      .where(sql`${table.birthProfileId} is not null and ${table.periodMonth} is null and ${table.input} is null`),
+    uniqProfileMonthly: uniqueIndex('reports_uniq_profile_monthly')
+      .on(table.userId, table.birthProfileId, table.reportKey, table.periodMonth)
+      .where(sql`${table.birthProfileId} is not null and ${table.periodMonth} is not null and ${table.input} is null`),
+  }),
+);
+
+export type ReportRow = typeof reports.$inferSelect;
+export type NewReportRow = typeof reports.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* forecast_translations — caches general moon/sun sign translations          */
 /* -------------------------------------------------------------------------- */
 
