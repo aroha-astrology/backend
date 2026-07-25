@@ -8,14 +8,26 @@ describe('report generator registration', () => {
     expect(REPORT_GENERATORS.kundli_milan?.key).toBe('kundli_milan');
   });
 
-  it('leaves every other catalogue key unregistered (next task fills these in)', async () => {
+  it('registers all 10 catalogue keys via the generators barrel import', async () => {
     await import('../src/modules/reports/generators/index.js');
     const { REPORT_GENERATORS } = await import('../src/modules/reports/report-generator.types.js');
     const { REPORT_CATALOGUE } = await import('../src/config/reports.js');
 
+    expect(Object.keys(REPORT_GENERATORS)).toHaveLength(10);
     for (const def of REPORT_CATALOGUE) {
-      if (def.key === 'kundli_milan') continue;
-      expect(REPORT_GENERATORS[def.key]).toBeUndefined();
+      expect(REPORT_GENERATORS[def.key]).toBeDefined();
+      expect(REPORT_GENERATORS[def.key]?.key).toBe(def.key);
+    }
+  });
+
+  it('every registered generator implements computeScores/generateNarrative/translateNarrative', async () => {
+    await import('../src/modules/reports/generators/index.js');
+    const { REPORT_GENERATORS } = await import('../src/modules/reports/report-generator.types.js');
+
+    for (const generator of Object.values(REPORT_GENERATORS)) {
+      expect(typeof generator?.computeScores).toBe('function');
+      expect(typeof generator?.generateNarrative).toBe('function');
+      expect(typeof generator?.translateNarrative).toBe('function');
     }
   });
 });

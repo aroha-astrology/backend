@@ -9,10 +9,18 @@
 // (not the individual generator modules) so registration always runs before
 // any purchase or read, regardless of which report key is requested first.
 //
-// A FOLLOWING task adds the other 9 report types: add each new generator
-// module's import here (for its side effect only — no need to re-export
-// anything) as it's built. Nothing else in the reports feature needs to
-// change to pick up a newly-registered key.
+// All 10 catalogue keys are now registered here (kundli_milan was the original
+// worked example; the other 9 were added in this task). Nothing else in the
+// reports feature needs to change to pick up a newly-registered key.
 // =============================================================================
 
 import './kundli-milan.generator.js';
+import './marriage.generator.js';
+import './past-life.generator.js';
+import './true-love.generator.js';
+import './wealth.generator.js';
+import './baby-name.generator.js';
+import './health-monthly.generator.js';
+import './career-monthly.generator.js';
+import './finance-monthly.generator.js';
+import './relationship-monthly.generator.js';

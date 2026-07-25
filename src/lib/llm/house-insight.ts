@@ -79,13 +79,16 @@ export const HOUSE_SIGNIFICATIONS: Record<number, string> = {
   12: 'losses, foreign connections, spirituality, and rest',
 };
 
-const GROUNDING_RULE =
+// Exported (in addition to local use below) so the reports feature's LLM prompt modules
+// (src/lib/llm/reports/*.ts) can reuse the exact same wording/pattern instead of
+// redefining house-meaning rule copy per report type — see report-generator.types.ts.
+export const GROUNDING_RULE =
   'You must base every specific claim only on the chart data provided below. Do not invent planetary positions, dates, or Yogas not present in this data. If the data is sparse or absent, write a shorter, more general reading rather than fabricating specificity — general is fine, invented is not.';
 
-const PLAIN_LANGUAGE_RULE =
+export const PLAIN_LANGUAGE_RULE =
   'Write for someone with zero astrology background. Never use untranslated Sanskrit/technical terms (Mahadasha, Antardasha, Yoga names, Ascendant, Nakshatra, etc.) — translate what they MEAN in plain English instead. Talk about real-life outcomes, not planetary mechanics.';
 
-const STYLE_RULE =
+export const STYLE_RULE =
   'Second person, present tense, conversational but not flippant. Use tendency language ("this tends to," "this supports") — never absolute guarantees.';
 
 function systemPrompt(house: number): string {
