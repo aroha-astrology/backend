@@ -1352,16 +1352,24 @@ export const reports = pgTable(
     // excluded from every one of these four indexes (see NewReportRow docs).
     uniqPrimaryOnetime: uniqueIndex('reports_uniq_primary_onetime')
       .on(table.userId, table.reportKey)
-      .where(sql`${table.birthProfileId} is null and ${table.periodMonth} is null and ${table.input} is null`),
+      .where(
+        sql`${table.birthProfileId} is null and ${table.periodMonth} is null and ${table.input} is null`,
+      ),
     uniqPrimaryMonthly: uniqueIndex('reports_uniq_primary_monthly')
       .on(table.userId, table.reportKey, table.periodMonth)
-      .where(sql`${table.birthProfileId} is null and ${table.periodMonth} is not null and ${table.input} is null`),
+      .where(
+        sql`${table.birthProfileId} is null and ${table.periodMonth} is not null and ${table.input} is null`,
+      ),
     uniqProfileOnetime: uniqueIndex('reports_uniq_profile_onetime')
       .on(table.userId, table.birthProfileId, table.reportKey)
-      .where(sql`${table.birthProfileId} is not null and ${table.periodMonth} is null and ${table.input} is null`),
+      .where(
+        sql`${table.birthProfileId} is not null and ${table.periodMonth} is null and ${table.input} is null`,
+      ),
     uniqProfileMonthly: uniqueIndex('reports_uniq_profile_monthly')
       .on(table.userId, table.birthProfileId, table.reportKey, table.periodMonth)
-      .where(sql`${table.birthProfileId} is not null and ${table.periodMonth} is not null and ${table.input} is null`),
+      .where(
+        sql`${table.birthProfileId} is not null and ${table.periodMonth} is not null and ${table.input} is null`,
+      ),
   }),
 );
 
@@ -1857,3 +1865,43 @@ export const featureFlagGroupOverrides = pgTable(
 
 export type FeatureFlagGroupOverrideRow = typeof featureFlagGroupOverrides.$inferSelect;
 export type NewFeatureFlagGroupOverrideRow = typeof featureFlagGroupOverrides.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* support_tickets — user-submitted help/support requests                     */
+/*                                                                             */
+/* `message`/`adminNote` are encrypted at rest (field-level encryption, see   */
+/* src/lib/crypto/field-encryption.ts) — the support.repo.ts layer            */
+/* transparently encrypts on write and decrypts on read, so every other      */
+/* layer of the app (service/routes) sees plain strings, same convention as  */
+/* chat-sessions.repo.ts/user-facts.repo.ts.                                 */
+/* -------------------------------------------------------------------------- */
+
+export const supportTickets = pgTable(
+  'support_tickets',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    category: text('category').notNull(),
+    message: text('message').notNull(),
+    locale: text('locale'),
+    // Nullable — an older client build may not send it.
+    appVersion: text('app_version'),
+    status: text('status').notNull().default('open'),
+    adminNote: text('admin_note'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userIdx: index('support_tickets_user_id_idx').on(table.userId),
+    statusIdx: index('support_tickets_status_idx').on(table.status),
+  }),
+);
+
+export type SupportTicketRow = typeof supportTickets.$inferSelect;
+export type NewSupportTicketRow = typeof supportTickets.$inferInsert;

@@ -124,6 +124,19 @@ const EnvSchema = z
           .map((id) => id.trim())
           .filter(Boolean),
       ),
+    // Extra recipients for the new-support-ticket alert specifically — same
+    // reasoning as TELEGRAM_DOWNVOTE_EXTRA_CHAT_IDS, kept as its own env var
+    // rather than folded into it so the two alert fan-outs can be tuned
+    // independently (e.g. a support-only Telegram group).
+    TELEGRAM_SUPPORT_EXTRA_CHAT_IDS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
 
     // Phone allowlist (E.164) gating the HTTP admin API (/v1/admin/*) — see
