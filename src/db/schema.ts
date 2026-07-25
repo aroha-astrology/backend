@@ -12,6 +12,7 @@ import {
   doublePrecision,
   index,
   uniqueIndex,
+  primaryKey,
   pgEnum,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
@@ -1779,3 +1780,80 @@ export const adminAuditLog = pgTable(
 
 export type AdminAuditLogRow = typeof adminAuditLog.$inferSelect;
 export type NewAdminAuditLogRow = typeof adminAuditLog.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* user_groups / user_group_members / feature_flag_group_overrides            */
+/*                                                                             */
+/* Admin-defined, manually-curated groups of users (e.g. "beta testers"). A   */
+/* group can override enabled/disabled for a feature key on top of the       */
+/* the feature_flags default — never price, which stays a single global      */
+/* value. Conflict rule (enforced in features.service.ts's                   */
+/* resolveFeaturesForUser, not here): if a user is in multiple groups with    */
+/* conflicting overrides for the same key, DISABLED WINS.                    */
+/* -------------------------------------------------------------------------- */
+
+export const userGroups = pgTable(
+  'user_groups',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    name: text('name').notNull(),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    // Admin phone, matches admin_audit_log's admin_phone convention.
+    createdBy: text('created_by'),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('user_groups_name_unique').on(sql`lower(${table.name})`),
+  }),
+);
+
+export type UserGroupRow = typeof userGroups.$inferSelect;
+export type NewUserGroupRow = typeof userGroups.$inferInsert;
+
+export const userGroupMembers = pgTable(
+  'user_group_members',
+  {
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => userGroups.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    addedAt: timestamp('added_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.groupId, table.userId] }),
+    // The hot lookup: "which groups is user X in" — see listGroupIdsForUser.
+    userIdx: index('user_group_members_user_id_idx').on(table.userId),
+  }),
+);
+
+export type UserGroupMemberRow = typeof userGroupMembers.$inferSelect;
+export type NewUserGroupMemberRow = typeof userGroupMembers.$inferInsert;
+
+export const featureFlagGroupOverrides = pgTable(
+  'feature_flag_group_overrides',
+  {
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => userGroups.id, { onDelete: 'cascade' }),
+    featureKey: text('feature_key').notNull(),
+    enabled: boolean('enabled').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedBy: text('updated_by'),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.groupId, table.featureKey] }),
+  }),
+);
+
+export type FeatureFlagGroupOverrideRow = typeof featureFlagGroupOverrides.$inferSelect;
+export type NewFeatureFlagGroupOverrideRow = typeof featureFlagGroupOverrides.$inferInsert;

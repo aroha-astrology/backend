@@ -44,10 +44,10 @@ const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean 
  * `resolveProfileContext` call) by the caller so a secondary profile's own
  * unlock state is returned instead of the primary's.
  *
- * `features` is the server-resolved feature registry (see
- * `resolveFeatures()` in `features.service.ts`) — passed in rather than
- * resolved here so this stays a pure, synchronous mapper; every call site
- * resolves it once per request.
+ * `features` is the server-resolved, per-user, group-aware feature registry
+ * (see `resolveFeaturesForUser()` in `features.service.ts`) — passed in
+ * rather than resolved here so this stays a pure, synchronous mapper; every
+ * call site resolves it once per request.
  */
 export function toUserDto(
   row: UserRow,
