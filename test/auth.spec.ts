@@ -9,10 +9,17 @@ const state = vi.hoisted(() => ({
   notifyNewSignup: vi.fn(),
   ensureReferralCode: vi.fn((user: unknown) => Promise.resolve(user)),
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
+  checkNewUserBurst: vi.fn().mockResolvedValue(undefined),
+  checkTotalUserMilestone: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', () => ({
   notifyNewSignup: state.notifyNewSignup,
+}));
+
+vi.mock('../src/modules/admin-alerts/admin-alerts.service.js', () => ({
+  checkNewUserBurst: state.checkNewUserBurst,
+  checkTotalUserMilestone: state.checkTotalUserMilestone,
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -60,6 +67,8 @@ describe('POST /v1/auth/session', () => {
       .mockReset()
       .mockImplementation((user: unknown) => Promise.resolve(user));
     state.touchUserLastActive.mockReset().mockResolvedValue(undefined);
+    state.checkNewUserBurst.mockReset().mockResolvedValue(undefined);
+    state.checkTotalUserMilestone.mockReset().mockResolvedValue(undefined);
   });
 
   it('returns 401 when the Authorization header is missing', async () => {
@@ -162,5 +171,38 @@ describe('POST /v1/auth/session', () => {
     });
 
     expect(state.touchUserLastActive).toHaveBeenCalledWith('id-existing');
+  });
+
+  it('runs the burst and total-milestone checks when a new user is created', async () => {
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-new2', '+911111111112'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+    state.insertUser.mockResolvedValueOnce(
+      makeUserRow({ id: 'id-new2', firebaseUid: 'uid-new2', phoneE164: '+911111111112' }),
+    );
+
+    const app = createApp();
+    await app.request('/v1/auth/session', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer good-token' },
+    });
+
+    expect(state.checkNewUserBurst).toHaveBeenCalledTimes(1);
+    expect(state.checkTotalUserMilestone).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run the burst/total-milestone checks for an existing user', async () => {
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-existing'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(
+      makeUserRow({ id: 'id-existing', firebaseUid: 'uid-existing' }),
+    );
+
+    const app = createApp();
+    await app.request('/v1/auth/session', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer good-token' },
+    });
+
+    expect(state.checkNewUserBurst).not.toHaveBeenCalled();
+    expect(state.checkTotalUserMilestone).not.toHaveBeenCalled();
   });
 });

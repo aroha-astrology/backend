@@ -5,6 +5,10 @@ import { resolveActiveProfileContext } from '../birth-profiles/profile-context.j
 import { establishSession } from './auth.service.js';
 import { SessionResponseSchema } from './auth.schemas.js';
 import { notifyNewSignup } from '../../lib/notifications/telegram.js';
+import {
+  checkNewUserBurst,
+  checkTotalUserMilestone,
+} from '../admin-alerts/admin-alerts.service.js';
 
 const ErrorSchema = z
   .object({
@@ -53,6 +57,8 @@ authRouter.openapi(sessionRoute, async (c) => {
 
   if (created) {
     void notifyNewSignup({ id: user.id, email: user.email, phone: user.phoneE164 }).catch(() => {});
+    void checkNewUserBurst().catch(() => {});
+    void checkTotalUserMilestone().catch(() => {});
   }
 
   const profile = await resolveActiveProfileContext(user);
