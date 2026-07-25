@@ -10,7 +10,14 @@ import { runAllHoroscopeBatches, runHoroscopeBatch } from '../horoscope/horoscop
 import { PanchangWarmupBodySchema, PanchangWarmupResultSchema } from '../astro/astro.schemas.js';
 import { warmupPanchangCache } from '../astro/astro.service.js';
 import { runHealthReport } from '../health-report/health-report.service.js';
-import { broadcastDailyReading } from './broadcast.service.js';
+import { broadcastPeriodReading } from './broadcast.service.js';
+import { BroadcastReadingBodySchema, BroadcastReadingResultSchema } from './broadcast.schemas.js';
+import {
+  detectAndStoreTransits,
+  draftTransitCopy,
+  sendTransitAlerts,
+} from './transit-alert.service.js';
+import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
 
 const ErrorSchema = z
   .object({
@@ -148,40 +155,134 @@ cronRouter.openapi(healthReportRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Broadcast: "Today's Reading is Ready" — fires at 07:00 IST (01:30 UTC)
+// Broadcast: "Your reading is ready" — daily/weekly/monthly/yearly, each
+// wired to its own crontab line (see scripts/cron-broadcast-reading.sh):
+//   daily   07:00 IST   — every day
+//   weekly  10:00 IST   — Mondays
+//   monthly 11:00 IST   — the 1st of the month
+//   yearly  18:00 IST   — Jan 1
+// shouldBroadcast() in broadcast.service.ts is the actual source of truth
+// for "does today count" — a mis-scheduled crontab line is a harmless no-op
+// against it rather than a duplicate/wrong-day send.
 // ---------------------------------------------------------------------------
 
+const broadcastReadingRoute = createRoute({
+  method: 'post',
+  path: '/cron/broadcast-reading',
+  tags: ['Cron'],
+  summary: 'Broadcast "your reading is ready" to all active device tokens',
+  description:
+    'Sends a localized FCM push (grouped by device locale, English fallback) to every ' +
+    'un-revoked, push-enabled device token — including dormant users, since the copy is ' +
+    'templated and reveals no generated content. Idempotent per (period, IST date) via ' +
+    "cron_batch_runs; a no-op if `shouldBroadcast(period)` says today is not that period's " +
+    'scheduled day, unless `force`. Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: {
+      required: false,
+      content: { 'application/json': { schema: BroadcastReadingBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Broadcast completed (or skipped — see `skipped`/`reason`)',
+      content: { 'application/json': { schema: BroadcastReadingResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(broadcastReadingRoute, async (c) => {
+  const body = c.req.valid('json') ?? {};
+  const result = await broadcastPeriodReading(body.period ?? 'daily', {
+    force: body.force ?? false,
+  });
+  return c.json(result, 200);
+});
+
+/**
+ * @deprecated Thin alias for the old daily-only route, kept for one deploy
+ * cycle so the EC2 crontab update isn't a hard cutover with the app deploy.
+ * Remove once scripts/cron-broadcast-reading.sh is confirmed switched over
+ * to hitting /cron/broadcast-reading directly.
+ */
 const broadcastDailyReadingRoute = createRoute({
   method: 'post',
   path: '/cron/broadcast-daily-reading',
   tags: ['Cron'],
-  summary: "Broadcast \"Today's Reading is Ready\" to all active device tokens",
-  description:
-    'Sends an eye-catching FCM push notification to every un-revoked, push-enabled device token. ' +
-    'Uses a rotating set of 7 Vedic-themed hook messages (one per day of the week) so the copy ' +
-    'is never the same two days in a row. Deep-links users to the Horoscope screen on tap. ' +
-    'Designed to run at 01:30 UTC (07:00 IST) — well after the 00:01 IST horoscope generation ' +
-    'cron, so readings are always ready before the notification lands. ' +
-    'Authenticated via the X-Cron-Secret header.',
+  summary: '[Deprecated] Use POST /cron/broadcast-reading instead',
   responses: {
     200: {
       description: 'Broadcast completed',
-      content: {
-        'application/json': {
-          schema: z.object({
-            hook: z.string().describe('Notification title used today'),
-            tokensFound: z.number().int(),
-            success: z.number().int(),
-            failure: z.number().int(),
-          }),
-        },
-      },
+      content: { 'application/json': { schema: BroadcastReadingResultSchema } },
     },
     403: errorResponse('Invalid or missing cron secret'),
   },
 });
 
 cronRouter.openapi(broadcastDailyReadingRoute, async (c) => {
-  const result = await broadcastDailyReading();
+  const result = await broadcastPeriodReading('daily');
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Transit pre-alerts — "a planet moves in 2 days" push, in three phases wired
+// to their own crontab lines (see scripts/cron-transit-alerts.sh):
+//   detect  07:30 IST, 1st of month  — extend the computed transit calendar
+//   draft   09:00 IST, daily         — write copy for events pushing in 48h
+//   send    19:00 IST, daily         — deliver whatever is due
+// The phases are separate so a Gemini failure at draft time degrades to static
+// copy a day early, rather than becoming a bad send at 19:00.
+// ---------------------------------------------------------------------------
+
+const transitAlertsRoute = createRoute({
+  method: 'post',
+  path: '/cron/transit-alerts',
+  tags: ['Cron'],
+  summary: 'Detect planetary transits, draft their push copy, or send due alerts',
+  description:
+    'Machine-to-machine endpoint for the transit pre-alert pipeline. `detect` recomputes the ' +
+    'transit calendar from the bundled Swiss Ephemeris (never an external source — ours is ' +
+    'Lahiri sidereal) and re-runs collision selection over all pending future events. `draft` ' +
+    'generates Gemini copy per (event, Moon sign, language) for combinations that actually have ' +
+    'a live device, validating each and substituting static copy on failure. `send` delivers, ' +
+    'idempotent per IST date via cron_batch_runs. Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: TransitAlertBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Phase completed',
+      content: { 'application/json': { schema: TransitAlertResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(transitAlertsRoute, async (c) => {
+  const body = c.req.valid('json');
+
+  if (body.action === 'detect') {
+    const r = await detectAndStoreTransits(
+      body.horizonDays !== undefined ? { horizonDays: body.horizonDays } : {},
+    );
+    return c.json({ action: 'detect' as const, ...r }, 200);
+  }
+
+  if (body.action === 'draft') {
+    const r = await draftTransitCopy();
+    return c.json({ action: 'draft' as const, ...r }, 200);
+  }
+
+  const r = await sendTransitAlerts({
+    force: body.force ?? false,
+    dryRun: body.dryRun ?? false,
+  });
+  // `skipped` is a count in the detect/draft results and a boolean here, so
+  // the boolean is folded into `reason` rather than overloading the field.
+  const { skipped: _skipped, reason, ...rest } = r;
+  return c.json({ action: 'send' as const, ...rest, ...(reason ? { reason } : {}) }, 200);
 });

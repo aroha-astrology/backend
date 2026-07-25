@@ -17,6 +17,15 @@ export const BirthInputSchema = z
       .string()
       .default('Asia/Kolkata')
       .openapi({ example: 'Asia/Kolkata', description: 'IANA timezone' }),
+    /** Caller-declared confidence in `time` above. Ascendant (Lagna)-based
+     * results — including Lagna-referenced Mangal Dosha — are sensitive to
+     * exact birth time; 'unknown' means `time` is a placeholder/default, not
+     * a real reported time, and Lagna-based results should be caveated. */
+    timeAccuracy: z.enum(['exact', 'approximate', 'unknown']).default('exact').openapi({
+      example: 'exact',
+      description:
+        'Confidence in the birth time above; "unknown" means it is a default/placeholder',
+    }),
   })
   .openapi('BirthInput');
 
@@ -171,14 +180,30 @@ export const MatchmakingResponseSchema = z
     /** Kuja/Mangal Dosha (Mars in 1/2/4/7/8/12 from Lagna) — checked separately from the 36-point system. */
     mangalDosha: z
       .object({
-        person1: z.boolean(),
-        person2: z.boolean(),
+        person1: z
+          .boolean()
+          .describe('Mars occupies a Mangal Dosha house (raw, before cancellation)'),
+        person2: z
+          .boolean()
+          .describe('Mars occupies a Mangal Dosha house (raw, before cancellation)'),
+        type1: z.enum(['partial', 'full', 'cancelled', 'none']),
+        type2: z.enum(['partial', 'full', 'cancelled', 'none']),
+        description1: z.string(),
+        description2: z.string(),
         matched: z
           .boolean()
-          .describe('Both present or both absent — traditionally considered compatible either way'),
+          .describe(
+            'Both EFFECTIVELY Manglik (present and not classically cancelled) or both not — ' +
+              'traditionally considered compatible either way. A dosha that is present but ' +
+              'cancelled counts as not-Manglik here, same as never having it.',
+          ),
       })
       .openapi('MangalDoshaSummary')
       .optional(),
+    /** Set when either person's birth time was unknown/approximate — the
+     * Lagna-based reference point (and any Mangal Dosha reading derived from
+     * it) may be unreliable; Moon/Venus-based results are unaffected. */
+    lagnaCaveat: z.string().optional(),
   })
   .openapi('MatchmakingResponse');
 

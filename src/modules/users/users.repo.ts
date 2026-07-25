@@ -1,4 +1,5 @@
 import { and, eq, isNull, count, desc, gte, sql } from 'drizzle-orm';
+import crypto from 'crypto';
 import { db } from '../../config/db.js';
 import {
   users,
@@ -8,6 +9,8 @@ import {
   chatSessions,
   userFacts,
   chatFeedbackReports,
+  notifications,
+  walletTransactions,
   type NewUserRow,
   type NewUserConsentLogRow,
   type UserRow,
@@ -91,6 +94,11 @@ export async function findUserByEmail(email: string): Promise<UserRow | undefine
   return rows[0] ? decryptUserRow(rows[0]) : undefined;
 }
 
+export async function findUserByReferralCode(code: string): Promise<UserRow | undefined> {
+  const rows = await db.select().from(users).where(eq(users.referralCode, code)).limit(1);
+  return rows[0] ? decryptUserRow(rows[0]) : undefined;
+}
+
 export async function findActiveUserByFirebaseUid(
   firebaseUid: string,
 ): Promise<UserRow | undefined> {
@@ -112,9 +120,24 @@ export async function findActiveUserById(id: string): Promise<UserRow | undefine
 }
 
 export async function insertUser(values: NewUserRow): Promise<UserRow> {
+  if (!values.referralCode) {
+    values.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+  }
   const [row] = await db.insert(users).values(encryptUserPatch(values)).returning();
   if (!row) throw new Error('Failed to insert user');
   return decryptUserRow(row);
+}
+
+/**
+ * Backfill a referralCode for a user row created before the referral feature
+ * shipped. Called from both session-establishment and GET /me so every path
+ * that can hand a user object to the frontend guarantees one is present.
+ */
+export async function ensureReferralCode(user: UserRow): Promise<UserRow> {
+  if (user.referralCode) return user;
+  const referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const updated = await updateUserById(user.id, { referralCode });
+  return updated ?? { ...user, referralCode };
 }
 
 export async function updateUserById(
@@ -136,24 +159,117 @@ export async function updateUserById(
  * concurrent spends can never both succeed against a balance that only
  * covers one of them.
  */
-export async function deductWalletBalance(userId: string, amountPaise: number): Promise<boolean> {
-  const result = await db.execute(sql`
-    UPDATE users
-    SET wallet_balance_paise = wallet_balance_paise - ${amountPaise}
-    WHERE id = ${userId}
-      AND wallet_balance_paise >= ${amountPaise}
-    RETURNING *;
-  `);
-  return result.length > 0;
+export async function deductWalletBalance(
+  userId: string,
+  amountPaise: number,
+  reason: string,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [charged] = await tx
+      .update(users)
+      .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${amountPaise}` })
+      .where(and(eq(users.id, userId), gte(users.walletBalancePaise, amountPaise)))
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!charged) return false;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: -amountPaise,
+      reason,
+      balanceAfter: charged.walletBalancePaise,
+    });
+    return true;
+  });
 }
 
 /** Add `amountPaise` back to the wallet (e.g. refunding a charge whose async job failed). */
-export async function addWalletBalance(userId: string, amountPaise: number): Promise<void> {
-  await db.execute(sql`
-    UPDATE users
-    SET wallet_balance_paise = wallet_balance_paise + ${amountPaise}
-    WHERE id = ${userId};
-  `);
+export async function addWalletBalance(
+  userId: string,
+  amountPaise: number,
+  reason: string,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(users)
+      .set({ walletBalancePaise: sql`${users.walletBalancePaise} + ${amountPaise}` })
+      .where(eq(users.id, userId))
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!updated) return;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: amountPaise,
+      reason,
+      balanceAfter: updated.walletBalancePaise,
+    });
+  });
+}
+
+/**
+ * Atomically apply the referral bonus. The referee (whoever redeemed a code) always
+ * gets their one-time ₹50 for a valid, not-self code — the ₹2000 cap only limits how
+ * much the REFERRER can earn from referring others, so a referrer hitting their cap
+ * doesn't cost the new signup their welcome bonus.
+ */
+export async function applyReferralBonus(
+  referrerId: string,
+  refereeId: string,
+): Promise<{ referrerBonus: boolean; refereeBonus: boolean }> {
+  const BONUS_PAISE = 5000;
+  const CAP_PAISE = 200000;
+
+  return db.transaction(async (tx) => {
+    // Lock and check referrer cap
+    const [referrer] = await tx.execute<{ referral_earnings_paise: number }>(sql`
+      SELECT referral_earnings_paise FROM users WHERE id = ${referrerId} FOR UPDATE;
+    `);
+
+    const referrerBonus = !!referrer && referrer.referral_earnings_paise < CAP_PAISE;
+
+    if (referrerBonus) {
+      await tx.execute(sql`
+        UPDATE users
+        SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE},
+            referral_earnings_paise = referral_earnings_paise + ${BONUS_PAISE}
+        WHERE id = ${referrerId};
+      `);
+      await tx.execute(sql`
+        INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
+        VALUES (${referrerId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${referrerId}));
+      `);
+    }
+
+    // Referee's one-time welcome bonus for redeeming a valid code — unconditional,
+    // independent of the referrer's cap.
+    await tx.execute(sql`
+      UPDATE users
+      SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE}
+      WHERE id = ${refereeId};
+    `);
+    await tx.execute(sql`
+      INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
+      VALUES (${refereeId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${refereeId}));
+    `);
+
+    return { referrerBonus, refereeBonus: true };
+  });
+}
+
+/** Get user notifications */
+export async function getNotificationsForUser(userId: string) {
+  return db
+    .select()
+    .from(notifications)
+    .where(eq(notifications.userId, userId))
+    .orderBy(desc(notifications.createdAt));
+}
+
+/** Mark all user notifications as read */
+export async function markNotificationsRead(userId: string): Promise<void> {
+  await db
+    .update(notifications)
+    .set({ readAt: new Date() })
+    .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
 }
 
 /**
@@ -306,6 +422,11 @@ export async function revokeDeviceTokensByUser(userId: string): Promise<void> {
     .where(and(eq(devicePushTokens.userId, userId), isNull(devicePushTokens.revokedAt)));
 }
 
+/** Bumps `lastActiveAt` on any authenticated request — called fire-and-forget from `requireUser`. */
+export async function touchUserLastActive(userId: string): Promise<void> {
+  await db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, userId));
+}
+
 export async function countUsers(): Promise<number> {
   const [res] = await db.select({ count: count() }).from(users).where(isNull(users.deletedAt));
   return res?.count ?? 0;
@@ -322,6 +443,27 @@ export async function countNewUsersToday(): Promise<number> {
   return res?.count ?? 0;
 }
 
+export async function countNewUsersThisWeek(): Promise<number> {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.createdAt, sevenDaysAgo)));
+  return res?.count ?? 0;
+}
+
+/** Sum of every active user's wallet balance — the platform's outstanding liability. */
+export async function sumWalletBalanceOutstanding(): Promise<number> {
+  const [res] = await db
+    .select({ total: sql<number>`coalesce(sum(${users.walletBalancePaise}), 0)` })
+    .from(users)
+    .where(isNull(users.deletedAt));
+  return Number(res?.total ?? 0);
+}
+
 export async function listUsersPage(limit: number, offset: number) {
   const rows = await db
     .select({
@@ -331,6 +473,7 @@ export async function listUsersPage(limit: number, offset: number) {
       email: users.email,
       walletBalancePaise: users.walletBalancePaise,
       createdAt: users.createdAt,
+      lastActiveAt: users.lastActiveAt,
     })
     .from(users)
     .where(isNull(users.deletedAt))
@@ -343,17 +486,32 @@ export async function listUsersPage(limit: number, offset: number) {
 /** Cost in paise to unlock one kundli house's detail view (Rs 50 = 5 credits at the old rate). Reused by `unlockHouseForOwnedProfile` (birth-profiles.repo.ts) for the additional-profile case. */
 export const HOUSE_UNLOCK_COST_PAISE = 5000;
 
-export async function unlockHouseForUser(userId: string, houseNumber: number) {
-  const result = await db.execute(sql`
-    UPDATE users
-    SET wallet_balance_paise = wallet_balance_paise - ${HOUSE_UNLOCK_COST_PAISE},
-        unlocked_houses = array_append(unlocked_houses, ${houseNumber})
-    WHERE id = ${userId}
-      AND wallet_balance_paise >= ${HOUSE_UNLOCK_COST_PAISE}
-      AND NOT (${houseNumber} = ANY(unlocked_houses))
-    RETURNING *;
-  `);
-  return result.length > 0;
+export async function unlockHouseForUser(userId: string, houseNumber: number): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [unlocked] = await tx
+      .update(users)
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} - ${HOUSE_UNLOCK_COST_PAISE}`,
+        unlockedHouses: sql`array_append(${users.unlockedHouses}, ${houseNumber})`,
+      })
+      .where(
+        and(
+          eq(users.id, userId),
+          gte(users.walletBalancePaise, HOUSE_UNLOCK_COST_PAISE),
+          sql`NOT (${houseNumber} = ANY(${users.unlockedHouses}))`,
+        ),
+      )
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!unlocked) return false;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: -HOUSE_UNLOCK_COST_PAISE,
+      reason: `house_unlock:${houseNumber}`,
+      balanceAfter: unlocked.walletBalancePaise,
+    });
+    return true;
+  });
 }
 
 /** Cost in paise to unlock the full gemstone report (whole report, one-time). Rs 100 = 10 credits at the old rate. */
@@ -365,15 +523,30 @@ export const GEMSTONE_UNLOCK_COST_PAISE = 10000;
  * if the user has too little balance OR the report is already unlocked, so a
  * second click can never double-charge.
  */
-export async function unlockGemstoneForUser(userId: string) {
-  const result = await db.execute(sql`
-    UPDATE users
-    SET wallet_balance_paise = wallet_balance_paise - ${GEMSTONE_UNLOCK_COST_PAISE},
-        gemstone_unlocked_at = now()
-    WHERE id = ${userId}
-      AND wallet_balance_paise >= ${GEMSTONE_UNLOCK_COST_PAISE}
-      AND gemstone_unlocked_at IS NULL
-    RETURNING *;
-  `);
-  return result.length > 0;
+export async function unlockGemstoneForUser(userId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [unlocked] = await tx
+      .update(users)
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} - ${GEMSTONE_UNLOCK_COST_PAISE}`,
+        gemstoneUnlockedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(users.id, userId),
+          gte(users.walletBalancePaise, GEMSTONE_UNLOCK_COST_PAISE),
+          isNull(users.gemstoneUnlockedAt),
+        ),
+      )
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!unlocked) return false;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: -GEMSTONE_UNLOCK_COST_PAISE,
+      reason: 'gemstone_unlock',
+      balanceAfter: unlocked.walletBalancePaise,
+    });
+    return true;
+  });
 }

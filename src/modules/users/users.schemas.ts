@@ -273,6 +273,17 @@ export const UserSchema = z
 
 export type UserDto = z.infer<typeof UserSchema>;
 
+export const NotificationSchema = z
+  .object({
+    id: z.string().uuid(),
+    title: z.string(),
+    body: z.string(),
+    type: z.string(),
+    readAt: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('Notification');
+
 /* -------------------------------------------------------------------------- */
 /* Consent input (translated to timestamps + audit log by the service)         */
 /* -------------------------------------------------------------------------- */

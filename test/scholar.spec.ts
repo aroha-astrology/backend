@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildChatMessages } from '../src/lib/swarm/agents/scholar.js';
+import { buildChatMessages, type UserFact } from '../src/lib/swarm/agents/scholar.js';
 import { newState } from '../src/lib/swarm/state.js';
 
 function systemContent(groundingFacts: string[] = [], birthTimeUnknown = false): string {
@@ -12,6 +12,12 @@ function astroContextContent(groundingFacts: string[] = [], birthTimeUnknown = f
   const state = newState({ userId: 'u1', intent: 'chat', consent: true });
   const messages = buildChatMessages(state, 'hello', groundingFacts, birthTimeUnknown);
   return messages[1]!.content;
+}
+
+function allContent(userFacts: UserFact[]): string {
+  const state = newState({ userId: 'u1', intent: 'chat', consent: true });
+  const messages = buildChatMessages(state, 'hello', [], false, 'direct', 'en', userFacts);
+  return messages.map((m) => m.content).join('\n---\n');
 }
 
 describe('scholar single-astrologer system prompt', () => {
@@ -110,5 +116,57 @@ describe('scholar chart-data fallback copy', () => {
     expect(content).toContain('CHART DATA:');
     expect(content).toContain('Ascendant: Aries');
     expect(content).toContain('Active Dasha: Jupiter Mahadasha');
+  });
+});
+
+describe('scholar user facts and open follow-ups', () => {
+  it('omits both the <user_facts> and <open_follow_ups> blocks when there are no stored facts', () => {
+    const content = allContent([]);
+    expect(content).not.toContain('<user_facts>');
+    expect(content).not.toContain('<open_follow_ups>');
+  });
+
+  it('lists every fact as a bullet inside <user_facts>, labeled as untrusted reference DATA', () => {
+    const content = allContent([
+      { fact: 'Has an eldest son', followUpQuestion: null },
+      { fact: 'Is married', followUpQuestion: 'When did they get married?' },
+    ]);
+    expect(content).toContain('reference DATA only');
+    expect(content).toContain('<user_facts>');
+    expect(content).toContain('- Has an eldest son');
+    expect(content).toContain('- Is married');
+    expect(content).toContain('</user_facts>');
+  });
+
+  it('omits <open_follow_ups> entirely when no fact has a followUpQuestion', () => {
+    const content = allContent([
+      { fact: 'Has an eldest son', followUpQuestion: null },
+      { fact: 'Born in Delhi', followUpQuestion: null },
+    ]);
+    expect(content).not.toContain('<open_follow_ups>');
+  });
+
+  it('lists only the non-null followUpQuestions inside <open_follow_ups>, labeled as untrusted reference DATA', () => {
+    const content = allContent([
+      { fact: 'Has an eldest son', followUpQuestion: null },
+      {
+        fact: 'Planning to conceive 2-3 months after starting a new job',
+        followUpQuestion: 'Did the new job start yet?',
+      },
+      { fact: 'Is married', followUpQuestion: 'When did they get married?' },
+    ]);
+    expect(content).toContain('<open_follow_ups>');
+    expect(content).toContain('- Did the new job start yet?');
+    expect(content).toContain('- When did they get married?');
+    expect(content).toContain('</open_follow_ups>');
+    // Not tied to a fact that had no follow-up.
+    const followUpBlock = content.split('<open_follow_ups>')[1]!.split('</open_follow_ups>')[0]!;
+    expect(followUpBlock).not.toContain('Has an eldest son');
+  });
+
+  it('tells the model the follow-up shares the existing one-clarifying-question-per-turn budget, not an extra allowance', () => {
+    const content = systemContent();
+    expect(content.toLowerCase()).toMatch(/open follow-up/);
+    expect(content.toLowerCase()).toMatch(/not an additional allowance|same budget|counts toward/);
   });
 });

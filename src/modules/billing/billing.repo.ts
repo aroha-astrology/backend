@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, not, like, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -9,6 +9,7 @@ import {
   type NewCouponRow,
   type OrderRow,
   type NewOrderRow,
+  type WalletTransactionRow,
 } from '../../db/schema.js';
 
 export async function findActiveCouponByCode(code: string): Promise<CouponRow | undefined> {
@@ -36,6 +37,18 @@ export async function insertOrder(values: NewOrderRow): Promise<OrderRow> {
   return row;
 }
 
+/** Sum + count of paid orders since local midnight — powers the Telegram /stats revenue line. */
+export async function sumPaidOrdersToday(): Promise<{ totalPaise: number; count: number }> {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const [res] = await db
+    .select({ total: sql<number>`coalesce(sum(${orders.finalAmountPaise}), 0)`, count: count() })
+    .from(orders)
+    .where(and(eq(orders.status, 'paid'), gte(orders.paidAt, startOfDay)));
+  return { totalPaise: Number(res?.total ?? 0), count: res?.count ?? 0 };
+}
+
 export async function findOrderByIdForUser(
   id: string,
   userId: string,
@@ -55,6 +68,31 @@ export async function findOrdersForUser(userId: string, limit = 50): Promise<Ord
     .from(orders)
     .where(eq(orders.userId, userId))
     .orderBy(desc(orders.createdAt))
+    .limit(limit);
+}
+
+/**
+ * A user's own wallet_transactions rows EXCEPT recharge grants (those are
+ * already represented by `findOrdersForUser`'s `orders` rows, and would be
+ * double-counted here) — every spend and every refund, most recent first.
+ * Filtered by reason prefix rather than `delta < 0` because a refund row has
+ * a POSITIVE delta but still needs to appear; only `purchase:*`-reason rows
+ * are excluded.
+ */
+export async function findDebitsForUser(
+  userId: string,
+  limit = 50,
+): Promise<WalletTransactionRow[]> {
+  return db
+    .select()
+    .from(walletTransactions)
+    .where(
+      and(
+        eq(walletTransactions.userId, userId),
+        not(like(walletTransactions.reason, 'purchase:%')),
+      ),
+    )
+    .orderBy(desc(walletTransactions.createdAt))
     .limit(limit);
 }
 

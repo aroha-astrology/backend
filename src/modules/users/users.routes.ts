@@ -1,8 +1,17 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
-import { UpdateMeBodySchema, UserSchema } from './users.schemas.js';
-import { deleteMe, toUserDto, updateMe, unlockHouse, unlockGemstone } from './users.service.js';
+import { ensureReferralCode } from './users.repo.js';
+import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
+import {
+  deleteMe,
+  toUserDto,
+  updateMe,
+  unlockHouse,
+  unlockGemstone,
+  getNotifications,
+  markNotificationsRead,
+} from './users.service.js';
 
 const ErrorSchema = z
   .object({
@@ -117,9 +126,42 @@ const deleteMeRoute = createRoute({
   },
 });
 
-usersRouter.openapi(getMeRoute, (c) => {
-  const user = c.get('user');
-  return c.json(toUserDto(user), 200);
+const getNotificationsRoute = createRoute({
+  method: 'get',
+  path: '/me/notifications',
+  tags: ['Users'],
+  summary: 'Get user notifications',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'List of notifications',
+      content: { 'application/json': { schema: z.array(NotificationSchema) } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+const markNotificationsReadRoute = createRoute({
+  method: 'patch',
+  path: '/me/notifications/read',
+  tags: ['Users'],
+  summary: 'Mark all user notifications as read',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Success',
+      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+usersRouter.openapi(getMeRoute, async (c) => {
+  const user = await ensureReferralCode(c.get('user'));
+  const profile = await resolveActiveProfileContext(user);
+  return c.json(toUserDto(user, profile), 200);
 });
 
 usersRouter.openapi(patchMeRoute, async (c) => {
@@ -129,7 +171,8 @@ usersRouter.openapi(patchMeRoute, async (c) => {
     c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null;
   const userAgent = c.req.header('user-agent') ?? null;
   const next = await updateMe(user.id, body, { sourceIp, userAgent });
-  return c.json(toUserDto(next), 200);
+  const profile = await resolveActiveProfileContext(next);
+  return c.json(toUserDto(next, profile), 200);
 });
 
 usersRouter.openapi(deleteMeRoute, async (c) => {
@@ -150,5 +193,17 @@ usersRouter.openapi(unlockGemstoneRoute, async (c) => {
   const user = c.get('user');
   const profile = await resolveActiveProfileContext(user);
   await unlockGemstone(user.id, profile.birthProfileId);
+  return c.json({ success: true }, 200);
+});
+
+usersRouter.openapi(getNotificationsRoute, async (c) => {
+  const user = c.get('user');
+  const notifications = await getNotifications(user.id);
+  return c.json(notifications, 200);
+});
+
+usersRouter.openapi(markNotificationsReadRoute, async (c) => {
+  const user = c.get('user');
+  await markNotificationsRead(user.id);
   return c.json({ success: true }, 200);
 });

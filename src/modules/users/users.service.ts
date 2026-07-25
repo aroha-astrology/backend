@@ -6,7 +6,7 @@ import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
-import { resolveProfileContext } from '../birth-profiles/profile-context.js';
+import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
 import {
   unlockGemstoneForOwnedProfile,
   unlockHouseForOwnedProfile,
@@ -20,7 +20,15 @@ import {
   anonymizeUserById,
   updateUserById,
   updateUserWithConsentLog,
+  findUserByReferralCode,
+  applyReferralBonus,
+  getNotificationsForUser,
+  markNotificationsRead as markUserNotificationsRead,
 } from './users.repo.js';
+import { db } from '../../config/db.js';
+import { notifications, devicePushTokens } from '../../db/schema.js';
+import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { eq, isNull, and } from 'drizzle-orm';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
@@ -28,7 +36,13 @@ const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean =>
   grantedAt != null && revokedAt == null;
 
-export function toUserDto(row: UserRow): UserDto {
+/**
+ * `unlockedHouses`/`gemstoneUnlocked` are per-profile, not per-user — `profile`
+ * must be resolved via {@link resolveActiveProfileContext} (or an equivalent
+ * `resolveProfileContext` call) by the caller so a secondary profile's own
+ * unlock state is returned instead of the primary's.
+ */
+export function toUserDto(row: UserRow, profile: ProfileContext): UserDto {
   return {
     id: row.id,
     firebaseUid: row.firebaseUid,
@@ -87,8 +101,10 @@ export function toUserDto(row: UserRow): UserDto {
     appVersion: row.appVersion,
     platform: row.platform,
     walletBalancePaise: row.walletBalancePaise,
-    unlockedHouses: row.unlockedHouses ?? [1],
-    gemstoneUnlocked: row.gemstoneUnlockedAt !== null,
+    // `profile.unlockedHouses` is already normalized to `[]` (never null) by
+    // resolveProfileContext — no separate null-fallback needed here.
+    unlockedHouses: profile.unlockedHouses,
+    gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
 
     referralSource: row.referralSource,
     referredByCode: row.referredByCode,
@@ -310,6 +326,17 @@ export async function updateMe(
   const patch = buildPatch(body);
   const consentLogs = body.consent ? applyConsent(body.consent, patch, userId, ctx) : [];
 
+  // Referral code validated up front (before the patch commits) so an unknown/self
+  // code is rejected outright rather than silently saved with no bonus ever applied.
+  let referrer: UserRow | undefined;
+  if (patch.referredByCode && !current.referredByCode) {
+    referrer = await findUserByReferralCode(patch.referredByCode);
+    if (!referrer || referrer.id === current.id) {
+      referrer = undefined;
+      patch.referredByCode = null;
+    }
+  }
+
   // Stamp the funnel-completion time server-side the first time the client
   // reports a terminal onboarding status (the column is otherwise never set).
   if (
@@ -333,6 +360,62 @@ export async function updateMe(
     throw err;
   }
   if (!next) throw Errors.notFound('User not found');
+
+  // Referral bonus is granted only now that referredByCode is durably saved above —
+  // running this before the commit risked double-crediting both parties if a client
+  // retried a request whose patch commit failed for an unrelated reason.
+  if (referrer) {
+    try {
+      const { referrerBonus, refereeBonus } = await applyReferralBonus(referrer.id, current.id);
+      const recipients: { userId: string; title: string; body: string }[] = [];
+      if (referrerBonus) {
+        recipients.push({
+          userId: referrer.id,
+          title: 'Referral Bonus!',
+          body: 'A friend signed up using your code. You earned ₹50!',
+        });
+      }
+      if (refereeBonus) {
+        recipients.push({
+          userId: current.id,
+          title: 'Welcome Bonus!',
+          body: 'You earned ₹50 for signing up with a referral code!',
+        });
+      }
+      if (recipients.length > 0) {
+        await db.insert(notifications).values(
+          recipients.map((r) => ({
+            userId: r.userId,
+            title: r.title,
+            body: r.body,
+            type: 'referral_bonus',
+          })),
+        );
+      }
+      for (const r of recipients) {
+        try {
+          const tokens = await db
+            .select({ token: devicePushTokens.token })
+            .from(devicePushTokens)
+            .where(and(eq(devicePushTokens.userId, r.userId), isNull(devicePushTokens.revokedAt)));
+          if (tokens.length > 0) {
+            await sendPushBatch(
+              tokens.map((t) => t.token),
+              r.title,
+              r.body,
+            );
+          }
+        } catch (err) {
+          logger.error({ err, userId: r.userId }, 'Failed to send referral push notification');
+        }
+      }
+    } catch (err) {
+      logger.error(
+        { err, userId: current.id, referrerId: referrer.id },
+        'Failed to apply referral bonus',
+      );
+    }
+  }
 
   // The natal chart just changed under previously-unlocked houses — their
   // cached insight text no longer matches. Wipe it so it regenerates fresh
@@ -449,4 +532,20 @@ export async function unlockGemstone(userId: string, birthProfileId: string | nu
   if (!success) {
     throw Errors.conflict('Insufficient credits or gemstone report already unlocked');
   }
+}
+
+export async function getNotifications(userId: string) {
+  const rows = await getNotificationsForUser(userId);
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    body: r.body,
+    type: r.type,
+    readAt: iso(r.readAt),
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export async function markNotificationsRead(userId: string) {
+  await markUserNotificationsRead(userId);
 }

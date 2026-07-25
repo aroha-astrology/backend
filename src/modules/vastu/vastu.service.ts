@@ -73,7 +73,7 @@ export async function requestVastuAnalysis(
 
   // Charge up-front; refunded below if we can't even queue the job, or later if
   // the async generation fails.
-  const charged = await deductWalletBalance(userId, VASTU_COST_PAISE);
+  const charged = await deductWalletBalance(userId, VASTU_COST_PAISE, 'vastu_report');
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
   try {
@@ -85,6 +85,7 @@ export async function requestVastuAnalysis(
 
     const row = await insertPendingPlan({
       userId,
+      birthProfileId,
       layout: body.layout ?? null,
       roomLayout: body.roomLayout,
       roomDetails,
@@ -107,7 +108,7 @@ export async function requestVastuAnalysis(
 
     return { planId: row.id };
   } catch (err) {
-    await addWalletBalance(userId, VASTU_COST_PAISE).catch(() => {});
+    await addWalletBalance(userId, VASTU_COST_PAISE, 'refund:vastu_report').catch(() => {});
     throw err;
   }
 }
@@ -137,7 +138,7 @@ async function processAnalysis(
     logger.error({ err, planId }, 'vastu LLM analysis failed');
     await markError(planId, err instanceof Error ? err.message : 'Unknown error');
     // Don't charge for a report we couldn't produce.
-    await addWalletBalance(userId, VASTU_COST_PAISE).catch(() => {});
+    await addWalletBalance(userId, VASTU_COST_PAISE, 'refund:vastu_report').catch(() => {});
   }
 }
 
@@ -203,8 +204,12 @@ export async function toVastuPlanDtoForLanguage(
   }
 }
 
-export async function getPlansForUser(userId: string, language = 'en'): Promise<VastuPlanDto[]> {
-  const rows = await listPlansForUser(userId);
+export async function getPlansForUser(
+  userId: string,
+  birthProfileId: string | null,
+  language = 'en',
+): Promise<VastuPlanDto[]> {
+  const rows = await listPlansForUser(userId, birthProfileId);
   return Promise.all(rows.map((r) => toVastuPlanDtoForLanguage(r, language)));
 }
 

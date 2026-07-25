@@ -3,12 +3,18 @@ import {
   listUsersPage,
   hardDeleteUserById,
   countNewUsersToday,
+  countNewUsersThisWeek,
+  sumWalletBalanceOutstanding,
   findUserByEmail,
   findUserByPhoneE164,
+  findActiveUserById,
+  addWalletBalance,
+  deductWalletBalance,
 } from '../users/users.repo.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
+import { getFeedbackVoteCountsByUser } from '../astro/feedback.repo.js';
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
-import { listActiveCoupons, insertCoupon } from '../billing/billing.repo.js';
+import { listActiveCoupons, insertCoupon, sumPaidOrdersToday } from '../billing/billing.repo.js';
 import { escapeMarkdown } from '../../lib/notifications/telegram.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
@@ -34,7 +40,13 @@ export async function cmdUsers(offsetArg: string | undefined): Promise<string> {
     const name = escapeMarkdown(u.displayName || 'No Name');
     const date = escapeMarkdown(u.createdAt.toISOString().split('T')[0]);
     const balance = escapeMarkdown(formatRupees(u.walletBalancePaise));
-    return `• *${name}* \\| ${contact} \\| ${balance} \\| ${date}`;
+    const lastActive = u.lastActiveAt
+      ? escapeMarkdown(u.lastActiveAt.toISOString().split('T')[0])
+      : 'Never';
+    return (
+      `• *${name}* \\| ${contact} \\| ${balance} \\| Joined ${date}\n` +
+      `  ID: \`${u.id}\` \\| Last login: ${lastActive}`
+    );
   });
 
   const nextOffset = offset + PAGE_SIZE;
@@ -63,9 +75,61 @@ export async function cmdDeleteUser(idArg: string | undefined): Promise<string> 
 }
 
 export async function cmdStats(): Promise<string> {
-  const [totalUsers, newUsers] = await Promise.all([countUsers(), countNewUsersToday()]);
+  const [totalUsers, newUsersToday, newUsersWeek, revenue, outstanding] = await Promise.all([
+    countUsers(),
+    countNewUsersToday(),
+    countNewUsersThisWeek(),
+    sumPaidOrdersToday(),
+    sumWalletBalanceOutstanding(),
+  ]);
 
-  return `*App Stats*\n\nTotal Users: ${totalUsers}\nNew Users Today: ${newUsers}\n\n\\(More stats can be added here\\)`;
+  return (
+    `*App Stats*\n\n` +
+    `Total Users: ${totalUsers}\n` +
+    `New Users Today: ${newUsersToday}\n` +
+    `New Users This Week: ${newUsersWeek}\n\n` +
+    `Revenue Today: ${escapeMarkdown(formatRupees(revenue.totalPaise))} \\(${revenue.count} order${revenue.count === 1 ? '' : 's'}\\)\n` +
+    `Outstanding Wallet Balance: ${escapeMarkdown(formatRupees(outstanding))}`
+  );
+}
+
+const MONEY_USAGE =
+  'Usage: /money <phone> <amount> — e.g. /money +919999999999 250 (negative amount to deduct)';
+
+/** Admin-only wallet top-up/deduction, keyed by phone — the real prod credit-grant path. */
+export async function cmdMoney(args: string[]): Promise<string> {
+  const [phone, amountArg] = args;
+  if (!phone || !amountArg) return escapeMarkdown(MONEY_USAGE);
+
+  const amount = Number(amountArg);
+  if (!Number.isFinite(amount) || amount === 0) {
+    return escapeMarkdown('Amount must be a non-zero number of rupees, e.g. 250 or -50.');
+  }
+
+  const user = await findUserByPhoneE164(phone);
+  if (!user) return escapeMarkdown(`No user found with phone: ${phone}`);
+
+  const amountPaise = Math.round(Math.abs(amount) * 100);
+  const name = escapeMarkdown(user.displayName || phone);
+  const amountStr = escapeMarkdown(`₹${Math.abs(amount)}`);
+
+  if (amount > 0) {
+    await addWalletBalance(user.id, amountPaise, 'admin_grant');
+  } else {
+    const ok = await deductWalletBalance(user.id, amountPaise, 'admin_deduction');
+    if (!ok) {
+      return escapeMarkdown(
+        `Cannot deduct ₹${Math.abs(amount)} from ${user.displayName || phone} — balance is only ${formatRupees(user.walletBalancePaise)}.`,
+      );
+    }
+  }
+
+  const updated = await findActiveUserById(user.id);
+  const newBalance = escapeMarkdown(formatRupees(updated?.walletBalancePaise ?? 0));
+  const verb = amount > 0 ? 'Added' : 'Deducted';
+  const prep = amount > 0 ? 'to' : 'from';
+
+  return `${verb} ${amountStr} ${prep} *${name}* \\(${escapeMarkdown(phone)}\\)\nNew balance: ${newBalance}`;
 }
 
 export async function cmdSearch(query: string | undefined): Promise<string> {
@@ -190,6 +254,38 @@ export async function cmdNewCoupon(args: string[]): Promise<string> {
     const msg = error instanceof Error ? error.message : String(error);
     return escapeMarkdown(`Failed to create coupon: ${msg}`);
   }
+}
+
+export async function cmdFeedback(offsetArg: string | undefined): Promise<string> {
+  const PAGE_SIZE = 20;
+  const offset = parseInt(offsetArg || '0', 10) || 0;
+
+  const { rows, totalUserCount } = await getFeedbackVoteCountsByUser(PAGE_SIZE, offset);
+
+  if (rows.length === 0) {
+    return offset === 0
+      ? escapeMarkdown('No chat feedback votes recorded yet.')
+      : escapeMarkdown('No more users.');
+  }
+
+  const lines = rows.map((r) => {
+    const contact = escapeMarkdown(r.email || r.phoneE164 || 'No contact');
+    const name = escapeMarkdown(r.displayName || 'No Name');
+    return (
+      `• *${name}* \\| ${contact}\n` +
+      `  ID: \`${r.userId}\` \\| 👍 ${r.upVotes} \\| 👎 ${r.downVotes}`
+    );
+  });
+
+  const nextOffset = offset + PAGE_SIZE;
+  const hasMore = nextOffset < totalUserCount;
+
+  let reply = `*Chat Feedback by User \\(${offset + 1}\\-${offset + rows.length} of ${totalUserCount}\\)*\n\n${lines.join('\n')}`;
+  if (hasMore) {
+    reply += `\n\nNext page: \`/feedback ${nextOffset}\``;
+  }
+
+  return reply;
 }
 
 export async function cmdBroadcast(message: string | undefined): Promise<string> {
