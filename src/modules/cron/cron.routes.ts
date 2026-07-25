@@ -18,6 +18,7 @@ import {
   sendTransitAlerts,
 } from './transit-alert.service.js';
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
+import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js';
 
 const ErrorSchema = z
   .object({
@@ -285,4 +286,41 @@ cronRouter.openapi(transitAlertsRoute, async (c) => {
   // the boolean is folded into `reason` rather than overloading the field.
   const { skipped: _skipped, reason, ...rest } = r;
   return c.json({ action: 'send' as const, ...rest, ...(reason ? { reason } : {}) }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Live-activity check — polls how many users have been active in the last 5
+// minutes for the ">15 simultaneous" and online-milestone Telegram alerts.
+// Wired to run every 2 minutes (see scripts/cron-live-activity.sh).
+// ---------------------------------------------------------------------------
+
+const liveActivityCheckRoute = createRoute({
+  method: 'post',
+  path: '/cron/live-activity-check',
+  tags: ['Cron'],
+  summary: 'Poll concurrent active-user count for admin Telegram alerts',
+  description:
+    'Machine-to-machine endpoint, meant to run every 2 minutes via the OS crontab. Computes ' +
+    'how many users have been active in the last 5 minutes; alerts (throttled to once per 15 ' +
+    'min) if that exceeds 15, and separately alerts whenever it crosses a new 50/100/250/500 ' +
+    'milestone band. Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Check completed',
+      content: {
+        'application/json': {
+          schema: z.object({
+            activeCount: z.number(),
+            onlineMilestoneCrossed: z.number().nullable(),
+          }),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(liveActivityCheckRoute, async (c) => {
+  const result = await checkConcurrentActivity();
+  return c.json(result, 200);
 });

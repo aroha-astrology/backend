@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   findHoroscope: vi.fn(),
   findKundliByUserId: vi.fn(),
   broadcastPeriodReading: vi.fn(),
+  checkConcurrentActivity: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -72,6 +73,10 @@ vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
 
 vi.mock('../src/modules/cron/broadcast.service.js', () => ({
   broadcastPeriodReading: state.broadcastPeriodReading,
+}));
+
+vi.mock('../src/modules/admin-alerts/admin-alerts.service.js', () => ({
+  checkConcurrentActivity: state.checkConcurrentActivity,
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -441,5 +446,40 @@ describe('POST /internal/cron/broadcast-daily-reading (deprecated alias)', () =>
     });
     expect(res.status).toBe(200);
     expect(state.broadcastPeriodReading).toHaveBeenCalledWith('daily');
+  });
+});
+
+describe('POST /internal/cron/live-activity-check', () => {
+  beforeEach(() => {
+    state.checkConcurrentActivity.mockReset();
+  });
+
+  it('rejects a missing cron secret', async () => {
+    const app = createApp();
+    const res = await app.request('/internal/cron/live-activity-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('runs the check and returns its result', async () => {
+    state.checkConcurrentActivity.mockResolvedValueOnce({
+      activeCount: 20,
+      onlineMilestoneCrossed: null,
+    });
+
+    const app = createApp();
+    const res = await app.request('/internal/cron/live-activity-check', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      activeCount: number;
+      onlineMilestoneCrossed: number | null;
+    };
+    expect(body.activeCount).toBe(20);
+    expect(body.onlineMilestoneCrossed).toBeNull();
   });
 });
