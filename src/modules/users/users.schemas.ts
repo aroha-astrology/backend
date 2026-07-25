@@ -248,6 +248,14 @@ export const UserSchema = z
       .boolean()
       .describe('True once the user has spent wallet balance to unlock the gemstone report'),
 
+    features: z
+      .record(z.string(), z.object({ enabled: z.boolean(), pricePaise: z.number().int().nullable() }))
+      .describe(
+        'Server-resolved feature registry (FEATURE_REGISTRY defaults merged with admin overrides). ' +
+          'The client must hide UI for any key with enabled: false AND never call its API — the ' +
+          'server also enforces this independently via requireFeature() middleware.',
+      ),
+
     referralSource: z.string().nullable(),
     referredByCode: z.string().nullable(),
     referralCode: z.string().nullable(),

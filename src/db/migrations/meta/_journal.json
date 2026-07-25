@@ -225,6 +225,13 @@
       "when": 1784885231793,
       "tag": "0031_fixed_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784989691377,
+      "tag": "0032_burly_sister_grimm",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
+import { resolveFeatures } from '../features/features.service.js';
 import { ensureReferralCode } from './users.repo.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
 import {
@@ -161,7 +162,8 @@ const markNotificationsReadRoute = createRoute({
 usersRouter.openapi(getMeRoute, async (c) => {
   const user = await ensureReferralCode(c.get('user'));
   const profile = await resolveActiveProfileContext(user);
-  return c.json(toUserDto(user, profile), 200);
+  const features = await resolveFeatures();
+  return c.json(toUserDto(user, profile, features), 200);
 });
 
 usersRouter.openapi(patchMeRoute, async (c) => {
@@ -172,7 +174,8 @@ usersRouter.openapi(patchMeRoute, async (c) => {
   const userAgent = c.req.header('user-agent') ?? null;
   const next = await updateMe(user.id, body, { sourceIp, userAgent });
   const profile = await resolveActiveProfileContext(next);
-  return c.json(toUserDto(next, profile), 200);
+  const features = await resolveFeatures();
+  return c.json(toUserDto(next, profile, features), 200);
 });
 
 usersRouter.openapi(deleteMeRoute, async (c) => {

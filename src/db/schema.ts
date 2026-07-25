@@ -1635,3 +1635,50 @@ export const transitAlertCopy = pgTable(
 
 export type TransitAlertCopyRow = typeof transitAlertCopy.$inferSelect;
 export type NewTransitAlertCopyRow = typeof transitAlertCopy.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* feature_flags — admin-editable overrides on top of the FEATURE_REGISTRY     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per feature key that an admin has EXPLICITLY overridden — a feature
+ * with no row here just uses its `FEATURE_REGISTRY` default (see
+ * `src/config/features.ts`). Absence of a row is not an error state.
+ */
+export const featureFlags = pgTable('feature_flags', {
+  key: text('key').primaryKey(),
+  enabled: boolean('enabled').notNull(),
+  pricePaise: integer('price_paise'),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedBy: text('updated_by'),
+});
+
+export type FeatureFlagRow = typeof featureFlags.$inferSelect;
+export type NewFeatureFlagRow = typeof featureFlags.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* admin_audit_log — append-only record of admin dashboard actions             */
+/* -------------------------------------------------------------------------- */
+
+export const adminAuditLog = pgTable(
+  'admin_audit_log',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    adminPhone: text('admin_phone').notNull(),
+    route: text('route').notNull(),
+    params: jsonb('params'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    createdAtIdx: index('admin_audit_log_created_at_idx').on(table.createdAt),
+  }),
+);
+
+export type AdminAuditLogRow = typeof adminAuditLog.$inferSelect;
+export type NewAdminAuditLogRow = typeof adminAuditLog.$inferInsert;

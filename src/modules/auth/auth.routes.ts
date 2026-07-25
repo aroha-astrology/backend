@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireFirebaseToken } from '../../middleware/auth.js';
 import { toUserDto } from '../users/users.service.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
+import { resolveFeatures } from '../features/features.service.js';
 import { establishSession } from './auth.service.js';
 import { SessionResponseSchema } from './auth.schemas.js';
 import { notifyNewSignup } from '../../lib/notifications/telegram.js';
@@ -62,6 +63,7 @@ authRouter.openapi(sessionRoute, async (c) => {
   }
 
   const profile = await resolveActiveProfileContext(user);
-  const body = { user: toUserDto(user, profile), created };
+  const features = await resolveFeatures();
+  const body = { user: toUserDto(user, profile, features), created };
   return c.json(body, created ? 201 : 200);
 });

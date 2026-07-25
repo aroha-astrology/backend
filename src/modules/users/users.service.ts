@@ -7,6 +7,7 @@ import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
+import type { ResolvedFeature } from '../features/features.service.js';
 import {
   unlockGemstoneForOwnedProfile,
   unlockHouseForOwnedProfile,
@@ -41,8 +42,17 @@ const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean 
  * must be resolved via {@link resolveActiveProfileContext} (or an equivalent
  * `resolveProfileContext` call) by the caller so a secondary profile's own
  * unlock state is returned instead of the primary's.
+ *
+ * `features` is the server-resolved feature registry (see
+ * `resolveFeatures()` in `features.service.ts`) — passed in rather than
+ * resolved here so this stays a pure, synchronous mapper; every call site
+ * resolves it once per request.
  */
-export function toUserDto(row: UserRow, profile: ProfileContext): UserDto {
+export function toUserDto(
+  row: UserRow,
+  profile: ProfileContext,
+  features: Record<string, ResolvedFeature>,
+): UserDto {
   return {
     id: row.id,
     firebaseUid: row.firebaseUid,
@@ -105,6 +115,8 @@ export function toUserDto(row: UserRow, profile: ProfileContext): UserDto {
     // resolveProfileContext — no separate null-fallback needed here.
     unlockedHouses: profile.unlockedHouses,
     gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
+
+    features,
 
     referralSource: row.referralSource,
     referredByCode: row.referredByCode,
