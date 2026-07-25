@@ -108,7 +108,10 @@ beforeEach(() => {
 
 describe('getUserFacts — profile-scoped read', () => {
   it('filters on birth_profile_id IS NULL for the primary profile', async () => {
-    const { chain, calls } = makeSelectChain([{ fact: 'f1' }, { fact: 'f2' }]);
+    const { chain, calls } = makeSelectChain([
+      { fact: 'f1', followUpQuestion: null },
+      { fact: 'f2', followUpQuestion: 'When did that happen?' },
+    ]);
     state.select.mockReturnValue(chain);
 
     const facts = await getUserFacts('user-1', null);
@@ -118,11 +121,16 @@ describe('getUserFacts — profile-scoped read', () => {
       '("user_facts"."user_id" = $1 and "user_facts"."birth_profile_id" is null)',
     );
     expect(query.params).toEqual(['user-1']);
-    expect(facts).toEqual(['f1', 'f2']);
+    expect(facts).toEqual([
+      { fact: 'f1', followUpQuestion: null },
+      { fact: 'f2', followUpQuestion: 'When did that happen?' },
+    ]);
   });
 
   it('filters on birth_profile_id = <id> for an additional profile — never leaks a sibling profile’s facts', async () => {
-    const { chain, calls } = makeSelectChain([{ fact: 'child likes cricket' }]);
+    const { chain, calls } = makeSelectChain([
+      { fact: 'child likes cricket', followUpQuestion: null },
+    ]);
     state.select.mockReturnValue(chain);
 
     const facts = await getUserFacts('user-1', 'profile-a');
@@ -132,7 +140,7 @@ describe('getUserFacts — profile-scoped read', () => {
       '("user_facts"."user_id" = $1 and "user_facts"."birth_profile_id" = $2)',
     );
     expect(query.params).toEqual(['user-1', 'profile-a']);
-    expect(facts).toEqual(['child likes cricket']);
+    expect(facts).toEqual([{ fact: 'child likes cricket', followUpQuestion: null }]);
   });
 });
 
@@ -143,12 +151,20 @@ describe('saveUserFacts — profile-scoped write, dedup, and cap', () => {
     state.select.mockReturnValueOnce(existingChain.chain);
     state.insert.mockReturnValueOnce(insertChain.chain);
 
-    await saveUserFacts('user-1', 'profile-a', ['wife loves cooking', 'New Fact']);
+    await saveUserFacts('user-1', 'profile-a', [
+      { fact: 'wife loves cooking', followUpQuestion: null },
+      { fact: 'New Fact', followUpQuestion: null },
+    ]);
 
     // Dedup is case-insensitive and scoped to this profile's existing set.
     expect(state.insert).toHaveBeenCalledWith(userFacts);
     expect(insertChain.calls.values).toEqual([
-      { userId: 'user-1', birthProfileId: 'profile-a', fact: 'New Fact' },
+      {
+        userId: 'user-1',
+        birthProfileId: 'profile-a',
+        fact: 'New Fact',
+        followUpQuestion: null,
+      },
     ]);
     const existingQuery = compile(existingChain.calls.where);
     expect(existingQuery.sql).toBe(
@@ -157,16 +173,39 @@ describe('saveUserFacts — profile-scoped write, dedup, and cap', () => {
     expect(existingQuery.params).toEqual(['user-1', 'profile-a']);
   });
 
+  it('persists a followUpQuestion alongside a new fact, encrypted the same way as the fact itself', async () => {
+    const existingChain = makeSelectChain([]);
+    const insertChain = makeInsertChain();
+    state.select.mockReturnValueOnce(existingChain.chain);
+    state.insert.mockReturnValueOnce(insertChain.chain);
+
+    await saveUserFacts('user-1', null, [
+      {
+        fact: 'Planning to conceive 2-3 months after starting a new job',
+        followUpQuestion: 'Did the new job start yet?',
+      },
+    ]);
+
+    expect(insertChain.calls.values).toEqual([
+      {
+        userId: 'user-1',
+        birthProfileId: null,
+        fact: 'Planning to conceive 2-3 months after starting a new job',
+        followUpQuestion: 'Did the new job start yet?',
+      },
+    ]);
+  });
+
   it('writes null birthProfileId for the primary profile', async () => {
     const existingChain = makeSelectChain([]);
     const insertChain = makeInsertChain();
     state.select.mockReturnValueOnce(existingChain.chain);
     state.insert.mockReturnValueOnce(insertChain.chain);
 
-    await saveUserFacts('user-1', null, ['born in Delhi']);
+    await saveUserFacts('user-1', null, [{ fact: 'born in Delhi', followUpQuestion: null }]);
 
     expect(insertChain.calls.values).toEqual([
-      { userId: 'user-1', birthProfileId: null, fact: 'born in Delhi' },
+      { userId: 'user-1', birthProfileId: null, fact: 'born in Delhi', followUpQuestion: null },
     ]);
     const existingQuery = compile(existingChain.calls.where);
     expect(existingQuery.sql).toBe(
@@ -178,7 +217,7 @@ describe('saveUserFacts — profile-scoped write, dedup, and cap', () => {
     const existingChain = makeSelectChain([{ fact: 'already known' }]);
     state.select.mockReturnValueOnce(existingChain.chain);
 
-    await saveUserFacts('user-1', 'profile-a', ['Already Known']);
+    await saveUserFacts('user-1', 'profile-a', [{ fact: 'Already Known', followUpQuestion: null }]);
 
     expect(state.insert).not.toHaveBeenCalled();
   });
@@ -199,7 +238,11 @@ describe('saveUserFacts — profile-scoped write, dedup, and cap', () => {
     state.insert.mockReturnValueOnce(insertChain.chain);
     state.delete.mockReturnValueOnce(deleteChain1.chain).mockReturnValueOnce(deleteChain2.chain);
 
-    await saveUserFacts('user-1', 'profile-a', ['new-1', 'new-2', 'new-3']);
+    await saveUserFacts('user-1', 'profile-a', [
+      { fact: 'new-1', followUpQuestion: null },
+      { fact: 'new-2', followUpQuestion: null },
+      { fact: 'new-3', followUpQuestion: null },
+    ]);
 
     expect(oldestChain.calls.limit).toBe(2); // overflow = 52 - 50
     const oldestQuery = compile(oldestChain.calls.where);

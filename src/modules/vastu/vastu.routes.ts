@@ -35,7 +35,7 @@ const errorResponse = (description: string) => ({
 });
 
 /** The AI call is expensive — its own tight limit, independent of astro LLM calls. */
-const analyzeRateLimit = rateLimiter({ windowMs: 60_000, max: 5 });
+const analyzeRateLimit = rateLimiter({ windowMs: 60_000, max: 5, name: 'vastu-analyze' });
 
 export const vastuRouter = new OpenAPIHono();
 
@@ -84,7 +84,7 @@ const askRoute = createRoute({
   tags: ['Vastu'],
   summary: 'Ask one free follow-up question about a completed Vastu report',
   security: [{ bearerAuth: [] }],
-  middleware: [rateLimiter({ windowMs: 60_000, max: 8 })] as const,
+  middleware: [rateLimiter({ windowMs: 60_000, max: 8, name: 'vastu-plans' })] as const,
   request: {
     params: PlanIdParamSchema,
     body: { required: true, content: { 'application/json': { schema: AskVastuBodySchema } } },
@@ -128,7 +128,8 @@ const listRoute = createRoute({
 vastuRouter.openapi(listRoute, async (c) => {
   const user = c.get('user');
   const { language } = c.req.valid('query');
-  const plans = await getPlansForUser(user.id, language);
+  const profile = await resolveActiveProfileContext(user);
+  const plans = await getPlansForUser(user.id, profile.birthProfileId, language);
   return c.json({ plans }, 200);
 });
 

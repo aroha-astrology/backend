@@ -50,27 +50,52 @@ function chart(planets: PlanetPosition[], lagnaSignIndex = 0): ChartData {
 }
 
 describe('Mangal Dosha description', () => {
-  it('is specific to the afflicted house and mentions no cancellation for a full, uncancelled dosha', () => {
-    // Mars in signIndex 7 (house 8 from Lagna at signIndex 0), no Moon/Venus to
-    // avoid accidental cancellation-triggering conjunctions, no Jupiter present.
-    const c = chart([planet('Mars', 7, 8)]);
+  it('is specific to the afflicted house and mentions no cancellation for a genuinely uncancelled dosha', () => {
+    // Mars in Gemini (signIndex 2) with Lagna in Scorpio (signIndex 7) puts
+    // Mars in house 8 from Lagna. Gemini is not Mars's own/exalted sign and
+    // no other planet is present, so no cancellation rule can fire.
+    const c = chart([planet('Mars', 2, 8)], 7);
     const result = detectMangalDosha(c);
     expect(result.present).toBe(true);
+    expect(result.cancellations).toEqual([]);
     expect(result.type).toBe('partial'); // only Lagna reference point present
     expect(result.description).toContain('8');
     expect(result.description.length).toBeGreaterThan(20);
   });
 
-  it('produces a different description when cancelled than when not', () => {
-    const uncancelled = detectMangalDosha(chart([planet('Mars', 7, 8)]));
-    // Mars in Scorpio (signIndex 7, its own sign -> cancellation #1), Jupiter
-    // at signIndex 1 aspects Scorpio via the standard 7th-house aspect
-    // (-> cancellation #2), Venus conjunct Mars in Scorpio (-> cancellation
-    // #3). 3+ cancellations is what flips `type` to 'cancelled'.
+  it('cancels the dosha from a single classical rule alone, not requiring multiple stacked reasons', () => {
+    // Mars in Scorpio (its own sign) forms Mangal Dosha in house 8 from Lagna
+    // (Lagna at signIndex 0), with no Jupiter/Venus/Moon present. Own-sign
+    // placement is, by itself, a complete classical cancellation — it should
+    // not need to stack with other reasons to fully cancel the dosha.
+    const result = detectMangalDosha(chart([planet('Mars', 7, 8)]));
+    expect(result.present).toBe(true);
+    expect(result.cancellations.length).toBe(1);
+    expect(result.type).toBe('cancelled');
+    expect(result.severity).toBe('none');
+  });
+
+  it('cancels even a dosha afflicted from all three reference points when Mars is in its own sign', () => {
+    // Mars (Scorpio, signIndex 7) afflicts house 8 from Lagna (signIndex 0),
+    // house 2 from Moon (signIndex 6), and house 4 from Venus (signIndex 4) —
+    // full 3/3 affliction — but dignity-based cancellation (own sign) is
+    // reference-point-independent and should still fully cancel it.
+    const c = chart([planet('Mars', 7, 8), planet('Moon', 6, 2), planet('Venus', 4, 4)]);
+    const result = detectMangalDosha(c);
+    expect(result.fromLagna).toBe(true);
+    expect(result.fromMoon).toBe(true);
+    expect(result.fromVenus).toBe(true);
+    expect(result.type).toBe('cancelled');
+    expect(result.severity).toBe('none');
+  });
+
+  it('produces a different description when cancelled than when genuinely uncancelled', () => {
+    const uncancelled = detectMangalDosha(chart([planet('Mars', 2, 8)], 7));
     const cancelled = detectMangalDosha(
       chart([planet('Mars', 7, 8), planet('Jupiter', 1, 2), planet('Venus', 7, 8)]),
     );
     expect(cancelled.type).toBe('cancelled');
+    expect(uncancelled.type).toBe('partial');
     expect(cancelled.description).not.toEqual(uncancelled.description);
     expect(cancelled.description.toLowerCase()).toContain('cancel');
   });
@@ -80,6 +105,83 @@ describe('Mangal Dosha description', () => {
     const result = detectMangalDosha(chart([planet('Mars', 2, 3)]));
     expect(result.present).toBe(false);
     expect(result.description).toBe('');
+  });
+
+  it('appends a non-authoritative age-28 caveat to the description without changing type/severity', () => {
+    // Same cancelled chart as above; only difference is a supplied birth date.
+    const cancelledChart = chart([planet('Mars', 7, 8)]);
+    const withoutBirthDate = detectMangalDosha(cancelledChart);
+    const over28BirthDate = '1990-01-01';
+    const withBirthDate = detectMangalDosha(cancelledChart, over28BirthDate);
+    expect(withBirthDate.type).toBe(withoutBirthDate.type);
+    expect(withBirthDate.severity).toBe(withoutBirthDate.severity);
+    expect(withBirthDate.description.length).toBeGreaterThan(withoutBirthDate.description.length);
+    expect(withBirthDate.description).toContain('28');
+  });
+
+  it('does not append the age-28 caveat for someone under 28', () => {
+    const cancelledChart = chart([planet('Mars', 7, 8)]);
+    const under28 = new Date();
+    under28.setFullYear(under28.getFullYear() - 10);
+    const result = detectMangalDosha(cancelledChart, under28.toISOString().slice(0, 10));
+    expect(result.description).not.toContain('28');
+  });
+});
+
+describe('Mangal Dosha — house+sign classical exceptions beyond Lagna-only coverage', () => {
+  it('cancels when Mars is in the 7th house (from Lagna) in Cancer', () => {
+    // Lagna signIndex 9 (Capricorn), Mars signIndex 3 (Cancer) -> house 7 from Lagna.
+    const result = detectMangalDosha(chart([planet('Mars', 3, 7)], 9));
+    expect(result.present).toBe(true);
+    expect(result.type).toBe('cancelled');
+  });
+
+  it('cancels when Mars is in the 8th house (from Lagna) in Sagittarius', () => {
+    // Lagna signIndex 1 (Taurus), Mars signIndex 8 (Sagittarius) -> house 8 from Lagna.
+    const result = detectMangalDosha(chart([planet('Mars', 8, 8)], 1));
+    expect(result.present).toBe(true);
+    expect(result.type).toBe('cancelled');
+  });
+
+  it('cancels via the 2nd-house Gemini/Virgo exception measured from the Moon, not just Lagna', () => {
+    // Lagna signIndex 0 puts Mars (Gemini, signIndex 2) in house 3 from Lagna
+    // (not a dosha house at all from Lagna). Moon signIndex 1 puts Mars in
+    // house 2 from the Moon -- the only afflicted reference point.
+    const c = chart([planet('Mars', 2, 2), planet('Moon', 1, 1)], 0);
+    const result = detectMangalDosha(c);
+    expect(result.fromLagna).toBe(false);
+    expect(result.fromMoon).toBe(true);
+    expect(result.type).toBe('cancelled');
+  });
+
+  it('cancels via the 12th-house Taurus/Libra exception measured from Venus, not just Lagna', () => {
+    // Lagna signIndex 9 puts Mars (Taurus, signIndex 1) in house 5 from Lagna
+    // (not a dosha house). Venus signIndex 2 puts Mars in house 12 from Venus.
+    const c = chart([planet('Mars', 1, 5), planet('Venus', 2, 12)], 9);
+    const result = detectMangalDosha(c);
+    expect(result.fromLagna).toBe(false);
+    expect(result.fromVenus).toBe(true);
+    expect(result.type).toBe('cancelled');
+  });
+});
+
+describe('Mangal Dosha — unverified rules removed', () => {
+  it('does NOT cancel from Mars in Leo alone (no classical source for this rule)', () => {
+    // Lagna signIndex 9, Mars signIndex 4 (Leo) -> house 8 from Lagna, no
+    // other planets present to trigger any other rule.
+    const result = detectMangalDosha(chart([planet('Mars', 4, 8)], 9));
+    expect(result.present).toBe(true);
+    expect(result.type).not.toBe('cancelled');
+  });
+
+  it('does NOT cancel from Mars being in a Kendra from Jupiter alone (no classical source for this rule)', () => {
+    // Lagna signIndex 2 puts Mars (Gemini, signIndex 2) in house 1 from Lagna.
+    // Jupiter signIndex 11 puts Mars in house 4 (a Kendra) from Jupiter, but
+    // does NOT aspect Mars's sign (Jupiter's 5th/7th/9th specials miss it).
+    const c = chart([planet('Mars', 2, 1), planet('Jupiter', 11, 4)], 2);
+    const result = detectMangalDosha(c);
+    expect(result.present).toBe(true);
+    expect(result.type).not.toBe('cancelled');
   });
 });
 

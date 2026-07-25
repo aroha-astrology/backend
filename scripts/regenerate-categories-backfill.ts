@@ -9,7 +9,7 @@
  *
  * Usage: npx tsx scripts/regenerate-categories-backfill.ts
  */
-import { listActiveUsersAfter } from '../src/modules/horoscope/horoscope.repo.js';
+import { listRecentlyActiveUsersAfter } from '../src/modules/horoscope/horoscope.repo.js';
 import {
   requestHoroscopeGeneration,
   currentPeriodStart,
@@ -26,7 +26,9 @@ async function main() {
   let failCount = 0;
 
   for (;;) {
-    const page = await listActiveUsersAfter(afterId, PAGE_SIZE);
+    // Backfill script — reach every user regardless of recent activity, not
+    // just the ones the nightly batch would (see includeDormant).
+    const page = await listRecentlyActiveUsersAfter(afterId, PAGE_SIZE, { includeDormant: true });
     if (page.length === 0) break;
 
     for (const user of page) {

@@ -14,7 +14,13 @@ import {
  * Mars in houses 1, 2, 4, 7, 8, or 12 from Lagna, Moon, or Venus
  * creates Mangal Dosha (Kuja Dosha). Severity is based on how many
  * reference points (Lagna, Moon, Venus) are afflicted.
- * 10 classical cancellation rules are checked.
+ *
+ * Cancellation: classically, any ONE qualifying rule below (own sign,
+ * exaltation, a benefic conjunction/aspect, or a documented house+sign
+ * exception at any of the 3 reference points) is independently sufficient
+ * to cancel the dosha — stacking multiple reasons doesn't make a dosha
+ * "more cancelled." This intentionally does NOT gate cancellation behind a
+ * minimum count of matched rules.
  */
 
 const MANGAL_DOSHA_HOUSES = [1, 2, 4, 7, 8, 12];
@@ -66,6 +72,18 @@ function isAspectedBy(
   return false;
 }
 
+/**
+ * Documented classical house+sign exceptions: Mars in this house (from a
+ * given reference point) in one of these signs is a specific cancellation,
+ * independent of the general dignity/conjunction/aspect rules below.
+ */
+const HOUSE_SIGN_EXCEPTIONS: Record<number, ZodiacSign[]> = {
+  2: ['Gemini', 'Virgo'],
+  7: ['Cancer', 'Capricorn'],
+  8: ['Sagittarius', 'Pisces'],
+  12: ['Taurus', 'Libra'],
+};
+
 function checkCancellations(chartData: ChartData): string[] {
   const cancellations: string[] = [];
   const mars = getPlanetPosition(chartData, 'Mars');
@@ -74,7 +92,9 @@ function checkCancellations(chartData: ChartData): string[] {
   const marsSign = mars.sign;
   const marsSignIndex = mars.signIndex;
 
-  // 1. Mars in own sign (Aries or Scorpio)
+  // 1. Mars in own sign (Aries or Scorpio) — dignity is reference-point
+  // independent: Mars's actual zodiacal sign doesn't change with Lagna/
+  // Moon/Venus, so this alone is a complete, unconditional cancellation.
   if (PLANET_OWN_SIGNS.Mars.includes(marsSign)) {
     cancellations.push(`Mars in own sign ${marsSign} - cancellation applies`);
   }
@@ -101,44 +121,45 @@ function checkCancellations(chartData: ChartData): string[] {
     cancellations.push('Mars aspected by Jupiter - cancellation applies');
   }
 
-  // 5. Mars in Leo or Aquarius
-  if (marsSign === 'Leo' || marsSign === 'Aquarius') {
-    cancellations.push(`Mars in ${marsSign} - cancellation applies`);
-  }
-
-  // 6. Mars conjunct Moon (same sign)
+  // 5. Mars conjunct Moon (same sign)
   const moonConjunct = planetsInMarsSign.some((p) => p.planet === 'Moon');
   if (moonConjunct) {
     cancellations.push('Mars conjunct Moon - cancellation applies');
   }
 
-  // 7. Spouse chart also has Mangal Dosha - cannot be checked from single chart
-  // This is noted but requires external data; skip deterministic check.
+  // 6. Spouse chart also has Mangal Dosha - cannot be checked from single
+  // chart; handled at the two-chart matchmaking layer, not here.
 
-  // 8. Mars in Kendra (1,4,7,10) from Jupiter
-  const jupiter = getPlanetPosition(chartData, 'Jupiter');
-  if (jupiter) {
-    const marsHouseFromJupiter = getHouseFromSign(marsSignIndex, jupiter.signIndex);
-    if ([1, 4, 7, 10].includes(marsHouseFromJupiter)) {
+  // 7. Documented house+sign exceptions (2nd/7th/8th/12th), checked from
+  // EACH of the 3 reference points (Lagna, Moon, Venus) — not just Lagna.
+  const moon = getPlanetPosition(chartData, 'Moon');
+  const venus = getPlanetPosition(chartData, 'Venus');
+  const referencePoints: { label: string; signIndex: number }[] = [
+    { label: 'Lagna', signIndex: chartData.ascendant.signIndex },
+    ...(moon ? [{ label: 'Moon', signIndex: moon.signIndex }] : []),
+    ...(venus ? [{ label: 'Venus', signIndex: venus.signIndex }] : []),
+  ];
+  for (const ref of referencePoints) {
+    const house = getHouseFromSign(marsSignIndex, ref.signIndex);
+    const exceptedSigns = HOUSE_SIGN_EXCEPTIONS[house];
+    if (exceptedSigns && exceptedSigns.includes(marsSign)) {
       cancellations.push(
-        `Mars in Kendra (house ${marsHouseFromJupiter}) from Jupiter - cancellation applies`,
+        `Mars in house ${house} from ${ref.label} in ${marsSign} - cancellation applies`,
       );
     }
   }
 
-  // 9. Mars in 2nd house from Lagna in Gemini or Virgo
-  const lagnaSignIndex = chartData.ascendant.signIndex;
-  const marsHouseFromLagna = getHouseFromSign(marsSignIndex, lagnaSignIndex);
-  if (marsHouseFromLagna === 2 && (marsSign === 'Gemini' || marsSign === 'Virgo')) {
-    cancellations.push(`Mars in 2nd house in ${marsSign} - cancellation applies`);
-  }
-
-  // 10. Mars in 12th house from Lagna in Taurus or Libra
-  if (marsHouseFromLagna === 12 && (marsSign === 'Taurus' || marsSign === 'Libra')) {
-    cancellations.push(`Mars in 12th house in ${marsSign} - cancellation applies`);
-  }
-
   return cancellations;
+}
+
+function computeAge(birthDate: string, asOf: Date = new Date()): number {
+  const birth = new Date(birthDate);
+  let age = asOf.getFullYear() - birth.getFullYear();
+  const monthDiff = asOf.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && asOf.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
 }
 
 function buildDescription(
@@ -168,7 +189,7 @@ function buildDescription(
   return `Mars in house ${marsHouseFromLagna} afflicts your ${refText}, forming a partial Mangal Dosha (${refs.length} of 3 reference points affected).`;
 }
 
-export function detectMangalDosha(chartData: ChartData): MangalDosha {
+export function detectMangalDosha(chartData: ChartData, birthDate?: string): MangalDosha {
   const mars = getPlanetPosition(chartData, 'Mars');
 
   if (!mars) {
@@ -210,23 +231,22 @@ export function detectMangalDosha(chartData: ChartData): MangalDosha {
 
   const cancellations = present ? checkCancellations(chartData) : [];
 
+  // Any ONE matched classical cancellation rule is sufficient to cancel the
+  // dosha — this is not gated behind a minimum count of stacked reasons (see
+  // the module doc comment for why).
+  const isCancelled = cancellations.length > 0;
+
   let severity: MangalDosha['severity'] = 'none';
-  if (present && cancellations.length === 0) {
+  if (present && !isCancelled) {
     if (afflictedCount === 3) severity = 'severe';
     else if (afflictedCount === 2) severity = 'moderate';
-    else severity = 'mild';
-  } else if (present && cancellations.length > 0) {
-    // Cancellations reduce severity
-    if (cancellations.length >= 3) severity = 'none';
-    else if (afflictedCount === 3 && cancellations.length < 3) severity = 'moderate';
-    else if (afflictedCount === 2 && cancellations.length < 2) severity = 'mild';
     else severity = 'mild';
   }
 
   let type: MangalDosha['type'] = 'none';
   if (!present) {
     type = 'none';
-  } else if (cancellations.length >= 3) {
+  } else if (isCancelled) {
     type = 'cancelled';
   } else if (afflictedCount === 3) {
     type = 'full';
@@ -234,7 +254,7 @@ export function detectMangalDosha(chartData: ChartData): MangalDosha {
     type = 'partial';
   }
 
-  const description = buildDescription(
+  let description = buildDescription(
     present,
     type,
     marsHouseFromLagna,
@@ -243,6 +263,13 @@ export function detectMangalDosha(chartData: ChartData): MangalDosha {
     fromVenus,
     cancellations,
   );
+
+  // Non-authoritative folk belief: never gates type/severity, only ever adds
+  // an informational note to the description when a birth date is supplied.
+  if (present && birthDate && computeAge(birthDate) >= 28) {
+    description +=
+      ' Note: some practitioners informally consider Mangal Dosha to weaken after age 28, though this belief has no basis in classical texts — treat it as a cultural note, not an astrological rule.';
+  }
 
   return {
     present,

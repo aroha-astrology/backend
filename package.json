@@ -37,6 +37,7 @@
     "googleapis": "^173.0.0",
     "hono": "^4.6.12",
     "ioredis": "^5.11.1",
+    "p-limit": "^7.3.0",
     "pino": "^9.5.0",
     "postgres": "^3.4.5",
     "swisseph-wasm": "^0.0.5",

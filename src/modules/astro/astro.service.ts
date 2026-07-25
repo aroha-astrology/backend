@@ -42,6 +42,7 @@ import type {
   ForecastResponse,
   MatchmakingResponse,
 } from './astro.schemas.js';
+import type { MangalDosha } from '@aroha-astrology/shared';
 
 /* -------------------------------------------------------------------------- */
 /* Onboarding                                                                  */
@@ -232,23 +233,46 @@ export async function matchmake(
   };
 
   // Mangal Dosha (Kuja Dosha) — checked separately from the 36-point system,
-  // since traditional practitioners treat it as its own pass/fail gate.
+  // since traditional practitioners treat it as its own pass/fail gate. Pass
+  // each person's birth date through so a classically-undocumented age-28
+  // folk caveat can be noted (never gates cancellation/severity — see
+  // mangalDosha.ts).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
-  const mangal1 = detectMangalDosha(met1.chart as any);
+  const mangal1 = detectMangalDosha(met1.chart as any, body.person1.date);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
-  const mangal2 = detectMangalDosha(met2.chart as any);
+  const mangal2 = detectMangalDosha(met2.chart as any, body.person2.date);
+
+  const isActive1 = mangal1.present && mangal1.type !== 'cancelled';
+  const isActive2 = mangal2.present && mangal2.type !== 'cancelled';
   const mangalDosha = {
     person1: mangal1.present,
     person2: mangal2.present,
-    matched: mangal1.present === mangal2.present,
+    type1: mangal1.type,
+    type2: mangal2.type,
+    description1: mangal1.description,
+    description2: mangal2.description,
+    // "Matched" means effectively-Manglik status agrees on both sides — a
+    // dosha that's present but classically cancelled counts as NOT Manglik
+    // here, same as never having it (see buildMatchRecommendation below).
+    matched: isActive1 === isActive2,
   };
 
   const recommendation = buildMatchRecommendation(
     result.totalScore,
     result.maxTotal,
     flags,
-    mangalDosha,
+    mangal1,
+    mangal2,
   );
+
+  // Ascendant (Lagna)-based results, including the Lagna reference point of
+  // Mangal Dosha, are sensitive to exact birth time. A caller-declared
+  // 'unknown' time means the submitted time is a placeholder, not a real
+  // reported one — surface that instead of silently trusting it.
+  const lagnaCaveat =
+    body.person1.timeAccuracy === 'unknown' || body.person2.timeAccuracy === 'unknown'
+      ? 'Exact birth time was not provided for one or both people — the Lagna (Ascendant)-based reading, including any Mangal Dosha assessed from the Lagna, may be inaccurate. Moon- and Venus-based results are unaffected.'
+      : undefined;
 
   return {
     totalScore: result.totalScore,
@@ -263,6 +287,7 @@ export async function matchmake(
     recommendation,
     flags,
     mangalDosha,
+    ...(lagnaCaveat ? { lagnaCaveat } : {}),
   };
 }
 
@@ -270,12 +295,21 @@ export async function matchmake(
  * Deterministic, template-based recommendation built only from the computed
  * Koota scores and dosha flags above — never LLM-generated, so it can never
  * invent relationship advice not traceable to the actual analysis.
+ *
+ * Mangal Dosha status is "effective" status, not raw presence: a dosha that
+ * is present but classically cancelled (own sign, Jupiter aspect/conjunction,
+ * a documented house+sign exception, mutual cancellation is handled by the
+ * "both active" branch below) is treated the same as never having the dosha
+ * at all — otherwise a fully rectified chart (e.g. Mars in Aries in the 1st
+ * house, aspected by Jupiter) would incorrectly read as an active mismatch
+ * against a clean partner.
  */
-function buildMatchRecommendation(
+export function buildMatchRecommendation(
   totalScore: number,
   maxTotal: number,
   flags: { nadiDosha: boolean; bhakootDosha: boolean },
-  mangalDosha: { person1: boolean; person2: boolean; matched: boolean },
+  mangal1: MangalDosha,
+  mangal2: MangalDosha,
 ): string {
   const parts: string[] = [];
   const pct = maxTotal > 0 ? (totalScore / maxTotal) * 100 : 0;
@@ -290,13 +324,29 @@ function buildMatchRecommendation(
       "Bhakoot Dosha is present (0/7) — traditionally considered to affect the couple's general relationship, love, and family life.",
     );
   }
-  if (!mangalDosha.matched) {
+
+  const isActive1 = mangal1.present && mangal1.type !== 'cancelled';
+  const isActive2 = mangal2.present && mangal2.type !== 'cancelled';
+
+  if (isActive1 !== isActive2) {
+    const inactiveMangal = isActive1 ? mangal2 : mangal1;
+    const cancelNote =
+      inactiveMangal.present && inactiveMangal.type === 'cancelled'
+        ? ' (the other partner does have Mars in a Mangal Dosha house too, but it is classically cancelled there, so this is a genuine mismatch, not just an apparent one)'
+        : '';
     parts.push(
-      "Mangal Dosha is present in only one partner's chart — traditionally this asymmetry is discussed with an astrologer, as a matching Mangal Dosha (present or absent in both) is usually considered more favorable than a mismatch.",
+      `Mangal Dosha is actively present in only one partner's chart${cancelNote} — traditionally this asymmetry is discussed with an astrologer, as a matching Mangal Dosha status (present or absent in both, after accounting for cancellation) is usually considered more favorable than a mismatch.`,
     );
-  } else if (mangalDosha.person1) {
+  } else if (isActive1) {
     parts.push(
-      'Mangal Dosha is present in both charts, which traditional practitioners often consider self-cancelling.',
+      'Mangal Dosha is actively present in both charts, which traditional practitioners often consider self-cancelling.',
+    );
+  } else if (
+    (mangal1.present && mangal1.type === 'cancelled') ||
+    (mangal2.present && mangal2.type === 'cancelled')
+  ) {
+    parts.push(
+      'Mangal Dosha was found in at least one chart but is classically cancelled there, so it does not affect compatibility.',
     );
   }
 

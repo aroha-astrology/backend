@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { ZodError } from 'zod';
 import { AppError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
+import { alertThrottled } from '../lib/notifications/alerts.js';
 
 type ErrorBody = {
   error: {
@@ -42,6 +43,18 @@ export const errorHandler: ErrorHandler = (err, c) => {
     { err, requestId: c.get('requestId'), path: c.req.path, method: c.req.method },
     'unhandled error',
   );
+
+  // Signature keys off the ROUTE pattern, not the concrete path, so that
+  // e.g. /v1/forecast/moon-sign/0..11 failing collapses into one alert
+  // instead of twelve. Fire-and-forget: the client's 500 must not wait on
+  // Telegram, and an alerting failure must not mask the original error.
+  const route = c.req.routePath || c.req.path;
+  void alertThrottled(
+    `api-500:${c.req.method}:${route}`,
+    `500 on ${c.req.method} ${route}`,
+    err instanceof Error ? err.message : String(err),
+  );
+
   return c.json(build(c, 'INTERNAL', 'Internal server error'), 500);
 };
 

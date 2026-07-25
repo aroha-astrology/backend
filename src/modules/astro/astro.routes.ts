@@ -9,14 +9,18 @@ import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
-import { incrementFeedbackCounter, saveChatFeedbackReport } from './feedback.repo.js';
+import {
+  incrementFeedbackCounter,
+  saveChatFeedbackReport,
+  recordChatFeedbackVote,
+} from './feedback.repo.js';
 import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 
 /** Flat cost per chat question, charged atomically before generation starts. */
 const CHAT_MESSAGE_COST_PAISE = 2000;
 
 /** Expensive LLM/swarm routes: cap per authenticated user. */
-const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20 });
+const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20, name: 'astro-llm' });
 import {
   OnboardingRequestSchema,
   OnboardingResponseSchema,
@@ -454,13 +458,38 @@ astroRouter.openapi(chatRoute, async (c) => {
   // (and its NIM inflight slot) stops instead of running on detached.
   const signal = c.req.raw.signal;
 
+  // The server — not the client — is the source of truth for the durable
+  // transcript. `body.history`/`body.summary` are accepted for backward
+  // compatibility with old app builds but are otherwise IGNORED: they used
+  // to be re-persisted verbatim, which meant the client's own compaction
+  // bookkeeping (a buffer it resets to just the latest turn once the
+  // backend signals compaction — see chat-compaction.ts and
+  // ChatConversation.tsx) silently became the permanent record, deleting
+  // every older turn from chat_sessions.history. Loading the STORED history
+  // here and basing both the model prompt and the persisted write on it
+  // keeps compaction purely a model-context concern.
+  let storedHistory: { role: 'user' | 'assistant'; content: string }[] = [];
+  let storedSummary: string | undefined;
+  if (body.sessionId) {
+    const existing = await chatSessionsRepo.getChatSession(
+      body.sessionId,
+      user.id,
+      profile.birthProfileId,
+    );
+    if (!existing) {
+      throw Errors.notFound('Chat session not found');
+    }
+    storedHistory = existing.history;
+    storedSummary = existing.summary ?? undefined;
+  }
+
   // Charge atomically before any generation starts — same balance-check-and-
   // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
   // sends can't both succeed against a balance that only covers one.
   // Refunded below (same fire-and-forget addCredits pattern as
   // vastu.service.ts) if generation throws or comes back with no content —
   // the user shouldn't pay for a question that got no answer.
-  const charged = await deductWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE);
+  const charged = await deductWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'chat_message');
   if (!charged) {
     throw Errors.conflict('Not enough credits to ask a question');
   }
@@ -470,8 +499,8 @@ astroRouter.openapi(chatRoute, async (c) => {
       const events = astroService.chatStream(
         user.id,
         body.message,
-        body.history,
-        body.summary,
+        storedHistory,
+        storedSummary,
         body.detailLevel,
         signal,
         body.locale,
@@ -482,7 +511,7 @@ astroRouter.openapi(chatRoute, async (c) => {
       );
 
       let fullContent = '';
-      let currentSummary = body.summary;
+      let currentSummary = storedSummary;
 
       for await (const event of events) {
         if (signal.aborted || stream.aborted) break;
@@ -505,13 +534,18 @@ astroRouter.openapi(chatRoute, async (c) => {
           // Generation "succeeded" with nothing to show (e.g. hit the
           // token ceiling before any content could be flushed) — don't
           // charge for a question that got no answer.
-          await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE).catch(() => {});
+          await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'refund:chat_message').catch(
+            () => {},
+          );
         }
 
-        // Save history
+        // Save history — appended onto the STORED full transcript (not
+        // body.history), so a compacted model-context window never leaks
+        // into what's persisted. See the comment above where storedHistory
+        // is loaded.
         let sessionId = body.sessionId;
         const newHistory = [
-          ...body.history,
+          ...storedHistory,
           { role: 'user', content: body.message },
           { role: 'assistant', content: fullContent },
         ] as { role: 'user' | 'assistant'; content: string }[]; // cast to avoid exact typing mismatch if any
@@ -546,7 +580,9 @@ astroRouter.openapi(chatRoute, async (c) => {
       // emit a terminal event (and never leak internals to the client).
       logger.error({ err, userId: user.id }, 'chat stream failed');
       // Don't charge for a question the LLM never actually answered.
-      await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE).catch(() => {});
+      await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'refund:chat_message').catch(
+        () => {},
+      );
       if (!signal.aborted && !stream.aborted) {
         await stream.writeSSE({
           event: 'error',
@@ -589,6 +625,7 @@ astroRouter.openapi(chatFeedbackRoute, async (c) => {
   const body = c.req.valid('json');
 
   await incrementFeedbackCounter(body.vote === 'up' ? 'chat_thumbs_up' : 'chat_thumbs_down');
+  await recordChatFeedbackVote({ userId: user.id, vote: body.vote, sessionId: body.sessionId });
 
   if (body.vote === 'down' && body.question && body.answer) {
     await saveChatFeedbackReport({

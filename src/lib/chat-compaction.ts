@@ -21,6 +21,12 @@ export interface ChatTurn {
   content: string;
 }
 
+export interface ExtractedFact {
+  fact: string;
+  /** A natural, non-intrusive follow-up question worth asking again once this topic recurs (e.g. "Did the new job start yet?"), or null. */
+  followUpQuestion: string | null;
+}
+
 export interface CompactionResult {
   /** Turns to send verbatim this request. */
   recentHistory: ChatTurn[];
@@ -29,7 +35,7 @@ export interface CompactionResult {
   /** Whether `summary` changed this turn (client should persist the new value). */
   changed: boolean;
   /** Durable personal facts newly noticed in the folded turns (e.g. "wife's birthday is 17 July"). Empty unless compaction ran this turn. */
-  facts: string[];
+  facts: ExtractedFact[];
 }
 
 /** Turns always kept verbatim, most recent first-in-order. */
@@ -58,10 +64,12 @@ Preserve in the summary: any facts the user has stated about themselves or their
 
 Separately, extract "facts": durable, personally-significant details worth remembering across future conversations — relationships (e.g. "wife's birthday is 17 July"), occupation, life events, health concerns, goals. Never include astrological conclusions, transient questions, or anything already derivable from the birth chart. Return an empty array if nothing durable was shared.
 
+Each fact is an object {"fact": string, "followUpQuestion": string | null}. Only set followUpQuestion when the fact is naturally incomplete AND there is one obvious, non-intrusive next detail worth knowing later — for example "planning to conceive after starting a new job" naturally invites "Did the new job start yet?", and "is married" naturally invites "When did they get married?". Leave followUpQuestion null for facts that are already complete on their own (e.g. "has an eldest son") or where any follow-up would feel intrusive or speculative — do not force one onto every fact.
+
 ${incomingSummary ? `Existing summary:\n${incomingSummary}\n\n` : ''}New turns to fold in:
 ${transcript}
 
-Respond with ONLY a JSON object of the exact shape {"summary": string, "facts": string[]} — no markdown fences, no other text.`;
+Respond with ONLY a JSON object of the exact shape {"summary": string, "facts": {"fact": string, "followUpQuestion": string | null}[]} — no markdown fences, no other text.`;
 
   try {
     const raw = await generate({
@@ -87,7 +95,7 @@ Respond with ONLY a JSON object of the exact shape {"summary": string, "facts": 
  * summary is worse than losing facts, so any parse failure falls back to
  * treating the raw response as the summary with no facts — never throws.
  */
-function parseCompactionResponse(raw: string): { summary: string; facts: string[] } {
+function parseCompactionResponse(raw: string): { summary: string; facts: ExtractedFact[] } {
   const stripped = raw
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
@@ -95,11 +103,23 @@ function parseCompactionResponse(raw: string): { summary: string; facts: string[
   try {
     const obj = JSON.parse(stripped) as { summary?: unknown; facts?: unknown };
     const summary = typeof obj.summary === 'string' ? obj.summary.trim() : raw.trim();
-    const facts = Array.isArray(obj.facts)
-      ? obj.facts.filter((f): f is string => typeof f === 'string')
-      : [];
+    const facts = Array.isArray(obj.facts) ? obj.facts.map(parseFact).filter(isExtractedFact) : [];
     return { summary, facts };
   } catch {
     return { summary: raw.trim(), facts: [] };
   }
+}
+
+function parseFact(item: unknown): ExtractedFact | null {
+  if (typeof item !== 'object' || item === null) return null;
+  const { fact, followUpQuestion } = item as { fact?: unknown; followUpQuestion?: unknown };
+  if (typeof fact !== 'string') return null;
+  return {
+    fact,
+    followUpQuestion: typeof followUpQuestion === 'string' ? followUpQuestion : null,
+  };
+}
+
+function isExtractedFact(f: ExtractedFact | null): f is ExtractedFact {
+  return f !== null;
 }

@@ -66,3 +66,21 @@ describe('astro-engine: calculateAshtakavarga', () => {
     expect(sarva.total).toBe(337);
   }, 20_000);
 });
+
+// Guards a subtle correctness hazard introduced by caching: calculateChart's
+// final swe.get_ayanamsa(jd) call reads GLOBAL mutable sid_mode state on the
+// shared swisseph instance. If planetPositions/houses/ascendant are served
+// from cache (skipping the swe.set_sid_mode() call each core function does
+// internally), a stale sid_mode from a PRIOR call with a different ayanamsa
+// must not leak into this chart's ayanamsaValue.
+describe('astro-engine: calculateChart ayanamsa cache correctness', () => {
+  it('returns the correct ayanamsaValue per-ayanamsa even when planet/house data is cache-warm', async () => {
+    // Warm the cache with 'lahiri' first.
+    await calculateChart(1990, 5, 20, 6, 30, 5.5, 19.076, 72.8777, 'lahiri', 'W');
+    // Same date/time/location, different ayanamsa — must not reuse lahiri's sid_mode.
+    const raman = await calculateChart(1990, 5, 20, 6, 30, 5.5, 19.076, 72.8777, 'raman', 'W');
+    // B.V. Raman ayanamsa near 1990 is ~21-22°, distinct from Lahiri's ~23-24°.
+    expect(raman.ayanamsaValue).toBeGreaterThan(20);
+    expect(raman.ayanamsaValue).toBeLessThan(23);
+  }, 20_000);
+});

@@ -36,7 +36,7 @@ for period in "${PERIODS[@]}"; do
   curl -fsS -X POST \
     -H "X-Cron-Secret: $SECRET" \
     -H 'Content-Type: application/json' \
-    -d "{\"period\":\"$period\",\"force\":true}" \
+    -d "{\"period\":\"$period\",\"force\":true,\"includeDormant\":true}" \
     "http://127.0.0.1:${PORT}/internal/cron/horoscopes" | jq '.'
   echo "$(date -u +%FT%TZ) completed regeneration for period: $period"
 done

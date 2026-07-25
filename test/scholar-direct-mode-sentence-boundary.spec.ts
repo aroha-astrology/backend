@@ -87,4 +87,27 @@ describe('extractNextUnit / stripUnitMarkers — direct-mode streaming boundarie
     expect(units.some((u) => u === '૨।' || u.startsWith('૨।'))).toBe(false);
     expect(leftover).toBe('બાકી');
   });
+
+  it('strips a plain-prose section label ("Morning:") with no markdown symbol at all', () => {
+    // Reproduces a reported live reply that broke a "how will my day go"
+    // question into "Morning: ..." / "Afternoon: ..." sections — OUTPUT_STYLE
+    // bans this exactly like a markdown header, but nothing in this file
+    // previously caught it since it has no #, **, bullet, or number marker.
+    const { units } = drain(
+      'Morning: You will feel a burst of energy. Afternoon: Focus on collaboration. Rest',
+    );
+    expect(units).toEqual(['You will feel a burst of energy.', 'Focus on collaboration.']);
+  });
+
+  it('strips a label with a parenthetical ("The Mars-Saturn Cycles (General Caution):")', () => {
+    const { units } = drain(
+      'The Mars-Saturn Cycles (General Caution): proceed carefully with new ventures this week. Rest',
+    );
+    expect(units).toEqual(['proceed carefully with new ventures this week.']);
+  });
+
+  it('does not strip a normal sentence that merely contains a colon further in', () => {
+    const { units } = drain('Your chart shows one clear theme: patience pays off this month. Rest');
+    expect(units).toEqual(['Your chart shows one clear theme: patience pays off this month.']);
+  });
 });

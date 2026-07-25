@@ -339,6 +339,7 @@ export const users = pgTable(
     referralSource: text('referral_source'),
     referredByCode: text('referred_by_code'),
     referralCode: text('referral_code'),
+    referralEarningsPaise: integer('referral_earnings_paise').notNull().default(0),
 
     // --- consent (current effective state; history in user_consent_log) ----
     marketingConsentAt: timestamp('marketing_consent_at', { withTimezone: true }),
@@ -663,6 +664,9 @@ export const orders = pgTable(
 export type OrderRow = typeof orders.$inferSelect;
 export type NewOrderRow = typeof orders.$inferInsert;
 
+export type WalletTransactionRow = typeof walletTransactions.$inferSelect;
+export type NewWalletTransactionRow = typeof walletTransactions.$inferInsert;
+
 /* -------------------------------------------------------------------------- */
 /* prediction_feedback — user feedback on predictions                          */
 /* -------------------------------------------------------------------------- */
@@ -750,6 +754,52 @@ export const precomputeJobs = pgTable(
       table.userId,
       table.periodType,
       table.periodKey,
+    ),
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/* cron_batch_runs — resumable pagination checkpoint for nightly cron batches  */
+/* -------------------------------------------------------------------------- */
+
+export const cronBatchRunStatusEnum = pgEnum('cron_batch_run_status', [
+  'running',
+  'completed',
+  'failed',
+]);
+
+export const cronBatchRuns = pgTable(
+  'cron_batch_runs',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    jobName: text('job_name').notNull(),
+    period: text('period').notNull(),
+    forDate: text('for_date').notNull(),
+    status: cronBatchRunStatusEnum('status').notNull().default('running'),
+    // Cursor into the paginated scan — a users.id value, but stored with no FK:
+    // it's just a bookmark, shouldn't cascade on user deletion, and needs no
+    // referential integrity.
+    lastId: uuid('last_id'),
+    processed: integer('processed').notNull().default(0),
+    generated: integer('generated').notNull().default(0),
+    skipped: integer('skipped').notNull().default(0),
+    failed: integer('failed').notNull().default(0),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    jobPeriodDateIdx: uniqueIndex('cron_batch_runs_job_period_date_idx').on(
+      table.jobName,
+      table.period,
+      table.forDate,
     ),
   }),
 );
@@ -1189,6 +1239,10 @@ export const vastuPlans = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** null = primary profile, matching every other profile-scoped table's convention. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
     /** The full editable CAD plan (rooms/doors/windows/orientation) for reload. */
     layout: jsonb('layout').$type<Record<string, unknown>>(),
     /** room type → occupied direction(s), the rules-engine input. */
@@ -1337,6 +1391,33 @@ export type ChatFeedbackReportRow = typeof chatFeedbackReports.$inferSelect;
 export type NewChatFeedbackReportRow = typeof chatFeedbackReports.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* chat_feedback_votes — every thumbs up/down, attributed to the voting user  */
+/* -------------------------------------------------------------------------- */
+
+export const chatFeedbackVotes = pgTable(
+  'chat_feedback_votes',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    vote: text('vote').notNull(),
+    sessionId: uuid('session_id'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('chat_feedback_votes_user_id_idx').on(table.userId),
+  }),
+);
+
+export type ChatFeedbackVoteRow = typeof chatFeedbackVotes.$inferSelect;
+export type NewChatFeedbackVoteRow = typeof chatFeedbackVotes.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* user_facts — durable personal facts extracted from AI chat conversations    */
 /* -------------------------------------------------------------------------- */
 
@@ -1355,6 +1436,8 @@ export const userFacts = pgTable(
     }),
     fact: text('fact').notNull(),
     category: text('category'),
+    /** Encrypted like `fact`. A natural, non-intrusive question worth asking again once this topic recurs (e.g. "Did the new job start yet?") — null when the fact needs no follow-up. */
+    followUpQuestion: text('follow_up_question'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -1392,3 +1475,163 @@ export const telegramAdminAuditLog = pgTable(
 
 export type TelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferSelect;
 export type NewTelegramAdminAuditLogRow = typeof telegramAdminAuditLog.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* notifications — push / bell notifications                                   */
+/* -------------------------------------------------------------------------- */
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    type: text('type').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('notifications_user_id_idx').on(table.userId),
+    // Supports the transit-alert dormancy throttle, which asks "has this user
+    // had a notification of this type in the last 15 days" for every candidate
+    // recipient on every send.
+    userTypeCreatedIdx: index('notifications_user_type_created_idx').on(
+      table.userId,
+      table.type,
+      table.createdAt,
+    ),
+  }),
+);
+
+export type NotificationRow = typeof notifications.$inferSelect;
+export type NewNotificationRow = typeof notifications.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* transit_events — computed planetary ingress / station calendar              */
+/* -------------------------------------------------------------------------- */
+
+export const transitEventTypeEnum = pgEnum('transit_event_type', [
+  'ingress',
+  'retrograde',
+  'direct',
+]);
+
+export const transitEventStatusEnum = pgEnum('transit_event_status', [
+  /** Detected and stored, but not yet chosen for delivery. */
+  'detected',
+  /** Chosen for delivery and copy has been generated. */
+  'drafted',
+  /** Push has gone out. */
+  'sent',
+  /** Deliberately not pushed — see skipReason (e.g. lost a collision). */
+  'skipped',
+]);
+
+/**
+ * The app's own transit calendar, computed from the bundled Swiss Ephemeris by
+ * findTransitEvents() — never scraped. Published transit calendars are usually
+ * tropical or use a different ayanamsa; ours is Lahiri sidereal, so an external
+ * date would contradict the Kundli and Sade Sati pages by days.
+ *
+ * Every detected event is stored, including ones that will never be pushed —
+ * they are still true, and still useful to show in-app.
+ */
+export const transitEvents = pgTable(
+  'transit_events',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    planet: text('planet').notNull(),
+    eventType: transitEventTypeEnum('event_type').notNull(),
+    /** Sign being left (ingress) or stood in (station). */
+    fromSign: text('from_sign').notNull(),
+    /** Sign being entered. Null for stations — nothing is entered. */
+    toSign: text('to_sign'),
+    /** The moment the event completes, accurate to ~5 seconds. */
+    exactAt: timestamp('exact_at', { withTimezone: true }).notNull(),
+    /** IST calendar date of exactAt (YYYY-MM-DD) — the date the copy talks about. */
+    forDate: text('for_date').notNull(),
+    /** When the pre-alert should be sent: 19:00 IST, two days before forDate. */
+    pushAt: timestamp('push_at', { withTimezone: true }).notNull(),
+    /** Collision priority — slow/rare planets outrank fast/frequent ones. */
+    weight: integer('weight').notNull().default(0),
+    status: transitEventStatusEnum('status').notNull().default('detected'),
+    skipReason: text('skip_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    // Re-running detection over an already-scanned window must be a no-op, not
+    // a duplicate calendar. A planet can only do a given thing once per day.
+    planetTypeDateUnique: uniqueIndex('transit_events_planet_type_date_idx').on(
+      table.planet,
+      table.eventType,
+      table.forDate,
+    ),
+    pushAtIdx: index('transit_events_push_at_idx').on(table.pushAt),
+  }),
+);
+
+export type TransitEventRow = typeof transitEvents.$inferSelect;
+export type NewTransitEventRow = typeof transitEvents.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* transit_alert_copy — AI-written push copy per (event, moon sign, language)  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per (event × moon sign × language) actually needed — the drafting
+ * job asks the database which combinations have live device tokens first, so a
+ * language nobody uses is never generated and never paid for.
+ *
+ * `isFallback` records that generation or validation failed and the static
+ * hand-written copy was substituted. That distinction matters: a spike in
+ * fallbacks is the signal that the prompt or the model has regressed, and
+ * without the flag it would be invisible.
+ */
+export const transitAlertCopy = pgTable(
+  'transit_alert_copy',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => transitEvents.id, { onDelete: 'cascade' }),
+    /** Natal Moon sign this copy is written for. Null = users with no chart yet. */
+    moonSign: text('moon_sign'),
+    lang: text('lang').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    isFallback: boolean('is_fallback').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    // Postgres treats NULLs as distinct, so the no-chart (moonSign IS NULL)
+    // variant needs its own partial unique index — exactly the same split the
+    // kundlis table uses for its null birthProfileId.
+    eventSignLangUnique: uniqueIndex('transit_alert_copy_event_sign_lang_idx')
+      .on(table.eventId, table.moonSign, table.lang)
+      .where(sql`${table.moonSign} is not null`),
+    eventLangNoSignUnique: uniqueIndex('transit_alert_copy_event_lang_nosign_idx')
+      .on(table.eventId, table.lang)
+      .where(sql`${table.moonSign} is null`),
+  }),
+);
+
+export type TransitAlertCopyRow = typeof transitAlertCopy.$inferSelect;
+export type NewTransitAlertCopyRow = typeof transitAlertCopy.$inferInsert;

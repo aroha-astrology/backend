@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   hardDeleteOwnedBirthProfile: vi.fn(),
   createBirthProfile: vi.fn(),
   requestKundliGeneration: vi.fn(),
+  touchUserLastActive: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -36,6 +37,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   deductWalletBalance: state.deductWalletBalance,
   addWalletBalance: state.addWalletBalance,
   updateUserById: state.updateUserById,
+  touchUserLastActive: state.touchUserLastActive,
 }));
 
 vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
@@ -103,6 +105,7 @@ beforeEach(() => {
   state.hardDeleteOwnedBirthProfile.mockReset();
   state.createBirthProfile.mockReset();
   state.requestKundliGeneration.mockReset().mockResolvedValue(undefined);
+  state.touchUserLastActive.mockReset().mockResolvedValue(undefined);
 });
 
 describe('GET /v1/profiles', () => {
@@ -112,6 +115,22 @@ describe('GET /v1/profiles', () => {
     const body = (await res.json()) as any[];
     expect(body).toHaveLength(1);
     expect(body[0]).toMatchObject({ id: 'primary', isPrimary: true, isActive: true });
+  });
+
+  it('bumps lastActiveAt on request when it has never been set', async () => {
+    state.findUserByFirebaseUid.mockResolvedValue(
+      makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', lastActiveAt: null }),
+    );
+    await createApp().request('/v1/profiles', { headers: AUTH });
+    expect(state.touchUserLastActive).toHaveBeenCalledWith('id-1');
+  });
+
+  it('does not bump lastActiveAt when it was updated recently (throttled)', async () => {
+    state.findUserByFirebaseUid.mockResolvedValue(
+      makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', lastActiveAt: new Date() }),
+    );
+    await createApp().request('/v1/profiles', { headers: AUTH });
+    expect(state.touchUserLastActive).not.toHaveBeenCalled();
   });
 
   it('prepends the primary profile and marks the correct entry active by activeProfileId', async () => {
@@ -156,7 +175,7 @@ describe('POST /v1/profiles', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('id-1', 20000);
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('id-1', 20000, 'profile_creation');
     expect(state.createBirthProfile).toHaveBeenCalledWith(
       'id-1',
       expect.objectContaining(CREATE_BODY),
@@ -196,7 +215,7 @@ describe('POST /v1/profiles', () => {
     });
 
     expect(res.status).toBe(500);
-    expect(state.addWalletBalance).toHaveBeenCalledWith('id-1', 20000);
+    expect(state.addWalletBalance).toHaveBeenCalledWith('id-1', 20000, 'refund:profile_creation');
     expect(state.updateUserById).not.toHaveBeenCalled();
     expect(state.requestKundliGeneration).not.toHaveBeenCalled();
   });

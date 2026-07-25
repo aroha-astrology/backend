@@ -194,6 +194,7 @@ export interface MangalDosha {
   marsHouseFromVenus: number;
   cancellations: string[];
   type: 'partial' | 'full' | 'cancelled' | 'none';
+  description: string;
 }
 
 export interface KaalSarpDosha {

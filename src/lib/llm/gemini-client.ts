@@ -9,6 +9,7 @@
 import { env } from '../../config/env.js';
 import { type LLMRequestOptions } from '../../config/llm.js';
 import { logger } from '../logger.js';
+import { alertThrottled } from '../notifications/alerts.js';
 
 export class GeminiError extends Error {
   constructor(
@@ -25,6 +26,12 @@ const MAX_ATTEMPTS = 4;
 const MAX_RATE_LIMIT_RETRIES = 6;
 const GENERATE_TIMEOUT_MS = 60_000;
 const STREAM_TIMEOUT_MS = 120_000;
+// Hard ceiling on total time spent across ALL attempts + backoff sleeps for a
+// single generate()/stream() call. Without this, MAX_RATE_LIMIT_RETRIES (6,
+// and NOT counted against MAX_ATTEMPTS — see the `attempt--` below) stacking
+// with per-attempt timeouts lets one request hold a process for many minutes
+// under sustained 429s, filling it with zombie requests.
+const MAX_TOTAL_ELAPSED_MS = 90_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -112,9 +119,14 @@ function doRequest(
 
 export async function generate(opts: LLMRequestOptions): Promise<string> {
   let rateLimitWaits = 0;
+  const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const abort = makeAbort(opts.signal, opts.timeoutMs ?? GENERATE_TIMEOUT_MS);
+    if (Date.now() >= deadlineAt) {
+      throw new GeminiError('Exceeded total elapsed-time budget for Gemini request');
+    }
+    const attemptTimeout = Math.min(opts.timeoutMs ?? GENERATE_TIMEOUT_MS, deadlineAt - Date.now());
+    const abort = makeAbort(opts.signal, attemptTimeout);
     let response: Response;
     let bodyText: string;
 
@@ -125,15 +137,26 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       logger.warn({ err, attempt }, 'Gemini request network error/timeout');
       abort.clear();
       if (attempt < MAX_ATTEMPTS) {
-        await sleep(generalBackoff(attempt));
+        await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
         continue;
       }
+      void alertThrottled(
+        'gemini:network',
+        'Gemini unreachable',
+        `${opts.profile.name}: gave up after ${MAX_ATTEMPTS} attempts — ${String(err)}`,
+      );
       throw new GeminiError(`Network error after ${MAX_ATTEMPTS} attempts: ${String(err)}`);
     }
     abort.clear();
 
     if (response.status === 429) {
       if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
+        void alertThrottled(
+          'gemini:quota',
+          'Gemini quota exhausted',
+          `${opts.profile.name}: still 429 after ${MAX_RATE_LIMIT_RETRIES} backoff waits. ` +
+            `Users are seeing failed AI responses.`,
+        );
         throw new GeminiError(`Rate limited after ${MAX_RATE_LIMIT_RETRIES} waits`, 429, bodyText);
       }
       const retryAfterHeader = response.headers.get('Retry-After');
@@ -142,7 +165,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
         ? rateLimitBackoff(rateLimitWaits)
         : retryAfterSec * 1000;
       logger.warn({ waitMs, rateLimitWaits }, 'Gemini 429 rate limited, backing off');
-      await sleep(waitMs);
+      await sleep(Math.min(waitMs, Math.max(0, deadlineAt - Date.now())));
       rateLimitWaits++;
       attempt--;
       continue;
@@ -150,8 +173,13 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
 
     if (!response.ok) {
       logger.warn({ status: response.status, body: bodyText.slice(0, 500) }, 'Gemini API error');
+      void alertThrottled(
+        `gemini:http-${response.status}`,
+        `Gemini API error ${response.status}`,
+        `${opts.profile.name}: ${bodyText.slice(0, 300)}`,
+      );
       if (attempt < MAX_ATTEMPTS) {
-        await sleep(generalBackoff(attempt));
+        await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
         continue;
       }
       throw new GeminiError(
@@ -198,9 +226,14 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
   // Once we have emitted tokens to the consumer we must NOT silently retry and
   // replay a fresh completion — that produces duplicated/garbled output.
   let yieldedAny = false;
+  const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const abort = makeAbort(opts.signal, STREAM_TIMEOUT_MS);
+    if (Date.now() >= deadlineAt) {
+      throw new GeminiError('Exceeded total elapsed-time budget for Gemini stream request');
+    }
+    const attemptTimeout = Math.min(STREAM_TIMEOUT_MS, deadlineAt - Date.now());
+    const abort = makeAbort(opts.signal, attemptTimeout);
     try {
       let response: Response;
       try {
@@ -208,9 +241,14 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       } catch (err) {
         logger.warn({ err, attempt }, 'Gemini stream request network error/timeout');
         if (attempt < MAX_ATTEMPTS) {
-          await sleep(generalBackoff(attempt));
+          await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
           continue;
         }
+        void alertThrottled(
+          'gemini:network',
+          'Gemini unreachable',
+          `${opts.profile.name} (stream): gave up after ${MAX_ATTEMPTS} attempts — ${String(err)}`,
+        );
         throw new GeminiError(`Network error after ${MAX_ATTEMPTS} attempts: ${String(err)}`);
       }
 
@@ -219,6 +257,12 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
 
         if (response.status === 429) {
           if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
+            void alertThrottled(
+              'gemini:quota',
+              'Gemini quota exhausted',
+              `${opts.profile.name} (stream): still 429 after ${MAX_RATE_LIMIT_RETRIES} ` +
+                `backoff waits. Users are seeing failed AI responses.`,
+            );
             throw new GeminiError(
               `Rate limited after ${MAX_RATE_LIMIT_RETRIES} waits`,
               429,
@@ -231,7 +275,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
             ? rateLimitBackoff(rateLimitWaits)
             : retryAfterSec * 1000;
           logger.warn({ waitMs, rateLimitWaits }, 'Gemini stream 429 rate limited');
-          await sleep(waitMs);
+          await sleep(Math.min(waitMs, Math.max(0, deadlineAt - Date.now())));
           rateLimitWaits++;
           attempt--;
           continue;
@@ -241,8 +285,13 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
           { status: response.status, body: bodyText.slice(0, 500) },
           'Gemini stream API error',
         );
+        void alertThrottled(
+          `gemini:http-${response.status}`,
+          `Gemini API error ${response.status}`,
+          `${opts.profile.name} (stream): ${bodyText.slice(0, 300)}`,
+        );
         if (attempt < MAX_ATTEMPTS) {
-          await sleep(generalBackoff(attempt));
+          await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
           continue;
         }
         throw new GeminiError(
@@ -326,7 +375,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       }
       logger.warn({ err, attempt }, 'Gemini stream read error');
       if (attempt < MAX_ATTEMPTS) {
-        await sleep(generalBackoff(attempt));
+        await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
         continue;
       }
       throw new GeminiError(`Stream read error after ${MAX_ATTEMPTS} attempts: ${String(err)}`);

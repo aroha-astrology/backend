@@ -6,6 +6,17 @@ import { encryptField, decryptField } from '../../lib/crypto/field-encryption.js
 /** Hard cap so a very long-running conversation can't grow this unbounded — applied PER (userId, birthProfileId), not globally across a user's profiles. */
 const MAX_FACTS_PER_USER = 50;
 
+export interface UserFact {
+  fact: string;
+  /** A natural follow-up question worth asking again once this topic recurs, or null. */
+  followUpQuestion: string | null;
+}
+
+export interface NewUserFact {
+  fact: string;
+  followUpQuestion?: string | null;
+}
+
 /** `birthProfileId === null` filters to the primary/self profile; a non-null id filters to that additional profile. */
 function profileFilter(birthProfileId: string | null) {
   return birthProfileId === null
@@ -16,13 +27,16 @@ function profileFilter(birthProfileId: string | null) {
 export async function getUserFacts(
   userId: string,
   birthProfileId: string | null,
-): Promise<string[]> {
+): Promise<UserFact[]> {
   const rows = await db
-    .select({ fact: userFacts.fact })
+    .select({ fact: userFacts.fact, followUpQuestion: userFacts.followUpQuestion })
     .from(userFacts)
     .where(and(eq(userFacts.userId, userId), profileFilter(birthProfileId)))
     .orderBy(asc(userFacts.createdAt));
-  return rows.map((r) => decryptField(r.fact) ?? '');
+  return rows.map((r) => ({
+    fact: decryptField(r.fact) ?? '',
+    followUpQuestion: decryptField(r.followUpQuestion),
+  }));
 }
 
 /**
@@ -35,7 +49,7 @@ export async function getUserFacts(
 export async function saveUserFacts(
   userId: string,
   birthProfileId: string | null,
-  facts: string[],
+  facts: NewUserFact[],
 ): Promise<void> {
   if (facts.length === 0) return;
 
@@ -47,16 +61,27 @@ export async function saveUserFacts(
     existing.map((r) => (decryptField(r.fact) ?? '').trim().toLowerCase()),
   );
 
-  const toInsert = [...new Set(facts.map((f) => f.trim()).filter(Boolean))].filter(
-    (f) => !existingLower.has(f.toLowerCase()),
-  );
+  // Same exact-string dedup as before (a Map here plays the role the old
+  // Set did), just also carrying each fact's followUpQuestion along so the
+  // first occurrence's value survives the dedup.
+  const byFact = new Map<string, string | null>();
+  for (const f of facts) {
+    const trimmed = f.fact.trim();
+    if (!trimmed || byFact.has(trimmed)) continue;
+    byFact.set(trimmed, f.followUpQuestion?.trim() || null);
+  }
+
+  const toInsert = [...byFact.keys()].filter((f) => !existingLower.has(f.toLowerCase()));
   if (toInsert.length === 0) return;
 
-  await db
-    .insert(userFacts)
-    .values(
-      toInsert.map((fact) => ({ userId, birthProfileId, fact: encryptField(fact) as string })),
-    );
+  await db.insert(userFacts).values(
+    toInsert.map((fact) => ({
+      userId,
+      birthProfileId,
+      fact: encryptField(fact) as string,
+      followUpQuestion: encryptField(byFact.get(fact) ?? null),
+    })),
+  );
 
   const total = existing.length + toInsert.length;
   if (total > MAX_FACTS_PER_USER) {
