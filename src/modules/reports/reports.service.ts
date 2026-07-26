@@ -198,7 +198,14 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     }
 
     const scores = generator.computeScores(
-      { chart: kundli.chartData, partnerChart },
+      {
+        chart: kundli.chartData,
+        partnerChart,
+        doshaData: kundli.doshaData ?? null,
+        yogaData: kundli.yogaData ?? null,
+        ashtakavargaData: kundli.ashtakavargaData ?? null,
+        dashaData: kundli.dashaData ?? null,
+      },
       row.periodMonth,
     );
     const sections = await generator.generateNarrative(scores, 'en');
@@ -368,7 +375,17 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
     }
   }
 
-  return generator.computeScores({ chart, partnerChart }, row.periodMonth);
+  return generator.computeScores(
+    {
+      chart,
+      partnerChart,
+      doshaData: kundli?.doshaData ?? null,
+      yogaData: kundli?.yogaData ?? null,
+      ashtakavargaData: kundli?.ashtakavargaData ?? null,
+      dashaData: kundli?.dashaData ?? null,
+    },
+    row.periodMonth,
+  );
 }
 
 /**

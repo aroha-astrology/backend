@@ -214,21 +214,34 @@ function computeCareerFactor(
   };
 }
 
-function computeTimingFactor(chart1: Record<string, unknown> | null): MatchRiskFactor {
-  const marriage = computeMarriageScores({ chart: chart1 }, null);
+/**
+ * `dashaData` is `kundli.dashaData` (`ReportScoreContext.dashaData`) for person 1, threaded
+ * through from match-report.ts — marriage.ts's primary timing search now reads dasha windows
+ * from `ctx.dashaData` (the shared chat/report timing search, see marriage.ts's own doc
+ * comment) rather than re-deriving a dasha tree from `chart1.julianDay` itself, so this factor
+ * needs that same field passed in to produce a real answer. Defaults to null (matching prior
+ * behavior for any caller that doesn't have it handy) which simply degrades this factor to its
+ * existing "timing is less classically clear-cut" caution read.
+ */
+function computeTimingFactor(
+  chart1: Record<string, unknown> | null,
+  dashaData: Record<string, unknown> | null,
+): MatchRiskFactor {
+  const marriage = computeMarriageScores({ chart: chart1, dashaData }, null);
+  const strongestWindow = marriage.windows[0] ?? null;
   const evidence: string[] = [];
   let severity: RiskSeverity;
   let score: number;
 
-  if (!marriage.strongestWindow) {
+  if (!strongestWindow) {
     severity = 'caution';
     score = 40;
     evidence.push(
-      'No clearly favorable Mahadasha/Antardasha window for marriage was found for person 1 within the next 15 years — timing is less classically clear-cut, not necessarily unfavorable.',
+      'No clearly favorable Vimshottari window for marriage was found for person 1 within the near-term dasha lookahead — timing is less classically clear-cut, not necessarily unfavorable.',
     );
   } else {
     const yearsAway =
-      (new Date(marriage.strongestWindow.startDate).getTime() - Date.now()) / (365.25 * 86_400_000);
+      (new Date(strongestWindow.startDate).getTime() - Date.now()) / (365.25 * 86_400_000);
     if (yearsAway <= 3) {
       severity = 'benefit';
       score = 80;
@@ -237,7 +250,7 @@ function computeTimingFactor(chart1: Record<string, unknown> | null): MatchRiskF
       score = 55;
     }
     evidence.push(
-      `Person 1's most favorable marriage-timing window (7th lord/Venus/Jupiter dasha) runs from ${marriage.strongestWindow.startDate.slice(0, 10)} to ${marriage.strongestWindow.endDate.slice(0, 10)}.`,
+      `Person 1's most favorable marriage-timing window (7th-lord/7th-house-occupants/Venus dasha) runs from ${strongestWindow.startDate} to ${strongestWindow.endDate}.`,
     );
   }
 
@@ -291,6 +304,7 @@ export function computeMatchRiskFactors(
   chart1: Record<string, unknown> | null,
   chart2: Record<string, unknown> | null,
   kundliMilan: KundliMilanScores,
+  dashaData: Record<string, unknown> | null = null,
 ): MatchRiskFactor[] {
   return [
     computeWealthFactor(chart1, chart2),
@@ -298,7 +312,7 @@ export function computeMatchRiskFactors(
     computeChildrenFactor(chart1, chart2),
     computeHarmonyFactor(chart1, chart2, kundliMilan),
     computeCareerFactor(chart1, chart2),
-    computeTimingFactor(chart1),
+    computeTimingFactor(chart1, dashaData),
     computeIntimacyFactor(chart1, chart2),
     computeInlawsFactor(chart1, chart2),
   ];

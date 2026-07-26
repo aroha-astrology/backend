@@ -42,6 +42,11 @@ function makeScores(overrides: Partial<MatchReportScores> = {}): MatchReportScor
     dashakootaBreakdown: [{ name: 'Dina', score: 1, maxScore: 1, description: 'Favorable' }],
     manglikStatus: { person1: false, person2: false, cancelled: false },
     compatibilityBand: 'good',
+    // KundliMilanScores (which MatchReportScores extends) gained a required primaryDoshaYoga
+    // field — see kundli-milan.ts's own doc comment for why it's scoped to the primary person
+    // only. computeMatchReportScores already spreads this through unchanged from
+    // computeKundliMilanScores at runtime; this fixture just needs the field to satisfy the type.
+    primaryDoshaYoga: { positives: [], cautions: [] },
     riskFactors: makeRiskFactors(),
     ...overrides,
   };

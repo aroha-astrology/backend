@@ -5,9 +5,8 @@ const state = vi.hoisted(() => ({ generate: vi.fn() }));
 
 vi.mock('../src/lib/llm/gemini-client.js', () => ({ generate: state.generate }));
 
-const { generateMarriageNarrative, translateMarriageNarrative } = await import(
-  '../src/lib/llm/reports/marriage.js'
-);
+const { generateMarriageNarrative, translateMarriageNarrative } =
+  await import('../src/lib/llm/reports/marriage.js');
 
 function makeScores(overrides: Partial<MarriageScores> = {}): MarriageScores {
   return {
@@ -23,10 +22,80 @@ function makeScores(overrides: Partial<MarriageScores> = {}): MarriageScores {
     seventhHouseSign: 'Virgo',
     seventhHouseTemperament: 'thoughtful, practical, and devoted through acts of service',
     fourthLordStrength: 'average',
-    strongestWindow: { startDate: '2027-01-01T00:00:00.000Z', endDate: '2028-01-01T00:00:00.000Z' },
-    upcomingWindows: [],
+    windows: [
+      {
+        startDate: '2027-01-01',
+        endDate: '2028-01-01',
+        score: 2,
+        level: 'MEDIUM',
+        dashaLevel: 'antardasha',
+        reasoning: ['Vimshottari anchor: Mercury antardasha within Mercury major period.'],
+      },
+    ],
+    jupiterDharmaWindow: null,
+    ageBands: [
+      { label: 'Now – 32', startAge: 29, endAge: 32, confidence: 'MEDIUM' },
+      { label: '33 – 36', startAge: 33, endAge: 36, confidence: 'LOW' },
+      { label: '37 – 44', startAge: 37, endAge: 44, confidence: 'NONE' },
+      { label: '45+', startAge: 45, endAge: null, confidence: 'NONE' },
+    ],
+    seventhLordReason: 'Mercury is in its own sign.',
+    venusReason: 'Venus is exalted in Pisces.',
+    jupiterReason: 'Jupiter is debilitated in Capricorn.',
+    doshaYoga: { positives: [], cautions: [] },
+    partnerArchetype: {
+      label: 'Partnership Archetype',
+      description:
+        "Classically, this placement's sign (Virgo) suggests someone thoughtful, practical.",
+      traits: [
+        { label: 'Warmth', score: 6 },
+        { label: 'Discipline', score: 9 },
+        { label: 'Intellect', score: 6 },
+        { label: 'Sensuality', score: 9 },
+        { label: 'Ambition', score: 3 },
+      ],
+    },
+    marriageQualityArc: [
+      {
+        label: 'Years 1-10',
+        startDate: '2026-01-01T00:00:00.000Z',
+        endDate: '2036-01-01T00:00:00.000Z',
+        score: 60,
+        tone: 'mixed',
+      },
+      {
+        label: 'Years 11-20',
+        startDate: '2036-01-01T00:00:00.000Z',
+        endDate: '2046-01-01T00:00:00.000Z',
+        score: 60,
+        tone: 'mixed',
+      },
+      {
+        label: 'Years 21-30',
+        startDate: '2046-01-01T00:00:00.000Z',
+        endDate: '2056-01-01T00:00:00.000Z',
+        score: 60,
+        tone: 'mixed',
+      },
+    ],
+    inLaws: {
+      fourthHouseSign: 'Cancer',
+      note: 'The 4th house (home and family) falls in Cancer, and its lord is classically average.',
+    },
+    moneyAfterMarriage: {
+      secondHouseSign: 'Leo',
+      eleventhHouseSign: 'Aquarius',
+      note: 'The 2nd house is in Leo, and the 11th house is in Aquarius.',
+    },
+    modernRealities: { lateMarriageLeaning: false, rahuHouse: 9, seventhHousePlanetCount: 1 },
     ...overrides,
   };
+}
+
+function jsonSections(...headings: string[]): string {
+  return JSON.stringify({
+    sections: headings.map((heading) => ({ heading, paragraphs: [`Paragraph for ${heading}.`] })),
+  });
 }
 
 beforeEach(() => {
@@ -34,60 +103,111 @@ beforeEach(() => {
 });
 
 describe('generateMarriageNarrative', () => {
-  it('makes 2 LLM calls and concatenates their sections', async () => {
+  it('makes 4 LLM calls and concatenates their sections in order', async () => {
     state.generate
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          sections: [
-            { heading: 'At A Glance', paragraphs: ['You scored 70, a steady band.'] },
-            { heading: 'Marriage Timing', paragraphs: ['The window opens in 2027.'] },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          sections: [
-            { heading: 'Who You Will Marry', paragraphs: ['Your 7th house is Virgo-flavored.'] },
-            { heading: 'Family & In-Laws', paragraphs: ['In-law relations look balanced.'] },
-          ],
-        }),
-      );
+      .mockResolvedValueOnce(jsonSections('At A Glance', 'Marriage Timing'))
+      .mockResolvedValueOnce(jsonSections('Who You Will Marry', 'Family & In-Laws'))
+      .mockResolvedValueOnce(jsonSections('Money After Marriage', "What's Going For You"))
+      .mockResolvedValueOnce(jsonSections('Marriage Quality By Decade', 'Modern Realities'));
 
     const sections = await generateMarriageNarrative(makeScores());
-    expect(state.generate).toHaveBeenCalledTimes(2);
-    expect(sections).toHaveLength(4);
+    expect(state.generate).toHaveBeenCalledTimes(4);
+    expect(sections).toHaveLength(8);
     expect(sections.map((s) => s.heading)).toEqual([
       'At A Glance',
       'Marriage Timing',
       'Who You Will Marry',
       'Family & In-Laws',
+      'Money After Marriage',
+      "What's Going For You",
+      'Marriage Quality By Decade',
+      'Modern Realities',
     ]);
   });
 
-  it('embeds the given score/band/manglik facts as GIVEN FACTS in the first call', async () => {
+  it('embeds the given score/band/manglik/timing/age-band facts as GIVEN FACTS in the first call', async () => {
     state.generate
-      .mockResolvedValueOnce(JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }))
-      .mockResolvedValueOnce(JSON.stringify({ sections: [{ heading: 'H2', paragraphs: ['p2'] }] }));
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
 
-    await generateMarriageNarrative(makeScores({ marriageScore: 82, band: 'accelerated' }));
+    await generateMarriageNarrative(
+      makeScores({
+        marriageScore: 82,
+        band: 'accelerated',
+        ageBands: [{ label: 'Now – 32', startAge: 29, endAge: 32, confidence: 'HIGH' }],
+      }),
+    );
 
     const firstCall = state.generate.mock.calls[0]?.[0];
     const content = firstCall.messages.map((m: { content: string }) => m.content).join('\n');
     expect(content).toContain('82');
     expect(content).toContain('accelerated');
     expect(content.toUpperCase()).toContain('GIVEN FACT');
+    expect(content).toContain('2027-01');
+    expect(content).toContain('HIGH');
   });
 
-  it('embeds the 7th house sign/temperament and 4th-lord strength in the second call', async () => {
+  it('embeds the 7th house sign/temperament/archetype/reasons and in-laws note in the second call', async () => {
     state.generate
-      .mockResolvedValueOnce(JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }))
-      .mockResolvedValueOnce(JSON.stringify({ sections: [{ heading: 'H2', paragraphs: ['p2'] }] }));
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
 
     await generateMarriageNarrative(makeScores({ seventhHouseSign: 'Scorpio' }));
 
     const secondCall = state.generate.mock.calls[1]?.[0];
     const content = secondCall.messages.map((m: { content: string }) => m.content).join('\n');
     expect(content).toContain('Scorpio');
+    expect(content).toContain('Partnership Archetype');
+    expect(content).toContain('Cancer');
+  });
+
+  it('embeds the money-after-marriage and dosha/yoga facts in the third call', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(
+      makeScores({
+        doshaYoga: {
+          positives: [{ label: 'Raja Yoga', detail: 'present' }],
+          cautions: [{ label: 'Mangal Dosha', detail: 'high severity' }],
+        },
+      }),
+    );
+
+    const thirdCall = state.generate.mock.calls[2]?.[0];
+    const content = thirdCall.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Leo');
+    expect(content).toContain('Aquarius');
+    expect(content).toContain('Raja Yoga');
+    expect(content).toContain('Mangal Dosha');
+  });
+
+  it('embeds the decade arc and modern-realities facts in the fourth call', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(
+      makeScores({
+        modernRealities: { lateMarriageLeaning: true, rahuHouse: 12, seventhHousePlanetCount: 3 },
+      }),
+    );
+
+    const fourthCall = state.generate.mock.calls[3]?.[0];
+    const content = fourthCall.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Years 1-10');
+    expect(content.toLowerCase()).toContain('yes');
+    expect(content).toContain('12');
+    expect(content).toContain('3');
   });
 
   it('throws when the first call returns unparseable JSON', async () => {
@@ -95,9 +215,11 @@ describe('generateMarriageNarrative', () => {
     await expect(generateMarriageNarrative(makeScores())).rejects.toThrow();
   });
 
-  it('throws when the second call returns unparseable JSON', async () => {
+  it('throws when the fourth call returns unparseable JSON, after the first three succeed', async () => {
     state.generate
-      .mockResolvedValueOnce(JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }))
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
       .mockResolvedValueOnce('garbage');
     await expect(generateMarriageNarrative(makeScores())).rejects.toThrow();
   });
@@ -108,10 +230,29 @@ describe('translateMarriageNarrative', () => {
 
   it('parses a valid translated response', async () => {
     state.generate.mockResolvedValueOnce(
-      JSON.stringify({ sections: [{ heading: 'हिंदी शीर्षक', paragraphs: ['आपको 70 अंक मिले।'] }] }),
+      JSON.stringify({
+        sections: [{ heading: 'हिंदी शीर्षक', paragraphs: ['आपको 70 अंक मिले।'] }],
+      }),
     );
     const translated = await translateMarriageNarrative(sections, 'hi');
     expect(translated[0]?.heading).toBe('हिंदी शीर्षक');
+  });
+
+  it('is shape-agnostic — round-trips all 8 real sections generateMarriageNarrative now produces', async () => {
+    const eightSections = [
+      'At A Glance',
+      'Marriage Timing',
+      'Who You Will Marry',
+      'Family & In-Laws',
+      'Money After Marriage',
+      "What's Going For You",
+      'Marriage Quality By Decade',
+      'Modern Realities',
+    ].map((heading) => ({ heading, paragraphs: [`Paragraph for ${heading}.`] }));
+
+    state.generate.mockResolvedValueOnce(JSON.stringify({ sections: eightSections }));
+    const translated = await translateMarriageNarrative(eightSections, 'hi');
+    expect(translated).toHaveLength(8);
   });
 
   it('throws on an unparseable translated response', async () => {

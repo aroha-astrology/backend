@@ -13,6 +13,7 @@ import type { ZodiacSign } from '@aroha-astrology/shared';
 import { calculateAshtakoota } from '../matching/ashtakoota.js';
 import { calculateDashakoota } from '../matching/dashakoota.js';
 import { detectMangalDosha } from '../doshas/mangalDosha.js';
+import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export interface MoonPlacement {
@@ -79,6 +80,19 @@ export interface KundliMilanScores extends Record<string, unknown> {
     cancelled: boolean;
   };
   compatibilityBand: CompatibilityBand;
+  /**
+   * Dosha/yoga summary for the PRIMARY person (`ctx.chart`) ONLY — deliberately, not a bug.
+   * `ctx.partnerChart` has no accompanying `doshaData`/`yogaData` computed for it anywhere in
+   * this codebase: the partner chart is computed fresh via `computeMetrology` at purchase time
+   * (see reports.service.ts), never run through `analyzeAllDoshas`/`detectAllYogas` the way the
+   * primary user's own stored `kundli` row already has been. Inventing that computation here
+   * (a second full dosha/yoga analysis pass over a chart shape this module doesn't own) is out
+   * of scope for this task. Scoping `primaryDoshaYoga` to the primary person only is the
+   * deliberate, correct choice — do NOT "fix" this into attempting
+   * `computeDoshaYogaSummary(partnerDoshaData, ...)` later; there is no `partnerDoshaData` to
+   * pass, and fabricating one would be worse than omitting the partner's panel entirely.
+   */
+  primaryDoshaYoga: DoshaYogaSummary;
 }
 
 /**
@@ -98,8 +112,18 @@ export function computeKundliMilanScores(
   const moon1 = getMoonPlacement(chart1);
   const moon2 = getMoonPlacement(chart2);
 
-  const ashtakoota = calculateAshtakoota(moon1.nakshatraIndex, moon2.nakshatraIndex, moon1.sign, moon2.sign);
-  const dashakoota = calculateDashakoota(moon1.nakshatraIndex, moon2.nakshatraIndex, moon1.sign, moon2.sign);
+  const ashtakoota = calculateAshtakoota(
+    moon1.nakshatraIndex,
+    moon2.nakshatraIndex,
+    moon1.sign,
+    moon2.sign,
+  );
+  const dashakoota = calculateDashakoota(
+    moon1.nakshatraIndex,
+    moon2.nakshatraIndex,
+    moon1.sign,
+    moon2.sign,
+  );
 
   // detectMangalDosha's declared parameter is `ChartData` (a much stricter shape than the
   // `Record<string, unknown> | null` this module receives from ReportScoreContext); ashtakoota.ts/
@@ -108,10 +132,23 @@ export function computeKundliMilanScores(
   // needed) but detectMangalDosha's ChartData param genuinely needs one here — the true shape at
   // runtime is only as good as the caller's chart, which is why this is defensively narrowed with
   // `?? undefined`-style null checks around the call, not trusted structurally at compile time.
-  const mangal1 = chart1 ? detectMangalDosha(chart1 as unknown as Parameters<typeof detectMangalDosha>[0]) : null;
-  const mangal2 = chart2 ? detectMangalDosha(chart2 as unknown as Parameters<typeof detectMangalDosha>[0]) : null;
+  const mangal1 = chart1
+    ? detectMangalDosha(chart1 as unknown as Parameters<typeof detectMangalDosha>[0])
+    : null;
+  const mangal2 = chart2
+    ? detectMangalDosha(chart2 as unknown as Parameters<typeof detectMangalDosha>[0])
+    : null;
 
   const cancelled = mangal1?.type === 'cancelled' || mangal2?.type === 'cancelled';
+
+  // Primary-person-only, by design — see `primaryDoshaYoga`'s doc comment on
+  // `KundliMilanScores` above for why the partner side is never attempted here.
+  const primaryDoshaYoga = computeDoshaYogaSummary(
+    ctx.doshaData ?? null,
+    ctx.yogaData ?? null,
+    ['kaalSarp', 'sadeSati'],
+    [],
+  );
 
   return {
     gunaMilanScore: ashtakoota.totalScore,
@@ -136,5 +173,6 @@ export function computeKundliMilanScores(
       cancelled,
     },
     compatibilityBand: compatibilityBandFromGunaScore(ashtakoota.totalScore),
+    primaryDoshaYoga,
   };
 }

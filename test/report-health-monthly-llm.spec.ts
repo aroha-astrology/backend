@@ -5,9 +5,8 @@ const state = vi.hoisted(() => ({ generate: vi.fn() }));
 
 vi.mock('../src/lib/llm/gemini-client.js', () => ({ generate: state.generate }));
 
-const { generateHealthMonthlyNarrative, translateHealthMonthlyNarrative } = await import(
-  '../src/lib/llm/reports/health-monthly.js'
-);
+const { generateHealthMonthlyNarrative, translateHealthMonthlyNarrative } =
+  await import('../src/lib/llm/reports/health-monthly.js');
 
 function makeScores(overrides: Partial<HealthMonthlyScores> = {}): HealthMonthlyScores {
   return {
@@ -15,8 +14,9 @@ function makeScores(overrides: Partial<HealthMonthlyScores> = {}): HealthMonthly
     activeMahadashaLord: 'Jupiter',
     activeAntardashaLord: 'Saturn',
     monthScore: 60,
-    keyHouses: [6, 1],
+    keyHouses: [6, 1, 8],
     tone: 'mixed',
+    doshaYoga: { positives: [], cautions: [] },
     ...overrides,
   };
 }
@@ -26,18 +26,19 @@ beforeEach(() => {
 });
 
 describe('generateHealthMonthlyNarrative', () => {
-  it('returns 2 sections from 1 LLM call', async () => {
+  it('returns 3 sections from 1 LLM call', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({
         sections: [
           { heading: "This Month's Outlook", paragraphs: ['A mixed month.'] },
+          { heading: 'What To Be Mindful Of', paragraphs: ['No doshas present.'] },
           { heading: 'Practical Guidance', paragraphs: ['Rest well.'] },
         ],
       }),
     );
     const sections = await generateHealthMonthlyNarrative(makeScores());
     expect(state.generate).toHaveBeenCalledTimes(1);
-    expect(sections).toHaveLength(2);
+    expect(sections).toHaveLength(3);
   });
 
   it('instructs the model this is NOT medical advice', async () => {
@@ -54,11 +55,53 @@ describe('generateHealthMonthlyNarrative', () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
     );
-    await generateHealthMonthlyNarrative(makeScores({ activeMahadashaLord: 'Venus', tone: 'favorable' }));
+    await generateHealthMonthlyNarrative(
+      makeScores({ activeMahadashaLord: 'Venus', tone: 'favorable' }),
+    );
     const call = state.generate.mock.calls[0]?.[0];
     const content = call.messages.map((m: { content: string }) => m.content).join('\n');
     expect(content).toContain('Venus');
     expect(content).toContain('favorable');
+  });
+
+  it('embeds present doshas as GIVEN FACTS, or "none" when absent', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateHealthMonthlyNarrative(
+      makeScores({
+        doshaYoga: {
+          positives: [],
+          cautions: [{ label: 'Sade Sati', detail: 'peak phase, high severity' }],
+        },
+      }),
+    );
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Sade Sati');
+    expect(content).toContain('peak phase, high severity');
+
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateHealthMonthlyNarrative(
+      makeScores({ doshaYoga: { positives: [], cautions: [] } }),
+    );
+    const call2 = state.generate.mock.calls[1]?.[0];
+    const content2 = call2.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content2).toContain('Doshas present: none.');
+  });
+
+  it('extends the "not medical advice" disclaimer to explicitly cover the dosha section', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateHealthMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('not medical advice');
+    expect(content).toContain('INCLUDING the dosha/yoga facts section');
+    expect(content.toLowerCase()).toContain('never name a specific disease');
   });
 
   it('throws on an unparseable response', async () => {

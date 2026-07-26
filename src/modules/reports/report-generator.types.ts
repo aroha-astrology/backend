@@ -6,6 +6,29 @@ export interface ReportScoreContext {
   chart: Record<string, unknown> | null;
   /** Partner's computed chart — kundli_milan only, undefined/null for every other report key. */
   partnerChart?: Record<string, unknown> | null;
+  /**
+   * kundli.doshaData — DoshaAnalysis (mangal, kaalSarp, sadeSati, pitra, kemDruma, grahan,
+   * guruChandal), same shape chat-grounding.ts's GroundingSource.doshas reads.
+   *
+   * Optional (not required) — deliberately, even though every real production call site
+   * populates it: both places in reports.service.ts that construct a ReportScoreContext
+   * (`runReportGeneration` and `recomputeScoresForRead`) always pass all four of these new
+   * fields straight off the live `kundli` row. Making them required on the interface would ripple
+   * into every existing report-type test file across the suite (report-marriage-scores.spec.ts,
+   * report-baby-name-scores.spec.ts, kundli-milan-scores.spec.ts, etc.), none of which construct
+   * this shape with these fields today — each would need editing just to keep compiling, for a
+   * field their own report type doesn't even consume. Optional keeps this change purely additive.
+   */
+  doshaData?: Record<string, unknown> | null;
+  /** kundli.yogaData — { yogas: Yoga[] }, same shape chat-grounding.ts's GroundingSource.yogas reads.
+   * Optional for the same reason as `doshaData` above. */
+  yogaData?: Record<string, unknown> | null;
+  /** kundli.ashtakavargaData — AshtakavargaData ({ bhinna, sarva }).
+   * Optional for the same reason as `doshaData` above. */
+  ashtakavargaData?: Record<string, unknown> | null;
+  /** kundli.dashaData — shape { vimshottari: VimshottariDasha, yogini: YoginiDasha }.
+   * Optional for the same reason as `doshaData` above. */
+  dashaData?: Record<string, unknown> | null;
 }
 
 /**

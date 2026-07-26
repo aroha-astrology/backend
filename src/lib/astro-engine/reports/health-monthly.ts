@@ -13,10 +13,14 @@ import {
   toneFromMonthScore,
   type MonthlyTone,
 } from './monthly-dasha-context.js';
+import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
-/** 6th house = ailments/obstacles, 1st house = vitality/the body itself. */
-const KEY_HOUSES = [6, 1];
+/** 6th house = ailments/obstacles, 1st house = vitality/the body itself, 8th house =
+ * longevity/transformation/chronic or hidden conditions — added alongside the dosha/yoga
+ * summary below so the report's house-affinity scoring and its dosha checks are both looking
+ * at the full classical health-house set, not just 6/1. */
+const KEY_HOUSES = [6, 1, 8];
 
 export interface HealthMonthlyScores extends Record<string, unknown> {
   periodMonth: string;
@@ -25,6 +29,7 @@ export interface HealthMonthlyScores extends Record<string, unknown> {
   monthScore: number;
   keyHouses: number[];
   tone: MonthlyTone;
+  doshaYoga: DoshaYogaSummary;
 }
 
 export function computeHealthMonthlyScores(
@@ -40,6 +45,18 @@ export function computeHealthMonthlyScores(
     : 50; // neutral default when the dasha tree can't be derived — same "unavailable data" spirit
   // as gemstones.ts's analyzePlanetStrengths falling back to preference:50 on missing position data.
 
+  // Kemdruma (isolated Moon => low emotional/mental resilience), Sade Sati (currently-transiting
+  // Saturn cycle => sustained low-energy phase), and Grahan (eclipse affliction) are all
+  // directly health/resilience-themed but were previously unchecked by this report — no yoga
+  // types are positive-flagged here (this report stays caution-focused; a "raja"-style positive
+  // panel belongs to the career report, not health).
+  const doshaYoga = computeDoshaYogaSummary(
+    ctx.doshaData ?? null,
+    ctx.yogaData ?? null,
+    ['kemDruma', 'sadeSati', 'grahan'],
+    [],
+  );
+
   return {
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
@@ -47,5 +64,6 @@ export function computeHealthMonthlyScores(
     monthScore,
     keyHouses: KEY_HOUSES,
     tone: toneFromMonthScore(monthScore),
+    doshaYoga,
   };
 }

@@ -15,6 +15,7 @@
 import type { Nakshatra } from '@aroha-astrology/shared';
 import { calculateNakshatra } from '../panchang/nakshatra.js';
 import { getPlanetPosition } from './chart-facts.js';
+import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 /**
@@ -64,6 +65,19 @@ export interface BabyNameScores extends Record<string, unknown> {
   /** The single starting syllable for this exact nakshatra+pada (an array for interface
    * consistency/future extension, but always exactly 1 entry today). */
   startingSyllables: string[];
+  /** `calculateNakshatra(...).lord` — the nakshatra's ruling planet — surfaced as naming-theme
+   * flavor for the narrative (e.g. the lord's classical qualities). `NakshatraData.lord` is
+   * always populated for a valid nakshatra index today, but typed optional here defensively
+   * rather than assuming that never changes. */
+  nakshatraLord: string | undefined;
+  /** `calculateNakshatra(...).deity` — the nakshatra's presiding deity — surfaced as naming-theme
+   * flavor for the narrative. Same defensive-optional reasoning as `nakshatraLord`. */
+  nakshatraDeity: string | undefined;
+  /** Mangal Dosha / Kaal Sarp Dosha cautions and Raja/Dhana Yoga positives read from the BABY's
+   * OWN chart (ctx.doshaData/ctx.yogaData describe the baby here, not the purchasing parent —
+   * see this module's own top-of-file scope note). Framed gently in the narrative — see
+   * lib/llm/reports/baby-name.ts's GENTLE_DOSHA_RULE — this report is read by a new parent. */
+  doshaYoga: DoshaYogaSummary;
 }
 
 export function computeBabyNameScores(
@@ -80,9 +94,22 @@ export function computeBabyNameScores(
   const syllables = NAKSHATRA_PADA_SYLLABLE[nakshatraData.name];
   const startingSyllables = syllables ? [syllables[nakshatraData.pada - 1] as string] : [];
 
+  // ctx.doshaData/ctx.yogaData describe the BABY's own chart here (see this module's top-of-file
+  // scope note) — a Mangal/Kaal Sarp caution or Raja/Dhana Yoga positive on a baby's chart is
+  // on-theme for a naming report and framed gently by the narrative layer.
+  const doshaYoga = computeDoshaYogaSummary(
+    ctx.doshaData ?? null,
+    ctx.yogaData ?? null,
+    ['mangal', 'kaalSarp'],
+    ['raja', 'dhana'],
+  );
+
   return {
     moonNakshatra: nakshatraData.name,
     moonPada: nakshatraData.pada,
     startingSyllables,
+    nakshatraLord: nakshatraData.lord,
+    nakshatraDeity: nakshatraData.deity,
+    doshaYoga,
   };
 }

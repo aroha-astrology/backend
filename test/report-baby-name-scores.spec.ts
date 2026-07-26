@@ -58,4 +58,65 @@ describe('computeBabyNameScores', () => {
   it('handles a null chart defensively without throwing', () => {
     expect(() => computeBabyNameScores({ chart: null, partnerChart: null }, null)).not.toThrow();
   });
+
+  it('surfaces the nakshatra lord and deity from calculateNakshatra (not discarded)', () => {
+    const longitude = 45.7;
+    const chart = makeChart(longitude);
+    const expected = calculateNakshatra(longitude);
+
+    const scores = computeBabyNameScores({ chart, partnerChart: null }, null);
+    expect(scores.nakshatraLord).toBe(expected.lord);
+    expect(scores.nakshatraDeity).toBe(expected.deity);
+    expect(scores.nakshatraLord).toBeTruthy();
+    expect(scores.nakshatraDeity).toBeTruthy();
+  });
+
+  it('surfaces nakshatra lord/deity even on the no-Moon-data fallback path', () => {
+    const scores = computeBabyNameScores({ chart: { planets: [] }, partnerChart: null }, null);
+    const expected = calculateNakshatra(0);
+    expect(scores.nakshatraLord).toBe(expected.lord);
+    expect(scores.nakshatraDeity).toBe(expected.deity);
+  });
+
+  it('degrades to an empty dosha/yoga summary when doshaData/yogaData are missing, without throwing', () => {
+    const chart = makeChart(0.5);
+    expect(() => computeBabyNameScores({ chart, partnerChart: null }, null)).not.toThrow();
+    const scores = computeBabyNameScores({ chart, partnerChart: null }, null);
+    expect(scores.doshaYoga).toEqual({ positives: [], cautions: [] });
+  });
+
+  it('handles a null chart defensively for doshaYoga too', () => {
+    const scores = computeBabyNameScores({ chart: null, partnerChart: null }, null);
+    expect(scores.doshaYoga).toEqual({ positives: [], cautions: [] });
+  });
+
+  it('surfaces a Mangal Dosha caution and a Raja Yoga positive from ctx.doshaData/yogaData', () => {
+    const chart = makeChart(0.5);
+    const doshaData = { mangal: { present: true, severity: 'medium', type: 'high' } };
+    const yogaData = {
+      yogas: [
+        {
+          type: 'raja',
+          name: 'Gaja Kesari Yoga',
+          present: true,
+          description: 'a favorable combination',
+        },
+      ],
+    };
+    const scores = computeBabyNameScores({ chart, partnerChart: null, doshaData, yogaData }, null);
+    expect(scores.doshaYoga.cautions).toHaveLength(1);
+    expect(scores.doshaYoga.cautions[0]?.label).toBe('Mangal Dosha');
+    expect(scores.doshaYoga.positives).toHaveLength(1);
+    expect(scores.doshaYoga.positives[0]?.label).toBe('Gaja Kesari Yoga');
+  });
+
+  it('ignores dosha/yoga keys outside its own relevant lists (mangal/kaalSarp, raja/dhana)', () => {
+    const chart = makeChart(0.5);
+    const doshaData = { pitra: { present: true, severity: 'high' } };
+    const yogaData = {
+      yogas: [{ type: 'gajakesari', name: 'Irrelevant', present: true, description: 'x' }],
+    };
+    const scores = computeBabyNameScores({ chart, partnerChart: null, doshaData, yogaData }, null);
+    expect(scores.doshaYoga).toEqual({ positives: [], cautions: [] });
+  });
 });

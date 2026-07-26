@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { computeMarriageScores } from '../src/lib/astro-engine/reports/marriage.js';
 
 const MS_PER_DAY = 86_400_000;
+const DAYS_PER_YEAR = 365.25;
+const MS_PER_YEAR = DAYS_PER_YEAR * MS_PER_DAY;
 const UNIX_EPOCH_JD = 2440587.5;
 
 /** Exact inverse of chart-facts.ts's julianDayToDate (verified there against this same formula). */
@@ -18,11 +20,12 @@ interface PlanetOpts {
 
 interface ChartOpts {
   ascendantSignIndex?: number;
-  moon?: PlanetOpts & { longitude: number };
+  moon?: PlanetOpts & { longitude?: number };
   mars?: PlanetOpts;
   venus?: PlanetOpts;
   jupiter?: PlanetOpts;
   mercury?: PlanetOpts;
+  rahu?: PlanetOpts;
   houses?: Array<{ house: number; lord: string; sign: string }>;
   julianDay?: number;
 }
@@ -34,13 +37,39 @@ function makeChart(opts: ChartOpts = {}): Record<string, unknown> {
   if (opts.venus) planets.push({ planet: 'Venus', ...opts.venus });
   if (opts.jupiter) planets.push({ planet: 'Jupiter', ...opts.jupiter });
   if (opts.mercury) planets.push({ planet: 'Mercury', ...opts.mercury });
+  if (opts.rahu) planets.push({ planet: 'Rahu', ...opts.rahu });
 
-  return {
+  const chart: Record<string, unknown> = {
     ascendant: { signIndex: opts.ascendantSignIndex ?? 0 },
     planets,
     houses: opts.houses ?? [],
-    julianDay: opts.julianDay ?? dateToJd(new Date('1990-01-01T00:00:00Z')),
   };
+  if (opts.julianDay !== undefined) chart.julianDay = opts.julianDay;
+  return chart;
+}
+
+/** Same synthetic mahadasha builder used by dasha-confidence.spec.ts / dasha-window.spec.ts,
+ * generalized to accept a custom planet/duration sequence and start date. */
+function makeDashaTree(
+  sequence: Array<[string, number]>,
+  start: Date,
+): { vimshottari: { mahadashas: unknown[] } } {
+  let cursor = new Date(start.getTime());
+  const mahadashas = sequence.map(([planet, years]) => {
+    const startDate = new Date(cursor.getTime());
+    const endDate = new Date(cursor.getTime() + years * MS_PER_YEAR);
+    cursor = endDate;
+    return {
+      planet,
+      startDate,
+      endDate,
+      isActive: false,
+      level: 'mahadasha' as const,
+      subPeriods: [],
+    };
+  });
+  (mahadashas[0] as { isActive: boolean }).isActive = true;
+  return { vimshottari: { mahadashas } };
 }
 
 describe('computeMarriageScores — marriageScore + band', () => {
@@ -64,16 +93,16 @@ describe('computeMarriageScores — marriageScore + band', () => {
   });
 
   it('classifies band: <40 slow_build, 40-70 steady (inclusive), >70 accelerated', () => {
-    // All three weak => (30+30+30)/3 = 30 < 40 => slow_build.
     const slow = makeChart({
-      mercury: { sign: 'Pisces' }, // Mercury debilitated
-      venus: { sign: 'Virgo' }, // Venus debilitated
-      jupiter: { sign: 'Capricorn' }, // Jupiter debilitated
+      mercury: { sign: 'Pisces' },
+      venus: { sign: 'Virgo' },
+      jupiter: { sign: 'Capricorn' },
       houses: [{ house: 7, lord: 'Mercury', sign: 'Pisces' }],
     });
-    expect(computeMarriageScores({ chart: slow, partnerChart: null }, null).band).toBe('slow_build');
+    expect(computeMarriageScores({ chart: slow, partnerChart: null }, null).band).toBe(
+      'slow_build',
+    );
 
-    // Exactly 70 (see test above) => steady (upper bound inclusive).
     const steady = makeChart({
       mercury: { sign: 'Virgo' },
       venus: { sign: 'Pisces' },
@@ -82,11 +111,10 @@ describe('computeMarriageScores — marriageScore + band', () => {
     });
     expect(computeMarriageScores({ chart: steady, partnerChart: null }, null).band).toBe('steady');
 
-    // All three strong => (90+90+90)/3 = 90 > 70 => accelerated.
     const accelerated = makeChart({
-      mercury: { sign: 'Gemini' }, // own sign
-      venus: { sign: 'Libra' }, // own sign
-      jupiter: { sign: 'Sagittarius' }, // own sign
+      mercury: { sign: 'Gemini' },
+      venus: { sign: 'Libra' },
+      jupiter: { sign: 'Sagittarius' },
       houses: [{ house: 7, lord: 'Mercury', sign: 'Gemini' }],
     });
     expect(computeMarriageScores({ chart: accelerated, partnerChart: null }, null).band).toBe(
@@ -96,21 +124,16 @@ describe('computeMarriageScores — marriageScore + band', () => {
 
   it('defaults the 7th-lord strength to average (60) when houses data is missing', () => {
     const chart = makeChart({
-      venus: { sign: 'Pisces' }, // strong 90
-      jupiter: { sign: 'Capricorn' }, // weak 30
-      houses: [], // no 7th house lord known
+      venus: { sign: 'Pisces' },
+      jupiter: { sign: 'Capricorn' },
+      houses: [],
     });
-    // (60 + 90 + 30) / 3 = 60
     expect(computeMarriageScores({ chart, partnerChart: null }, null).marriageScore).toBe(60);
   });
 });
 
 describe('computeMarriageScores — manglik', () => {
   it('reports isManglik true / cancelled false for an uncancelled Mangal Dosha', () => {
-    // Aries lagna (signIndex 0). Mars in Taurus (signIndex 1) => house 2 from Lagna, a Manglik
-    // house. Taurus is neither Mars's own sign/exaltation nor a documented house+sign exception
-    // for house 2 (Gemini/Virgo), and no other planet is present to form a benefic conjunction —
-    // so this is a plain, uncancelled Mangal Dosha.
     const chart = makeChart({
       ascendantSignIndex: 0,
       mars: { sign: 'Taurus', signIndex: 1 },
@@ -121,8 +144,6 @@ describe('computeMarriageScores — manglik', () => {
   });
 
   it('reports isManglik + cancelled from detectMangalDosha, matching its own classical rules', () => {
-    // Mars in OWN sign Aries, house 1 from Lagna (signIndex 0 == ascendant signIndex 0):
-    // present (house 1 is a Manglik house) AND cancelled (own-sign is an unconditional cancellation).
     const chart = makeChart({
       ascendantSignIndex: 0,
       mars: { sign: 'Aries', signIndex: 0 },
@@ -133,7 +154,6 @@ describe('computeMarriageScores — manglik', () => {
   });
 
   it('reports isManglik false when Mars is not in any Manglik house', () => {
-    // House 3 from Lagna (signIndex 2) is not one of [1,2,4,7,8,12].
     const chart = makeChart({
       ascendantSignIndex: 0,
       mars: { sign: 'Gemini', signIndex: 2 },
@@ -143,7 +163,7 @@ describe('computeMarriageScores — manglik', () => {
   });
 });
 
-describe('computeMarriageScores — 7th house sign + family', () => {
+describe('computeMarriageScores — 7th house sign + family + enrichment', () => {
   it('exposes the 7th house sign for the classical temperament sketch', () => {
     const chart = makeChart({ houses: [{ house: 7, lord: 'Mars', sign: 'Aries' }] });
     const scores = computeMarriageScores({ chart, partnerChart: null }, null);
@@ -153,10 +173,120 @@ describe('computeMarriageScores — 7th house sign + family', () => {
   it('exposes the 4th-lord strength for the Family & In-Laws section', () => {
     const chart = makeChart({
       houses: [{ house: 4, lord: 'Venus', sign: 'Pisces' }],
-      venus: { sign: 'Pisces' }, // exalted => strong
+      venus: { sign: 'Pisces' },
     });
     const scores = computeMarriageScores({ chart, partnerChart: null }, null);
     expect(scores.fourthLordStrength).toBe('strong');
+  });
+
+  it('exposes seventhLordReason/venusReason/jupiterReason from analyzePlanetStrengths', () => {
+    const chart = makeChart({
+      houses: [{ house: 7, lord: 'Mercury', sign: 'Virgo' }],
+      mercury: { sign: 'Virgo' },
+      venus: { sign: 'Pisces' },
+      jupiter: { sign: 'Capricorn' },
+    });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(typeof scores.seventhLordReason).toBe('string');
+    expect(scores.seventhLordReason.length).toBeGreaterThan(0);
+    expect(typeof scores.venusReason).toBe('string');
+    expect(typeof scores.jupiterReason).toBe('string');
+  });
+
+  it('builds a partnerArchetype with a generic label, a description, and exactly 5 trait tilts', () => {
+    const chart = makeChart({ houses: [{ house: 7, lord: 'Mars', sign: 'Aries' }] });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.partnerArchetype.label.length).toBeGreaterThan(0);
+    expect(scores.partnerArchetype.description).toContain('Aries');
+    expect(scores.partnerArchetype.traits).toHaveLength(5);
+    expect(scores.partnerArchetype.traits.map((t) => t.label)).toEqual([
+      'Warmth',
+      'Discipline',
+      'Intellect',
+      'Sensuality',
+      'Ambition',
+    ]);
+    for (const trait of scores.partnerArchetype.traits) {
+      expect(trait.score).toBeGreaterThanOrEqual(0);
+      expect(trait.score).toBeLessThanOrEqual(10);
+    }
+  });
+
+  it('builds an inLaws note referencing the 4th house sign and fourthLordStrength', () => {
+    const chart = makeChart({
+      houses: [{ house: 4, lord: 'Venus', sign: 'Pisces' }],
+      venus: { sign: 'Pisces' },
+    });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.inLaws.fourthHouseSign).toBe('Pisces');
+    expect(scores.inLaws.note).toContain('Pisces');
+    expect(scores.inLaws.note.length).toBeGreaterThan(0);
+  });
+
+  it('builds a moneyAfterMarriage note referencing 2nd/11th house signs', () => {
+    const chart = makeChart({
+      houses: [
+        { house: 2, lord: 'Sun', sign: 'Leo' },
+        { house: 11, lord: 'Moon', sign: 'Cancer' },
+      ],
+    });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.moneyAfterMarriage.secondHouseSign).toBe('Leo');
+    expect(scores.moneyAfterMarriage.eleventhHouseSign).toBe('Cancer');
+    expect(scores.moneyAfterMarriage.note).toContain('Leo');
+    expect(scores.moneyAfterMarriage.note).toContain('Cancer');
+  });
+
+  it('computes marriageQualityArc as 3 decade bands by default', () => {
+    const chart = makeChart({ houses: [{ house: 7, lord: 'Mars', sign: 'Aries' }] });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.marriageQualityArc).toHaveLength(3);
+    for (const band of scores.marriageQualityArc) {
+      expect(['challenging', 'mixed', 'favorable']).toContain(band.tone);
+    }
+  });
+
+  it('exposes modernRealities.rahuHouse and seventhHousePlanetCount from chart data', () => {
+    const chart = makeChart({
+      rahu: { sign: 'Leo', house: 9 },
+      mars: { sign: 'Aries', house: 7 },
+      venus: { sign: 'Aries', house: 7 },
+      houses: [{ house: 7, lord: 'Mars', sign: 'Aries' }],
+    });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.modernRealities.rahuHouse).toBe(9);
+    expect(scores.modernRealities.seventhHousePlanetCount).toBe(2);
+  });
+});
+
+describe('computeMarriageScores — dosha/yoga summary', () => {
+  it('surfaces relevant present doshas as cautions and relevant present yogas as positives', () => {
+    const chart = makeChart({ houses: [{ house: 7, lord: 'Mars', sign: 'Aries' }] });
+    const doshaData = {
+      mangal: { present: true, severity: 'high', type: 'from_lagna' },
+      kaalSarp: { present: false },
+    };
+    const yogaData = {
+      yogas: [
+        {
+          type: 'raja',
+          name: 'Raja Yoga',
+          present: true,
+          description: 'A classical Raja Yoga is present.',
+        },
+        { type: 'dhana', name: 'Dhana Yoga', present: false, description: 'not present' },
+      ],
+    };
+    const scores = computeMarriageScores({ chart, partnerChart: null, doshaData, yogaData }, null);
+    expect(scores.doshaYoga.cautions.some((c) => c.label === 'Mangal Dosha')).toBe(true);
+    expect(scores.doshaYoga.positives.some((p) => p.label === 'Raja Yoga')).toBe(true);
+  });
+
+  it('degrades to empty positives/cautions when doshaData/yogaData are null', () => {
+    const chart = makeChart({ houses: [{ house: 7, lord: 'Mars', sign: 'Aries' }] });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.doshaYoga.positives).toEqual([]);
+    expect(scores.doshaYoga.cautions).toEqual([]);
   });
 });
 
@@ -165,43 +295,112 @@ describe('computeMarriageScores — defensive handling', () => {
     expect(() => computeMarriageScores({ chart: null, partnerChart: null }, null)).not.toThrow();
   });
 
-  it('returns null strongestWindow/empty upcomingWindows when the chart has no julianDay/Moon data to derive a dasha tree', () => {
-    const scores = computeMarriageScores({ chart: { planets: [], houses: [] }, partnerChart: null }, null);
-    expect(scores.strongestWindow).toBeNull();
-    expect(scores.upcomingWindows).toEqual([]);
+  it('does not throw when doshaData/yogaData/dashaData/ashtakavargaData are all absent', () => {
+    expect(() =>
+      computeMarriageScores({ chart: { planets: [], houses: [] }, partnerChart: null }, null),
+    ).not.toThrow();
+  });
+
+  it('returns an empty windows array and null jupiterDharmaWindow when dashaData is absent', () => {
+    const scores = computeMarriageScores(
+      { chart: { planets: [], houses: [] }, partnerChart: null },
+      null,
+    );
+    expect(scores.windows).toEqual([]);
+    expect(scores.jupiterDharmaWindow).toBeNull();
+  });
+
+  it('degrades ageBands to [] when the chart has no julianDay to derive a birth date', () => {
+    const scores = computeMarriageScores(
+      { chart: { planets: [], houses: [] }, partnerChart: null },
+      null,
+    );
+    expect(scores.ageBands).toEqual([]);
+    expect(scores.modernRealities.lateMarriageLeaning).toBe(false);
+  });
+
+  it('computes a non-empty ageBands table when julianDay IS present', () => {
+    const chart = makeChart({
+      houses: [{ house: 7, lord: 'Mars', sign: 'Aries' }],
+      julianDay: dateToJd(new Date('1995-06-15T00:00:00Z')),
+    });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.ageBands.length).toBe(4);
   });
 });
 
-describe('computeMarriageScores — timing windows', () => {
-  it('flags the earliest upcoming window whose Mahadasha lord is a marriage significator (Jupiter)', () => {
-    // Birth 5 years ago with Moon in Punarvasu (nakshatra index 6, lord Jupiter, span [80,93.33)) near
-    // the START of the nakshatra => a long remaining Jupiter Mahadasha balance (~16 years), guaranteed
-    // to still be running now and for years into the future regardless of real wall-clock "today".
-    const birthDate = new Date(Date.now() - 5 * 365.25 * MS_PER_DAY);
-    const chart = makeChart({
-      moon: { sign: 'Gemini', longitude: 80.5 },
-      jupiter: { sign: 'Capricorn' }, // weak, irrelevant to window-finding itself
-      julianDay: dateToJd(birthDate),
-    });
+describe('computeMarriageScores — timing windows (the actual bug fix)', () => {
+  it('finds a near-term Pratyantardasha-level marriage window even when the current Mahadasha has no Antardasha-level match left — the exact defect the old bespoke Antardasha-only search could never see', () => {
+    // Mahadasha sequence starting at Venus's own 20-year Mahadasha (standard Vimshottari
+    // year-lengths), then wrapping through the fixed Vimshottari order from Venus onward:
+    // Venus, Sun, Moon, Mars, Rahu, Jupiter, Saturn, Mercury, Ketu.
+    const now = new Date();
+    const treeStart = new Date(now.getTime() - 3.5 * MS_PER_YEAR);
+    const sequence: Array<[string, number]> = [
+      ['Venus', 20],
+      ['Sun', 6],
+      ['Moon', 10],
+      ['Mars', 7],
+      ['Rahu', 18],
+      ['Jupiter', 16],
+      ['Saturn', 19],
+      ['Mercury', 17],
+      ['Ketu', 7],
+    ];
+    const dashaData = makeDashaTree(sequence, treeStart);
 
-    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    // "now" is 3.5 years into Venus's own 20-year Mahadasha. Venus's OWN Antardasha within its
+    // own Mahadasha cycle is the FIRST slot (self-first ordering) and lasts proportionally
+    // (20/120)*20 = ~3.33 years — already elapsed by "now". Since each of the 9 Antardasha slots
+    // within a Mahadasha belongs to a DIFFERENT planet, Venus has NO further Antardasha-level
+    // self-match anywhere in its own (current) Mahadasha. Its next two Antardasha-level
+    // occurrences (one each within the following Sun and Moon Mahadashas, the 2nd/3rd Mahadashas
+    // in the 3-Mahadasha lookahead) are both roughly two-to-three DECADES away. But Venus
+    // recurs as a Pratyantardasha lord roughly every ~9 months throughout the remainder of its
+    // own current Mahadasha (nested inside whichever Antardasha is active) — including one
+    // starting within about a year of "now".
+    const chart = makeChart({ houses: [{ house: 7, lord: 'Venus', sign: 'Libra' }] });
 
-    expect(scores.strongestWindow).not.toBeNull();
-    // The birth Mahadasha lord (Jupiter, from Punarvasu) is a significator, so the earliest window
-    // should start at or before "now" (the Mahadasha is already running) and end within it.
-    const start = new Date(scores.strongestWindow!.startDate);
-    const end = new Date(scores.strongestWindow!.endDate);
-    expect(start.getTime()).toBeLessThan(end.getTime());
-    expect(scores.upcomingWindows.length).toBeLessThanOrEqual(2);
+    const scores = computeMarriageScores({ chart, partnerChart: null, dashaData }, null);
+
+    expect(scores.windows.length).toBeGreaterThan(0);
+    const pratyantardashaWindows = scores.windows.filter((w) => w.dashaLevel === 'pratyantardasha');
+    const antardashaWindows = scores.windows.filter((w) => w.dashaLevel === 'antardasha');
+    expect(pratyantardashaWindows.length).toBeGreaterThan(0);
+
+    const yearsToFirstPratyantardasha =
+      (new Date(pratyantardashaWindows[0]!.startDate).getTime() - now.getTime()) / MS_PER_YEAR;
+    // Near-term: comfortably within the next couple of years (proving the fix — the OLD
+    // Antardasha-only search would have reported nothing until Venus's own Antardasha recurs,
+    // decades out, mirroring the real production bug this task fixes: report said "2031", chat
+    // said "this year end or early next year").
+    expect(yearsToFirstPratyantardasha).toBeGreaterThanOrEqual(-0.1);
+    expect(yearsToFirstPratyantardasha).toBeLessThan(3);
+
+    if (antardashaWindows.length > 0) {
+      const yearsToFirstAntardasha =
+        (new Date(antardashaWindows[0]!.startDate).getTime() - now.getTime()) / MS_PER_YEAR;
+      expect(yearsToFirstAntardasha).toBeGreaterThan(yearsToFirstPratyantardasha);
+    }
   });
 
-  it('caps upcomingWindows at 2 entries', () => {
-    const birthDate = new Date(Date.now() - 5 * 365.25 * MS_PER_DAY);
-    const chart = makeChart({
-      moon: { sign: 'Gemini', longitude: 80.5 },
-      julianDay: dateToJd(birthDate),
-    });
-    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
-    expect(scores.upcomingWindows.length).toBeLessThanOrEqual(2);
+  it('keeps jupiterDharmaWindow separate from the primary windows search', () => {
+    const now = new Date();
+    const treeStart = new Date(now.getTime() - 0.5 * MS_PER_YEAR);
+    const sequence: Array<[string, number]> = [
+      ['Sun', 6],
+      ['Moon', 10],
+      ['Mars', 7],
+    ];
+    const dashaData = makeDashaTree(sequence, treeStart);
+    // 7th lord Mercury is not Jupiter, so the two searches use disjoint significator sets.
+    const chart = makeChart({ houses: [{ house: 7, lord: 'Mercury', sign: 'Virgo' }] });
+
+    const scores = computeMarriageScores({ chart, partnerChart: null, dashaData }, null);
+    // jupiterDharmaWindow, if present, must be a plain {startDate, endDate} shape, not a
+    // RankedWindow (no score/level/dashaLevel/reasoning leaking through).
+    if (scores.jupiterDharmaWindow) {
+      expect(Object.keys(scores.jupiterDharmaWindow).sort()).toEqual(['endDate', 'startDate']);
+    }
   });
 });

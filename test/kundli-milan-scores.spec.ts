@@ -95,12 +95,15 @@ describe('computeKundliMilanScores', () => {
       mars: { signIndex: 2, sign: 'Gemini' },
     });
 
-    const scores = computeKundliMilanScores({ chart: manglikChart, partnerChart: cleanChart }, null);
+    const scores = computeKundliMilanScores(
+      { chart: manglikChart, partnerChart: cleanChart },
+      null,
+    );
     expect(scores.manglikStatus.person1).toBe(true);
     expect(scores.manglikStatus.person2).toBe(false);
   });
 
-  it('sets manglikStatus.cancelled true when either person\'s dosha is classically cancelled', () => {
+  it("sets manglikStatus.cancelled true when either person's dosha is classically cancelled", () => {
     // Mars in OWN sign (Aries) — an unconditional, reference-point-independent
     // cancellation per detectMangalDosha's own rules — while also sitting in a
     // Manglik house (house 1 from Lagna) so `present` is true and `type` becomes 'cancelled'.
@@ -127,6 +130,75 @@ describe('computeKundliMilanScores', () => {
 
   it('handles a null partnerChart defensively without throwing', () => {
     const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
-    expect(() => computeKundliMilanScores({ chart: chart1, partnerChart: null }, null)).not.toThrow();
+    expect(() =>
+      computeKundliMilanScores({ chart: chart1, partnerChart: null }, null),
+    ).not.toThrow();
+  });
+});
+
+describe('computeKundliMilanScores — primaryDoshaYoga (primary person only)', () => {
+  it('flags a caution when the PRIMARY chart has Kaal Sarp Dosha present', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+    const doshaData = { kaalSarp: { present: true, severity: 'high', isPartial: false } };
+
+    const scores = computeKundliMilanScores(
+      { chart: chart1, partnerChart: chart2, doshaData },
+      null,
+    );
+
+    expect(scores.primaryDoshaYoga.cautions).toHaveLength(1);
+    expect(scores.primaryDoshaYoga.cautions[0]?.label).toBe('Kaal Sarp Dosha');
+  });
+
+  it('flags a caution when the PRIMARY chart has Sade Sati active', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+    const doshaData = { sadeSati: { active: true, phase: 'peak', severity: 'moderate' } };
+
+    const scores = computeKundliMilanScores(
+      { chart: chart1, partnerChart: chart2, doshaData },
+      null,
+    );
+
+    expect(scores.primaryDoshaYoga.cautions).toHaveLength(1);
+    expect(scores.primaryDoshaYoga.cautions[0]?.label).toBe('Sade Sati');
+  });
+
+  it('never throws and degrades to empty cautions/positives when doshaData/yogaData are missing', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+
+    expect(() =>
+      computeKundliMilanScores({ chart: chart1, partnerChart: chart2 }, null),
+    ).not.toThrow();
+    const scores = computeKundliMilanScores({ chart: chart1, partnerChart: chart2 }, null);
+    expect(scores.primaryDoshaYoga).toEqual({ positives: [], cautions: [] });
+  });
+
+  it('never throws when doshaData/yogaData are explicitly null', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+
+    expect(() =>
+      computeKundliMilanScores(
+        { chart: chart1, partnerChart: chart2, doshaData: null, yogaData: null },
+        null,
+      ),
+    ).not.toThrow();
+  });
+
+  it('ignores dosha keys outside the requested [kaalSarp, sadeSati] scope', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+    // mangal is present but NOT in kundli-milan's requested dosha-key scope — should be ignored.
+    const doshaData = { mangal: { present: true, severity: 'high', type: 'uncancelled' } };
+
+    const scores = computeKundliMilanScores(
+      { chart: chart1, partnerChart: chart2, doshaData },
+      null,
+    );
+
+    expect(scores.primaryDoshaYoga.cautions).toHaveLength(0);
   });
 });

@@ -17,23 +17,35 @@ function makeChart(): Record<string, unknown> {
 
 describe('computeRelationshipMonthlyScores', () => {
   it('reports the correct key houses (7th partnership + 5th romance/harmony)', () => {
-    const scores = computeRelationshipMonthlyScores({ chart: makeChart(), partnerChart: null }, '2027-01');
+    const scores = computeRelationshipMonthlyScores(
+      { chart: makeChart(), partnerChart: null },
+      '2027-01',
+    );
     expect(scores.keyHouses).toEqual([7, 5]);
   });
 
   it('echoes back the given periodMonth', () => {
-    const scores = computeRelationshipMonthlyScores({ chart: makeChart(), partnerChart: null }, '2027-01');
+    const scores = computeRelationshipMonthlyScores(
+      { chart: makeChart(), partnerChart: null },
+      '2027-01',
+    );
     expect(scores.periodMonth).toBe('2027-01');
   });
 
   it('resolves activeMahadashaLord/activeAntardashaLord from the dasha tree', () => {
-    const scores = computeRelationshipMonthlyScores({ chart: makeChart(), partnerChart: null }, '2027-01');
+    const scores = computeRelationshipMonthlyScores(
+      { chart: makeChart(), partnerChart: null },
+      '2027-01',
+    );
     expect(scores.activeMahadashaLord).not.toBe('Unknown');
     expect(typeof scores.activeAntardashaLord).toBe('string');
   });
 
   it('derives tone from monthScore via the shared threshold rule', () => {
-    const scores = computeRelationshipMonthlyScores({ chart: makeChart(), partnerChart: null }, '2027-01');
+    const scores = computeRelationshipMonthlyScores(
+      { chart: makeChart(), partnerChart: null },
+      '2027-01',
+    );
     expect(['challenging', 'mixed', 'favorable']).toContain(scores.tone);
   });
 
@@ -41,7 +53,10 @@ describe('computeRelationshipMonthlyScores', () => {
     expect(() =>
       computeRelationshipMonthlyScores({ chart: makeChart(), partnerChart: null }, null),
     ).not.toThrow();
-    const scores = computeRelationshipMonthlyScores({ chart: makeChart(), partnerChart: null }, null);
+    const scores = computeRelationshipMonthlyScores(
+      { chart: makeChart(), partnerChart: null },
+      null,
+    );
     expect(scores.activeMahadashaLord).toBe('Unknown');
     expect(scores.monthScore).toBe(50);
   });
@@ -49,6 +64,60 @@ describe('computeRelationshipMonthlyScores', () => {
   it('never throws on a null chart', () => {
     expect(() =>
       computeRelationshipMonthlyScores({ chart: null, partnerChart: null }, '2027-01'),
+    ).not.toThrow();
+  });
+});
+
+describe('computeRelationshipMonthlyScores — doshaYoga', () => {
+  it('flags Mangal Dosha as a caution when present in doshaData (previously-missing gap-fill)', () => {
+    const doshaData = { mangal: { present: true, severity: 'high', type: 'uncancelled' } };
+
+    const scores = computeRelationshipMonthlyScores(
+      { chart: makeChart(), partnerChart: null, doshaData },
+      '2027-01',
+    );
+
+    expect(scores.doshaYoga.cautions).toHaveLength(1);
+    expect(scores.doshaYoga.cautions[0]?.label).toBe('Mangal Dosha');
+  });
+
+  it('never surfaces any positives — this monthly report uses an empty yoga-type scope by design', () => {
+    const yogaData = {
+      yogas: [{ type: 'dhana', name: 'Some Yoga', present: true, strength: 50, description: 'd' }],
+    };
+
+    const scores = computeRelationshipMonthlyScores(
+      { chart: makeChart(), partnerChart: null, yogaData },
+      '2027-01',
+    );
+
+    expect(scores.doshaYoga.positives).toHaveLength(0);
+  });
+
+  it('never throws and degrades to empty cautions/positives when doshaData/yogaData are missing', () => {
+    expect(() =>
+      computeRelationshipMonthlyScores({ chart: makeChart(), partnerChart: null }, '2027-01'),
+    ).not.toThrow();
+    const scores = computeRelationshipMonthlyScores(
+      { chart: makeChart(), partnerChart: null },
+      '2027-01',
+    );
+    expect(scores.doshaYoga).toEqual({ positives: [], cautions: [] });
+  });
+
+  it('never throws when doshaData/yogaData are explicitly null', () => {
+    expect(() =>
+      computeRelationshipMonthlyScores(
+        { chart: makeChart(), partnerChart: null, doshaData: null, yogaData: null },
+        '2027-01',
+      ),
+    ).not.toThrow();
+  });
+
+  it('never throws on a null chart even with doshaData present', () => {
+    const doshaData = { mangal: { present: true, severity: 'high', type: 'uncancelled' } };
+    expect(() =>
+      computeRelationshipMonthlyScores({ chart: null, partnerChart: null, doshaData }, '2027-01'),
     ).not.toThrow();
   });
 });

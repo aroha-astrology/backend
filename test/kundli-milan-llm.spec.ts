@@ -5,9 +5,8 @@ const state = vi.hoisted(() => ({ generate: vi.fn() }));
 
 vi.mock('../src/lib/llm/gemini-client.js', () => ({ generate: state.generate }));
 
-const { generateKundliMilanNarrative, translateKundliMilanNarrative } = await import(
-  '../src/lib/llm/reports/kundli-milan.js'
-);
+const { generateKundliMilanNarrative, translateKundliMilanNarrative } =
+  await import('../src/lib/llm/reports/kundli-milan.js');
 
 function makeScores(overrides: Partial<KundliMilanScores> = {}): KundliMilanScores {
   return {
@@ -19,6 +18,7 @@ function makeScores(overrides: Partial<KundliMilanScores> = {}): KundliMilanScor
     dashakootaBreakdown: [{ name: 'Dina', score: 1, maxScore: 1, description: 'Favorable' }],
     manglikStatus: { person1: false, person2: false, cancelled: false },
     compatibilityBand: 'good',
+    primaryDoshaYoga: { positives: [], cautions: [] },
     ...overrides,
   };
 }
@@ -34,13 +34,17 @@ describe('generateKundliMilanNarrative', () => {
         sections: [
           { heading: 'What Your Guna Milan Score Means', paragraphs: ['You scored 28 out of 36.'] },
           { heading: 'Manglik Compatibility', paragraphs: ['Neither of you shows Manglik Dosha.'] },
+          {
+            heading: "Your Chart's Additional Facts",
+            paragraphs: ['No cautions were flagged for you.'],
+          },
           { heading: 'Overall Recommendation', paragraphs: ['This is a promising match.'] },
         ],
       }),
     );
 
     const sections = await generateKundliMilanNarrative(makeScores());
-    expect(sections).toHaveLength(3);
+    expect(sections).toHaveLength(4);
     expect(sections[0]?.heading).toBe('What Your Guna Milan Score Means');
   });
 
@@ -56,6 +60,38 @@ describe('generateKundliMilanNarrative', () => {
     expect(allContent).toContain('GIVEN FACTS');
   });
 
+  it('embeds primaryDoshaYoga cautions as facts, explicitly labeled person1-only', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateKundliMilanNarrative(
+      makeScores({
+        primaryDoshaYoga: {
+          positives: [],
+          cautions: [{ label: 'Kaal Sarp Dosha', detail: 'full, high severity' }],
+        },
+      }),
+    );
+
+    const call = state.generate.mock.calls[0]?.[0];
+    const allContent = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(allContent).toContain('Kaal Sarp Dosha');
+    expect(allContent).toContain('PERSON1 ONLY');
+  });
+
+  it('states "None flagged" when primaryDoshaYoga has no cautions or positives', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateKundliMilanNarrative(
+      makeScores({ primaryDoshaYoga: { positives: [], cautions: [] } }),
+    );
+
+    const call = state.generate.mock.calls[0]?.[0];
+    const allContent = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(allContent).toContain('None flagged');
+  });
+
   it('throws on an unparseable response rather than returning filler', async () => {
     state.generate.mockResolvedValueOnce('not json at all');
     await expect(generateKundliMilanNarrative(makeScores())).rejects.toThrow();
@@ -68,11 +104,15 @@ describe('generateKundliMilanNarrative', () => {
 });
 
 describe('translateKundliMilanNarrative', () => {
-  const sections = [{ heading: 'What Your Guna Milan Score Means', paragraphs: ['You scored 28.'] }];
+  const sections = [
+    { heading: 'What Your Guna Milan Score Means', paragraphs: ['You scored 28.'] },
+  ];
 
   it('parses a valid translated response', async () => {
     state.generate.mockResolvedValueOnce(
-      JSON.stringify({ sections: [{ heading: 'हिंदी शीर्षक', paragraphs: ['आपको 28 अंक मिले।'] }] }),
+      JSON.stringify({
+        sections: [{ heading: 'हिंदी शीर्षक', paragraphs: ['आपको 28 अंक मिले।'] }],
+      }),
     );
     const translated = await translateKundliMilanNarrative(sections, 'hi');
     expect(translated[0]?.heading).toBe('हिंदी शीर्षक');

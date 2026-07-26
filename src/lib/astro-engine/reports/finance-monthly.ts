@@ -13,6 +13,7 @@ import {
   toneFromMonthScore,
   type MonthlyTone,
 } from './monthly-dasha-context.js';
+import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 /** 2nd house = accumulated wealth, 11th house = monthly gains/income. */
@@ -25,6 +26,13 @@ export interface FinanceMonthlyScores extends Record<string, unknown> {
   monthScore: number;
   keyHouses: number[];
   tone: MonthlyTone;
+  /** Dhana-yoga presence — same single-yoga-type signal wealth.ts's own doshaYoga block reads.
+   * No dosha list at this single-month scope: every traditional dosha here (mangal, kaalSarp,
+   * sadeSati, pitra, kemDruma, grahan, guruChandal) is a fixed natal (or, for sadeSati, a
+   * multi-year transiting) condition, not something that meaningfully turns on/off within a
+   * single calendar month — surfacing one here would just repeat the SAME caution every month
+   * this report is bought for, which reads as noise rather than a month-specific signal. */
+  doshaYoga: DoshaYogaSummary;
 }
 
 export function computeFinanceMonthlyScores(
@@ -39,6 +47,13 @@ export function computeFinanceMonthlyScores(
     ? computeMonthlyReportScore(period.antardashaLord, KEY_HOUSES, chart, analyses)
     : 50;
 
+  const doshaYoga = computeDoshaYogaSummary(
+    ctx.doshaData ?? null,
+    ctx.yogaData ?? null,
+    [],
+    ['dhana'],
+  );
+
   return {
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
@@ -46,5 +61,6 @@ export function computeFinanceMonthlyScores(
     monthScore,
     keyHouses: KEY_HOUSES,
     tone: toneFromMonthScore(monthScore),
+    doshaYoga,
   };
 }

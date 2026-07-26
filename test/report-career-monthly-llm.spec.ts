@@ -5,9 +5,8 @@ const state = vi.hoisted(() => ({ generate: vi.fn() }));
 
 vi.mock('../src/lib/llm/gemini-client.js', () => ({ generate: state.generate }));
 
-const { generateCareerMonthlyNarrative, translateCareerMonthlyNarrative } = await import(
-  '../src/lib/llm/reports/career-monthly.js'
-);
+const { generateCareerMonthlyNarrative, translateCareerMonthlyNarrative } =
+  await import('../src/lib/llm/reports/career-monthly.js');
 
 function makeScores(overrides: Partial<CareerMonthlyScores> = {}): CareerMonthlyScores {
   return {
@@ -17,6 +16,26 @@ function makeScores(overrides: Partial<CareerMonthlyScores> = {}): CareerMonthly
     monthScore: 75,
     keyHouses: [10, 6],
     tone: 'favorable',
+    workArchetype: {
+      label: 'Work Style Archetype',
+      description:
+        "Classically, this placement's sign (Gemini) suggests someone curious, communicative, and drawn to a mentally stimulating partner.",
+      traits: [
+        { label: 'Discipline', score: 6 },
+        { label: 'Ambition', score: 9 },
+        { label: 'Creativity', score: 6 },
+        { label: 'Risk-tolerance', score: 3 },
+        { label: 'Collaboration', score: 6 },
+      ],
+    },
+    doshaYoga: {
+      positives: [{ label: 'Raja Yoga', detail: 'strong, status-elevating' }],
+      cautions: [],
+    },
+    industryFit: {
+      likelyIndustries: ['communication', 'writing', 'trade', 'analytics'],
+      note: 'Classical industry associations for the 10th-house lord, Mercury.',
+    },
     ...overrides,
   };
 }
@@ -26,18 +45,20 @@ beforeEach(() => {
 });
 
 describe('generateCareerMonthlyNarrative', () => {
-  it('returns 2 sections from 1 LLM call', async () => {
+  it('returns 4 sections from 1 LLM call', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({
         sections: [
           { heading: "This Month's Outlook", paragraphs: ['A favorable month.'] },
-          { heading: 'Practical Guidance', paragraphs: ['Push forward.'] },
+          { heading: 'Your Work Style', paragraphs: ['Driven and disciplined.'] },
+          { heading: "What's Supporting You", paragraphs: ['A Raja Yoga is present.'] },
+          { heading: 'Industries That Fit', paragraphs: ['Communication and trade suit you.'] },
         ],
       }),
     );
     const sections = await generateCareerMonthlyNarrative(makeScores());
     expect(state.generate).toHaveBeenCalledTimes(1);
-    expect(sections).toHaveLength(2);
+    expect(sections).toHaveLength(4);
   });
 
   it('embeds the given dasha lords and tone as GIVEN FACTS', async () => {
@@ -49,6 +70,37 @@ describe('generateCareerMonthlyNarrative', () => {
     const content = call.messages.map((m: { content: string }) => m.content).join('\n');
     expect(content).toContain('Saturn');
     expect(content.toUpperCase()).toContain('GIVEN FACT');
+  });
+
+  it('embeds the workArchetype label/traits, doshaYoga, and industryFit list as facts', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateCareerMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Work Style Archetype');
+    expect(content).toContain('Discipline 6');
+    expect(content).toContain('Raja Yoga');
+    expect(content).toContain('communication, writing, trade, analytics');
+    expect(content.toLowerCase()).toContain('never invent an industry');
+  });
+
+  it('tells the model to explain the absence of an industry list without naming one, when empty', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateCareerMonthlyNarrative(
+      makeScores({
+        industryFit: {
+          likelyIndustries: [],
+          note: '10th-house lord is unavailable on this chart.',
+        },
+      }),
+    );
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Classically-associated industries: none available.');
   });
 
   it('throws on an unparseable response', async () => {

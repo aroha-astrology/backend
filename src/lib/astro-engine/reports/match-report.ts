@@ -22,6 +22,11 @@ export function computeMatchReportScores(
   periodMonth: string | null,
 ): MatchReportScores {
   const kundliMilan = computeKundliMilanScores(ctx, periodMonth);
-  const riskFactors = computeMatchRiskFactors(ctx.chart, ctx.partnerChart ?? null, kundliMilan);
+  const riskFactors = computeMatchRiskFactors(
+    ctx.chart,
+    ctx.partnerChart ?? null,
+    kundliMilan,
+    ctx.dashaData ?? null,
+  );
   return { ...kundliMilan, riskFactors };
 }
