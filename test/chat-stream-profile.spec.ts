@@ -114,6 +114,7 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
         undefined,
         'en',
         undefined,
+        undefined,
         profile,
       ),
     );
@@ -163,6 +164,7 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
         'direct',
         undefined,
         'en',
+        undefined,
         undefined,
         profile,
       ),
@@ -235,6 +237,7 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
         'direct',
         undefined,
         'en',
+        undefined,
         undefined,
         profile,
       ),

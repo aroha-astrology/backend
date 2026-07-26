@@ -27,6 +27,12 @@ import { findActiveUserById } from '../users/users.repo.js';
 import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
+import '../reports/generators/index.js';
+import { findReportById } from '../reports/reports.repo.js';
+import { partnerInputToBirthRecord } from '../reports/reports.service.js';
+import { REPORT_GENERATORS } from '../reports/report-generator.types.js';
+import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import type { MatchReportScores } from '../../lib/astro-engine/reports/match-report.js';
 import {
   PANCHANG_REFERENCE_POINTS,
   snapToReferencePoint,
@@ -996,6 +1002,57 @@ export async function buildSecondChartFacts(
   ];
 }
 
+/**
+ * Loads an already-purchased match_report row (see POST /v1/reports/purchase, key='match_report')
+ * and builds labeled facts for chat grounding: the real Guna Milan score, all 8 life-area risk
+ * factors with their classical evidence, and the purchased narrative cards — so "Ask Astrologer"
+ * from the compatibility report page can answer follow-up questions grounded in the SAME data the
+ * user already paid for and read, not a re-typed summary or a guess. Owner-scoped (404 on a row
+ * belonging to someone else reads the same as "not found" — never leaks existence) and best-
+ * effort throughout: any failure here must never break the chat reply, just degrade to no
+ * match-report facts, same contract as buildSecondChartFacts above.
+ */
+export async function buildMatchReportFacts(userId: string, reportId: string): Promise<string[]> {
+  const row = await findReportById(reportId);
+  if (!row || row.userId !== userId || row.reportKey !== 'match_report' || row.status !== 'ready') {
+    return [];
+  }
+
+  const generator = REPORT_GENERATORS.match_report;
+  if (!generator) return [];
+
+  const kundli = await findKundliByUserId(row.userId, row.birthProfileId);
+  const chart = kundli?.chartData ?? null;
+
+  let partnerChart: Record<string, unknown> | null = null;
+  if (row.input) {
+    const metrology = await computeMetrology(partnerInputToBirthRecord(row.input));
+    partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
+  }
+
+  const scores = generator.computeScores(
+    { chart, partnerChart },
+    row.periodMonth,
+  ) as MatchReportScores;
+  const content = row.content as {
+    sections?: Array<{ heading: string; paragraphs: string[] }>;
+  } | null;
+  const sections = content?.sections ?? [];
+
+  const lines: string[] = [
+    `Real Compatibility Match Report the user ALREADY PURCHASED and read (report id ${reportId}, ` +
+      `not a guess): Guna Milan score ${scores.gunaMilanScore}/${scores.gunaMaxScore} ` +
+      `(${scores.compatibilityBand}).`,
+  ];
+  for (const f of scores.riskFactors) {
+    lines.push(`Life area "${f.key}" — severity ${f.severity}. ${f.evidence.join(' ')}`);
+  }
+  for (const s of sections) {
+    lines.push(`${s.heading}: ${s.paragraphs.join(' ')}`);
+  }
+  return lines;
+}
+
 export async function* chatStream(
   userId: string,
   message: string,
@@ -1005,6 +1062,9 @@ export async function* chatStream(
   signal?: AbortSignal,
   locale: string = 'en',
   compareProfileId?: string,
+  // ID of an already-purchased match_report row — see ChatRequestSchema's doc comment.
+  // Independent of compareProfileId (a match_report is not a saved birth_profiles row).
+  matchReportId?: string,
   // The active profile (primary or an additional saved one), already resolved
   // ONCE by the caller (astro.routes.ts's chatRoute — it needs the same
   // resolution for chat-session scoping) and threaded through here rather
@@ -1113,6 +1173,14 @@ export async function* chatStream(
     ? await buildSecondChartFacts(userId, groundingSource, compareProfileId).catch(() => [])
     : [];
 
+  // A purchased Compatibility Match Report — only when the client explicitly asks for one via
+  // matchReportId (see ChatRequestSchema). Independent of compareProfileId/secondChartFacts above
+  // (a match_report is not a saved birth_profiles row). Best-effort: a bad id, an owner mismatch,
+  // or a not-yet-ready report must never break the chat reply.
+  const matchReportFacts = matchReportId
+    ? await buildMatchReportFacts(userId, matchReportId).catch(() => [])
+    : [];
+
   // Relocation/astrocartography scan — only when the message actually asks a
   // "where" question (see RELOCATION_KEYWORDS above for why this is gated
   // unlike Panchang).
@@ -1130,7 +1198,13 @@ export async function* chatStream(
         }).catch(() => [])
       : [];
 
-  const extraFacts = [...profileFacts, ...panchangFacts, ...secondChartFacts, ...relocationFacts];
+  const extraFacts = [
+    ...profileFacts,
+    ...panchangFacts,
+    ...secondChartFacts,
+    ...matchReportFacts,
+    ...relocationFacts,
+  ];
 
   const tokenStream = scholarStream(
     state,

@@ -23,7 +23,8 @@ export type ReportKey =
   | 'health_monthly'
   | 'career_monthly'
   | 'finance_monthly'
-  | 'relationship_monthly';
+  | 'relationship_monthly'
+  | 'match_report';
 
 export interface ReportDef {
   key: ReportKey;
@@ -31,7 +32,7 @@ export interface ReportDef {
   featureFlagKey: string;
   label: string;
   isMonthly: boolean;
-  /** True only for kundli_milan — the only report that takes a second person's birth details. */
+  /** True for kundli_milan and match_report — the two reports that take a second person's birth details. */
   requiresPartner: boolean;
   /** Fallback price if the feature flag has no admin price override. For monthly reports this
    * is the PER-MONTH base price — see monthlyBundlePricePaise for the multi-month bundle curve. */
@@ -118,6 +119,14 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     isMonthly: true,
     requiresPartner: false,
     basePricePaise: 2500,
+  },
+  {
+    key: 'match_report',
+    featureFlagKey: 'reports.match_report',
+    label: 'Compatibility Match Report',
+    isMonthly: false,
+    requiresPartner: true,
+    basePricePaise: 5000,
   },
 ] as const;
 

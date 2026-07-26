@@ -111,6 +111,18 @@ export const ChatRequestSchema = z
           'Unrelated to the account-level active-profile concept (activeProfileId) — this is ' +
           'always a SECOND, additional chart layered on top of whichever profile is active.',
       }),
+    matchReportId: z
+      .string()
+      .uuid()
+      .optional()
+      .openapi({
+        description:
+          'ID of an already-purchased match_report row (see POST /v1/reports/purchase) to ground ' +
+          'this turn against — the full Guna Milan score, 8 life-area risk factors, and the ' +
+          'purchased narrative cards, so "Ask Astrologer" from the compatibility report can answer ' +
+          'questions about it with real data instead of a re-typed summary. Independent of ' +
+          'compareProfileId — a match_report is not a saved birth_profiles row.',
+      }),
   })
   .openapi('ChatRequest');
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getReportDef, monthlyBundlePricePaise, REPORT_CATALOGUE } from '../src/config/reports.js';
 
 describe('REPORT_CATALOGUE', () => {
-  it('has exactly the 10 documented report keys', () => {
+  it('has exactly the 11 documented report keys', () => {
     const keys = REPORT_CATALOGUE.map((r) => r.key).sort();
     expect(keys).toEqual(
       [
@@ -12,6 +12,7 @@ describe('REPORT_CATALOGUE', () => {
         'health_monthly',
         'kundli_milan',
         'marriage',
+        'match_report',
         'past_life',
         'relationship_monthly',
         'true_love',
@@ -20,14 +21,16 @@ describe('REPORT_CATALOGUE', () => {
     );
   });
 
-  it('only kundli_milan requires a partner', () => {
+  it('only kundli_milan and match_report require a partner', () => {
     for (const def of REPORT_CATALOGUE) {
-      expect(def.requiresPartner).toBe(def.key === 'kundli_milan');
+      expect(def.requiresPartner).toBe(def.key === 'kundli_milan' || def.key === 'match_report');
     }
   });
 
   it('marks exactly the 4 documented keys as monthly', () => {
-    const monthly = REPORT_CATALOGUE.filter((r) => r.isMonthly).map((r) => r.key).sort();
+    const monthly = REPORT_CATALOGUE.filter((r) => r.isMonthly)
+      .map((r) => r.key)
+      .sort();
     expect(monthly).toEqual(
       ['career_monthly', 'finance_monthly', 'health_monthly', 'relationship_monthly'].sort(),
     );

@@ -146,6 +146,17 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     defaultPricePaise: 2500,
   },
+  // Unlike every other reports.* key (all off by default, turned on deliberately from the
+  // admin panel), this one defaults ON — it's the paid replacement for the compatibility
+  // page's "Check Compatibility" button, an existing always-on nav feature, not a new
+  // discretionary report a user opts into browsing.
+  {
+    key: 'reports.match_report',
+    label: 'Compatibility Match Report',
+    group: 'reports',
+    defaultEnabled: true,
+    defaultPricePaise: 5000,
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

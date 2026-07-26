@@ -126,7 +126,7 @@ function computeRowPrices(def: ReportDef, perUnitPricePaise: number, rowCount: n
   return splitPriceAcrossRows(totalPaise, rowCount);
 }
 
-function partnerInputToBirthRecord(input: Record<string, unknown>): BirthRecord {
+export function partnerInputToBirthRecord(input: Record<string, unknown>): BirthRecord {
   return {
     date: input.dateOfBirth as string,
     time: input.timeOfBirth as string,
