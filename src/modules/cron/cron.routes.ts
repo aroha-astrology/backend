@@ -19,6 +19,7 @@ import {
 } from './transit-alert.service.js';
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
 import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js';
+import { reapStaleReports } from '../reports/reports.service.js';
 
 const ErrorSchema = z
   .object({
@@ -322,5 +323,37 @@ const liveActivityCheckRoute = createRoute({
 
 cronRouter.openapi(liveActivityCheckRoute, async (c) => {
   const result = await checkConcurrentActivity();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Reports stale-generating reaper — self-heals any purchased-report row stuck
+// at 'generating' because the process that claimed it crashed mid-run. Wired
+// to run every 5 minutes (see scripts/cron-reports-reap-stale.sh), matching
+// REPORT_STALE_GENERATING_MS in reports.repo.ts.
+// ---------------------------------------------------------------------------
+
+const reportsReapStaleRoute = createRoute({
+  method: 'post',
+  path: '/cron/reports-reap-stale',
+  tags: ['Cron'],
+  summary: "Reap purchased-report rows stuck at 'generating' past the stale threshold",
+  description:
+    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. Marks any ' +
+    "report row whose generation claim is older than REPORT_STALE_GENERATING_MS as 'failed' " +
+    '(reason: generation timed out) and refunds its price share — the same self-heal a repeat ' +
+    'purchase against the same identity already gets via claimReportRow, but without requiring ' +
+    'one. Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: z.object({ reaped: z.number() }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(reportsReapStaleRoute, async (c) => {
+  const result = await reapStaleReports();
   return c.json(result, 200);
 });

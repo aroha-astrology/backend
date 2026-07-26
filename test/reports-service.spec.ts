@@ -15,6 +15,7 @@ const state = vi.hoisted(() => {
     claimReportRow: vi.fn(),
     findReportRow: vi.fn(),
     findReportById: vi.fn(),
+    findStaleGeneratingReports: vi.fn(),
     listReportsForUser: vi.fn(),
     markReportReady: vi.fn(),
     markReportFailed: vi.fn(),
@@ -25,6 +26,8 @@ const state = vi.hoisted(() => {
     findKundliByUserId: vi.fn(),
     resolveProfileContext: vi.fn(),
     computeMetrology: vi.fn(),
+    findActiveTokensForUser: vi.fn(),
+    sendPushBatch: vi.fn(),
     REPORT_GENERATORS,
   };
 });
@@ -33,10 +36,19 @@ vi.mock('../src/modules/reports/reports.repo.js', () => ({
   claimReportRow: state.claimReportRow,
   findReportRow: state.findReportRow,
   findReportById: state.findReportById,
+  findStaleGeneratingReports: state.findStaleGeneratingReports,
   listReportsForUser: state.listReportsForUser,
   markReportReady: state.markReportReady,
   markReportFailed: state.markReportFailed,
   saveReportTranslation: state.saveReportTranslation,
+}));
+
+vi.mock('../src/modules/device-tokens/device-tokens.repo.js', () => ({
+  findActiveTokensForUser: state.findActiveTokensForUser,
+}));
+
+vi.mock('../src/lib/notifications/fcm.js', () => ({
+  sendPushBatch: state.sendPushBatch,
 }));
 
 vi.mock('../src/modules/features/features.service.js', () => ({
@@ -73,8 +85,13 @@ vi.mock('../src/modules/reports/report-generator.types.js', async () => {
   };
 });
 
-const { purchaseReport, getReportCatalogueForUser, getReportForUser } =
-  await import('../src/modules/reports/reports.service.js');
+const {
+  purchaseReport,
+  getReportCatalogueForUser,
+  getReportForUser,
+  notifyReportReady,
+  reapStaleReports,
+} = await import('../src/modules/reports/reports.service.js');
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
   return { id: 'user-1', ...overrides } as unknown as UserRow;
@@ -107,6 +124,7 @@ beforeEach(() => {
   state.claimReportRow.mockReset();
   state.findReportRow.mockReset();
   state.findReportById.mockReset();
+  state.findStaleGeneratingReports.mockReset().mockResolvedValue([]);
   state.listReportsForUser.mockReset().mockResolvedValue([]);
   state.markReportReady.mockReset().mockResolvedValue(undefined);
   state.markReportFailed.mockReset().mockResolvedValue(undefined);
@@ -117,6 +135,8 @@ beforeEach(() => {
   state.findKundliByUserId.mockReset().mockResolvedValue(undefined);
   state.resolveProfileContext.mockReset().mockResolvedValue({ birthProfileId: null });
   state.computeMetrology.mockReset().mockResolvedValue({ chart: { planets: [] } });
+  state.findActiveTokensForUser.mockReset().mockResolvedValue([]);
+  state.sendPushBatch.mockReset().mockResolvedValue({ success: 0, failure: 0 });
 });
 
 describe('purchaseReport — validation', () => {
@@ -470,6 +490,150 @@ describe('purchaseReport — background generation safety net', () => {
       expect.objectContaining({ date: '1990-01-01', time: '10:00' }),
     );
     expect(generateNarrative).toHaveBeenCalledWith({ gunaMilanScore: 30 }, 'en');
+  });
+
+  it('fires notifyReportReady (push) after marking the row ready, without affecting the ready outcome', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'm3', reportKey: 'marriage' }));
+    state.findActiveTokensForUser.mockResolvedValue([{ token: 'tok-1' }]);
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    await vi.waitFor(() => {
+      expect(state.sendPushBatch).toHaveBeenCalledWith(
+        ['tok-1'],
+        '🔮 Your Marriage Report is ready',
+        'Tap to read your report now.',
+        { type: 'report_ready', navigate: '/reports/m3' },
+      );
+    });
+    expect(state.markReportReady).toHaveBeenCalled();
+  });
+});
+
+describe('notifyReportReady', () => {
+  it('sends a push using the catalogue label and reportId-based deep link', async () => {
+    state.findActiveTokensForUser.mockResolvedValue([{ token: 'tok-a' }, { token: 'tok-b' }]);
+
+    await notifyReportReady('user-1', 'wealth', 'report-9');
+
+    expect(state.findActiveTokensForUser).toHaveBeenCalledWith('user-1');
+    expect(state.sendPushBatch).toHaveBeenCalledWith(
+      ['tok-a', 'tok-b'],
+      '🔮 Your Wealth Report is ready',
+      'Tap to read your report now.',
+      { type: 'report_ready', navigate: '/reports/report-9' },
+    );
+  });
+
+  it('is a no-op (no push call) when the user has no active tokens', async () => {
+    state.findActiveTokensForUser.mockResolvedValue([]);
+    await notifyReportReady('user-1', 'wealth', 'report-9');
+    expect(state.sendPushBatch).not.toHaveBeenCalled();
+  });
+
+  it('never throws — a lookup failure resolves normally', async () => {
+    state.findActiveTokensForUser.mockRejectedValue(new Error('db down'));
+    await expect(notifyReportReady('user-1', 'wealth', 'report-9')).resolves.toBeUndefined();
+    expect(state.sendPushBatch).not.toHaveBeenCalled();
+  });
+
+  it('never throws — a push-send failure resolves normally', async () => {
+    state.findActiveTokensForUser.mockResolvedValue([{ token: 'tok-a' }]);
+    state.sendPushBatch.mockRejectedValue(new Error('fcm down'));
+    await expect(notifyReportReady('user-1', 'wealth', 'report-9')).resolves.toBeUndefined();
+  });
+});
+
+describe('reapStaleReports', () => {
+  it('marks each stale row failed (timed-out reason) and refunds its price share, returning the reaped count', async () => {
+    const staleAt = new Date('2026-07-01T00:00:00Z');
+    state.findStaleGeneratingReports.mockResolvedValue([
+      makeReportRow({
+        id: 's1',
+        reportKey: 'marriage',
+        periodMonth: null,
+        pricePaidPaise: 9900,
+        startedAt: staleAt,
+      }),
+      makeReportRow({
+        id: 's2',
+        reportKey: 'health_monthly',
+        periodMonth: '2026-07-01',
+        pricePaidPaise: 2500,
+        startedAt: staleAt,
+      }),
+    ]);
+
+    const result = await reapStaleReports();
+
+    expect(result).toEqual({ reaped: 2 });
+    expect(state.markReportFailed).toHaveBeenCalledWith(
+      's1',
+      staleAt,
+      'Generation timed out (stale)',
+    );
+    expect(state.markReportFailed).toHaveBeenCalledWith(
+      's2',
+      staleAt,
+      'Generation timed out (stale)',
+    );
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'refund:report_unlock:marriage',
+    );
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      2500,
+      'refund:report_unlock:health_monthly:2026-07',
+    );
+  });
+
+  it('returns { reaped: 0 } and touches nothing when there are no stale rows', async () => {
+    state.findStaleGeneratingReports.mockResolvedValue([]);
+    const result = await reapStaleReports();
+    expect(result).toEqual({ reaped: 0 });
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('never throws — logs and continues past a per-row failure, still reaping the rest', async () => {
+    const staleAt = new Date('2026-07-01T00:00:00Z');
+    state.findStaleGeneratingReports.mockResolvedValue([
+      makeReportRow({ id: 'bad', reportKey: 'marriage', startedAt: staleAt }),
+      makeReportRow({ id: 'good', reportKey: 'marriage', startedAt: staleAt }),
+    ]);
+    state.markReportFailed
+      .mockRejectedValueOnce(new Error('db blip'))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1 });
+  });
+
+  it('still counts a row as reaped when markReportFailed succeeds but the refund itself fails', async () => {
+    const staleAt = new Date('2026-07-01T00:00:00Z');
+    state.findStaleGeneratingReports.mockResolvedValue([
+      makeReportRow({ id: 's1', reportKey: 'marriage', startedAt: staleAt }),
+    ]);
+    state.addWalletBalance.mockRejectedValue(new Error('wallet down'));
+
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1 });
+  });
+
+  it('skips a stale row with no startedAt rather than crashing (defensive only — should not occur in practice)', async () => {
+    state.findStaleGeneratingReports.mockResolvedValue([
+      makeReportRow({ id: 'no-claim', reportKey: 'marriage', startedAt: null }),
+    ]);
+
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 0 });
+    expect(state.markReportFailed).not.toHaveBeenCalled();
   });
 });
 

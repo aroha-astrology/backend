@@ -29,6 +29,7 @@ import {
   claimReportRow,
   findReportById,
   findReportRow,
+  findStaleGeneratingReports,
   listReportsForUser,
   markReportFailed,
   markReportReady,
@@ -42,6 +43,8 @@ import type {
   ReportCatalogueEntryDto,
   ReportDto,
 } from './reports.schemas.js';
+import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
+import { sendPushBatch } from '../../lib/notifications/fcm.js';
 
 const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
 
@@ -137,6 +140,33 @@ export function partnerInputToBirthRecord(input: Record<string, unknown>): Birth
 }
 
 /**
+ * Best-effort push notification once a purchased report finishes generating.
+ * Follows the exact fire-and-forget, never-throws contract as
+ * `notifyPurchasePlanReady` in purchase-plan.service.ts — a notification
+ * failure here must never affect the report's own generated/ready outcome.
+ */
+export async function notifyReportReady(
+  userId: string,
+  reportKey: string,
+  reportId: string,
+): Promise<void> {
+  try {
+    const tokens = await findActiveTokensForUser(userId);
+    if (tokens.length === 0) return;
+    const label = getReportDef(reportKey)?.label ?? 'report';
+    await sendPushBatch(
+      tokens.map((t) => t.token),
+      `🔮 Your ${label} is ready`,
+      'Tap to read your report now.',
+      { type: 'report_ready', navigate: `/reports/${reportId}` },
+    );
+    logger.info({ userId, reportId, reportKey }, 'report:push sent');
+  } catch (err) {
+    logger.warn({ err, userId, reportId }, 'report:push failed');
+  }
+}
+
+/**
  * Background generation for one already-claimed row. Fire-and-forget from
  * the purchase route — never awaited in the request/response cycle. Any
  * failure along this path (no chart yet, no registered generator for this
@@ -176,6 +206,9 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     await markReportReady(row.id, claimedAt, {
       content: { sections },
       model: MODEL,
+    });
+    void notifyReportReady(row.userId, row.reportKey, row.id).catch(() => {
+      /* already logged */
     });
   } catch (err) {
     logger.error(
@@ -388,4 +421,38 @@ export async function getReportForUser(
     logger.warn({ err, reportId: row.id, language }, 'failed to translate report');
     return { ...readyBase, sections: englishSections };
   }
+}
+
+/**
+ * Periodic sweep for rows abandoned mid-generation (the Node process crashed
+ * or was killed after `claimReportRow` but before `markReportReady`/
+ * `markReportFailed`) — see `findStaleGeneratingReports`'s doc comment for
+ * why this active sweep is needed on top of claimReportRow's own staleness
+ * check. Driven by the OS crontab hitting POST /cron/reports-reap-stale
+ * (see cron.routes.ts) rather than an in-process timer, matching every other
+ * periodic job in this codebase. Never throws — a failure reaping one row is
+ * logged and the sweep continues with the rest.
+ */
+export async function reapStaleReports(): Promise<{ reaped: number }> {
+  const staleRows = await findStaleGeneratingReports();
+  let reaped = 0;
+
+  for (const row of staleRows) {
+    if (!row.startedAt) continue; // claimReportRow always stamps 'generating' rows with startedAt — defensive only.
+    try {
+      await markReportFailed(row.id, row.startedAt, 'Generation timed out (stale)');
+      await addWalletBalance(
+        row.userId,
+        row.pricePaidPaise,
+        `refund:${reasonForRow(row.reportKey, row.periodMonth)}`,
+      ).catch((refundErr: unknown) =>
+        logger.error({ err: refundErr, reportId: row.id }, 'stale report reap refund failed'),
+      );
+      reaped++;
+    } catch (err) {
+      logger.error({ err, reportId: row.id, reportKey: row.reportKey }, 'stale report reap failed');
+    }
+  }
+
+  return { reaped };
 }

@@ -30,6 +30,7 @@ import { reports } from '../src/db/schema.js';
 import {
   claimReportRow,
   findReportRow,
+  findStaleGeneratingReports,
   markReportFailed,
   markReportReady,
 } from '../src/modules/reports/reports.repo.js';
@@ -76,6 +77,11 @@ function makeSelectChain(result: unknown[]) {
     }),
     limit: vi.fn(() => Promise.resolve(result)),
     orderBy: vi.fn(() => Promise.resolve(result)),
+    // findStaleGeneratingReports awaits `.where()` directly (no `.limit()`/`.orderBy()`
+    // follow-up) — same bare-`.where()` thenable-chain technique as
+    // countSupportTicketsForAdmin's aggregate select in support-repo.spec.ts.
+    then: (resolve: (v: unknown[]) => void, reject: (e: unknown) => void) =>
+      Promise.resolve(result).then(resolve, reject),
   };
   return { chain, calls };
 }
@@ -247,6 +253,32 @@ describe('findReportRow — scoped lookup excluding partner-input rows', () => {
 
     const query = compile(calls.where);
     expect(query.params).toEqual(['user-1', 'profile-a', 'health_monthly', '2026-07-01']);
+  });
+});
+
+describe('findStaleGeneratingReports — active sweep for abandoned generating rows', () => {
+  it('filters on status = generating and startedAt older than REPORT_STALE_GENERATING_MS', async () => {
+    const staleRow = { id: 'stale-1', status: 'generating' };
+    const { chain, calls } = makeSelectChain([staleRow]);
+    state.select.mockReturnValue(chain);
+
+    const rows = await findStaleGeneratingReports();
+
+    expect(rows).toEqual([staleRow]);
+    const query = compile(calls.where);
+    expect(query.sql).toContain('"reports"."status"');
+    expect(query.sql).toContain('"reports"."started_at" < now() -');
+    expect(query.sql).toContain("interval '1 second'");
+    expect(query.params).toContain('generating');
+    expect(query.params).toContain(300); // REPORT_STALE_GENERATING_MS (5 min) in seconds
+  });
+
+  it('returns an empty array when nothing is stale', async () => {
+    const { chain } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    const rows = await findStaleGeneratingReports();
+    expect(rows).toEqual([]);
   });
 });
 

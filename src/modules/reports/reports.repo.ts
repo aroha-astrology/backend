@@ -7,7 +7,9 @@ export const REPORT_STALE_GENERATING_MS = 5 * 60_000;
 
 /** `birthProfileId === null` filters to the primary/self profile; a non-null id filters to that additional profile. */
 function profileFilter(birthProfileId: string | null): SQL {
-  return birthProfileId === null ? isNull(reports.birthProfileId) : eq(reports.birthProfileId, birthProfileId);
+  return birthProfileId === null
+    ? isNull(reports.birthProfileId)
+    : eq(reports.birthProfileId, birthProfileId);
 }
 
 /** `periodMonth === null` filters to one-time reports; a non-null value filters to that month's row. */
@@ -168,6 +170,30 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
   return row;
 }
 
+/**
+ * All rows currently stuck in 'generating' whose claim is older than
+ * REPORT_STALE_GENERATING_MS — i.e. abandoned mid-run because the process
+ * that claimed them crashed or was killed before reaching
+ * markReportReady/markReportFailed. Used by the periodic reaper cron
+ * (POST /cron/reports-reap-stale, see reapStaleReports in
+ * reports.service.ts) to self-heal rows that would otherwise sit at
+ * 'generating' forever — unlike claimReportRow's staleness check, which only
+ * reclaims a row when the SAME (user, profile, key, month) identity is
+ * purchased again, this is an active sweep with no such trigger required.
+ */
+export async function findStaleGeneratingReports(): Promise<ReportRow[]> {
+  const staleSeconds = REPORT_STALE_GENERATING_MS / 1000;
+  return db
+    .select()
+    .from(reports)
+    .where(
+      and(
+        eq(reports.status, 'generating'),
+        sql`${reports.startedAt} < now() - ${staleSeconds} * interval '1 second'`,
+      ),
+    );
+}
+
 export async function markReportReady(
   id: string,
   claimedAt: Date,
@@ -179,14 +205,18 @@ export async function markReportReady(
     // regenerated report would keep serving a translation of the PREVIOUS content forever, same
     // staleness bug markGemstoneReady's reset guards against.
     .set({ ...patch, translations: {}, status: 'ready', error: null, updatedAt: new Date() })
-    .where(and(eq(reports.id, id), eq(reports.status, 'generating'), eq(reports.startedAt, claimedAt)));
+    .where(
+      and(eq(reports.id, id), eq(reports.status, 'generating'), eq(reports.startedAt, claimedAt)),
+    );
 }
 
 export async function markReportFailed(id: string, claimedAt: Date, error: string): Promise<void> {
   await db
     .update(reports)
     .set({ status: 'failed', error: error.slice(0, 1000), updatedAt: new Date() })
-    .where(and(eq(reports.id, id), eq(reports.status, 'generating'), eq(reports.startedAt, claimedAt)));
+    .where(
+      and(eq(reports.id, id), eq(reports.status, 'generating'), eq(reports.startedAt, claimedAt)),
+    );
 }
 
 export async function saveReportTranslation(
