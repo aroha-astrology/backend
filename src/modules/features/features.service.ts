@@ -10,6 +10,11 @@ import {
 export interface ResolvedFeature {
   enabled: boolean;
   pricePaise: number | null;
+  /** Optional "strikethrough" MRP for the discount treatment on the report
+   * catalogue. Only ever comes from an admin-set `feature_flags` override —
+   * the registry has no structural default for it, so a key with no override
+   * row always resolves this to null (no discount to show). */
+  originalPricePaise: number | null;
 }
 
 /** This is on the hot path of GET /v1/me — 30s is enough to spare the DB a
@@ -29,6 +34,7 @@ function registryDefaults(): Record<string, ResolvedFeature> {
     out[feature.key] = {
       enabled: feature.defaultEnabled,
       pricePaise: feature.defaultPricePaise ?? null,
+      originalPricePaise: null,
     };
   }
   return out;
@@ -54,7 +60,11 @@ export async function resolveFeatures(): Promise<Record<string, ResolvedFeature>
   try {
     const overrides = await findAllFeatureOverrides();
     for (const row of overrides) {
-      merged[row.key] = { enabled: row.enabled, pricePaise: row.pricePaise };
+      merged[row.key] = {
+        enabled: row.enabled,
+        pricePaise: row.pricePaise,
+        originalPricePaise: row.originalPricePaise,
+      };
     }
     cache = { value: merged, expiresAt: Date.now() + CACHE_TTL_MS };
     return merged;
@@ -116,8 +126,8 @@ export function invalidateGroupOverrideCache(): void {
  * it further.
  *
  * Price is NEVER touched by a group override — a group can only flip
- * enabled/disabled, never reprice — so `pricePaise` always comes straight
- * from the base (global) resolution.
+ * enabled/disabled, never reprice — so `pricePaise` and `originalPricePaise`
+ * always come straight from the base (global) resolution.
  *
  * Must never throw — same fail-safe-to-base-result discipline as
  * `resolveFeatures()`: a group-lookup or group-override DB error degrades to
@@ -160,9 +170,17 @@ export async function resolveFeaturesForUser(
   for (const [key, value] of Object.entries(base)) {
     if (disabledKeys.has(key)) {
       // Disabled wins over any other group saying "on", and over the global flag.
-      merged[key] = { enabled: false, pricePaise: value.pricePaise };
+      merged[key] = {
+        enabled: false,
+        pricePaise: value.pricePaise,
+        originalPricePaise: value.originalPricePaise,
+      };
     } else if (enabledKeys.has(key)) {
-      merged[key] = { enabled: true, pricePaise: value.pricePaise };
+      merged[key] = {
+        enabled: true,
+        pricePaise: value.pricePaise,
+        originalPricePaise: value.originalPricePaise,
+      };
     } else {
       merged[key] = value;
     }

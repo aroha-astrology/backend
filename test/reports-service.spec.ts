@@ -655,6 +655,34 @@ describe('getReportCatalogueForUser', () => {
     expect(wealth.pricePaise).toBe(9900); // falls back to basePricePaise — no override
     expect(wealth.purchases).toEqual([]);
   });
+
+  it('surfaces originalPricePaise from the admin override when a discount is configured', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.marriage': { enabled: true, pricePaise: 14900, originalPricePaise: 49900 },
+    });
+    state.listReportsForUser.mockResolvedValue([]);
+
+    const catalogue = await getReportCatalogueForUser(makeUser(), null);
+    const marriage = catalogue.find((c) => c.key === 'marriage')!;
+
+    expect(marriage.pricePaise).toBe(14900);
+    expect(marriage.originalPricePaise).toBe(49900);
+  });
+
+  it('resolves originalPricePaise to null (never falling back to basePricePaise) when no discount is configured', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.marriage': { enabled: true, pricePaise: 9900 },
+    });
+    state.listReportsForUser.mockResolvedValue([]);
+
+    const catalogue = await getReportCatalogueForUser(makeUser(), null);
+    const marriage = catalogue.find((c) => c.key === 'marriage')!;
+    // No resolved feature entry at all for 'wealth' — must still be null, not def.basePricePaise.
+    const wealth = catalogue.find((c) => c.key === 'wealth')!;
+
+    expect(marriage.originalPricePaise).toBeNull();
+    expect(wealth.originalPricePaise).toBeNull();
+  });
 });
 
 describe('getReportForUser', () => {

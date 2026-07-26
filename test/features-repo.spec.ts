@@ -14,7 +14,10 @@ vi.mock('../src/config/db.js', () => {
 });
 
 import { featureFlags } from '../src/db/schema.js';
-import { findAllFeatureOverrides, upsertFeatureOverride } from '../src/modules/features/features.repo.js';
+import {
+  findAllFeatureOverrides,
+  upsertFeatureOverride,
+} from '../src/modules/features/features.repo.js';
 
 interface FakeSelectChain {
   from: (table: unknown) => Promise<unknown[]>;
@@ -57,7 +60,13 @@ beforeEach(() => {
 describe('findAllFeatureOverrides', () => {
   it('selects every row from feature_flags', async () => {
     const rows = [
-      { key: 'paid.chat', enabled: false, pricePaise: 1500, updatedAt: new Date(), updatedBy: 'admin' },
+      {
+        key: 'paid.chat',
+        enabled: false,
+        pricePaise: 1500,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
     ];
     const chain = makeSelectChain(rows);
     state.select.mockReturnValue(chain);
@@ -85,25 +94,28 @@ describe('upsertFeatureOverride', () => {
       key: 'paid.chat',
       enabled: false,
       pricePaise: 1500,
+      originalPricePaise: 2000,
       updatedAt: new Date(),
       updatedBy: 'admin-1',
     };
     const { chain, calls } = makeInsertChain([returned]);
     state.insert.mockReturnValue(chain);
 
-    const result = await upsertFeatureOverride('paid.chat', false, 1500, 'admin-1');
+    const result = await upsertFeatureOverride('paid.chat', false, 1500, 2000, 'admin-1');
 
     expect(state.insert).toHaveBeenCalledWith(featureFlags);
     expect(calls.values).toMatchObject({
       key: 'paid.chat',
       enabled: false,
       pricePaise: 1500,
+      originalPricePaise: 2000,
       updatedBy: 'admin-1',
     });
     expect(calls.onConflictDoUpdate.target).toBe(featureFlags.key);
     expect(calls.onConflictDoUpdate.set).toMatchObject({
       enabled: false,
       pricePaise: 1500,
+      originalPricePaise: 2000,
       updatedBy: 'admin-1',
     });
     expect(result).toEqual(returned);
@@ -114,14 +126,41 @@ describe('upsertFeatureOverride', () => {
       key: 'nav.home',
       enabled: false,
       pricePaise: null,
+      originalPricePaise: null,
       updatedAt: new Date(),
       updatedBy: 'admin-1',
     };
     const { chain, calls } = makeInsertChain([returned]);
     state.insert.mockReturnValue(chain);
 
-    await upsertFeatureOverride('nav.home', false, null, 'admin-1');
+    await upsertFeatureOverride('nav.home', false, null, null, 'admin-1');
 
-    expect(calls.values).toMatchObject({ key: 'nav.home', enabled: false, pricePaise: null });
+    expect(calls.values).toMatchObject({
+      key: 'nav.home',
+      enabled: false,
+      pricePaise: null,
+      originalPricePaise: null,
+    });
+  });
+
+  it('passes a null originalPricePaise through untouched even when pricePaise is set (no discount configured)', async () => {
+    const returned = {
+      key: 'paid.chat',
+      enabled: true,
+      pricePaise: 2000,
+      originalPricePaise: null,
+      updatedAt: new Date(),
+      updatedBy: 'admin-1',
+    };
+    const { chain, calls } = makeInsertChain([returned]);
+    state.insert.mockReturnValue(chain);
+
+    await upsertFeatureOverride('paid.chat', true, 2000, null, 'admin-1');
+
+    expect(calls.values).toMatchObject({
+      key: 'paid.chat',
+      pricePaise: 2000,
+      originalPricePaise: null,
+    });
   });
 });

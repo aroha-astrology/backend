@@ -62,6 +62,9 @@ export const ReportCatalogueEntrySchema = z
     enabled: z.boolean(),
     /** Never hardcode a price client-side — always read it from here. */
     pricePaise: z.number().int(),
+    /** "Strikethrough" MRP for the discount treatment. Null means no discount
+     * is configured — never a fabricated value derived from pricePaise. */
+    originalPricePaise: z.number().int().nullable(),
     purchases: z.array(ReportCataloguePurchaseSchema),
   })
   .openapi('ReportCatalogueEntry');

@@ -65,7 +65,9 @@ function authHeader() {
 
 function signIn() {
   state.verifyIdToken.mockResolvedValue(makeDecodedToken('uid-1', '+919999999999'));
-  state.findUserByFirebaseUid.mockResolvedValue(makeUserRow({ id: 'user-1', firebaseUid: 'uid-1' }));
+  state.findUserByFirebaseUid.mockResolvedValue(
+    makeUserRow({ id: 'user-1', firebaseUid: 'uid-1' }),
+  );
 }
 
 beforeEach(() => {
@@ -105,7 +107,16 @@ describe('GET /v1/reports', () => {
   it('returns 200 with the catalogue from the service', async () => {
     signIn();
     state.getReportCatalogueForUser.mockResolvedValue([
-      { key: 'marriage', label: 'Marriage Report', isMonthly: false, requiresPartner: false, enabled: true, pricePaise: 9900, purchases: [] },
+      {
+        key: 'marriage',
+        label: 'Marriage Report',
+        isMonthly: false,
+        requiresPartner: false,
+        enabled: true,
+        pricePaise: 9900,
+        originalPricePaise: null,
+        purchases: [],
+      },
     ]);
     const app = createApp();
 

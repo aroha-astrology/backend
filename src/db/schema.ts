@@ -1755,6 +1755,11 @@ export const featureFlags = pgTable('feature_flags', {
   key: text('key').primaryKey(),
   enabled: boolean('enabled').notNull(),
   pricePaise: integer('price_paise'),
+  /** Optional "strikethrough" MRP shown alongside `pricePaise` on the customer
+   * report catalogue when a discount is configured (originalPricePaise >
+   * pricePaise). Null means "no discount configured" — never fabricated from
+   * `pricePaise` or the structural `basePricePaise`. */
+  originalPricePaise: integer('original_price_paise'),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),

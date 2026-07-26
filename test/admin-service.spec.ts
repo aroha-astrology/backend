@@ -78,14 +78,20 @@ beforeEach(() => {
 describe('getOverview', () => {
   it('assembles every metric into the overview shape', async () => {
     state.sumPaidOrdersBetween.mockResolvedValue({ totalPaise: 100000, count: 20 });
-    state.revenueTimeSeries.mockResolvedValue([{ bucketStart: '2026-07-01', totalPaise: 5000, count: 1 }]);
-    state.spendByFeature.mockResolvedValue([{ reasonPrefix: 'chat_message', totalPaise: 4000, count: 2 }]);
+    state.revenueTimeSeries.mockResolvedValue([
+      { bucketStart: '2026-07-01', totalPaise: 5000, count: 1 },
+    ]);
+    state.spendByFeature.mockResolvedValue([
+      { reasonPrefix: 'chat_message', totalPaise: 4000, count: 2 },
+    ]);
     state.topUpFunnel.mockResolvedValue([{ status: 'paid', count: 20 }]);
     state.payingUserCount.mockResolvedValue(15);
     state.usersCreatedBetween.mockResolvedValue(30);
     state.usersActiveBetween.mockResolvedValue(50);
     state.sumWalletBalanceOutstanding.mockResolvedValue(200000);
-    state.costByAgent.mockResolvedValue([{ agent: 'chat', tokensIn: 100, tokensOut: 200, calls: 5 }]);
+    state.costByAgent.mockResolvedValue([
+      { agent: 'chat', tokensIn: 100, tokensOut: 200, calls: 5 },
+    ]);
 
     const result = await getOverview(range, 'last7d');
 
@@ -99,9 +105,13 @@ describe('getOverview', () => {
     // arpu = cashInPaise / max(1, activeUsers) = 100000 / 50 = 2000
     expect(result.arpuPaise).toBe(2000);
     expect(result.timeSeries).toEqual([{ bucketStart: '2026-07-01', totalPaise: 5000, count: 1 }]);
-    expect(result.spendByFeature).toEqual([{ reasonPrefix: 'chat_message', totalPaise: 4000, count: 2 }]);
+    expect(result.spendByFeature).toEqual([
+      { reasonPrefix: 'chat_message', totalPaise: 4000, count: 2 },
+    ]);
     expect(result.topUpFunnel).toEqual([{ status: 'paid', count: 20 }]);
-    expect(result.llmCostByAgent).toEqual([{ agent: 'chat', tokensIn: 100, tokensOut: 200, calls: 5 }]);
+    expect(result.llmCostByAgent).toEqual([
+      { agent: 'chat', tokensIn: 100, tokensOut: 200, calls: 5 },
+    ]);
     expect(result.range).toEqual({ from: range.from.toISOString(), to: range.to.toISOString() });
   });
 
@@ -125,23 +135,48 @@ describe('getOverview', () => {
 describe('listFeaturesForAdmin', () => {
   it('merges the FEATURE_REGISTRY with resolveFeatures() overrides', async () => {
     state.resolveFeatures.mockResolvedValue({
-      'paid.chat': { enabled: false, pricePaise: 1500 },
+      'paid.chat': { enabled: false, pricePaise: 1500, originalPricePaise: 2500 },
     });
 
     const result = await listFeaturesForAdmin();
 
     const chat = result.find((f) => f.key === 'paid.chat');
-    expect(chat).toEqual({ key: 'paid.chat', label: 'AI Chat', group: 'paid', enabled: false, pricePaise: 1500 });
+    expect(chat).toEqual({
+      key: 'paid.chat',
+      label: 'AI Chat',
+      group: 'paid',
+      enabled: false,
+      pricePaise: 1500,
+      originalPricePaise: 2500,
+    });
     // A key with no override falls back to its registry default.
     const navHome = result.find((f) => f.key === 'nav.home');
-    expect(navHome).toEqual({ key: 'nav.home', label: 'Home tab', group: 'nav', enabled: true, pricePaise: null });
+    expect(navHome).toEqual({
+      key: 'nav.home',
+      label: 'Home tab',
+      group: 'nav',
+      enabled: true,
+      pricePaise: null,
+      originalPricePaise: null,
+    });
+  });
+
+  it('falls back to null originalPricePaise when the override has no discount configured (no basePricePaise fallback)', async () => {
+    state.resolveFeatures.mockResolvedValue({
+      'paid.chat': { enabled: true, pricePaise: 2000, originalPricePaise: null },
+    });
+
+    const result = await listFeaturesForAdmin();
+
+    const chat = result.find((f) => f.key === 'paid.chat');
+    expect(chat?.originalPricePaise).toBeNull();
   });
 });
 
 describe('updateFeature', () => {
   it('rejects an unknown feature key with a 400', async () => {
     await expect(
-      updateFeature('not.a.real.key', true, undefined, '+919999111111'),
+      updateFeature('not.a.real.key', true, undefined, undefined, '+919999111111'),
     ).rejects.toMatchObject({ status: 400 });
     expect(state.upsertFeatureOverride).not.toHaveBeenCalled();
   });
@@ -152,50 +187,151 @@ describe('updateFeature', () => {
       key: 'paid.chat',
       enabled: false,
       pricePaise: 2000,
+      originalPricePaise: null,
       updatedAt: new Date(),
       updatedBy: '+919999111111',
     });
 
-    const result = await updateFeature('paid.chat', false, undefined, '+919999111111');
+    const result = await updateFeature('paid.chat', false, undefined, undefined, '+919999111111');
 
-    expect(state.upsertFeatureOverride).toHaveBeenCalledWith('paid.chat', false, 2000, '+919999111111');
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      false,
+      2000,
+      null,
+      '+919999111111',
+    );
     expect(state.invalidateFeatureCache).toHaveBeenCalledTimes(1);
     expect(state.logAdminAction).toHaveBeenCalledWith(
       '+919999111111',
       'PUT /v1/admin/features',
       expect.objectContaining({ key: 'paid.chat', enabled: false }),
     );
-    expect(result).toEqual({ key: 'paid.chat', label: 'AI Chat', group: 'paid', enabled: false, pricePaise: 2000 });
+    expect(result).toEqual({
+      key: 'paid.chat',
+      label: 'AI Chat',
+      group: 'paid',
+      enabled: false,
+      pricePaise: 2000,
+      originalPricePaise: null,
+    });
   });
 
   it('preserves the current resolved price when pricePaise is omitted', async () => {
-    state.resolveFeatures.mockResolvedValue({ 'paid.chat': { enabled: true, pricePaise: 3500 } });
+    state.resolveFeatures.mockResolvedValue({
+      'paid.chat': { enabled: true, pricePaise: 3500, originalPricePaise: null },
+    });
     state.upsertFeatureOverride.mockResolvedValue({
       key: 'paid.chat',
       enabled: false,
       pricePaise: 3500,
+      originalPricePaise: null,
       updatedAt: new Date(),
       updatedBy: 'admin',
     });
 
-    await updateFeature('paid.chat', false, undefined, '+919999111111');
+    await updateFeature('paid.chat', false, undefined, undefined, '+919999111111');
 
-    expect(state.upsertFeatureOverride).toHaveBeenCalledWith('paid.chat', false, 3500, '+919999111111');
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      false,
+      3500,
+      null,
+      '+919999111111',
+    );
   });
 
   it('accepts an explicit null pricePaise (clearing the price)', async () => {
-    state.resolveFeatures.mockResolvedValue({ 'paid.chat': { enabled: true, pricePaise: 3500 } });
+    state.resolveFeatures.mockResolvedValue({
+      'paid.chat': { enabled: true, pricePaise: 3500, originalPricePaise: null },
+    });
     state.upsertFeatureOverride.mockResolvedValue({
       key: 'paid.chat',
       enabled: true,
       pricePaise: null,
+      originalPricePaise: null,
       updatedAt: new Date(),
       updatedBy: 'admin',
     });
 
-    await updateFeature('paid.chat', true, null, '+919999111111');
+    await updateFeature('paid.chat', true, null, undefined, '+919999111111');
 
-    expect(state.upsertFeatureOverride).toHaveBeenCalledWith('paid.chat', true, null, '+919999111111');
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      true,
+      null,
+      null,
+      '+919999111111',
+    );
+  });
+
+  it('preserves the current resolved originalPricePaise when it is omitted, independently of pricePaise', async () => {
+    state.resolveFeatures.mockResolvedValue({
+      'paid.chat': { enabled: true, pricePaise: 3500, originalPricePaise: 6000 },
+    });
+    state.upsertFeatureOverride.mockResolvedValue({
+      key: 'paid.chat',
+      enabled: true,
+      pricePaise: 3500,
+      originalPricePaise: 6000,
+      updatedAt: new Date(),
+      updatedBy: 'admin',
+    });
+
+    await updateFeature('paid.chat', true, undefined, undefined, '+919999111111');
+
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      true,
+      3500,
+      6000,
+      '+919999111111',
+    );
+  });
+
+  it('accepts an explicit null originalPricePaise (clearing the discount) while leaving pricePaise as given', async () => {
+    state.resolveFeatures.mockResolvedValue({});
+    state.upsertFeatureOverride.mockResolvedValue({
+      key: 'paid.chat',
+      enabled: true,
+      pricePaise: 2000,
+      originalPricePaise: null,
+      updatedAt: new Date(),
+      updatedBy: 'admin',
+    });
+
+    await updateFeature('paid.chat', true, 2000, null, '+919999111111');
+
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      true,
+      2000,
+      null,
+      '+919999111111',
+    );
+  });
+
+  it('sets both pricePaise and originalPricePaise together to configure a discount', async () => {
+    state.upsertFeatureOverride.mockResolvedValue({
+      key: 'paid.chat',
+      enabled: true,
+      pricePaise: 14900,
+      originalPricePaise: 49900,
+      updatedAt: new Date(),
+      updatedBy: 'admin',
+    });
+
+    const result = await updateFeature('paid.chat', true, 14900, 49900, '+919999111111');
+
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      true,
+      14900,
+      49900,
+      '+919999111111',
+    );
+    expect(result.pricePaise).toBe(14900);
+    expect(result.originalPricePaise).toBe(49900);
   });
 });
 
@@ -305,7 +441,9 @@ describe('adjustWallet', () => {
   it('rejects a zero delta', async () => {
     state.findActiveUserById.mockResolvedValueOnce({ id: 'u1', walletBalancePaise: 1000 });
 
-    await expect(adjustWallet('u1', 0, 'x', '+919999111111')).rejects.toMatchObject({ status: 400 });
+    await expect(adjustWallet('u1', 0, 'x', '+919999111111')).rejects.toMatchObject({
+      status: 400,
+    });
   });
 });
 

@@ -115,6 +115,7 @@ export interface AdminFeatureRow {
   group: string;
   enabled: boolean;
   pricePaise: number | null;
+  originalPricePaise: number | null;
 }
 
 /** Merges FEATURE_REGISTRY (the source of truth for what features exist) with resolveFeatures()'s admin overrides. */
@@ -126,21 +127,26 @@ export async function listFeaturesForAdmin(): Promise<AdminFeatureRow[]> {
     group: feature.group,
     enabled: resolved[feature.key]?.enabled ?? feature.defaultEnabled,
     pricePaise: resolved[feature.key]?.pricePaise ?? feature.defaultPricePaise ?? null,
+    // No registry-level default for this one (unlike pricePaise/basePricePaise)
+    // — a feature with no admin override simply has no discount to show.
+    originalPricePaise: resolved[feature.key]?.originalPricePaise ?? null,
   }));
 }
 
 /**
  * Toggles/prices a feature. `pricePaise === undefined` means "leave the
  * price as it currently resolves" (registry default or existing override) —
- * distinct from an explicit `null`, which clears it. Rejects an unknown key
- * up front since FEATURE_REGISTRY is the source of truth for what keys
- * exist; writing an override row for a key nothing reads would be silent
- * dead configuration.
+ * distinct from an explicit `null`, which clears it. `originalPricePaise`
+ * follows the identical undefined-preserves/null-clears convention,
+ * independently of `pricePaise`. Rejects an unknown key up front since
+ * FEATURE_REGISTRY is the source of truth for what keys exist; writing an
+ * override row for a key nothing reads would be silent dead configuration.
  */
 export async function updateFeature(
   key: string,
   enabled: boolean,
   pricePaise: number | null | undefined,
+  originalPricePaise: number | null | undefined,
   adminPhone: string,
 ): Promise<AdminFeatureRow> {
   if (!isKnownFeatureKey(key)) {
@@ -149,19 +155,35 @@ export async function updateFeature(
   const registryEntry = FEATURE_REGISTRY.find((feature) => feature.key === key)!;
 
   let resolvedPrice: number | null;
-  if (pricePaise === undefined) {
+  let resolvedOriginalPrice: number | null;
+  if (pricePaise === undefined || originalPricePaise === undefined) {
     const resolved = await resolveFeatures();
-    resolvedPrice = resolved[key]?.pricePaise ?? registryEntry.defaultPricePaise ?? null;
+    resolvedPrice =
+      pricePaise === undefined
+        ? (resolved[key]?.pricePaise ?? registryEntry.defaultPricePaise ?? null)
+        : pricePaise;
+    resolvedOriginalPrice =
+      originalPricePaise === undefined
+        ? (resolved[key]?.originalPricePaise ?? null)
+        : originalPricePaise;
   } else {
     resolvedPrice = pricePaise;
+    resolvedOriginalPrice = originalPricePaise;
   }
 
-  const row = await upsertFeatureOverride(key, enabled, resolvedPrice, adminPhone);
+  const row = await upsertFeatureOverride(
+    key,
+    enabled,
+    resolvedPrice,
+    resolvedOriginalPrice,
+    adminPhone,
+  );
   invalidateFeatureCache();
   await logAdminAction(adminPhone, 'PUT /v1/admin/features', {
     key,
     enabled,
     pricePaise: resolvedPrice,
+    originalPricePaise: resolvedOriginalPrice,
   });
 
   return {
@@ -170,6 +192,7 @@ export async function updateFeature(
     group: registryEntry.group,
     enabled: row.enabled,
     pricePaise: row.pricePaise,
+    originalPricePaise: row.originalPricePaise,
   };
 }
 
@@ -178,10 +201,7 @@ export async function updateFeature(
 /* -------------------------------------------------------------------------- */
 
 export async function searchUsers(q: string | undefined, limit: number, offset: number) {
-  const [rows, total] = await Promise.all([
-    listUsersPage(limit, offset, q),
-    countUsersMatching(q),
-  ]);
+  const [rows, total] = await Promise.all([listUsersPage(limit, offset, q), countUsersMatching(q)]);
   const users = rows.map((row) => ({
     ...row,
     createdAt: row.createdAt.toISOString(),

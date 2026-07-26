@@ -72,7 +72,14 @@ describe('resolveFeaturesForUser — single group override', () => {
 
   it('an "on" override enables a feature the GLOBAL flag has disabled', async () => {
     state.findAllFeatureOverrides.mockResolvedValue([
-      { key: PRICED_KEY, enabled: false, pricePaise: PRICED_DEFAULT.defaultPricePaise, updatedAt: new Date(), updatedBy: 'admin' },
+      {
+        key: PRICED_KEY,
+        enabled: false,
+        pricePaise: PRICED_DEFAULT.defaultPricePaise,
+        originalPricePaise: null,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
     ]);
     state.listGroupIdsForUser.mockResolvedValue(['group-beta']);
     state.listAllGroupFeatureOverrides.mockResolvedValue([
@@ -118,7 +125,14 @@ describe('resolveFeaturesForUser — multiple groups agreeing', () => {
 
   it('two groups both enabling the same (globally-disabled) key resolve to enabled', async () => {
     state.findAllFeatureOverrides.mockResolvedValue([
-      { key: PRICED_KEY, enabled: false, pricePaise: PRICED_DEFAULT.defaultPricePaise, updatedAt: new Date(), updatedBy: 'admin' },
+      {
+        key: PRICED_KEY,
+        enabled: false,
+        pricePaise: PRICED_DEFAULT.defaultPricePaise,
+        originalPricePaise: null,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
     ]);
     state.listGroupIdsForUser.mockResolvedValue(['group-a', 'group-b']);
     state.listAllGroupFeatureOverrides.mockResolvedValue([
@@ -196,7 +210,14 @@ describe('resolveFeaturesForUser — price is never altered by a group override'
 
   it('keeps the base (global override) price even when a group override enables the feature', async () => {
     state.findAllFeatureOverrides.mockResolvedValue([
-      { key: PRICED_KEY, enabled: false, pricePaise: 999999, updatedAt: new Date(), updatedBy: 'admin' },
+      {
+        key: PRICED_KEY,
+        enabled: false,
+        pricePaise: 999999,
+        originalPricePaise: 1999999,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
     ]);
     state.listGroupIdsForUser.mockResolvedValue(['group-beta']);
     state.listAllGroupFeatureOverrides.mockResolvedValue([
@@ -207,6 +228,28 @@ describe('resolveFeaturesForUser — price is never altered by a group override'
 
     expect(resolved[PRICED_KEY]!.enabled).toBe(true);
     expect(resolved[PRICED_KEY]!.pricePaise).toBe(999999);
+  });
+
+  it('keeps the base (global) originalPricePaise unchanged when a group override disables the feature', async () => {
+    state.findAllFeatureOverrides.mockResolvedValue([
+      {
+        key: PRICED_KEY,
+        enabled: true,
+        pricePaise: PRICED_DEFAULT.defaultPricePaise,
+        originalPricePaise: 2999999,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
+    ]);
+    state.listGroupIdsForUser.mockResolvedValue(['group-beta']);
+    state.listAllGroupFeatureOverrides.mockResolvedValue([
+      { groupId: 'group-beta', featureKey: PRICED_KEY, enabled: false },
+    ]);
+
+    const resolved = await resolveFeaturesForUser('user-1');
+
+    expect(resolved[PRICED_KEY]!.enabled).toBe(false);
+    expect(resolved[PRICED_KEY]!.originalPricePaise).toBe(2999999);
   });
 });
 

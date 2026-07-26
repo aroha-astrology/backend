@@ -109,7 +109,10 @@ const overviewRoute = createRoute({
   middleware: [requireAdmin] as const,
   request: { query: DateRangeQuerySchema },
   responses: {
-    200: { description: 'Overview metrics', content: { 'application/json': { schema: OverviewResponseSchema } } },
+    200: {
+      description: 'Overview metrics',
+      content: { 'application/json': { schema: OverviewResponseSchema } },
+    },
     400: errorResponse('Unknown preset or malformed custom from/to'),
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
@@ -136,7 +139,10 @@ const listFeaturesRoute = createRoute({
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   responses: {
-    200: { description: 'Feature list', content: { 'application/json': { schema: AdminFeaturesResponseSchema } } },
+    200: {
+      description: 'Feature list',
+      content: { 'application/json': { schema: AdminFeaturesResponseSchema } },
+    },
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
   },
@@ -163,7 +169,10 @@ const updateFeatureRoute = createRoute({
     body: { required: true, content: { 'application/json': { schema: UpdateFeatureBodySchema } } },
   },
   responses: {
-    200: { description: 'Updated feature row', content: { 'application/json': { schema: AdminFeatureRowSchema } } },
+    200: {
+      description: 'Updated feature row',
+      content: { 'application/json': { schema: AdminFeatureRowSchema } },
+    },
     400: errorResponse('Unknown feature key'),
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
@@ -171,8 +180,8 @@ const updateFeatureRoute = createRoute({
 });
 
 adminRouter.openapi(updateFeatureRoute, async (c) => {
-  const { key, enabled, pricePaise } = c.req.valid('json');
-  const row = await updateFeature(key, enabled, pricePaise, adminPhoneOf(c));
+  const { key, enabled, pricePaise, originalPricePaise } = c.req.valid('json');
+  const row = await updateFeature(key, enabled, pricePaise, originalPricePaise, adminPhoneOf(c));
   return c.json(row, 200);
 });
 
@@ -189,7 +198,10 @@ const listUsersRoute = createRoute({
   middleware: [requireAdmin] as const,
   request: { query: AdminUsersQuerySchema },
   responses: {
-    200: { description: 'User page', content: { 'application/json': { schema: AdminUsersResponseSchema } } },
+    200: {
+      description: 'User page',
+      content: { 'application/json': { schema: AdminUsersResponseSchema } },
+    },
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
   },
@@ -218,7 +230,10 @@ const adjustWalletRoute = createRoute({
     body: { required: true, content: { 'application/json': { schema: AdjustWalletBodySchema } } },
   },
   responses: {
-    200: { description: 'New wallet balance', content: { 'application/json': { schema: AdjustWalletResponseSchema } } },
+    200: {
+      description: 'New wallet balance',
+      content: { 'application/json': { schema: AdjustWalletResponseSchema } },
+    },
     400: errorResponse('deltaPaise must be non-zero'),
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
@@ -247,7 +262,10 @@ const reportsRoute = createRoute({
   middleware: [requireAdmin] as const,
   request: { query: DateRangeQuerySchema },
   responses: {
-    200: { description: 'Per-report spend', content: { 'application/json': { schema: AdminReportsResponseSchema } } },
+    200: {
+      description: 'Per-report spend',
+      content: { 'application/json': { schema: AdminReportsResponseSchema } },
+    },
     400: errorResponse('Unknown preset or malformed custom from/to'),
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),

@@ -351,6 +351,9 @@ export async function getReportCatalogueForUser(
       requiresPartner: def.requiresPartner,
       enabled: resolved?.enabled ?? true,
       pricePaise: resolved?.pricePaise ?? def.basePricePaise,
+      // No fallback to basePricePaise here — an unconfigured original price
+      // means there's no discount to show, not a fabricated one.
+      originalPricePaise: resolved?.originalPricePaise ?? null,
       purchases: rows
         .filter((r) => r.reportKey === def.key)
         .map((r) => ({ id: r.id, periodMonth: r.periodMonth, status: r.status })),

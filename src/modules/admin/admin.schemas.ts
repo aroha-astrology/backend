@@ -14,8 +14,14 @@ export const DateRangeQuerySchema = z.object({
         'today | yesterday | last7d | last15d | last30d | this_month | last_month | ' +
         'last90d | this_quarter | this_year | lifetime | custom (requires from/to)',
     }),
-  from: z.string().optional().openapi({ example: '2026-07-01', description: 'YYYY-MM-DD, required when preset=custom' }),
-  to: z.string().optional().openapi({ example: '2026-07-08', description: 'YYYY-MM-DD, required when preset=custom' }),
+  from: z
+    .string()
+    .optional()
+    .openapi({ example: '2026-07-01', description: 'YYYY-MM-DD, required when preset=custom' }),
+  to: z
+    .string()
+    .optional()
+    .openapi({ example: '2026-07-08', description: 'YYYY-MM-DD, required when preset=custom' }),
 });
 
 /* -------------------------------------------------------------------------- */
@@ -75,6 +81,7 @@ export const AdminFeatureRowSchema = z
     group: z.string(),
     enabled: z.boolean(),
     pricePaise: z.number().int().nullable(),
+    originalPricePaise: z.number().int().nullable(),
   })
   .openapi('AdminFeatureRow');
 
@@ -87,6 +94,7 @@ export const UpdateFeatureBodySchema = z
     key: z.string().min(1),
     enabled: z.boolean(),
     pricePaise: z.number().int().nullable().optional(),
+    originalPricePaise: z.number().int().nullable().optional(),
   })
   .openapi('UpdateFeatureBody');
 

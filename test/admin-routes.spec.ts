@@ -204,15 +204,20 @@ describe('GET /v1/admin/overview', () => {
 describe('GET /v1/admin/features', () => {
   it('returns 200 with the merged registry + overrides', async () => {
     signInAs(ADMIN_PHONE);
-    state.resolveFeatures.mockResolvedValue({ 'paid.chat': { enabled: false, pricePaise: 1500 } });
+    state.resolveFeatures.mockResolvedValue({
+      'paid.chat': { enabled: false, pricePaise: 1500, originalPricePaise: 2500 },
+    });
     const app = createApp();
 
     const res = await app.request('/v1/admin/features', { headers: authHeader() });
-    const body = (await res.json()) as { features: { key: string; enabled: boolean }[] };
+    const body = (await res.json()) as {
+      features: { key: string; enabled: boolean; originalPricePaise: number | null }[];
+    };
 
     expect(res.status).toBe(200);
     const chat = body.features.find((f) => f.key === 'paid.chat');
     expect(chat?.enabled).toBe(false);
+    expect(chat?.originalPricePaise).toBe(2500);
     expect(state.logAdminAction).toHaveBeenCalledWith(
       ADMIN_PHONE,
       expect.stringContaining('/v1/admin/features'),
@@ -242,6 +247,7 @@ describe('PUT /v1/admin/features', () => {
       key: 'paid.chat',
       enabled: false,
       pricePaise: 2000,
+      originalPricePaise: null,
       updatedAt: new Date(),
       updatedBy: ADMIN_PHONE,
     });
@@ -255,6 +261,42 @@ describe('PUT /v1/admin/features', () => {
 
     expect(res.status).toBe(200);
     expect(state.invalidateFeatureCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts and forwards originalPricePaise in the request body', async () => {
+    signInAs(ADMIN_PHONE);
+    state.upsertFeatureOverride.mockResolvedValue({
+      key: 'paid.chat',
+      enabled: true,
+      pricePaise: 14900,
+      originalPricePaise: 49900,
+      updatedAt: new Date(),
+      updatedBy: ADMIN_PHONE,
+    });
+    const app = createApp();
+
+    const res = await app.request('/v1/admin/features', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'paid.chat',
+        enabled: true,
+        pricePaise: 14900,
+        originalPricePaise: 49900,
+      }),
+    });
+    const body = (await res.json()) as { pricePaise: number; originalPricePaise: number | null };
+
+    expect(res.status).toBe(200);
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      true,
+      14900,
+      49900,
+      ADMIN_PHONE,
+    );
+    expect(body.pricePaise).toBe(14900);
+    expect(body.originalPricePaise).toBe(49900);
   });
 });
 

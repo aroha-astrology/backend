@@ -39,6 +39,7 @@ describe('resolveFeatures — merge behavior', () => {
       expect(resolved[feature.key]).toEqual({
         enabled: feature.defaultEnabled,
         pricePaise: feature.defaultPricePaise ?? null,
+        originalPricePaise: null,
       });
     }
   });
@@ -46,18 +47,36 @@ describe('resolveFeatures — merge behavior', () => {
   it('lets a DB override win over the registry default', async () => {
     const target = FEATURE_REGISTRY.find((f) => f.defaultEnabled)!;
     state.findAllFeatureOverrides.mockResolvedValue([
-      { key: target.key, enabled: false, pricePaise: 12345, updatedAt: new Date(), updatedBy: 'admin' },
+      {
+        key: target.key,
+        enabled: false,
+        pricePaise: 12345,
+        originalPricePaise: 19999,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
     ]);
 
     const resolved = await resolveFeatures();
 
-    expect(resolved[target.key]).toEqual({ enabled: false, pricePaise: 12345 });
+    expect(resolved[target.key]).toEqual({
+      enabled: false,
+      pricePaise: 12345,
+      originalPricePaise: 19999,
+    });
   });
 
   it('leaves every other key at its registry default when only one key is overridden', async () => {
     const [target, ...rest] = FEATURE_REGISTRY;
     state.findAllFeatureOverrides.mockResolvedValue([
-      { key: target!.key, enabled: false, pricePaise: null, updatedAt: new Date(), updatedBy: 'admin' },
+      {
+        key: target!.key,
+        enabled: false,
+        pricePaise: null,
+        originalPricePaise: null,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
     ]);
 
     const resolved = await resolveFeatures();
@@ -66,8 +85,27 @@ describe('resolveFeatures — merge behavior', () => {
       expect(resolved[feature.key]).toEqual({
         enabled: feature.defaultEnabled,
         pricePaise: feature.defaultPricePaise ?? null,
+        originalPricePaise: null,
       });
     }
+  });
+
+  it('surfaces a null originalPricePaise when the override row has no discount configured', async () => {
+    const target = FEATURE_REGISTRY.find((f) => f.defaultEnabled)!;
+    state.findAllFeatureOverrides.mockResolvedValue([
+      {
+        key: target.key,
+        enabled: true,
+        pricePaise: 5000,
+        originalPricePaise: null,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
+    ]);
+
+    const resolved = await resolveFeatures();
+
+    expect(resolved[target.key]!.originalPricePaise).toBeNull();
   });
 });
 
@@ -82,6 +120,7 @@ describe('resolveFeatures — DB failure fallback', () => {
       expect(value[feature.key]).toEqual({
         enabled: feature.defaultEnabled,
         pricePaise: feature.defaultPricePaise ?? null,
+        originalPricePaise: null,
       });
     }
     expect(logger.error).toHaveBeenCalled();
