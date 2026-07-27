@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReportRow, UserRow } from '../src/db/schema.js';
 import type * as ReportGeneratorTypesModule from '../src/modules/reports/report-generator.types.js';
 import type { ReportGenerator } from '../src/modules/reports/report-generator.types.js';
@@ -20,6 +20,8 @@ const state = vi.hoisted(() => {
     markReportReady: vi.fn(),
     markReportFailed: vi.fn(),
     saveReportTranslation: vi.fn(),
+    upgradePreviewToPurchased: vi.fn(),
+    countReadyReportsByKey: vi.fn(),
     resolveFeaturesForUser: vi.fn(),
     deductWalletBalance: vi.fn(),
     addWalletBalance: vi.fn(),
@@ -41,6 +43,8 @@ vi.mock('../src/modules/reports/reports.repo.js', () => ({
   markReportReady: state.markReportReady,
   markReportFailed: state.markReportFailed,
   saveReportTranslation: state.saveReportTranslation,
+  upgradePreviewToPurchased: state.upgradePreviewToPurchased,
+  countReadyReportsByKey: state.countReadyReportsByKey,
 }));
 
 vi.mock('../src/modules/device-tokens/device-tokens.repo.js', () => ({
@@ -87,8 +91,10 @@ vi.mock('../src/modules/reports/report-generator.types.js', async () => {
 
 const {
   purchaseReport,
+  previewReport,
   getReportCatalogueForUser,
   getReportForUser,
+  getReportStats,
   notifyReportReady,
   reapStaleReports,
 } = await import('../src/modules/reports/reports.service.js');
@@ -111,6 +117,7 @@ function makeReportRow(overrides: Partial<ReportRow> = {}): ReportRow {
     input: null,
     model: null,
     pricePaidPaise: 9900,
+    isPreview: false,
     startedAt: now,
     error: null,
     createdAt: now,
@@ -129,6 +136,8 @@ beforeEach(() => {
   state.markReportReady.mockReset().mockResolvedValue(undefined);
   state.markReportFailed.mockReset().mockResolvedValue(undefined);
   state.saveReportTranslation.mockReset().mockResolvedValue(undefined);
+  state.upgradePreviewToPurchased.mockReset().mockResolvedValue(undefined);
+  state.countReadyReportsByKey.mockReset().mockResolvedValue([]);
   state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
   state.deductWalletBalance.mockReset().mockResolvedValue(true);
   state.addWalletBalance.mockReset().mockResolvedValue(undefined);
@@ -383,6 +392,98 @@ describe('purchaseReport — duplicate purchase reuse and refunds', () => {
       4332,
       'refund:report_unlock:health_monthly:bundle:3',
     );
+  });
+});
+
+describe('purchaseReport — preview-to-purchase upgrade (the two collision paths)', () => {
+  // Path 1: the preview is still 'generating' and non-stale — claimReportRow's own
+  // onConflictDoUpdate (setWhere) reclaims the row directly (the real DB flips isPreview to
+  // false via the `set` clause claimReportRow always writes — see reports-repo.spec.ts for that
+  // coverage). No extra purchaseReport code runs for this path: it's the ordinary `if (claimed)`
+  // branch, exactly like a fresh purchase. This test proves purchaseReport asks for isPreview:
+  // false on every claim (so a real DB reclaim would correctly flip the flag) and does NOT
+  // refund or call upgradePreviewToPurchased when the claim succeeds.
+  it('generating-preview reclaimed directly: claims with isPreview:false and the real price, no refund, no upgrade call', async () => {
+    // A real generator + ready chart so the background generation this fires actually succeeds
+    // instead of racing a "no generator registered" refund against the assertions below.
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'preview-1',
+        status: 'generating',
+        isPreview: false,
+        pricePaidPaise: 9900,
+      }),
+    );
+
+    const result = await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    expect(state.claimReportRow).toHaveBeenCalledWith(
+      expect.objectContaining({ isPreview: false, pricePaidPaise: 9900 }),
+    );
+    expect(state.upgradePreviewToPurchased).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(result.reports).toEqual([
+      { id: 'preview-1', reportKey: 'marriage', periodMonth: null, status: 'generating' },
+    ]);
+
+    await vi.waitFor(() => {
+      expect(state.markReportReady).toHaveBeenCalled();
+    });
+    // The successful-generation path never touches the wallet — confirm the refund still hasn't
+    // fired even after generation completes.
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  // Path 2: the preview already finished ('ready') — claimReportRow's setWhere can't reclaim a
+  // ready row (see its "never a ready row" guard), so it returns undefined. purchaseReport must
+  // then recognize (via findReportRow) that the existing row is a PREVIEW, not a genuine
+  // already-purchased row: upgrade it in place (isPreview -> false, real price recorded) rather
+  // than refunding — the buyer paid for and should receive this content.
+  it('ready-preview upgraded in place: no refund, upgradePreviewToPurchased called with the real price, buyer gets the existing ready content instantly', async () => {
+    state.claimReportRow.mockResolvedValue(undefined);
+    state.findReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'preview-2',
+        status: 'ready',
+        isPreview: true,
+        pricePaidPaise: 0,
+        periodMonth: null,
+      }),
+    );
+
+    const result = await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    expect(state.upgradePreviewToPurchased).toHaveBeenCalledWith('preview-2', 9900);
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(result.reports).toEqual([
+      { id: 'preview-2', reportKey: 'marriage', periodMonth: null, status: 'ready' },
+    ]);
+  });
+
+  it('a genuinely already-purchased (non-preview) row still refunds and reuses, unchanged from before', async () => {
+    state.claimReportRow.mockResolvedValue(undefined);
+    state.findReportRow.mockResolvedValue(
+      makeReportRow({ id: 'purchased-1', status: 'ready', isPreview: false }),
+    );
+
+    const result = await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    expect(state.upgradePreviewToPurchased).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'refund:report_unlock:marriage',
+    );
+    expect(result.reports).toEqual([
+      { id: 'purchased-1', reportKey: 'marriage', periodMonth: null, status: 'ready' },
+    ]);
   });
 });
 
@@ -736,6 +837,46 @@ describe('getReportForUser', () => {
     });
   });
 
+  it('surfaces isPreview:true from the row so the client knows to blur/paywall it', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn(),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ chartData: {} });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        isPreview: true,
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      }),
+    );
+
+    const dto = await getReportForUser('report-1', 'user-1', 'en');
+    expect(dto).toMatchObject({ status: 'ready', isPreview: true });
+  });
+
+  it('surfaces isPreview:false for a genuinely purchased row', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn(),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ chartData: {} });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        isPreview: false,
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      }),
+    );
+
+    const dto = await getReportForUser('report-1', 'user-1', 'en');
+    expect(dto).toMatchObject({ status: 'ready', isPreview: false });
+  });
+
   it('uses a cached translation without calling translateNarrative again', async () => {
     const translateNarrative = vi.fn();
     state.REPORT_GENERATORS.marriage = {
@@ -802,5 +943,144 @@ describe('getReportForUser', () => {
 
     const dto = await getReportForUser('report-1', 'user-1', 'hi');
     expect(dto).toMatchObject({ sections: [{ heading: 'H', paragraphs: ['p'] }] });
+  });
+});
+
+describe('previewReport', () => {
+  it('throws NOT_FOUND for an unknown report key', async () => {
+    await expect(previewReport(makeUser(), { reportKey: 'not_real' })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
+  it('throws BAD_REQUEST for kundli_milan — no partner data exists yet at preview time', async () => {
+    await expect(previewReport(makeUser(), { reportKey: 'kundli_milan' })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
+  it('throws BAD_REQUEST for match_report — the other partner-required report', async () => {
+    await expect(previewReport(makeUser(), { reportKey: 'match_report' })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
+  it('claims a free (pricePaidPaise: 0) preview row — one-time shape, isPreview:true, no partner input — and fires generation', async () => {
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({ id: 'p1', reportKey: 'marriage', isPreview: true, pricePaidPaise: 0 }),
+    );
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+
+    const result = await previewReport(makeUser(), { reportKey: 'marriage' });
+
+    expect(state.claimReportRow).toHaveBeenCalledWith({
+      userId: 'user-1',
+      birthProfileId: null,
+      reportKey: 'marriage',
+      periodMonth: null,
+      input: null,
+      pricePaidPaise: 0,
+      isPreview: true,
+    });
+    expect(result).toEqual({ id: 'p1', reportKey: 'marriage', status: 'generating' });
+
+    // No wallet debit at all for a preview.
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => {
+      expect(state.markReportReady).toHaveBeenCalled();
+    });
+  });
+
+  it('is idempotent: when claimReportRow signals a duplicate (undefined), looks up the existing row via findReportRow and returns its current state instead of erroring', async () => {
+    state.claimReportRow.mockResolvedValue(undefined);
+    state.findReportRow.mockResolvedValue(
+      makeReportRow({ id: 'p1', reportKey: 'marriage', status: 'ready', isPreview: true }),
+    );
+
+    const result = await previewReport(makeUser(), { reportKey: 'marriage' });
+
+    expect(result).toEqual({ id: 'p1', reportKey: 'marriage', status: 'ready' });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('resolves the profile via resolveProfileContext for a non-primary birthProfileId, same as purchaseReport', async () => {
+    state.resolveProfileContext.mockResolvedValue({ birthProfileId: 'profile-a' });
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'p2',
+        reportKey: 'wealth',
+        birthProfileId: 'profile-a',
+        isPreview: true,
+      }),
+    );
+
+    await previewReport(makeUser(), { reportKey: 'wealth', birthProfileId: 'profile-a' });
+
+    expect(state.resolveProfileContext).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'user-1' }),
+      'profile-a',
+    );
+    expect(state.claimReportRow).toHaveBeenCalledWith(
+      expect.objectContaining({ birthProfileId: 'profile-a' }),
+    );
+  });
+});
+
+describe('getReportStats', () => {
+  // The cache under test is a real module-level variable in reports.service.ts (persists across
+  // `it` blocks in this file, by design — see getReportStats's doc comment). Everything here
+  // therefore runs as ONE test with a clock that only ever moves forward: switching timers
+  // backward between separate `it` blocks would make a stale expiresAt from an earlier test
+  // look "not yet expired" relative to an earlier fake `now`, which is exactly the kind of bug
+  // this cache must not have in production either.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('groups ready/non-preview counts by report key, serves the cache within the TTL, and re-queries with fresh data (including an empty result) once the TTL elapses', async () => {
+    vi.useFakeTimers();
+
+    state.countReadyReportsByKey.mockResolvedValue([
+      { reportKey: 'marriage', count: 12 },
+      { reportKey: 'wealth', count: 3 },
+    ]);
+
+    const first = await getReportStats();
+    expect(first).toEqual({ marriage: 12, wealth: 3 });
+    expect(state.countReadyReportsByKey).toHaveBeenCalledTimes(1);
+
+    // A second call within the TTL must be served from cache, not hit the DB again — even if
+    // the underlying data "changed" (simulated here by a different mock resolution the cached
+    // call must NOT observe).
+    state.countReadyReportsByKey.mockResolvedValue([{ reportKey: 'marriage', count: 999 }]);
+    const second = await getReportStats();
+    expect(second).toEqual({ marriage: 12, wealth: 3 });
+    expect(state.countReadyReportsByKey).toHaveBeenCalledTimes(1);
+
+    // Once the ~5-minute TTL window has elapsed, the next call must re-query and pick up the
+    // now-current data instead of continuing to serve the stale cached object forever.
+    vi.advanceTimersByTime(5 * 60_000 + 1);
+    const third = await getReportStats();
+    expect(third).toEqual({ marriage: 999 });
+    expect(state.countReadyReportsByKey).toHaveBeenCalledTimes(2);
+
+    // A further TTL elapse with no ready/non-preview reports at all must map to `{}`, not throw
+    // or leak the previous cached shape.
+    vi.advanceTimersByTime(5 * 60_000 + 1);
+    state.countReadyReportsByKey.mockResolvedValue([]);
+    const fourth = await getReportStats();
+    expect(fourth).toEqual({});
+    expect(state.countReadyReportsByKey).toHaveBeenCalledTimes(3);
   });
 });

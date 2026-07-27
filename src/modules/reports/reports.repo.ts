@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { reports, type ReportRow } from '../../db/schema.js';
 
@@ -101,6 +101,14 @@ export interface ClaimReportInput {
   /** Partner birth details — kundli_milan only, null for every other report key. */
   input: Record<string, unknown> | null;
   pricePaidPaise: number;
+  /** True for a free preview claim (see previewReport in reports.service.ts), false for a real
+   * purchase claim. Written on EVERY claim (insert and reclaim-on-conflict alike) — a real
+   * purchase claim always passes false, which is what flips a preview row to non-preview when
+   * the purchase reclaims it (still 'generating', or stale) via the onConflictDoUpdate below. The
+   * other collision case — the preview already finished ('ready', so onConflictDoUpdate's
+   * setWhere can't reclaim it) — is handled by purchaseReport calling upgradePreviewToPurchased
+   * directly instead of going through this function again. */
+  isPreview: boolean;
 }
 
 /**
@@ -140,6 +148,7 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
     periodMonth: claim.periodMonth,
     input: claim.input,
     pricePaidPaise: claim.pricePaidPaise,
+    isPreview: claim.isPreview,
     status: 'generating' as const,
     startedAt: now,
     error: null,
@@ -162,6 +171,7 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
         startedAt: now,
         error: null,
         pricePaidPaise: claim.pricePaidPaise,
+        isPreview: claim.isPreview,
         updatedAt: now,
       },
       setWhere,
@@ -210,6 +220,24 @@ export async function markReportReady(
     );
 }
 
+/**
+ * Flips a free preview row into a real purchase in place, without touching its
+ * content/status — used by purchaseReport when a buyer's claimReportRow call
+ * collides with a preview row that's already `ready` (so claimReportRow's own
+ * onConflictDoUpdate couldn't reclaim it; see claimReportRow's setWhere guard).
+ * The row keeps its existing generated content and status (almost always
+ * 'ready' already, so the buyer gets it instantly), only `isPreview` and
+ * `pricePaidPaise` change. Unconditional by id — the caller has already
+ * confirmed via findReportRow that this row is `isPreview === true` before
+ * calling this.
+ */
+export async function upgradePreviewToPurchased(id: string, pricePaidPaise: number): Promise<void> {
+  await db
+    .update(reports)
+    .set({ isPreview: false, pricePaidPaise, updatedAt: new Date() })
+    .where(eq(reports.id, id));
+}
+
 export async function markReportFailed(id: string, claimedAt: Date, error: string): Promise<void> {
   await db
     .update(reports)
@@ -234,4 +262,21 @@ export async function saveReportTranslation(
 
   const translations = { ...(existing.translations ?? {}), [language]: translation };
   await db.update(reports).set({ translations }).where(eq(reports.id, id));
+}
+
+/**
+ * Ready, real-purchase (non-preview) report counts grouped by report key,
+ * across ALL users — the public social-proof number ("1,926 reports
+ * generated"). Deliberately excludes preview rows (isPreview = true) and
+ * anything not yet `ready` — see previewReport/GET /reports/stats. The
+ * service layer caches this (see reports.service.ts) rather than calling it
+ * on every page load.
+ */
+export async function countReadyReportsByKey(): Promise<{ reportKey: string; count: number }[]> {
+  const rows = await db
+    .select({ reportKey: reports.reportKey, count: count() })
+    .from(reports)
+    .where(and(eq(reports.status, 'ready'), eq(reports.isPreview, false)))
+    .groupBy(reports.reportKey);
+  return rows.map((row) => ({ reportKey: row.reportKey, count: row.count }));
 }

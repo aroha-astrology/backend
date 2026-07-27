@@ -1333,6 +1333,12 @@ export const reports = pgTable(
     input: jsonb('input').$type<Record<string, unknown>>(),
     model: text('model'),
     pricePaidPaise: integer('price_paid_paise').notNull(),
+    /** True for a free "generate the real report and blur it" preview row (see
+     * previewReport in reports.service.ts) — same generator pipeline as a real
+     * purchase, billed at 0. Flipped back to false the moment the user actually
+     * pays (claimReportRow always writes isPreview on every claim, purchase claims
+     * always pass false — see upgradePreviewToPurchased for the ready-row case). */
+    isPreview: boolean('is_preview').notNull().default(false),
     /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
     startedAt: timestamp('started_at', { withTimezone: true }),
     error: text('error'),
