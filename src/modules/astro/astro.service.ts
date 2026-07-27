@@ -16,7 +16,7 @@ import {
 import {
   dateToJulianDay,
   calculatePlanetPositions,
-  calculateFullPanchang,
+  calculateFullPanchangAsync,
   detectMangalDosha,
 } from '../../lib/astro-engine/index.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
@@ -426,7 +426,14 @@ export async function getPanchang(
   const moonLong = moon?.longitude ?? 0;
 
   // Calculate full panchang using the astro-engine
-  const panchang = calculateFullPanchang(date, lat, lon, sunLong, moonLong, timezoneOffset);
+  const panchang = await calculateFullPanchangAsync(
+    date,
+    lat,
+    lon,
+    sunLong,
+    moonLong,
+    timezoneOffset,
+  );
 
   await upsertCachedPanchang({ forDate: isoDate, refKey, lat, lon, data: panchang });
 
