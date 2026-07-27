@@ -24,7 +24,9 @@ export type ReportKey =
   | 'career_monthly'
   | 'finance_monthly'
   | 'relationship_monthly'
-  | 'match_report';
+  | 'match_report'
+  | 'numerology'
+  | 'name_change';
 
 export interface ReportDef {
   key: ReportKey;
@@ -127,6 +129,36 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     isMonthly: false,
     requiresPartner: true,
     basePricePaise: 5000,
+  },
+  // Both of the following are pure name+DOB math (lib/astro-engine/numerology/) — no birth
+  // chart involved at all, unlike every other report above.
+  {
+    key: 'numerology',
+    featureFlagKey: 'reports.numerology',
+    label: 'Numerology Report',
+    isMonthly: false,
+    requiresPartner: false,
+    // Same ₹99 tier as marriage/wealth/true_love/baby_name: a 3-call narrative (6 sections)
+    // covering the full deterministic number set (Mulank/Bhagyank/Life Path/Expression/Soul
+    // Urge/Personality, Lo Shu Grid, Challenge Numbers, Name Planes, Kua Number, Personal
+    // Year/Month + a 12-month forecast) — comparable content depth to this codebase's other
+    // "large" reports, not the lighter single-call ones.
+    basePricePaise: 9900,
+  },
+  {
+    key: 'name_change',
+    featureFlagKey: 'reports.name_change',
+    label: 'Name Change Report',
+    isMonthly: false,
+    requiresPartner: false,
+    // Deliberately below the ₹99 tier: a single, focused LLM call (2 sections) over a narrower
+    // fact surface (one name's alignment + up to 5 spelling variants) than numerology's 3-call,
+    // 6-section report above — but above the ₹25 base tier since it still runs a full
+    // personalized pipeline (computeNameAlignment + generateDeterministicVariants) rather than
+    // a fixed lookup. Priced between the two existing tiers rather than matching either one
+    // exactly — a judgment call, not an exact science; see match_report's ₹50 for another
+    // report type that similarly sits between the ₹25/₹99 tiers.
+    basePricePaise: 4900,
   },
 ] as const;
 
