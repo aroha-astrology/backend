@@ -15,8 +15,10 @@ const state = vi.hoisted(() => ({
   findUserByFirebaseUid: vi.fn(),
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
   purchaseReport: vi.fn(),
+  previewReport: vi.fn(),
   getReportCatalogueForUser: vi.fn(),
   getReportForUser: vi.fn(),
+  getReportStats: vi.fn(),
 }));
 
 const fakeEnv = vi.hoisted(() => ({
@@ -52,8 +54,10 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
 
 vi.mock('../src/modules/reports/reports.service.js', () => ({
   purchaseReport: state.purchaseReport,
+  previewReport: state.previewReport,
   getReportCatalogueForUser: state.getReportCatalogueForUser,
   getReportForUser: state.getReportForUser,
+  getReportStats: state.getReportStats,
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -75,8 +79,10 @@ beforeEach(() => {
   state.findUserByFirebaseUid.mockReset();
   state.touchUserLastActive.mockReset().mockResolvedValue(undefined);
   state.purchaseReport.mockReset();
+  state.previewReport.mockReset();
   state.getReportCatalogueForUser.mockReset();
   state.getReportForUser.mockReset();
+  state.getReportStats.mockReset();
 });
 
 describe('/v1/reports/* — auth required', () => {
@@ -99,6 +105,22 @@ describe('/v1/reports/* — auth required', () => {
   it('GET /v1/reports/:id returns 401 with no Authorization header', async () => {
     const app = createApp();
     const res = await app.request('/v1/reports/00000000-0000-0000-0000-000000000001');
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /v1/reports/preview returns 401 with no Authorization header', async () => {
+    const app = createApp();
+    const res = await app.request('/v1/reports/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportKey: 'marriage' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /v1/reports/stats returns 401 with no Authorization header', async () => {
+    const app = createApp();
+    const res = await app.request('/v1/reports/stats');
     expect(res.status).toBe(401);
   });
 });
@@ -195,6 +217,102 @@ describe('POST /v1/reports/purchase', () => {
     });
 
     expect(res.status).toBe(409);
+  });
+});
+
+describe('POST /v1/reports/preview', () => {
+  it('returns 200 and forwards the parsed body to previewReport', async () => {
+    signIn();
+    state.previewReport.mockResolvedValue({
+      id: 'p1',
+      reportKey: 'marriage',
+      status: 'generating',
+    });
+    const app = createApp();
+
+    const res = await app.request('/v1/reports/preview', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportKey: 'marriage' }),
+    });
+    const body = (await res.json()) as { id: string; reportKey: string; status: string };
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ id: 'p1', reportKey: 'marriage', status: 'generating' });
+    expect(state.previewReport).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'user-1' }),
+      expect.objectContaining({ reportKey: 'marriage' }),
+    );
+  });
+
+  it('returns 400 when the body fails schema validation (missing reportKey)', async () => {
+    signIn();
+    const app = createApp();
+
+    const res = await app.request('/v1/reports/preview', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(400);
+    expect(state.previewReport).not.toHaveBeenCalled();
+  });
+
+  it('propagates a 400 thrown by the service when the report key requires partner details (kundli_milan/match_report — no partner data exists at preview time)', async () => {
+    signIn();
+    state.previewReport.mockRejectedValue(
+      Errors.badRequest('kundli_milan does not support preview — no partner data exists yet'),
+    );
+    const app = createApp();
+
+    const res = await app.request('/v1/reports/preview', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportKey: 'kundli_milan' }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('propagates a 404 thrown by the service for an unknown report key', async () => {
+    signIn();
+    state.previewReport.mockRejectedValue(Errors.notFound('Unknown report key: not_real'));
+    const app = createApp();
+
+    const res = await app.request('/v1/reports/preview', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportKey: 'not_real' }),
+    });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /v1/reports/stats', () => {
+  it('returns 200 with the report-key -> count map from the service', async () => {
+    signIn();
+    state.getReportStats.mockResolvedValue({ marriage: 12, wealth: 3 });
+    const app = createApp();
+
+    const res = await app.request('/v1/reports/stats', { headers: authHeader() });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ marriage: 12, wealth: 3 });
+  });
+
+  it('is not shadowed by the GET /v1/reports/:id route (a literal path segment, not treated as an id)', async () => {
+    signIn();
+    state.getReportStats.mockResolvedValue({});
+    const app = createApp();
+
+    const res = await app.request('/v1/reports/stats', { headers: authHeader() });
+
+    expect(res.status).toBe(200);
+    expect(state.getReportForUser).not.toHaveBeenCalled();
+    expect(state.getReportStats).toHaveBeenCalled();
   });
 });
 

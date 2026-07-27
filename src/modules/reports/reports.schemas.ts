@@ -30,6 +30,25 @@ export const PurchaseReportBodySchema = z
 
 export type PurchaseReportBody = z.infer<typeof PurchaseReportBodySchema>;
 
+export const PreviewReportBodySchema = z
+  .object({
+    reportKey: z.string(),
+    birthProfileId: z.string().uuid().nullable().optional(),
+  })
+  .openapi('PreviewReportBody');
+
+export type PreviewReportBody = z.infer<typeof PreviewReportBodySchema>;
+
+export const PreviewReportResponseSchema = z
+  .object({
+    id: z.string(),
+    reportKey: z.string(),
+    status: z.enum(['generating', 'ready', 'failed']),
+  })
+  .openapi('PreviewReportResponse');
+
+export type PreviewReportResponseDto = z.infer<typeof PreviewReportResponseSchema>;
+
 export const PurchasedReportSummarySchema = z
   .object({
     id: z.string(),
@@ -75,6 +94,14 @@ export const ReportCatalogueResponseSchema = z
   })
   .openapi('ReportCatalogueResponse');
 
+/** Public social-proof counts — `{ [reportKey]: readyCount }`, ready & non-preview,
+ * aggregated across ALL users. See GET /reports/stats. */
+export const ReportStatsResponseSchema = z
+  .record(z.string(), z.number().int())
+  .openapi('ReportStatsResponse');
+
+export type ReportStatsDto = z.infer<typeof ReportStatsResponseSchema>;
+
 export const ReportSectionSchema = z
   .object({
     heading: z.string(),
@@ -99,6 +126,9 @@ export const ReportReadySchema = z
      * ReportGenerator['computeScores']. Shape differs per report type. */
     scores: z.record(z.string(), z.unknown()),
     sections: z.array(ReportSectionSchema),
+    /** True for a free "generate and blur" preview row that hasn't been purchased yet — tells the
+     * client to render the paywall/blur over these sections rather than the full report. */
+    isPreview: z.boolean(),
   })
   .openapi('ReportReady');
 

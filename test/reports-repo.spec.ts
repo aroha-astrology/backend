@@ -29,10 +29,12 @@ vi.mock('../src/config/db.js', () => {
 import { reports } from '../src/db/schema.js';
 import {
   claimReportRow,
+  countReadyReportsByKey,
   findReportRow,
   findStaleGeneratingReports,
   markReportFailed,
   markReportReady,
+  upgradePreviewToPurchased,
 } from '../src/modules/reports/reports.repo.js';
 
 const dialect = new PgDialect();
@@ -68,7 +70,7 @@ function makeInsertChain(returningResult: unknown[], withConflict = true) {
 }
 
 function makeSelectChain(result: unknown[]) {
-  const calls: { where?: unknown } = {};
+  const calls: { where?: unknown; groupBy?: unknown } = {};
   const chain = {
     from: vi.fn(() => chain),
     where: vi.fn((cond: unknown) => {
@@ -77,6 +79,10 @@ function makeSelectChain(result: unknown[]) {
     }),
     limit: vi.fn(() => Promise.resolve(result)),
     orderBy: vi.fn(() => Promise.resolve(result)),
+    groupBy: vi.fn((expr: unknown) => {
+      calls.groupBy = expr;
+      return Promise.resolve(result);
+    }),
     // findStaleGeneratingReports awaits `.where()` directly (no `.limit()`/`.orderBy()`
     // follow-up) — same bare-`.where()` thenable-chain technique as
     // countSupportTicketsForAdmin's aggregate select in support-repo.spec.ts.
@@ -106,6 +112,7 @@ const baseClaim = {
   reportKey: 'marriage',
   input: null,
   pricePaidPaise: 9900,
+  isPreview: false,
 };
 
 beforeEach(() => {
@@ -229,6 +236,41 @@ describe('claimReportRow — partial-index targeting', () => {
     expect(setWhere.sql).toContain("<> 'generating'");
     expect(setWhere.sql).toContain("<> 'ready'");
   });
+
+  // Preview/purchase flag propagation — see the ClaimReportInput.isPreview doc comment. A real
+  // purchase claim always passes isPreview: false, which is what flips a reclaimed preview row
+  // (still 'generating' or stale) back to a real purchase entirely through this existing
+  // onConflictDoUpdate mechanism, with no extra service-layer code needed for that collision path.
+  it('writes isPreview into BOTH the insert values and the onConflictDoUpdate set clause, on a purchase claim (isPreview: false)', async () => {
+    const { chain, calls } = makeInsertChain([{ id: 'r1' }]);
+    state.insert.mockReturnValue(chain);
+
+    await claimReportRow({
+      ...baseClaim,
+      birthProfileId: null,
+      periodMonth: null,
+      isPreview: false,
+    });
+
+    expect(calls.values).toMatchObject({ isPreview: false });
+    expect(calls.onConflictDoUpdate.set).toMatchObject({ isPreview: false });
+  });
+
+  it('writes isPreview into BOTH the insert values and the onConflictDoUpdate set clause, on a preview claim (isPreview: true)', async () => {
+    const { chain, calls } = makeInsertChain([{ id: 'r1' }]);
+    state.insert.mockReturnValue(chain);
+
+    await claimReportRow({
+      ...baseClaim,
+      birthProfileId: null,
+      periodMonth: null,
+      pricePaidPaise: 0,
+      isPreview: true,
+    });
+
+    expect(calls.values).toMatchObject({ isPreview: true, pricePaidPaise: 0 });
+    expect(calls.onConflictDoUpdate.set).toMatchObject({ isPreview: true });
+  });
 });
 
 describe('findReportRow — scoped lookup excluding partner-input rows', () => {
@@ -303,5 +345,48 @@ describe('markReportReady / markReportFailed — claim-fenced updates', () => {
 
     const query = compile(calls.where);
     expect(query.params).toEqual(['report-1', 'generating', claimedAt.toISOString()]);
+  });
+});
+
+describe('upgradePreviewToPurchased — the ready-preview collision path', () => {
+  it('sets isPreview:false and the real price, scoped only by id', async () => {
+    const { chain, calls } = makeUpdateChain();
+    state.update.mockReturnValue(chain);
+
+    await upgradePreviewToPurchased('report-1', 9900);
+
+    expect(calls.set).toMatchObject({ isPreview: false, pricePaidPaise: 9900 });
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"reports"."id" = $1');
+    expect(query.params).toEqual(['report-1']);
+  });
+});
+
+describe('countReadyReportsByKey — public social-proof stats', () => {
+  it('filters to status=ready AND is_preview=false, grouped by report_key', async () => {
+    const rows = [
+      { reportKey: 'marriage', count: 12 },
+      { reportKey: 'wealth', count: 3 },
+    ];
+    const { chain, calls } = makeSelectChain(rows);
+    state.select.mockReturnValue(chain);
+
+    const result = await countReadyReportsByKey();
+
+    expect(result).toEqual(rows);
+    const query = compile(calls.where);
+    expect(query.sql).toContain('"reports"."status" = $1');
+    expect(query.sql).toContain('"reports"."is_preview" = $2');
+    expect(query.params).toEqual(['ready', false]);
+    // groupBy is called with the report_key column, not e.g. status or id.
+    expect(calls.groupBy).toBe(reports.reportKey);
+  });
+
+  it('returns an empty array when there are no ready/non-preview reports at all', async () => {
+    const { chain } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    const result = await countReadyReportsByKey();
+    expect(result).toEqual([]);
   });
 });
