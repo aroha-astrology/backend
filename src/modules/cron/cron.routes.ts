@@ -20,6 +20,7 @@ import {
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
 import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js';
 import { reapStaleReports } from '../reports/reports.service.js';
+import { reapStalePalmReadings } from '../palm/palm.service.js';
 
 const ErrorSchema = z
   .object({
@@ -355,5 +356,35 @@ const reportsReapStaleRoute = createRoute({
 
 cronRouter.openapi(reportsReapStaleRoute, async (c) => {
   const result = await reapStaleReports();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Palm readings stale-generating reaper — same self-heal as reports above,
+// keyed to PALM_STALE_GENERATING_MS in palm.repo.ts (see
+// scripts/cron-palm-reap-stale.sh).
+// ---------------------------------------------------------------------------
+
+const palmReapStaleRoute = createRoute({
+  method: 'post',
+  path: '/cron/palm-reap-stale',
+  tags: ['Cron'],
+  summary: "Reap palm_readings rows stuck at 'generating' past the stale threshold",
+  description:
+    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. Marks any ' +
+    "palm reading whose generation claim is older than PALM_STALE_GENERATING_MS as 'failed' " +
+    '(reason: generation timed out) and refunds its price. Authenticated via the ' +
+    'X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: z.object({ reaped: z.number() }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(palmReapStaleRoute, async (c) => {
+  const result = await reapStalePalmReadings();
   return c.json(result, 200);
 });

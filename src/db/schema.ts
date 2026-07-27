@@ -1910,3 +1910,104 @@ export const supportTickets = pgTable(
 
 export type SupportTicketRow = typeof supportTickets.$inferSelect;
 export type NewSupportTicketRow = typeof supportTickets.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* palm_readings — Hasta Samudrika palm analysis                              */
+/*                                                                             */
+/* Facts here come from photographs via async vision AI, not from a chart, so */
+/* this deliberately does NOT reuse the `reports` table's ReportGenerator     */
+/* contract (that contract's computeScores() is synchronous/pure/no-I/O and   */
+/* is re-run on every read — palm observations are the opposite: expensive,   */
+/* image-derived, and never recomputed). Instead this mirrors                */
+/* gemstone_recommendations (claim/fence via startedAt, translate-on-read     */
+/* into `translations`) crossed with reports' charge-then-poll flow.         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 'observed' is the free-teaser state: Stage A (vision measurement) has completed and
+ * `observations` + a partial confidence score are populated, but `content` (the paid Stage
+ * B/C interpretation) is still null. 'generating' is reused for BOTH the free observation
+ * phase and the paid interpretation phase — the claim/fence/reaper logic doesn't care which
+ * work is in flight, only that something is; palm.service.ts's runPalmGeneration branches on
+ * whether `observations` is already populated to decide which phase to run next.
+ */
+export const palmReadingStatusEnum = pgEnum('palm_reading_status', [
+  'pending',
+  'generating',
+  'observed',
+  'ready',
+  'failed',
+]);
+
+export const palmReadings = pgTable(
+  'palm_readings',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles.
+     * Present from day one — vastu_plans shipped without this and needed a corrective
+     * migration once multi-profile landed. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    status: palmReadingStatusEnum('status').notNull().default('pending'),
+    /** Right for male, left for female — the classical primary/dominant hand. */
+    primaryHand: text('primary_hand').notNull(),
+    /** { slot: { path, hash, capturedAt } } for each of the 6 capture slots. Populated as
+     * uploads land, so a 'pending' row can have a partial set. */
+    frames: jsonb('frames').notNull().default({}).$type<Record<string, unknown>>(),
+    /** SHA-256 over the full concatenated frame set. NULL until all required frames are in.
+     * Used to dedupe an identical re-upload so the vision call is skipped entirely. */
+    framesHash: text('frames_hash'),
+    /** Stage A output — pure measurement (lines, mounts, fingers, markings). Never
+     * recomputed; this IS the measurement of record for this reading. */
+    observations: jsonb('observations').$type<Record<string, unknown>>(),
+    /** { primary?: Record<MountKey, number>, secondary?: Record<MountKey, number> } — a
+     * deterministic computer-vision cross-check on mount development, computed client-side
+     * (MediaPipe hand-landmark detection anchors each mount's pixel region, then a luminance-
+     * variance pass scores it, both 0-1 normalized per hand) and uploaded alongside the
+     * front-view frames. Optional and best-effort: absent for any hand where landmark
+     * detection failed. Used by palm-rules.ts to corroborate or flag disagreement with the
+     * vision model's own "flat/normal/prominent" mount rating — never a replacement for it. */
+    mountRelief: jsonb('mount_relief').$type<Record<string, Record<string, number>>>(),
+    /** Stage B/C output — canonical English narrative sections. Null while
+     * 'pending'/'generating'/'failed'. */
+    content: jsonb('content').$type<Record<string, unknown>>(),
+    /** Cached translations of `content`, same convention as every other translate-on-read
+     * table (reports, gemstone_recommendations, vastu_plans). */
+    translations: jsonb('translations')
+      .notNull()
+      .default({})
+      .$type<Record<string, Record<string, unknown>>>(),
+    /** Stage-A imageQuality-derived overall confidence, 0-100. */
+    confidenceScore: integer('confidence_score'),
+    unlocked: boolean('unlocked').notNull().default(false),
+    pricePaidPaise: integer('price_paid_paise'),
+    model: text('model'),
+    /** Claim token, same fencing pattern as gemstone_recommendations.startedAt /
+     * reports.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('palm_readings_user_idx').on(table.userId, table.createdAt),
+    // Identical re-upload for the same user -> skip the AI call entirely.
+    userFramesHashIdx: index('palm_readings_user_frames_hash_idx').on(
+      table.userId,
+      table.framesHash,
+    ),
+  }),
+);
+
+export type PalmReadingRow = typeof palmReadings.$inferSelect;
+export type NewPalmReadingRow = typeof palmReadings.$inferInsert;

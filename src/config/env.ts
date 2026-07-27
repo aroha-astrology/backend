@@ -41,6 +41,13 @@ const EnvSchema = z
     // that sign in as a client (scripts/dev-token.ts).
     FIREBASE_WEB_API_KEY: z.string().min(1).optional(),
 
+    // Local disk directory for palm-reading photographs (biometric data — never served
+    // publicly, only through the authenticated frame routes; see lib/palm/storage.ts).
+    // Lives on the same EC2 instance as the API process itself — no separate cloud storage
+    // service. Relative paths resolve against process.cwd(). Untracked (see .gitignore) so a
+    // `git reset --hard` deploy never touches previously-uploaded frames.
+    PALM_UPLOAD_DIR: z.string().min(1).default('uploads'),
+
     // --- Google Play Billing (Android in-app purchases) --------------------
     // Either point at a service account JSON file (preferred) ...
     GOOGLE_PLAY_SERVICE_ACCOUNT_PATH: z.string().min(1).optional(),

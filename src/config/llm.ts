@@ -1,6 +1,9 @@
 import { env } from './env.js';
 
-/** Gemini is the sole LLM provider — every profile below uses this one model. */
+/** Gemini is the sole LLM provider — every profile below uses this one model, including the
+ * palm-reading vision call (confirmed live against gemini-3.1-flash-lite via the OpenAI-compat
+ * endpoint on 2026-07-27 — it accepts image_url content parts natively, no separate
+ * vision-tier model needed). */
 export const MODEL = env.GEMINI_MODEL;
 
 export interface GenerationProfile {
@@ -11,9 +14,20 @@ export interface GenerationProfile {
   maxTokens: number;
 }
 
+/**
+ * Multimodal content-part union — the OpenAI-compatible shape Gemini's
+ * `/chat/completions` endpoint accepts for image input. Added for palm
+ * reading (the first and, as of this change, only multimodal caller in this
+ * codebase); every existing caller keeps passing a plain string and is
+ * unaffected.
+ */
+export type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: string;
-  content: string;
+  content: string | ChatContentPart[];
 }
 
 export interface LLMRequestOptions {
@@ -319,4 +333,61 @@ export const REPORT_TRANSLATION_PROFILE: GenerationProfile = {
   jsonMode: true,
   stream: false,
   maxTokens: 4096,
+};
+
+/**
+ * Palm reading Stage A — vision observation. Low temperature is deliberate:
+ * this call ONLY measures what's visible (lines/mounts/fingers/markings), and
+ * never interprets, so reproducibility matters more than variety here — the
+ * same palm photographed twice should yield the same measurements (this is
+ * also what makes the frames-hash dedupe cache trustworthy). Multimodal: the
+ * caller attaches up to 6 image parts to the message content array. Sized in
+ * the "large schema" tier (matches REPORT/GEMSTONE/VASTU) because a single
+ * hand's full measurement set (9 mounts + 5 major lines with polylines + minor
+ * lines + 5 fingerprints + markings) is at least as large as those schemas,
+ * and this profile is never on a blocking per-request path (fired in the
+ * background after upload, polled).
+ */
+export const PALM_OBSERVE_PROFILE: GenerationProfile = {
+  name: 'palm-observe',
+  temperature: 0.1,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 4096,
+};
+
+/**
+ * Palm reading Stage B/C — interpretation and both-hands synthesis. Text-only
+ * (never receives an image — see palm-rules.ts's module header for why that
+ * split matters for hallucination control). Generates the full long-form
+ * report: major lines, mounts, fingers, love/career/health/spirituality,
+ * age-wise timeline, destiny scores, and (when both hands were captured) the
+ * blueprint-vs-lived synthesis. Larger than REPORT_PROFILE's 4096 because
+ * this is a deliberately deep, "give as much detail as possible" report
+ * (unlike a report section list, palm has ~10 chapters plus per-line/per-mount
+ * prose) — background job, never blocking.
+ */
+export const PALM_INTERPRET_PROFILE: GenerationProfile = {
+  name: 'palm-interpret',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 8192,
+};
+
+/**
+ * Palm reading translation — re-emits the full interpreted report (every
+ * chapter, every line/mount card) in the target language. Same non-Latin-
+ * script token inflation problem documented throughout this file (see
+ * REPORT_TRANSLATION_PROFILE) — matches or exceeds PALM_INTERPRET_PROFILE's
+ * own generation ceiling rather than undercutting it, for the same reason
+ * every other translation profile here does. Cached forever per
+ * (reading, language) after the first successful call.
+ */
+export const PALM_TRANSLATION_PROFILE: GenerationProfile = {
+  name: 'palm-translation',
+  temperature: 0.3,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 8192,
 };

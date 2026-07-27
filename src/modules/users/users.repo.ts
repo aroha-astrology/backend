@@ -12,6 +12,7 @@ import {
   chatFeedbackReports,
   notifications,
   walletTransactions,
+  palmReadings,
   type NewUserRow,
   type NewUserConsentLogRow,
   type UserRow,
@@ -24,6 +25,8 @@ import {
   decryptJson,
   hashForLookup,
 } from '../../lib/crypto/field-encryption.js';
+import { deleteAllUserFrames } from '../../lib/palm/storage.js';
+import { logger } from '../../lib/logger.js';
 
 /**
  * The `users` table encrypts phoneE164/dateOfBirth/timeOfBirth/placeOfBirth/
@@ -300,7 +303,17 @@ export async function claimBirthDetailsEdit(id: string): Promise<UserRow | undef
  */
 export async function anonymizeUserById(id: string): Promise<void> {
   const now = new Date();
+
+  // Palm photographs are irreducibly biometric — there is no "scrub in place" for them the
+  // way there is for a text field, so they get the same hard-delete treatment as chat
+  // transcripts below (the "highest-risk content class" precedent), not a soft anonymize.
+  // Storage lives outside the DB transaction; best-effort and logged, never blocks erasure.
+  await deleteAllUserFrames(id).catch((err: unknown) =>
+    logger.error({ err, userId: id }, 'anonymizeUserById: failed to delete palm storage objects'),
+  );
+
   await db.transaction(async (tx) => {
+    await tx.delete(palmReadings).where(eq(palmReadings.userId, id));
     await tx
       .update(users)
       .set({
@@ -374,6 +387,13 @@ export async function anonymizeUserById(id: string): Promise<void> {
 }
 
 export async function hardDeleteUserById(id: string): Promise<void> {
+  // palm_readings rows themselves cascade away with the user row below, but the actual
+  // photograph objects in Cloud Storage do not — delete them explicitly or they're orphaned.
+  // Best-effort and logged, never blocks the (legally required) DB erasure.
+  await deleteAllUserFrames(id).catch((err: unknown) =>
+    logger.error({ err, userId: id }, 'hardDeleteUserById: failed to delete palm storage objects'),
+  );
+
   await db.transaction(async (tx) => {
     // Delete consent logs first to bypass ON DELETE RESTRICT
     await tx.delete(userConsentLog).where(eq(userConsentLog.userId, id));

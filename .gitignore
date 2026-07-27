@@ -3,6 +3,10 @@ dist/
 coverage/
 .worktrees/
 
+# Palm-reading photographs — biometric data stored on local disk (see
+# src/lib/palm/storage.ts, PALM_UPLOAD_DIR), never committed.
+/uploads/
+
 .env
 .env.*
 !.env.example
@@ -25,3 +29,5 @@ npm-debug.log*
 .husky/_/
 
 .worktrees/
+
+scripts/load-test/results/

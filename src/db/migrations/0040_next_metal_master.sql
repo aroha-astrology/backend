@@ -1,0 +1,1 @@
+ALTER TABLE "palm_readings" ADD COLUMN "mount_relief" jsonb;

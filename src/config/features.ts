@@ -38,6 +38,16 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'home',
     defaultEnabled: false,
   },
+  // New feature, defaults OFF for the same standing reason as
+  // home.reportsSection above, AND because this feature handles biometric
+  // (palm photograph) data — must be verified end-to-end on the admin's own
+  // account via Admin -> Features before being enabled for anyone else.
+  {
+    key: 'home.palmReading',
+    label: 'Palm Reading card (home)',
+    group: 'home',
+    defaultEnabled: false,
+  },
   // paid
   {
     key: 'paid.chat',
@@ -73,6 +83,15 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: true,
     defaultPricePaise: 20000,
+  },
+  // Defaults OFF — see home.palmReading above for why. Gate this one deliberately from
+  // Admin -> Features once the live vision model and cost-per-reading have been validated.
+  {
+    key: 'paid.palmReading',
+    label: 'Palm Reading',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 9900,
   },
   // reports (one-time)
   {

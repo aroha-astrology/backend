@@ -1,0 +1,1 @@
+ALTER TYPE "public"."palm_reading_status" ADD VALUE 'observed' BEFORE 'ready';
