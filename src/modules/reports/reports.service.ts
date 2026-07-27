@@ -20,7 +20,7 @@ import {
   type ReportKey,
 } from '../../config/reports.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
-import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
+import { deductWalletBalance, addWalletBalance, findActiveUserById } from '../users/users.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
@@ -35,7 +35,11 @@ import {
   markReportReady,
   saveReportTranslation,
 } from './reports.repo.js';
-import { REPORT_GENERATORS, type ReportSection } from './report-generator.types.js';
+import {
+  REPORT_GENERATORS,
+  type ReportSection,
+  type ReportScoreContext,
+} from './report-generator.types.js';
 import type { UserRow, ReportRow } from '../../db/schema.js';
 import type {
   PurchaseReportBody,
@@ -167,6 +171,38 @@ export async function notifyReportReady(
 }
 
 /**
+ * Resolves the person-identity bundle (`personName`/`personDob`/`personGender`) that
+ * `numerology`/`name_change`'s `computeScores` read (see report-generator.types.ts's doc
+ * comments on those three `ReportScoreContext` fields) — every other registered report type
+ * ignores them entirely, so a failure here must never break generation/read for those report
+ * types. Sourced via `findActiveUserById` + `resolveProfileContext` — the SAME repo-layer
+ * decrypt-on-read path every other feature uses for birth data (see profile-context.ts's own
+ * doc comment) — never a raw-column read. Best-effort: never throws, returns all-null (logged)
+ * on any failure.
+ */
+async function fetchPersonContext(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<Pick<ReportScoreContext, 'personName' | 'personDob' | 'personGender'>> {
+  try {
+    const user = await findActiveUserById(userId);
+    if (!user) return { personName: null, personDob: null, personGender: null };
+    const profile = await resolveProfileContext(user, birthProfileId);
+    return {
+      personName: profile.displayName ?? null,
+      personDob: profile.dateOfBirth ?? null,
+      personGender: profile.gender ?? null,
+    };
+  } catch (err) {
+    logger.warn(
+      { err, userId, birthProfileId },
+      'failed to resolve person identity context for report scoring',
+    );
+    return { personName: null, personDob: null, personGender: null };
+  }
+}
+
+/**
  * Background generation for one already-claimed row. Fire-and-forget from
  * the purchase route — never awaited in the request/response cycle. Any
  * failure along this path (no chart yet, no registered generator for this
@@ -197,6 +233,8 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
       partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
     }
 
+    const personContext = await fetchPersonContext(row.userId, birthProfileId);
+
     const scores = generator.computeScores(
       {
         chart: kundli.chartData,
@@ -205,6 +243,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
         yogaData: kundli.yogaData ?? null,
         ashtakavargaData: kundli.ashtakavargaData ?? null,
         dashaData: kundli.dashaData ?? null,
+        ...personContext,
       },
       row.periodMonth,
     );
@@ -378,6 +417,8 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
     }
   }
 
+  const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
+
   return generator.computeScores(
     {
       chart,
@@ -386,6 +427,7 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
       yogaData: kundli?.yogaData ?? null,
       ashtakavargaData: kundli?.ashtakavargaData ?? null,
       dashaData: kundli?.dashaData ?? null,
+      ...personContext,
     },
     row.periodMonth,
   );

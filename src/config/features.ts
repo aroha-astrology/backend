@@ -176,6 +176,20 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: true,
     defaultPricePaise: 5000,
   },
+  {
+    key: 'reports.numerology',
+    label: 'Numerology Report',
+    group: 'reports',
+    defaultEnabled: false,
+    defaultPricePaise: 9900,
+  },
+  {
+    key: 'reports.name_change',
+    label: 'Name Change Report',
+    group: 'reports',
+    defaultEnabled: false,
+    defaultPricePaise: 4900,
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

@@ -23,6 +23,7 @@ const state = vi.hoisted(() => {
     resolveFeaturesForUser: vi.fn(),
     deductWalletBalance: vi.fn(),
     addWalletBalance: vi.fn(),
+    findActiveUserById: vi.fn(),
     findKundliByUserId: vi.fn(),
     resolveProfileContext: vi.fn(),
     computeMetrology: vi.fn(),
@@ -58,6 +59,7 @@ vi.mock('../src/modules/features/features.service.js', () => ({
 vi.mock('../src/modules/users/users.repo.js', () => ({
   deductWalletBalance: state.deductWalletBalance,
   addWalletBalance: state.addWalletBalance,
+  findActiveUserById: state.findActiveUserById,
 }));
 
 vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
@@ -133,6 +135,7 @@ beforeEach(() => {
   state.deductWalletBalance.mockReset().mockResolvedValue(true);
   state.addWalletBalance.mockReset().mockResolvedValue(undefined);
   state.findKundliByUserId.mockReset().mockResolvedValue(undefined);
+  state.findActiveUserById.mockReset().mockResolvedValue(makeUser());
   state.resolveProfileContext.mockReset().mockResolvedValue({ birthProfileId: null });
   state.computeMetrology.mockReset().mockResolvedValue({ chart: { planets: [] } });
   state.findActiveTokensForUser.mockReset().mockResolvedValue([]);
