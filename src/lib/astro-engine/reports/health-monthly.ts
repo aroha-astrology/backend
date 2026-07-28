@@ -54,7 +54,7 @@ export function computeHealthMonthlyScores(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
     ['kemDruma', 'sadeSati', 'grahan'],
-    [],
+    ['benefic', 'mahapurusha'],
   );
 
   return {

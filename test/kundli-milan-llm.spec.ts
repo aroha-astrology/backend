@@ -16,6 +16,7 @@ function makeScores(overrides: Partial<KundliMilanScores> = {}): KundliMilanScor
     dashakootaScore: 8,
     dashakootaMaxScore: 10,
     dashakootaBreakdown: [{ name: 'Dina', score: 1, maxScore: 1, description: 'Favorable' }],
+    dashakootaCompatibility: 'good',
     manglikStatus: { person1: false, person2: false, cancelled: false },
     compatibilityBand: 'good',
     primaryDoshaYoga: { positives: [], cautions: [] },
@@ -33,6 +34,7 @@ describe('generateKundliMilanNarrative', () => {
       JSON.stringify({
         sections: [
           { heading: 'What Your Guna Milan Score Means', paragraphs: ['You scored 28 out of 36.'] },
+          { heading: 'Dashakoota Deep Dive', paragraphs: ['Your Dashakoota verdict is good.'] },
           { heading: 'Manglik Compatibility', paragraphs: ['Neither of you shows Manglik Dosha.'] },
           {
             heading: "Your Chart's Additional Facts",
@@ -44,8 +46,45 @@ describe('generateKundliMilanNarrative', () => {
     );
 
     const sections = await generateKundliMilanNarrative(makeScores());
-    expect(sections).toHaveLength(4);
-    expect(sections[0]?.heading).toBe('What Your Guna Milan Score Means');
+    expect(sections).toHaveLength(5);
+    expect(sections.map((s) => s.heading)).toEqual([
+      'What Your Guna Milan Score Means',
+      'Dashakoota Deep Dive',
+      'Manglik Compatibility',
+      "Your Chart's Additional Facts",
+      'Overall Recommendation',
+    ]);
+  });
+
+  it('embeds the Dashakoota per-porutham breakdown and overall verdict as facts (previously computed but never fed)', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateKundliMilanNarrative(
+      makeScores({
+        dashakootaCompatibility: 'excellent',
+        dashakootaBreakdown: [
+          {
+            name: 'Dina',
+            score: 1,
+            maxScore: 1,
+            description: 'Favorable — good health for couple',
+          },
+          {
+            name: 'Mahendra',
+            score: 1,
+            maxScore: 1,
+            description: 'Present — prosperity and progeny indicated',
+          },
+        ],
+      }),
+    );
+
+    const call = state.generate.mock.calls[0]?.[0];
+    const allContent = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(allContent).toContain('Dashakoota overall verdict: excellent');
+    expect(allContent).toContain('Mahendra: 1/1 — Present — prosperity and progeny indicated');
+    expect(allContent.toLowerCase()).toContain('dashakoot verdict');
   });
 
   it('calls generate() with the score numbers embedded as facts', async () => {

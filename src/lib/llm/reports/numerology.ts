@@ -11,6 +11,14 @@
 // No fallback filler on a bad response — an unparseable response throws so
 // the orchestration layer marks the row failed and refunds, rather than
 // caching generic text (same discipline as generateMarriageNarrative).
+//
+// Every field on NumerologyScores was already fed into one of the 3
+// buildFactsCallN() functions below (unlike wealth.ts's wealthArc /
+// true-love.ts's romanceArc, there is no computed-but-unfed field here) — the
+// one gap found on audit was purely a missing prompt instruction: the given
+// Bhagyank was never explicitly tied to the covers-list's "ideal career
+// direction" question in section 1's instructions. Fixed below without any
+// new fact/wiring, since Bhagyank was already part of buildFactsCall1.
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
@@ -36,7 +44,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Your Core Numbers" — 1-3 paragraphs explaining the given Mulank and Bhagyank (Vedic day-vibration and destiny numbers) and the given Life Path number (the Western equivalent long-arc number), in plain language, weaving in what each number classically means.
+1. Heading close to "Your Core Numbers" — 1-3 paragraphs explaining the given Mulank and Bhagyank (Vedic day-vibration and destiny numbers) and the given Life Path number (the Western equivalent long-arc number), in plain language, weaving in what each number classically means. Explicitly touch on what the given Bhagyank (destiny number) classically suggests about the reader's ideal career direction — directly answer "what does my Destiny Number say about my ideal career direction."
 2. Heading close to "Expression, Soul Urge & Personality" — 1-3 paragraphs explaining the given Expression number (natural talents), Soul Urge number (inner desire), and Personality number (the image you project), plus the given lucky numbers woven in naturally.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;

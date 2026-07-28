@@ -92,6 +92,34 @@ describe('generateHealthMonthlyNarrative', () => {
     expect(content2).toContain('Doshas present: none.');
   });
 
+  it('embeds present supportive/protective factors as GIVEN FACTS, or "none" when absent (the doshaYoga.positives gap fix)', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateHealthMonthlyNarrative(
+      makeScores({
+        doshaYoga: {
+          positives: [{ label: 'Malavya Yoga', detail: 'strong, Venus in own sign' }],
+          cautions: [],
+        },
+      }),
+    );
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Malavya Yoga');
+    expect(content).toContain('strong, Venus in own sign');
+
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateHealthMonthlyNarrative(
+      makeScores({ doshaYoga: { positives: [], cautions: [] } }),
+    );
+    const call2 = state.generate.mock.calls[1]?.[0];
+    const content2 = call2.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content2).toContain('Supportive/protective factors present: none.');
+  });
+
   it('extends the "not medical advice" disclaimer to explicitly cover the dosha section', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),

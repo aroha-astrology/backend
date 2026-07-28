@@ -342,11 +342,38 @@ describe('computeWealthScores — doshaYoga', () => {
     });
   });
 
-  it('ignores dosha/yoga types outside kemDruma/dhana', () => {
+  it('surfaces a present Raja yoga positive (broadened alongside dhana/mahapurusha/lunar)', () => {
     const chart = makeChart({});
-    const doshaData = { mangal: { present: true, severity: 'high' } };
     const yogaData = {
       yogas: [{ type: 'raja', name: 'Raja Yoga', present: true, description: 'x' }],
+    };
+    const scores = computeWealthScores({ chart, partnerChart: null, yogaData }, null);
+    expect(scores.doshaYoga).toEqual({
+      positives: [{ label: 'Raja Yoga', detail: 'x' }],
+      cautions: [],
+    });
+  });
+
+  it('surfaces present Guru Chandal, Kaal Sarp, and Pitra dosha cautions (broadened alongside kemDruma)', () => {
+    const chart = makeChart({});
+    const doshaData = {
+      guruChandal: { present: true, house: 5, severity: 'medium' },
+      kaalSarp: { present: true, name: 'Kaal Sarp', severity: 'high', isPartial: false },
+      pitra: { present: true, severity: 'low' },
+    };
+    const scores = computeWealthScores({ chart, partnerChart: null, doshaData }, null);
+    expect(scores.doshaYoga.cautions.map((c) => c.label).sort()).toEqual(
+      ['Guru Chandal Dosha', 'Kaal Sarp Dosha', 'Pitra Dosha'].sort(),
+    );
+  });
+
+  it('still ignores dosha/yoga types outside the (broadened) allowlist', () => {
+    const chart = makeChart({});
+    // mangal (Manglik) is not wealth-relevant per this report's allowlist; 'solar'-type yogas
+    // aren't either (dhana/raja/mahapurusha/lunar are).
+    const doshaData = { mangal: { present: true, severity: 'high' } };
+    const yogaData = {
+      yogas: [{ type: 'solar', name: 'Some Solar Yoga', present: true, description: 'x' }],
     };
     const scores = computeWealthScores({ chart, partnerChart: null, doshaData, yogaData }, null);
     expect(scores.doshaYoga).toEqual({ positives: [], cautions: [] });

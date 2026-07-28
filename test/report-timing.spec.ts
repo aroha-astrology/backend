@@ -54,18 +54,38 @@ describe('computeReportTimingWindows', () => {
     expect(window).toEqual([]);
   });
 
-  it('produces the exact same result as calling scoreDomainWindows directly with a null-transit chart', () => {
+  it('carries the SAME set of windows as scoreDomainWindows(..., { ensureNearTermAnchor: true }), re-sorted chronologically (soonest-first) rather than tier/score-first', () => {
     const now = new Date('2026-01-01T00:00:00Z');
     const dasha = makeDasha(now);
     const chart = makeChart(3);
 
     const wrapped = computeReportTimingWindows('career', ['Venus'], dasha, chart, now);
-    const direct = scoreDomainWindows('career', ['Venus'], dasha, 3, now, {
-      saturnSignIndex: null,
-      jupiterSignIndex: null,
-    });
+    // computeReportTimingWindows opts into ensureNearTermAnchor internally (see its own doc
+    // comment) — pass the SAME opts here for an apples-to-apples comparison, since scoreDomainWindows
+    // defaults that flag OFF (chat-grounding.ts's direct, unrelated use case).
+    const direct = scoreDomainWindows(
+      'career',
+      ['Venus'],
+      dasha,
+      3,
+      now,
+      { saturnSignIndex: null, jupiterSignIndex: null },
+      undefined,
+      { ensureNearTermAnchor: true },
+    );
 
-    expect(wrapped).toEqual(direct);
+    expect(wrapped.domain).toBe(direct.domain);
+    // Same elements, deliberately possibly reordered — see computeReportTimingWindows' own doc
+    // comment: this wrapper re-sorts chronologically for report display, unlike scoreDomainWindows
+    // itself (whose tier/score-first order must survive for chat-grounding.ts's direct use).
+    expect(wrapped.windows).toEqual(expect.arrayContaining(direct.windows));
+    expect(wrapped.windows.length).toBe(direct.windows.length);
+    // And it actually IS chronologically sorted, soonest first.
+    for (let i = 1; i < wrapped.windows.length; i++) {
+      expect(new Date(wrapped.windows[i]!.startDate).getTime()).toBeGreaterThanOrEqual(
+        new Date(wrapped.windows[i - 1]!.startDate).getTime(),
+      );
+    }
   });
 
   it('extracts ascSignIndex from chart.ascendant.signIndex the same way chat-grounding.ts does', () => {

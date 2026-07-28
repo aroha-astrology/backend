@@ -108,6 +108,89 @@ describe('generateMatchReportNarrative', () => {
     }
   });
 
+  it('embeds the overall Guna Milan/Dashakoot score and Manglik status as GIVEN FACTS in both calls (covers "how compatible overall" and "do our Manglik doshas cancel out")', async () => {
+    state.generate.mockResolvedValueOnce(eightCardsResponse).mockResolvedValueOnce(closingResponse);
+
+    await generateMatchReportNarrative(
+      makeScores({
+        gunaMilanScore: 28,
+        gunaMaxScore: 36,
+        compatibilityBand: 'good',
+        dashakootaScore: 8,
+        dashakootaMaxScore: 10,
+      }),
+    );
+
+    for (const call of state.generate.mock.calls) {
+      const content = call[0].messages.map((m: { content: string }) => m.content).join('\n');
+      expect(content).toContain('28/36');
+      expect(content).toContain('good');
+      expect(content).toContain('8/10');
+      expect(content.toLowerCase()).toContain('manglik dosha');
+    }
+  });
+
+  it('states the real Manglik cancellation status when both people have Manglik Dosha, rather than staying silent (previously only the mismatched-and-uncancelled case was ever mentioned)', async () => {
+    state.generate.mockResolvedValueOnce(eightCardsResponse).mockResolvedValueOnce(closingResponse);
+
+    await generateMatchReportNarrative(
+      makeScores({ manglikStatus: { person1: true, person2: true, cancelled: true } }),
+    );
+
+    const content = state.generate.mock.calls[0]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(content).toContain('BOTH people');
+    expect(content).toContain('classically cancelled');
+  });
+
+  it('states plainly that Manglik Dosha is absent for both when neither chart has it (previously zero Manglik information reached the model in this case)', async () => {
+    state.generate.mockResolvedValueOnce(eightCardsResponse).mockResolvedValueOnce(closingResponse);
+
+    await generateMatchReportNarrative(
+      makeScores({ manglikStatus: { person1: false, person2: false, cancelled: false } }),
+    );
+
+    const content = state.generate.mock.calls[0]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(content).toContain('not present for either person');
+  });
+
+  it('names the single biggest-risk life area as a GIVEN FACT and instructs the Don\'ts list to lead with it (covers "what\'s our biggest risk area")', async () => {
+    state.generate.mockResolvedValueOnce(eightCardsResponse).mockResolvedValueOnce(closingResponse);
+
+    await generateMatchReportNarrative(
+      makeScores({
+        riskFactors: makeRiskFactors({
+          health: { severity: 'serious' },
+        }),
+      }),
+    );
+
+    for (const call of state.generate.mock.calls) {
+      const content = call[0].messages.map((m: { content: string }) => m.content).join('\n');
+      expect(content.toLowerCase()).toContain('biggest risk area');
+      expect(content).toContain('"health"');
+    }
+    const closingCallContent = state.generate.mock.calls[1]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(closingCallContent.toLowerCase()).toContain('first string must explicitly name');
+  });
+
+  it('still names a (comparatively weakest) biggest-risk area even when every area is neutral/benefit, rather than omitting the fact', async () => {
+    state.generate.mockResolvedValueOnce(eightCardsResponse).mockResolvedValueOnce(closingResponse);
+
+    await generateMatchReportNarrative(makeScores());
+
+    const content = state.generate.mock.calls[0]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(content.toLowerCase()).toContain('biggest risk area');
+    expect(content).toContain('"wealth"');
+  });
+
   it('throws when either call returns unparseable JSON', async () => {
     state.generate.mockResolvedValueOnce('not json').mockResolvedValueOnce(closingResponse);
     await expect(generateMatchReportNarrative(makeScores())).rejects.toThrow();

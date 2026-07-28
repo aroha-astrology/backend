@@ -103,12 +103,38 @@ export function findFavorableWindows(
   // NOT collapse this to a chronological-only sort — that reintroduces
   // exactly the bug this comment describes and the tier is not merely a
   // tiebreak.
-  return windows
-    .sort((a, b) => {
-      if (a.level !== b.level) return a.level === 'antardasha' ? -1 : 1;
-      return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
-    })
-    .slice(0, maxWindows);
+  const sorted = windows.sort((a, b) => {
+    if (a.level !== b.level) return a.level === 'antardasha' ? -1 : 1;
+    return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+  });
+  const truncated = sorted.slice(0, maxWindows);
+
+  // Rescue: a tier-strongest-first truncation can otherwise drop every
+  // near-term window in favor of ones years out (e.g. a distant antardasha
+  // match outranking a nearer pratyantardasha one) — leaving the very first
+  // window a user sees start years from now instead of anchored near today.
+  // Appends (never evicts) the window nearest `now` if the truncation above
+  // already excluded it — bounded to at most one extra entry, and the sort
+  // order/tiering above is otherwise untouched.
+  const anchor = nearestToNow(sorted, now);
+  if (anchor && !truncated.includes(anchor)) truncated.push(anchor);
+  return truncated;
+}
+
+/** The window containing `now`, or failing that, the one whose start date is closest to it —
+ * from the FULL (pre-truncation) candidate list, so a near-term match can't have already been
+ * cut before this runs. Returns undefined only when `windows` is empty. */
+function nearestToNow(windows: FavorableWindow[], now: Date): FavorableWindow | undefined {
+  const nowMs = now.getTime();
+  const containing = windows.find(
+    (w) => new Date(w.startDate).getTime() <= nowMs && new Date(w.endDate).getTime() > nowMs,
+  );
+  if (containing) return containing;
+  return windows.reduce<{ window: FavorableWindow; distance: number } | undefined>((best, w) => {
+    const distance = Math.abs(new Date(w.startDate).getTime() - nowMs);
+    if (!best || distance < best.distance) return { window: w, distance };
+    return best;
+  }, undefined)?.window;
 }
 
 /**

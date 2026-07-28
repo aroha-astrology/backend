@@ -102,6 +102,27 @@ export const ReportStatsResponseSchema = z
 
 export type ReportStatsDto = z.infer<typeof ReportStatsResponseSchema>;
 
+/** One row of the user's own cross-report-type purchase history (GET /reports/history) —
+ * excludes preview rows, which aren't real purchases. */
+export const ReportHistoryEntrySchema = z
+  .object({
+    id: z.string(),
+    reportKey: z.string(),
+    label: z.string(),
+    status: z.enum(['generating', 'ready', 'failed']),
+    periodMonth: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('ReportHistoryEntry');
+
+export const ReportHistoryResponseSchema = z
+  .object({
+    reports: z.array(ReportHistoryEntrySchema),
+  })
+  .openapi('ReportHistoryResponse');
+
+export type ReportHistoryEntryDto = z.infer<typeof ReportHistoryEntrySchema>;
+
 export const ReportSectionSchema = z
   .object({
     heading: z.string(),

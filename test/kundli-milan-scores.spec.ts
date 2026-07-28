@@ -62,6 +62,7 @@ describe('computeKundliMilanScores', () => {
 
     expect(scores.dashakootaScore).toBe(expected.totalScore);
     expect(scores.dashakootaBreakdown).toHaveLength(10);
+    expect(scores.dashakootaCompatibility).toBe(expected.overallCompatibility);
   });
 
   it('classifies compatibilityBand using the classical Ashtakoota thresholds', () => {
@@ -188,11 +189,45 @@ describe('computeKundliMilanScores — primaryDoshaYoga (primary person only)', 
     ).not.toThrow();
   });
 
-  it('ignores dosha keys outside the requested [kaalSarp, sadeSati] scope', () => {
+  it('flags cautions when the PRIMARY chart has Mangal or Guru Chandal Dosha present (broadened alongside kaalSarp/sadeSati)', () => {
     const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
     const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
-    // mangal is present but NOT in kundli-milan's requested dosha-key scope — should be ignored.
-    const doshaData = { mangal: { present: true, severity: 'high', type: 'uncancelled' } };
+    const doshaData = {
+      mangal: { present: true, severity: 'high', type: 'uncancelled' },
+      guruChandal: { present: true, house: 8, severity: 'medium' },
+    };
+
+    const scores = computeKundliMilanScores(
+      { chart: chart1, partnerChart: chart2, doshaData },
+      null,
+    );
+
+    expect(scores.primaryDoshaYoga.cautions.map((c) => c.label).sort()).toEqual(
+      ['Guru Chandal Dosha', 'Mangal Dosha'].sort(),
+    );
+  });
+
+  it('surfaces a present Raja yoga as a positive (broadened alongside mahapurusha/benefic)', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+    const yogaData = {
+      yogas: [{ type: 'raja', name: 'Some Raja Yoga', present: true, description: 'x' }],
+    };
+
+    const scores = computeKundliMilanScores(
+      { chart: chart1, partnerChart: chart2, yogaData },
+      null,
+    );
+
+    expect(scores.primaryDoshaYoga.positives).toHaveLength(1);
+    expect(scores.primaryDoshaYoga.positives[0]?.label).toBe('Some Raja Yoga');
+  });
+
+  it('ignores dosha keys outside the requested [kaalSarp, sadeSati, mangal, guruChandal] scope', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+    // pitra is present but NOT in kundli-milan's requested dosha-key scope — should be ignored.
+    const doshaData = { pitra: { present: true, severity: 'high' } };
 
     const scores = computeKundliMilanScores(
       { chart: chart1, partnerChart: chart2, doshaData },

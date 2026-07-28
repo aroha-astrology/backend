@@ -103,6 +103,35 @@ describe('generateCareerMonthlyNarrative', () => {
     expect(content).toContain('Classically-associated industries: none available.');
   });
 
+  it('embeds present dosha cautions (obstacles) as GIVEN FACTS, or "none" when absent (the doshaYoga.cautions gap fix)', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateCareerMonthlyNarrative(
+      makeScores({
+        doshaYoga: {
+          positives: [],
+          cautions: [{ label: 'Sade Sati', detail: 'peak phase, high severity' }],
+        },
+      }),
+    );
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Sade Sati');
+    expect(content).toContain('peak phase, high severity');
+    expect(content.toLowerCase()).toContain('obstacle');
+
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateCareerMonthlyNarrative(
+      makeScores({ doshaYoga: { positives: [], cautions: [] } }),
+    );
+    const call2 = state.generate.mock.calls[1]?.[0];
+    const content2 = call2.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content2).toContain('Doshas present: none.');
+  });
+
   it('throws on an unparseable response', async () => {
     state.generate.mockResolvedValueOnce('not json');
     await expect(generateCareerMonthlyNarrative(makeScores())).rejects.toThrow();

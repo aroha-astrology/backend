@@ -66,7 +66,7 @@ beforeEach(() => {
 });
 
 describe('generateTrueLoveNarrative', () => {
-  it('makes exactly 2 bounded LLM calls returning 5 sections total', async () => {
+  it('makes exactly 2 bounded LLM calls returning 6 sections total', async () => {
     state.generate
       .mockResolvedValueOnce(
         JSON.stringify({
@@ -82,6 +82,10 @@ describe('generateTrueLoveNarrative', () => {
             { heading: 'Your Timing Windows', paragraphs: ['No strong window yet.'] },
             { heading: 'Your Romantic Archetype', paragraphs: ['You lean into connection.'] },
             { heading: 'Blessings & Cautions', paragraphs: ['Nothing notable was flagged.'] },
+            {
+              heading: 'How Your Romantic Life Unfolds Decade By Decade',
+              paragraphs: ['The first decade is mixed, staying steady through the second.'],
+            },
           ],
         }),
       );
@@ -89,8 +93,15 @@ describe('generateTrueLoveNarrative', () => {
     const sections = await generateTrueLoveNarrative(makeScores());
 
     expect(state.generate).toHaveBeenCalledTimes(2);
-    expect(sections).toHaveLength(5);
-    expect(sections[2]?.heading).toBe('Your Timing Windows');
+    expect(sections).toHaveLength(6);
+    expect(sections.map((s) => s.heading)).toEqual([
+      'What This Means For You',
+      'Family Blessing',
+      'Your Timing Windows',
+      'Your Romantic Archetype',
+      'Blessings & Cautions',
+      'How Your Romantic Life Unfolds Decade By Decade',
+    ]);
   });
 
   it('embeds the given tilt/romance/partnership facts as GIVEN FACTS in call 1', async () => {
@@ -122,6 +133,29 @@ describe('generateTrueLoveNarrative', () => {
     expect(content).toContain('The Romantic Explorer');
     expect(content).toContain('Mangal Dosha');
     expect(content.toUpperCase()).toContain('GIVEN FACT');
+  });
+
+  it('embeds the given romanceArc decade bands in call 2 (decade-by-decade fact wiring)', async () => {
+    state.generate.mockResolvedValue(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateTrueLoveNarrative(
+      makeScores({
+        romanceArc: [
+          {
+            label: 'Years 1-10',
+            startDate: '2026-01-01T00:00:00.000Z',
+            endDate: '2036-01-01T00:00:00.000Z',
+            score: 72,
+            tone: 'favorable',
+          },
+        ],
+      }),
+    );
+    const call = state.generate.mock.calls[1]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Years 1-10: 72/100 (favorable)');
+    expect(content.toLowerCase()).toContain('decade by decade');
   });
 
   it('states no windows/no cautions plainly when both are empty, rather than inventing one', async () => {

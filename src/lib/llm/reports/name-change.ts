@@ -1,11 +1,20 @@
 // =============================================================================
 // Name Change report — LLM narrative
 // =============================================================================
-// 1 LLM call, 2 sections — given the current name's full numerological
+// 1 LLM call, 3 sections — given the current name's full numerological
 // signature and up to 5 deterministic spelling variants (each already
 // validated to hit a target number), explain the alignment and why each
 // suggested change helps. No fallback filler on a bad response — same
 // discipline as generateMarriageNarrative/generateBabyNameNarrative.
+//
+// Section 3 ("Practical Guidance") was added to close 3 covers.name_change gaps: "how much
+// difference could a name change realistically make," "what's the best way to phase in a name
+// change smoothly," and "if I keep my name as-is, what should I stay mindful of." All three are
+// answerable from facts buildFacts ALREADY sends (alignment classification, enemy numbers,
+// whether the variants list is empty) — no new astro-engine computation needed, just an explicit
+// instruction that was missing. Section 1 also gained an explicit instruction to state the given
+// target number(s) — `a.targets` was already in buildFacts but never explicitly asked for
+// (covers.name_change's "what number should my name ideally add up to?").
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
@@ -33,9 +42,10 @@ ${EMPTY_VARIANTS_RULE}
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
-Write EXACTLY 2 sections, in this order:
-1. Heading close to "Your Name's Numerological Signature" — 1-3 paragraphs explaining the given Mulank, Bhagyank, and current name's Chaldean number, the given alignment classification (aligned/partially_aligned/misaligned) and what it means, and the given friendly/enemy numbers as classical context.
+Write EXACTLY 3 sections, in this order:
+1. Heading close to "Your Name's Numerological Signature" — 1-3 paragraphs explaining the given Mulank, Bhagyank, and current name's Chaldean number, the given alignment classification (aligned/partially_aligned/misaligned) and what it means, the given friendly/enemy numbers as classical context, AND explicitly state the given target number(s) this name should ideally add up to (best first) — this is a direct answer to "what number should my name ideally add up to."
 2. Heading close to "Suggested Spelling Adjustments" — 1-3 paragraphs (or, if the given variant list is empty, 1 paragraph per EMPTY_VARIANTS_RULE) walking through each given variant: state the exact spelling and the exact edit given (e.g. "added an 'a' at the end"), its resulting Chaldean number, and explain in plain language why that shift toward a target number is classically considered beneficial.
+3. Heading close to "Practical Guidance" — 1-2 paragraphs, using ONLY the facts already given above, covering: (a) an honest, expectation-setting note on how much realistic difference a spelling change could make — numerology is one classical lens among several, a supportive nudge rather than a guarantee, so frame it as real but modest, not life-changing on its own; (b) a suggestion to phase any change in gradually and informally first (e.g. trying the new spelling in a signature or among close family/friends) before any formal step, briefly reiterating that an official/legal document name change is a separate real-world process outside this report's scope; (c) if the reader chooses to keep their current name as-is, name the given enemy numbers (if any) as the one thing to stay mindful of, tied to the given alignment classification.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }

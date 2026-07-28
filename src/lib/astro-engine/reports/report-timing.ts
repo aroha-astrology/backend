@@ -83,8 +83,25 @@ export function computeReportTimingWindows(
   now: Date = new Date(),
 ): DomainWindowResult {
   const ascSignIndex = ascSignIndexFromChart(chart);
-  return scoreDomainWindows(domain, significatorLords, dashaData, ascSignIndex, now, {
-    saturnSignIndex: null,
-    jupiterSignIndex: null,
-  });
+  const result = scoreDomainWindows(
+    domain,
+    significatorLords,
+    dashaData,
+    ascSignIndex,
+    now,
+    { saturnSignIndex: null, jupiterSignIndex: null },
+    undefined,
+    { ensureNearTermAnchor: true },
+  );
+
+  // Re-sort chronologically (soonest-first) for display — ONLY here, not inside
+  // scoreDomainWindows itself. That function's own tier/score ordering must survive for its OTHER
+  // direct caller (chat-grounding.ts), which labels windows[0] as 'STRONGEST' in an LLM-facing
+  // fact; re-sorting there would silently break that labeling. This wrapper is the correct, narrow
+  // seam for the report-facing "when" answer to lead with the nearest window rather than
+  // whichever tier/score ranked highest, without touching chat's semantics at all.
+  const windows = [...result.windows].sort(
+    (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+  );
+  return { domain, windows };
 }

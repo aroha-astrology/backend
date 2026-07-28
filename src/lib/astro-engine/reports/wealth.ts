@@ -218,8 +218,8 @@ export function computeWealthScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['kemDruma'],
-    ['dhana'],
+    ['kemDruma', 'guruChandal', 'kaalSarp', 'pitra'],
+    ['dhana', 'raja', 'mahapurusha', 'lunar'],
   );
 
   const spendingVsSavingTilt = computeSpendingVsSavingTilt(secondLordScore, eleventhLordScore);

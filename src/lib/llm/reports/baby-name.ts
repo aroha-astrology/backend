@@ -22,6 +22,8 @@ const THEME_RULE =
   "The nakshatra's ruling planet (lord) and presiding deity below are GIVEN FACTS. Use them only as gentle naming-theme flavor — e.g. qualities classically associated with that lord/deity which could inform a name's meaning or feel — never as a literal claim about the baby's personality, destiny, or future.";
 const GENTLE_DOSHA_RULE =
   'This report is read by a new or expecting parent about their baby. If a dosha (e.g. Mangal Dosha, Kaal Sarp Dosha) is listed as present, mention it matter-of-factly and calmly, never alarmingly — classical doshas are common chart features with their own classical remedies/timing, not a flaw in the baby. Do not recommend specific remedies, pujas, or purchases. If a favorable yoga (Raja/Dhana) is present, you may mention it warmly and briefly. If neither is present, skip this note or fold it into a single reassuring line.';
+const STYLE_RULE =
+  "Deliberately spread the suggested names across three flavors — some more traditional/classical-sounding, some more modern/contemporary-sounding, and at least one or two deity-inspired (drawn from the given nakshatra deity, e.g. a name derived from or referencing that deity) — briefly noting which flavor each name leans toward. This directly helps the reader decide whether to lean traditional, modern, or deity-inspired for this chart, so do not suggest a one-note list that's all of a single style.";
 
 function narrativeSystemPrompt(): string {
   return `You are writing a Baby Name Report for a mobile Vedic astrology app, grounded in the classical Moon-nakshatra-to-starting-syllable naming convention. The app already computed the reader's Moon nakshatra, pada, the classical starting syllable for naming, the nakshatra's ruling planet and deity, and a gentle dosha/yoga summary. Your job is ONLY to write the narrative + name list.
@@ -29,6 +31,7 @@ function narrativeSystemPrompt(): string {
 ${GROUNDING_RULE}
 ${SCOPE_RULE}
 ${NAMES_RULE}
+${STYLE_RULE}
 ${THEME_RULE}
 ${GENTLE_DOSHA_RULE}
 
@@ -36,7 +39,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Suggested Names". The FIRST paragraph must contain the required scope-limitation disclaimer (see above). The remaining paragraphs should present the name suggestions — one name and its one-line meaning per short paragraph (e.g. "Chudamani — one who wears the crest jewel of virtue.").
+1. Heading close to "Suggested Names". The FIRST paragraph must contain the required scope-limitation disclaimer (see above). The remaining paragraphs should present the name suggestions — one name and its one-line meaning per short paragraph (e.g. "Chudamani — one who wears the crest jewel of virtue.") — spread across traditional, modern, and deity-inspired flavors per STYLE_RULE, naming which flavor each leans toward.
 2. Heading close to "Naming Themes & Blessings" — 1-2 short paragraphs: the nakshatra lord/deity naming-theme flavor (per THEME_RULE), and a brief, gentle dosha/yoga note (per GENTLE_DOSHA_RULE).
 
 Each paragraph in section 2 should be 2-3 sentences.`;

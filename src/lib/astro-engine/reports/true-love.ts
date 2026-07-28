@@ -183,8 +183,8 @@ export function computeTrueLoveScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['mangal'],
-    ['dhana'],
+    ['mangal', 'kaalSarp'],
+    ['benefic', 'mahapurusha'],
   );
 
   return {

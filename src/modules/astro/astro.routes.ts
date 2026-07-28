@@ -405,7 +405,12 @@ const panchangMonthRoute = createRoute({
       description: 'Per-day panchang summaries',
       content: {
         'application/json': {
-          schema: z.object({ year: z.number(), month: z.number(), days: z.array(z.any()) }),
+          schema: z.object({
+            year: z.number(),
+            month: z.number(),
+            days: z.array(z.any()),
+            regionalMonths: z.any().optional(),
+          }),
         },
       },
     },
@@ -415,8 +420,8 @@ const panchangMonthRoute = createRoute({
 
 astroRouter.openapi(panchangMonthRoute, async (c) => {
   const { year, month, lat, lon } = c.req.valid('query');
-  const days = await astroService.getPanchangMonth(year, month, lat, lon);
-  return c.json({ year, month, days }, 200);
+  const { days, regionalMonths } = await astroService.getPanchangMonth(year, month, lat, lon);
+  return c.json({ year, month, days, regionalMonths }, 200);
 });
 
 /* -------------------------------------------------------------------------- */

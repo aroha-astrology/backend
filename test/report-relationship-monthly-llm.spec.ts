@@ -26,19 +26,43 @@ beforeEach(() => {
 });
 
 describe('generateRelationshipMonthlyNarrative', () => {
-  it('returns 3 sections from 1 LLM call', async () => {
+  it('returns 4 sections from 1 LLM call', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({
         sections: [
           { heading: "This Month's Outlook", paragraphs: ['A favorable month for connection.'] },
           { heading: 'Practical Guidance', paragraphs: ['Make time together.'] },
           { heading: 'Blessings & Cautions', paragraphs: ['Nothing notable was flagged.'] },
+          {
+            heading: 'Friction, Reconciliation & Dating',
+            paragraphs: [
+              'Some friction is possible; reconciliation looks supported; singles should stay open.',
+            ],
+          },
         ],
       }),
     );
     const sections = await generateRelationshipMonthlyNarrative(makeScores());
     expect(state.generate).toHaveBeenCalledTimes(1);
-    expect(sections).toHaveLength(3);
+    expect(sections).toHaveLength(4);
+    expect(sections.map((s) => s.heading)).toEqual([
+      "This Month's Outlook",
+      'Practical Guidance',
+      'Blessings & Cautions',
+      'Friction, Reconciliation & Dating',
+    ]);
+  });
+
+  it('instructs the model to cover friction causes, reconciliation timing, and single/dating readers in the 4th section using the same given facts (no new fact needed)', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateRelationshipMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('friction');
+    expect(content.toLowerCase()).toContain('reconciliation');
+    expect(content.toLowerCase()).toContain('single');
   });
 
   it('embeds the given dasha lords and tone as GIVEN FACTS', async () => {

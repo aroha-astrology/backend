@@ -1,7 +1,7 @@
 // =============================================================================
 // Finance (monthly) report — LLM narrative
 // =============================================================================
-// 2 sections, 1 bounded LLM call. No fallback filler on a bad response.
+// 3 sections, 1 bounded LLM call. No fallback filler on a bad response.
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
@@ -18,7 +18,7 @@ const DISCLAIMER_RULE =
   'This is NOT financial advice. Frame everything as traditional astrological guidance about tendencies and themes only — never recommend specific investments, products, or financial decisions.';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Finance Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 2nd house (${HOUSE_SIGNIFICATIONS[2]}) and 11th house (${HOUSE_SIGNIFICATIONS[11]}), and a dosha/yoga check for any classical wealth-yoga currently relevant. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Finance Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 2nd house (${HOUSE_SIGNIFICATIONS[2]}) and 11th house (${HOUSE_SIGNIFICATIONS[11]}), and a dosha/yoga check for any classical wealth-yoga or wealth-related dosha caution currently relevant. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -29,7 +29,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 3 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of money-flow themes (savings, incoming gains, spending pressure).
-2. Heading close to "Dosha & Yoga Check" — 1 paragraph covering the given wealth-yoga finding(s); if none is present, say plainly that no major classical wealth-yoga stands out this month rather than inventing one.
+2. Heading close to "Dosha & Yoga Check" — 1-2 paragraphs covering BOTH the given wealth-yoga finding(s) (if present, explain what they classically support for money flow this month; if none is present, say plainly that no major classical wealth-yoga stands out this month rather than inventing one) AND the given dosha caution finding(s) (frame plainly as a heads-up about possible unexpected expenses or money stress this month; if none is present, say so plainly and reassuringly).
 3. Heading close to "Practical Guidance" — 1 paragraph of GENERAL, non-prescriptive behavioral framing tied to the tone — explicitly NOT financial advice, no specific investment/product recommendations.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;

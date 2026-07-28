@@ -16,7 +16,7 @@ import type { KundliMilanScores } from '../../astro-engine/reports/kundli-milan.
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
 const GROUNDING_RULE =
-  'The Guna Milan score, Dashakoota score, Manglik status, compatibility band, and primary-person dosha/yoga facts below are GIVEN FACTS, already computed by a deterministic classical Vedic algorithm. State them verbatim in your prose. Never recompute, second-guess, round differently, or contradict any of these numbers — your job is ONLY to explain what they mean in plain language.';
+  'The Guna Milan score, Dashakoota score and its per-porutham breakdown and overall verdict, Manglik status, compatibility band, and primary-person dosha/yoga facts below are GIVEN FACTS, already computed by a deterministic classical Vedic algorithm. State them verbatim in your prose. Never recompute, second-guess, round differently, or contradict any of these numbers — your job is ONLY to explain what they mean in plain language.';
 const PLAIN_LANGUAGE_RULE =
   'Write for someone with zero astrology background. Avoid untranslated Sanskrit/technical jargon where a plain-language equivalent exists (e.g. explain "Guna Milan" as a classical 36-point compatibility score the first time you use the term, rather than assuming the reader already knows it). Talk about real relationship themes (temperament, health, family harmony, communication), not planetary mechanics.';
 const SAFETY_RULE =
@@ -32,11 +32,12 @@ ${SAFETY_RULE}
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
-Write EXACTLY 4 sections, in this order:
+Write EXACTLY 5 sections, in this order:
 1. Heading close to "What Your Guna Milan Score Means" — 1-2 paragraphs explaining the total score out of 36, referencing the compatibility band given, and highlighting the 1-2 strongest and weakest Kootas from the breakdown data.
-2. Heading close to "Manglik Compatibility" — 1-2 paragraphs explaining each person's Manglik (Mangal Dosha) status given, and what a cancellation means in plain terms if one applies.
-3. Heading close to "Your Chart's Additional Facts" — 1 paragraph on the primary person's (person1's) additional dosha/yoga facts given. Explicitly state that this panel reflects ONLY person1's chart, not person2's (the app does not compute this analysis for the partner). If no cautions are listed, note briefly that none were flagged.
-4. Heading close to "Overall Recommendation" — 1 paragraph of balanced, reflective closing guidance that does not overstate certainty either way.
+2. Heading close to "Dashakoota Deep Dive" — 1-2 paragraphs: state the given Dashakoota overall verdict plainly, directly answering "what's the overall Dashakoot verdict on our compatibility" — then weave in what the given per-porutham breakdown says about health and longevity (Dina porutham), finances/progeny/children together (Mahendra porutham), and family stability/harmony at home (Rajju porutham, if its description flags a concern) — using the SAME given-fact, plain-language discipline as the rest of this report. If a specific theme's porutham isn't clearly favorable or unfavorable from the given description, don't force a claim about it.
+3. Heading close to "Manglik Compatibility" — 1-2 paragraphs explaining each person's Manglik (Mangal Dosha) status given, and what a cancellation means in plain terms if one applies.
+4. Heading close to "Your Chart's Additional Facts" — 1 paragraph on the primary person's (person1's) additional dosha/yoga facts given. Explicitly state that this panel reflects ONLY person1's chart, not person2's (the app does not compute this analysis for the partner). If no cautions are listed, note briefly that none were flagged.
+5. Heading close to "Overall Recommendation" — 1 paragraph of balanced, reflective closing guidance that does not overstate certainty either way.
 
 Each paragraph should be 2-4 sentences. Second person for person1 ("you"), third person ("your partner") for person2, unless names are given.`;
 }
@@ -54,6 +55,11 @@ function buildFacts(scores: KundliMilanScores): string {
   lines.push(
     `Dashakoota (South Indian) score: ${scores.dashakootaScore} out of ${scores.dashakootaMaxScore}.`,
   );
+  lines.push(`Dashakoota overall verdict: ${scores.dashakootaCompatibility ?? 'not classified'}.`);
+  lines.push('Per-porutham (Dashakoota) breakdown:');
+  for (const k of scores.dashakootaBreakdown) {
+    lines.push(`- ${k.name}: ${k.score}/${k.maxScore} — ${k.description}`);
+  }
   lines.push(
     `Manglik status — person1: ${scores.manglikStatus.person1 ? 'present' : 'not present'}; ` +
       `person2: ${scores.manglikStatus.person2 ? 'present' : 'not present'}; ` +
@@ -121,10 +127,11 @@ function parseSections(raw: string): ReportSection[] | null {
 }
 
 /**
- * One bounded call — 4 short sections comfortably fit well inside
- * REPORT_PROFILE's 4096-token ceiling, so this report type doesn't need to
- * split into multiple calls (the ReportGenerator contract allows a type to
- * do so if its narrative is larger).
+ * One bounded call — 5 short sections (including the Dashakoota per-porutham
+ * breakdown, comparable in size to the already-fed Guna Milan breakdown)
+ * comfortably fit well inside REPORT_PROFILE's 4096-token ceiling, so this
+ * report type doesn't need to split into multiple calls (the ReportGenerator
+ * contract allows a type to do so if its narrative is larger).
  */
 export async function generateKundliMilanNarrative(
   scores: KundliMilanScores,

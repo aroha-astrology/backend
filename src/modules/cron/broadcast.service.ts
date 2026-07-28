@@ -1,5 +1,5 @@
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
-import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { notifyUsersBatch } from '../../lib/notifications/notify-user.js';
 import { logger } from '../../lib/logger.js';
 import {
   getOrCreateBatchRun,
@@ -155,23 +155,26 @@ export async function broadcastPeriodReading(
   }
 
   // Group by normalized language so each group gets its own localized copy —
-  // one sendPushBatch (itself internally chunked at 500) per language present.
-  const byLang = new Map<LangCode, string[]>();
+  // one notifyUsersBatch call (itself internally chunked at 500) per language present.
+  const byLang = new Map<LangCode, { userId: string; token: string }[]>();
   for (const t of tokens) {
     const lang = normalizeLang(t.locale);
+    const recipient = { userId: t.userId, token: t.token };
     const list = byLang.get(lang);
-    if (list) list.push(t.token);
-    else byLang.set(lang, [t.token]);
+    if (list) list.push(recipient);
+    else byLang.set(lang, [recipient]);
   }
 
   const { weekday } = istDateParts(now);
   let success = 0;
   let failure = 0;
-  for (const [lang, langTokens] of byLang) {
+  for (const [lang, recipients] of byLang) {
     const copy = period === 'daily' ? getDailyCopy(lang, weekday) : getPeriodicCopy(period, lang);
-    const result = await sendPushBatch(langTokens, copy.title, copy.body, {
+    const result = await notifyUsersBatch(recipients, {
+      title: copy.title,
+      body: copy.body,
       type: `${period}_reading`,
-      navigate: '/horoscope',
+      link: '/horoscope',
     });
     success += result.success;
     failure += result.failure;

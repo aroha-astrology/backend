@@ -276,6 +276,46 @@ export async function markNotificationsRead(userId: string): Promise<void> {
     .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
 }
 
+export interface NewNotificationEntry {
+  userId: string;
+  title: string;
+  body: string;
+  type: string;
+  link?: string | null;
+}
+
+/** Insert one Bell-inbox notification row. Repo-layer wrapper (rather than a lib module
+ * touching `db` directly) so callers like notify-user.ts's notifyUser can be exercised in tests
+ * by mocking this function, the same way every other notify-* call site already mocks
+ * findActiveTokensForUser/sendPushBatch instead of the DB client underneath them. */
+export async function insertNotification(entry: NewNotificationEntry): Promise<void> {
+  await db.insert(notifications).values({
+    userId: entry.userId,
+    title: entry.title,
+    body: entry.body,
+    type: entry.type,
+    link: entry.link ?? null,
+  });
+}
+
+/** Bulk insert, chunked at 500 — same limit sendPushBatch's own FCM chunking already uses.
+ * Matches insertTransitNotifications' (transit-alert.repo.ts) existing chunking precedent. */
+export async function insertNotifications(entries: NewNotificationEntry[]): Promise<void> {
+  if (entries.length === 0) return;
+  const CHUNK = 500;
+  for (let i = 0; i < entries.length; i += CHUNK) {
+    await db.insert(notifications).values(
+      entries.slice(i, i + CHUNK).map((e) => ({
+        userId: e.userId,
+        title: e.title,
+        body: e.body,
+        type: e.type,
+        link: e.link ?? null,
+      })),
+    );
+  }
+}
+
 /**
  * Atomically claim the user's one lifetime birth-detail edit. Returns the
  * updated row if THIS call won the claim, or `undefined` if it was already

@@ -80,6 +80,18 @@ describe('generateBabyNameNarrative', () => {
     expect(content).toContain('Vishnu');
   });
 
+  it('instructs the model to spread names across traditional/modern/deity-inspired flavors', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateBabyNameNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('traditional');
+    expect(content.toLowerCase()).toContain('modern');
+    expect(content.toLowerCase()).toContain('deity-inspired');
+  });
+
   it('instructs the model to mention a present dosha gently, not alarmingly', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),

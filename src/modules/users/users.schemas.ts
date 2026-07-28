@@ -249,7 +249,10 @@ export const UserSchema = z
       .describe('True once the user has spent wallet balance to unlock the gemstone report'),
 
     features: z
-      .record(z.string(), z.object({ enabled: z.boolean(), pricePaise: z.number().int().nullable() }))
+      .record(
+        z.string(),
+        z.object({ enabled: z.boolean(), pricePaise: z.number().int().nullable() }),
+      )
       .describe(
         'Server-resolved feature registry (FEATURE_REGISTRY defaults merged with admin overrides). ' +
           'The client must hide UI for any key with enabled: false AND never call its API — the ' +
@@ -294,6 +297,9 @@ export const NotificationSchema = z
     title: z.string(),
     body: z.string(),
     type: z.string(),
+    /** Where tapping this notification should navigate to, e.g. '/reports/abc123'. Null for
+     * notifications with nothing to deep-link to (e.g. a generic broadcast). */
+    link: z.string().nullable(),
     readAt: z.string().nullable(),
     createdAt: z.string(),
   })

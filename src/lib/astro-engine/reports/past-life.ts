@@ -129,8 +129,8 @@ export function computePastLifeScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['kaalSarp'],
-    [],
+    ['kaalSarp', 'pitra', 'grahan'],
+    ['mahapurusha', 'benefic'],
   );
 
   return {

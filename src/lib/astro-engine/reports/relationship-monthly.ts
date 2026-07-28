@@ -54,8 +54,8 @@ export function computeRelationshipMonthlyScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['mangal'],
-    [],
+    ['mangal', 'kaalSarp'],
+    ['benefic', 'mahapurusha'],
   );
 
   return {

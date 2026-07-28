@@ -149,6 +149,35 @@ describe('generateMarriageNarrative', () => {
     expect(content).toContain('HIGH');
   });
 
+  it('embeds the given relationshipStatus in the first call and instructs married/divorced/widowed framing', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(makeScores({ relationshipStatus: 'married' }));
+
+    const firstCall = state.generate.mock.calls[0]?.[0];
+    const content = firstCall.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('married');
+    expect(content.toLowerCase()).toContain('do not predict');
+  });
+
+  it('falls back to "not provided" when relationshipStatus is absent', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(makeScores());
+
+    const firstCall = state.generate.mock.calls[0]?.[0];
+    const content = firstCall.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('not provided');
+  });
+
   it('embeds the 7th house sign/temperament/archetype/reasons and in-laws note in the second call', async () => {
     state.generate
       .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
@@ -163,6 +192,22 @@ describe('generateMarriageNarrative', () => {
     expect(content).toContain('Scorpio');
     expect(content).toContain('Partnership Archetype');
     expect(content).toContain('Cancer');
+  });
+
+  it('embeds the given Venus/Jupiter house placements in the second call (previously computed but never fed) and instructs using them for partner background color', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(makeScores({ venusHouse: 5, jupiterHouse: 8 }));
+
+    const secondCall = state.generate.mock.calls[1]?.[0];
+    const content = secondCall.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain("Venus's own natal house: 5");
+    expect(content).toContain("Jupiter's own natal house: 8");
+    expect(content.toLowerCase()).toContain('life-domain');
   });
 
   it('embeds the money-after-marriage and dosha/yoga facts in the third call', async () => {
@@ -187,6 +232,7 @@ describe('generateMarriageNarrative', () => {
     expect(content).toContain('Aquarius');
     expect(content).toContain('Raja Yoga');
     expect(content).toContain('Mangal Dosha');
+    expect(content.toLowerCase()).toContain('early years after the wedding');
   });
 
   it('embeds the decade arc and modern-realities facts in the fourth call', async () => {

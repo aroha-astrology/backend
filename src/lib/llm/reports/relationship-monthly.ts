@@ -1,8 +1,18 @@
 // =============================================================================
 // Relationship (monthly) report — LLM narrative
 // =============================================================================
-// 3 sections, 1 bounded LLM call (comfortably under REPORT_PROFILE's 4096
+// 4 sections, 1 bounded LLM call (comfortably under REPORT_PROFILE's 4096
 // token ceiling). No fallback filler on a bad response.
+//
+// Section 4 ("Friction, Reconciliation & Dating") was added to close a gap: covers.
+// relationship_monthly asks "what might cause friction," "is this a favorable month for
+// reconciliation," and "what should I watch for if I'm single and dating" — none of these were
+// explicitly instructed even though every fact needed to answer them (tone, month score, the
+// active dasha lords, dosha cautions) was already being fed via buildFacts. Unlike the wealthArc
+// gap in wealth.ts, there was no unused astro-engine field here to wire up — this report's
+// scores object has no day-level granularity at all, so "specific days this month best for
+// important relationship talks" (also in the covers list) genuinely CANNOT be answered without a
+// new astro-engine computation (a day-by-day transit/muhurat pass) — flagged, not built here.
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
@@ -27,10 +37,11 @@ ${SAFETY_RULE}
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
-Write EXACTLY 3 sections, in this order:
+Write EXACTLY 4 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of partnership harmony and romance/connection themes.
 2. Heading close to "Practical Guidance" — 1 paragraph of general, practical relationship-behavior framing tied to the tone.
 3. Heading close to "Blessings & Cautions" — 1 paragraph on the dosha/yoga facts given: mention the Mangal Dosha caution calmly if present. If not present, note briefly that no standing caution was flagged in this chart.
+4. Heading close to "Friction, Reconciliation & Dating" — 1-2 paragraphs covering three things using ONLY the facts already given above: (a) name what could realistically cause friction this month for someone with a partner, tying it to the given active dasha lord and any given dosha caution; (b) state plainly, based on the given tone, whether this reads as a supportive month to attempt reconciliation after a recent conflict, or whether more patience is needed first; (c) for readers who are single and dating, note briefly that the same monthly tone/score applies to romance and dating themes generally (not only existing partnerships), and give one pointer for what to watch for this month.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }

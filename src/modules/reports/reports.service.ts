@@ -58,10 +58,10 @@ import type {
   PurchasedReportSummaryDto,
   ReportCatalogueEntryDto,
   ReportDto,
+  ReportHistoryEntryDto,
   ReportStatsDto,
 } from './reports.schemas.js';
-import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
-import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { notifyUser } from '../../lib/notifications/notify-user.js';
 
 const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
 
@@ -167,20 +167,14 @@ export async function notifyReportReady(
   reportKey: string,
   reportId: string,
 ): Promise<void> {
-  try {
-    const tokens = await findActiveTokensForUser(userId);
-    if (tokens.length === 0) return;
-    const label = getReportDef(reportKey)?.label ?? 'report';
-    await sendPushBatch(
-      tokens.map((t) => t.token),
-      `🔮 Your ${label} is ready`,
-      'Tap to read your report now.',
-      { type: 'report_ready', navigate: `/reports/${reportId}` },
-    );
-    logger.info({ userId, reportId, reportKey }, 'report:push sent');
-  } catch (err) {
-    logger.warn({ err, userId, reportId }, 'report:push failed');
-  }
+  const label = getReportDef(reportKey)?.label ?? 'report';
+  await notifyUser(userId, {
+    title: `🔮 Your ${label} is ready`,
+    body: 'Tap to read your report now.',
+    type: 'report_ready',
+    link: `/reports/${reportId}`,
+  });
+  logger.info({ userId, reportId, reportKey }, 'report:push sent');
 }
 
 /**
@@ -196,22 +190,39 @@ export async function notifyReportReady(
 async function fetchPersonContext(
   userId: string,
   birthProfileId: string | null,
-): Promise<Pick<ReportScoreContext, 'personName' | 'personDob' | 'personGender'>> {
+): Promise<
+  Pick<ReportScoreContext, 'personName' | 'personDob' | 'personGender' | 'personRelationshipStatus'>
+> {
   try {
     const user = await findActiveUserById(userId);
-    if (!user) return { personName: null, personDob: null, personGender: null };
+    if (!user) {
+      return {
+        personName: null,
+        personDob: null,
+        personGender: null,
+        personRelationshipStatus: null,
+      };
+    }
     const profile = await resolveProfileContext(user, birthProfileId);
     return {
       personName: profile.displayName ?? null,
       personDob: profile.dateOfBirth ?? null,
       personGender: profile.gender ?? null,
+      // Account-level, not per-profile — same sourcing chat-grounding.ts's
+      // buildProfileFacts already uses for this field (see that comment).
+      personRelationshipStatus: user.relationshipStatus ?? null,
     };
   } catch (err) {
     logger.warn(
       { err, userId, birthProfileId },
       'failed to resolve person identity context for report scoring',
     );
-    return { personName: null, personDob: null, personGender: null };
+    return {
+      personName: null,
+      personDob: null,
+      personGender: null,
+      personRelationshipStatus: null,
+    };
   }
 }
 
@@ -460,6 +471,29 @@ export async function previewReport(
     throw Errors.internal('Report row not found after a duplicate preview claim');
   }
   return { id: existing.id, reportKey: def.key, status: existing.status };
+}
+
+/**
+ * The user's own past reports across ALL types, newest first — reuses the exact same
+ * `listReportsForUser` query `getReportCatalogueForUser` already runs (which then discards this
+ * flat, cross-type ordering by re-grouping rows per catalogue entry into `purchases`). Excludes
+ * preview rows (`isPreview`) since those were never actually purchased.
+ */
+export async function getReportHistoryForUser(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<ReportHistoryEntryDto[]> {
+  const rows = await listReportsForUser(userId, birthProfileId);
+  return rows
+    .filter((r) => !r.isPreview)
+    .map((r) => ({
+      id: r.id,
+      reportKey: r.reportKey,
+      label: getReportDef(r.reportKey as ReportKey)?.label ?? r.reportKey,
+      status: r.status,
+      periodMonth: r.periodMonth,
+      createdAt: r.createdAt.toISOString(),
+    }));
 }
 
 export async function getReportCatalogueForUser(

@@ -340,16 +340,26 @@ describe('computeTrueLoveScores — doshaYoga', () => {
     expect(scores.doshaYoga.cautions[0]?.label).toBe('Mangal Dosha');
   });
 
-  it('surfaces a present Dhana yoga as a positive', () => {
+  it('flags Kaal Sarp Dosha as a caution when present (broadened alongside mangal)', () => {
+    const chart = makeFullChart({ birthDate: new Date('1995-06-15T00:00:00Z') });
+    const doshaData = { kaalSarp: { present: true, name: 'Kaal Sarp', severity: 'medium' } };
+
+    const scores = computeTrueLoveScores({ chart, partnerChart: null, doshaData }, null);
+
+    expect(scores.doshaYoga.cautions).toHaveLength(1);
+    expect(scores.doshaYoga.cautions[0]?.label).toBe('Kaal Sarp Dosha');
+  });
+
+  it('surfaces a present benefic/mahapurusha yoga as a positive (dhana replaced — thematically odd for a love report)', () => {
     const chart = makeFullChart({ birthDate: new Date('1995-06-15T00:00:00Z') });
     const yogaData = {
       yogas: [
         {
-          type: 'dhana',
-          name: 'Lakshmi Yoga',
+          type: 'mahapurusha',
+          name: 'Ruchaka Yoga',
           present: true,
           strength: 80,
-          description: 'Wealth-bestowing combination.',
+          description: 'A classical Mahapurusha combination.',
         },
       ],
     };
@@ -357,14 +367,14 @@ describe('computeTrueLoveScores — doshaYoga', () => {
     const scores = computeTrueLoveScores({ chart, partnerChart: null, yogaData }, null);
 
     expect(scores.doshaYoga.positives).toHaveLength(1);
-    expect(scores.doshaYoga.positives[0]?.label).toBe('Lakshmi Yoga');
+    expect(scores.doshaYoga.positives[0]?.label).toBe('Ruchaka Yoga');
   });
 
-  it('ignores yoga types outside the requested [dhana] scope', () => {
+  it('ignores yoga types outside the [benefic, mahapurusha] scope, including dhana (removed as thematically odd for love)', () => {
     const chart = makeFullChart({ birthDate: new Date('1995-06-15T00:00:00Z') });
     const yogaData = {
       yogas: [
-        { type: 'raja', name: 'Some Raja Yoga', present: true, strength: 80, description: 'x' },
+        { type: 'dhana', name: 'Some Dhana Yoga', present: true, strength: 80, description: 'x' },
       ],
     };
 

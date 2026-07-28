@@ -14,12 +14,31 @@ vi.mock('../src/lib/logger.js', () => ({
 import { findActiveTokensForUser } from '../src/modules/device-tokens/device-tokens.repo.js';
 import { sendPushBatch } from '../src/lib/notifications/fcm.js';
 import { notifyPurchasePlanReady } from '../src/modules/purchase-plan/purchase-plan.service.js';
+import type { DevicePushTokenRow } from '../src/db/schema.js';
 
-const mockTokens = [{ token: 'tok-abc' }, { token: 'tok-def' }];
+function makeTokenRow(token: string): DevicePushTokenRow {
+  return {
+    id: token,
+    userId: 'user-123',
+    token,
+    platform: 'android',
+    deviceId: null,
+    locale: null,
+    appVersion: null,
+    osVersion: null,
+    pushEnabled: true,
+    lastSeenAt: null,
+    revokedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+const mockTokens: DevicePushTokenRow[] = [makeTokenRow('tok-abc'), makeTokenRow('tok-def')];
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(findActiveTokensForUser).mockResolvedValue(mockTokens as any);
+  vi.mocked(findActiveTokensForUser).mockResolvedValue(mockTokens);
   vi.mocked(sendPushBatch).mockResolvedValue({ success: 2, failure: 0 });
 });
 
@@ -32,7 +51,7 @@ describe('notifyPurchasePlanReady', () => {
       ['tok-abc', 'tok-def'],
       expect.any(String),
       expect.any(String),
-      { type: 'purchase_plan_ready', navigate: '/panchang' },
+      { type: 'purchase_plan_ready', navigate: '/panchang#purchase-plans' },
     );
   });
 

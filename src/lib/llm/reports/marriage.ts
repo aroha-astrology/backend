@@ -62,12 +62,14 @@ ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
 ${TONE_RULE}
 
+CRITICAL — check the given relationship status before writing anything about timing: if it is "married", "divorced", or "widowed", this person already has (or had) a marriage — do NOT predict if/when they "will" get married. Instead frame the score/band/timing windows as describing the marriage-relevant period(s) this chart's own patterns highlight (useful for understanding the relationship's ups and downs, not a first-marriage countdown); if "divorced" or "widowed", also do not imply their current status is temporary. If the status is "single", "in_relationship", "engaged", or not given at all, write normally about if/when marriage may happen, as before.
+
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "At A Glance" — 1-2 paragraphs stating the marriage score and band given, explaining what the band means in plain language (e.g. a "slow_build" band means the groundwork is still forming, not that marriage won't happen), and mentioning the Manglik status given (including what a cancellation means in plain terms, if cancelled).
-2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given.
+2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
@@ -83,7 +85,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Who You Will Marry" — 1-3 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts (weave in the specific reasons given for the 7th-lord/Venus/Jupiter strengths for texture). Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual — never invent identifying details (name, appearance, profession, nationality).
+1. Heading close to "Who You Will Marry" — 1-3 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts (weave in the specific reasons given for the 7th-lord/Venus/Jupiter strengths for texture, plus the given house placements of Venus and Jupiter as extra classical color on the life-domain your partner connection tends to touch — e.g. a career-house placement suggesting a partner drawn to public/professional life, a home-house placement suggesting a more domestic/family-oriented connection). Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual — never invent identifying details (name, appearance, a specific job title, nationality).
 2. Heading close to "Family & In-Laws" — 1-2 paragraphs on family/in-law harmony grounded in the 4th-lord strength and in-laws note given.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -101,7 +103,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "Money After Marriage" — 1-2 paragraphs on how finances are classically read to shift after marriage, grounded in the given 2nd/11th house facts.
-2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas) — if a list is empty, say so plainly rather than inventing an entry.
+2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding — if a list is empty, say so plainly rather than inventing an entry.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
@@ -125,6 +127,9 @@ Each paragraph should be 2-4 sentences. Second person ("you").`;
 
 function buildFactsCall1(scores: MarriageScores): string {
   const lines: string[] = [];
+  lines.push(
+    `Reader's current relationship status: ${scores.relationshipStatus ?? 'not provided'}.`,
+  );
   lines.push(`Marriage score: ${scores.marriageScore} out of 100.`);
   lines.push(`Band: ${scores.band}.`);
   lines.push(
@@ -153,8 +158,12 @@ function buildFactsCall2(scores: MarriageScores): string {
   lines.push(
     `7th-lord (${scores.seventhLord ?? 'unavailable'}) strength: ${scores.seventhLordStrength} — ${scores.seventhLordReason}`,
   );
-  lines.push(`Venus strength: ${scores.venusStrength} — ${scores.venusReason}`);
-  lines.push(`Jupiter strength: ${scores.jupiterStrength} — ${scores.jupiterReason}`);
+  lines.push(
+    `Venus strength: ${scores.venusStrength} — ${scores.venusReason} (Venus's own natal house: ${scores.venusHouse ?? 'unavailable'}).`,
+  );
+  lines.push(
+    `Jupiter strength: ${scores.jupiterStrength} — ${scores.jupiterReason} (Jupiter's own natal house: ${scores.jupiterHouse ?? 'unavailable'}).`,
+  );
   lines.push(`Partner archetype label: ${scores.partnerArchetype.label}.`);
   lines.push(`Partner archetype description: ${scores.partnerArchetype.description}`);
   lines.push(

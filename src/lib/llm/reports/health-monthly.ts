@@ -18,7 +18,7 @@ const DISCLAIMER_RULE =
   'This is NOT medical advice. Frame everything — INCLUDING the dosha/yoga facts section — as traditional astrological guidance about general themes and energy only — never diagnose, never recommend a specific treatment, supplement, or medical action, and never name a specific disease or ailment even when describing a dosha. If symptoms are a concern, the guidance should point toward consulting a qualified professional, not toward self-treatment.';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Health Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 6th house (${HOUSE_SIGNIFICATIONS[6]}), 1st house (${HOUSE_SIGNIFICATIONS[1]}), and 8th house (${HOUSE_SIGNIFICATIONS[8]}); and whether any of three resilience-themed doshas (Kemdruma, Sade Sati, Grahan) are currently present. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Health Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 6th house (${HOUSE_SIGNIFICATIONS[6]}), 1st house (${HOUSE_SIGNIFICATIONS[1]}), and 8th house (${HOUSE_SIGNIFICATIONS[8]}); whether any of three resilience-themed doshas (Kemdruma, Sade Sati, Grahan) are currently present; and whether any supportive/protective (benefic or mahapurusha) yoga is currently present. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -29,7 +29,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 3 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of vitality/energy/obstacles themes (never specific ailments or diagnoses).
-2. Heading close to "What To Be Mindful Of" — 1 paragraph on the dosha facts given, in plain language, framed as general energy/resilience themes to stay aware of — NEVER as a medical warning or diagnosis. If no doshas are present, say so briefly and reassuringly rather than dwelling on it.
+2. Heading close to "Your Health Balance This Month" — 1-2 paragraphs covering BOTH the given supportive/protective factor(s) (if present, explain briefly what they classically support for vitality/resilience; if none, say so briefly rather than inventing one) AND the given dosha caution(s) (if present, in plain language, framed as general energy/resilience themes to stay aware of — NEVER as a medical warning or diagnosis; if none, say so briefly and reassuringly rather than dwelling on it) — together giving a full, balanced picture of energy and stress/resilience trends this month, not cautions alone.
 3. Heading close to "Practical Guidance" — 1 paragraph of GENERAL wellness-mindset framing tied to the tone (e.g. rest, pacing, routine) — explicitly NOT medical advice.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -43,6 +43,13 @@ function buildFacts(scores: HealthMonthlyScores): string {
     `Month score: ${scores.monthScore} out of 100.`,
     `Tone: ${scores.tone}.`,
   ];
+  if (scores.doshaYoga.positives.length > 0) {
+    lines.push(
+      `Supportive/protective factors present: ${scores.doshaYoga.positives.map((p) => `${p.label}: ${p.detail}`).join('; ')}.`,
+    );
+  } else {
+    lines.push('Supportive/protective factors present: none.');
+  }
   if (scores.doshaYoga.cautions.length > 0) {
     lines.push(
       `Doshas present: ${scores.doshaYoga.cautions.map((c) => `${c.label} (${c.detail})`).join('; ')}.`,

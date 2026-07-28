@@ -95,6 +95,10 @@ const enrichedResponse = JSON.stringify({
       heading: 'Spending vs. Saving Tilt',
       paragraphs: ['Your tilt runs toward spending on gains.'],
     },
+    {
+      heading: 'How Your Finances Change Decade By Decade',
+      paragraphs: ['The first decade is mixed, the second favorable, the third mixed again.'],
+    },
   ],
 });
 
@@ -103,11 +107,11 @@ beforeEach(() => {
 });
 
 describe('generateWealthNarrative', () => {
-  it('returns 6 sections (2 + 4) from 2 LLM calls', async () => {
+  it('returns 7 sections (2 + 5) from 2 LLM calls', async () => {
     state.generate.mockResolvedValueOnce(patternResponse).mockResolvedValueOnce(enrichedResponse);
     const sections = await generateWealthNarrative(makeScores());
     expect(state.generate).toHaveBeenCalledTimes(2);
-    expect(sections).toHaveLength(6);
+    expect(sections).toHaveLength(7);
     expect(sections.map((s) => s.heading)).toEqual([
       'Wealth Pattern',
       'Practical Guidance',
@@ -115,6 +119,7 @@ describe('generateWealthNarrative', () => {
       'Your Money Archetype',
       'Dosha & Yoga Check',
       'Spending vs. Saving Tilt',
+      'How Your Finances Change Decade By Decade',
     ]);
   });
 
@@ -150,6 +155,8 @@ describe('generateWealthNarrative', () => {
     expect(secondCallContent).toContain('Dhana Yoga');
     expect(secondCallContent).toContain('Kemdruma Dosha');
     expect(secondCallContent).toContain('3 out of 10');
+    expect(secondCallContent).toContain('Years 1-10: 60/100 (mixed)');
+    expect(secondCallContent).toContain('decade by decade');
     expect(secondCallContent.toLowerCase()).toContain('given fact');
   });
 
@@ -172,9 +179,13 @@ describe('translateWealthNarrative', () => {
     { heading: 'Your Money Archetype', paragraphs: ['You lean into ambition.'] },
     { heading: 'Dosha & Yoga Check', paragraphs: ['A Dhana Yoga supports gains.'] },
     { heading: 'Spending vs. Saving Tilt', paragraphs: ['Your tilt runs toward spending.'] },
+    {
+      heading: 'How Your Finances Change Decade By Decade',
+      paragraphs: ['Mixed, then favorable, then mixed again.'],
+    },
   ];
 
-  it('translates both groups (first 2, then remaining 4) and preserves the 6-section order', async () => {
+  it('translates both groups (first 2, then remaining 5) and preserves the 7-section order', async () => {
     const translatedPattern = JSON.stringify({
       sections: sections
         .slice(0, 2)
@@ -190,9 +201,9 @@ describe('translateWealthNarrative', () => {
       .mockResolvedValueOnce(translatedEnriched);
 
     const translated = await translateWealthNarrative(sections, 'hi');
-    expect(translated).toHaveLength(6);
+    expect(translated).toHaveLength(7);
     expect(translated[0]?.heading).toBe('HI Wealth Pattern');
-    expect(translated[5]?.heading).toBe('HI Spending vs. Saving Tilt');
+    expect(translated[6]?.heading).toBe('HI How Your Finances Change Decade By Decade');
     expect(state.generate).toHaveBeenCalledTimes(2);
   });
 
@@ -207,15 +218,11 @@ describe('translateWealthNarrative', () => {
   });
 
   it('throws on an unparseable translated response', async () => {
-    state.generate
-      .mockResolvedValueOnce('garbage')
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          sections: sections
-            .slice(2)
-            .map((s) => ({ heading: s.heading, paragraphs: s.paragraphs })),
-        }),
-      );
+    state.generate.mockResolvedValueOnce('garbage').mockResolvedValueOnce(
+      JSON.stringify({
+        sections: sections.slice(2).map((s) => ({ heading: s.heading, paragraphs: s.paragraphs })),
+      }),
+    );
     await expect(translateWealthNarrative(sections, 'hi')).rejects.toThrow();
   });
 });

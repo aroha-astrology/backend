@@ -80,6 +80,25 @@ describe('generateFinanceMonthlyNarrative', () => {
     expect(content).toContain('Wealth-giving combination.');
   });
 
+  it('embeds a present dosha caution fact verbatim and instructs framing it as a money-stress heads-up (the dosha-caution instruction gap fix)', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateFinanceMonthlyNarrative(
+      makeScores({
+        doshaYoga: {
+          positives: [],
+          cautions: [{ label: 'Kemdruma Dosha', detail: 'moderate severity' }],
+        },
+      }),
+    );
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Kemdruma Dosha');
+    expect(content).toContain('moderate severity');
+    expect(content.toLowerCase()).toContain('money stress');
+  });
+
   it('throws on an unparseable response', async () => {
     state.generate.mockResolvedValueOnce('not json');
     await expect(generateFinanceMonthlyNarrative(makeScores())).rejects.toThrow();

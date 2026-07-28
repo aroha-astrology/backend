@@ -71,6 +71,17 @@ export interface KundliMilanScores extends Record<string, unknown> {
   dashakootaScore: number;
   dashakootaMaxScore: number;
   dashakootaBreakdown: KootaBreakdownEntry[];
+  /**
+   * `calculateDashakoota`'s own `overallCompatibility` verdict ('excellent'|'good'|'average'|
+   * 'below_average'|'poor') — this was already being computed on every call but silently
+   * discarded (only `.totalScore`/`.maxTotal`/`.scores` were ever read out of the result), leaving
+   * the narrative with no given verdict to answer "what's the overall Dashakoot verdict on our
+   * compatibility?" other than a bare score/max pair. Optional (not required) for the same
+   * additive-only reason `MarriageScores.relationshipStatus` is optional — `MatchReportScores`
+   * (match-report.ts) extends this interface and its own test fixtures construct literals without
+   * this field; making it required would force updates there, out of scope for this change.
+   */
+  dashakootaCompatibility?: ReturnType<typeof calculateDashakoota>['overallCompatibility'];
   manglikStatus: {
     person1: boolean;
     person2: boolean;
@@ -146,8 +157,8 @@ export function computeKundliMilanScores(
   const primaryDoshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['kaalSarp', 'sadeSati'],
-    [],
+    ['kaalSarp', 'sadeSati', 'mangal', 'guruChandal'],
+    ['raja', 'mahapurusha', 'benefic'],
   );
 
   return {
@@ -167,6 +178,7 @@ export function computeKundliMilanScores(
       maxScore: s.maxScore,
       description: s.description,
     })),
+    dashakootaCompatibility: dashakoota.overallCompatibility,
     manglikStatus: {
       person1: mangal1?.present ?? false,
       person2: mangal2?.present ?? false,

@@ -122,8 +122,8 @@ export function computeCareerMonthlyScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    [],
-    ['raja'],
+    ['sadeSati', 'kaalSarp'],
+    ['raja', 'mahapurusha'],
   );
 
   const industryFit = industryFitForTenthLord(getHouseLord(10, chart));

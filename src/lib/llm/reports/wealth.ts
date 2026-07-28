@@ -21,12 +21,13 @@ import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import type { AgeBand } from '../../astro-engine/reports/report-age-bands.js';
 import type { Archetype } from '../../astro-engine/reports/report-archetype.js';
 import type { DoshaYogaSummary } from '../../astro-engine/reports/report-dosha-yoga-summary.js';
+import type { DecadeBand } from '../../astro-engine/reports/report-decade-arc.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
 const GROUNDING_RULE =
   'The wealth score, 2nd/11th-lord strengths, Jupiter placement, and wealth pattern below are GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim. Never recompute or contradict any of these numbers.';
 const ENRICHED_GROUNDING_RULE =
-  'The wealth timing windows, age-band table, money archetype and its 5 trait tilts, dosha/yoga findings, and the spending-vs-saving tilt score below are ALSO GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim — never invent a window, a trait score, a dosha/yoga finding, or recompute the tilt. If no favorable timing window was found, say so plainly rather than inventing one; if no dosha or yoga finding is present, say so plainly rather than inventing one.';
+  'The wealth timing windows, age-band table, money archetype and its 5 trait tilts, dosha/yoga findings, the spending-vs-saving tilt score, and the decade-by-decade wealth arc below are ALSO GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim — never invent a window, a trait score, a dosha/yoga finding, or a decade score, and never recompute the tilt. If no favorable timing window was found, say so plainly rather than inventing one; if no dosha or yoga finding is present, say so plainly rather than inventing one.';
 const DISCLAIMER_RULE =
   'This is NOT financial advice. Frame everything as traditional astrological guidance about tendencies and themes only — never recommend specific investments, products, or financial decisions. If discussing "practical guidance", keep it to general behavioral framing (e.g. "a pattern like this often benefits from consistent habits"), never specific financial instructions.';
 
@@ -48,7 +49,7 @@ Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
 
 function enrichedSystemPrompt(): string {
-  return `You are writing additional sections for a Wealth Report for a mobile Vedic astrology app. The app has already computed, using deterministic classical rules: (1) a ranked list of favorable wealth timing windows with confidence levels, plus an age-band table showing which of the user's upcoming age ranges those windows fall into; (2) a "money archetype" — a short archetype name plus 5 named trait tilts (0-10) themed around the 2nd house sign; (3) a dosha/yoga summary (what's classically supporting wealth vs. what needs care); and (4) a single 0-10 "spending vs. saving" tilt score. Your job is ONLY to write the narrative explanation for these.
+  return `You are writing additional sections for a Wealth Report for a mobile Vedic astrology app. The app has already computed, using deterministic classical rules: (1) a ranked list of favorable wealth timing windows with confidence levels, plus an age-band table showing which of the user's upcoming age ranges those windows fall into; (2) a "money archetype" — a short archetype name plus 5 named trait tilts (0-10) themed around the 2nd house sign; (3) a dosha/yoga summary (what's classically supporting wealth vs. what needs care); (4) a single 0-10 "spending vs. saving" tilt score; and (5) a decade-by-decade wealth arc — a 0-100 score plus tone (challenging/mixed/favorable) for each of the next 3 decades. Your job is ONLY to write the narrative explanation for these.
 
 ${ENRICHED_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -57,11 +58,12 @@ ${DISCLAIMER_RULE}
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
-Write EXACTLY 4 sections, in this order:
+Write EXACTLY 5 sections, in this order:
 1. Heading close to "Wealth Timing" — 1-2 paragraphs covering the strongest given timing window(s), if any, and what the age-band table implies about when wealth themes are likely most active in the user's life; if no window was found, say so plainly and note the age bands can't show favorable timing either in that case.
 2. Heading close to "Your Money Archetype" — 1-2 paragraphs naming the given archetype and describing the 5 given trait tilts in plain language (which traits run high vs. low, e.g. "your caution tilt runs high while your risk-tolerance runs low").
 3. Heading close to "Dosha & Yoga Check" — 1 paragraph covering the given positives (yogas) and cautions (doshas) relevant to wealth; if both are empty, say plainly that no major classical wealth-dosha or wealth-yoga stands out on this chart.
 4. Heading close to "Spending vs. Saving Tilt" — 1 paragraph explaining the given 0-10 tilt score in plain language (low = naturally saving/accumulating, high = naturally spending on gains/desires, middle = balanced).
+5. Heading close to "How Your Finances Change Decade By Decade" — 1-2 paragraphs walking through the given 3 decade bands and their scores/tones in order, framed as a long-arc pattern (not a fixed fate) — directly answer "how does my financial situation change decade by decade."
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
@@ -102,6 +104,11 @@ function formatArchetype(archetype: Archetype): string {
   return `Money archetype: ${archetype.label}. ${archetype.description} Trait tilts — ${traits}.`;
 }
 
+function formatWealthArc(wealthArc: DecadeBand[]): string {
+  if (wealthArc.length === 0) return 'unavailable.';
+  return wealthArc.map((b) => `${b.label}: ${b.score}/100 (${b.tone}).`).join(' ');
+}
+
 function formatDoshaYoga(doshaYoga: DoshaYogaSummary): string {
   const positives =
     doshaYoga.positives.length > 0
@@ -125,6 +132,7 @@ function buildEnrichedFacts(scores: WealthScores): string {
   lines.push(
     `Spending vs saving tilt: ${scores.spendingVsSavingTilt} out of 10 (0 = strongly saving/accumulation-leaning, 10 = strongly spending/gains-leaning, 5 = balanced).`,
   );
+  lines.push(`Decade-by-decade wealth arc: ${formatWealthArc(scores.wealthArc)}`);
   return lines.join('\n');
 }
 

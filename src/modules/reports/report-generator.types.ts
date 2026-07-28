@@ -63,6 +63,15 @@ export interface ReportScoreContext {
    * Optional for the same additive-only reason as `personName`/`personDob`.
    */
   personGender?: 'male' | 'female' | 'other' | null;
+  /**
+   * The account-level `users.relationship_status` enum value (single/in_relationship/engaged/
+   * married/divorced/widowed) — has no per-profile equivalent (not on `ProfileContext`), same
+   * account-level sourcing chat-grounding.ts's `buildProfileFacts` already uses for this same
+   * field. Sourced through `fetchPersonContext` in reports.service.ts, off the `user` row it
+   * already fetches — no new query. Optional for the same additive-only reason as `personName`
+   * above: existing report-type test files construct `ReportScoreContext` without it.
+   */
+  personRelationshipStatus?: string | null;
 }
 
 /**

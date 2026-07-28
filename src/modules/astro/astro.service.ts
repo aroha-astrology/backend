@@ -48,7 +48,7 @@ import type {
   ForecastResponse,
   MatchmakingResponse,
 } from './astro.schemas.js';
-import type { MangalDosha } from '@aroha-astrology/shared';
+import type { MangalDosha, RegionId, RegionalMonth } from '@aroha-astrology/shared';
 
 /* -------------------------------------------------------------------------- */
 /* Onboarding                                                                  */
@@ -473,6 +473,15 @@ export interface PanchangMonthDay {
   isEkadashi: boolean;
 }
 
+export interface PanchangMonthResult {
+  days: PanchangMonthDay[];
+  /** The regional lunar/solar calendar view (Vikram Samvat, Shalivahana Shaka, Bengali San) for
+   * this month, taken from a single representative day (the 15th) rather than recomputed per
+   * day — a whole-month label, not a per-day fact, and mid-month avoids the edge case where day 1
+   * could sit just before/after a regional new-year boundary. */
+  regionalMonths: Record<RegionId, RegionalMonth> | null;
+}
+
 /**
  * Lightweight per-day summaries for a calendar month view. Reuses getPanchang
  * per day (which already caches per reference point), fetched in parallel —
@@ -485,15 +494,21 @@ export async function getPanchangMonth(
   month: number,
   lat: number,
   lon: number,
-): Promise<PanchangMonthDay[]> {
+): Promise<PanchangMonthResult> {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const midMonthDay = Math.min(15, daysInMonth);
 
-  return Promise.all(
+  let regionalMonths: Record<RegionId, RegionalMonth> | null = null;
+
+  const days = await Promise.all(
     dayNumbers.map(async (day) => {
       const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const panchang = await getPanchang(lat, lon, isoDate);
       const { isFullMoon, isNewMoon, isEkadashi } = classifyTithiForCalendar(panchang.tithi.number);
+      if (day === midMonthDay) {
+        regionalMonths = panchang.regionalMonths ?? null;
+      }
       return {
         day,
         isoDate,
@@ -508,6 +523,8 @@ export async function getPanchangMonth(
       };
     }),
   );
+
+  return { days, regionalMonths };
 }
 
 export interface PanchangWarmupResult {

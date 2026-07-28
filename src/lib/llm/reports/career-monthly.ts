@@ -20,7 +20,7 @@ const SAFETY_RULE =
   'Use tendency language ("suggests", "supports") — never guarantee a promotion, raise, or specific career outcome.';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Career Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 10th house (${HOUSE_SIGNIFICATIONS[10]}) and 6th house (${HOUSE_SIGNIFICATIONS[6]}); a "work style" archetype with 5 named trait tilts (0-10 each); whether a Raja Yoga (status/career-elevating combination) is present; and a short list of classically-associated industries for the 10th-house lord's planet. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Career Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 10th house (${HOUSE_SIGNIFICATIONS[10]}) and 6th house (${HOUSE_SIGNIFICATIONS[6]}); a "work style" archetype with 5 named trait tilts (0-10 each); whether a Raja Yoga (status/career-elevating combination) is present; whether either of two obstacle-themed doshas (Sade Sati, Kaal Sarp) is currently present; and a short list of classically-associated industries for the 10th-house lord's planet. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -32,7 +32,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 Write EXACTLY 4 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of career momentum, workplace dynamics, and public standing themes.
 2. Heading close to "Your Work Style" — 1 paragraph weaving together the archetype label, its description, and its 5 trait tilts given — describe this as an enduring personality tendency, not something that changes month to month.
-3. Heading close to "What's Supporting You" — 1 paragraph on the dosha/yoga facts given. If a Raja Yoga is present, explain what it classically means for status/career in plain language. If none is present, say so briefly and positively (absence of a specific yoga is not a bad sign) rather than dwelling on it.
+3. Heading close to "Support & Obstacles This Month" — 1-2 paragraphs covering BOTH the given supportive yoga finding (if a Raja Yoga is present, explain what it classically means for status/career in plain language; if none is present, say so briefly and positively — absence of a specific yoga is not a bad sign) AND the given dosha caution finding (if a Sade Sati or Kaal Sarp caution is present, frame it plainly as an obstacle to be prepared for at work this month; if none is present, say so briefly) — together, directly answer whether this is a month to expect recognition or better to keep a lower profile.
 4. Heading close to "Industries That Fit" — 1 paragraph naming ONLY the exact industries given in the industry-fit facts (if the list is empty, write a short general paragraph about following your own strengths instead of naming any industry) and a closing line of practical guidance tied to the month's tone (e.g. when to push forward vs. consolidate).
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -60,6 +60,8 @@ function buildFacts(scores: CareerMonthlyScores): string {
     lines.push(
       `Doshas present: ${scores.doshaYoga.cautions.map((c) => `${c.label} (${c.detail})`).join('; ')}.`,
     );
+  } else {
+    lines.push('Doshas present: none.');
   }
   if (scores.industryFit.likelyIndustries.length > 0) {
     lines.push(

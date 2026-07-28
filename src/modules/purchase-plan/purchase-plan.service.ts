@@ -20,8 +20,7 @@ import {
 } from './purchase-plan.repo.js';
 import type { PurchasePlanRow } from '../../db/schema.js';
 import type { AnalyzePurchasePlanBody, PurchasePlanDto } from './purchase-plan.schemas.js';
-import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
-import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { notifyUser } from '../../lib/notifications/notify-user.js';
 
 const REFERENCE_LAT = 28.6139;
 const REFERENCE_LON = 77.209;
@@ -44,20 +43,14 @@ export async function notifyPurchasePlanReady(
   userId: string,
   category: 'vehicle' | 'home' | 'commercial' | 'other',
 ): Promise<void> {
-  try {
-    const tokens = await findActiveTokensForUser(userId);
-    if (tokens.length === 0) return;
-    const label = CATEGORY_LABELS[category];
-    await sendPushBatch(
-      tokens.map((t) => t.token),
-      '🔮 Your Vedic timing analysis is ready',
-      `Your auspicious ${label} purchase timing report is waiting — tap to read it now.`,
-      { type: 'purchase_plan_ready', navigate: '/panchang#purchase-plans' },
-    );
-    logger.info({ userId, category }, 'purchase-plan:push sent');
-  } catch (err) {
-    logger.warn({ err, userId }, 'purchase-plan:push failed');
-  }
+  const label = CATEGORY_LABELS[category];
+  await notifyUser(userId, {
+    title: '🔮 Your Vedic timing analysis is ready',
+    body: `Your auspicious ${label} purchase timing report is waiting — tap to read it now.`,
+    type: 'purchase_plan_ready',
+    link: '/panchang#purchase-plans',
+  });
+  logger.info({ userId, category }, 'purchase-plan:push sent');
 }
 
 /** Best-effort extraction from the loosely-typed kundli jsonb blobs — falls back to a generic line if fields are absent. */

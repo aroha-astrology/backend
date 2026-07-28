@@ -1606,6 +1606,10 @@ export const notifications = pgTable(
     title: text('title').notNull(),
     body: text('body').notNull(),
     type: text('type').notNull(),
+    /** Where tapping this notification in the Bell sheet should navigate to (e.g.
+     * '/reports/abc123'). Column has existed on the live table since migration 011 — this was
+     * simply never modeled in the Drizzle schema before, so the app couldn't read/write it. */
+    link: text('link'),
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

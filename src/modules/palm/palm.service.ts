@@ -32,8 +32,7 @@ import {
 import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
-import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
-import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { notifyUser } from '../../lib/notifications/notify-user.js';
 import {
   createPendingPalmReading,
   findPalmReadingById,
@@ -427,18 +426,12 @@ async function runInterpretationPhase(
 }
 
 async function notifyPalmReadingReady(userId: string, readingId: string): Promise<void> {
-  try {
-    const tokens = await findActiveTokensForUser(userId);
-    if (tokens.length === 0) return;
-    await sendPushBatch(
-      tokens.map((t) => t.token),
-      '🖐️ Your palm reading is ready',
-      'Tap to see what your hand reveals.',
-      { type: 'palm_reading_ready', navigate: `/palm/${readingId}` },
-    );
-  } catch (err) {
-    logger.warn({ err, readingId }, 'palm reading push failed');
-  }
+  await notifyUser(userId, {
+    title: '🖐️ Your palm reading is ready',
+    body: 'Tap to see what your hand reveals.',
+    type: 'palm_reading_ready',
+    link: `/palm/${readingId}`,
+  });
 }
 
 function toDto(row: PalmReadingRow, sections?: ReportSection[]): PalmReadingDto {

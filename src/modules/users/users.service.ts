@@ -579,6 +579,7 @@ export async function getNotifications(userId: string) {
     title: r.title,
     body: r.body,
     type: r.type,
+    link: r.link ?? null,
     readAt: iso(r.readAt),
     createdAt: r.createdAt.toISOString(),
   }));

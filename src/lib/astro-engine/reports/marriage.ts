@@ -80,6 +80,14 @@ export interface MarriageScores extends Record<string, unknown> {
   partnerArchetype: Archetype;
   marriageQualityArc: DecadeBand[];
 
+  /** The person's own current relationship status (users.relationship_status), passed straight
+   * through from ctx.personRelationshipStatus — lets the narrative module distinguish "when will
+   * I get married" framing (single/in_relationship/engaged) from "understand/strengthen an
+   * existing marriage" framing (married/divorced/widowed) instead of always assuming the former.
+   * Optional (not required) for the same additive-only reason ctx.personRelationshipStatus itself
+   * is optional on ReportScoreContext — existing test fixtures construct MarriageScores without it. */
+  relationshipStatus?: string | null;
+
   /** Bespoke marriage panel — pure fact, no LLM call, built here from the same 4th-lord strength
    * already computed above; the narrative module writes prose around this. */
   inLaws: { fourthHouseSign: string | undefined; note: string };
@@ -360,6 +368,7 @@ export function computeMarriageScores(
     doshaYoga,
     partnerArchetype,
     marriageQualityArc,
+    relationshipStatus: ctx.personRelationshipStatus ?? null,
     inLaws,
     moneyAfterMarriage,
     modernRealities,

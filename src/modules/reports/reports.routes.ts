@@ -10,6 +10,7 @@ import {
   ReportCatalogueResponseSchema,
   ReportFailedSchema,
   ReportGeneratingSchema,
+  ReportHistoryResponseSchema,
   ReportIdParamSchema,
   ReportReadySchema,
   ReportStatsResponseSchema,
@@ -17,6 +18,7 @@ import {
 import {
   getReportCatalogueForUser,
   getReportForUser,
+  getReportHistoryForUser,
   getReportStats,
   previewReport,
   purchaseReport,
@@ -91,6 +93,34 @@ const statsRoute = createRoute({
 reportsRouter.openapi(statsRoute, async (c) => {
   const stats = await getReportStats();
   return c.json(stats, 200);
+});
+
+const historyRoute = createRoute({
+  method: 'get',
+  path: '/reports/history',
+  tags: ['Reports'],
+  summary: "The current user's own past reports across every report type, newest first",
+  description:
+    'Unlike GET /reports (the catalogue, grouped per report type), this is a flat, cross-type ' +
+    'list scoped to the currently active birth profile — powers the account-wide "My Reports" ' +
+    'history screen. Excludes free preview rows (never actually purchased). Registered before ' +
+    'GET /reports/{id} so the literal "history" path segment is never swallowed by that route\'s ' +
+    '{id} param.',
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: "The user's report history",
+      content: { 'application/json': { schema: ReportHistoryResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+reportsRouter.openapi(historyRoute, async (c) => {
+  const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
+  const reports = await getReportHistoryForUser(user.id, profile.birthProfileId);
+  return c.json({ reports }, 200);
 });
 
 const purchaseRoute = createRoute({
