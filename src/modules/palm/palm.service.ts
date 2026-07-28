@@ -471,7 +471,9 @@ function toDto(row: PalmReadingRow, sections?: ReportSection[]): PalmReadingDto 
     if (content?.scores) dto.scores = content.scores;
     if (content?.synthesis !== undefined) dto.synthesis = content.synthesis;
   }
-  if (row.status === 'failed') dto.error = row.error;
+  // Keep the raw provider error in the DB column for ops/debugging — never echo verbatim.
+  if (row.status === 'failed')
+    dto.error = 'Reading generation failed. Any amount charged has been automatically refunded.';
   return dto as PalmReadingDto;
 }
 

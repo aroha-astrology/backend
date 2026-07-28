@@ -551,6 +551,27 @@ export async function unlockGemstone(userId: string, birthProfileId: string | nu
   }
 }
 
+export async function refundGemstoneUnlock(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<void> {
+  let success: boolean;
+  if (birthProfileId === null) {
+    const { relockGemstoneForUser } = await import('./users.repo.js');
+    success = await relockGemstoneForUser(userId);
+  } else {
+    const { relockGemstoneForOwnedProfile } =
+      await import('../birth-profiles/birth-profiles.repo.js');
+    success = await relockGemstoneForOwnedProfile(birthProfileId, userId);
+  }
+  if (!success) {
+    logger.warn(
+      { userId, birthProfileId },
+      'Failed to relock gemstone report (maybe already locked?)',
+    );
+  }
+}
+
 export async function getNotifications(userId: string) {
   const rows = await getNotificationsForUser(userId);
   return rows.map((r) => ({

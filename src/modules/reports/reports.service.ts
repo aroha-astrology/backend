@@ -588,7 +588,16 @@ export async function getReportForUser(
   if (!row || row.userId !== userId) throw Errors.notFound('Report not found');
 
   if (row.status === 'generating') return { status: 'generating' };
-  if (row.status === 'failed') return { status: 'failed', error: row.error };
+  // Keep the raw provider error in the DB column for ops/debugging, but never
+  // echo it verbatim to the client — it can contain API key fragments or
+  // internal stack details. The refund (if any) is handled by the background
+  // job's failure path and the stale-row reaper cron; this response just
+  // surfaces a safe user-facing message.
+  if (row.status === 'failed')
+    return {
+      status: 'failed',
+      error: 'Report generation failed. Any amount charged has been automatically refunded.',
+    };
 
   const englishScores = await recomputeScoresForRead(row);
   const content = (row.content ?? {}) as { sections?: ReportSection[] };

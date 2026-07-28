@@ -1,4 +1,4 @@
-import { and, eq, ilike, isNull, count, desc, gte, lt, or, sql } from 'drizzle-orm';
+import { and, eq, ilike, isNull, isNotNull, count, desc, gte, lt, or, sql } from 'drizzle-orm';
 import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
 import { db } from '../../config/db.js';
@@ -645,6 +645,32 @@ export async function unlockGemstoneForUser(userId: string): Promise<boolean> {
       delta: -GEMSTONE_UNLOCK_COST_PAISE,
       reason: 'gemstone_unlock',
       balanceAfter: unlocked.walletBalancePaise,
+    });
+    return true;
+  });
+}
+
+/**
+ * Reverts an unlock when background generation fails.
+ * Refunds the balance and sets gemstoneUnlockedAt back to null.
+ */
+export async function relockGemstoneForUser(userId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [relocked] = await tx
+      .update(users)
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} + ${GEMSTONE_UNLOCK_COST_PAISE}`,
+        gemstoneUnlockedAt: null,
+      })
+      .where(and(eq(users.id, userId), isNotNull(users.gemstoneUnlockedAt)))
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!relocked) return false;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: GEMSTONE_UNLOCK_COST_PAISE,
+      reason: 'refund:gemstone_report',
+      balanceAfter: relocked.walletBalancePaise,
     });
     return true;
   });

@@ -814,7 +814,10 @@ describe('getReportForUser', () => {
   it('returns {status: failed, error} for a failed row', async () => {
     state.findReportById.mockResolvedValue(makeReportRow({ status: 'failed', error: 'boom' }));
     const dto = await getReportForUser('report-1', 'user-1', 'en');
-    expect(dto).toEqual({ status: 'failed', error: 'boom' });
+    expect(dto).toEqual({
+      status: 'failed',
+      error: 'Report generation failed. Any amount charged has been automatically refunded.',
+    });
   });
 
   it('returns ready English sections merged with freshly recomputed scores', async () => {

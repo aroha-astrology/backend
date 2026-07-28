@@ -193,7 +193,12 @@ export function toPurchasePlanDto(row: PurchasePlanRow): PurchasePlanDto {
     resolvedDeliveryDate: row.resolvedDeliveryDate,
     status: row.status,
     analysis: row.analysis,
-    errorMessage: row.errorMessage,
+    // Keep the raw provider error in the DB column for ops/debugging — never
+    // echo it verbatim. Return a safe generic message instead when the plan failed.
+    errorMessage:
+      row.status === 'error'
+        ? 'Analysis failed. Any amount charged has been automatically refunded.'
+        : null,
     createdAt: row.createdAt.toISOString(),
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
   };
