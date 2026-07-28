@@ -29,6 +29,40 @@ export interface ReportScoreContext {
   /** kundli.dashaData — shape { vimshottari: VimshottariDasha, yogini: YoginiDasha }.
    * Optional for the same reason as `doshaData` above. */
   dashaData?: Record<string, unknown> | null;
+  /**
+   * The person's own display name (`users.displayName` for the primary profile, or
+   * `birth_profiles.displayName` for an additional profile) — sourced through
+   * `resolveProfileContext` in both reports.service.ts construction sites, never read off the
+   * raw table directly. Added for `numerology`/`name_change`, whose entire deterministic scoring
+   * is name+DOB math (no chart involved) — see `computeNameAlignment`/`calculateExpression` etc.
+   * in `lib/astro-engine/numerology/`. Optional for the same additive-only reason as `doshaData`
+   * above: every other report type's own test file constructs `ReportScoreContext` without this
+   * field and must keep compiling untouched.
+   */
+  personName?: string | null;
+  /**
+   * The person's own date of birth, as the plain 'YYYY-MM-DD' string `resolveProfileContext`
+   * already decrypts and returns (`users.dateOfBirth` is `text`, encrypted at rest — see the
+   * comment on that column in db/schema.ts; this value is ALWAYS the already-decrypted plain
+   * string, sourced through the same repo-layer call as `personName`, never the raw column).
+   * `computeNameAlignment`/the vedic-numerology functions want a `Date` — parse with
+   * `new Date(ctx.personDob)` inside `computeScores`. Optional for the same reason as
+   * `personName` above.
+   */
+  personDob?: string | null;
+  /**
+   * The person's own gender (`users.gender`/`birth_profiles.gender` — plain, not encrypted),
+   * sourced through the same `resolveProfileContext` call as `personName`/`personDob`. Added
+   * alongside those two (rather than being "just" the two fields the widening was originally
+   * scoped for) because `numerology`'s Kua Number/Feng-Shui element
+   * (`calculateKuaNumber`/`getKuaData` in `lib/astro-engine/numerology/vedic.ts`) is a binary
+   * male/female classical formula with no third branch — computing it at all requires this on
+   * top of name+DOB. `'other'` and missing/null gender fall back to `'male'` in
+   * `computeNumerologyScores` (documented there) since the classical formula has no
+   * non-binary form; this is a judgment call, not a claim that the formula is complete.
+   * Optional for the same additive-only reason as `personName`/`personDob`.
+   */
+  personGender?: 'male' | 'female' | 'other' | null;
 }
 
 /**

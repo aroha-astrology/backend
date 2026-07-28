@@ -3,6 +3,8 @@ import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import {
   LanguageQuerySchema,
+  PreviewReportBodySchema,
+  PreviewReportResponseSchema,
   PurchaseReportBodySchema,
   PurchaseReportResponseSchema,
   ReportCatalogueResponseSchema,
@@ -10,8 +12,15 @@ import {
   ReportGeneratingSchema,
   ReportIdParamSchema,
   ReportReadySchema,
+  ReportStatsResponseSchema,
 } from './reports.schemas.js';
-import { getReportCatalogueForUser, getReportForUser, purchaseReport } from './reports.service.js';
+import {
+  getReportCatalogueForUser,
+  getReportForUser,
+  getReportStats,
+  previewReport,
+  purchaseReport,
+} from './reports.service.js';
 
 const ErrorSchema = z
   .object({
@@ -40,7 +49,7 @@ const listRoute = createRoute({
   summary: "The report catalogue merged with the current user's purchases",
   description:
     'Every catalogue entry includes its live enabled/price (resolved server-side from the admin ' +
-    'feature-flag overrides — never hardcode a price client-side) plus this user\'s own purchases ' +
+    "feature-flag overrides — never hardcode a price client-side) plus this user's own purchases " +
     'for that key, scoped to the currently active birth profile, so the client can render ' +
     '"buy" vs. "tap to view" per report.',
   security: [{ bearerAuth: [] }],
@@ -60,11 +69,36 @@ reportsRouter.openapi(listRoute, async (c) => {
   return c.json({ reports: catalogue }, 200);
 });
 
+const statsRoute = createRoute({
+  method: 'get',
+  path: '/reports/stats',
+  tags: ['Reports'],
+  summary: 'Public social-proof counts — ready, non-preview report counts grouped by report key',
+  description:
+    'An aggregate count across ALL users, not scoped to the caller (e.g. "1,926 reports ' +
+    'generated") — still requires auth like the rest of this router, but leaks no user-specific ' +
+    'data either way. Cached server-side for a few minutes rather than queried fresh every time.',
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'Report key -> ready & purchased count',
+      content: { 'application/json': { schema: ReportStatsResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+reportsRouter.openapi(statsRoute, async (c) => {
+  const stats = await getReportStats();
+  return c.json(stats, 200);
+});
+
 const purchaseRoute = createRoute({
   method: 'post',
   path: '/reports/purchase',
   tags: ['Reports'],
-  summary: 'Purchase a report — one-time, one/many months of a monthly report, or kundli_milan with a partner',
+  summary:
+    'Purchase a report — one-time, one/many months of a monthly report, or kundli_milan with a partner',
   description:
     'Debits the wallet server-side (price is never trusted from the client) and kicks off background ' +
     'generation per purchased row — poll GET /reports/{id} for each id returned here. A report key with ' +
@@ -76,10 +110,13 @@ const purchaseRoute = createRoute({
   },
   responses: {
     200: {
-      description: 'Purchased — one summary per row (one for one-time/kundli_milan, one per month for a bundle)',
+      description:
+        'Purchased — one summary per row (one for one-time/kundli_milan, one per month for a bundle)',
       content: { 'application/json': { schema: PurchaseReportResponseSchema } },
     },
-    400: errorResponse('Validation failed — unknown key, missing/unexpected months, or missing/unexpected partner'),
+    400: errorResponse(
+      'Validation failed — unknown key, missing/unexpected months, or missing/unexpected partner',
+    ),
     401: errorResponse('Unauthorized'),
     403: errorResponse('FEATURE_DISABLED'),
     404: errorResponse('Unknown report key'),
@@ -91,6 +128,41 @@ reportsRouter.openapi(purchaseRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
   const result = await purchaseReport(user, body);
+  return c.json(result, 200);
+});
+
+const previewRoute = createRoute({
+  method: 'post',
+  path: '/reports/preview',
+  tags: ['Reports'],
+  summary:
+    'Generate a free preview of a report — the real generated content, flagged for the client to blur/paywall',
+  description:
+    'No wallet debit — billed at 0 and flagged `isPreview: true`. Runs through the exact same ' +
+    'background generation as a real purchase (see POST /reports/purchase), so GET /reports/{id} ' +
+    'returns real content, just with `isPreview: true` so the client knows to blur it behind a ' +
+    'paywall. Not supported for reports that require partner details (kundli_milan/match_report) ' +
+    '— there is no partner data yet at preview time. Idempotent: repeat taps just return the same ' +
+    "row's current state rather than generating twice.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { required: true, content: { 'application/json': { schema: PreviewReportBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Preview claimed or already existing — always a single row',
+      content: { 'application/json': { schema: PreviewReportResponseSchema } },
+    },
+    400: errorResponse('Validation failed, or this report key does not support preview'),
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Unknown report key'),
+  },
+});
+
+reportsRouter.openapi(previewRoute, async (c) => {
+  const user = c.get('user');
+  const body = c.req.valid('json');
+  const result = await previewReport(user, body);
   return c.json(result, 200);
 });
 

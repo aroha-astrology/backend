@@ -20,13 +20,14 @@ import {
   type ReportKey,
 } from '../../config/reports.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
-import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
+import { deductWalletBalance, addWalletBalance, findActiveUserById } from '../users/users.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
 import type { BirthRecord } from '../../lib/swarm/state.js';
 import {
   claimReportRow,
+  countReadyReportsByKey,
   findReportById,
   findReportRow,
   findStaleGeneratingReports,
@@ -34,14 +35,22 @@ import {
   markReportFailed,
   markReportReady,
   saveReportTranslation,
+  upgradePreviewToPurchased,
 } from './reports.repo.js';
-import { REPORT_GENERATORS, type ReportSection } from './report-generator.types.js';
+import {
+  REPORT_GENERATORS,
+  type ReportSection,
+  type ReportScoreContext,
+} from './report-generator.types.js';
 import type { UserRow, ReportRow } from '../../db/schema.js';
 import type {
+  PreviewReportBody,
+  PreviewReportResponseDto,
   PurchaseReportBody,
   PurchasedReportSummaryDto,
   ReportCatalogueEntryDto,
   ReportDto,
+  ReportStatsDto,
 } from './reports.schemas.js';
 import { findActiveTokensForUser } from '../device-tokens/device-tokens.repo.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
@@ -167,6 +176,38 @@ export async function notifyReportReady(
 }
 
 /**
+ * Resolves the person-identity bundle (`personName`/`personDob`/`personGender`) that
+ * `numerology`/`name_change`'s `computeScores` read (see report-generator.types.ts's doc
+ * comments on those three `ReportScoreContext` fields) — every other registered report type
+ * ignores them entirely, so a failure here must never break generation/read for those report
+ * types. Sourced via `findActiveUserById` + `resolveProfileContext` — the SAME repo-layer
+ * decrypt-on-read path every other feature uses for birth data (see profile-context.ts's own
+ * doc comment) — never a raw-column read. Best-effort: never throws, returns all-null (logged)
+ * on any failure.
+ */
+async function fetchPersonContext(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<Pick<ReportScoreContext, 'personName' | 'personDob' | 'personGender'>> {
+  try {
+    const user = await findActiveUserById(userId);
+    if (!user) return { personName: null, personDob: null, personGender: null };
+    const profile = await resolveProfileContext(user, birthProfileId);
+    return {
+      personName: profile.displayName ?? null,
+      personDob: profile.dateOfBirth ?? null,
+      personGender: profile.gender ?? null,
+    };
+  } catch (err) {
+    logger.warn(
+      { err, userId, birthProfileId },
+      'failed to resolve person identity context for report scoring',
+    );
+    return { personName: null, personDob: null, personGender: null };
+  }
+}
+
+/**
  * Background generation for one already-claimed row. Fire-and-forget from
  * the purchase route — never awaited in the request/response cycle. Any
  * failure along this path (no chart yet, no registered generator for this
@@ -197,6 +238,8 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
       partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
     }
 
+    const personContext = await fetchPersonContext(row.userId, birthProfileId);
+
     const scores = generator.computeScores(
       {
         chart: kundli.chartData,
@@ -205,6 +248,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
         yogaData: kundli.yogaData ?? null,
         ashtakavargaData: kundli.ashtakavargaData ?? null,
         dashaData: kundli.dashaData ?? null,
+        ...personContext,
       },
       row.periodMonth,
     );
@@ -289,6 +333,7 @@ export async function purchaseReport(
         periodMonth,
         input: partnerInput,
         pricePaidPaise: rowPrice,
+        isPreview: false,
       });
 
       if (claimed) {
@@ -300,23 +345,40 @@ export async function purchaseReport(
         });
         fireReportGeneration(claimed, birthProfileId);
       } else {
-        // Already purchased & ready/in-flight for this exact identity — the DB layer
-        // guaranteed no duplicate row was inserted (see claimReportRow's doc comment).
-        // Reuse it and refund this row's share rather than double-charging.
+        // A row already exists at this exact identity that claimReportRow's own claimability
+        // guard couldn't reclaim — the DB layer guaranteed no duplicate row was ever inserted
+        // (see claimReportRow's doc comment). Two distinct cases land here:
         const existing = await findReportRow(user.id, birthProfileId, def.key, periodMonth);
-        if (existing) {
+        if (existing?.isPreview) {
+          // Preview-to-purchase upgrade: this row started life as a free preview (see
+          // previewReport) — do NOT refund, the user is genuinely paying for it right now.
+          // Flip it to a real purchase in place; its content/status are untouched (almost
+          // always already 'ready' from the preview generation, so the buyer gets it
+          // instantly — no new generation call needed here).
+          await upgradePreviewToPurchased(existing.id, rowPrice);
           summaries.push({
             id: existing.id,
             reportKey: def.key,
             periodMonth: existing.periodMonth,
             status: existing.status,
           });
+        } else {
+          // Genuinely already purchased & ready/in-flight for this exact identity — reuse it
+          // and refund this row's share rather than double-charging.
+          if (existing) {
+            summaries.push({
+              id: existing.id,
+              reportKey: def.key,
+              periodMonth: existing.periodMonth,
+              status: existing.status,
+            });
+          }
+          await addWalletBalance(
+            user.id,
+            rowPrice,
+            `refund:${reasonForRow(def.key, periodMonth)}`,
+          ).catch(() => {});
         }
-        await addWalletBalance(
-          user.id,
-          rowPrice,
-          `refund:${reasonForRow(def.key, periodMonth)}`,
-        ).catch(() => {});
       }
       processedCount = i + 1;
     }
@@ -331,6 +393,65 @@ export async function purchaseReport(
   }
 
   return { reports: summaries };
+}
+
+/**
+ * Free "generate the real report and blur it" preview — sibling to
+ * `purchaseReport`, but billed at 0 and flagged `isPreview: true`. The
+ * generation pipeline itself needs ZERO changes: a preview runs through the
+ * exact same `fireReportGeneration` background path as a real purchase, so
+ * the report content is genuinely real (not a fake teaser) — the client is
+ * expected to blur/paywall it client-side using the `isPreview` flag
+ * `getReportForUser` returns once ready.
+ *
+ * Not supported for `kundli_milan`/`match_report` (`def.requiresPartner`) —
+ * there's no partner data yet at preview time, so there's nothing to preview
+ * against. Always a single one-time row (`periodMonth: null`, `input: null`)
+ * regardless of report type — previews never take a monthly bundle shape.
+ *
+ * Idempotent and free on repeat taps: if `claimReportRow` signals a collision
+ * (a row already exists at this identity — a prior preview, an in-flight
+ * generation, or even a real purchase), this simply looks the row up and
+ * returns its current state rather than erroring or double-claiming.
+ */
+export async function previewReport(
+  user: UserRow,
+  body: PreviewReportBody,
+): Promise<PreviewReportResponseDto> {
+  const def = getReportDef(body.reportKey);
+  if (!def) throw Errors.notFound(`Unknown report key: ${body.reportKey}`);
+
+  if (def.requiresPartner) {
+    throw Errors.badRequest(`${def.key} does not support preview — no partner data exists yet`);
+  }
+
+  const profile = await resolveProfileContext(user, body.birthProfileId ?? null);
+  const birthProfileId = profile.birthProfileId;
+
+  const claimed = await claimReportRow({
+    userId: user.id,
+    birthProfileId,
+    reportKey: def.key,
+    periodMonth: null,
+    input: null,
+    pricePaidPaise: 0,
+    isPreview: true,
+  });
+
+  if (claimed) {
+    fireReportGeneration(claimed, birthProfileId);
+    return { id: claimed.id, reportKey: def.key, status: claimed.status };
+  }
+
+  // A row already exists at this identity (prior preview still generating/ready, or a real
+  // purchase) — repeat preview taps are idempotent and free, just return its current state.
+  const existing = await findReportRow(user.id, birthProfileId, def.key, null);
+  if (!existing) {
+    // Defensive only: claimReportRow's own doc guarantees a row exists whenever it returns
+    // undefined — this would indicate the row was deleted between the two calls.
+    throw Errors.internal('Report row not found after a duplicate preview claim');
+  }
+  return { id: existing.id, reportKey: def.key, status: existing.status };
 }
 
 export async function getReportCatalogueForUser(
@@ -378,6 +499,8 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
     }
   }
 
+  const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
+
   return generator.computeScores(
     {
       chart,
@@ -386,6 +509,7 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
       yogaData: kundli?.yogaData ?? null,
       ashtakavargaData: kundli?.ashtakavargaData ?? null,
       dashaData: kundli?.dashaData ?? null,
+      ...personContext,
     },
     row.periodMonth,
   );
@@ -422,6 +546,7 @@ export async function getReportForUser(
     reportKey: row.reportKey,
     periodMonth: row.periodMonth,
     scores,
+    isPreview: row.isPreview,
   };
 
   if (language === 'en' || !generator) {
@@ -475,4 +600,39 @@ export async function reapStaleReports(): Promise<{ reaped: number }> {
   }
 
   return { reaped };
+}
+
+/**
+ * Module-level cache for `getReportStats` — this is a public, cross-user
+ * aggregate ("1,926 reports generated") that changes slowly and is read on
+ * every page load, so it's not worth hitting the DB every time. No existing
+ * cache utility fits this in the codebase; a plain `{ data, expiresAt }`
+ * variable is deliberately as simple as this gets. Not safe across multiple
+ * processes (each pm2/cluster worker keeps its own cache), which is fine for
+ * a slow-moving social-proof number — same tradeoff as any other in-process
+ * cache in this codebase.
+ */
+const REPORT_STATS_CACHE_TTL_MS = 5 * 60_000;
+let reportStatsCache: { data: ReportStatsDto; expiresAt: number } | null = null;
+
+/**
+ * Public social-proof counts — `{ [reportKey]: readyCount }` of `ready`,
+ * non-preview reports, aggregated across ALL users (not scoped to the
+ * caller — there is no user-specific data in an aggregate count). Cached for
+ * REPORT_STATS_CACHE_TTL_MS to avoid a DB hit on every page load.
+ */
+export async function getReportStats(): Promise<ReportStatsDto> {
+  const now = Date.now();
+  if (reportStatsCache && reportStatsCache.expiresAt > now) {
+    return reportStatsCache.data;
+  }
+
+  const rows = await countReadyReportsByKey();
+  const data: ReportStatsDto = {};
+  for (const row of rows) {
+    data[row.reportKey] = row.count;
+  }
+
+  reportStatsCache = { data, expiresAt: now + REPORT_STATS_CACHE_TTL_MS };
+  return data;
 }
