@@ -9,7 +9,7 @@ import {
   getCurrentSaturnLongitude,
   detectCurrentSadeSati,
 } from '../../lib/astro-engine/index.js';
-import type { ZodiacSign } from '@aroha-astrology/shared';
+import type { ZodiacSign, Yoga } from '@aroha-astrology/shared';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -21,7 +21,9 @@ import {
   findKundliByUserId,
   markKundliFailed,
   markKundliReady,
+  saveKundliContentTranslation,
 } from './kundli.repo.js';
+import { translateYogaDoshaContent, type KundliContent } from '../../lib/llm/kundli-content.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import { generateHouseInsight, translateHouseInsightContent } from '../../lib/llm/house-insight.js';
 import {
@@ -450,6 +452,59 @@ export async function toKundliDto(row: KundliRow): Promise<KundliDto> {
     doshas: await withLiveSadeSati(row.doshaData),
     generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
   };
+}
+
+function hashString(s: string): string {
+  return crypto.createHash('sha256').update(s).digest('hex');
+}
+
+/**
+ * Language-aware DTO for yoga/dosha name+description — same translate-on-read
+ * + cache-forever shape as `toHouseInsightDtoForLanguage`, with one addition:
+ * `withLiveSadeSati` (inside `toKundliDto`) recomputes Sade Sati's
+ * phase/description LIVE on every read (Saturn's transit keeps moving), so a
+ * translation cached once could silently go stale with no other trigger to
+ * invalidate it. Guard against that by hashing the current English Sade Sati
+ * description alongside the cache lookup — a mismatch forces a fresh
+ * translation instead of serving a stale cached phase.
+ */
+export async function toKundliDtoForLanguage(row: KundliRow, language: string): Promise<KundliDto> {
+  const dto = await toKundliDto(row);
+  if (language === 'en' || !dto.yogas || !dto.doshas) return dto;
+
+  const doshas = dto.doshas as Record<string, Record<string, unknown> | undefined>;
+  const liveSadeSatiHash = hashString(JSON.stringify(doshas.sadeSati?.description ?? ''));
+
+  const cached = row.translations?.[language] as
+    | { yogas?: unknown; doshas?: unknown; _sadeSatiHash?: string }
+    | undefined;
+  if (cached && cached._sadeSatiHash === liveSadeSatiHash) {
+    return {
+      ...dto,
+      yogas: (cached.yogas as Record<string, unknown> | undefined) ?? dto.yogas,
+      doshas: (cached.doshas as Record<string, unknown> | undefined) ?? dto.doshas,
+    };
+  }
+
+  try {
+    const content: KundliContent = {
+      yogas: (dto.yogas as { yogas?: Yoga[] })?.yogas ?? [],
+      doshas,
+    };
+    const translated = await translateYogaDoshaContent(content, language);
+    await saveKundliContentTranslation(row.userId, row.birthProfileId, language, {
+      yogas: { yogas: translated.yogas },
+      doshas: translated.doshas,
+      _sadeSatiHash: liveSadeSatiHash,
+    });
+    return { ...dto, yogas: { yogas: translated.yogas }, doshas: translated.doshas };
+  } catch (err) {
+    logger.warn(
+      { err, userId: row.userId, language },
+      'failed to translate kundli yoga/dosha content',
+    );
+    return dto;
+  }
 }
 
 /* -------------------------------------------------------------------------- */

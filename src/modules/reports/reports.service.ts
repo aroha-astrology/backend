@@ -34,9 +34,17 @@ import {
   listReportsForUser,
   markReportFailed,
   markReportReady,
+  saveReportScoresTranslation,
   saveReportTranslation,
   upgradePreviewToPurchased,
 } from './reports.repo.js';
+import {
+  extractScoresProse,
+  hashLeafValues,
+  SCORES_PROSE_ALLOWLIST,
+  spliceScoresProse,
+  translateScoresProse,
+} from '../../lib/llm/report-scores.js';
 import {
   REPORT_GENERATORS,
   type ReportSection,
@@ -516,13 +524,59 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
 }
 
 /**
+ * Overlays translated prose onto `scores` for the small, explicit allowlist
+ * of dot-paths this report type carries (see SCORES_PROSE_ALLOWLIST) — every
+ * other field in `scores` is untouched. Cache-checked against the row's
+ * existing `translations[language].scoresProse` by content hash (since
+ * `scores` is recomputed fresh every read, not persisted — see
+ * recomputeScoresForRead); a hash match splices the cached translation back
+ * in with zero LLM calls, a miss pays one round-trip and re-caches. Never
+ * throws — any failure (translation error, mismatched response) logs and
+ * returns `scores` unmodified, same discipline as the sections translation
+ * below.
+ */
+async function withTranslatedScoresProse(
+  row: ReportRow,
+  scores: Record<string, unknown>,
+  language: string,
+): Promise<Record<string, unknown>> {
+  const paths = SCORES_PROSE_ALLOWLIST[row.reportKey];
+  if (!paths) return scores;
+
+  const leaves = extractScoresProse(scores, paths);
+  if (leaves.length === 0) return scores;
+
+  const hash = hashLeafValues(leaves);
+  const cached = row.translations?.[language]?.scoresProse as
+    | { hash?: string; values?: string[] }
+    | undefined;
+  if (cached?.hash === hash && cached.values) {
+    return spliceScoresProse(scores, leaves, cached.values);
+  }
+
+  try {
+    const values = await translateScoresProse(
+      leaves.map((l) => l.value),
+      language,
+    );
+    await saveReportScoresTranslation(row.id, language, { hash, values });
+    return spliceScoresProse(scores, leaves, values);
+  } catch (err) {
+    logger.warn({ err, reportId: row.id, language }, 'failed to translate report scores prose');
+    return scores;
+  }
+}
+
+/**
  * The report DTO in the requested language — mirrors gemstone's
  * toGemstoneReportDtoForLanguage translate-on-read pattern exactly: `scores`
  * are ALWAYS recomputed fresh from the live chart (never trusted from the
  * persisted row, see recomputeScoresForRead), English sections return
  * as-is, and any other language checks `translations[language]` first,
  * falling back to a single LLM translation call (cached after) and finally
- * to the English narrative if translation itself fails.
+ * to the English narrative if translation itself fails. A small allowlisted
+ * subset of `scores` itself is ALSO translated for report types listed in
+ * SCORES_PROSE_ALLOWLIST — see withTranslatedScoresProse above.
  */
 export async function getReportForUser(
   id: string,
@@ -536,11 +590,23 @@ export async function getReportForUser(
   if (row.status === 'generating') return { status: 'generating' };
   if (row.status === 'failed') return { status: 'failed', error: row.error };
 
-  const scores = await recomputeScoresForRead(row);
+  const englishScores = await recomputeScoresForRead(row);
   const content = (row.content ?? {}) as { sections?: ReportSection[] };
   const englishSections = content.sections ?? [];
   const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
 
+  if (language === 'en' || !generator) {
+    return {
+      status: 'ready' as const,
+      reportKey: row.reportKey,
+      periodMonth: row.periodMonth,
+      scores: englishScores,
+      isPreview: row.isPreview,
+      sections: englishSections,
+    };
+  }
+
+  const scores = await withTranslatedScoresProse(row, englishScores, language);
   const readyBase = {
     status: 'ready' as const,
     reportKey: row.reportKey,
@@ -548,10 +614,6 @@ export async function getReportForUser(
     scores,
     isPreview: row.isPreview,
   };
-
-  if (language === 'en' || !generator) {
-    return { ...readyBase, sections: englishSections };
-  }
 
   const cached = row.translations?.[language] as { sections?: ReportSection[] } | undefined;
   if (cached?.sections) {

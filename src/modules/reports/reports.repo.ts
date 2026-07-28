@@ -247,6 +247,13 @@ export async function markReportFailed(id: string, claimedAt: Date, error: strin
     );
 }
 
+/**
+ * Merges into `translations[language]` rather than replacing it wholesale —
+ * `saveReportScoresTranslation` below may independently write a `scoresProse`
+ * sub-key into the same per-language slot (translated on its own trigger,
+ * possibly in the same request); a wholesale replace here would silently
+ * discard it.
+ */
 export async function saveReportTranslation(
   id: string,
   language: string,
@@ -260,7 +267,39 @@ export async function saveReportTranslation(
     .then((r) => r[0]);
   if (!existing) return;
 
-  const translations = { ...(existing.translations ?? {}), [language]: translation };
+  const forLanguage = existing.translations?.[language] ?? {};
+  const translations = {
+    ...(existing.translations ?? {}),
+    [language]: { ...forLanguage, ...translation },
+  };
+  await db.update(reports).set({ translations }).where(eq(reports.id, id));
+}
+
+/**
+ * Read-merges into `translations[language]` — unlike `saveReportTranslation`
+ * above (which replaces `translations[language]` wholesale), this only
+ * touches the `scoresProse` sub-key, preserving whatever `sections` value is
+ * already cached there. `sections` and `scoresProse` translate on independent
+ * triggers (sections translate lazily once; scoresProse re-translates
+ * whenever its content hash changes), so a wholesale replace here would let
+ * whichever one saves second silently clobber the other.
+ */
+export async function saveReportScoresTranslation(
+  id: string,
+  language: string,
+  scoresProse: { hash: string; values: string[] },
+): Promise<void> {
+  const existing = await db
+    .select({ translations: reports.translations })
+    .from(reports)
+    .where(eq(reports.id, id))
+    .limit(1)
+    .then((r) => r[0]);
+  if (!existing) return;
+
+  const translations = { ...(existing.translations ?? {}) };
+  const forLanguage = translations[language] ?? {};
+  translations[language] = { ...forLanguage, scoresProse };
   await db.update(reports).set({ translations }).where(eq(reports.id, id));
 }
 

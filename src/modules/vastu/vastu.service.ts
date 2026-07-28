@@ -147,6 +147,7 @@ export async function askVastuQuestion(
   userId: string,
   birthProfileId: string | null,
   question: string,
+  language?: string,
 ): Promise<VastuPlanDto> {
   const row = await findPlanForUser(planId, userId);
   if (!row) throw Errors.notFound('Vastu plan not found');
@@ -162,7 +163,7 @@ export async function askVastuQuestion(
     analysis: row.analysis,
     question,
     chartContext: buildChartContext(kundli),
-    language: row.language,
+    language: language ?? row.language,
   });
   await saveFollowUp(planId, { question, answer });
 

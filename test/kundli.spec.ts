@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   regenerateKundli: vi.fn(),
   isStaleGenerating: vi.fn(),
   toKundliDto: vi.fn(),
+  toKundliDtoForLanguage: vi.fn(),
   findHouseInsight: vi.fn(),
   toHouseInsightDtoForLanguage: vi.fn(),
   requestHouseInsightGeneration: vi.fn(),
@@ -61,6 +62,7 @@ vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   regenerateKundli: state.regenerateKundli,
   isStaleGenerating: state.isStaleGenerating,
   toKundliDto: state.toKundliDto,
+  toKundliDtoForLanguage: state.toKundliDtoForLanguage,
   findHouseInsight: state.findHouseInsight,
   toHouseInsightDtoForLanguage: state.toHouseInsightDtoForLanguage,
   requestHouseInsightGeneration: state.requestHouseInsightGeneration,
@@ -110,6 +112,7 @@ beforeEach(() => {
   state.regenerateKundli.mockReset();
   state.isStaleGenerating.mockReset().mockReturnValue(false);
   state.toKundliDto.mockReset();
+  state.toKundliDtoForLanguage.mockReset();
   state.findHouseInsight.mockReset();
   state.toHouseInsightDtoForLanguage.mockReset();
   state.requestHouseInsightGeneration.mockReset().mockResolvedValue('generated');
@@ -123,7 +126,11 @@ describe('GET /v1/kundli', () => {
       id: 'k1',
       birthHash: 'h-current',
     });
-    state.toKundliDto.mockReturnValueOnce({ status: 'ready', id: 'k1', timeKnown: true });
+    state.toKundliDtoForLanguage.mockResolvedValueOnce({
+      status: 'ready',
+      id: 'k1',
+      timeKnown: true,
+    });
 
     const res = await createApp().request('/v1/kundli', { headers: AUTH });
     expect(res.status).toBe(200);
@@ -198,7 +205,11 @@ describe('GET /v1/kundli — additional (non-primary) profile', () => {
       id: 'k1',
       birthHash: 'h-current',
     });
-    state.toKundliDto.mockReturnValueOnce({ status: 'ready', id: 'k1', timeKnown: true });
+    state.toKundliDtoForLanguage.mockResolvedValueOnce({
+      status: 'ready',
+      id: 'k1',
+      timeKnown: true,
+    });
 
     const res = await createApp().request('/v1/kundli', { headers: AUTH });
 

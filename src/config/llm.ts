@@ -262,6 +262,21 @@ export const HOUSE_INSIGHT_TRANSLATION_PROFILE: GenerationProfile = {
 };
 
 /**
+ * Kundli yoga/dosha name+description translation — a chart can have several
+ * yogas (each with a multi-sentence description) plus up to 7 doshas (each
+ * with a description, some with extra cancellation/indicator sentences), so
+ * this gets the same generous non-Latin-script-inflation headroom as
+ * HOUSE_INSIGHT_TRANSLATION_PROFILE rather than a tighter English-sized ceiling.
+ */
+export const KUNDLI_CONTENT_TRANSLATION_PROFILE: GenerationProfile = {
+  name: 'kundli-content-translation',
+  temperature: 0.5,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 2048,
+};
+
+/**
  * Personalized gemstone report — one structured JSON verdict (a short intro +
  * a per-planet personal note for all 9 planets), generated lazily the first
  * time the unlocked report is viewed and cached forever after (natal chart

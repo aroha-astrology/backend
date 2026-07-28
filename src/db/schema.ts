@@ -853,6 +853,8 @@ export const kundlis = pgTable(
     yogaData: jsonb('yoga_data').$type<Record<string, unknown>>(),
     doshaData: jsonb('dosha_data').$type<Record<string, unknown>>(),
     ashtakavargaData: jsonb('ashtakavarga_data').$type<Record<string, unknown>>(),
+    /** Cached translations of yogaData/doshaData's translatable name/description prose by language code — same shape as vastu_plans.translations. */
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
     error: text('error'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     generatedAt: timestamp('generated_at', { withTimezone: true }),
