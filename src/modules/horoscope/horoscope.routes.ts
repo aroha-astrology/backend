@@ -1,5 +1,6 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
+import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
 import {
   GetHoroscopeQuerySchema,
@@ -25,6 +26,15 @@ import type { HoroscopePeriod } from './horoscope.schemas.js';
 
 /** Don't re-run a failed generation more often than this. */
 const FAILED_RETRY_COOLDOWN_MS = 30_000;
+
+/**
+ * 30 requests per user per 60s. GET /v1/horoscope is now the sole automatic
+ * trigger for on-demand horoscope generation, so it needs its own limiter to
+ * prevent a burst right after a scheduled push notification fires (many users
+ * opening the app simultaneously). Sized to cover the frontend's backoff
+ * polling for all 5 periods comfortably within a minute.
+ */
+const horoscopeGetRateLimit = rateLimiter({ windowMs: 60_000, max: 30, name: 'horoscope-get' });
 
 const ErrorSchema = z
   .object({
@@ -63,9 +73,11 @@ const getHoroscopeRoute = createRoute({
   description:
     'Returns 200 with the horoscope when ready, or 202 while it is still being generated ' +
     '(poll again) — mirrors GET /kundli. Generation is triggered proactively once onboarding ' +
-    'completes and by a nightly cron sweep of all 4 periods, so a 202 here should be rare and ' +
-    'brief; this endpoint is the always-correct fallback for any gap in that pregeneration.',
+    'completes; this endpoint is the automatic on-demand fallback for any gaps, and a ' +
+    'lightweight selfheal sweep (POST /cron/horoscopes-selfheal) runs every 15 min to ' +
+    'recover any persistently-failed rows.',
   security: [{ bearerAuth: [] }],
+  middleware: [horoscopeGetRateLimit] as const,
   request: { query: GetHoroscopeQuerySchema },
   responses: {
     200: {
@@ -77,6 +89,7 @@ const getHoroscopeRoute = createRoute({
       content: { 'application/json': { schema: HoroscopeStatusSchema } },
     },
     401: errorResponse('Unauthorized'),
+    429: errorResponse('Rate limit exceeded'),
   },
 });
 

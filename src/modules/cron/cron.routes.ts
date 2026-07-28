@@ -5,8 +5,14 @@ import {
   DailyHoroscopeRunSchema,
   HoroscopeRunBodySchema,
   HoroscopeRunResponseSchema,
+  SelfHealRunBodySchema,
+  SelfHealRunResultSchema,
 } from '../horoscope/horoscope.schemas.js';
-import { runAllHoroscopeBatches, runHoroscopeBatch } from '../horoscope/horoscope.service.js';
+import {
+  runAllHoroscopeBatches,
+  runHoroscopeBatch,
+  runHoroscopeSelfHeal,
+} from '../horoscope/horoscope.service.js';
 import { PanchangWarmupBodySchema, PanchangWarmupResultSchema } from '../astro/astro.schemas.js';
 import { warmupPanchangCache } from '../astro/astro.service.js';
 import { runHealthReport } from '../health-report/health-report.service.js';
@@ -106,6 +112,37 @@ const dailyHoroscopesRoute = createRoute({
 cronRouter.openapi(dailyHoroscopesRoute, async (c) => {
   const body = c.req.valid('json') ?? {};
   const result = await runHoroscopeBatch('daily', body);
+  return c.json(result, 200);
+});
+
+const selfHealRoute = createRoute({
+  method: 'post',
+  path: '/cron/horoscopes-selfheal',
+  tags: ['Cron'],
+  summary: 'Retry failed or stale-generating horoscope rows',
+  description:
+    'Narrow safety-net sweep: unlike POST /cron/horoscopes (which pages through ALL recently-active ' +
+    'users), this only re-attempts rows that are currently in "failed" status or stuck in ' +
+    '"generating" past the stale threshold — so it is very cheap to run frequently (every 15 min). ' +
+    'Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: {
+      required: false,
+      content: { 'application/json': { schema: SelfHealRunBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: SelfHealRunResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(selfHealRoute, async (c) => {
+  const body = c.req.valid('json') ?? {};
+  const result = await runHoroscopeSelfHeal(body);
   return c.json(result, 200);
 });
 
