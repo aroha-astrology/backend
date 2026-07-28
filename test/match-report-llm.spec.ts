@@ -54,22 +54,22 @@ function makeScores(overrides: Partial<MatchReportScores> = {}): MatchReportScor
 
 const eightCardsResponse = JSON.stringify({
   sections: [
-    { heading: 'Wealth hook', paragraphs: ['Wealth body text.'] },
-    { heading: 'Health hook', paragraphs: ['Health body text.'] },
-    { heading: 'Children hook', paragraphs: ['Children body text.'] },
-    { heading: 'Harmony hook', paragraphs: ['Harmony body text.'] },
-    { heading: 'Career hook', paragraphs: ['Career body text.'] },
-    { heading: 'Timing hook', paragraphs: ['Timing body text.'] },
-    { heading: 'Intimacy hook', paragraphs: ['Intimacy body text.'] },
-    { heading: 'In-laws hook', paragraphs: ['In-laws body text.'] },
+    { key: 'wealth', heading: 'Wealth hook', paragraphs: ['Wealth body text.'] },
+    { key: 'health', heading: 'Health hook', paragraphs: ['Health body text.'] },
+    { key: 'children', heading: 'Children hook', paragraphs: ['Children body text.'] },
+    { key: 'harmony', heading: 'Harmony hook', paragraphs: ['Harmony body text.'] },
+    { key: 'career', heading: 'Career hook', paragraphs: ['Career body text.'] },
+    { key: 'timing', heading: 'Timing hook', paragraphs: ['Timing body text.'] },
+    { key: 'intimacy', heading: 'Intimacy hook', paragraphs: ['Intimacy body text.'] },
+    { key: 'inlaws', heading: 'In-laws hook', paragraphs: ['In-laws body text.'] },
   ],
 });
 
 const closingResponse = JSON.stringify({
   sections: [
-    { heading: "Do's", paragraphs: ['Do one.', 'Do two.'] },
-    { heading: "Don'ts", paragraphs: ['Avoid one.', 'Avoid two.'] },
-    { heading: 'Classical Remedies', paragraphs: ['Chant a mantra.'] },
+    { key: 'dos', heading: "Do's", paragraphs: ['Do one.', 'Do two.'] },
+    { key: 'donts', heading: "Don'ts", paragraphs: ['Avoid one.', 'Avoid two.'] },
+    { key: 'remedies', heading: 'Classical Remedies', paragraphs: ['Chant a mantra.'] },
   ],
 });
 
@@ -119,6 +119,40 @@ describe('generateMatchReportNarrative', () => {
       .mockResolvedValueOnce(closingResponse);
     await expect(generateMatchReportNarrative(makeScores())).rejects.toThrow();
   });
+
+  it('throws instead of silently dropping a card when the cards call omits one life area', async () => {
+    // Model returns only 7 of the 8 required areas (missing "inlaws") — this must never
+    // silently produce a report with a hole in it; the caller should mark the row failed
+    // and refund, same as an unparseable response.
+    const sevenCards = JSON.stringify({
+      sections: JSON.parse(eightCardsResponse).sections.filter(
+        (s: { key: string }) => s.key !== 'inlaws',
+      ),
+    });
+    state.generate.mockResolvedValueOnce(sevenCards).mockResolvedValueOnce(closingResponse);
+    await expect(generateMatchReportNarrative(makeScores())).rejects.toThrow();
+  });
+
+  it('throws instead of silently dropping a section when the closing call omits Remedies', async () => {
+    const twoClosing = JSON.stringify({
+      sections: JSON.parse(closingResponse).sections.filter(
+        (s: { key: string }) => s.key !== 'remedies',
+      ),
+    });
+    state.generate.mockResolvedValueOnce(eightCardsResponse).mockResolvedValueOnce(twoClosing);
+    await expect(generateMatchReportNarrative(makeScores())).rejects.toThrow();
+  });
+
+  it('reorders cards to MATCH_RISK_AREA_ORDER by key even when the model returns them out of order', async () => {
+    const shuffledCards = JSON.stringify({
+      sections: [...JSON.parse(eightCardsResponse).sections].reverse(),
+    });
+    state.generate.mockResolvedValueOnce(shuffledCards).mockResolvedValueOnce(closingResponse);
+
+    const sections = await generateMatchReportNarrative(makeScores());
+    expect(sections[0]?.heading).toBe('Wealth hook');
+    expect(sections[7]?.heading).toBe('In-laws hook');
+  });
 });
 
 describe('translateMatchReportNarrative', () => {
@@ -148,6 +182,27 @@ describe('translateMatchReportNarrative', () => {
 
   it('throws on an unparseable translated response', async () => {
     state.generate.mockResolvedValueOnce('garbage').mockResolvedValueOnce(closingResponse);
+    await expect(translateMatchReportNarrative(sections, 'hi')).rejects.toThrow();
+  });
+
+  it('throws instead of silently dropping a card when the translated cards group is shorter than the original', async () => {
+    // Real-world failure mode this app has hit before with non-English translation calls
+    // (see the Bengali token-ceiling and danda sentence-boundary incidents): the model drops
+    // a trailing item. Caller (reports.service.ts's translate-on-read) already falls back to
+    // the cached English sections on any throw here, so this must throw rather than cache an
+    // incomplete translated report.
+    const shortTranslatedCards = JSON.stringify({
+      sections: sections
+        .slice(0, 7)
+        .map((s) => ({ heading: `HI ${s.heading}`, paragraphs: ['हिंदी।'] })),
+    });
+    state.generate.mockResolvedValueOnce(shortTranslatedCards).mockResolvedValueOnce(
+      JSON.stringify({
+        sections: sections
+          .slice(8)
+          .map((s) => ({ heading: `HI ${s.heading}`, paragraphs: ['हिंदी।'] })),
+      }),
+    );
     await expect(translateMatchReportNarrative(sections, 'hi')).rejects.toThrow();
   });
 });
