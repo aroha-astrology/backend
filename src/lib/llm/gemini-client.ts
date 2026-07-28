@@ -1,9 +1,12 @@
 // =============================================================================
 // Gemini LLM Client
-// Sole LLM provider (single key, no cross-provider fallback exists anymore),
-// talking to Gemini's OpenAI-compatible endpoint. Retries transient network
-// errors and backs off on 429s, since there is no fallback tier left to
-// absorb a merely transient failure.
+// Sole LLM provider (no cross-provider fallback exists anymore), talking to
+// Gemini's OpenAI-compatible endpoint. Round-robins across a pool of API keys
+// (see lib/llm/gemini-key-pool.ts) so effective throughput scales with the
+// pool instead of being capped by any one key's free-tier limits, and fails
+// over to the next key instantly on a 429. Retries transient network errors
+// and backs off when the ENTIRE pool is simultaneously rate limited, since
+// there is no fallback tier left to absorb a merely transient failure.
 // =============================================================================
 
 import { env } from '../../config/env.js';
@@ -11,6 +14,7 @@ import { type LLMRequestOptions } from '../../config/llm.js';
 import { logger } from '../logger.js';
 import { alertThrottled } from '../notifications/alerts.js';
 import { insertAiUsage } from '../../modules/admin/ai-usage.repo.js';
+import { pickKey, markRateLimited, earliestAvailableAt, poolSize } from './gemini-key-pool.js';
 
 export class GeminiError extends Error {
   constructor(
@@ -24,6 +28,13 @@ export class GeminiError extends Error {
 }
 
 const MAX_ATTEMPTS = 4;
+// Budget for "the ENTIRE key pool was simultaneously rate limited" waits, NOT
+// "one key hit a 429" — with a pool of more than one key, a lone 429 fails
+// over instantly to the next untried, non-cooling key with no sleep (see
+// pickKey()/markRateLimited() below) and never touches this counter at all.
+// It's only consumed once every key in the pool has 429'd within the same
+// attempt and there's nothing left to fail over to. With a pool of exactly
+// one key this degrades to its original meaning: that key rate-limited N times.
 const MAX_RATE_LIMIT_RETRIES = 6;
 const GENERATE_TIMEOUT_MS = 60_000;
 const STREAM_TIMEOUT_MS = 120_000;
@@ -33,6 +44,13 @@ const STREAM_TIMEOUT_MS = 120_000;
 // with per-attempt timeouts lets one request hold a process for many minutes
 // under sustained 429s, filling it with zombie requests.
 const MAX_TOTAL_ELAPSED_MS = 90_000;
+// Per-key cooldown applied via markRateLimited() when a key 429s and the
+// response carries no Retry-After header — separate from, and not to be
+// confused with, rateLimitBackoff()'s pool-wide exponential schedule below.
+// Same low end as that schedule's first step, capped so one stuck key can
+// never sideline itself from the pool for an unbounded time.
+const DEFAULT_KEY_COOLDOWN_MS = 10_000;
+const MAX_KEY_COOLDOWN_MS = 60_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -78,6 +96,7 @@ function doRequest(
   opts: LLMRequestOptions,
   stream: boolean,
   signal: AbortSignal,
+  apiKey: string,
 ): Promise<Response> {
   const model = opts.model ?? env.GEMINI_MODEL;
   const body: Record<string, unknown> = {
@@ -107,11 +126,18 @@ function doRequest(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${env.GEMINI_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
     signal,
   });
+}
+
+/** Parses a Retry-After header (seconds) into ms, or NaN if absent/invalid. */
+function retryAfterMsFromHeader(response: Response): number {
+  const header = response.headers.get('Retry-After');
+  const sec = header ? parseInt(header, 10) : NaN;
+  return Number.isNaN(sec) ? NaN : sec * 1000;
 }
 
 // =============================================================================
@@ -133,15 +159,67 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
     }
     const attemptTimeout = Math.min(opts.timeoutMs ?? GENERATE_TIMEOUT_MS, deadlineAt - Date.now());
     const abort = makeAbort(opts.signal, attemptTimeout);
-    let response: Response;
-    let bodyText: string;
 
-    try {
-      response = await doRequest(opts, false, abort.signal);
-      bodyText = await response.text();
-    } catch (err) {
-      logger.warn({ err, attempt }, 'Gemini request network error/timeout');
-      abort.clear();
+    // Inner key-failover loop, bounded to poolSize() iterations: a 429 on one
+    // key fails over to the next untried, non-cooling key immediately (no
+    // sleep — that's the point of having a pool), while a genuine network
+    // error or a non-429 HTTP response is final for this attempt, exactly as
+    // before. With a pool of size 1 this loop runs exactly once, and pickKey()
+    // either returns the sole key (not cooling) or null (cooling) — falling
+    // straight through to the unchanged sleep/backoff logic below.
+    const triedThisAttempt = new Set<number>();
+    let response: Response | undefined;
+    let bodyText: string | undefined;
+    let networkErr: unknown;
+    let poolExhausted = false;
+    const keyIterations = Math.max(1, poolSize());
+
+    for (let keyIter = 0; keyIter < keyIterations; keyIter++) {
+      const picked = await pickKey(triedThisAttempt);
+      if (!picked) {
+        // Every key is either already tried this attempt or cooling down.
+        poolExhausted = true;
+        break;
+      }
+
+      try {
+        response = await doRequest(opts, false, abort.signal, picked.key);
+        bodyText = await response.text();
+      } catch (err) {
+        // Network/timeout error — not a per-key problem, must not trigger key
+        // rotation or consume the failover budget. Unchanged fall-through to
+        // the network-error handling below.
+        networkErr = err;
+        response = undefined;
+        bodyText = undefined;
+        break;
+      }
+
+      if (response.status === 429) {
+        const retryAfterMs = retryAfterMsFromHeader(response);
+        const cooldownMs = Number.isNaN(retryAfterMs)
+          ? DEFAULT_KEY_COOLDOWN_MS
+          : Math.min(retryAfterMs, MAX_KEY_COOLDOWN_MS);
+        await markRateLimited(picked.index, cooldownMs);
+        triedThisAttempt.add(picked.index);
+        logger.warn(
+          { keyIndex: picked.index, cooldownMs },
+          'Gemini key 429 rate limited, cooling down and failing over',
+        );
+        if (triedThisAttempt.size < poolSize()) {
+          continue; // try the next key immediately, no sleep
+        }
+        poolExhausted = true;
+        break;
+      }
+
+      break; // non-429 (success or a real HTTP error) — final for this attempt
+    }
+
+    abort.clear();
+
+    if (networkErr !== undefined) {
+      logger.warn({ err: networkErr, attempt }, 'Gemini request network error/timeout');
       if (attempt < MAX_ATTEMPTS) {
         await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
         continue;
@@ -149,32 +227,50 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       void alertThrottled(
         'gemini:network',
         'Gemini unreachable',
-        `${opts.profile.name}: gave up after ${MAX_ATTEMPTS} attempts — ${String(err)}`,
+        `${opts.profile.name}: gave up after ${MAX_ATTEMPTS} attempts — ${String(networkErr)}`,
       );
-      throw new GeminiError(`Network error after ${MAX_ATTEMPTS} attempts: ${String(err)}`);
+      throw new GeminiError(`Network error after ${MAX_ATTEMPTS} attempts: ${String(networkErr)}`);
     }
-    abort.clear();
 
-    if (response.status === 429) {
+    if (poolExhausted) {
       if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
         void alertThrottled(
           'gemini:quota',
-          'Gemini quota exhausted',
-          `${opts.profile.name}: still 429 after ${MAX_RATE_LIMIT_RETRIES} backoff waits. ` +
+          'Gemini key pool exhausted',
+          `${opts.profile.name}: entire key pool (${poolSize()} key${poolSize() === 1 ? '' : 's'}) ` +
+            `simultaneously rate limited after ${MAX_RATE_LIMIT_RETRIES} backoff waits. ` +
             `Users are seeing failed AI responses.`,
         );
-        throw new GeminiError(`Rate limited after ${MAX_RATE_LIMIT_RETRIES} waits`, 429, bodyText);
+        throw new GeminiError(
+          `Rate limited after ${MAX_RATE_LIMIT_RETRIES} pool-exhaustion waits`,
+          429,
+          bodyText,
+        );
       }
-      const retryAfterHeader = response.headers.get('Retry-After');
-      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
-      const waitMs = Number.isNaN(retryAfterSec)
-        ? rateLimitBackoff(rateLimitWaits)
-        : retryAfterSec * 1000;
-      logger.warn({ waitMs, rateLimitWaits }, 'Gemini 429 rate limited, backing off');
+      let scheduledWaitMs: number;
+      if (response) {
+        const retryAfterMs = retryAfterMsFromHeader(response);
+        scheduledWaitMs = Number.isNaN(retryAfterMs)
+          ? rateLimitBackoff(rateLimitWaits)
+          : retryAfterMs;
+      } else {
+        scheduledWaitMs = rateLimitBackoff(rateLimitWaits);
+      }
+      const earliestAt = await earliestAvailableAt();
+      const waitMs = Math.min(scheduledWaitMs, Math.max(0, earliestAt - Date.now()));
+      logger.warn({ waitMs, rateLimitWaits }, 'Gemini pool exhausted (all keys 429), backing off');
       await sleep(Math.min(waitMs, Math.max(0, deadlineAt - Date.now())));
       rateLimitWaits++;
       attempt--;
       continue;
+    }
+
+    // Neither the network-error nor the pool-exhausted branch was taken, so
+    // the key-failover loop above must have broken out on a defined response
+    // (success or a real, non-429 HTTP error) — but keep TypeScript (and a
+    // future refactor) honest with an explicit check rather than a cast.
+    if (!response || bodyText === undefined) {
+      throw new GeminiError('Internal error: no Gemini response after key-failover loop');
     }
 
     if (!response.ok) {
@@ -254,11 +350,55 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
     const attemptTimeout = Math.min(STREAM_TIMEOUT_MS, deadlineAt - Date.now());
     const abort = makeAbort(opts.signal, attemptTimeout);
     try {
-      let response: Response;
-      try {
-        response = await doRequest(opts, true, abort.signal);
-      } catch (err) {
-        logger.warn({ err, attempt }, 'Gemini stream request network error/timeout');
+      // Inner key-failover loop — same shape and rationale as generate()'s;
+      // see the comment there. With a pool of size 1 this runs exactly once
+      // and falls straight through to the unchanged sleep/backoff path below.
+      const triedThisAttempt = new Set<number>();
+      let response: Response | undefined;
+      let networkErr: unknown;
+      let poolExhausted = false;
+      let rateLimitBodyText: string | undefined;
+      const keyIterations = Math.max(1, poolSize());
+
+      for (let keyIter = 0; keyIter < keyIterations; keyIter++) {
+        const picked = await pickKey(triedThisAttempt);
+        if (!picked) {
+          poolExhausted = true;
+          break;
+        }
+
+        try {
+          response = await doRequest(opts, true, abort.signal, picked.key);
+        } catch (err) {
+          networkErr = err;
+          response = undefined;
+          break;
+        }
+
+        if (response.status === 429) {
+          rateLimitBodyText = await response.text();
+          const retryAfterMs = retryAfterMsFromHeader(response);
+          const cooldownMs = Number.isNaN(retryAfterMs)
+            ? DEFAULT_KEY_COOLDOWN_MS
+            : Math.min(retryAfterMs, MAX_KEY_COOLDOWN_MS);
+          await markRateLimited(picked.index, cooldownMs);
+          triedThisAttempt.add(picked.index);
+          logger.warn(
+            { keyIndex: picked.index, cooldownMs },
+            'Gemini stream key 429 rate limited, cooling down and failing over',
+          );
+          if (triedThisAttempt.size < poolSize()) {
+            continue; // try the next key immediately, no sleep
+          }
+          poolExhausted = true;
+          break;
+        }
+
+        break; // non-429 (success or a real HTTP error) — final for this attempt
+      }
+
+      if (networkErr !== undefined) {
+        logger.warn({ err: networkErr, attempt }, 'Gemini stream request network error/timeout');
         if (attempt < MAX_ATTEMPTS) {
           await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
           continue;
@@ -266,39 +406,52 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         void alertThrottled(
           'gemini:network',
           'Gemini unreachable',
-          `${opts.profile.name} (stream): gave up after ${MAX_ATTEMPTS} attempts — ${String(err)}`,
+          `${opts.profile.name} (stream): gave up after ${MAX_ATTEMPTS} attempts — ${String(networkErr)}`,
         );
-        throw new GeminiError(`Network error after ${MAX_ATTEMPTS} attempts: ${String(err)}`);
+        throw new GeminiError(
+          `Network error after ${MAX_ATTEMPTS} attempts: ${String(networkErr)}`,
+        );
+      }
+
+      if (poolExhausted) {
+        if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
+          void alertThrottled(
+            'gemini:quota',
+            'Gemini key pool exhausted',
+            `${opts.profile.name} (stream): entire key pool (${poolSize()} key${poolSize() === 1 ? '' : 's'}) ` +
+              `simultaneously rate limited after ${MAX_RATE_LIMIT_RETRIES} backoff waits. ` +
+              `Users are seeing failed AI responses.`,
+          );
+          throw new GeminiError(
+            `Rate limited after ${MAX_RATE_LIMIT_RETRIES} pool-exhaustion waits`,
+            429,
+            rateLimitBodyText,
+          );
+        }
+        let scheduledWaitMs: number;
+        if (response) {
+          const retryAfterMs = retryAfterMsFromHeader(response);
+          scheduledWaitMs = Number.isNaN(retryAfterMs)
+            ? rateLimitBackoff(rateLimitWaits)
+            : retryAfterMs;
+        } else {
+          scheduledWaitMs = rateLimitBackoff(rateLimitWaits);
+        }
+        const earliestAt = await earliestAvailableAt();
+        const waitMs = Math.min(scheduledWaitMs, Math.max(0, earliestAt - Date.now()));
+        logger.warn({ waitMs, rateLimitWaits }, 'Gemini stream pool exhausted (all keys 429)');
+        await sleep(Math.min(waitMs, Math.max(0, deadlineAt - Date.now())));
+        rateLimitWaits++;
+        attempt--;
+        continue;
+      }
+
+      if (!response) {
+        throw new GeminiError('Internal error: no Gemini response after key-failover loop');
       }
 
       if (!response.ok) {
         const bodyText = await response.text();
-
-        if (response.status === 429) {
-          if (rateLimitWaits >= MAX_RATE_LIMIT_RETRIES) {
-            void alertThrottled(
-              'gemini:quota',
-              'Gemini quota exhausted',
-              `${opts.profile.name} (stream): still 429 after ${MAX_RATE_LIMIT_RETRIES} ` +
-                `backoff waits. Users are seeing failed AI responses.`,
-            );
-            throw new GeminiError(
-              `Rate limited after ${MAX_RATE_LIMIT_RETRIES} waits`,
-              429,
-              bodyText,
-            );
-          }
-          const retryAfterHeader = response.headers.get('Retry-After');
-          const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
-          const waitMs = Number.isNaN(retryAfterSec)
-            ? rateLimitBackoff(rateLimitWaits)
-            : retryAfterSec * 1000;
-          logger.warn({ waitMs, rateLimitWaits }, 'Gemini stream 429 rate limited');
-          await sleep(Math.min(waitMs, Math.max(0, deadlineAt - Date.now())));
-          rateLimitWaits++;
-          attempt--;
-          continue;
-        }
 
         logger.warn(
           { status: response.status, body: bodyText.slice(0, 500) },

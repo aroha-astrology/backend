@@ -65,7 +65,24 @@ const EnvSchema = z
     GOOGLE_PLAY_PACKAGE_NAME: z.string().min(1).default('com.aroha.astrology'),
 
     // --- Gemini (sole LLM provider) ----------------------------------------
-    GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required'),
+    // Multi-key rotation pool (see lib/llm/gemini-key-pool.ts): comma-separated
+    // list of Gemini API keys, same convention as CORS_ORIGINS/
+    // TELEGRAM_ADMIN_CHAT_IDS above. Takes precedence over the single
+    // GEMINI_API_KEY below when non-empty — see GEMINI_KEY_POOL.
+    GEMINI_API_KEYS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((key) => key.trim())
+          .filter(Boolean),
+      ),
+    // Single-key fallback, kept for back-compat with existing deployments that
+    // haven't migrated to GEMINI_API_KEYS yet. Optional now — validated below
+    // (superRefine) so boot only fails if BOTH this and GEMINI_API_KEYS are
+    // unset, not because this alone is missing.
+    GEMINI_API_KEY: z.string().min(1).optional(),
     GEMINI_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta/openai'),
     GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
 
@@ -200,6 +217,17 @@ const EnvSchema = z
           'Provide GOOGLE_PLAY_SERVICE_ACCOUNT_PATH, all three of GOOGLE_PLAY_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY, or omit all Google Play config',
       });
     }
+
+    // At least one key pool source is required — any pool size from 1 up to
+    // however many keys are configured is valid, this is not a fixed-size
+    // requirement. GEMINI_API_KEYS wins when both are set (see GEMINI_KEY_POOL).
+    if (value.GEMINI_API_KEYS.length === 0 && !value.GEMINI_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GEMINI_API_KEYS'],
+        message: 'Provide GEMINI_API_KEYS (comma-separated) or GEMINI_API_KEY',
+      });
+    }
   });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -221,3 +249,15 @@ export const env: Env = loadEnv();
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
+
+// Derived Gemini key pool for lib/llm/gemini-key-pool.ts's round-robin
+// rotation: prefer the comma-separated GEMINI_API_KEYS list when set, else
+// fall back to the single GEMINI_API_KEY, else an empty pool (only reachable
+// if the superRefine check above were ever bypassed, e.g. in a test that
+// constructs Env by hand rather than through loadEnv()).
+export const GEMINI_KEY_POOL: readonly string[] =
+  env.GEMINI_API_KEYS.length > 0
+    ? env.GEMINI_API_KEYS
+    : env.GEMINI_API_KEY
+      ? [env.GEMINI_API_KEY]
+      : [];
