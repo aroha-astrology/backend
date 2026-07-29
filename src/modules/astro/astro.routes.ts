@@ -15,12 +15,44 @@ import {
   recordChatFeedbackVote,
 } from './feedback.repo.js';
 import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
+import { acquire as acquireLock, release as releaseLock } from '../../lib/cache/locks.js';
 
 /** Flat cost per chat question, charged atomically before generation starts. */
 const CHAT_MESSAGE_COST_PAISE = 2000;
 
 /** Expensive LLM/swarm routes: cap per authenticated user. */
 const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20, name: 'astro-llm' });
+
+/**
+ * Backstop ceiling on how fast one account can ask questions, sitting *under*
+ * `llmRateLimit`'s broader 20/min (which is shared across every astro LLM
+ * route, so it can be consumed entirely by non-chat traffic and would not pace
+ * chat on its own). Its own `name` is what keeps the two counters separate —
+ * reusing 'astro-llm' here would silently merge them.
+ *
+ * `silent` because this ceiling exists to be reached by ordinary impatient
+ * users, so it must neither page an admin nor announce itself in the response
+ * (see the `silent` docs in middleware/rate-limit.ts). It is NOT the primary
+ * pacing mechanism — the single-flight lock in the handler below is, and a
+ * client behaving normally can never get near 10/min because its own composer
+ * stays disabled until the reply finishes. This only catches a client that
+ * ignores that, and it deliberately sits well above the ~4-6 questions/min a
+ * real person can sustain when each answer must stream fully first.
+ */
+const chatQuestionLimit = rateLimiter({
+  windowMs: 60_000,
+  max: 10,
+  name: 'chat-question',
+  silent: true,
+});
+
+/**
+ * Guards the "one question at a time" rule server-side. TTL sits just above
+ * gemini-client.ts's STREAM_TIMEOUT_MS (120s) so the lock always outlives the
+ * generation it guards, but still self-heals if a worker dies mid-stream
+ * without reaching the release in the handler's `finally`.
+ */
+const CHAT_INFLIGHT_LOCK_TTL_SECONDS = 130;
 import {
   OnboardingRequestSchema,
   OnboardingResponseSchema,
@@ -434,7 +466,7 @@ const chatRoute = createRoute({
   tags: ['Astro'],
   summary: 'Chat with the Jyotish scholar (SSE streaming)',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, llmRateLimit, requireConsent] as const,
+  middleware: [requireUser, llmRateLimit, chatQuestionLimit, requireConsent] as const,
   request: {
     body: {
       required: true,
@@ -450,6 +482,7 @@ const chatRoute = createRoute({
     403: errorResponse('Consent required'),
     409: errorResponse('Not enough credits'),
     422: errorResponse('Validation failed'),
+    429: errorResponse('Asking faster than answers can be produced'),
   },
 });
 
@@ -488,14 +521,55 @@ astroRouter.openapi(chatRoute, async (c) => {
     storedSummary = existing.summary ?? undefined;
   }
 
+  // One question at a time, per account, enforced across the pm2 cluster.
+  //
+  // The app already blocks this in the UI (ChatConversation.tsx disables the
+  // composer until the reply finishes streaming), but that is presentation, not
+  // enforcement: a second tab, a replayed request or a script bypasses it
+  // entirely and fires concurrent generations against the shared Gemini free
+  // tier. Taken BEFORE the wallet debit so a rejected duplicate never charges.
+  //
+  // Deliberately fails OPEN when Redis is unreachable ('unavailable'), and only
+  // rejects on a genuinely held lock ('held') — see the AcquireResult docs in
+  // lib/cache/locks.ts. Degrading to "no pacing" during a Redis outage is
+  // correct here; degrading to "nobody can ask anything" is the failure this
+  // codebase already shipped once (8c6e412).
+  const lock = await acquireLock('chat:inflight', user.id, CHAT_INFLIGHT_LOCK_TTL_SECONDS);
+  if (!lock.ok && lock.reason === 'held') {
+    // 429 rather than 409 so this stays distinguishable from "not enough
+    // credits", which is the other conflict this handler can raise and which
+    // the app DOES surface to the user. Both would otherwise arrive as an
+    // identical `code: 'CONFLICT'` body (see middleware/error.ts) and the
+    // client would have to guess which it was — silently swallowing a genuine
+    // out-of-credits response in the process. Message is left bare for the same
+    // reason the `silent` limiter's is: the pacing rule is never announced.
+    throw Errors.tooManyRequests();
+  }
+  const lockOwner = lock.ok ? lock.owner : null;
+
+  const releaseInflightLock = async (): Promise<void> => {
+    if (!lockOwner) return;
+    await releaseLock('chat:inflight', user.id, lockOwner).catch(() => {});
+  };
+
   // Charge atomically before any generation starts — same balance-check-and-
   // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
   // sends can't both succeed against a balance that only covers one.
   // Refunded below (same fire-and-forget addCredits pattern as
   // vastu.service.ts) if generation throws or comes back with no content —
   // the user shouldn't pay for a question that got no answer.
-  const charged = await deductWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'chat_message');
+  let charged: boolean;
+  try {
+    charged = await deductWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'chat_message');
+  } catch (err) {
+    // The lock is held at this point and streamSSE's `finally` (the only other
+    // release path) is never reached if we throw here, so it must be released
+    // explicitly or this user is locked out of chat until the TTL expires.
+    await releaseInflightLock();
+    throw err;
+  }
   if (!charged) {
+    await releaseInflightLock();
     throw Errors.conflict('Not enough credits to ask a question');
   }
 
@@ -575,7 +649,10 @@ astroRouter.openapi(chatRoute, async (c) => {
             newHistory,
             currentSummary,
           );
-          sessionId = session.id;
+          // `.returning()` is typed as possibly-empty, so guard rather than
+          // assert — an insert that somehow returned no row must not crash the
+          // stream after the reply has already been delivered.
+          sessionId = session?.id ?? sessionId;
         }
 
         await stream.writeSSE({ event: 'session_id', data: JSON.stringify({ sessionId }) });
@@ -595,6 +672,11 @@ astroRouter.openapi(chatRoute, async (c) => {
           data: JSON.stringify({ message: 'Generation failed. Please try again.' }),
         });
       }
+    } finally {
+      // Runs on every exit path — completion, generation failure, and client
+      // disconnect (where the loop above breaks on signal.aborted) — so the
+      // next question is never blocked by a stream that has already stopped.
+      await releaseInflightLock();
     }
   });
 });

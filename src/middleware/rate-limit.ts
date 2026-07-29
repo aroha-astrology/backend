@@ -93,13 +93,24 @@ function identify(c: Context): string {
  *   counter for the same caller — but it MUST be stable across processes and
  *   restarts, or each pm2 worker silently gets its own private quota and the
  *   effective limit becomes `max × workerCount`.
+ * @param options.silent   - Suppresses the Telegram alert on rejection (the
+ *   rejection itself, its log line and its headers are unchanged). Set this on
+ *   limiters whose ceiling a single ordinary user can reach on their own, where
+ *   a rejection says nothing about the health of the system. The default
+ *   (alerting) suits limiters sized so that hitting them means something is
+ *   actually wrong — one user cannot plausibly exceed them alone, so a
+ *   rejection is evidence of abuse or a broken client and is worth waking
+ *   someone for. A per-user pacing limiter is the opposite: it is *designed*
+ *   to be hit by impatient people, and alerting on it would page continuously
+ *   while telling you nothing.
  */
 export function rateLimiter(options: {
   windowMs: number;
   max: number;
   name: string;
+  silent?: boolean;
 }): MiddlewareHandler {
-  const { windowMs, max, name } = options;
+  const { windowMs, max, name, silent = false } = options;
 
   return async (c, next) => {
     const key = `ratelimit:${name}:${identify(c)}`;
@@ -137,14 +148,23 @@ export function rateLimiter(options: {
       // limiter is the one failure mode that produces no 500s at all, so
       // nothing else here would notice. Keyed by limiter name only, so a
       // burst across many routes is one alert carrying the true count.
-      void alertThrottled(
-        `ratelimit:${name}`,
-        `Rate limit rejecting traffic (${name})`,
-        `${c.req.method} ${c.req.path} — ${count} requests against a ${max}/` +
-          `${Math.round(windowMs / 1000)}s limit. Retry-After ${retryAfter}s.`,
-      );
+      // Skipped for `silent` limiters — see the `options.silent` doc above.
+      if (!silent) {
+        void alertThrottled(
+          `ratelimit:${name}`,
+          `Rate limit rejecting traffic (${name})`,
+          `${c.req.method} ${c.req.path} — ${count} requests against a ${max}/` +
+            `${Math.round(windowMs / 1000)}s limit. Retry-After ${retryAfter}s.`,
+        );
+      }
 
-      throw Errors.tooManyRequests(`Rate limit exceeded. Try again in ${retryAfter} seconds.`);
+      // A `silent` limiter must not describe its own ceiling in a response the
+      // user can see. Its whole purpose is to pace people without ever telling
+      // them a quota exists, so it returns a bare, uninformative message; the
+      // real numbers stay in the log line above and the X-RateLimit-* headers.
+      throw silent
+        ? Errors.tooManyRequests()
+        : Errors.tooManyRequests(`Rate limit exceeded. Try again in ${retryAfter} seconds.`);
     }
 
     await next();

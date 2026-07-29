@@ -157,6 +157,10 @@ export const consentTypeEnum = pgEnum('consent_type', [
   'marketing',
   'data_processing',
   'whatsapp',
+  // Realtime voice: streaming the user's live speech to Google. A separate
+  // grant from 'data_processing', not a subset of it — see the
+  // users.voiceConsentAt column comment for why it cannot be inherited.
+  'voice',
 ]);
 
 export const consentActionEnum = pgEnum('consent_action', ['granted', 'withdrawn']);
@@ -355,6 +359,17 @@ export const users = pgTable(
     termsVersion: text('terms_version'),
     privacyPolicyAcceptedAt: timestamp('privacy_policy_accepted_at', { withTimezone: true }),
     privacyPolicyVersion: text('privacy_policy_version'),
+    // Realtime voice (Gemini Live) — a SEPARATE, narrower grant than
+    // dataProcessingConsentAt above, and deliberately not folded into it.
+    // Voice sends a live recording of the user's speech to a third party
+    // (Google) on a preview tier whose traffic may be used to improve that
+    // third party's products, which is materially more than the general
+    // data-processing consent covers. Existing users must therefore opt in
+    // explicitly rather than inheriting it — which a null here gives us for
+    // free. Both the `paid.voiceChat` feature flag AND this must be present
+    // before a voice session can start.
+    voiceConsentAt: timestamp('voice_consent_at', { withTimezone: true }),
+    voiceConsentRevokedAt: timestamp('voice_consent_revoked_at', { withTimezone: true }),
 
     // --- lifecycle ---------------------------------------------------------
     anonymizedAt: timestamp('anonymized_at', { withTimezone: true }),
@@ -2023,3 +2038,67 @@ export const palmReadings = pgTable(
 
 export type PalmReadingRow = typeof palmReadings.$inferSelect;
 export type NewPalmReadingRow = typeof palmReadings.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* voice_sessions — realtime voice (Gemini Live) billing ledger               */
+/*                                                                             */
+/* This table exists because the audio itself never touches this server. The   */
+/* client streams straight to Google over a WebSocket using a short-lived      */
+/* ephemeral token the backend mints (see lib/llm/gemini-live-token.ts), which */
+/* means there is no request-per-turn to count and no session end this server  */
+/* observes. The ONLY thing the backend controls is how many tokens it mints,  */
+/* so a row here is the durable record of exactly that: one `minutesCharged`   */
+/* increment per token issued, each paired with a ₹20 wallet_transactions      */
+/* debit, refusing to mint beyond VOICE_MAX_MINUTES.                           */
+/*                                                                             */
+/* Deliberately a DB row and not a Redis key, unlike the in-flight locks: this */
+/* is the audit trail for money taken from a user, and must survive a Redis    */
+/* flush, an eviction or a restart in order to reconcile against the wallet    */
+/* ledger.                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const voiceSessions = pgTable(
+  'voice_sessions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /**
+     * Minutes billed so far — incremented once per successfully minted token,
+     * and the value the VOICE_MAX_MINUTES ceiling is checked against. Not a
+     * measurement of how long the user actually spoke: a minute is charged when
+     * it is granted, because whether it was used is only knowable to the client
+     * and this number decides what the user pays.
+     */
+    minutesCharged: integer('minutes_charged').notNull().default(0),
+    /**
+     * Cleared when the session ends (either the client says so, or the ceiling
+     * is reached). A session that is still `true` long after `updatedAt` is one
+     * whose client vanished without telling us — harmless, since no further
+     * minute can be charged without another mint request.
+     */
+    active: boolean('active').notNull().default(true),
+    /** BCP-47-ish app language the session was opened in, for support/debugging. */
+    locale: text('locale'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userIdx: index('voice_sessions_user_idx').on(table.userId, table.createdAt),
+  }),
+);
+
+export type VoiceSessionRow = typeof voiceSessions.$inferSelect;
+export type NewVoiceSessionRow = typeof voiceSessions.$inferInsert;

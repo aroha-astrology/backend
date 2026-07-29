@@ -302,6 +302,13 @@
       "when": 1785217985255,
       "tag": "0042_add_kundli_translations",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1785264047781,
+      "tag": "0043_magenta_hulk",
+      "breakpoints": true
     }
   ]
 }

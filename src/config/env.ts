@@ -86,6 +86,30 @@ const EnvSchema = z
     GEMINI_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta/openai'),
     GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
 
+    // --- Gemini Live (realtime voice) --------------------------------------
+    // A SEPARATE model from GEMINI_MODEL above, not a variant of it.
+    // `gemini-3.1-flash-lite` is the text/batch tier and cannot do realtime
+    // audio at all; `gemini-3.1-flash-live-preview` is a native audio-to-audio
+    // model reached over a WebSocket rather than the OpenAI-compatible
+    // /chat/completions endpoint every other call site here uses. Nothing
+    // outside the voice module reads these, and GEMINI_MODEL is untouched.
+    //
+    // The native (non-OpenAI-compat) base URL, because ephemeral-token minting
+    // and the Live socket both live under v1beta directly.
+    GEMINI_LIVE_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta'),
+    GEMINI_LIVE_MODEL: z.string().default('gemini-3.1-flash-live-preview'),
+    // A kill switch that sits BELOW the `paid.voiceChat` feature flag: the flag
+    // is the product control (admin-togglable, per-user/per-group), this is the
+    // operational one. It exists so voice can be cut instantly from the box —
+    // without a deploy or a DB write — if it starts eating the shared Gemini
+    // free-tier quota that every text feature also depends on. Defaults off:
+    // the model is a preview whose quota Google does not publish, so it must be
+    // switched on deliberately after watching it against real traffic.
+    GEMINI_LIVE_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+
     // --- Redis -------------------------------------------------------------
     REDIS_URL: z.string().default('redis://localhost:6379/0'),
 

@@ -24,6 +24,7 @@ import { vastuRouter } from './modules/vastu/vastu.routes.js';
 import { gemstoneRouter } from './modules/gemstone/gemstone.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
 import { palmRouter } from './modules/palm/palm.routes.js';
+import { voiceRouter } from './modules/voice/voice.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -83,6 +84,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', gemstoneRouter);
   app.route('/v1', reportsRouter);
   app.route('/v1', palmRouter);
+  app.route('/v1', voiceRouter);
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);
