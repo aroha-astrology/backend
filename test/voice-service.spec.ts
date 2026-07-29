@@ -232,7 +232,9 @@ describe('extendVoiceSession — the 3-minute ceiling', () => {
   });
 
   it('caps total spend at the price times the ceiling', async () => {
-    // Walk a whole session: three granted minutes, then a refusal.
+    // Walk a whole session: VOICE_MAX_MINUTES granted minutes, then a refusal.
+    // Driven off the constant rather than a fixed call count, so this stays
+    // correct whatever the ceiling is currently set to.
     let charged = 0;
     state.claimVoiceMinute.mockImplementation(() => {
       charged += 1;
@@ -240,8 +242,9 @@ describe('extendVoiceSession — the 3-minute ceiling', () => {
     });
 
     await startVoiceSession(USER, profile, 'en');
-    await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
-    await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
+    for (let i = 1; i < VOICE_MAX_MINUTES; i++) {
+      await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
+    }
     await expect(extendVoiceSession(USER, SESSION, profile, 'en', 'h')).rejects.toThrow();
 
     expect(state.deductWalletBalance).toHaveBeenCalledTimes(VOICE_MAX_MINUTES);
