@@ -734,12 +734,25 @@ export function buildChatMessages(
  * session has no per-turn server hop, so there is no opportunity to re-inspect
  * or short-circuit anything once the socket is open.
  */
+
+/**
+ * Synthetic first turn the client sends right after the socket connects (see
+ * frontend/lib/voice/gemini-live-client.ts's GREETING_TRIGGER) so the model
+ * speaks first instead of sitting in silence waiting for the user's mic. Must
+ * match that constant exactly — the two live in different repos, so nothing
+ * enforces this beyond convention.
+ */
+const CALL_CONNECTED_SENTINEL = '[[CALL_CONNECTED]]';
+
 export function buildVoiceSystemInstruction(opts: {
   groundingFacts: string[];
   birthTimeUnknown?: boolean;
   locale?: string;
   userFacts?: UserFact[];
   now?: Date;
+  /** Whichever profile the call is grounded to. Used ONLY for the one-time
+   *  call-connected opening greeting below — never for the rest of the call. */
+  displayName?: string | null;
 }): string {
   const {
     groundingFacts,
@@ -747,6 +760,7 @@ export function buildVoiceSystemInstruction(opts: {
     locale = 'en',
     userFacts = [],
     now = new Date(),
+    displayName = null,
   } = opts;
 
   const noChartFallback = birthTimeUnknown
@@ -803,6 +817,15 @@ export function buildVoiceSystemInstruction(opts: {
         `specific, confident narration you would in English, just spoken in ${locale}.`,
     );
   }
+
+  // The narrow, explicit exception to PERSONAL_TOUCH's "never use the user's
+  // name" rule (in SHARED_PROMPT_RULES above) — scoped to this one opening
+  // line only, not a relaxation of the rule for the rest of the call.
+  sections.push(
+    displayName
+      ? `The very first message you receive in this session will be the literal text "${CALL_CONNECTED_SENTINEL}" — this is not a real question from the user, it is a system signal that the call has just connected. When you receive it, your entire reply must be ONLY a short, warm opening line: say exactly "Radhe Radhe, ${displayName}!" and then briefly invite them to share what's on their mind — nothing else, no astrology content yet. This is the one and only exception to the rule above about never addressing the user by name. For the rest of the call, go back to never using their name.`
+      : `The very first message you receive in this session will be the literal text "${CALL_CONNECTED_SENTINEL}" — this is not a real question from the user, it is a system signal that the call has just connected. When you receive it, your entire reply must be ONLY a short, warm opening line: say exactly "Radhe Radhe!" and then briefly invite them to share what's on their mind — nothing else, no astrology content yet.`,
+  );
 
   // Last, closest to generation — same placement rationale as systemPrompt's:
   // the length/format constraint is the one most often ignored, and voice has

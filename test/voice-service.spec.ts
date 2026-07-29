@@ -199,6 +199,20 @@ describe('startVoiceSession', () => {
     expect(grant.pricePerMinutePaise).toBe(3500);
   });
 
+  it("passes the active profile's displayName through to the greeting instruction", async () => {
+    // Whichever profile the call is grounded to (primary or an additional
+    // profile) — this is what makes the AI's opening "Radhe Radhe, <name>"
+    // greeting personalized, without touching PERSONAL_TOUCH's "never use the
+    // name" rule for the rest of the call.
+    const named = makeProfileContext({ birthProfileId: null, displayName: 'Priya' });
+
+    await startVoiceSession(USER, named, 'en');
+
+    expect(state.buildVoiceSystemInstruction).toHaveBeenCalledWith(
+      expect.objectContaining({ displayName: 'Priya' }),
+    );
+  });
+
   it('still starts when the chart is unavailable', async () => {
     // Grounding is best-effort everywhere else in this codebase; a missing
     // kundli must not block a call the user is about to be charged for.

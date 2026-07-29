@@ -137,6 +137,10 @@ async function buildSessionInstruction(
     birthTimeUnknown: profile.birthTimeAccuracy === 'unknown',
     locale,
     userFacts,
+    // Whichever profile this call is grounded to (primary or an additional
+    // profile) — used ONLY for the one-time call-connected opening greeting,
+    // never for the rest of the conversation. See buildVoiceSystemInstruction.
+    displayName: profile.displayName,
   });
 }
 
