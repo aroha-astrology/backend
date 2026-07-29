@@ -31,3 +31,6 @@ npm-debug.log*
 .worktrees/
 
 scripts/load-test/results/
+
+# Local agent config — machine-specific, never shared
+.claude/
