@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReportRow, UserRow } from '../src/db/schema.js';
 import type * as ReportGeneratorTypesModule from '../src/modules/reports/report-generator.types.js';
+import type * as WindowSummaryModule from '../src/lib/llm/reports/window-summary.js';
 import type { ReportGenerator } from '../src/modules/reports/report-generator.types.js';
 
 // Prevent the REAL kundli-milan generator (and its real astro-engine/LLM calls) from
@@ -31,6 +32,7 @@ const state = vi.hoisted(() => {
     computeMetrology: vi.fn(),
     findActiveTokensForUser: vi.fn(),
     sendPushBatch: vi.fn(),
+    summarizeTimingWindows: vi.fn(),
     REPORT_GENERATORS,
   };
 });
@@ -77,6 +79,16 @@ vi.mock('../src/modules/birth-profiles/profile-context.js', () => ({
 vi.mock('../src/lib/swarm/agents/metrologist.js', () => ({
   computeMetrology: state.computeMetrology,
 }));
+
+vi.mock('../src/lib/llm/reports/window-summary.js', async () => {
+  const actual = await vi.importActual<typeof WindowSummaryModule>(
+    '../src/lib/llm/reports/window-summary.js',
+  );
+  return {
+    ...actual, // keep the real findRankedWindowsField (pure, no LLM) — only the LLM call itself is mocked
+    summarizeTimingWindows: state.summarizeTimingWindows,
+  };
+});
 
 vi.mock('../src/modules/reports/report-generator.types.js', async () => {
   const actual = await vi.importActual<typeof ReportGeneratorTypesModule>(
@@ -148,6 +160,7 @@ beforeEach(() => {
   state.resolveProfileContext.mockReset().mockResolvedValue({ birthProfileId: null });
   state.computeMetrology.mockReset().mockResolvedValue({ chart: { planets: [] } });
   state.findActiveTokensForUser.mockReset().mockResolvedValue([]);
+  state.summarizeTimingWindows.mockReset().mockResolvedValue([]);
   state.sendPushBatch.mockReset().mockResolvedValue({ success: 0, failure: 0 });
 });
 
@@ -596,6 +609,97 @@ describe('purchaseReport — background generation safety net', () => {
     expect(generateNarrative).toHaveBeenCalledWith({ gunaMilanScore: 30 }, 'en');
   });
 
+  it('summarizes timing windows once and persists them alongside sections when scores has a RankedWindow[] field', async () => {
+    const window = {
+      startDate: '2026-10-22T00:00:00.000Z',
+      endDate: '2027-01-12T00:00:00.000Z',
+      score: 1,
+      level: 'LOW',
+      dashaLevel: 'pratyantardasha',
+      reasoning: ['Vimshottari anchor: Mercury pratyantardasha (within Saturn major period).'],
+    };
+    state.REPORT_GENERATORS.true_love = {
+      key: 'true_love',
+      computeScores: vi.fn().mockReturnValue({ romanceScore: 60, windows: [window] }),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'tl1', reportKey: 'true_love' }));
+    state.summarizeTimingWindows.mockResolvedValue(['A window worth watching.']);
+
+    await purchaseReport(makeUser(), { reportKey: 'true_love' });
+
+    await vi.waitFor(() => {
+      expect(state.markReportReady).toHaveBeenCalled();
+    });
+    expect(state.summarizeTimingWindows).toHaveBeenCalledWith([window]);
+    expect(state.markReportReady).toHaveBeenCalledWith(
+      'tl1',
+      expect.any(Date),
+      expect.objectContaining({
+        content: expect.objectContaining({
+          sections: [{ heading: 'H', paragraphs: ['p'] }],
+          windowSummaries: { field: 'windows', summaries: ['A window worth watching.'] },
+        }),
+      }),
+    );
+  });
+
+  it('does not call summarizeTimingWindows when scores has no timing-window field', async () => {
+    state.REPORT_GENERATORS.wealth = {
+      key: 'wealth',
+      computeScores: vi.fn().mockReturnValue({ wealthScore: 70 }),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'w9', reportKey: 'wealth' }));
+
+    await purchaseReport(makeUser(), { reportKey: 'wealth' });
+
+    await vi.waitFor(() => {
+      expect(state.markReportReady).toHaveBeenCalled();
+    });
+    expect(state.summarizeTimingWindows).not.toHaveBeenCalled();
+  });
+
+  it('still marks the report ready (with no window summaries) when summarizeTimingWindows fails', async () => {
+    const window = {
+      startDate: '2026-10-22T00:00:00.000Z',
+      endDate: '2027-01-12T00:00:00.000Z',
+      score: 1,
+      level: 'LOW',
+      dashaLevel: 'pratyantardasha',
+      reasoning: ['x'],
+    };
+    state.REPORT_GENERATORS.true_love = {
+      key: 'true_love',
+      computeScores: vi.fn().mockReturnValue({ windows: [window] }),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'tl2', reportKey: 'true_love' }));
+    state.summarizeTimingWindows.mockRejectedValue(new Error('LLM exploded'));
+
+    await purchaseReport(makeUser(), { reportKey: 'true_love' });
+
+    await vi.waitFor(() => {
+      expect(state.markReportReady).toHaveBeenCalled();
+    });
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.markReportReady).toHaveBeenCalledWith(
+      'tl2',
+      expect.any(Date),
+      expect.objectContaining({
+        content: expect.objectContaining({
+          windowSummaries: { field: 'windows', summaries: [] },
+        }),
+      }),
+    );
+  });
+
   it('fires notifyReportReady (push) after marking the row ready, without affecting the ready outcome', async () => {
     state.REPORT_GENERATORS.marriage = {
       key: 'marriage',
@@ -841,6 +945,72 @@ describe('getReportForUser', () => {
       scores: { fresh: true },
       sections: [{ heading: 'H', paragraphs: ['p'] }],
     });
+  });
+
+  it('splices persisted window summaries onto freshly recomputed scores by position', async () => {
+    const window = {
+      startDate: '2026-10-22T00:00:00.000Z',
+      endDate: '2027-01-12T00:00:00.000Z',
+      score: 1,
+      level: 'LOW',
+      dashaLevel: 'pratyantardasha',
+      reasoning: ['Vimshottari anchor: Mercury pratyantardasha (within Saturn major period).'],
+    };
+    state.REPORT_GENERATORS.true_love = {
+      key: 'true_love',
+      computeScores: vi.fn().mockReturnValue({ windows: [window] }),
+      generateNarrative: vi.fn(),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ chartData: { planets: [] } });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        reportKey: 'true_love',
+        status: 'ready',
+        content: {
+          sections: [{ heading: 'H', paragraphs: ['p'] }],
+          windowSummaries: { field: 'windows', summaries: ['A window worth watching.'] },
+        },
+      }),
+    );
+
+    const dto = await getReportForUser('report-1', 'user-1', 'en');
+
+    expect(dto).toMatchObject({
+      status: 'ready',
+      scores: { windows: [{ ...window, summary: 'A window worth watching.' }] },
+    });
+  });
+
+  it('leaves scores.windows[i].summary undefined when the row has no persisted window summaries (pre-feature report)', async () => {
+    const window = {
+      startDate: '2026-10-22T00:00:00.000Z',
+      endDate: '2027-01-12T00:00:00.000Z',
+      score: 1,
+      level: 'LOW',
+      dashaLevel: 'pratyantardasha',
+      reasoning: ['x'],
+    };
+    state.REPORT_GENERATORS.true_love = {
+      key: 'true_love',
+      computeScores: vi.fn().mockReturnValue({ windows: [window] }),
+      generateNarrative: vi.fn(),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ chartData: { planets: [] } });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        reportKey: 'true_love',
+        status: 'ready',
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      }),
+    );
+
+    const dto = await getReportForUser('report-1', 'user-1', 'en');
+
+    expect(
+      (dto as { scores: { windows: Array<{ summary?: string }> } }).scores.windows[0].summary,
+    ).toBeUndefined();
   });
 
   it('surfaces isPreview:true from the row so the client knows to blur/paywall it', async () => {

@@ -1,12 +1,26 @@
 // =============================================================================
 // True Love report — LLM narrative
 // =============================================================================
-// 6 sections across 2 bounded LLM calls (comfortably under REPORT_PROFILE's
+// 9 sections across 3 bounded LLM calls (comfortably under REPORT_PROFILE's
 // 4096-token ceiling each): call 1 covers the original headline romance/
-// partnership/tilt facts, call 2 covers the newer timing+age-band, archetype/
-// trait-tilt, decade-by-decade romance arc, and dosha/yoga fact blocks — same
-// "split by theme, not by count" discipline marriage.ts's own 2-call
-// narrative uses. No fallback filler on a bad response.
+// partnership/tilt facts, call 2 covers the timing+age-band, archetype/
+// trait-tilt, decade-by-decade romance arc, and dosha/yoga fact blocks, call
+// 3 covers the partner archetype ("who am I drawn to"), a reflection on
+// repeating patterns, and what's blocking this reader / how they'll
+// recognize "the one" — same "split by theme, not by count" discipline
+// marriage.ts's own multi-call narrative uses. No fallback filler on a bad
+// response.
+//
+// Call 3 closes a real gap: the report's "what this report covers" i18n copy
+// (reports.covers.true_love) promises answers to all 7 of its questions, but
+// the original 2-call/6-section narrative only answered 4 of them — "what
+// kind of person am I drawn to," "what patterns keep repeating," and "how
+// will I recognize the one" had no matching section anywhere. Call 3 closes
+// all 3, the last two as pure reflection grounded in facts already given
+// elsewhere in this report (no new astro-engine computation needed), the
+// first via astro-engine/reports/true-love.ts's new `partnerArchetype`
+// (7th-house-themed, mirroring Marriage report's own `partnerArchetype`)
+// rather than an ungrounded LLM guess about "who you're drawn to."
 //
 // The romance arc (romanceArc: DecadeBand[]) was computed by
 // astro-engine/reports/true-love.ts from the start but never referenced by
@@ -79,6 +93,56 @@ Write EXACTLY 4 sections, in this order:
 4. Heading close to "How Your Romantic Life Unfolds Decade By Decade" — 1-2 paragraphs walking through the given 3 decade bands and their scores/tones in order, framed as a long-arc pattern (not a fixed fate) — directly answer "how does my romantic life unfold decade by decade."
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
+}
+
+const GROUNDING_RULE_3 =
+  'The partner archetype, trait tilts, romantic archetype, and trait tilts below are GIVEN FACTS, already computed by a deterministic algorithm. State every label and trait score (0-10) VERBATIM. Never invent a fact, a number, or a specific detail (name, appearance, job, nationality) about a real individual — you are describing classical temperament tendencies, not a real person.';
+const SAFETY_RULE_3 =
+  'This is advisory guidance for reflection, never a guarantee about who someone will meet or what patterns will repeat, and never a substitute for the reader\'s own choices and self-awareness. Use tendency language ("tends to", "often", "may notice") — never an absolute claim.';
+
+function narrativeSystemPromptCall3(): string {
+  return `You are writing the third and final part of a True Love Report for a mobile Vedic astrology app. The app already computed a partner archetype (a 7th-house-themed temperament sketch of the kind of person this reader is naturally drawn to, with 5 trait tilts), plus everything from earlier in this report (a romantic archetype with 5 trait tilts, a love-vs-arranged tilt, and a dosha/yoga summary) using classical rules. Your job is ONLY to write the narrative explanation.
+
+${GROUNDING_RULE_3}
+${PLAIN_LANGUAGE_RULE}
+${SAFETY_RULE_3}
+
+Return STRICT JSON only, no markdown fences, in this exact shape:
+{"sections": [{"heading": string, "paragraphs": string[]}]}
+
+Write EXACTLY 3 sections, in this order:
+1. Heading close to "Who You're Naturally Drawn To" — 1-2 paragraphs naming the given partner archetype and weaving in its 5 trait tilts as relative strengths (state the numbers given, never recompute them) — this is a direct answer to "what kind of person am I naturally, deeply drawn to in love."
+2. Heading close to "Patterns You Might Notice Repeating" — 1 paragraph reflecting on the given romantic archetype's trait tilts (which run notably high or low) and the love-vs-arranged tilt already given, to gently describe ONE recurring pattern this person may notice in their romantic life and why it may recur — grounded ONLY in the trait/tilt facts already given elsewhere in this report, never inventing a new fact. This directly answers "what patterns keep repeating in my love life, and why."
+3. Heading close to "What's Really Blocking You — And How You'll Recognize The One" — 2 paragraphs: first, using the given trait tilts and any dosha caution already given, name the ONE factor most likely to get in this person's way of finding or keeping love, framed constructively, not alarmingly (directly answers "what's really blocking me"); second, using the given partner archetype and romantic archetype together, describe 2-3 concrete, plain-language signs this person will likely feel when they meet a compatible partner (directly answers "how will I recognize the one").
+
+Each paragraph should be 2-4 sentences. Second person ("you").`;
+}
+
+function buildFactsCall3(scores: TrueLoveScores): string {
+  const lines: string[] = [];
+  lines.push(`Partner archetype: "${scores.partnerArchetype.label}".`);
+  lines.push(`Partner archetype description: ${scores.partnerArchetype.description}`);
+  lines.push('Partner archetype trait tilts (0-10, given — state verbatim):');
+  for (const t of scores.partnerArchetype.traits) lines.push(`- ${t.label}: ${t.score}`);
+
+  lines.push(
+    `Romantic archetype (already introduced earlier in this report): "${scores.archetype.label}".`,
+  );
+  lines.push('Romantic archetype trait tilts (0-10, given — state verbatim):');
+  for (const t of scores.archetype.traits) lines.push(`- ${t.label}: ${t.score}`);
+
+  lines.push(
+    `Love-vs-arranged tilt (already given): ${scores.loveVsArrangedTilt} out of 10 (higher = more love-marriage-leaning).`,
+  );
+
+  if (scores.doshaYoga.cautions.length > 0) {
+    lines.push('Cautions already given:');
+    for (const c of scores.doshaYoga.cautions) lines.push(`- ${c.label}: ${c.detail}`);
+  } else {
+    lines.push('No dosha caution was given for this chart.');
+  }
+
+  return lines.join('\n');
 }
 
 function formatWindowForFacts(window: RankedWindow): string {
@@ -200,11 +264,12 @@ async function callAndParse(
   return parsed;
 }
 
-/** 2 bounded calls — see module doc comment for the split rationale. */
+/** 3 bounded calls — see module doc comment for the split rationale. */
 export async function generateTrueLoveNarrative(scores: TrueLoveScores): Promise<ReportSection[]> {
   const part1 = await callAndParse(narrativeSystemPrompt(), buildFacts(scores), 'call1');
   const part2 = await callAndParse(narrativeSystemPromptCall2(), buildFactsCall2(scores), 'call2');
-  return [...part1, ...part2];
+  const part3 = await callAndParse(narrativeSystemPromptCall3(), buildFactsCall3(scores), 'call3');
+  return [...part1, ...part2, ...part3];
 }
 
 export async function translateTrueLoveNarrative(

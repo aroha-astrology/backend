@@ -33,6 +33,18 @@ function makeScores(overrides: Partial<TrueLoveScores> = {}): TrueLoveScores {
         { label: 'Depth', score: 6 },
       ],
     },
+    partnerArchetype: {
+      label: 'Partnership Archetype',
+      description:
+        "Classically, this placement's sign (Capricorn) suggests someone committed, ambitious, and serious about long-term responsibility.",
+      traits: [
+        { label: 'Warmth', score: 6 },
+        { label: 'Discipline', score: 6 },
+        { label: 'Intellect', score: 6 },
+        { label: 'Sensuality', score: 6 },
+        { label: 'Ambition', score: 6 },
+      ],
+    },
     romanceArc: [
       {
         label: 'Years 1-10',
@@ -66,7 +78,7 @@ beforeEach(() => {
 });
 
 describe('generateTrueLoveNarrative', () => {
-  it('makes exactly 2 bounded LLM calls returning 6 sections total', async () => {
+  it('makes exactly 3 bounded LLM calls returning 9 sections total', async () => {
     state.generate
       .mockResolvedValueOnce(
         JSON.stringify({
@@ -88,12 +100,30 @@ describe('generateTrueLoveNarrative', () => {
             },
           ],
         }),
+      )
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          sections: [
+            {
+              heading: "Who You're Naturally Drawn To",
+              paragraphs: ['You lean toward steady partners.'],
+            },
+            {
+              heading: 'Patterns You Might Notice Repeating',
+              paragraphs: ['A recurring theme of pacing.'],
+            },
+            {
+              heading: "What's Really Blocking You — And How You'll Recognize The One",
+              paragraphs: ["You'll know them by how safe you feel."],
+            },
+          ],
+        }),
       );
 
     const sections = await generateTrueLoveNarrative(makeScores());
 
-    expect(state.generate).toHaveBeenCalledTimes(2);
-    expect(sections).toHaveLength(6);
+    expect(state.generate).toHaveBeenCalledTimes(3);
+    expect(sections).toHaveLength(9);
     expect(sections.map((s) => s.heading)).toEqual([
       'What This Means For You',
       'Family Blessing',
@@ -101,7 +131,31 @@ describe('generateTrueLoveNarrative', () => {
       'Your Romantic Archetype',
       'Blessings & Cautions',
       'How Your Romantic Life Unfolds Decade By Decade',
+      "Who You're Naturally Drawn To",
+      'Patterns You Might Notice Repeating',
+      "What's Really Blocking You — And How You'll Recognize The One",
     ]);
+  });
+
+  it('embeds the given partnerArchetype facts as GIVEN FACTS in call 3', async () => {
+    state.generate.mockResolvedValue(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateTrueLoveNarrative(makeScores());
+    const call = state.generate.mock.calls[2]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Partnership Archetype');
+    expect(content).toContain('Warmth');
+    expect(content.toUpperCase()).toContain('GIVEN FACT');
+  });
+
+  it('throws on an unparseable response from call 3 (call 1 and 2 already resolved)', async () => {
+    state.generate
+      .mockResolvedValueOnce(JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }))
+      .mockResolvedValueOnce(JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }))
+      .mockResolvedValueOnce('not json');
+    await expect(generateTrueLoveNarrative(makeScores())).rejects.toThrow();
+    expect(state.generate).toHaveBeenCalledTimes(3);
   });
 
   it('embeds the given tilt/romance/partnership facts as GIVEN FACTS in call 1', async () => {

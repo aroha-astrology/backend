@@ -21,6 +21,10 @@ import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-y
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export type WealthPattern = 'steady_accumulation' | 'volatile_gains' | 'late_blooming';
+/** Which of the 3 classical income-source houses reads strongest on this chart — answers the
+ * covers-list question "is property, business, or salaried income my strongest wealth path,"
+ * previously unanswered anywhere in this report. */
+export type IncomeSource = 'salaried' | 'business' | 'property';
 
 export interface WealthScores extends Record<string, unknown> {
   /** Unweighted average of 2nd-lord, 11th-lord, and Jupiter strength scores (30/60/90 mapping). */
@@ -47,6 +51,13 @@ export interface WealthScores extends Record<string, unknown> {
   /** 0-10. See computeSpendingVsSavingTilt for the exact formula. 0 = strongly
    * saving/accumulation-leaning, 10 = strongly spending/gains-leaning, 5 = balanced. */
   spendingVsSavingTilt: number;
+  /** Natal strength of each of the 3 classical income-source house lords — 10th (career/service,
+   * "salaried"), 7th (trade/partnership, "business"), 4th (real estate/fixed assets, "property").
+   * See `strongestIncomeSource` for the winner among these three. */
+  incomeSourceStrengths: Record<IncomeSource, PlanetStrength>;
+  /** Whichever of `incomeSourceStrengths` scores highest (ties broken salaried > business >
+   * property, the order most people's income realistically defaults to). */
+  strongestIncomeSource: IncomeSource;
 }
 
 /**
@@ -90,6 +101,28 @@ function wealthPatternFromLordScores(
 function computeSpendingVsSavingTilt(secondLordScore: number, eleventhLordScore: number): number {
   const raw = 5 + (eleventhLordScore - secondLordScore) / 12;
   return Math.max(0, Math.min(10, Math.round(raw)));
+}
+
+/**
+ * Documented rule: compares the natal strength SCORE (not the label) of the 10th house lord
+ * (career/service — "salaried"), 7th house lord (trade/partnership — "business"), and 4th house
+ * lord (real estate/fixed assets — "property"), returning whichever is highest. Ties broken in
+ * salaried > business > property order (array iteration order below) — an arbitrary but
+ * documented tiebreak toward the income type most people's chart realistically defaults to,
+ * mirroring `wealthPatternFromLordScores`'s own "documented, not fabricated precision" discipline
+ * for a genuine tie.
+ */
+function strongestIncomeSourceFromScores(
+  salariedScore: number,
+  businessScore: number,
+  propertyScore: number,
+): IncomeSource {
+  const candidates: [IncomeSource, number][] = [
+    ['salaried', salariedScore],
+    ['business', businessScore],
+    ['property', propertyScore],
+  ];
+  return candidates.reduce((best, cur) => (cur[1] > best[1] ? cur : best))[0];
 }
 
 /** Planets physically occupying a given house (whole-sign occupancy) — mirrors
@@ -224,6 +257,30 @@ export function computeWealthScores(
 
   const spendingVsSavingTilt = computeSpendingVsSavingTilt(secondLordScore, eleventhLordScore);
 
+  // --- Strongest income path: property vs business vs salaried ---------------
+  const tenthLord = getHouseLord(10, chart);
+  const tenthLordStrength = tenthLord ? strengthOfPlanet(tenthLord, analyses) : 'average';
+  const tenthLordScore = tenthLord ? strengthScoreOfPlanet(tenthLord, analyses) : 60;
+
+  const seventhLord = getHouseLord(7, chart);
+  const seventhLordStrength = seventhLord ? strengthOfPlanet(seventhLord, analyses) : 'average';
+  const seventhLordScore = seventhLord ? strengthScoreOfPlanet(seventhLord, analyses) : 60;
+
+  const fourthLord = getHouseLord(4, chart);
+  const fourthLordStrength = fourthLord ? strengthOfPlanet(fourthLord, analyses) : 'average';
+  const fourthLordScore = fourthLord ? strengthScoreOfPlanet(fourthLord, analyses) : 60;
+
+  const incomeSourceStrengths: Record<IncomeSource, PlanetStrength> = {
+    salaried: tenthLordStrength,
+    business: seventhLordStrength,
+    property: fourthLordStrength,
+  };
+  const strongestIncomeSource = strongestIncomeSourceFromScores(
+    tenthLordScore,
+    seventhLordScore,
+    fourthLordScore,
+  );
+
   return {
     wealthScore,
     secondLordStrength,
@@ -237,5 +294,7 @@ export function computeWealthScores(
     wealthArc,
     doshaYoga,
     spendingVsSavingTilt,
+    incomeSourceStrengths,
+    strongestIncomeSource,
   };
 }

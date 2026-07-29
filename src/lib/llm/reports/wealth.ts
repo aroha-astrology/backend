@@ -1,15 +1,21 @@
 // =============================================================================
 // Wealth report — LLM narrative
 // =============================================================================
-// 6 sections from 2 bounded LLM calls (run in parallel via Promise.all, same split idiom as
-// match-report.ts): the original 2 sections (Wealth Pattern, Practical Guidance) in one call, and
-// 4 new sections (Wealth Timing, Money Archetype, Dosha & Yoga Check, Spending vs. Saving Tilt)
-// covering the report's new enrichment fields in a second call. Split rather than folded into one
-// call because the combined fact set (windows + reasoning, age bands, a 5-trait archetype,
-// dosha/yoga findings, plus the original facts) risks approaching REPORT_PROFILE's 4096-token
-// ceiling once translated into a script that tokenizes worse than English — the same failure mode
-// documented on CHAT_PROFILE's 700->2048 history and match-report.ts's own 2-call split. No
-// fallback filler on a bad response from either call.
+// 9 sections from 3 bounded LLM calls (run in parallel via Promise.all, same split idiom as
+// match-report.ts): the original 2 sections (Wealth Pattern, Practical Guidance) in one call, 5
+// sections (Wealth Timing, Money Archetype, Dosha & Yoga Check, Spending vs. Saving Tilt, decade
+// arc) covering the report's enrichment fields in a second call, and 2 income-source sections
+// (Your Strongest Income Path, What to Actively Guard Against) in a third. Split rather than
+// folded into one call because the combined fact set (windows + reasoning, age bands, a 5-trait
+// archetype, dosha/yoga findings, plus the original facts) risks approaching REPORT_PROFILE's
+// 4096-token ceiling once translated into a script that tokenizes worse than English — the same
+// failure mode documented on CHAT_PROFILE's 700->2048 history and match-report.ts's own 2-call
+// split. No fallback filler on a bad response from any call.
+//
+// The third call closes a real gap: reports.covers.wealth (the paid-report purchase modal) asks
+// "is property, business, or salaried income my strongest wealth path" — a question the original
+// 2-call/7-section narrative never answered anywhere, grounded in astro-engine/reports/wealth.ts's
+// new `strongestIncomeSource`/`incomeSourceStrengths` facts (10th/7th/4th house lord strengths).
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
@@ -121,6 +127,40 @@ function formatDoshaYoga(doshaYoga: DoshaYogaSummary): string {
   return `Supporting wealth yogas: ${positives}. Wealth-related dosha cautions: ${cautions}.`;
 }
 
+const INCOME_GROUNDING_RULE =
+  'The income-source strengths and strongest-income-source verdict below are ALSO GIVEN FACTS, already computed by a deterministic algorithm comparing the 10th house (career/service), 7th house (trade/partnership), and 4th house (real estate/fixed assets) lord strengths. State them verbatim — never recompute or contradict which one is strongest.';
+
+function incomeSourceSystemPrompt(): string {
+  return `You are writing the final sections for a Wealth Report for a mobile Vedic astrology app. The app already computed, using classical rules, the natal strength of the three classical income-source houses — 10th (career/service, "salaried"), 7th (trade/partnership, "business"), and 4th (real estate/fixed assets, "property") — and which one reads strongest on this chart. Your job is ONLY to write the narrative explanation for these.
+
+${INCOME_GROUNDING_RULE}
+${PLAIN_LANGUAGE_RULE}
+${DISCLAIMER_RULE}
+
+Return STRICT JSON only, no markdown fences, in this exact shape:
+{"sections": [{"heading": string, "paragraphs": string[]}]}
+
+Write EXACTLY 2 sections, in this order:
+1. Heading close to "Your Strongest Income Path" — 1-2 paragraphs naming the given strongest income source (salaried/business/property) and the given strength of all three, explaining in plain language why that house classically supports this income type. This directly answers "is property, business, or salaried income my strongest wealth path."
+2. Heading close to "What to Actively Guard Against" — 1 paragraph of GENERAL, non-prescriptive guidance on financial risks or habits to watch for, grounded in the wealth pattern and spending-vs-saving tilt already given elsewhere in this report (do not invent a new fact) — this directly answers "what financial risks or leaks should I actively guard against." Explicitly NOT financial advice.
+
+Each paragraph should be 2-4 sentences. Second person ("you").`;
+}
+
+function buildIncomeSourceFacts(scores: WealthScores): string {
+  const lines: string[] = [];
+  lines.push(`Strongest income source: ${scores.strongestIncomeSource}.`);
+  lines.push('Income source strengths (given, state verbatim):');
+  lines.push(`- salaried: ${scores.incomeSourceStrengths.salaried}`);
+  lines.push(`- business: ${scores.incomeSourceStrengths.business}`);
+  lines.push(`- property: ${scores.incomeSourceStrengths.property}`);
+  lines.push(`Wealth pattern (already given elsewhere in this report): ${scores.wealthPattern}.`);
+  lines.push(
+    `Spending vs saving tilt (already given elsewhere in this report): ${scores.spendingVsSavingTilt} out of 10.`,
+  );
+  return lines.join('\n');
+}
+
 function buildEnrichedFacts(scores: WealthScores): string {
   const lines: string[] = [];
   lines.push('Wealth timing windows:');
@@ -204,13 +244,14 @@ async function generateSection(
 }
 
 /**
- * Two bounded calls, run in parallel — the original 2 sections (Wealth Pattern, Practical
- * Guidance), then the 4 new enrichment sections (Wealth Timing, Money Archetype, Dosha & Yoga
- * Check, Spending vs. Saving Tilt) — concatenated into one 6-section list. See the module doc
- * comment above for why this is split rather than one call.
+ * Three bounded calls, run in parallel — the original 2 sections (Wealth Pattern, Practical
+ * Guidance), the 5 enrichment sections (Wealth Timing, Money Archetype, Dosha & Yoga Check,
+ * Spending vs. Saving Tilt, decade arc), then 2 income-source sections (Your Strongest Income
+ * Path, What to Actively Guard Against) — concatenated into one 9-section list. See the module
+ * doc comment above for why this is split rather than one call.
  */
 export async function generateWealthNarrative(scores: WealthScores): Promise<ReportSection[]> {
-  const [pattern, enriched] = await Promise.all([
+  const [pattern, enriched, income] = await Promise.all([
     generateSection(
       narrativeSystemPrompt(),
       buildFacts(scores),
@@ -221,31 +262,38 @@ export async function generateWealthNarrative(scores: WealthScores): Promise<Rep
       buildEnrichedFacts(scores),
       'Write the additional Wealth report sections.',
     ),
+    generateSection(
+      incomeSourceSystemPrompt(),
+      buildIncomeSourceFacts(scores),
+      'Write the final Wealth report sections.',
+    ),
   ]);
-  return [...pattern, ...enriched];
+  return [...pattern, ...enriched, ...income];
 }
 
-/** Translates the two generated groups (first 2 sections, then the remaining ones) in parallel —
- * same split as generation, to stay under the translation ceiling for scripts that tokenize worse
- * than English. A caller passing fewer than 2 sections (e.g. a legacy-shaped fixture) still works:
- * the second group is simply empty and short-circuits without an extra LLM call. */
+/** Translates the three generated groups (first 2 sections, next 5, last 2) in parallel — same
+ * split as generation, to stay under the translation ceiling for scripts that tokenize worse than
+ * English. A caller passing fewer sections (e.g. a legacy-shaped fixture) still works: any empty
+ * group simply short-circuits without an extra LLM call. */
 export async function translateWealthNarrative(
   sections: ReportSection[],
   targetLanguage: string,
 ): Promise<ReportSection[]> {
   const patternSections = sections.slice(0, 2);
-  const enrichedSections = sections.slice(2);
+  const enrichedSections = sections.slice(2, 7);
+  const incomeSections = sections.slice(7);
 
   async function translateGroup(group: ReportSection[]): Promise<ReportSection[]> {
     if (group.length === 0) return [];
     return translateSectionGroup(group, targetLanguage);
   }
 
-  const [patternTranslated, enrichedTranslated] = await Promise.all([
+  const [patternTranslated, enrichedTranslated, incomeTranslated] = await Promise.all([
     translateGroup(patternSections),
     translateGroup(enrichedSections),
+    translateGroup(incomeSections),
   ]);
-  return [...patternTranslated, ...enrichedTranslated];
+  return [...patternTranslated, ...enrichedTranslated, ...incomeTranslated];
 }
 
 async function translateSectionGroup(

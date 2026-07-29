@@ -72,6 +72,8 @@ function makeScores(overrides: Partial<WealthScores> = {}): WealthScores {
       cautions: [{ label: 'Kemdruma Dosha', detail: 'moderate severity' }],
     },
     spendingVsSavingTilt: 7,
+    incomeSourceStrengths: { salaried: 'strong', business: 'average', property: 'weak' },
+    strongestIncomeSource: 'salaried',
     ...overrides,
   };
 }
@@ -102,16 +104,32 @@ const enrichedResponse = JSON.stringify({
   ],
 });
 
+const incomeResponse = JSON.stringify({
+  sections: [
+    {
+      heading: 'Your Strongest Income Path',
+      paragraphs: ['A salaried role classically suits you best.'],
+    },
+    {
+      heading: 'What to Actively Guard Against',
+      paragraphs: ['Watch impulsive spending during gains.'],
+    },
+  ],
+});
+
 beforeEach(() => {
   state.generate.mockReset();
 });
 
 describe('generateWealthNarrative', () => {
-  it('returns 7 sections (2 + 5) from 2 LLM calls', async () => {
-    state.generate.mockResolvedValueOnce(patternResponse).mockResolvedValueOnce(enrichedResponse);
+  it('returns 9 sections (2 + 5 + 2) from 3 LLM calls', async () => {
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
     const sections = await generateWealthNarrative(makeScores());
-    expect(state.generate).toHaveBeenCalledTimes(2);
-    expect(sections).toHaveLength(7);
+    expect(state.generate).toHaveBeenCalledTimes(3);
+    expect(sections).toHaveLength(9);
     expect(sections.map((s) => s.heading)).toEqual([
       'Wealth Pattern',
       'Practical Guidance',
@@ -120,12 +138,18 @@ describe('generateWealthNarrative', () => {
       'Dosha & Yoga Check',
       'Spending vs. Saving Tilt',
       'How Your Finances Change Decade By Decade',
+      'Your Strongest Income Path',
+      'What to Actively Guard Against',
     ]);
   });
 
-  it('instructs the model NOT to give financial advice in both calls (disclaimer requirement)', async () => {
-    state.generate.mockResolvedValueOnce(patternResponse).mockResolvedValueOnce(enrichedResponse);
+  it('instructs the model NOT to give financial advice in all three calls (disclaimer requirement)', async () => {
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
     await generateWealthNarrative(makeScores());
+    expect(state.generate).toHaveBeenCalledTimes(3);
     for (const call of state.generate.mock.calls) {
       const content = call[0].messages.map((m: { content: string }) => m.content).join('\n');
       expect(content.toLowerCase()).toContain('not financial advice');
@@ -133,7 +157,10 @@ describe('generateWealthNarrative', () => {
   });
 
   it('embeds the given wealthScore/wealthPattern facts in the first call', async () => {
-    state.generate.mockResolvedValueOnce(patternResponse).mockResolvedValueOnce(enrichedResponse);
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
     await generateWealthNarrative(
       makeScores({ wealthScore: 82, wealthPattern: 'steady_accumulation' }),
     );
@@ -145,7 +172,10 @@ describe('generateWealthNarrative', () => {
   });
 
   it('embeds the windows/ageBands/archetype/doshaYoga/tilt facts in the second call, never inventing a window when empty', async () => {
-    state.generate.mockResolvedValueOnce(patternResponse).mockResolvedValueOnce(enrichedResponse);
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
     await generateWealthNarrative(makeScores({ windows: [], spendingVsSavingTilt: 3 }));
     const secondCallContent = state.generate.mock.calls[1]?.[0].messages
       .map((m: { content: string }) => m.content)
@@ -160,13 +190,46 @@ describe('generateWealthNarrative', () => {
     expect(secondCallContent.toLowerCase()).toContain('given fact');
   });
 
-  it('throws when either call returns unparseable JSON', async () => {
-    state.generate.mockResolvedValueOnce('not json').mockResolvedValueOnce(enrichedResponse);
+  it('embeds the given incomeSourceStrengths/strongestIncomeSource facts in the third call', async () => {
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
+    await generateWealthNarrative(
+      makeScores({
+        strongestIncomeSource: 'property',
+        incomeSourceStrengths: { salaried: 'weak', business: 'average', property: 'strong' },
+      }),
+    );
+    const thirdCallContent = state.generate.mock.calls[2]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(thirdCallContent).toContain('property');
+    expect(thirdCallContent).toContain('salaried: weak');
+    expect(thirdCallContent.toLowerCase()).toContain('given fact');
+  });
+
+  it('throws when the first call returns unparseable JSON', async () => {
+    state.generate
+      .mockResolvedValueOnce('not json')
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
     await expect(generateWealthNarrative(makeScores())).rejects.toThrow();
   });
 
   it('throws when the second call returns unparseable JSON', async () => {
-    state.generate.mockResolvedValueOnce(patternResponse).mockResolvedValueOnce('garbage');
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce('garbage')
+      .mockResolvedValueOnce(incomeResponse);
+    await expect(generateWealthNarrative(makeScores())).rejects.toThrow();
+  });
+
+  it('throws when the third call returns unparseable JSON', async () => {
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce('garbage');
     await expect(generateWealthNarrative(makeScores())).rejects.toThrow();
   });
 });
@@ -183,9 +246,11 @@ describe('translateWealthNarrative', () => {
       heading: 'How Your Finances Change Decade By Decade',
       paragraphs: ['Mixed, then favorable, then mixed again.'],
     },
+    { heading: 'Your Strongest Income Path', paragraphs: ['A salaried role suits you.'] },
+    { heading: 'What to Actively Guard Against', paragraphs: ['Watch impulsive spending.'] },
   ];
 
-  it('translates both groups (first 2, then remaining 5) and preserves the 7-section order', async () => {
+  it('translates all three groups (first 2, next 5, last 2) and preserves the 9-section order', async () => {
     const translatedPattern = JSON.stringify({
       sections: sections
         .slice(0, 2)
@@ -193,18 +258,25 @@ describe('translateWealthNarrative', () => {
     });
     const translatedEnriched = JSON.stringify({
       sections: sections
-        .slice(2)
+        .slice(2, 7)
+        .map((s) => ({ heading: `HI ${s.heading}`, paragraphs: ['हिंदी।'] })),
+    });
+    const translatedIncome = JSON.stringify({
+      sections: sections
+        .slice(7)
         .map((s) => ({ heading: `HI ${s.heading}`, paragraphs: ['हिंदी।'] })),
     });
     state.generate
       .mockResolvedValueOnce(translatedPattern)
-      .mockResolvedValueOnce(translatedEnriched);
+      .mockResolvedValueOnce(translatedEnriched)
+      .mockResolvedValueOnce(translatedIncome);
 
     const translated = await translateWealthNarrative(sections, 'hi');
-    expect(translated).toHaveLength(7);
+    expect(translated).toHaveLength(9);
     expect(translated[0]?.heading).toBe('HI Wealth Pattern');
     expect(translated[6]?.heading).toBe('HI How Your Finances Change Decade By Decade');
-    expect(state.generate).toHaveBeenCalledTimes(2);
+    expect(translated[8]?.heading).toBe('HI What to Actively Guard Against');
+    expect(state.generate).toHaveBeenCalledTimes(3);
   });
 
   it('parses a valid translated response for a legacy-shaped (fewer than 2 sections) input with only 1 call', async () => {
@@ -218,11 +290,22 @@ describe('translateWealthNarrative', () => {
   });
 
   it('throws on an unparseable translated response', async () => {
-    state.generate.mockResolvedValueOnce('garbage').mockResolvedValueOnce(
-      JSON.stringify({
-        sections: sections.slice(2).map((s) => ({ heading: s.heading, paragraphs: s.paragraphs })),
-      }),
-    );
+    state.generate
+      .mockResolvedValueOnce('garbage')
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          sections: sections
+            .slice(2, 7)
+            .map((s) => ({ heading: s.heading, paragraphs: s.paragraphs })),
+        }),
+      )
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          sections: sections
+            .slice(7)
+            .map((s) => ({ heading: s.heading, paragraphs: s.paragraphs })),
+        }),
+      );
     await expect(translateWealthNarrative(sections, 'hi')).rejects.toThrow();
   });
 });

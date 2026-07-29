@@ -47,6 +47,10 @@ export const SCORES_PROSE_ALLOWLIST: Record<string, string[]> = {
     'partnerArchetype.traits[].label',
     'inLaws.note',
     'moneyAfterMarriage.note',
+    // Generation-time LLM one-liner (see lib/llm/reports/window-summary.ts) — spliced onto
+    // `windows[].summary` by reports.service.ts's getReportForUser BEFORE this translation step
+    // runs, so it's present in `scores` here exactly like any other prose field.
+    'windows[].summary',
   ],
   kundli_milan: [
     'primaryDoshaYoga.positives[].label',
@@ -60,6 +64,8 @@ export const SCORES_PROSE_ALLOWLIST: Record<string, string[]> = {
     'primaryDoshaYoga.cautions[].label',
     'primaryDoshaYoga.cautions[].detail',
   ],
+  true_love: ['windows[].summary'],
+  wealth: ['windows[].summary'],
 };
 
 interface ExtractedLeaf {

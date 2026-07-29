@@ -198,6 +198,7 @@ function makeFullChart(opts: {
   fifthHouseSign?: string;
   seventhLord?: string;
   seventhLordSign?: string;
+  seventhHouseSign?: string;
   extraPlanets?: Array<{ planet: string; sign?: string; house?: number }>;
 }): Record<string, unknown> {
   const planets: Record<string, unknown>[] = [];
@@ -213,7 +214,11 @@ function makeFullChart(opts: {
   }
   if (opts.seventhLord) {
     planets.push({ planet: opts.seventhLord, sign: opts.seventhLordSign ?? 'Aries' });
-    houses.push({ house: 7, lord: opts.seventhLord, sign: opts.seventhLordSign ?? 'Aries' });
+    houses.push({
+      house: 7,
+      lord: opts.seventhLord,
+      sign: opts.seventhHouseSign ?? opts.seventhLordSign ?? 'Aries',
+    });
   }
   for (const p of opts.extraPlanets ?? []) {
     planets.push({ planet: p.planet, sign: p.sign ?? 'Aries', house: p.house });
@@ -307,6 +312,51 @@ describe('computeTrueLoveScores — archetype', () => {
     const scores = computeTrueLoveScores({ chart: null, partnerChart: null }, null);
     expect(scores.archetype.traits).toHaveLength(5);
     expect(scores.archetype.description).toBeTruthy();
+  });
+});
+
+describe('computeTrueLoveScores — partnerArchetype (who you are naturally drawn to)', () => {
+  it('themes the partner archetype on the 7th house sign, distinct from the 5th-house-themed archetype', () => {
+    const chart = makeFullChart({
+      birthDate: new Date('1995-06-15T00:00:00Z'),
+      fifthLord: 'Sun',
+      fifthHouseSign: 'Leo',
+      seventhLord: 'Saturn',
+      seventhHouseSign: 'Capricorn',
+    });
+
+    const scores = computeTrueLoveScores({ chart, partnerChart: null }, null);
+
+    expect(scores.partnerArchetype.label).toBeTruthy();
+    expect(scores.partnerArchetype.description).toContain('Capricorn');
+    expect(scores.archetype.description).toContain('Leo');
+    expect(scores.partnerArchetype.traits).toHaveLength(5);
+    expect(scores.partnerArchetype.traits.map((t) => t.label)).toEqual([
+      'Warmth',
+      'Discipline',
+      'Intellect',
+      'Sensuality',
+      'Ambition',
+    ]);
+  });
+
+  it("scores each partner trait from its documented significator's natal strength (0-10 scale)", () => {
+    const chart = makeFullChart({
+      birthDate: new Date('1995-06-15T00:00:00Z'),
+      extraPlanets: [{ planet: 'Saturn', sign: 'Libra' }], // exalted => strong (90) => tilt 9
+    });
+
+    const scores = computeTrueLoveScores({ chart, partnerChart: null }, null);
+
+    const discipline = scores.partnerArchetype.traits.find((t) => t.label === 'Discipline');
+    expect(discipline?.score).toBe(9);
+  });
+
+  it('degrades to a generic description (never throws) when the 7th house sign is unavailable', () => {
+    expect(() => computeTrueLoveScores({ chart: null, partnerChart: null }, null)).not.toThrow();
+    const scores = computeTrueLoveScores({ chart: null, partnerChart: null }, null);
+    expect(scores.partnerArchetype.traits).toHaveLength(5);
+    expect(scores.partnerArchetype.description).toBeTruthy();
   });
 });
 

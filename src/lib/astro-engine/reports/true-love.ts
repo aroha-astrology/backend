@@ -35,6 +35,12 @@ export interface TrueLoveScores extends Record<string, unknown> {
   ageBands: AgeBand[];
   /** A small "romantic archetype" sketch themed on the 5th house sign, with 5 trait tilts. */
   archetype: Archetype;
+  /** Themed on the 7th house sign (partnership) rather than the 5th (self) — answers "what kind
+   * of person am I naturally, deeply drawn to in love," distinct from `archetype`'s "how do I
+   * love." Same trait/significator recipe as Marriage report's own `partnerArchetype`
+   * (astro-engine/reports/marriage.ts) — same underlying classical concept (7th-house partner
+   * temperament), reused rather than reinvented. */
+  partnerArchetype: Archetype;
   /** 3 forward-looking decade bands scored against the 5th/7th houses. */
   romanceArc: DecadeBand[];
   /** Mangal Dosha caution (previously completely missing from this report) + a wealth-yoga
@@ -168,6 +174,18 @@ export function computeTrueLoveScores(
     analyses,
   );
 
+  // --- Partner archetype (7th house — "who am I drawn to") -------------------
+  // Same trait/significator recipe as Marriage's `partnerArchetype` (both classically read the
+  // 7th house for partner temperament) — deliberately reused rather than invented from scratch.
+  const seventhHouseSign = getHouseSign(7, chart);
+  const partnerArchetype = computeArchetype(
+    seventhHouseSign,
+    'Partnership Archetype',
+    ['Warmth', 'Discipline', 'Intellect', 'Sensuality', 'Ambition'],
+    ['Moon', 'Saturn', 'Mercury', 'Venus', 'Mars'],
+    analyses,
+  );
+
   // --- Romance decade arc ----------------------------------------------------
   const romanceArc = computeDecadeArc(chart, [5, 7], now);
 
@@ -195,6 +213,7 @@ export function computeTrueLoveScores(
     windows,
     ageBands,
     archetype,
+    partnerArchetype,
     romanceArc,
     doshaYoga,
   };

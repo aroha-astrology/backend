@@ -20,6 +20,12 @@ interface ChartOpts {
   moonLongitude?: number;
   julianDay?: number;
   ascendantSignIndex?: number;
+  tenthLord?: string;
+  tenthLordSign?: string;
+  seventhLord?: string;
+  seventhLordSign?: string;
+  fourthLord?: string;
+  fourthLordSign?: string;
 }
 
 function makeChart(opts: ChartOpts = {}): Record<string, unknown> {
@@ -43,6 +49,9 @@ function makeChart(opts: ChartOpts = {}): Record<string, unknown> {
   addPlanet(opts.eleventhLord, opts.eleventhLordSign);
   addPlanet(opts.secondHouseOccupant, 'Aries', 2);
   addPlanet(opts.eleventhHouseOccupant, 'Aries', 11);
+  addPlanet(opts.tenthLord, opts.tenthLordSign);
+  addPlanet(opts.seventhLord, opts.seventhLordSign);
+  addPlanet(opts.fourthLord, opts.fourthLordSign);
   if (opts.moonSign || opts.moonLongitude != null) {
     addPlanet('Moon', opts.moonSign ?? 'Aries', undefined, opts.moonLongitude);
   }
@@ -51,6 +60,12 @@ function makeChart(opts: ChartOpts = {}): Record<string, unknown> {
     houses.push({ house: 2, lord: opts.secondLord, sign: opts.secondLordSign ?? 'Aries' });
   if (opts.eleventhLord)
     houses.push({ house: 11, lord: opts.eleventhLord, sign: opts.eleventhLordSign ?? 'Aries' });
+  if (opts.tenthLord)
+    houses.push({ house: 10, lord: opts.tenthLord, sign: opts.tenthLordSign ?? 'Aries' });
+  if (opts.seventhLord)
+    houses.push({ house: 7, lord: opts.seventhLord, sign: opts.seventhLordSign ?? 'Aries' });
+  if (opts.fourthLord)
+    houses.push({ house: 4, lord: opts.fourthLord, sign: opts.fourthLordSign ?? 'Aries' });
 
   const chart: Record<string, unknown> = { planets, houses };
   if (opts.julianDay != null) chart.julianDay = opts.julianDay;
@@ -420,5 +435,57 @@ describe('computeWealthScores — spendingVsSavingTilt', () => {
     });
     // raw = 5 + (30-90)/12 = 0
     expect(computeWealthScores({ chart, partnerChart: null }, null).spendingVsSavingTilt).toBe(0);
+  });
+});
+
+describe('computeWealthScores — strongestIncomeSource (property vs business vs salaried)', () => {
+  it('picks "salaried" when the 10th lord (career/service) is the strongest of the three', () => {
+    const chart = makeChart({
+      tenthLord: 'Sun',
+      tenthLordSign: 'Leo', // own sign => strong (90)
+      seventhLord: 'Mercury',
+      seventhLordSign: 'Leo', // average (60)
+      fourthLord: 'Mars',
+      fourthLordSign: 'Cancer', // debilitated => weak (30)
+    });
+    const scores = computeWealthScores({ chart, partnerChart: null }, null);
+    expect(scores.strongestIncomeSource).toBe('salaried');
+    expect(scores.incomeSourceStrengths).toEqual({
+      salaried: 'strong',
+      business: 'average',
+      property: 'weak',
+    });
+  });
+
+  it('picks "business" when the 7th lord (trade/partnership) is the strongest of the three', () => {
+    const chart = makeChart({
+      tenthLord: 'Mars',
+      tenthLordSign: 'Cancer', // debilitated => weak (30)
+      seventhLord: 'Venus',
+      seventhLordSign: 'Pisces', // exalted => strong (90)
+      fourthLord: 'Saturn',
+      fourthLordSign: 'Gemini', // average (60)
+    });
+    const scores = computeWealthScores({ chart, partnerChart: null }, null);
+    expect(scores.strongestIncomeSource).toBe('business');
+  });
+
+  it('picks "property" when the 4th lord (real estate/fixed assets) is the strongest of the three', () => {
+    const chart = makeChart({
+      tenthLord: 'Saturn',
+      tenthLordSign: 'Gemini', // average (60)
+      seventhLord: 'Mars',
+      seventhLordSign: 'Cancer', // debilitated => weak (30)
+      fourthLord: 'Venus',
+      fourthLordSign: 'Pisces', // exalted => strong (90)
+    });
+    const scores = computeWealthScores({ chart, partnerChart: null }, null);
+    expect(scores.strongestIncomeSource).toBe('property');
+  });
+
+  it('never throws and defaults sensibly when 10th/7th/4th lords are unavailable', () => {
+    expect(() => computeWealthScores({ chart: null, partnerChart: null }, null)).not.toThrow();
+    const scores = computeWealthScores({ chart: null, partnerChart: null }, null);
+    expect(['salaried', 'business', 'property']).toContain(scores.strongestIncomeSource);
   });
 });

@@ -46,6 +46,12 @@ import {
   translateScoresProse,
 } from '../../lib/llm/report-scores.js';
 import {
+  findRankedWindowsField,
+  spliceWindowSummaries,
+  summarizeTimingWindows,
+  type PersistedWindowSummaries,
+} from '../../lib/llm/reports/window-summary.js';
+import {
   REPORT_GENERATORS,
   type ReportSection,
   type ReportScoreContext,
@@ -236,6 +242,33 @@ async function fetchPersonContext(
  * report key with no registered generator fails exactly the same way as any
  * other generation failure, never crashing the process.
  */
+/**
+ * Generates a plain-English one-liner per timing window found anywhere in `scores` (by shape,
+ * not by an assumed field name — see `findRankedWindowsField`), for the "why is this window
+ * rated this way" explanation shown in place of `RankedWindow.reasoning`'s raw internal debug
+ * text (see window-summary.ts's module doc comment). One LLM call at generation time only — this
+ * MUST NOT run in `recomputeScoresForRead`, which fires on every page view.
+ *
+ * Returns `null` (nothing to persist) when `scores` has no timing-window field at all. Never
+ * throws: a failed/malformed LLM call degrades to a persisted empty `summaries` array rather than
+ * failing the whole report — a missing one-line explanation is a much smaller loss than losing
+ * the report's narrative and refunding the purchase over a non-essential enrichment call.
+ */
+async function computeWindowSummaries(
+  scores: Record<string, unknown>,
+): Promise<{ field: string; summaries: string[] } | null> {
+  const found = findRankedWindowsField(scores);
+  if (!found) return null;
+
+  try {
+    const summaries = await summarizeTimingWindows(found.windows);
+    return { field: found.field, summaries };
+  } catch (err) {
+    logger.warn({ err }, 'timing-window summary generation failed, continuing without it');
+    return { field: found.field, summaries: [] };
+  }
+}
+
 async function runReportGeneration(row: ReportRow, birthProfileId: string | null): Promise<void> {
   const claimedAt = row.startedAt;
   if (!claimedAt) return; // claimReportRow always sets this when it returns a row — defensive only.
@@ -272,9 +305,10 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
       row.periodMonth,
     );
     const sections = await generator.generateNarrative(scores, 'en');
+    const windowSummaries = await computeWindowSummaries(scores);
 
     await markReportReady(row.id, claimedAt, {
-      content: { sections },
+      content: { sections, ...(windowSummaries ? { windowSummaries } : {}) },
       model: MODEL,
     });
     void notifyReportReady(row.userId, row.reportKey, row.id).catch(() => {
@@ -633,8 +667,12 @@ export async function getReportForUser(
       error: 'Report generation failed. Any amount charged has been automatically refunded.',
     };
 
-  const englishScores = await recomputeScoresForRead(row);
-  const content = (row.content ?? {}) as { sections?: ReportSection[] };
+  const recomputedScores = await recomputeScoresForRead(row);
+  const content = (row.content ?? {}) as {
+    sections?: ReportSection[];
+    windowSummaries?: PersistedWindowSummaries;
+  };
+  const englishScores = spliceWindowSummaries(recomputedScores, content.windowSummaries);
   const englishSections = content.sections ?? [];
   const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
 
