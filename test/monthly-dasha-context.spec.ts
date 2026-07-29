@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   findActivePeriodForMonth,
+  findMonthSubPeriods,
+  computeConnectedHouses,
   computeMonthlyReportScore,
   toneFromMonthScore,
   safelyResolveActivePeriod,
 } from '../src/lib/astro-engine/reports/monthly-dasha-context.js';
+import { analyzePlanetStrengths } from '../src/lib/astro-engine/gemstones.js';
 import { buildSubPeriods } from '../src/lib/astro-engine/dashas/vimshottari.js';
 import type { PlanetAnalysis } from '../src/lib/astro-engine/gemstones.js';
 import type { VimshottariDasha, DashaPeriod, Planet } from '@aroha-astrology/shared';
@@ -100,8 +103,20 @@ describe('findActivePeriodForMonth', () => {
 });
 
 describe('computeMonthlyReportScore', () => {
-  function makeAnalyses(overrides: Partial<Record<string, PlanetAnalysis['strength']>>): PlanetAnalysis[] {
-    const planets = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
+  function makeAnalyses(
+    overrides: Partial<Record<string, PlanetAnalysis['strength']>>,
+  ): PlanetAnalysis[] {
+    const planets = [
+      'Sun',
+      'Moon',
+      'Mars',
+      'Mercury',
+      'Jupiter',
+      'Venus',
+      'Saturn',
+      'Rahu',
+      'Ketu',
+    ];
     return planets.map((planet) => ({
       planet,
       strength: overrides[planet] ?? 'average',
@@ -113,7 +128,10 @@ describe('computeMonthlyReportScore', () => {
 
   it('returns the base strength score with no adjustment when the lord has no connection to the key houses', () => {
     const analyses = makeAnalyses({ Venus: 'strong' });
-    const chart = { planets: [{ planet: 'Venus', house: 3 }], houses: [{ house: 3, lord: 'Venus' }] };
+    const chart = {
+      planets: [{ planet: 'Venus', house: 3 }],
+      houses: [{ house: 3, lord: 'Venus' }],
+    };
     // Key houses [6, 1] — Venus rules house 3 and sits in house 3, neither is a key house.
     expect(computeMonthlyReportScore('Venus', [6, 1], chart, analyses)).toBe(90);
   });
@@ -200,5 +218,102 @@ describe('safelyResolveActivePeriod', () => {
     };
     expect(() => safelyResolveActivePeriod(chart, '1800-01')).not.toThrow();
     expect(safelyResolveActivePeriod(chart, '1800-01')).toBeNull();
+  });
+});
+
+describe('findMonthSubPeriods — within-month Pratyantardasha slices (answers "which specific weeks/dates this month")', () => {
+  const MS_PER_DAY = 86_400_000;
+  const UNIX_EPOCH_JD = 2440587.5;
+  function dateToJd(date: Date): number {
+    return date.getTime() / MS_PER_DAY + UNIX_EPOCH_JD;
+  }
+  const chart = {
+    julianDay: dateToJd(new Date('1990-06-15T00:00:00Z')),
+    planets: [{ planet: 'Moon', longitude: 80.5 }],
+  };
+  const analyses = analyzePlanetStrengths(chart);
+
+  it('returns at least one sub-period, fully or partially overlapping the target month', () => {
+    const slices = findMonthSubPeriods(chart, '2027-03', [6, 1, 8], analyses);
+    expect(slices.length).toBeGreaterThan(0);
+
+    const monthStart = new Date('2027-03-01T00:00:00Z').getTime();
+    const monthEnd = new Date('2027-04-01T00:00:00Z').getTime();
+    for (const slice of slices) {
+      expect(slice.startDate.getTime()).toBeLessThan(monthEnd);
+      expect(slice.endDate.getTime()).toBeGreaterThan(monthStart);
+      expect(slice.startDate.getTime()).toBeLessThan(slice.endDate.getTime());
+    }
+  });
+
+  it("scores each slice via the SAME computeMonthlyReportScore formula, using that slice's own lord", () => {
+    const keyHouses = [6, 1, 8];
+    const slices = findMonthSubPeriods(chart, '2027-03', keyHouses, analyses);
+    for (const slice of slices) {
+      const expected = computeMonthlyReportScore(slice.lord, keyHouses, chart, analyses);
+      expect(slice.score).toBe(expected);
+    }
+  });
+
+  it('the slices, in order, chronologically tile the month with no gaps or overlaps between consecutive entries', () => {
+    const slices = findMonthSubPeriods(chart, '2027-03', [6, 1, 8], analyses);
+    for (let i = 1; i < slices.length; i++) {
+      expect(slices[i]!.startDate.getTime()).toBe(slices[i - 1]!.endDate.getTime());
+    }
+  });
+
+  it('returns [] (never throws) when periodMonth is null', () => {
+    expect(() => findMonthSubPeriods(chart, null, [6, 1, 8], analyses)).not.toThrow();
+    expect(findMonthSubPeriods(chart, null, [6, 1, 8], analyses)).toEqual([]);
+  });
+
+  it('returns [] (never throws) when the chart has no usable dasha data', () => {
+    expect(() =>
+      findMonthSubPeriods({ planets: [] }, '2027-03', [6, 1, 8], analyses),
+    ).not.toThrow();
+    expect(findMonthSubPeriods({ planets: [] }, '2027-03', [6, 1, 8], analyses)).toEqual([]);
+  });
+
+  it('returns [] (never throws) when periodMonth falls outside the 120-year dasha span', () => {
+    expect(findMonthSubPeriods(chart, '1800-01', [6, 1, 8], analyses)).toEqual([]);
+  });
+});
+
+describe('computeConnectedHouses — which of the report\'s key houses the ruling lord actually touches (answers "which specific area needs attention")', () => {
+  it('includes a house the lord RULES', () => {
+    const chart = {
+      planets: [{ planet: 'Mars', house: 3 }],
+      houses: [{ house: 1, lord: 'Mars', sign: 'Aries' }],
+    };
+    expect(computeConnectedHouses('Mars', [1, 5, 9], chart)).toEqual([1]);
+  });
+
+  it('includes a house the lord physically SITS in', () => {
+    const chart = {
+      planets: [{ planet: 'Mars', house: 5 }],
+      houses: [],
+    };
+    expect(computeConnectedHouses('Mars', [1, 5, 9], chart)).toEqual([5]);
+  });
+
+  it('returns every connected key house, not just the first match', () => {
+    const chart = {
+      planets: [{ planet: 'Mars', house: 5 }],
+      houses: [{ house: 1, lord: 'Mars', sign: 'Aries' }],
+    };
+    expect(computeConnectedHouses('Mars', [1, 5, 9], chart)).toEqual([1, 5]);
+  });
+
+  it('returns [] when the lord neither rules nor sits in any key house', () => {
+    const chart = {
+      planets: [{ planet: 'Mars', house: 2 }],
+      houses: [{ house: 6, lord: 'Mars', sign: 'Aries' }],
+    };
+    expect(computeConnectedHouses('Mars', [1, 5, 9], chart)).toEqual([]);
+  });
+
+  it('never throws on a null chart', () => {
+    expect(() => computeConnectedHouses('Mars', [1, 5, 9], null)).not.toThrow();
+    expect(computeConnectedHouses('Mars', [1, 5, 9], null)).toEqual([]);
   });
 });

@@ -20,6 +20,14 @@ function makeScores(overrides: Partial<FinanceMonthlyScores> = {}): FinanceMonth
       positives: [{ label: 'Dhana Yoga', detail: 'Wealth-giving combination.' }],
       cautions: [],
     },
+    subPeriods: [
+      {
+        startDate: new Date('2027-01-01T00:00:00.000Z'),
+        endDate: new Date('2027-01-15T00:00:00.000Z'),
+        lord: 'Jupiter',
+        score: 85,
+      },
+    ],
     ...overrides,
   };
 }
@@ -102,6 +110,29 @@ describe('generateFinanceMonthlyNarrative', () => {
   it('throws on an unparseable response', async () => {
     state.generate.mockResolvedValueOnce('not json');
     await expect(generateFinanceMonthlyNarrative(makeScores())).rejects.toThrow();
+  });
+
+  it('embeds the given within-month sub-periods as facts — answers "windows this month good for investments or big purchases"', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateFinanceMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Jupiter');
+    expect(content).toContain('85');
+    expect(content.toLowerCase()).toContain('investments or big purchases');
+  });
+
+  it('instructs the model to address lending/borrowing/signing agreements and which decisions to postpone', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateFinanceMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('lend, borrow, or sign');
+    expect(content.toLowerCase()).toContain('postponed');
   });
 });
 

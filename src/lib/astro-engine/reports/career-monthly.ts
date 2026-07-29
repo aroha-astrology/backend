@@ -10,9 +10,11 @@ import { analyzePlanetStrengths } from '../gemstones.js';
 import { getHouseLord, getHouseSign } from './chart-facts.js';
 import {
   computeMonthlyReportScore,
+  findMonthSubPeriods,
   safelyResolveActivePeriod,
   toneFromMonthScore,
   type MonthlyTone,
+  type MonthSubPeriod,
 } from './monthly-dasha-context.js';
 import { computeArchetype, type Archetype } from './report-archetype.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
@@ -91,6 +93,10 @@ export interface CareerMonthlyScores extends Record<string, unknown> {
   workArchetype: Archetype;
   doshaYoga: DoshaYogaSummary;
   industryFit: IndustryFit;
+  /** Within-month Pratyantardasha slices, each independently scored — answers "are there
+   * specific dates this month best for important career moves." Empty when periodMonth/chart
+   * data isn't usable (never throws). */
+  subPeriods: MonthSubPeriod[];
 }
 
 export function computeCareerMonthlyScores(
@@ -127,6 +133,7 @@ export function computeCareerMonthlyScores(
   );
 
   const industryFit = industryFitForTenthLord(getHouseLord(10, chart));
+  const subPeriods = findMonthSubPeriods(chart, periodMonth, KEY_HOUSES, analyses);
 
   return {
     periodMonth: periodMonth ?? 'unknown',
@@ -138,5 +145,6 @@ export function computeCareerMonthlyScores(
     workArchetype,
     doshaYoga,
     industryFit,
+    subPeriods,
   };
 }

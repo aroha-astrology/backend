@@ -36,6 +36,14 @@ function makeScores(overrides: Partial<CareerMonthlyScores> = {}): CareerMonthly
       likelyIndustries: ['communication', 'writing', 'trade', 'analytics'],
       note: 'Classical industry associations for the 10th-house lord, Mercury.',
     },
+    subPeriods: [
+      {
+        startDate: new Date('2027-01-01T00:00:00.000Z'),
+        endDate: new Date('2027-01-12T00:00:00.000Z'),
+        lord: 'Venus',
+        score: 82,
+      },
+    ],
     ...overrides,
   };
 }
@@ -135,6 +143,39 @@ describe('generateCareerMonthlyNarrative', () => {
   it('throws on an unparseable response', async () => {
     state.generate.mockResolvedValueOnce('not json');
     await expect(generateCareerMonthlyNarrative(makeScores())).rejects.toThrow();
+  });
+
+  it('embeds the given within-month sub-periods as facts — answers "specific dates this month best for important career moves"', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateCareerMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Venus');
+    expect(content).toContain('82');
+    expect(content.toLowerCase()).toContain('specific dates');
+  });
+
+  it('instructs the model to describe how colleagues/superiors will treat you this month', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateCareerMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('colleagues');
+    expect(content.toLowerCase()).toContain('superiors');
+  });
+
+  it('instructs the model to apply the work-style archetype specifically to how this month plays out, not just describe it as an abstract trait', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateCareerMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain("how you'll handle this month");
   });
 });
 

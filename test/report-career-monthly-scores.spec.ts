@@ -168,4 +168,22 @@ describe('computeCareerMonthlyScores', () => {
     expect(scores.industryFit.likelyIndustries.length).toBeGreaterThan(0);
     expect(scores.industryFit.note.toLowerCase()).toContain('unconventional');
   });
+
+  it('includes at least one within-month sub-period, each scored — answers "specific dates this month best for career moves"', () => {
+    const scores = computeCareerMonthlyScores(
+      { chart: makeChart(), partnerChart: null },
+      '2027-01',
+    );
+    expect(scores.subPeriods.length).toBeGreaterThan(0);
+    for (const slice of scores.subPeriods) {
+      expect(typeof slice.lord).toBe('string');
+      expect(slice.score).toBeGreaterThanOrEqual(0);
+      expect(slice.score).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it('returns an empty subPeriods array (never throws) when periodMonth is null', () => {
+    const scores = computeCareerMonthlyScores({ chart: makeChart(), partnerChart: null }, null);
+    expect(scores.subPeriods).toEqual([]);
+  });
 });

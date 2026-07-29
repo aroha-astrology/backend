@@ -9,9 +9,11 @@
 import { analyzePlanetStrengths } from '../gemstones.js';
 import {
   computeMonthlyReportScore,
+  findMonthSubPeriods,
   safelyResolveActivePeriod,
   toneFromMonthScore,
   type MonthlyTone,
+  type MonthSubPeriod,
 } from './monthly-dasha-context.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
@@ -31,6 +33,11 @@ export interface RelationshipMonthlyScores extends Record<string, unknown> {
    * yoga `type` in this codebase reads as month-specific (yogas are fixed natal placements,
    * not month-scoped facts) — see the doc comment above `computeRelationshipMonthlyScores`. */
   doshaYoga: DoshaYogaSummary;
+  /** Within-month Pratyantardasha slices, each independently scored — closes the gap this
+   * report's own LLM-file doc comment previously flagged as "genuinely cannot be answered
+   * without a new astro-engine computation": "are there specific days this month best for
+   * important relationship talks." Empty when periodMonth/chart data isn't usable. */
+  subPeriods: MonthSubPeriod[];
 }
 
 export function computeRelationshipMonthlyScores(
@@ -58,6 +65,8 @@ export function computeRelationshipMonthlyScores(
     ['benefic', 'mahapurusha'],
   );
 
+  const subPeriods = findMonthSubPeriods(chart, periodMonth, KEY_HOUSES, analyses);
+
   return {
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
@@ -66,5 +75,6 @@ export function computeRelationshipMonthlyScores(
     keyHouses: KEY_HOUSES,
     tone: toneFromMonthScore(monthScore),
     doshaYoga,
+    subPeriods,
   };
 }

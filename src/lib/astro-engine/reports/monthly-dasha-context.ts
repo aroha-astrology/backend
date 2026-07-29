@@ -66,6 +66,12 @@ function parsePeriodMonthToDate(periodMonth: string): Date {
   return new Date(Date.UTC(year, month - 1, 1));
 }
 
+/** First instant of the NEXT calendar month after `monthStart` — the exclusive upper bound of
+ * the target month's own date range. */
+function nextMonthStart(monthStart: Date): Date {
+  return new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
+}
+
 export function isInRange(date: Date, start: Date, end: Date): boolean {
   const t = date.getTime();
   return t >= start.getTime() && t < end.getTime();
@@ -137,6 +143,77 @@ export function findActivePeriodForMonth(
   };
 }
 
+export interface MonthSubPeriod {
+  startDate: Date;
+  endDate: Date;
+  /** The Pratyantardasha lord ruling this specific slice. */
+  lord: string;
+  /** Same `computeMonthlyReportScore` formula as the month-level score, applied to just this
+   * slice's own lord — lets a report call out which specific days/weeks within the month run
+   * notably better or worse than the month's overall tone. */
+  score: number;
+}
+
+/**
+ * Finds the Pratyantardasha-level sub-periods (typically days-to-weeks long, one level deeper
+ * than the Antardasha `findActivePeriodForMonth` resolves) that overlap `periodMonth`, each
+ * scored via the SAME `computeMonthlyReportScore` formula the month-level score uses — this is
+ * what lets a monthly report answer "which specific weeks/dates this month" rather than only "how
+ * does the whole month look." Never trusts the tree's own `subPeriods` (see this module's doc
+ * comment) — independently resolves the covering Mahadasha, then Antardasha, then recomputes
+ * Pratyantardashas fresh, scoped to exactly that Antardasha's own span.
+ *
+ * Never throws: returns `[]` for a null/missing periodMonth, an unusable chart, or a periodMonth
+ * outside the 120-year Vimshottari span — same defensive contract as `safelyResolveActivePeriod`,
+ * since `computeScores` (this function's only caller) must never throw.
+ */
+export function findMonthSubPeriods(
+  chart: Record<string, unknown> | null,
+  periodMonth: string | null,
+  keyHouses: number[],
+  analyses: PlanetAnalysis[],
+): MonthSubPeriod[] {
+  if (!periodMonth) return [];
+  const vimshottari = getVimshottariDashaFromChart(chart);
+  if (!vimshottari) return [];
+
+  try {
+    const target = parsePeriodMonthToDate(periodMonth);
+    const monthEnd = nextMonthStart(target);
+
+    const mahadasha = vimshottari.mahadashas.find((m) => isInRange(target, m.startDate, m.endDate));
+    if (!mahadasha) return [];
+
+    const antardashas = computeFreshAntardashas(mahadasha);
+    const antardasha =
+      antardashas.find((a) => isInRange(target, a.startDate, a.endDate)) ??
+      antardashas[antardashas.length - 1];
+    if (!antardasha) return [];
+
+    const pratyantardashas = buildSubPeriods(
+      antardasha.planet,
+      antardasha.startDate,
+      yearsBetween(antardasha.startDate, antardasha.endDate),
+      2,
+      antardasha.startDate, // currentDate only affects isActive flags, never read below
+      2,
+    );
+
+    return pratyantardashas
+      .filter(
+        (p) => p.startDate.getTime() < monthEnd.getTime() && p.endDate.getTime() > target.getTime(),
+      )
+      .map((p) => ({
+        startDate: p.startDate,
+        endDate: p.endDate,
+        lord: p.planet,
+        score: computeMonthlyReportScore(p.planet, keyHouses, chart, analyses),
+      }));
+  } catch {
+    return [];
+  }
+}
+
 // =============================================================================
 // Shared monthScore/tone formula for the 4 monthly report types
 // =============================================================================
@@ -175,6 +252,25 @@ export function computeMonthlyReportScore(
 
   const adjustment = hasAffinity ? (strength === 'weak' ? -15 : 15) : 0;
   return Math.max(0, Math.min(100, baseScore + adjustment));
+}
+
+/**
+ * Which of the report's own `keyHouses` the ruling lord actually connects to — by ruling it
+ * (`getHousesRuledBy`) or physically sitting in it (`isPlanetInHouse`) — the same two checks
+ * `computeMonthlyReportScore`'s `hasAffinity` already makes internally, just surfaced here as
+ * the SPECIFIC house(s) rather than a bare boolean. Lets a report name which particular life
+ * area (e.g. "your 8th house — transformation/hidden conditions" for health, or "your 10th
+ * house — career/public standing" for career) is most emphasized this month, answering
+ * "which specific area needs the most attention" instead of only giving one combined score.
+ * Returns every matching house (never throws on a null/incomplete chart).
+ */
+export function computeConnectedHouses(
+  lord: string,
+  keyHouses: number[],
+  chart: Record<string, unknown> | null,
+): number[] {
+  const ruled = new Set(getHousesRuledBy(lord, chart));
+  return keyHouses.filter((h) => ruled.has(h) || isPlanetInHouse(lord, [h], chart));
 }
 
 /** <40 challenging, 40-70 mixed (inclusive both ends), >70 favorable — same threshold shape as

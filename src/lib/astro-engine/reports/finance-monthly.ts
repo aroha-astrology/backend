@@ -9,9 +9,11 @@
 import { analyzePlanetStrengths } from '../gemstones.js';
 import {
   computeMonthlyReportScore,
+  findMonthSubPeriods,
   safelyResolveActivePeriod,
   toneFromMonthScore,
   type MonthlyTone,
+  type MonthSubPeriod,
 } from './monthly-dasha-context.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
@@ -33,6 +35,10 @@ export interface FinanceMonthlyScores extends Record<string, unknown> {
    * single calendar month — surfacing one here would just repeat the SAME caution every month
    * this report is bought for, which reads as noise rather than a month-specific signal. */
   doshaYoga: DoshaYogaSummary;
+  /** Within-month Pratyantardasha slices, each independently scored — answers "are there
+   * windows this month good for investments or big purchases" and "what decisions are better
+   * postponed until next month." Empty when periodMonth/chart data isn't usable (never throws). */
+  subPeriods: MonthSubPeriod[];
 }
 
 export function computeFinanceMonthlyScores(
@@ -54,6 +60,8 @@ export function computeFinanceMonthlyScores(
     ['dhana', 'lunar'],
   );
 
+  const subPeriods = findMonthSubPeriods(chart, periodMonth, KEY_HOUSES, analyses);
+
   return {
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
@@ -62,5 +70,6 @@ export function computeFinanceMonthlyScores(
     keyHouses: KEY_HOUSES,
     tone: toneFromMonthScore(monthScore),
     doshaYoga,
+    subPeriods,
   };
 }

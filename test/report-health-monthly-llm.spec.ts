@@ -17,6 +17,21 @@ function makeScores(overrides: Partial<HealthMonthlyScores> = {}): HealthMonthly
     keyHouses: [6, 1, 8],
     tone: 'mixed',
     doshaYoga: { positives: [], cautions: [] },
+    subPeriods: [
+      {
+        startDate: new Date('2027-01-01T00:00:00.000Z'),
+        endDate: new Date('2027-01-10T00:00:00.000Z'),
+        lord: 'Mars',
+        score: 30,
+      },
+      {
+        startDate: new Date('2027-01-10T00:00:00.000Z'),
+        endDate: new Date('2027-02-01T00:00:00.000Z'),
+        lord: 'Venus',
+        score: 80,
+      },
+    ],
+    connectedHouses: [8],
     ...overrides,
   };
 }
@@ -135,6 +150,40 @@ describe('generateHealthMonthlyNarrative', () => {
   it('throws on an unparseable response', async () => {
     state.generate.mockResolvedValueOnce('not json');
     await expect(generateHealthMonthlyNarrative(makeScores())).rejects.toThrow();
+  });
+
+  it('embeds the given within-month sub-periods (dates, lord, score) as facts — answers "specific weeks I should be extra careful about"', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateHealthMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Mars');
+    expect(content).toContain('30');
+    expect(content).toContain('Venus');
+    expect(content).toContain('80');
+    expect(content.toLowerCase()).toContain('specific weeks');
+  });
+
+  it('states plainly when no sub-periods are available, rather than silently omitting the question', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateHealthMonthlyNarrative(makeScores({ subPeriods: [] }));
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('no week-level breakdown');
+  });
+
+  it('embeds the given connectedHouses as the specific area needing attention', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateHealthMonthlyNarrative(makeScores({ connectedHouses: [6, 1] }));
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('which health areas need the most attention');
   });
 });
 

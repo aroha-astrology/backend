@@ -8,10 +8,13 @@
 
 import { analyzePlanetStrengths } from '../gemstones.js';
 import {
+  computeConnectedHouses,
   computeMonthlyReportScore,
+  findMonthSubPeriods,
   safelyResolveActivePeriod,
   toneFromMonthScore,
   type MonthlyTone,
+  type MonthSubPeriod,
 } from './monthly-dasha-context.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
@@ -30,6 +33,14 @@ export interface HealthMonthlyScores extends Record<string, unknown> {
   keyHouses: number[];
   tone: MonthlyTone;
   doshaYoga: DoshaYogaSummary;
+  /** Within-month Pratyantardasha slices, each independently scored — answers "are there
+   * specific weeks this month I should be extra careful about," previously unanswerable at only
+   * a whole-month grain. Empty when periodMonth/chart data isn't usable (never throws). */
+  subPeriods: MonthSubPeriod[];
+  /** Which of `keyHouses` the active Antardasha lord actually connects to (rules or sits in) —
+   * answers "which health areas need the most attention this month" with a specific house rather
+   * than the single combined monthScore alone. */
+  connectedHouses: number[];
 }
 
 export function computeHealthMonthlyScores(
@@ -57,6 +68,11 @@ export function computeHealthMonthlyScores(
     ['benefic', 'mahapurusha'],
   );
 
+  const subPeriods = findMonthSubPeriods(chart, periodMonth, KEY_HOUSES, analyses);
+  const connectedHouses = period
+    ? computeConnectedHouses(period.antardashaLord, KEY_HOUSES, chart)
+    : [];
+
   return {
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
@@ -65,5 +81,7 @@ export function computeHealthMonthlyScores(
     keyHouses: KEY_HOUSES,
     tone: toneFromMonthScore(monthScore),
     doshaYoga,
+    subPeriods,
+    connectedHouses,
   };
 }

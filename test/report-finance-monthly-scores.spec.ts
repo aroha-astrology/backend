@@ -130,4 +130,22 @@ describe('computeFinanceMonthlyScores — doshaYoga', () => {
       ),
     ).not.toThrow();
   });
+
+  it('includes at least one within-month sub-period, each scored — answers "windows this month good for investments"', () => {
+    const scores = computeFinanceMonthlyScores(
+      { chart: makeChart(), partnerChart: null },
+      '2027-01',
+    );
+    expect(scores.subPeriods.length).toBeGreaterThan(0);
+    for (const slice of scores.subPeriods) {
+      expect(typeof slice.lord).toBe('string');
+      expect(slice.score).toBeGreaterThanOrEqual(0);
+      expect(slice.score).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it('returns an empty subPeriods array (never throws) when periodMonth is null', () => {
+    const scores = computeFinanceMonthlyScores({ chart: makeChart(), partnerChart: null }, null);
+    expect(scores.subPeriods).toEqual([]);
+  });
 });

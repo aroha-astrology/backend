@@ -8,11 +8,13 @@
 // relationship_monthly asks "what might cause friction," "is this a favorable month for
 // reconciliation," and "what should I watch for if I'm single and dating" — none of these were
 // explicitly instructed even though every fact needed to answer them (tone, month score, the
-// active dasha lords, dosha cautions) was already being fed via buildFacts. Unlike the wealthArc
-// gap in wealth.ts, there was no unused astro-engine field here to wire up — this report's
-// scores object has no day-level granularity at all, so "specific days this month best for
-// important relationship talks" (also in the covers list) genuinely CANNOT be answered without a
-// new astro-engine computation (a day-by-day transit/muhurat pass) — flagged, not built here.
+// active dasha lords, dosha cautions) was already being fed via buildFacts.
+//
+// "Specific days this month best for important relationship talks" was previously flagged here
+// as unanswerable without new astro-engine computation — now closed via
+// monthly-dasha-context.ts's `findMonthSubPeriods` (shared with the other 3 monthly report
+// types), which resolves Pratyantardasha-level sub-periods within the target month, each
+// independently scored.
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
@@ -26,6 +28,8 @@ const GROUNDING_RULE =
   'The active Mahadasha/Antardasha lords, the month score, the tone, and the dosha/yoga facts below are GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim. Never recompute or contradict any of these, and never invent a dosha or yoga that is not listed.';
 const SAFETY_RULE =
   'Use tendency language ("suggests", "supports") — never guarantee a specific relationship outcome or event. If a caution (e.g. Mangal Dosha) is listed, mention it calmly and factually, never alarmingly, and do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
+const SUB_PERIOD_RULE =
+  'The given within-month sub-periods (if any) break the month into specific date ranges, each with its own ruling planet and 0-100 score — directly answer "are there specific days this month best for important relationship talks" by naming the date range(s) with a notably HIGHER score as the better windows for an important conversation, and any notably LOWER-scored range(s) as ones to avoid for sensitive topics. If no sub-periods are given, say plainly that no date-level breakdown is available for this chart rather than inventing one.';
 
 function narrativeSystemPrompt(): string {
   return `You are writing this month's Relationship Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, and a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 7th house (${HOUSE_SIGNIFICATIONS[7]}) and 5th house (${HOUSE_SIGNIFICATIONS[5]}). Your job is ONLY to write the narrative explanation.
@@ -33,15 +37,16 @@ function narrativeSystemPrompt(): string {
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
+${SUB_PERIOD_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 4 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of partnership harmony and romance/connection themes.
-2. Heading close to "Practical Guidance" — 1 paragraph of general, practical relationship-behavior framing tied to the tone.
+2. Heading close to "Practical Guidance" — 1-2 paragraphs of general, practical relationship-behavior framing tied to the tone, including one concrete pointer for strengthening emotional closeness this month.
 3. Heading close to "Blessings & Cautions" — 1 paragraph on the dosha/yoga facts given: mention the Mangal Dosha caution calmly if present. If not present, note briefly that no standing caution was flagged in this chart.
-4. Heading close to "Friction, Reconciliation & Dating" — 1-2 paragraphs covering three things using ONLY the facts already given above: (a) name what could realistically cause friction this month for someone with a partner, tying it to the given active dasha lord and any given dosha caution; (b) state plainly, based on the given tone, whether this reads as a supportive month to attempt reconciliation after a recent conflict, or whether more patience is needed first; (c) for readers who are single and dating, note briefly that the same monthly tone/score applies to romance and dating themes generally (not only existing partnerships), and give one pointer for what to watch for this month.
+4. Heading close to "Friction, Reconciliation, Dating & Timing" — 2-3 paragraphs covering: (a) name what could realistically cause friction this month for someone with a partner, tying it to the given active dasha lord and any given dosha caution; (b) state plainly, based on the given tone, whether this reads as a supportive month to attempt reconciliation after a recent conflict, or whether more patience is needed first; (c) for readers who are single and dating, note briefly that the same monthly tone/score applies to romance and dating themes generally (not only existing partnerships), and give one pointer for what to watch for this month; (d) the given within-month sub-periods per SUB_PERIOD_RULE.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
@@ -60,6 +65,17 @@ function buildFacts(scores: RelationshipMonthlyScores): string {
     for (const c of scores.doshaYoga.cautions) lines.push(`- ${c.label}: ${c.detail}`);
   } else {
     lines.push('No standing dosha caution was flagged in this chart.');
+  }
+
+  if (scores.subPeriods.length > 0) {
+    lines.push('Within-month sub-periods (specific dates, ruling lord, 0-100 score):');
+    for (const p of scores.subPeriods) {
+      lines.push(
+        `- ${p.startDate.toISOString().slice(0, 10)} to ${p.endDate.toISOString().slice(0, 10)}: ${p.lord}, score ${p.score}.`,
+      );
+    }
+  } else {
+    lines.push('Within-month sub-periods: none available.');
   }
 
   return lines.join('\n');

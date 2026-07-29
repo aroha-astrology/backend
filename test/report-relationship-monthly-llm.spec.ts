@@ -17,6 +17,14 @@ function makeScores(overrides: Partial<RelationshipMonthlyScores> = {}): Relatio
     keyHouses: [7, 5],
     tone: 'favorable',
     doshaYoga: { positives: [], cautions: [] },
+    subPeriods: [
+      {
+        startDate: new Date('2027-01-05T00:00:00.000Z'),
+        endDate: new Date('2027-01-20T00:00:00.000Z'),
+        lord: 'Venus',
+        score: 88,
+      },
+    ],
     ...overrides,
   };
 }
@@ -108,6 +116,28 @@ describe('generateRelationshipMonthlyNarrative', () => {
   it('throws on an unparseable response', async () => {
     state.generate.mockResolvedValueOnce('not json');
     await expect(generateRelationshipMonthlyNarrative(makeScores())).rejects.toThrow();
+  });
+
+  it('embeds the given within-month sub-periods as facts — answers "specific days this month best for important relationship talks", the previously-flagged gap', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateRelationshipMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Venus');
+    expect(content).toContain('88');
+    expect(content.toLowerCase()).toContain('specific days');
+  });
+
+  it('instructs the model to give a pointer for strengthening emotional closeness this month', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateRelationshipMonthlyNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('emotional closeness');
   });
 });
 
