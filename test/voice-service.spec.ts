@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   createVoiceSession: vi.fn(),
   getVoiceSession: vi.fn(),
   endVoiceSession: vi.fn(),
+  endVoiceSessionWithRefund: vi.fn(),
   deductWalletBalance: vi.fn(),
   addWalletBalance: vi.fn(),
   findActiveUserById: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock('../src/modules/voice/voice.repo.js', () => ({
   createVoiceSession: state.createVoiceSession,
   getVoiceSession: state.getVoiceSession,
   endVoiceSession: state.endVoiceSession,
+  endVoiceSessionWithRefund: state.endVoiceSessionWithRefund,
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
@@ -97,6 +99,7 @@ beforeEach(() => {
   state.createVoiceSession.mockReset().mockResolvedValue({ id: SESSION });
   state.getVoiceSession.mockReset().mockResolvedValue({ id: SESSION, active: true });
   state.endVoiceSession.mockReset().mockResolvedValue(undefined);
+  state.endVoiceSessionWithRefund.mockReset().mockResolvedValue(null);
 
   state.deductWalletBalance.mockReset().mockResolvedValue(true);
   state.addWalletBalance.mockReset().mockResolvedValue(undefined);
@@ -278,8 +281,60 @@ describe('endVoiceSessionForUser', () => {
     await expect(endVoiceSessionForUser(USER, SESSION)).resolves.toBeUndefined();
   });
 
-  it('refunds nothing, because minutes are paid for when granted', async () => {
+  it('refunds nothing on an ordinary hangup, because minutes are paid for when granted', async () => {
     await endVoiceSessionForUser(USER, SESSION);
     expect(state.addWalletBalance).not.toHaveBeenCalled();
+    // Not even attempted: a plain hangup has no business asking the
+    // grace-window question at all.
+    expect(state.endVoiceSessionWithRefund).not.toHaveBeenCalled();
+  });
+
+  it('refunds nothing when connected is explicitly true', async () => {
+    await endVoiceSessionForUser(USER, SESSION, true);
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(state.endVoiceSessionWithRefund).not.toHaveBeenCalled();
+  });
+
+  it('refunds the most recent minute when connected:false lands inside the grace window', async () => {
+    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1 });
+
+    await endVoiceSessionForUser(USER, SESSION, false);
+
+    expect(state.endVoiceSessionWithRefund).toHaveBeenCalledWith(SESSION, USER, expect.any(Number));
+    expect(state.addWalletBalance).toHaveBeenCalledWith(USER, PRICE, 'refund:voice_minute');
+    // The atomic repo call already marked the session ended — a second,
+    // plain end would be redundant (and would race the same row).
+    expect(state.endVoiceSession).not.toHaveBeenCalled();
+  });
+
+  it('refunds at the currently configured price, not a hardcoded one', async () => {
+    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1 });
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'paid.voiceChat': { enabled: true, pricePaise: 3500 },
+    });
+
+    await endVoiceSessionForUser(USER, SESSION, false);
+
+    expect(state.addWalletBalance).toHaveBeenCalledWith(USER, 3500, 'refund:voice_minute');
+  });
+
+  it('falls back to a plain end when connected:false arrives outside the grace window', async () => {
+    // null is exactly what the atomic repo call returns when its WHERE clause
+    // fails — already ended, no minute to give back, or too late.
+    state.endVoiceSessionWithRefund.mockResolvedValue(null);
+
+    await endVoiceSessionForUser(USER, SESSION, false);
+
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(state.endVoiceSession).toHaveBeenCalledWith(SESSION, USER);
+  });
+
+  it('falls back to a plain end if the refund check itself fails, without throwing', async () => {
+    state.endVoiceSessionWithRefund.mockRejectedValue(new Error('db down'));
+
+    await expect(endVoiceSessionForUser(USER, SESSION, false)).resolves.toBeUndefined();
+
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(state.endVoiceSession).toHaveBeenCalledWith(SESSION, USER);
   });
 });

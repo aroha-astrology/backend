@@ -48,6 +48,22 @@ const DEFAULT_MINUTE_PRICE_PAISE = 2000;
 const WALLET_REASON_CHARGE = 'voice_minute';
 const WALLET_REASON_REFUND = 'refund:voice_minute';
 
+/**
+ * How long after a minute is granted `/end connected:false` still refunds it.
+ *
+ * The wallet is charged the instant a minute is granted — before the client
+ * has even tried the socket — because minting is the only step this server
+ * can observe; whether the call then actually worked is not. A genuine
+ * connect failure (wrong endpoint, refused token, no mic, an instant crash)
+ * shows up within a second or two of that charge. Bounding the window this
+ * tightly is what keeps it from being a free-minute lever: a client that
+ * talks for the better part of a minute and only then claims `connected:
+ * false` misses the window and keeps the charge, and even inside the window
+ * this only ever gives back the ONE most recently charged minute (see
+ * `endVoiceSessionWithRefund`), never the whole session.
+ */
+const CONNECT_GRACE_MS = 15_000;
+
 export interface VoiceSessionGrant {
   voiceSessionId: string;
   token: string;
@@ -226,12 +242,42 @@ export async function extendVoiceSession(
  * Marks a session finished. Idempotent, and safe to call for a session that is
  * already over or never existed — the client fires this on hangup, on page
  * unload and on error, and none of those should surface a failure to the user.
- * Nothing is charged or refunded here: minutes are paid for when granted.
+ *
+ * `connected: false` is the client reporting that the minute it just paid for
+ * never turned into a working call — see CONNECT_GRACE_MS for the window this
+ * is honored in and why. Anything else (connected omitted, or true) behaves
+ * exactly as before: nothing charged or refunded, just marked ended.
  */
 export async function endVoiceSessionForUser(
   userId: string,
   voiceSessionId: string,
+  connected?: boolean,
 ): Promise<void> {
+  if (connected === false) {
+    try {
+      const refund = await voiceRepo.endVoiceSessionWithRefund(
+        voiceSessionId,
+        userId,
+        CONNECT_GRACE_MS,
+      );
+      if (refund) {
+        const pricePaise = await minutePricePaise(userId);
+        await addWalletBalance(userId, pricePaise, WALLET_REASON_REFUND).catch((err: unknown) => {
+          logger.error(
+            { err, userId, voiceSessionId },
+            'voice: session refund granted but wallet credit failed',
+          );
+        });
+        return;
+      }
+    } catch (err) {
+      logger.warn(
+        { err, userId, voiceSessionId },
+        'voice: refund-on-disconnect check failed, falling back to a plain end',
+      );
+    }
+  }
+
   await voiceRepo.endVoiceSession(voiceSessionId, userId).catch((err: unknown) => {
     logger.warn({ err, userId, voiceSessionId }, 'voice: failed to mark session ended');
   });

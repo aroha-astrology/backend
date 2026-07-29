@@ -217,12 +217,33 @@ const endRoute = createRoute({
   summary: 'End a voice session',
   description:
     'Idempotent and best-effort — the client calls this on hangup, on page unload and on ' +
-    'error. Nothing is charged or refunded: minutes are paid for when they are granted. ' +
-    'Deliberately NOT gated on the feature flag, so a session already in progress can always ' +
-    'be closed even if voice is switched off mid-call.',
+    'error. Nothing is charged here: minutes are paid for when they are granted. ' +
+    '`connected: false` refunds the most recently granted minute, but only if this arrives ' +
+    'within a short grace window of that grant — see voice.service.ts for why the window ' +
+    'exists. Deliberately NOT gated on the feature flag, so a session already in progress ' +
+    'can always be closed even if voice is switched off mid-call.',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
-  request: { params: z.object({ id: z.string().uuid() }) },
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: {
+      required: false,
+      content: {
+        'application/json': {
+          schema: z.object({
+            connected: z
+              .boolean()
+              .optional()
+              .describe(
+                'False when the client never reached a working call on the minute it just ' +
+                  'paid for (socket refused, mic denied, immediate hangup) — as opposed to a ' +
+                  'call that connected and simply ended. Omit for an ordinary hangup.',
+              ),
+          }),
+        },
+      },
+    },
+  },
   responses: {
     200: {
       description: 'Session marked ended',
@@ -235,6 +256,7 @@ const endRoute = createRoute({
 voiceRouter.openapi(endRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  await endVoiceSessionForUser(user.id, id);
+  const { connected } = c.req.valid('json') ?? {};
+  await endVoiceSessionForUser(user.id, id, connected);
   return c.json({ ok: true as const }, 200);
 });

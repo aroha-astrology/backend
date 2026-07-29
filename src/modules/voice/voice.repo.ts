@@ -87,3 +87,52 @@ export async function endVoiceSession(id: string, userId: string): Promise<void>
     .set({ active: false, endedAt: now, updatedAt: now })
     .where(and(eq(voiceSessions.id, id), eq(voiceSessions.userId, userId)));
 }
+
+/**
+ * Ends a session AND releases its most recently charged minute, in one atomic
+ * update — for the one case that deserves a refund: the client never got a
+ * working call out of the minute it just paid for.
+ *
+ * `updatedAt` is the signal, not a dedicated timestamp, because
+ * `claimVoiceMinute` is the only thing that bumps both it and
+ * `minutesCharged` together — so "updated within the grace window" already
+ * means "the most recent charge is this recent", with no extra column needed.
+ *
+ * Everything that would make a refund wrong is folded into the WHERE clause
+ * rather than checked beforehand, for the same reason `claimVoiceMinute` is
+ * one UPDATE: a second call for the same session (a retry, `/end` firing from
+ * both an error handler and a page-unload handler) must not double-refund.
+ * The first call flips `active` to false, so every later call fails the
+ * `active = true` predicate and returns null — refunding nothing.
+ *
+ * Returns the price to refund (so the caller can credit the wallet) if the
+ * refund applied, or null if it did not — already ended, no minute to give
+ * back, or outside the grace window, in which case the caller should fall
+ * back to a plain `endVoiceSession`.
+ */
+export async function endVoiceSessionWithRefund(
+  id: string,
+  userId: string,
+  graceMs: number,
+): Promise<{ refundedMinutes: number } | null> {
+  const graceSeconds = Math.ceil(graceMs / 1000);
+  const [row] = await db
+    .update(voiceSessions)
+    .set({
+      minutesCharged: sql`${voiceSessions.minutesCharged} - 1`,
+      active: false,
+      endedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(voiceSessions.id, id),
+        eq(voiceSessions.userId, userId),
+        eq(voiceSessions.active, true),
+        sql`${voiceSessions.minutesCharged} > 0`,
+        sql`${voiceSessions.updatedAt} > now() - ${graceSeconds} * interval '1 second'`,
+      ),
+    )
+    .returning();
+  return row ? { refundedMinutes: 1 } : null;
+}
