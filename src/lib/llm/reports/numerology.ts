@@ -12,13 +12,17 @@
 // the orchestration layer marks the row failed and refunds, rather than
 // caching generic text (same discipline as generateMarriageNarrative).
 //
-// Every field on NumerologyScores was already fed into one of the 3
-// buildFactsCallN() functions below (unlike wealth.ts's wealthArc /
-// true-love.ts's romanceArc, there is no computed-but-unfed field here) — the
-// one gap found on audit was purely a missing prompt instruction: the given
-// Bhagyank was never explicitly tied to the covers-list's "ideal career
-// direction" question in section 1's instructions. Fixed below without any
-// new fact/wiring, since Bhagyank was already part of buildFactsCall1.
+// A first audit pass found and fixed one gap: the given Bhagyank was never
+// explicitly tied to the covers-list's "ideal career direction" question. A
+// deeper pass against the FULL 7-question covers.numerology list found 3
+// more real gaps, each closed with a new grounded fact (not just a prompt
+// instruction, since no existing fact spoke to these): `nameAlignment`
+// (reuses name-change.ts's own `computeNameAlignment` — "does my current
+// name numerologically support my birth-date numbers"), `luckyDayColor`
+// ("what are my luckiest... days, and colors" — only numbers existed before),
+// and `yearlyForecast` (5 years ahead — the existing `monthlyForecast` only
+// reaches 12 months, not "years ahead"). 8 sections across the same 3 calls
+// now (one new section each in call1 and call3).
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
@@ -43,9 +47,10 @@ ${SAFETY_RULE}
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
-Write EXACTLY 2 sections, in this order:
+Write EXACTLY 3 sections, in this order:
 1. Heading close to "Your Core Numbers" — 1-3 paragraphs explaining the given Mulank and Bhagyank (Vedic day-vibration and destiny numbers) and the given Life Path number (the Western equivalent long-arc number), in plain language, weaving in what each number classically means. Explicitly touch on what the given Bhagyank (destiny number) classically suggests about the reader's ideal career direction — directly answer "what does my Destiny Number say about my ideal career direction."
 2. Heading close to "Expression, Soul Urge & Personality" — 1-3 paragraphs explaining the given Expression number (natural talents), Soul Urge number (inner desire), and Personality number (the image you project), plus the given lucky numbers woven in naturally.
+3. Heading close to "Does Your Name Support Your Numbers" — 1-2 paragraphs stating the given name-alignment classification (aligned/partially_aligned/misaligned) plainly and what it means, directly answering "does my current name numerologically support my birth-date numbers, or work against them." If misaligned or only partially aligned, mention the given target number(s) as what a more supportive name would add up to, WITHOUT suggesting a specific new spelling (that is the separate Name Change report's job) — frame this as awareness, not a call to action.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
@@ -62,7 +67,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "Your Lo Shu Grid & Name Planes" — 1-3 paragraphs explaining which digits are strong (frequent) or missing in the given Lo Shu Grid and what that classically suggests, plus the given Name Planes balance (which of the 4 groups dominates the name and what that suggests about temperament).
-2. Heading close to "Challenge Numbers & Kua Element" — 1-2 paragraphs walking through the given 4 challenge numbers by age bracket (framed as growth areas to navigate, not fixed obstacles) and the given Kua Number/element (brief Feng Shui flavor, e.g. favorable directions/energies associated with that element).
+2. Heading close to "Challenge Numbers & Kua Element" — 1-2 paragraphs walking through the given 4 challenge numbers by age bracket (framed as growth areas to navigate, not fixed obstacles) and the given Kua Number/element (brief Feng Shui flavor, e.g. favorable directions/energies associated with that element). Close with one sentence directly answering "are there numbers or dates I should avoid for major decisions" — reflecting on the given challenge numbers as the numbers this reader's own chart suggests approaching major decisions around more cautiously, not as fixed forbidden dates.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
@@ -77,9 +82,10 @@ ${SAFETY_RULE}
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
-Write EXACTLY 2 sections, in this order:
+Write EXACTLY 3 sections, in this order:
 1. Heading close to "This Year & This Month" — 1-2 paragraphs explaining the given current Personal Year number (the year's overall theme) and current Personal Month number (this month's flavor within that year), in plain language.
 2. Heading close to "Your 12-Month Forecast" — 1-3 paragraphs walking through the given 12-month forecast, grouping months with the same or similar Personal Month numbers together rather than listing all 12 individually, framed as a rhythm to notice, not a fixed script.
+3. Heading close to "Your Luckiest Days, Colors & Years Ahead" — 1-2 paragraphs: state the given luckiest day and color(s) plainly (directly answering "what are my luckiest numbers, days, and colors" alongside the lucky numbers already given earlier in this report), THEN walk through the given 5-year forecast, naming which of the given years reads numerologically strongest — directly answering "which years ahead are numerologically strongest for me."
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
@@ -94,6 +100,9 @@ function buildFactsCall1(scores: NumerologyScores): string {
   lines.push(`Soul Urge number: ${scores.soulUrge}.`);
   lines.push(`Personality number: ${scores.personality}.`);
   lines.push(`Lucky numbers: ${scores.luckyNumbers.join(', ')}.`);
+  lines.push(
+    `Name alignment: ${scores.nameAlignment.alignment}. Target number(s) for a more supportive name: ${scores.nameAlignment.targets.join(', ')}.`,
+  );
   return lines.join('\n');
 }
 
@@ -130,6 +139,12 @@ function buildFactsCall3(scores: NumerologyScores): string {
           `${m.month} ${m.year}: Personal Month ${m.personalMonth} (Personal Year ${m.personalYear})`,
       )
       .join('; ')}.`,
+  );
+  lines.push(
+    `Luckiest day: ${scores.luckyDayColor.day}. Luckiest colors: ${scores.luckyDayColor.colors.join(', ') || 'unavailable'}.`,
+  );
+  lines.push(
+    `5-year forecast: ${scores.yearlyForecast.map((y) => `${y.year}: Personal Year ${y.personalYear}`).join('; ')}.`,
   );
   return lines.join('\n');
 }

@@ -42,7 +42,37 @@ import {
   type NamePlanes,
   type KuaData,
 } from '../numerology/vedic.js';
+import { computeNameAlignment, type NameAlignmentResult } from '../numerology/nameCorrection.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
+
+/**
+ * Classical planetary day + color association per Mulank (1-9) — a commonly-cited Chaldean/Vedic
+ * numerology convention, not presented as the one unimpeachable table (some traditions vary,
+ * especially for 4/7/8) — same "standard reference, not the only valid one" discipline
+ * baby-name.ts's own NAKSHATRA_PADA_SYLLABLE table documents. Answers "what are my luckiest...
+ * days, and colors" (numbers themselves already came from `luckyNumbers`).
+ */
+const LUCKY_DAY_COLOR_BY_MULANK: Record<number, { day: string; colors: string[] }> = {
+  1: { day: 'Sunday', colors: ['Gold', 'Orange', 'Yellow'] },
+  2: { day: 'Monday', colors: ['White', 'Cream', 'Light Green'] },
+  3: { day: 'Thursday', colors: ['Yellow', 'Purple', 'Pink'] },
+  4: { day: 'Sunday', colors: ['Grey', 'Blue', 'Electric colors'] },
+  5: { day: 'Wednesday', colors: ['Light Green', 'White'] },
+  6: { day: 'Friday', colors: ['Blue', 'Pink', 'White'] },
+  7: { day: 'Monday', colors: ['Green', 'White'] },
+  8: { day: 'Saturday', colors: ['Black', 'Dark Blue', 'Purple'] },
+  9: { day: 'Tuesday', colors: ['Red', 'Pink', 'Crimson'] },
+};
+
+export interface LuckyDayColor {
+  day: string;
+  colors: string[];
+}
+
+export interface YearlyForecastEntry {
+  year: number;
+  personalYear: number;
+}
 
 /**
  * Defensive-only fallback DOB (Unix epoch, UTC) — used ONLY when
@@ -96,6 +126,19 @@ export interface NumerologyScores extends Record<string, unknown> {
    * documented judgment call (see `ReportScoreContext.personGender`'s own doc comment), not a
    * claim that the classical formula itself has a non-binary form. */
   kua: KuaData;
+
+  /** Whether the current name's Chaldean number aligns with the birth-derived target numbers —
+   * answers "does my current name numerologically support my birth-date numbers, or work
+   * against them." Reuses name-change.ts's own `computeNameAlignment` rather than reinventing
+   * it — same underlying classical computation, just also surfaced here. */
+  nameAlignment: NameAlignmentResult;
+  /** Answers "what are my luckiest... days, and colors" — `luckyNumbers` above already covers
+   * the numbers themselves. Keyed by Mulank (see LUCKY_DAY_COLOR_BY_MULANK doc comment). */
+  luckyDayColor: LuckyDayColor;
+  /** 5 forward-looking years (starting this calendar year), each with its Personal Year number
+   * — answers "which years ahead are numerologically strongest for me," which the existing
+   * 12-month `monthlyForecast` doesn't reach (months, not years). */
+  yearlyForecast: YearlyForecastEntry[];
 }
 
 function resolveName(ctx: ReportScoreContext): string {
@@ -147,6 +190,17 @@ export function computeNumerologyScores(
   const namePlanes = getNamePlanes(name);
   const kua = getKuaData(dob.getUTCFullYear(), gender);
 
+  const nameAlignment = computeNameAlignment(name, dob);
+  const luckyDayColor = LUCKY_DAY_COLOR_BY_MULANK[mulank] ?? {
+    day: 'unavailable',
+    colors: [],
+  };
+  const currentYear = now.getUTCFullYear();
+  const yearlyForecast: YearlyForecastEntry[] = Array.from({ length: 5 }, (_, i) => {
+    const year = currentYear + i;
+    return { year, personalYear: calculatePersonalYear(dob, year) };
+  });
+
   return {
     name,
     dob: dobString,
@@ -164,5 +218,8 @@ export function computeNumerologyScores(
     monthlyForecast,
     namePlanes,
     kua,
+    nameAlignment,
+    luckyDayColor,
+    yearlyForecast,
   };
 }

@@ -59,6 +59,26 @@ function makeScores(overrides: Partial<NumerologyScores> = {}): NumerologyScores
       },
     },
     kua: { kuaNumber: 7, element: 'Metal' },
+    nameAlignment: {
+      mulank: 6,
+      bhagyank: 5,
+      pythagorean: 8,
+      chaldean: 5,
+      soulUrge: 3,
+      personality: 5,
+      targets: [6, 5],
+      alignment: 'partially_aligned',
+      friendly: [1, 3, 9],
+      enemy: [4, 8],
+    },
+    luckyDayColor: { day: 'Friday', colors: ['Blue', 'Pink', 'White'] },
+    yearlyForecast: [
+      { year: 2026, personalYear: 4 },
+      { year: 2027, personalYear: 5 },
+      { year: 2028, personalYear: 6 },
+      { year: 2029, personalYear: 7 },
+      { year: 2030, personalYear: 8 },
+    ],
     ...overrides,
   };
 }
@@ -69,6 +89,10 @@ const call1Response = JSON.stringify({
     {
       heading: 'Expression, Soul Urge & Personality',
       paragraphs: ['Your Expression number highlights your talents.'],
+    },
+    {
+      heading: 'Does Your Name Support Your Numbers',
+      paragraphs: ['Your name is partially aligned with your birth numbers.'],
     },
   ],
 });
@@ -82,6 +106,10 @@ const call3Response = JSON.stringify({
   sections: [
     { heading: 'This Year & This Month', paragraphs: ['This year favors steady building.'] },
     { heading: 'Your 12-Month Forecast', paragraphs: ['The months ahead form a rhythm.'] },
+    {
+      heading: 'Your Luckiest Days, Colors & Years Ahead',
+      paragraphs: ['Friday and blue tones suit you, and 2030 looks strongest.'],
+    },
   ],
 });
 
@@ -90,7 +118,7 @@ beforeEach(() => {
 });
 
 describe('generateNumerologyNarrative', () => {
-  it('makes exactly 3 bounded LLM calls returning 6 sections total, in order', async () => {
+  it('makes exactly 3 bounded LLM calls returning 8 sections total, in order', async () => {
     state.generate
       .mockResolvedValueOnce(call1Response)
       .mockResolvedValueOnce(call2Response)
@@ -99,15 +127,56 @@ describe('generateNumerologyNarrative', () => {
     const sections = await generateNumerologyNarrative(makeScores());
 
     expect(state.generate).toHaveBeenCalledTimes(3);
-    expect(sections).toHaveLength(6);
+    expect(sections).toHaveLength(8);
     expect(sections.map((s) => s.heading)).toEqual([
       'Your Core Numbers',
       'Expression, Soul Urge & Personality',
+      'Does Your Name Support Your Numbers',
       'Your Lo Shu Grid & Name Planes',
       'Challenge Numbers & Kua Element',
       'This Year & This Month',
       'Your 12-Month Forecast',
+      'Your Luckiest Days, Colors & Years Ahead',
     ]);
+  });
+
+  it('embeds the given nameAlignment facts in call 1 — answers "does my current name numerologically support my birth-date numbers"', async () => {
+    state.generate
+      .mockResolvedValueOnce(call1Response)
+      .mockResolvedValueOnce(call2Response)
+      .mockResolvedValueOnce(call3Response);
+    await generateNumerologyNarrative(makeScores());
+    const content = state.generate.mock.calls[0]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(content).toContain('partially_aligned');
+    expect(content).toContain('6, 5');
+  });
+
+  it('embeds the given luckyDayColor/yearlyForecast facts in call 3 — answers "luckiest days/colors" and "years ahead"', async () => {
+    state.generate
+      .mockResolvedValueOnce(call1Response)
+      .mockResolvedValueOnce(call2Response)
+      .mockResolvedValueOnce(call3Response);
+    await generateNumerologyNarrative(makeScores());
+    const content = state.generate.mock.calls[2]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(content).toContain('Friday');
+    expect(content).toContain('Blue, Pink, White');
+    expect(content).toContain('2030: Personal Year 8');
+  });
+
+  it('instructs the model to answer "numbers or dates to avoid for major decisions" in call 2', async () => {
+    state.generate
+      .mockResolvedValueOnce(call1Response)
+      .mockResolvedValueOnce(call2Response)
+      .mockResolvedValueOnce(call3Response);
+    await generateNumerologyNarrative(makeScores());
+    const content = state.generate.mock.calls[1]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(content.toLowerCase()).toContain('avoid for major decisions');
   });
 
   it('embeds the given mulank/bhagyank/lifePath/expression facts as GIVEN FACTS in call 1', async () => {

@@ -155,3 +155,38 @@ describe('computeNumerologyScores — defensive fallbacks (should never trigger 
     expect(scores.dob).toBe('1970-01-01');
   });
 });
+
+describe('computeNumerologyScores — nameAlignment (does my name numerologically support my birth numbers)', () => {
+  it('delegates to computeNameAlignment(name, dob), matching a direct call', async () => {
+    const { computeNameAlignment } =
+      await import('../src/lib/astro-engine/numerology/nameCorrection.js');
+    const scores = computeNumerologyScores(makeCtx(), null, NOW);
+    const expected = computeNameAlignment(NAME, new Date(DOB));
+    expect(scores.nameAlignment).toEqual(expected);
+  });
+});
+
+describe('computeNumerologyScores — luckyDayColor (which day/color is luckiest, keyed by Mulank)', () => {
+  it('returns a day and at least one color for every Mulank 1-9', () => {
+    for (let mulank = 1; mulank <= 9; mulank++) {
+      const ctx = makeCtx({ personDob: `1990-01-0${mulank <= 9 ? mulank : 1}` });
+      const scores = computeNumerologyScores(ctx, null, NOW);
+      const table = scores.luckyDayColor;
+      expect(typeof table.day).toBe('string');
+      expect(table.colors.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('computeNumerologyScores — yearlyForecast (which years ahead are numerologically strongest)', () => {
+  it('returns 5 forward-looking years starting at the current year, via calculatePersonalYear', () => {
+    const dob = new Date(DOB);
+    const scores = computeNumerologyScores(makeCtx(), null, NOW);
+    expect(scores.yearlyForecast).toHaveLength(5);
+    expect(scores.yearlyForecast[0]?.year).toBe(NOW.getUTCFullYear());
+    expect(scores.yearlyForecast[4]?.year).toBe(NOW.getUTCFullYear() + 4);
+    for (const entry of scores.yearlyForecast) {
+      expect(entry.personalYear).toBe(calculatePersonalYear(dob, entry.year));
+    }
+  });
+});
