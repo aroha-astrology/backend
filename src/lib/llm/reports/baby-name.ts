@@ -19,7 +19,11 @@ const NAMES_RULE =
 const SCOPE_RULE =
   "The very first line of your response MUST explicitly state: this guidance is grounded in the READER'S OWN Moon nakshatra (a simplification, since the app does not yet collect a separate unborn child's birth details) rather than the child's own birth chart, which is the more traditional approach — say this plainly, not apologetically. Also state that regional naming traditions vary slightly on some nakshatra-to-syllable mappings, so this is a standard reference table, not the only valid one.";
 const THEME_RULE =
-  "The nakshatra's ruling planet (lord) and presiding deity below are GIVEN FACTS. Use them only as gentle naming-theme flavor — e.g. qualities classically associated with that lord/deity which could inform a name's meaning or feel — never as a literal claim about the baby's personality, destiny, or future.";
+  "The nakshatra's ruling planet (lord) and presiding deity below are GIVEN FACTS. Use them for TWO things: (1) gentle naming-theme flavor for name meanings/feel, and (2) 2-3 classical personality traits or qualities this birth star (nakshatra) is traditionally associated with — directly answering \"what personality traits does my baby's birth star suggest\" — framed as classical tendency ('often associated with'), never as a literal claim about the baby's actual personality, destiny, or future.";
+const PADA_RULE =
+  "Explicitly explain, in one sentence, that the nakshatra's own classical meaning already narrows to a specific starting sound via its pada (quarter) — the given pada number is what picks the exact syllable out of the nakshatra's full set — directly answering \"how does the nakshatra's pada further refine the ideal starting sound.\"";
+const AVOID_SOUNDS_RULE =
+  'Directly and honestly address whether there are specific sounds or letters to avoid in the name — do not skip this question. The honest classical answer is that this naming tradition is additive, not exclusionary: there is no separate "avoid" list to check against, since starting the name with the one given syllable IS the guidance. Say this plainly in one sentence rather than ignoring the question or inventing a list of letters to avoid.';
 const GENTLE_DOSHA_RULE =
   'This report is read by a new or expecting parent about their baby. If a dosha (e.g. Mangal Dosha, Kaal Sarp Dosha) is listed as present, mention it matter-of-factly and calmly, never alarmingly — classical doshas are common chart features with their own classical remedies/timing, not a flaw in the baby. Do not recommend specific remedies, pujas, or purchases. If a favorable yoga (Raja/Dhana) is present, you may mention it warmly and briefly. If neither is present, skip this note or fold it into a single reassuring line.';
 const STYLE_RULE =
@@ -33,6 +37,8 @@ ${SCOPE_RULE}
 ${NAMES_RULE}
 ${STYLE_RULE}
 ${THEME_RULE}
+${PADA_RULE}
+${AVOID_SOUNDS_RULE}
 ${GENTLE_DOSHA_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -40,7 +46,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "Suggested Names". The FIRST paragraph must contain the required scope-limitation disclaimer (see above). The remaining paragraphs should present the name suggestions — one name and its one-line meaning per short paragraph (e.g. "Chudamani — one who wears the crest jewel of virtue.") — spread across traditional, modern, and deity-inspired flavors per STYLE_RULE, naming which flavor each leans toward.
-2. Heading close to "Naming Themes & Blessings" — 1-2 short paragraphs: the nakshatra lord/deity naming-theme flavor (per THEME_RULE), and a brief, gentle dosha/yoga note (per GENTLE_DOSHA_RULE).
+2. Heading close to "Naming Themes & Blessings" — 2-3 short paragraphs: the nakshatra lord/deity naming-theme flavor AND birth-star personality traits (per THEME_RULE), the pada explanation (per PADA_RULE), whether there are sounds/letters to avoid (per AVOID_SOUNDS_RULE), and a brief, gentle dosha/yoga note (per GENTLE_DOSHA_RULE).
 
 Each paragraph in section 2 should be 2-3 sentences.`;
 }

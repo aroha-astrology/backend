@@ -33,22 +33,61 @@ describe('generatePastLifeNarrative', () => {
   it('makes exactly 1 LLM call (thinnest-margin report — kept to 1 call)', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({
-        sections: [{ heading: 'Your Karmic Pattern', paragraphs: ['A pattern.'] }],
+        sections: [
+          { heading: 'Your Karmic Pattern', paragraphs: ['A pattern.'] },
+          { heading: 'Your Karmic Axis Theme', paragraphs: ['A theme.'] },
+          { heading: 'Your Unfinished Business & Soul Lesson', paragraphs: ['A lesson.'] },
+        ],
       }),
     );
     await generatePastLifeNarrative(makeScores());
     expect(state.generate).toHaveBeenCalledTimes(1);
   });
 
-  it('returns the single "Your Karmic Pattern" section', async () => {
+  it('returns all 3 sections, including the new soul-lesson section', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({
-        sections: [{ heading: 'Your Karmic Pattern', paragraphs: ['A pattern.'] }],
+        sections: [
+          { heading: 'Your Karmic Pattern', paragraphs: ['A pattern.'] },
+          { heading: 'Your Karmic Axis Theme', paragraphs: ['A theme.'] },
+          { heading: 'Your Unfinished Business & Soul Lesson', paragraphs: ['A lesson.'] },
+        ],
       }),
     );
     const sections = await generatePastLifeNarrative(makeScores());
-    expect(sections).toHaveLength(1);
-    expect(sections[0]?.heading).toBe('Your Karmic Pattern');
+    expect(sections).toHaveLength(3);
+    expect(sections.map((s) => s.heading)).toEqual([
+      'Your Karmic Pattern',
+      'Your Karmic Axis Theme',
+      'Your Unfinished Business & Soul Lesson',
+    ]);
+  });
+
+  it('instructs the model to name Rahu\'s placement as "unfinished business" and to state one core soul lesson', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generatePastLifeNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('unfinished business');
+    expect(content.toLowerCase()).toContain('soul lesson');
+  });
+
+  it('instructs a Ketu-placement fallback for the talent/skill question instead of just omitting it when no favorable yoga is present', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generatePastLifeNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const systemContent = call.messages
+      .filter((m: { role: string }) => m.role === 'system')
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    // The YOGA_RULE instruction itself must offer a fallback (not just "omit if none present") —
+    // otherwise "which past-life talents or skills carried forward" goes unanswered whenever no
+    // formal yoga triggers, which is a real, common case (only mahapurusha/benefic are checked).
+    expect(systemContent.toLowerCase()).toContain('if no favorable yoga is present');
   });
 
   it('embeds the given Rahu/Ketu house+sign facts', async () => {

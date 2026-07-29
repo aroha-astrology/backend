@@ -237,3 +237,48 @@ describe('computeKundliMilanScores — primaryDoshaYoga (primary person only)', 
     expect(scores.primaryDoshaYoga.cautions).toHaveLength(0);
   });
 });
+
+describe('computeKundliMilanScores — riskFactors (career/timing/children/harmony synastry)', () => {
+  it('includes all 8 life-area risk factors, in the documented order', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+
+    const scores = computeKundliMilanScores({ chart: chart1, partnerChart: chart2 }, null);
+
+    expect(scores.riskFactors.map((r) => r.key)).toEqual([
+      'wealth',
+      'health',
+      'children',
+      'harmony',
+      'career',
+      'timing',
+      'intimacy',
+      'inlaws',
+    ]);
+  });
+
+  it('answers "how compatible on career" via the career risk factor — previously not answerable anywhere in this report', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+
+    const scores = computeKundliMilanScores({ chart: chart1, partnerChart: chart2 }, null);
+
+    const career = scores.riskFactors.find((r) => r.key === 'career');
+    expect(career).toBeDefined();
+    expect(['benefit', 'neutral', 'caution', 'serious']).toContain(career?.severity);
+  });
+
+  it('answers "is the timing right" via the timing risk factor, using the given dasha data', () => {
+    const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const chart2 = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+    const dashaData = { vimshottari: { mahadashas: [] } };
+
+    const scores = computeKundliMilanScores(
+      { chart: chart1, partnerChart: chart2, dashaData },
+      null,
+    );
+
+    const timing = scores.riskFactors.find((r) => r.key === 'timing');
+    expect(timing).toBeDefined();
+  });
+});

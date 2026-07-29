@@ -13,6 +13,7 @@ import type { ZodiacSign } from '@aroha-astrology/shared';
 import { calculateAshtakoota } from '../matching/ashtakoota.js';
 import { calculateDashakoota } from '../matching/dashakoota.js';
 import { detectMangalDosha } from '../doshas/mangalDosha.js';
+import { computeMatchRiskFactors, type MatchRiskFactor } from '../matching/match-risks.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -104,6 +105,14 @@ export interface KundliMilanScores extends Record<string, unknown> {
    * pass, and fabricating one would be worse than omitting the partner's panel entirely.
    */
   primaryDoshaYoga: DoshaYogaSummary;
+  /** 8 life-area synastry read (wealth/health/children/harmony/career/timing/intimacy/inlaws) —
+   * the SAME computeMatchRiskFactors match-report.ts's pricier sibling report already uses
+   * (MatchReportScores extends this interface). Was previously computed only for match_report,
+   * leaving kundli_milan (which costs MORE, ₹99 vs match_report's ₹50) with no way to answer
+   * "how well matched are we on health/finance/career," "what about having children," "is the
+   * timing right, or should we wait" — none of which the Guna/Dashakoota koota breakdowns
+   * actually speak to directly. Reused here rather than reinvented. */
+  riskFactors: MatchRiskFactor[];
 }
 
 /**
@@ -161,7 +170,9 @@ export function computeKundliMilanScores(
     ['raja', 'mahapurusha', 'benefic'],
   );
 
-  return {
+  // Built before `riskFactors` since computeMatchRiskFactors (below) reads this same object's
+  // gunaBreakdown/manglikStatus (its `harmony` factor cross-references the Bhakoot/Nadi kootas).
+  const baseScores = {
     gunaMilanScore: ashtakoota.totalScore,
     gunaMaxScore: ashtakoota.maxTotal,
     gunaBreakdown: ashtakoota.scores.map((s) => ({
@@ -187,4 +198,13 @@ export function computeKundliMilanScores(
     compatibilityBand: compatibilityBandFromGunaScore(ashtakoota.totalScore),
     primaryDoshaYoga,
   };
+
+  const riskFactors = computeMatchRiskFactors(
+    chart1,
+    chart2,
+    baseScores as KundliMilanScores,
+    ctx.dashaData ?? null,
+  );
+
+  return { ...baseScores, riskFactors };
 }

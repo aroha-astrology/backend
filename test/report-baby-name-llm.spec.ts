@@ -92,6 +92,40 @@ describe('generateBabyNameNarrative', () => {
     expect(content.toLowerCase()).toContain('deity-inspired');
   });
 
+  it('instructs the model to state personality traits/qualities the birth star classically suggests, not just naming-theme flavor', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateBabyNameNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('personality trait');
+  });
+
+  it('instructs the model to explain how the pada further narrows the syllable within the nakshatra', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateBabyNameNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).toContain('pada');
+    expect(content.toLowerCase()).toMatch(/narrow|refine/);
+  });
+
+  it('instructs an honest answer to "which sounds to avoid" instead of silently skipping the question', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateBabyNameNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const systemContent = call.messages
+      .filter((m: { role: string }) => m.role === 'system')
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(systemContent.toLowerCase()).toContain('sounds or letters to avoid');
+  });
+
   it('instructs the model to mention a present dosha gently, not alarmingly', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
