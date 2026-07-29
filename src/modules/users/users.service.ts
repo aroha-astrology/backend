@@ -141,6 +141,9 @@ export function toUserDto(
       row.dataProcessingConsentAt,
       row.dataProcessingConsentRevokedAt,
     ),
+    voiceConsentAt: iso(row.voiceConsentAt),
+    voiceConsentRevokedAt: iso(row.voiceConsentRevokedAt),
+    voiceConsentActive: consentActive(row.voiceConsentAt, row.voiceConsentRevokedAt),
     termsAcceptedAt: iso(row.termsAcceptedAt),
     termsVersion: row.termsVersion,
     privacyPolicyAcceptedAt: iso(row.privacyPolicyAcceptedAt),
@@ -263,6 +266,21 @@ function applyConsent(
       ...base,
       consentType: 'data_processing',
       action: consent.dataProcessing ? 'granted' : 'withdrawn',
+    });
+  }
+  if (consent.voice !== undefined) {
+    if (consent.voice) {
+      patch.voiceConsentAt = now;
+      patch.voiceConsentRevokedAt = null;
+    } else {
+      // Same "keep the grant, record the withdrawal" shape as dataProcessing
+      // above — the audit trail needs both timestamps, not one overwritten one.
+      patch.voiceConsentRevokedAt = now;
+    }
+    logs.push({
+      ...base,
+      consentType: 'voice',
+      action: consent.voice ? 'granted' : 'withdrawn',
     });
   }
   if (consent.marketing !== undefined) {

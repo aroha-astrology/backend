@@ -276,6 +276,11 @@ export const UserSchema = z
     whatsappOptInAt: z.string().nullable(),
     whatsappOptInRevokedAt: z.string().nullable(),
     whatsappOptInActive: z.boolean().describe('WhatsApp opt-in currently in force'),
+    voiceConsentAt: z.string().nullable(),
+    voiceConsentRevokedAt: z.string().nullable(),
+    voiceConsentActive: z
+      .boolean()
+      .describe('Realtime-voice consent currently in force; required on top of paid.voiceChat'),
     dataProcessingConsentAt: z.string().nullable(),
     dataProcessingConsentRevokedAt: z.string().nullable(),
     dataProcessingConsentActive: z.boolean().describe('Data-processing consent currently in force'),
@@ -314,6 +319,14 @@ export const ConsentInputSchema = z
     /** Marketing comms. `false` records a withdrawal. */
     marketing: z.boolean().optional(),
     /** WhatsApp Business opt-in (Meta requires explicit per-channel opt-in). */
+    /**
+     * Realtime voice: streaming the user's live speech to Google for the
+     * Gemini Live conversation. Deliberately separate from `dataProcessing` —
+     * it covers a recording of the user's own voice sent to a third party on a
+     * preview tier whose traffic may be used to improve that party's products,
+     * which is more than the general grant covers. `false` records a withdrawal.
+     */
+    voice: z.boolean().optional(),
     whatsapp: z.boolean().optional(),
     /** Processing of sensitive birth/personal data for astrology features. */
     dataProcessing: z.boolean().optional(),

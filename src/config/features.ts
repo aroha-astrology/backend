@@ -93,6 +93,26 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     defaultPricePaise: 9900,
   },
+  // Realtime voice conversation (Gemini Live). Defaults OFF for the standing
+  // "new features ship dark" reason, and for two more specific to this one:
+  // it records the user's voice (see the separate voice-consent gate in
+  // users.voice_consent_at — the flag alone is not enough to reach it), and it
+  // runs on a preview model whose free-tier quota is shared with every text
+  // feature in the app, so it must be watched against real traffic before it
+  // is opened up.
+  //
+  // UNIQUE PRICING SHAPE: this price is PER MINUTE, not per use. Every other
+  // paid.* key here is charged once per unlock/report. Voice is charged once
+  // per minute of connected conversation, capped at VOICE_MAX_MINUTES (see
+  // modules/voice/voice.service.ts) — so the most a single session can cost is
+  // this price × that cap.
+  {
+    key: 'paid.voiceChat',
+    label: 'Voice Chat (realtime, per minute)',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 2000,
+  },
   // reports (one-time)
   {
     key: 'reports.marriage',
