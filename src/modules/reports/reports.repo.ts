@@ -221,6 +221,32 @@ export async function markReportReady(
 }
 
 /**
+ * Overwrites an already-`ready` report's cached content in place — the bulk-admin counterpart to
+ * `markReportReady` above, used by scripts/regenerate-all-report-content.ts to refresh existing
+ * customers' already-purchased reports after a narrative/prompt fix, without touching their
+ * purchase record (price paid, purchase date) or requiring a re-purchase. Deliberately NOT
+ * claim-fenced by `startedAt` like `markReportReady` — this targets a row that's already sitting
+ * in `ready`, not one freshly claimed out of `generating` — but still scoped to `status = 'ready'`
+ * so it can never clobber a row that's mid-generation or already failed/refunded. Resets
+ * `translations` for the same staleness reason `markReportReady` does.
+ */
+export async function overwriteReadyReportContent(
+  id: string,
+  patch: { content: Record<string, unknown>; model: string },
+): Promise<void> {
+  await db
+    .update(reports)
+    .set({ ...patch, translations: {}, error: null, updatedAt: new Date() })
+    .where(and(eq(reports.id, id), eq(reports.status, 'ready')));
+}
+
+/** Every currently-`ready` report row, across all users — the enumeration side of the bulk-admin
+ * content refresh above (see `overwriteReadyReportContent`). */
+export async function findReadyReportRows(): Promise<ReportRow[]> {
+  return db.select().from(reports).where(eq(reports.status, 'ready'));
+}
+
+/**
  * Flips a free preview row into a real purchase in place, without touching its
  * content/status — used by purchaseReport when a buyer's claimReportRow call
  * collides with a preview row that's already `ready` (so claimReportRow's own

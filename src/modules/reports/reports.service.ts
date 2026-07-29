@@ -34,6 +34,7 @@ import {
   listReportsForUser,
   markReportFailed,
   markReportReady,
+  overwriteReadyReportContent,
   saveReportScoresTranslation,
   saveReportTranslation,
   upgradePreviewToPurchased,
@@ -778,4 +779,56 @@ export async function getReportStats(): Promise<ReportStatsDto> {
 
   reportStatsCache = { data, expiresAt: now + REPORT_STATS_CACHE_TTL_MS };
   return data;
+}
+
+/**
+ * Bulk-admin counterpart to `runReportGeneration` — recomputes scores, regenerates the English
+ * narrative, and regenerates the timing-window summaries for an ALREADY-`ready` report, then
+ * overwrites its content via `overwriteReadyReportContent` (never `markReportReady`, which is
+ * claim-fenced to a fresh 'generating' row and won't match a 'ready' one). Used by
+ * scripts/regenerate-all-report-content.ts to refresh existing customers' already-purchased
+ * reports after a narrative/prompt fix — no refund, no re-purchase, no wallet/purchase-field
+ * changes of any kind.
+ *
+ * Returns 'skipped' (never throws for this case) when there's no registered generator for this
+ * report key, or the birth chart isn't ready — the same two guard conditions
+ * `runReportGeneration` treats as a hard failure, but here there's no purchase to refund, so the
+ * caller just moves on to the next row. A genuine LLM/narrative failure DOES throw (propagated to
+ * the caller) — the old content is left untouched either way, since `overwriteReadyReportContent`
+ * is only ever called after every step above has already succeeded.
+ */
+export async function regenerateReportContent(row: ReportRow): Promise<'regenerated' | 'skipped'> {
+  const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
+  if (!generator) return 'skipped';
+
+  const kundli = await findKundliByUserId(row.userId, row.birthProfileId);
+  if (!kundli || kundli.status !== 'ready' || !kundli.chartData) return 'skipped';
+
+  let partnerChart: Record<string, unknown> | null = null;
+  if (row.input) {
+    const metrology = await computeMetrology(partnerInputToBirthRecord(row.input));
+    partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
+  }
+
+  const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
+  const scores = generator.computeScores(
+    {
+      chart: kundli.chartData,
+      partnerChart,
+      doshaData: kundli.doshaData ?? null,
+      yogaData: kundli.yogaData ?? null,
+      ashtakavargaData: kundli.ashtakavargaData ?? null,
+      dashaData: kundli.dashaData ?? null,
+      ...personContext,
+    },
+    row.periodMonth,
+  );
+  const sections = await generator.generateNarrative(scores, 'en');
+  const windowSummaries = await computeWindowSummaries(scores);
+
+  await overwriteReadyReportContent(row.id, {
+    content: { sections, ...(windowSummaries ? { windowSummaries } : {}) },
+    model: MODEL,
+  });
+  return 'regenerated';
 }

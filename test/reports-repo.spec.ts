@@ -30,10 +30,12 @@ import { reports } from '../src/db/schema.js';
 import {
   claimReportRow,
   countReadyReportsByKey,
+  findReadyReportRows,
   findReportRow,
   findStaleGeneratingReports,
   markReportFailed,
   markReportReady,
+  overwriteReadyReportContent,
   upgradePreviewToPurchased,
 } from '../src/modules/reports/reports.repo.js';
 
@@ -345,6 +347,38 @@ describe('markReportReady / markReportFailed — claim-fenced updates', () => {
 
     const query = compile(calls.where);
     expect(query.params).toEqual(['report-1', 'generating', claimedAt.toISOString()]);
+  });
+});
+
+describe('overwriteReadyReportContent — bulk content-refresh admin path', () => {
+  it('only updates the row matching id + status=ready (not claim-fenced, unlike markReportReady)', async () => {
+    const { chain, calls } = makeUpdateChain();
+    state.update.mockReturnValue(chain);
+
+    await overwriteReadyReportContent('report-1', { content: { sections: [] }, model: 'gemini' });
+
+    expect(calls.set).toMatchObject({
+      content: { sections: [] },
+      model: 'gemini',
+      translations: {},
+    });
+    const query = compile(calls.where);
+    expect(query.params).toEqual(['report-1', 'ready']);
+  });
+});
+
+describe('findReadyReportRows — enumerates every ready report for a bulk admin pass', () => {
+  it('filters on status = ready', async () => {
+    const readyRow = { id: 'r1', status: 'ready' };
+    const { chain, calls } = makeSelectChain([readyRow]);
+    state.select.mockReturnValue(chain);
+
+    const rows = await findReadyReportRows();
+
+    expect(rows).toEqual([readyRow]);
+    const query = compile(calls.where);
+    expect(query.sql).toBe('"reports"."status" = $1');
+    expect(query.params).toEqual(['ready']);
   });
 });
 

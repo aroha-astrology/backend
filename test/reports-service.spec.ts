@@ -20,6 +20,7 @@ const state = vi.hoisted(() => {
     listReportsForUser: vi.fn(),
     markReportReady: vi.fn(),
     markReportFailed: vi.fn(),
+    overwriteReadyReportContent: vi.fn(),
     saveReportTranslation: vi.fn(),
     upgradePreviewToPurchased: vi.fn(),
     countReadyReportsByKey: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock('../src/modules/reports/reports.repo.js', () => ({
   listReportsForUser: state.listReportsForUser,
   markReportReady: state.markReportReady,
   markReportFailed: state.markReportFailed,
+  overwriteReadyReportContent: state.overwriteReadyReportContent,
   saveReportTranslation: state.saveReportTranslation,
   upgradePreviewToPurchased: state.upgradePreviewToPurchased,
   countReadyReportsByKey: state.countReadyReportsByKey,
@@ -111,6 +113,7 @@ const {
   getReportStats,
   notifyReportReady,
   reapStaleReports,
+  regenerateReportContent,
 } = await import('../src/modules/reports/reports.service.js');
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
@@ -161,6 +164,7 @@ beforeEach(() => {
   state.computeMetrology.mockReset().mockResolvedValue({ chart: { planets: [] } });
   state.findActiveTokensForUser.mockReset().mockResolvedValue([]);
   state.summarizeTimingWindows.mockReset().mockResolvedValue([]);
+  state.overwriteReadyReportContent.mockReset().mockResolvedValue(undefined);
   state.sendPushBatch.mockReset().mockResolvedValue({ success: 0, failure: 0 });
 });
 
@@ -1258,5 +1262,96 @@ describe('getReportStats', () => {
     const fourth = await getReportStats();
     expect(fourth).toEqual({});
     expect(state.countReadyReportsByKey).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('regenerateReportContent — bulk admin refresh of an already-purchased report', () => {
+  it('recomputes scores/narrative/window-summaries and overwrites content via overwriteReadyReportContent, never touching price/purchase fields', async () => {
+    const generateNarrative = vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]);
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({ score: 1 }),
+      generateNarrative,
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    const row = makeReportRow({ id: 'r1', reportKey: 'marriage', status: 'ready' });
+
+    const result = await regenerateReportContent(row);
+
+    expect(result).toBe('regenerated');
+    expect(generateNarrative).toHaveBeenCalledWith({ score: 1 }, 'en');
+    expect(state.overwriteReadyReportContent).toHaveBeenCalledWith('r1', {
+      content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      model: expect.any(String),
+    });
+    expect(state.markReportReady).not.toHaveBeenCalled();
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('includes windowSummaries in the overwritten content when scores has a timing-window field', async () => {
+    const window = {
+      startDate: '2026-10-22T00:00:00.000Z',
+      endDate: '2027-01-12T00:00:00.000Z',
+      score: 1,
+      level: 'LOW',
+      dashaLevel: 'pratyantardasha',
+      reasoning: ['x'],
+    };
+    state.REPORT_GENERATORS.true_love = {
+      key: 'true_love',
+      computeScores: vi.fn().mockReturnValue({ windows: [window] }),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.summarizeTimingWindows.mockResolvedValue(['A window worth watching.']);
+    const row = makeReportRow({ id: 'tl1', reportKey: 'true_love', status: 'ready' });
+
+    await regenerateReportContent(row);
+
+    expect(state.overwriteReadyReportContent).toHaveBeenCalledWith(
+      'tl1',
+      expect.objectContaining({
+        content: expect.objectContaining({
+          windowSummaries: { field: 'windows', summaries: ['A window worth watching.'] },
+        }),
+      }),
+    );
+  });
+
+  it('skips (no overwrite, no throw) when no generator is registered for the report key', async () => {
+    const row = makeReportRow({ id: 'r2', reportKey: 'wealth', status: 'ready' });
+    await expect(regenerateReportContent(row)).resolves.toBe('skipped');
+    expect(state.overwriteReadyReportContent).not.toHaveBeenCalled();
+  });
+
+  it('skips (no overwrite, no throw) when the birth chart is not ready', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn(),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue(undefined);
+    const row = makeReportRow({ id: 'r3', reportKey: 'marriage', status: 'ready' });
+
+    await expect(regenerateReportContent(row)).resolves.toBe('skipped');
+    expect(state.overwriteReadyReportContent).not.toHaveBeenCalled();
+  });
+
+  it('propagates a narrative-generation failure rather than overwriting with broken content', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockRejectedValue(new Error('LLM exploded')),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    const row = makeReportRow({ id: 'r4', reportKey: 'marriage', status: 'ready' });
+
+    await expect(regenerateReportContent(row)).rejects.toThrow('LLM exploded');
+    expect(state.overwriteReadyReportContent).not.toHaveBeenCalled();
   });
 });
