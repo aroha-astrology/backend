@@ -121,15 +121,28 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
       uses: 1,
       expireTime: new Date(expiresAt).toISOString(),
       newSessionExpireTime: new Date(now + NEW_SESSION_WINDOW_MS).toISOString(),
-      liveConnectConstraints: {
+      // `bidiGenerateContentSetup`, NOT the `liveConnectConstraints` wrapper the
+      // published docs and the Python/JS SDKs show. That name is the SDK's, and
+      // the REST endpoint parses this body directly as the AuthToken message,
+      // which has no such field — it answers 400 "Unknown name
+      // \"liveConnectConstraints\" at 'auth_token'". Verified against the live
+      // endpoint on both v1beta and v1alpha; both accept the shape below.
+      //
+      // The contents are a flat BidiGenerateContentSetup — there is no nested
+      // `config`, and `responseModalities` lives under `generationConfig`.
+      bidiGenerateContentSetup: {
         model: `models/${env.GEMINI_LIVE_MODEL}`,
-        config: {
-          responseModalities: ['AUDIO'],
-          // Required for the client to resume across paid-minute boundaries
-          // without losing the conversation — each minute is a fresh socket.
-          sessionResumption: opts.resumptionHandle ? { handle: opts.resumptionHandle } : {},
-          systemInstruction: opts.systemInstruction,
-        },
+        generationConfig: { responseModalities: ['AUDIO'] },
+        // Required for the client to resume across paid-minute boundaries
+        // without losing the conversation — each minute is a fresh socket.
+        sessionResumption: opts.resumptionHandle ? { handle: opts.resumptionHandle } : {},
+        // A Content message, not a bare string.
+        systemInstruction: { parts: [{ text: opts.systemInstruction }] },
+        // Pin tools to none. Anything left unconstrained here is something the
+        // browser can declare for itself in its own setup frame, since it holds
+        // the token — an empty list is what stops a tampered client granting
+        // itself tool access on our quota.
+        tools: [],
       },
     };
 
