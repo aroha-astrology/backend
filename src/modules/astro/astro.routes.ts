@@ -508,6 +508,12 @@ astroRouter.openapi(chatRoute, async (c) => {
   // keeps compaction purely a model-context concern.
   let storedHistory: { role: 'user' | 'assistant'; content: string }[] = [];
   let storedSummary: string | undefined;
+  // The stored session's own last-touched time — passed through so the model
+  // can be told the replayed history above is from a previous session, not
+  // from just now (see historyStalenessNote in scholar.ts). A dormant user
+  // resuming an old session otherwise has their own stale-but-confident past
+  // reply (e.g. an old "today is..." statement) mistaken for current fact.
+  let storedLastActivityAt: Date | undefined;
   if (body.sessionId) {
     const existing = await chatSessionsRepo.getChatSession(
       body.sessionId,
@@ -519,6 +525,7 @@ astroRouter.openapi(chatRoute, async (c) => {
     }
     storedHistory = existing.history;
     storedSummary = existing.summary ?? undefined;
+    storedLastActivityAt = existing.updatedAt;
   }
 
   // One question at a time, per account, enforced across the pm2 cluster.
@@ -588,6 +595,7 @@ astroRouter.openapi(chatRoute, async (c) => {
         // Already resolved above (also used for chat-session scoping) —
         // threaded through instead of letting chatStream re-resolve it.
         profile,
+        storedLastActivityAt,
       );
 
       let fullContent = '';

@@ -403,6 +403,35 @@ function temporalAnchor(now: Date): string {
 }
 
 /**
+ * TEMPORAL_ANCHOR above states the real date, but it's buried in the system
+ * prompt while a resumed session's replayed history sits right next to the
+ * new user message — the position that most reliably wins (see the locale
+ * directive comment in buildChatMessages for the same proximity lesson).
+ * A dormant user's old history can contain an assistant turn that itself
+ * stated a "today" (e.g. "Today is Wednesday, May 22, 2024") which was true
+ * when it was generated, months or years ago — with nothing marking it as
+ * stale, the model treats that in-context claim as more current than the
+ * system-level anchor. This note is deliberately placed immediately before
+ * the new user message to out-rank it. Returns null for a same-day resume
+ * (or no prior session), where the history's dates are already correct and
+ * the note would just be noise.
+ */
+function historyStalenessNote(now: Date, lastActivityAt: Date | undefined): string | null {
+  if (!lastActivityAt) return null;
+  const gapDays = (now.getTime() - lastActivityAt.getTime()) / (1000 * 60 * 60 * 24);
+  if (gapDays < 1) return null;
+  const gapDescription = gapDays >= 2 ? `about ${Math.round(gapDays)} days ago` : 'about a day ago';
+  return (
+    `RESUMED_SESSION: The conversation history above is from a previous session, ${gapDescription} — ` +
+    `not from just now. Any date, "today," or time-sensitive claim stated in those earlier turns ` +
+    `(including a prior "today is..." statement or a transit/timing forecast) reflects that earlier ` +
+    `date, not the present. Only TEMPORAL_ANCHOR governs the actual current date — if the new question ` +
+    `below needs "today" or a fresh forecast, recompute it from TEMPORAL_ANCHOR and the CHART DATA, ` +
+    `never from anything stated in the history above.`
+  );
+}
+
+/**
  * The persona, safety and reasoning rules shared by every channel — text chat
  * and realtime voice alike. Split out of `systemPrompt` so the voice prompt
  * cannot drift from the text one: adding a rule here applies it to both, which
@@ -683,6 +712,11 @@ export function buildChatMessages(
       role: 'system',
       content: `Conversation summary so far: ${state.chatContext.summary}`,
     });
+  }
+
+  const staleNote = historyStalenessNote(now, state.chatContext?.lastActivityAt);
+  if (staleNote) {
+    messages.push({ role: 'system', content: staleNote });
   }
 
   messages.push({ role: 'user', content: userMessage });

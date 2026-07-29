@@ -1097,6 +1097,11 @@ export async function* chatStream(
   // the one exception, doing a second, redundant `resolveActiveProfileContext`
   // call on every single message.
   profile?: ProfileContext,
+  // When resuming a stored session, its `updatedAt` — lets buildChatMessages
+  // warn the model that the replayed history above may be from a much
+  // earlier date (see historyStalenessNote in scholar.ts). Undefined for a
+  // brand-new session, which needs no such warning.
+  sessionLastActivityAt?: Date,
 ): AsyncGenerator<ChatStreamEvent> {
   // Death/self-harm policy gate — runs before checkTopicGate (and before any
   // chart/grounding work) so a self-harm message never reaches the topic
@@ -1165,7 +1170,13 @@ export async function* chatStream(
     // Fire-and-forget — a facts-save failure must never break the chat reply.
     void saveUserFacts(userId, profile?.birthProfileId ?? null, facts).catch(() => {});
   }
-  state.chatContext = { history: recentHistory, summary };
+  state.chatContext = {
+    history: recentHistory,
+    summary,
+    // exactOptionalPropertyTypes: omit the key entirely for a new session
+    // rather than setting it to `undefined`.
+    ...(sessionLastActivityAt ? { lastActivityAt: sessionLastActivityAt } : {}),
+  };
 
   // Share-safe, non-identifying context (gender/relationship/interests) —
   // does not touch the "never the name" rule, see buildProfileFacts's
