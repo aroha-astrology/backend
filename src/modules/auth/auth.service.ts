@@ -44,21 +44,30 @@ async function resurrect(existing: UserRow): Promise<UserRow> {
  * exists for that UID and return it. Resurrects soft-deleted rows so a user
  * who deletes their account and signs back in can recover — including the case
  * where Firebase reissued a new UID for the same phone number.
+ *
+ * Provider-agnostic: phone-OTP tokens carry `phone_number`, Google tokens
+ * carry `email` instead (no `phone_number` claim) — both are handled by the
+ * same path, matching every downstream user/session consumer that already
+ * treats phone and email as independently-nullable columns.
  */
 export async function establishSession(token: DecodedIdToken): Promise<EstablishSessionResult> {
   const existing = await findUserByFirebaseUid(token.uid);
+  const email = typeof token.email === 'string' ? token.email.toLowerCase() : null;
 
   if (existing) {
-    if (existing.deletedAt !== null) {
-      const resurrected = await resurrect(existing);
-      return finish(await ensureReferralCode(resurrected), false);
+    let user = existing.deletedAt !== null ? await resurrect(existing) : existing;
+    // Backfill: a phone user who later signs in with Google, or a row
+    // created before email capture existed, picks up the email without a
+    // separate account-linking flow.
+    if (email && !user.email) {
+      user = (await updateUserById(user.id, { email })) ?? user;
     }
-    return finish(await ensureReferralCode(existing), false);
+    return finish(await ensureReferralCode(user), false);
   }
 
   const phoneE164 = typeof token.phone_number === 'string' ? token.phone_number : null;
   try {
-    const created = await insertUser({ firebaseUid: token.uid, phoneE164 });
+    const created = await insertUser({ firebaseUid: token.uid, phoneE164, email });
     return finish(created, true);
   } catch (err) {
     // A row already holds this phone (Firebase reissued the UID for the same
@@ -72,6 +81,13 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
         });
         return finish(reclaimed ?? byPhone, false);
       }
+    }
+    // A different account already holds this email. Rather than 500 on a
+    // brand-new Google identity, drop the email and create an email-less
+    // account — a real merge is a separate account-linking flow.
+    if (isUniqueViolation(err) && email) {
+      const created = await insertUser({ firebaseUid: token.uid, phoneE164, email: null });
+      return finish(created, true);
     }
     throw err;
   }
