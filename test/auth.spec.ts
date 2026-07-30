@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeDecodedToken, makeUserRow } from './helpers/mocks.js';
+import { makeDecodedToken, makeGoogleDecodedToken, makeUserRow } from './helpers/mocks.js';
 
 const state = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
@@ -9,10 +9,17 @@ const state = vi.hoisted(() => ({
   notifyNewSignup: vi.fn(),
   ensureReferralCode: vi.fn((user: unknown) => Promise.resolve(user)),
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
+  checkNewUserBurst: vi.fn().mockResolvedValue(undefined),
+  checkTotalUserMilestone: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', () => ({
   notifyNewSignup: state.notifyNewSignup,
+}));
+
+vi.mock('../src/modules/admin-alerts/admin-alerts.service.js', () => ({
+  checkNewUserBurst: state.checkNewUserBurst,
+  checkTotalUserMilestone: state.checkTotalUserMilestone,
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -60,6 +67,8 @@ describe('POST /v1/auth/session', () => {
       .mockReset()
       .mockImplementation((user: unknown) => Promise.resolve(user));
     state.touchUserLastActive.mockReset().mockResolvedValue(undefined);
+    state.checkNewUserBurst.mockReset().mockResolvedValue(undefined);
+    state.checkTotalUserMilestone.mockReset().mockResolvedValue(undefined);
   });
 
   it('returns 401 when the Authorization header is missing', async () => {
@@ -97,6 +106,7 @@ describe('POST /v1/auth/session', () => {
     expect(state.insertUser).toHaveBeenCalledWith({
       firebaseUid: 'uid-new',
       phoneE164: '+911111111111',
+      email: null,
     });
     // Notification fires without awaiting, but in vitest it'll synchronously trigger the mock call
     expect(state.notifyNewSignup).toHaveBeenCalledWith({
@@ -162,5 +172,201 @@ describe('POST /v1/auth/session', () => {
     });
 
     expect(state.touchUserLastActive).toHaveBeenCalledWith('id-existing');
+  });
+
+  it('runs the burst and total-milestone checks when a new user is created', async () => {
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-new2', '+911111111112'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+    state.insertUser.mockResolvedValueOnce(
+      makeUserRow({ id: 'id-new2', firebaseUid: 'uid-new2', phoneE164: '+911111111112' }),
+    );
+
+    const app = createApp();
+    await app.request('/v1/auth/session', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer good-token' },
+    });
+
+    expect(state.checkNewUserBurst).toHaveBeenCalledTimes(1);
+    expect(state.checkTotalUserMilestone).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run the burst/total-milestone checks for an existing user', async () => {
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-existing'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(
+      makeUserRow({ id: 'id-existing', firebaseUid: 'uid-existing' }),
+    );
+
+    const app = createApp();
+    await app.request('/v1/auth/session', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer good-token' },
+    });
+
+    expect(state.checkNewUserBurst).not.toHaveBeenCalled();
+    expect(state.checkTotalUserMilestone).not.toHaveBeenCalled();
+  });
+
+  describe('Google sign-in (email, no phone_number claim)', () => {
+    it('creates a new user with email set and phoneE164 null', async () => {
+      state.verifyIdToken.mockResolvedValueOnce(
+        makeGoogleDecodedToken('uid-google-new', 'newuser@example.com'),
+      );
+      state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+      state.insertUser.mockResolvedValueOnce(
+        makeUserRow({
+          id: 'id-google-new',
+          firebaseUid: 'uid-google-new',
+          phoneE164: null,
+          email: 'newuser@example.com',
+        }),
+      );
+
+      const app = createApp();
+      const res = await app.request('/v1/auth/session', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer good-token' },
+      });
+
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        user: { firebaseUid: string; phoneE164: string | null; email: string | null };
+        created: boolean;
+      };
+      expect(body.created).toBe(true);
+      expect(body.user.phoneE164).toBeNull();
+      expect(body.user.email).toBe('newuser@example.com');
+      expect(state.insertUser).toHaveBeenCalledWith({
+        firebaseUid: 'uid-google-new',
+        phoneE164: null,
+        email: 'newuser@example.com',
+      });
+    });
+
+    it('lowercases the email before persisting', async () => {
+      state.verifyIdToken.mockResolvedValueOnce(
+        makeGoogleDecodedToken('uid-google-case', 'MixedCase@Example.com'),
+      );
+      state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+      state.insertUser.mockResolvedValueOnce(
+        makeUserRow({ id: 'id-google-case', firebaseUid: 'uid-google-case' }),
+      );
+
+      const app = createApp();
+      await app.request('/v1/auth/session', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer good-token' },
+      });
+
+      expect(state.insertUser).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'mixedcase@example.com' }),
+      );
+    });
+
+    it('retries without email (does not 500) when the email is already taken by another account', async () => {
+      state.verifyIdToken.mockResolvedValueOnce(
+        makeGoogleDecodedToken('uid-google-collide', 'taken@example.com'),
+      );
+      state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+      state.insertUser
+        .mockRejectedValueOnce({ code: '23505' })
+        .mockResolvedValueOnce(
+          makeUserRow({ id: 'id-google-collide', firebaseUid: 'uid-google-collide', email: null }),
+        );
+
+      const app = createApp();
+      const res = await app.request('/v1/auth/session', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer good-token' },
+      });
+
+      expect(res.status).toBe(201);
+      expect(state.insertUser).toHaveBeenNthCalledWith(1, {
+        firebaseUid: 'uid-google-collide',
+        phoneE164: null,
+        email: 'taken@example.com',
+      });
+      expect(state.insertUser).toHaveBeenNthCalledWith(2, {
+        firebaseUid: 'uid-google-collide',
+        phoneE164: null,
+        email: null,
+      });
+    });
+
+    it('backfills email onto an existing row that was created before email was captured', async () => {
+      state.verifyIdToken.mockResolvedValueOnce(
+        makeGoogleDecodedToken('uid-google-existing', 'backfill@example.com'),
+      );
+      state.findUserByFirebaseUid.mockResolvedValueOnce(
+        makeUserRow({ id: 'id-google-existing', firebaseUid: 'uid-google-existing', email: null }),
+      );
+      state.updateUserById.mockResolvedValueOnce(
+        makeUserRow({
+          id: 'id-google-existing',
+          firebaseUid: 'uid-google-existing',
+          email: 'backfill@example.com',
+        }),
+      );
+
+      const app = createApp();
+      const res = await app.request('/v1/auth/session', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer good-token' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { user: { email: string | null } };
+      expect(body.user.email).toBe('backfill@example.com');
+      expect(state.updateUserById).toHaveBeenCalledWith('id-google-existing', {
+        email: 'backfill@example.com',
+      });
+    });
+
+    it('does not touch an existing row that already has an email set', async () => {
+      state.verifyIdToken.mockResolvedValueOnce(
+        makeGoogleDecodedToken('uid-google-existing2', 'same@example.com'),
+      );
+      state.findUserByFirebaseUid.mockResolvedValueOnce(
+        makeUserRow({
+          id: 'id-google-existing2',
+          firebaseUid: 'uid-google-existing2',
+          email: 'same@example.com',
+        }),
+      );
+
+      const app = createApp();
+      const res = await app.request('/v1/auth/session', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer good-token' },
+      });
+
+      expect(res.status).toBe(200);
+      expect(state.updateUserById).not.toHaveBeenCalled();
+    });
+  });
+
+  it('leaves ordinary phone sign-in untouched when the token happens to carry no email', async () => {
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-phone-only', '+911111119999'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+    state.insertUser.mockResolvedValueOnce(
+      makeUserRow({
+        id: 'id-phone-only',
+        firebaseUid: 'uid-phone-only',
+        phoneE164: '+911111119999',
+      }),
+    );
+
+    const app = createApp();
+    const res = await app.request('/v1/auth/session', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer good-token' },
+    });
+
+    expect(res.status).toBe(201);
+    expect(state.insertUser).toHaveBeenCalledWith({
+      firebaseUid: 'uid-phone-only',
+      phoneE164: '+911111119999',
+      email: null,
+    });
   });
 });

@@ -16,7 +16,7 @@ import { getFeedbackVoteCountsByUser } from '../astro/feedback.repo.js';
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
 import { listActiveCoupons, insertCoupon, sumPaidOrdersToday } from '../billing/billing.repo.js';
 import { escapeMarkdown } from '../../lib/notifications/telegram.js';
-import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { notifyUsersBatch } from '../../lib/notifications/notify-user.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 
 /** Formats an integer paise amount as a ₹ string for plain-text Telegram messages. */
@@ -294,8 +294,12 @@ export async function cmdBroadcast(message: string | undefined): Promise<string>
   const tokens = await getAllActiveTokens();
   if (tokens.length === 0) return escapeMarkdown('No active devices to broadcast to.');
 
-  const tokenStrings = tokens.map((t) => t.token);
-  const result = await sendPushBatch(tokenStrings, 'Aroha Astrology Update', message);
+  const recipients = tokens.map((t) => ({ userId: t.userId, token: t.token }));
+  const result = await notifyUsersBatch(recipients, {
+    title: 'Aroha Astrology Update',
+    body: message,
+    type: 'admin_broadcast',
+  });
 
   return escapeMarkdown(`Broadcast sent!\nSuccess: ${result.success}\nFailed: ${result.failure}`);
 }

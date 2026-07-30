@@ -8,26 +8,76 @@
 
 import type { Tithi } from '@aroha-astrology/shared';
 
-const TITHI_NAMES: string[] = [
-  'Pratipada', 'Dwitiya', 'Tritiya', 'Chaturthi', 'Panchami',
-  'Shashthi', 'Saptami', 'Ashtami', 'Navami', 'Dashami',
-  'Ekadashi', 'Dwadashi', 'Trayodashi', 'Chaturdashi', 'Purnima',
-  'Pratipada', 'Dwitiya', 'Tritiya', 'Chaturthi', 'Panchami',
-  'Shashthi', 'Saptami', 'Ashtami', 'Navami', 'Dashami',
-  'Ekadashi', 'Dwadashi', 'Trayodashi', 'Chaturdashi', 'Amavasya',
+export const TITHI_NAMES: string[] = [
+  'Pratipada',
+  'Dwitiya',
+  'Tritiya',
+  'Chaturthi',
+  'Panchami',
+  'Shashthi',
+  'Saptami',
+  'Ashtami',
+  'Navami',
+  'Dashami',
+  'Ekadashi',
+  'Dwadashi',
+  'Trayodashi',
+  'Chaturdashi',
+  'Purnima',
+  'Pratipada',
+  'Dwitiya',
+  'Tritiya',
+  'Chaturthi',
+  'Panchami',
+  'Shashthi',
+  'Saptami',
+  'Ashtami',
+  'Navami',
+  'Dashami',
+  'Ekadashi',
+  'Dwadashi',
+  'Trayodashi',
+  'Chaturdashi',
+  'Amavasya',
 ];
 
 const TITHI_DEITIES: string[] = [
-  'Agni', 'Brahma', 'Gauri', 'Ganesh', 'Naga',
-  'Kartikeya', 'Surya', 'Shiva', 'Durga', 'Dharma',
-  'Vishnu', 'Vishnu', 'Kamadeva', 'Shiva', 'Soma',
-  'Agni', 'Brahma', 'Gauri', 'Ganesh', 'Naga',
-  'Kartikeya', 'Surya', 'Shiva', 'Durga', 'Dharma',
-  'Vishnu', 'Vishnu', 'Kamadeva', 'Shiva', 'Pitru',
+  'Agni',
+  'Brahma',
+  'Gauri',
+  'Ganesh',
+  'Naga',
+  'Kartikeya',
+  'Surya',
+  'Shiva',
+  'Durga',
+  'Dharma',
+  'Vishnu',
+  'Vishnu',
+  'Kamadeva',
+  'Shiva',
+  'Soma',
+  'Agni',
+  'Brahma',
+  'Gauri',
+  'Ganesh',
+  'Naga',
+  'Kartikeya',
+  'Surya',
+  'Shiva',
+  'Durga',
+  'Dharma',
+  'Vishnu',
+  'Vishnu',
+  'Kamadeva',
+  'Shiva',
+  'Pitru',
 ];
 
 // Auspicious tithis: 2,3,5,7,10,11,12,13 of both pakshas, Purnima
-const AUSPICIOUS_TITHI_INDICES = new Set([1, 2, 4, 6, 9, 10, 11, 12, 14, 16, 17, 19, 21, 24, 25, 26, 27]);
+const AUSPICIOUS_TITHI_INDICES = new Set([
+  1, 2, 4, 6, 9, 10, 11, 12, 14, 16, 17, 19, 21, 24, 25, 26, 27,
+]);
 
 /**
  * Calculate the tithi from Moon and Sun longitudes.
@@ -55,4 +105,3 @@ export function calculateTithi(moonLong: number, sunLong: number): Tithi {
     isAuspicious: AUSPICIOUS_TITHI_INDICES.has(tithiIndex),
   };
 }
-

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildChatMessages, type UserFact } from '../src/lib/swarm/agents/scholar.js';
+import {
+  buildChatMessages,
+  buildVoiceSystemInstruction,
+  type UserFact,
+} from '../src/lib/swarm/agents/scholar.js';
 import { newState } from '../src/lib/swarm/state.js';
 
 function systemContent(groundingFacts: string[] = [], birthTimeUnknown = false): string {
@@ -168,5 +172,25 @@ describe('scholar user facts and open follow-ups', () => {
     const content = systemContent();
     expect(content.toLowerCase()).toMatch(/open follow-up/);
     expect(content.toLowerCase()).toMatch(/not an additional allowance|same budget|counts toward/);
+  });
+});
+
+describe('scholar voice call-connected greeting', () => {
+  it('instructs the model to greet by name when a displayName is given', () => {
+    const content = buildVoiceSystemInstruction({ groundingFacts: [], displayName: 'Priya' });
+    expect(content).toContain('[[CALL_CONNECTED]]');
+    expect(content).toContain('Radhe Radhe, Priya!');
+  });
+
+  it('falls back to a nameless greeting when no displayName is given', () => {
+    const content = buildVoiceSystemInstruction({ groundingFacts: [] });
+    expect(content).toContain('Radhe Radhe!');
+    expect(content).not.toContain('Radhe Radhe,');
+  });
+
+  it('scopes the name exception to the opening line only, without loosening PERSONAL_TOUCH for the rest of the call', () => {
+    const content = buildVoiceSystemInstruction({ groundingFacts: [], displayName: 'Priya' });
+    expect(content).toContain('Never address the user by name');
+    expect(content).toContain('the one and only exception');
   });
 });

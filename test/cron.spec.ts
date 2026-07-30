@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   findOwnedBirthProfile: vi.fn(),
   runHoroscopeBatch: vi.fn(),
   runAllHoroscopeBatches: vi.fn(),
+  runHoroscopeSelfHeal: vi.fn(),
   requestHoroscopeGeneration: vi.fn(),
   toHoroscopeDto: vi.fn(),
   isStaleGenerating: vi.fn(),
@@ -16,6 +17,7 @@ const state = vi.hoisted(() => ({
   findHoroscope: vi.fn(),
   findKundliByUserId: vi.fn(),
   broadcastPeriodReading: vi.fn(),
+  checkConcurrentActivity: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -51,6 +53,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
 vi.mock('../src/modules/horoscope/horoscope.service.js', () => ({
   runHoroscopeBatch: state.runHoroscopeBatch,
   runAllHoroscopeBatches: state.runAllHoroscopeBatches,
+  runHoroscopeSelfHeal: state.runHoroscopeSelfHeal,
   requestHoroscopeGeneration: state.requestHoroscopeGeneration,
   toHoroscopeDto: state.toHoroscopeDto,
   isStaleGenerating: state.isStaleGenerating,
@@ -72,6 +75,10 @@ vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
 
 vi.mock('../src/modules/cron/broadcast.service.js', () => ({
   broadcastPeriodReading: state.broadcastPeriodReading,
+}));
+
+vi.mock('../src/modules/admin-alerts/admin-alerts.service.js', () => ({
+  checkConcurrentActivity: state.checkConcurrentActivity,
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -219,6 +226,58 @@ describe('POST /internal/cron/daily-horoscopes (deprecated alias)', () => {
     });
     expect(res.status).toBe(200);
     expect(state.runHoroscopeBatch).toHaveBeenCalledWith('daily', { forDate: '2026-01-01' });
+  });
+});
+
+describe('POST /internal/cron/horoscopes-selfheal', () => {
+  beforeEach(() => {
+    state.runHoroscopeSelfHeal.mockReset().mockResolvedValue({
+      processed: 5,
+      generated: 1,
+      skipped: 3,
+      failed: 1,
+    });
+  });
+
+  it('rejects with 403 when the cron secret is missing', async () => {
+    const res = await createApp().request('/internal/cron/horoscopes-selfheal', { method: 'POST' });
+    expect(res.status).toBe(403);
+    expect(state.runHoroscopeSelfHeal).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 403 when the cron secret is wrong', async () => {
+    const res = await createApp().request('/internal/cron/horoscopes-selfheal', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': 'nope' },
+    });
+    expect(res.status).toBe(403);
+    expect(state.runHoroscopeSelfHeal).not.toHaveBeenCalled();
+  });
+
+  it('runs the self-heal sweep and returns its result', async () => {
+    const res = await createApp().request('/internal/cron/horoscopes-selfheal', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      processed: number;
+      generated: number;
+      skipped: number;
+      failed: number;
+    };
+    expect(body).toEqual({ processed: 5, generated: 1, skipped: 3, failed: 1 });
+    expect(state.runHoroscopeSelfHeal).toHaveBeenCalledWith({});
+  });
+
+  it('passes through an explicit limit', async () => {
+    await createApp().request('/internal/cron/horoscopes-selfheal', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 50 }),
+    });
+    expect(state.runHoroscopeSelfHeal).toHaveBeenCalledWith({ limit: 50 });
   });
 });
 
@@ -441,5 +500,40 @@ describe('POST /internal/cron/broadcast-daily-reading (deprecated alias)', () =>
     });
     expect(res.status).toBe(200);
     expect(state.broadcastPeriodReading).toHaveBeenCalledWith('daily');
+  });
+});
+
+describe('POST /internal/cron/live-activity-check', () => {
+  beforeEach(() => {
+    state.checkConcurrentActivity.mockReset();
+  });
+
+  it('rejects a missing cron secret', async () => {
+    const app = createApp();
+    const res = await app.request('/internal/cron/live-activity-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('runs the check and returns its result', async () => {
+    state.checkConcurrentActivity.mockResolvedValueOnce({
+      activeCount: 20,
+      onlineMilestoneCrossed: null,
+    });
+
+    const app = createApp();
+    const res = await app.request('/internal/cron/live-activity-check', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      activeCount: number;
+      onlineMilestoneCrossed: number | null;
+    };
+    expect(body.activeCount).toBe(20);
+    expect(body.onlineMilestoneCrossed).toBeNull();
   });
 });

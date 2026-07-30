@@ -39,12 +39,58 @@ describe('parseReason', () => {
     });
   });
 
-  it('throws on an unrecognized reason', () => {
-    expect(() => parseReason('something_else')).toThrow('unrecognized wallet_transactions reason');
+  it('no longer throws on an unrecognized reason — falls back to a safe unknown kind', () => {
+    // Regression: GET /v1/billing/transactions used to 500 for any user who
+    // ever received a Telegram /money admin grant/deduction, since those
+    // reasons ('admin_grant'/'admin_deduction') weren't recognized here.
+    expect(() => parseReason('something_else')).not.toThrow();
   });
 
   it('parses a referral bonus as a credit, never a refund', () => {
     expect(parseReason('referral_bonus')).toEqual({ kind: 'referral_bonus', isRefund: false });
+  });
+
+  it('parses admin_grant and admin_deduction as admin_adjustment', () => {
+    expect(parseReason('admin_grant')).toEqual({ kind: 'admin_adjustment', isRefund: false });
+    expect(parseReason('admin_deduction')).toEqual({ kind: 'admin_adjustment', isRefund: false });
+  });
+
+  it('parses a refunded admin adjustment consistently, even though it should not occur in practice', () => {
+    expect(parseReason('refund:admin_grant')).toEqual({ kind: 'admin_adjustment', isRefund: true });
+  });
+
+  it('parses one-time report_unlock reasons', () => {
+    expect(parseReason('report_unlock:marriage')).toEqual({
+      kind: 'report_unlock',
+      reportKey: 'marriage',
+      isRefund: false,
+    });
+  });
+
+  it('parses a monthly report_unlock reason with a YYYY-MM period', () => {
+    expect(parseReason('report_unlock:health_monthly:2026-08')).toEqual({
+      kind: 'report_unlock',
+      reportKey: 'health_monthly',
+      periodMonth: '2026-08',
+      isRefund: false,
+    });
+  });
+
+  it('parses a bundled report_unlock reason with a month count', () => {
+    expect(parseReason('report_unlock:kundli_milan:bundle:3')).toEqual({
+      kind: 'report_unlock',
+      reportKey: 'kundli_milan',
+      bundleMonths: 3,
+      isRefund: false,
+    });
+  });
+
+  it('strips refund: from a report_unlock reason and sets isRefund', () => {
+    expect(parseReason('refund:report_unlock:marriage')).toEqual({
+      kind: 'report_unlock',
+      reportKey: 'marriage',
+      isRefund: true,
+    });
   });
 });
 

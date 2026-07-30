@@ -387,6 +387,10 @@ export interface Tithi {
   paksha: 'Shukla' | 'Krishna';
   deity: string;
   isAuspicious: boolean;
+  /** Local HH:mm this tithi ends (i.e. when the next one begins) — a real swisseph angle-crossing search, not an estimate. Absent on cached rows written before this field existed. */
+  endsAt?: string;
+  /** Name of the tithi that begins at `endsAt`. */
+  nextName?: string;
 }
 
 export interface NakshatraData {
@@ -395,6 +399,10 @@ export interface NakshatraData {
   lord: Planet;
   pada: number;
   deity: string;
+  /** Local HH:mm this nakshatra ends (i.e. when the next one begins). */
+  endsAt?: string;
+  /** Name of the nakshatra that begins at `endsAt`. */
+  nextName?: string;
 }
 
 export interface PanchangYoga {
@@ -421,6 +429,10 @@ export interface PanchangData {
   abhijitMuhurta: { start: string; end: string };
   sunriseTime: string;
   sunsetTime: string;
+  /** Local HH:mm moonrise via swe_rise_trans (SE_MOON) — a real computation, unlike sunrise/sunset's NOAA approximation. Absent (legitimately, not just missing) on civil days the Moon doesn't rise. */
+  moonriseTime?: string;
+  /** Local HH:mm moonset via swe_rise_trans (SE_MOON). Same absence caveat as moonriseTime. */
+  moonsetTime?: string;
   regionalMonths?: Record<RegionId, RegionalMonth>;
   /** 8 day + 8 night periods, cycling through 7 named types by weekday. */
   choghadiya?: { day: Choghadiya[]; night: Choghadiya[] };

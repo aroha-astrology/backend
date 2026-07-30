@@ -7,6 +7,7 @@ import {
   HouseInsightStatusSchema,
   HouseParamSchema,
   KundliMissingParamsSchema,
+  KundliQuerySchema,
   KundliSchema,
   KundliStatusSchema,
 } from './kundli.schemas.js';
@@ -22,6 +23,7 @@ import {
   requestKundliGeneration,
   toHouseInsightDtoForLanguage,
   toKundliDto,
+  toKundliDtoForLanguage,
   type KundliRequiredField,
 } from './kundli.service.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
@@ -88,6 +90,7 @@ const getKundliRoute = createRoute({
     'generated (poll again), or 422 with the list of missing required birth ' +
     'parameters the frontend must collect.',
   security: [{ bearerAuth: [] }],
+  request: { query: KundliQuerySchema },
   responses: {
     200: {
       description: 'Kundli ready',
@@ -107,6 +110,7 @@ const getKundliRoute = createRoute({
 
 kundliRouter.openapi(getKundliRoute, async (c) => {
   const user = c.get('user');
+  const { language } = c.req.valid('query');
   const profile = await resolveActiveProfileContext(user);
 
   // Strict: refuse and tell the FE exactly what's missing.
@@ -131,7 +135,7 @@ kundliRouter.openapi(getKundliRoute, async (c) => {
       fireGeneration(user.id, profile.birthProfileId);
       return c.json({ status: 'generating' as const }, 202);
     }
-    return c.json(await toKundliDto(existing), 200);
+    return c.json(await toKundliDtoForLanguage(existing, language || 'en'), 200);
   }
 
   // pending / generating / failed → ensure a run is (re)started (with a cooldown

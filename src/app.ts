@@ -12,6 +12,9 @@ import { astroRouter } from './modules/astro/astro.routes.js';
 import { publicRouter } from './modules/public/public.routes.js';
 import { legalRouter } from './modules/legal/legal.routes.js';
 import { billingRouter } from './modules/billing/billing.routes.js';
+import { adminRouter } from './modules/admin/admin.routes.js';
+import { adminGroupsRouter } from './modules/admin/admin-groups.routes.js';
+import { supportRouter } from './modules/support/support.routes.js';
 import { preferencesRouter } from './modules/preferences/preferences.routes.js';
 import { feedbackRouter } from './modules/feedback/feedback.routes.js';
 import { kundliRouter } from './modules/kundli/kundli.routes.js';
@@ -19,6 +22,9 @@ import { horoscopeRouter } from './modules/horoscope/horoscope.routes.js';
 import { purchasePlanRouter } from './modules/purchase-plan/purchase-plan.routes.js';
 import { vastuRouter } from './modules/vastu/vastu.routes.js';
 import { gemstoneRouter } from './modules/gemstone/gemstone.routes.js';
+import { reportsRouter } from './modules/reports/reports.routes.js';
+import { palmRouter } from './modules/palm/palm.routes.js';
+import { voiceRouter } from './modules/voice/voice.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -36,7 +42,13 @@ export function createApp(): OpenAPIHono {
   app.use('*', corsMiddleware);
   app.use('*', requestLogger);
   app.use('*', compress());
-  app.use('*', bodyLimit({ maxSize: 1 * 1024 * 1024 })); // 1 MB — oversized bodies get a 413 via the global HTTPException handler
+  // 6 MB — raised from the original 1 MB to fit a single palm-reading capture frame (a
+  // client-downscaled JPEG, typically well under 1 MB but given generous headroom here since
+  // this is a global ceiling and Hono runs it before any route is matched, so a route-specific
+  // override can never loosen it — see palm.routes.ts's raw-body upload route, the only
+  // caller that needs more than trivial JSON payload room). Oversized bodies still get a 413
+  // via the global HTTPException handler.
+  app.use('*', bodyLimit({ maxSize: 6 * 1024 * 1024 }));
   // Baseline abuse guard for every /v1 route (previously only chat/vastu/purchase-plan
   // had any limit at all — GET /v1/kundli, /v1/me, /v1/horoscope, /v1/billing/*, etc. were
   // completely unlimited). Runs before any router's own `requireUser`, so it's keyed by IP
@@ -60,6 +72,9 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', profilesRouter);
   app.route('/v1', deviceTokensRouter);
   app.route('/v1', billingRouter);
+  app.route('/v1', adminRouter);
+  app.route('/v1', adminGroupsRouter);
+  app.route('/v1', supportRouter);
   app.route('/v1', preferencesRouter);
   app.route('/v1', feedbackRouter);
   app.route('/v1', kundliRouter);
@@ -67,6 +82,9 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', purchasePlanRouter);
   app.route('/v1', vastuRouter);
   app.route('/v1', gemstoneRouter);
+  app.route('/v1', reportsRouter);
+  app.route('/v1', palmRouter);
+  app.route('/v1', voiceRouter);
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);

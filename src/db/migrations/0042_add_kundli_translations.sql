@@ -1,0 +1,1 @@
+ALTER TABLE "kundlis" ADD COLUMN "translations" jsonb;

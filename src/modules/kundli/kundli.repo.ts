@@ -143,6 +143,30 @@ export async function markKundliReady(
     );
 }
 
+export async function saveKundliContentTranslation(
+  userId: string,
+  birthProfileId: string | null,
+  language: string,
+  translation: { yogas?: unknown; doshas?: unknown; _sadeSatiHash?: string },
+): Promise<void> {
+  const existing = await db
+    .select({ translations: kundlis.translations })
+    .from(kundlis)
+    .where(and(eq(kundlis.userId, userId), profileFilter(birthProfileId)))
+    .limit(1)
+    .then((r) => r[0]);
+
+  if (!existing) return; // if it was deleted, do nothing
+
+  const translations = existing.translations || {};
+  translations[language] = translation;
+
+  await db
+    .update(kundlis)
+    .set({ translations })
+    .where(and(eq(kundlis.userId, userId), profileFilter(birthProfileId)));
+}
+
 export async function markKundliFailed(
   userId: string,
   birthProfileId: string | null,

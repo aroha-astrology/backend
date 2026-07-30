@@ -103,9 +103,9 @@ const askRoute = createRoute({
 vastuRouter.openapi(askRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const { question } = c.req.valid('json');
+  const { question, language } = c.req.valid('json');
   const profile = await resolveActiveProfileContext(user);
-  const plan = await askVastuQuestion(id, user.id, profile.birthProfileId, question);
+  const plan = await askVastuQuestion(id, user.id, profile.birthProfileId, question, language);
   return c.json(plan, 200);
 });
 

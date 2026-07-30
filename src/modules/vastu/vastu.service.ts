@@ -147,6 +147,7 @@ export async function askVastuQuestion(
   userId: string,
   birthProfileId: string | null,
   question: string,
+  language?: string,
 ): Promise<VastuPlanDto> {
   const row = await findPlanForUser(planId, userId);
   if (!row) throw Errors.notFound('Vastu plan not found');
@@ -162,7 +163,7 @@ export async function askVastuQuestion(
     analysis: row.analysis,
     question,
     chartContext: buildChartContext(kundli),
-    language: row.language,
+    language: language ?? row.language,
   });
   await saveFollowUp(planId, { question, answer });
 
@@ -177,7 +178,12 @@ export function toVastuPlanDto(row: VastuPlanRow): VastuPlanDto {
     overallScore: row.overallScore,
     roomLayout: row.roomLayout,
     analysis: row.analysis,
-    errorMessage: row.errorMessage,
+    // Keep the raw provider error in the DB column for ops/debugging — never
+    // echo it verbatim. Return a safe generic message instead when the plan failed.
+    errorMessage:
+      row.status === 'error'
+        ? 'Analysis failed. Any amount charged has been automatically refunded.'
+        : null,
     createdAt: row.createdAt.toISOString(),
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
   };

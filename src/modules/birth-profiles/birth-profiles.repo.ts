@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   birthProfiles,
@@ -217,6 +217,54 @@ export async function unlockGemstoneForOwnedProfile(
         delta: -GEMSTONE_UNLOCK_COST_PAISE,
         reason: `gemstone_unlock:profile:${id}`,
         balanceAfter: charged.walletBalancePaise,
+      });
+
+      return true;
+    });
+  } catch (err) {
+    if (err instanceof UnlockGuardFailed) return false;
+    throw err;
+  }
+}
+
+/**
+ * Reverts an unlock for an owned profile when background generation fails.
+ * Refunds the balance and sets gemstoneUnlockedAt back to null.
+ */
+export async function relockGemstoneForOwnedProfile(
+  id: string,
+  ownerUserId: string,
+): Promise<boolean> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [relocked] = await tx
+        .update(birthProfiles)
+        .set({ gemstoneUnlockedAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(birthProfiles.id, id),
+            eq(birthProfiles.ownerUserId, ownerUserId),
+            isNull(birthProfiles.deletedAt),
+            isNotNull(birthProfiles.gemstoneUnlockedAt),
+          ),
+        )
+        .returning({ id: birthProfiles.id });
+      if (!relocked) throw new UnlockGuardFailed();
+
+      const [refunded] = await tx
+        .update(users)
+        .set({
+          walletBalancePaise: sql`${users.walletBalancePaise} + ${GEMSTONE_UNLOCK_COST_PAISE}`,
+        })
+        .where(eq(users.id, ownerUserId))
+        .returning({ walletBalancePaise: users.walletBalancePaise });
+      if (!refunded) throw new UnlockGuardFailed();
+
+      await tx.insert(walletTransactions).values({
+        userId: ownerUserId,
+        delta: GEMSTONE_UNLOCK_COST_PAISE,
+        reason: `refund:gemstone_report:profile:${id}`,
+        balanceAfter: refunded.walletBalancePaise,
       });
 
       return true;
