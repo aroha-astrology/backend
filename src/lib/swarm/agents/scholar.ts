@@ -399,7 +399,14 @@ function todayIST(now: Date): string {
  * costly as a format miss.
  */
 function temporalAnchor(now: Date): string {
-  return `TEMPORAL_ANCHOR: Today is ${todayIST(now)} (IST). Every date in the CHART DATA below is absolute — compare it to today before you speak. A window that ended before today has ALREADY PASSED; never present it as upcoming or as a future prediction (see PAST_IS_FOR_VERIFICATION_ONLY above for the one exception). All forward-looking timing must start from today or later.`;
+  const explicitDate = now.toLocaleDateString('en-US', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  return `TEMPORAL_ANCHOR: Today's exact date is ${explicitDate} (formatted as ${todayIST(now)} in IST). Every date in the CHART DATA below is absolute — compare it to today before you speak. A window that ended before today has ALREADY PASSED; never present it as upcoming or as a future prediction (see PAST_IS_FOR_VERIFICATION_ONLY above for the one exception). All forward-looking timing must start from today or later.`;
 }
 
 /**
