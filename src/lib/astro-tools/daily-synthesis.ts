@@ -16,6 +16,7 @@ import {
   dateToJulianDay,
   calculatePlanetPositions,
   calculateAshtakavarga,
+  calculateBhinnaAshtakavargaDetailed,
 } from '../astro-engine/index.js';
 import { checkAllVedha } from './vedha.js';
 import { dailyKakshyaScore } from './kakshya.js';
@@ -284,16 +285,19 @@ export async function synthesizeDailyForecast(
   }
 
   // ── 2. Ashtakavarga — BAV for Kakshya, SAV for overall sign strength ────
-  // calculateAshtakavarga returns { bhinnaAshtakavarga, sarvaAshtakavarga }
-  const chartData = { planets: natalPlanets, ascendantSign: natalAscMap };
-  let bhinnaAvDicts: Array<{ planet: string; bindus: number[] }> = [];
+  // calculateAshtakavarga returns { bhinnaAshtakavarga, sarvaAshtakavarga }.
+  // NOTE: this must be `{ ascendant: { signIndex } }`, matching ChartData —
+  // an earlier `{ ascendantSign: number }` shape here made every call below
+  // throw inside calculateAshtakavarga's Asc-contributor lookup, silently
+  // caught by the try/catch, so BAV/SAV/Kakshya were always empty in
+  // practice regardless of input.
+  const chartData = { planets: natalPlanets, ascendant: { signIndex: natalAscMap, degree: 0 } };
+  let detailedBav: Awaited<ReturnType<typeof calculateBhinnaAshtakavargaDetailed>> = [];
   const savTransit: Record<string, number> = {};
 
   try {
     const av = calculateAshtakavarga(chartData as never);
-    if (av.bhinna) {
-      bhinnaAvDicts = av.bhinna.map((b) => ({ planet: b.planet, bindus: b.bindus }));
-    }
+    detailedBav = calculateBhinnaAshtakavargaDetailed(chartData as never);
     if (av.sarva?.bindus) {
       for (let i = 0; i < 12; i++) {
         savTransit[SIGNS[i] ?? `Sign${i}`] = av.sarva.bindus[i] ?? 0;
@@ -308,7 +312,7 @@ export async function synthesizeDailyForecast(
   const vedhaBlockedCount = vedhaResults.filter((v) => !v.netBenefic && v.isAuspiciousHouse).length;
 
   // ── 4. Kakshya daily score ───────────────────────────────────────────────
-  const kakshya = dailyKakshyaScore(transitLons, bhinnaAvDicts);
+  const kakshya = dailyKakshyaScore(transitLons, detailedBav);
 
   // ── 5. Tara Bala + Chandrabala ───────────────────────────────────────────
   let lunar: ReturnType<typeof dailyLunarAssessment> | undefined;

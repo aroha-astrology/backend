@@ -288,3 +288,53 @@ export function evaluateSignStrength(
   if (bindus < average - 1) return 'weak';
   return 'average';
 }
+
+// =============================================================================
+// Per-contributor detail (for Kakshya compartment-lord lookup)
+// =============================================================================
+
+export interface DetailedBhinnaAshtakavarga {
+  planet: Planet;
+  /** contributor ('Sun'..'Saturn' or 'Asc') -> 12-length array of 0|1, one per sign. */
+  contributions: Record<string, number[]>;
+}
+
+/**
+ * Same classical rule table as calculateBhinnaAshtakavarga, but retaining
+ * WHICH contributor gave each bindu instead of collapsing straight to a
+ * per-sign total. Needed for true Kakshya (3°45' compartment) analysis: a
+ * transiting planet only benefits from a sign's bindus once it reaches the
+ * specific 3.75-degree compartment ruled by a contributor who actually gave
+ * it a bindu there — see astro-tools/kakshya.ts's checkKakshyaBindu, which
+ * consumes this instead of the raw per-sign sum.
+ */
+export function calculateBhinnaAshtakavargaDetailed(
+  chartData: ChartData,
+): DetailedBhinnaAshtakavarga[] {
+  const results: DetailedBhinnaAshtakavarga[] = [];
+
+  for (const targetPlanet of AV_PLANETS) {
+    const rules = BENEFIC_POINTS[targetPlanet];
+    if (!rules) continue;
+
+    const contributions: Record<string, number[]> = {};
+    for (const contributor of [...AV_PLANETS, 'Asc'] as const) {
+      const bindus = new Array<number>(12).fill(0);
+      const contributorHouses = rules[contributor];
+      if (contributorHouses) {
+        const contributorSignIndex =
+          contributor === 'Asc'
+            ? getAscSignIndex(chartData)
+            : getPlanetSignIndex(chartData, contributor);
+        for (const houseOffset of contributorHouses) {
+          bindus[houseToSignIndex(contributorSignIndex, houseOffset)] = 1;
+        }
+      }
+      contributions[contributor] = bindus;
+    }
+
+    results.push({ planet: targetPlanet, contributions });
+  }
+
+  return results;
+}

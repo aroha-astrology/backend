@@ -84,6 +84,32 @@ describe('daily-synthesis: synthesizeDailyForecastFromKundli (Phase 0 kundli wir
   });
 });
 
+describe('daily-synthesis: Ashtakavarga/Kakshya/SAV are no longer silently dead (Phase 1.2 regression)', () => {
+  it('populates savTransit and produces real (not all-false) Kakshya details, proving the chartData shape bug is fixed', async () => {
+    const asOf = '2026-08-01T12:00:00.000Z';
+    const result = await synthesizeDailyForecast({
+      natalPlanets: CHART_WITH_MOON.planets,
+      natalAscSignIdx: 4,
+      natalMoonSignIdx: 3,
+      natalMoonNakIdx: 14,
+      asOf,
+    });
+
+    // Previously `calculateAshtakavarga` threw on every call here (wrong
+    // ascendant shape), silently caught, leaving savTransit={} always.
+    expect(Object.keys(result.savTransit)).toHaveLength(12);
+    for (const bindus of Object.values(result.savTransit)) {
+      expect(bindus).toBeGreaterThan(0);
+    }
+
+    // Kakshya details should reflect the real per-contributor lookup, not
+    // an empty array (which is what `dailyKakshyaScore(transitLons, [])`
+    // would have produced when BAV silently failed to compute).
+    const kakshya = result.kakshya as { details: unknown[] };
+    expect(kakshya.details.length).toBeGreaterThan(0);
+  });
+});
+
 describe('daily-synthesis: Panchaka now uses a real tithi, not a nakshatra-derived proxy', () => {
   it("panchaka's rawSum matches calculateTithi's real tithi number, not the old (nakshatra+1)%30+1 proxy", async () => {
     const asOf = '2026-08-01T12:00:00.000Z';

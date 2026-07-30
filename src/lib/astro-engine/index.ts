@@ -20,6 +20,7 @@ export {
   calculateBhinnaAshtakavarga,
   calculateSarvaAshtakavarga,
   calculateAshtakavarga,
+  calculateBhinnaAshtakavargaDetailed,
   getBindusForPlanetInSign,
   evaluateSignStrength,
 } from './calculations/ashtakavarga';

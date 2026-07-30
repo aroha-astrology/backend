@@ -31,8 +31,8 @@ export interface KakshyaBinduResult {
   bindusInSign: number;
   /** Whether the kakshya lord contributed a bindu (favorable sub-transit) */
   kakshyaLordHasBindu: boolean;
-  /** Quality label */
-  quality: 'favorable' | 'neutral' | 'unfavorable';
+  /** Quality label — binary: the compartment lord either gave a bindu or didn't. */
+  quality: 'favorable' | 'unfavorable';
 }
 
 export interface DailyKakshyaDetail {
@@ -59,7 +59,14 @@ export interface DailyKakshyaScore {
  * Kakshya 0 (0-3.75 deg) = Saturn, Kakshya 1 (3.75-7.5 deg) = Jupiter, etc.
  */
 export const KAKSHYA_LORDS: string[] = [
-  'Saturn', 'Jupiter', 'Mars', 'Sun', 'Venus', 'Mercury', 'Moon', 'Asc',
+  'Saturn',
+  'Jupiter',
+  'Mars',
+  'Sun',
+  'Venus',
+  'Mercury',
+  'Moon',
+  'Asc',
 ];
 
 /** Each kakshya spans 3.75 degrees (30 / 8). */
@@ -89,44 +96,58 @@ export function getKakshya(longitude: number): KakshyaInfo {
 }
 
 /**
- * Check if a planet's kakshya lord has contributed a bindu in the
- * Bhinna Ashtakavarga table for the planet in its current sign.
+ * Per-contributor Bhinnashtakavarga attribution — see
+ * astro-engine/calculations/ashtakavarga.ts's calculateBhinnaAshtakavargaDetailed,
+ * which produces this shape. contributions[contributorName][signIndex] is 1
+ * if that contributor gave a bindu to `planet` in that sign, else 0.
+ */
+export interface DetailedBhinnaAshtakavarga {
+  planet: string;
+  contributions: Record<string, number[]>;
+}
+
+/**
+ * Check whether a planet's CURRENT kakshya (3°45' compartment) lord actually
+ * contributed a bindu to that planet in the sign it's transiting — the real
+ * classical rule, not a shortcut. A transiting planet doesn't benefit from a
+ * sign's whole bindu total the instant it enters the sign; it first crosses
+ * Saturn's kakshya, then Jupiter's, and so on, and only gets a favorable
+ * sub-window while it sits in a compartment whose lord specifically gave it
+ * a bindu there. This is why the result changes as the planet moves through
+ * the sign, several times over the sign's 30 degrees — unlike a whole-sign
+ * total, which is constant for as long as the planet stays in that sign.
  *
  * @param transitingPlanet - Name of the planet transiting
  * @param transitLongitude - Current sidereal longitude of the planet
- * @param bhinnaAv - Bhinna Ashtakavarga data. An array of objects with
- *   { planet: string, bindus: number[] (length 12) }. Each object represents
- *   one planet's BAV row; bindus[signIndex] = total bindus in that sign.
- *   For kakshya-level analysis, we also need per-contributor breakdowns.
- *   However, the simplified approach checks only whether the total bindus
- *   in the sign are >= 4 (above average) when the kakshya lord matches.
+ * @param detailedBav - Per-contributor Bhinnashtakavarga detail (see
+ *   calculateBhinnaAshtakavargaDetailed), NOT the collapsed per-sign totals.
  * @returns KakshyaBinduResult
  */
 export function checkKakshyaBindu(
   transitingPlanet: string,
   transitLongitude: number,
-  bhinnaAv: Array<{ planet: string; bindus: number[] }>
+  detailedBav: DetailedBhinnaAshtakavarga[],
 ): KakshyaBinduResult {
   const kakshya = getKakshya(transitLongitude);
 
-  // Find the planet's BAV row
-  const planetAv = bhinnaAv.find((b) => b.planet === transitingPlanet);
-  const bindusInSign = planetAv ? (planetAv.bindus[kakshya.signIndex] ?? 0) : 0;
+  const planetAv = detailedBav.find((b) => b.planet === transitingPlanet);
+  const contributions = planetAv?.contributions;
 
-  // Simplified kakshya-bindu check: if bindus >= 4 and the kakshya lord
-  // is one of the natural benefics or the planet itself, treat as favorable.
-  // A more rigorous approach would track per-contributor bindu tables,
-  // but the standard shortcut is: bindus >= 4 → favorable transit zone.
-  const kakshyaLordHasBindu = bindusInSign >= 4;
-
-  let quality: 'favorable' | 'neutral' | 'unfavorable';
-  if (bindusInSign >= 5) {
-    quality = 'favorable';
-  } else if (bindusInSign >= 4) {
-    quality = 'neutral';
-  } else {
-    quality = 'unfavorable';
+  // Whole-sign total, kept for context/display — no longer what decides
+  // favorability, but still useful to report alongside the compartment verdict.
+  let bindusInSign = 0;
+  if (contributions) {
+    for (const contributorBindus of Object.values(contributions)) {
+      bindusInSign += contributorBindus[kakshya.signIndex] ?? 0;
+    }
   }
+
+  // The actual rule: does THIS kakshya's specific lord contribute a bindu to
+  // this planet in this sign? Independent of the sign's total bindu count.
+  const kakshyaLordHasBindu =
+    (contributions?.[kakshya.kakshyaLord]?.[kakshya.signIndex] ?? 0) === 1;
+
+  const quality: 'favorable' | 'unfavorable' = kakshyaLordHasBindu ? 'favorable' : 'unfavorable';
 
   return {
     planet: transitingPlanet,
@@ -141,18 +162,19 @@ export function checkKakshyaBindu(
  * Compute an aggregate daily kakshya score across multiple transiting planets.
  *
  * @param transitLongitudes - Record mapping planet names to their sidereal longitudes
- * @param bhinnaAv - Bhinna Ashtakavarga data (array of { planet, bindus[] })
+ * @param detailedBav - Per-contributor Bhinnashtakavarga detail (see
+ *   calculateBhinnaAshtakavargaDetailed), NOT the collapsed per-sign totals.
  * @returns DailyKakshyaScore with per-planet details and overall quality
  */
 export function dailyKakshyaScore(
   transitLongitudes: Record<string, number>,
-  bhinnaAv: Array<{ planet: string; bindus: number[] }>
+  detailedBav: DetailedBhinnaAshtakavarga[],
 ): DailyKakshyaScore {
   const details: DailyKakshyaDetail[] = [];
   let activeCount = 0;
 
   for (const [planet, longitude] of Object.entries(transitLongitudes)) {
-    const result = checkKakshyaBindu(planet, longitude, bhinnaAv);
+    const result = checkKakshyaBindu(planet, longitude, detailedBav);
     const binduActive = result.kakshyaLordHasBindu;
     if (binduActive) activeCount++;
 
