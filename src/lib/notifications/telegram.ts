@@ -91,6 +91,33 @@ export async function notifyChatDownvote(fields: {
   return results.some(Boolean);
 }
 
+/** Every recipient for the new-support-ticket alert — the default ops chat plus any extra recipients configured just for this alert. Mirrors downvoteRecipients() above. */
+function supportTicketRecipients(): (string | number)[] {
+  const ids = [env.TELEGRAM_ALERT_CHAT_ID, ...env.TELEGRAM_SUPPORT_EXTRA_CHAT_IDS].filter(
+    (id): id is string => Boolean(id),
+  );
+  return [...new Set(ids)];
+}
+
+export async function notifySupportTicket(fields: {
+  userId: string;
+  contact?: string | null;
+  category: string;
+  message: string;
+}): Promise<boolean> {
+  const text =
+    `🆘 *New Support Ticket*\n\n` +
+    `User: \`${escapeMarkdown(fields.userId)}\`\n` +
+    (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
+    `Category: ${escapeMarkdown(fields.category)}\n` +
+    `\n*Message:* ${escapeMarkdown(clipForTelegram(fields.message))}`;
+
+  const recipients = supportTicketRecipients();
+  if (recipients.length === 0) return sendMessage(text);
+  const results = await Promise.all(recipients.map((chatId) => sendMessage(text, chatId)));
+  return results.some(Boolean);
+}
+
 export async function sendMessage(text: string, chatId?: string | number): Promise<boolean> {
   try {
     const targetChatId = chatId || env.TELEGRAM_ALERT_CHAT_ID;

@@ -248,6 +248,24 @@ export const UserSchema = z
       .boolean()
       .describe('True once the user has spent wallet balance to unlock the gemstone report'),
 
+    features: z
+      .record(
+        z.string(),
+        z.object({ enabled: z.boolean(), pricePaise: z.number().int().nullable() }),
+      )
+      .describe(
+        'Server-resolved feature registry (FEATURE_REGISTRY defaults merged with admin overrides). ' +
+          'The client must hide UI for any key with enabled: false AND never call its API — the ' +
+          'server also enforces this independently via requireFeature() middleware.',
+      ),
+    isAdmin: z
+      .boolean()
+      .describe(
+        'UI affordance only (whether to render the /admin link) — derived from the DB phone ' +
+          'column, NOT the authorization boundary. requireAdmin (the real gate on /v1/admin/*) ' +
+          "checks the Firebase ID token's own phone_number claim instead.",
+      ),
+
     referralSource: z.string().nullable(),
     referredByCode: z.string().nullable(),
     referralCode: z.string().nullable(),
@@ -258,6 +276,11 @@ export const UserSchema = z
     whatsappOptInAt: z.string().nullable(),
     whatsappOptInRevokedAt: z.string().nullable(),
     whatsappOptInActive: z.boolean().describe('WhatsApp opt-in currently in force'),
+    voiceConsentAt: z.string().nullable(),
+    voiceConsentRevokedAt: z.string().nullable(),
+    voiceConsentActive: z
+      .boolean()
+      .describe('Realtime-voice consent currently in force; required on top of paid.voiceChat'),
     dataProcessingConsentAt: z.string().nullable(),
     dataProcessingConsentRevokedAt: z.string().nullable(),
     dataProcessingConsentActive: z.boolean().describe('Data-processing consent currently in force'),
@@ -279,6 +302,9 @@ export const NotificationSchema = z
     title: z.string(),
     body: z.string(),
     type: z.string(),
+    /** Where tapping this notification should navigate to, e.g. '/reports/abc123'. Null for
+     * notifications with nothing to deep-link to (e.g. a generic broadcast). */
+    link: z.string().nullable(),
     readAt: z.string().nullable(),
     createdAt: z.string(),
   })
@@ -293,6 +319,14 @@ export const ConsentInputSchema = z
     /** Marketing comms. `false` records a withdrawal. */
     marketing: z.boolean().optional(),
     /** WhatsApp Business opt-in (Meta requires explicit per-channel opt-in). */
+    /**
+     * Realtime voice: streaming the user's live speech to Google for the
+     * Gemini Live conversation. Deliberately separate from `dataProcessing` —
+     * it covers a recording of the user's own voice sent to a third party on a
+     * preview tier whose traffic may be used to improve that party's products,
+     * which is more than the general grant covers. `false` records a withdrawal.
+     */
+    voice: z.boolean().optional(),
     whatsapp: z.boolean().optional(),
     /** Processing of sensitive birth/personal data for astrology features. */
     dataProcessing: z.boolean().optional(),

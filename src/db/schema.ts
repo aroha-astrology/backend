@@ -12,6 +12,7 @@ import {
   doublePrecision,
   index,
   uniqueIndex,
+  primaryKey,
   pgEnum,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
@@ -156,6 +157,10 @@ export const consentTypeEnum = pgEnum('consent_type', [
   'marketing',
   'data_processing',
   'whatsapp',
+  // Realtime voice: streaming the user's live speech to Google. A separate
+  // grant from 'data_processing', not a subset of it — see the
+  // users.voiceConsentAt column comment for why it cannot be inherited.
+  'voice',
 ]);
 
 export const consentActionEnum = pgEnum('consent_action', ['granted', 'withdrawn']);
@@ -354,6 +359,17 @@ export const users = pgTable(
     termsVersion: text('terms_version'),
     privacyPolicyAcceptedAt: timestamp('privacy_policy_accepted_at', { withTimezone: true }),
     privacyPolicyVersion: text('privacy_policy_version'),
+    // Realtime voice (Gemini Live) — a SEPARATE, narrower grant than
+    // dataProcessingConsentAt above, and deliberately not folded into it.
+    // Voice sends a live recording of the user's speech to a third party
+    // (Google) on a preview tier whose traffic may be used to improve that
+    // third party's products, which is materially more than the general
+    // data-processing consent covers. Existing users must therefore opt in
+    // explicitly rather than inheriting it — which a null here gives us for
+    // free. Both the `paid.voiceChat` feature flag AND this must be present
+    // before a voice session can start.
+    voiceConsentAt: timestamp('voice_consent_at', { withTimezone: true }),
+    voiceConsentRevokedAt: timestamp('voice_consent_revoked_at', { withTimezone: true }),
 
     // --- lifecycle ---------------------------------------------------------
     anonymizedAt: timestamp('anonymized_at', { withTimezone: true }),
@@ -852,6 +868,8 @@ export const kundlis = pgTable(
     yogaData: jsonb('yoga_data').$type<Record<string, unknown>>(),
     doshaData: jsonb('dosha_data').$type<Record<string, unknown>>(),
     ashtakavargaData: jsonb('ashtakavarga_data').$type<Record<string, unknown>>(),
+    /** Cached translations of yogaData/doshaData's translatable name/description prose by language code — same shape as vastu_plans.translations. */
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
     error: text('error'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     generatedAt: timestamp('generated_at', { withTimezone: true }),
@@ -1271,6 +1289,117 @@ export type VastuPlanRow = typeof vastuPlans.$inferSelect;
 export type NewVastuPlanRow = typeof vastuPlans.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* reports — purchased AI-generated reports (one-time + monthly)              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per purchased report — either a one-time report (periodMonth null)
+ * or a single month of a monthly report (periodMonth = first-of-month). Same
+ * generating/ready/failed lifecycle as gemstone_recommendations, claim-fenced
+ * the same way (see claimReportRow in reports.repo.ts).
+ *
+ * `input` carries partner birth details for kundli_milan ONLY — every other
+ * report key always has `input: null`. A user can buy kundli_milan repeatedly
+ * against different partners, so those rows are deliberately EXCLUDED from
+ * the uniqueness constraints below (see the four partial indexes) rather than
+ * being deduped like every other report key.
+ *
+ * NULL handling: Postgres never treats two NULLs as equal within a unique
+ * index, so a single composite index across (birthProfileId, periodMonth) —
+ * both independently nullable — would fail to dedupe rows where either is
+ * NULL. Same problem gemstone_recommendations solves with two partial
+ * indexes for its one nullable dimension (birthProfileId); this table has
+ * TWO nullable dimensions (birthProfileId, periodMonth) that both matter for
+ * uniqueness, so it needs the full 2x2 cross of that same technique: a
+ * column is only ever INCLUDED in an index when that index's WHERE clause
+ * guarantees it's non-null for every row the index covers (never both
+ * include a nullable column AND rely on it being null — that column is
+ * simply omitted from that index instead, exactly like
+ * gemstone_recommendations_user_primary_unique omits birth_profile_id).
+ */
+export const reportStatusEnum = pgEnum('report_status', ['generating', 'ready', 'failed']);
+
+export const reports = pgTable(
+  'reports',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    reportKey: text('report_key').notNull(),
+    /** First-of-month for monthly reports; null for one-time reports. */
+    periodMonth: date('period_month'),
+    status: reportStatusEnum('status').notNull().default('generating'),
+    /** Canonical English structured sections — shape is defined per report type (see
+     * ReportGenerator in reports/report-generator.types.ts), not by this table. Null while
+     * 'generating'/'failed'. */
+    content: jsonb('content').$type<Record<string, unknown>>(),
+    /** Cached translations of `content` by language code — same shape convention as every
+     * other translate-on-read table in this schema (gemstone_recommendations, vastu_plans). */
+    translations: jsonb('translations')
+      .notNull()
+      .default({})
+      .$type<Record<string, Record<string, unknown>>>(),
+    /** Partner birth details — kundli_milan only, null for every other report key. */
+    input: jsonb('input').$type<Record<string, unknown>>(),
+    model: text('model'),
+    pricePaidPaise: integer('price_paid_paise').notNull(),
+    /** True for a free "generate the real report and blur it" preview row (see
+     * previewReport in reports.service.ts) — same generator pipeline as a real
+     * purchase, billed at 0. Flipped back to false the moment the user actually
+     * pays (claimReportRow always writes isPreview on every claim, purchase claims
+     * always pass false — see upgradePreviewToPurchased for the ready-row case). */
+    isPreview: boolean('is_preview').notNull().default(false),
+    /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userReportKeyIdx: index('reports_user_idx').on(table.userId, table.reportKey),
+    // The 2x2 cross described in the table doc comment above — one-time vs.
+    // monthly (periodMonth null/not-null) crossed with primary vs. additional
+    // profile (birthProfileId null/not-null), each ALSO gated by
+    // `input IS NULL` so kundli_milan's repeat-purchase-per-partner rows are
+    // excluded from every one of these four indexes (see NewReportRow docs).
+    uniqPrimaryOnetime: uniqueIndex('reports_uniq_primary_onetime')
+      .on(table.userId, table.reportKey)
+      .where(
+        sql`${table.birthProfileId} is null and ${table.periodMonth} is null and ${table.input} is null`,
+      ),
+    uniqPrimaryMonthly: uniqueIndex('reports_uniq_primary_monthly')
+      .on(table.userId, table.reportKey, table.periodMonth)
+      .where(
+        sql`${table.birthProfileId} is null and ${table.periodMonth} is not null and ${table.input} is null`,
+      ),
+    uniqProfileOnetime: uniqueIndex('reports_uniq_profile_onetime')
+      .on(table.userId, table.birthProfileId, table.reportKey)
+      .where(
+        sql`${table.birthProfileId} is not null and ${table.periodMonth} is null and ${table.input} is null`,
+      ),
+    uniqProfileMonthly: uniqueIndex('reports_uniq_profile_monthly')
+      .on(table.userId, table.birthProfileId, table.reportKey, table.periodMonth)
+      .where(
+        sql`${table.birthProfileId} is not null and ${table.periodMonth} is not null and ${table.input} is null`,
+      ),
+  }),
+);
+
+export type ReportRow = typeof reports.$inferSelect;
+export type NewReportRow = typeof reports.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* forecast_translations — caches general moon/sun sign translations          */
 /* -------------------------------------------------------------------------- */
 
@@ -1492,6 +1621,10 @@ export const notifications = pgTable(
     title: text('title').notNull(),
     body: text('body').notNull(),
     type: text('type').notNull(),
+    /** Where tapping this notification in the Bell sheet should navigate to (e.g.
+     * '/reports/abc123'). Column has existed on the live table since migration 011 — this was
+     * simply never modeled in the Drizzle schema before, so the app couldn't read/write it. */
+    link: text('link'),
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -1635,3 +1768,337 @@ export const transitAlertCopy = pgTable(
 
 export type TransitAlertCopyRow = typeof transitAlertCopy.$inferSelect;
 export type NewTransitAlertCopyRow = typeof transitAlertCopy.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* feature_flags — admin-editable overrides on top of the FEATURE_REGISTRY     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per feature key that an admin has EXPLICITLY overridden — a feature
+ * with no row here just uses its `FEATURE_REGISTRY` default (see
+ * `src/config/features.ts`). Absence of a row is not an error state.
+ */
+export const featureFlags = pgTable('feature_flags', {
+  key: text('key').primaryKey(),
+  enabled: boolean('enabled').notNull(),
+  pricePaise: integer('price_paise'),
+  /** Optional "strikethrough" MRP shown alongside `pricePaise` on the customer
+   * report catalogue when a discount is configured (originalPricePaise >
+   * pricePaise). Null means "no discount configured" — never fabricated from
+   * `pricePaise` or the structural `basePricePaise`. */
+  originalPricePaise: integer('original_price_paise'),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedBy: text('updated_by'),
+});
+
+export type FeatureFlagRow = typeof featureFlags.$inferSelect;
+export type NewFeatureFlagRow = typeof featureFlags.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* admin_audit_log — append-only record of admin dashboard actions             */
+/* -------------------------------------------------------------------------- */
+
+export const adminAuditLog = pgTable(
+  'admin_audit_log',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    adminPhone: text('admin_phone').notNull(),
+    route: text('route').notNull(),
+    params: jsonb('params'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    createdAtIdx: index('admin_audit_log_created_at_idx').on(table.createdAt),
+  }),
+);
+
+export type AdminAuditLogRow = typeof adminAuditLog.$inferSelect;
+export type NewAdminAuditLogRow = typeof adminAuditLog.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* user_groups / user_group_members / feature_flag_group_overrides            */
+/*                                                                             */
+/* Admin-defined, manually-curated groups of users (e.g. "beta testers"). A   */
+/* group can override enabled/disabled for a feature key on top of the       */
+/* the feature_flags default — never price, which stays a single global      */
+/* value. Conflict rule (enforced in features.service.ts's                   */
+/* resolveFeaturesForUser, not here): if a user is in multiple groups with    */
+/* conflicting overrides for the same key, DISABLED WINS.                    */
+/* -------------------------------------------------------------------------- */
+
+export const userGroups = pgTable(
+  'user_groups',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    name: text('name').notNull(),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    // Admin phone, matches admin_audit_log's admin_phone convention.
+    createdBy: text('created_by'),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('user_groups_name_unique').on(sql`lower(${table.name})`),
+  }),
+);
+
+export type UserGroupRow = typeof userGroups.$inferSelect;
+export type NewUserGroupRow = typeof userGroups.$inferInsert;
+
+export const userGroupMembers = pgTable(
+  'user_group_members',
+  {
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => userGroups.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    addedAt: timestamp('added_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.groupId, table.userId] }),
+    // The hot lookup: "which groups is user X in" — see listGroupIdsForUser.
+    userIdx: index('user_group_members_user_id_idx').on(table.userId),
+  }),
+);
+
+export type UserGroupMemberRow = typeof userGroupMembers.$inferSelect;
+export type NewUserGroupMemberRow = typeof userGroupMembers.$inferInsert;
+
+export const featureFlagGroupOverrides = pgTable(
+  'feature_flag_group_overrides',
+  {
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => userGroups.id, { onDelete: 'cascade' }),
+    featureKey: text('feature_key').notNull(),
+    enabled: boolean('enabled').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedBy: text('updated_by'),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.groupId, table.featureKey] }),
+  }),
+);
+
+export type FeatureFlagGroupOverrideRow = typeof featureFlagGroupOverrides.$inferSelect;
+export type NewFeatureFlagGroupOverrideRow = typeof featureFlagGroupOverrides.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* support_tickets — user-submitted help/support requests                     */
+/*                                                                             */
+/* `message`/`adminNote` are encrypted at rest (field-level encryption, see   */
+/* src/lib/crypto/field-encryption.ts) — the support.repo.ts layer            */
+/* transparently encrypts on write and decrypts on read, so every other      */
+/* layer of the app (service/routes) sees plain strings, same convention as  */
+/* chat-sessions.repo.ts/user-facts.repo.ts.                                 */
+/* -------------------------------------------------------------------------- */
+
+export const supportTickets = pgTable(
+  'support_tickets',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    category: text('category').notNull(),
+    message: text('message').notNull(),
+    locale: text('locale'),
+    // Nullable — an older client build may not send it.
+    appVersion: text('app_version'),
+    status: text('status').notNull().default('open'),
+    adminNote: text('admin_note'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userIdx: index('support_tickets_user_id_idx').on(table.userId),
+    statusIdx: index('support_tickets_status_idx').on(table.status),
+  }),
+);
+
+export type SupportTicketRow = typeof supportTickets.$inferSelect;
+export type NewSupportTicketRow = typeof supportTickets.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* palm_readings — Hasta Samudrika palm analysis                              */
+/*                                                                             */
+/* Facts here come from photographs via async vision AI, not from a chart, so */
+/* this deliberately does NOT reuse the `reports` table's ReportGenerator     */
+/* contract (that contract's computeScores() is synchronous/pure/no-I/O and   */
+/* is re-run on every read — palm observations are the opposite: expensive,   */
+/* image-derived, and never recomputed). Instead this mirrors                */
+/* gemstone_recommendations (claim/fence via startedAt, translate-on-read     */
+/* into `translations`) crossed with reports' charge-then-poll flow.         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 'observed' is the free-teaser state: Stage A (vision measurement) has completed and
+ * `observations` + a partial confidence score are populated, but `content` (the paid Stage
+ * B/C interpretation) is still null. 'generating' is reused for BOTH the free observation
+ * phase and the paid interpretation phase — the claim/fence/reaper logic doesn't care which
+ * work is in flight, only that something is; palm.service.ts's runPalmGeneration branches on
+ * whether `observations` is already populated to decide which phase to run next.
+ */
+export const palmReadingStatusEnum = pgEnum('palm_reading_status', [
+  'pending',
+  'generating',
+  'observed',
+  'ready',
+  'failed',
+]);
+
+export const palmReadings = pgTable(
+  'palm_readings',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles.
+     * Present from day one — vastu_plans shipped without this and needed a corrective
+     * migration once multi-profile landed. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    status: palmReadingStatusEnum('status').notNull().default('pending'),
+    /** Right for male, left for female — the classical primary/dominant hand. */
+    primaryHand: text('primary_hand').notNull(),
+    /** { slot: { path, hash, capturedAt } } for each of the 6 capture slots. Populated as
+     * uploads land, so a 'pending' row can have a partial set. */
+    frames: jsonb('frames').notNull().default({}).$type<Record<string, unknown>>(),
+    /** SHA-256 over the full concatenated frame set. NULL until all required frames are in.
+     * Used to dedupe an identical re-upload so the vision call is skipped entirely. */
+    framesHash: text('frames_hash'),
+    /** Stage A output — pure measurement (lines, mounts, fingers, markings). Never
+     * recomputed; this IS the measurement of record for this reading. */
+    observations: jsonb('observations').$type<Record<string, unknown>>(),
+    /** { primary?: Record<MountKey, number>, secondary?: Record<MountKey, number> } — a
+     * deterministic computer-vision cross-check on mount development, computed client-side
+     * (MediaPipe hand-landmark detection anchors each mount's pixel region, then a luminance-
+     * variance pass scores it, both 0-1 normalized per hand) and uploaded alongside the
+     * front-view frames. Optional and best-effort: absent for any hand where landmark
+     * detection failed. Used by palm-rules.ts to corroborate or flag disagreement with the
+     * vision model's own "flat/normal/prominent" mount rating — never a replacement for it. */
+    mountRelief: jsonb('mount_relief').$type<Record<string, Record<string, number>>>(),
+    /** Stage B/C output — canonical English narrative sections. Null while
+     * 'pending'/'generating'/'failed'. */
+    content: jsonb('content').$type<Record<string, unknown>>(),
+    /** Cached translations of `content`, same convention as every other translate-on-read
+     * table (reports, gemstone_recommendations, vastu_plans). */
+    translations: jsonb('translations')
+      .notNull()
+      .default({})
+      .$type<Record<string, Record<string, unknown>>>(),
+    /** Stage-A imageQuality-derived overall confidence, 0-100. */
+    confidenceScore: integer('confidence_score'),
+    unlocked: boolean('unlocked').notNull().default(false),
+    pricePaidPaise: integer('price_paid_paise'),
+    model: text('model'),
+    /** Claim token, same fencing pattern as gemstone_recommendations.startedAt /
+     * reports.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('palm_readings_user_idx').on(table.userId, table.createdAt),
+    // Identical re-upload for the same user -> skip the AI call entirely.
+    userFramesHashIdx: index('palm_readings_user_frames_hash_idx').on(
+      table.userId,
+      table.framesHash,
+    ),
+  }),
+);
+
+export type PalmReadingRow = typeof palmReadings.$inferSelect;
+export type NewPalmReadingRow = typeof palmReadings.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* voice_sessions — realtime voice (Gemini Live) billing ledger               */
+/*                                                                             */
+/* This table exists because the audio itself never touches this server. The   */
+/* client streams straight to Google over a WebSocket using a short-lived      */
+/* ephemeral token the backend mints (see lib/llm/gemini-live-token.ts), which */
+/* means there is no request-per-turn to count and no session end this server  */
+/* observes. The ONLY thing the backend controls is how many tokens it mints,  */
+/* so a row here is the durable record of exactly that: one `minutesCharged`   */
+/* increment per token issued, each paired with a ₹20 wallet_transactions      */
+/* debit, refusing to mint beyond VOICE_MAX_MINUTES.                           */
+/*                                                                             */
+/* Deliberately a DB row and not a Redis key, unlike the in-flight locks: this */
+/* is the audit trail for money taken from a user, and must survive a Redis    */
+/* flush, an eviction or a restart in order to reconcile against the wallet    */
+/* ledger.                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const voiceSessions = pgTable(
+  'voice_sessions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /**
+     * Minutes billed so far — incremented once per successfully minted token,
+     * and the value the VOICE_MAX_MINUTES ceiling is checked against. Not a
+     * measurement of how long the user actually spoke: a minute is charged when
+     * it is granted, because whether it was used is only knowable to the client
+     * and this number decides what the user pays.
+     */
+    minutesCharged: integer('minutes_charged').notNull().default(0),
+    /**
+     * Cleared when the session ends (either the client says so, or the ceiling
+     * is reached). A session that is still `true` long after `updatedAt` is one
+     * whose client vanished without telling us — harmless, since no further
+     * minute can be charged without another mint request.
+     */
+    active: boolean('active').notNull().default(true),
+    /** BCP-47-ish app language the session was opened in, for support/debugging. */
+    locale: text('locale'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userIdx: index('voice_sessions_user_idx').on(table.userId, table.createdAt),
+  }),
+);
+
+export type VoiceSessionRow = typeof voiceSessions.$inferSelect;
+export type NewVoiceSessionRow = typeof voiceSessions.$inferInsert;

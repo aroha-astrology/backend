@@ -1,4 +1,5 @@
-import { and, eq, isNull, count, desc, gte, sql } from 'drizzle-orm';
+import { and, eq, ilike, isNull, isNotNull, count, desc, gte, lt, or, sql } from 'drizzle-orm';
+import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
 import { db } from '../../config/db.js';
 import {
@@ -11,6 +12,7 @@ import {
   chatFeedbackReports,
   notifications,
   walletTransactions,
+  palmReadings,
   type NewUserRow,
   type NewUserConsentLogRow,
   type UserRow,
@@ -23,6 +25,8 @@ import {
   decryptJson,
   hashForLookup,
 } from '../../lib/crypto/field-encryption.js';
+import { deleteAllUserFrames } from '../../lib/palm/storage.js';
+import { logger } from '../../lib/logger.js';
 
 /**
  * The `users` table encrypts phoneE164/dateOfBirth/timeOfBirth/placeOfBirth/
@@ -272,6 +276,46 @@ export async function markNotificationsRead(userId: string): Promise<void> {
     .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
 }
 
+export interface NewNotificationEntry {
+  userId: string;
+  title: string;
+  body: string;
+  type: string;
+  link?: string | null;
+}
+
+/** Insert one Bell-inbox notification row. Repo-layer wrapper (rather than a lib module
+ * touching `db` directly) so callers like notify-user.ts's notifyUser can be exercised in tests
+ * by mocking this function, the same way every other notify-* call site already mocks
+ * findActiveTokensForUser/sendPushBatch instead of the DB client underneath them. */
+export async function insertNotification(entry: NewNotificationEntry): Promise<void> {
+  await db.insert(notifications).values({
+    userId: entry.userId,
+    title: entry.title,
+    body: entry.body,
+    type: entry.type,
+    link: entry.link ?? null,
+  });
+}
+
+/** Bulk insert, chunked at 500 — same limit sendPushBatch's own FCM chunking already uses.
+ * Matches insertTransitNotifications' (transit-alert.repo.ts) existing chunking precedent. */
+export async function insertNotifications(entries: NewNotificationEntry[]): Promise<void> {
+  if (entries.length === 0) return;
+  const CHUNK = 500;
+  for (let i = 0; i < entries.length; i += CHUNK) {
+    await db.insert(notifications).values(
+      entries.slice(i, i + CHUNK).map((e) => ({
+        userId: e.userId,
+        title: e.title,
+        body: e.body,
+        type: e.type,
+        link: e.link ?? null,
+      })),
+    );
+  }
+}
+
 /**
  * Atomically claim the user's one lifetime birth-detail edit. Returns the
  * updated row if THIS call won the claim, or `undefined` if it was already
@@ -299,7 +343,17 @@ export async function claimBirthDetailsEdit(id: string): Promise<UserRow | undef
  */
 export async function anonymizeUserById(id: string): Promise<void> {
   const now = new Date();
+
+  // Palm photographs are irreducibly biometric — there is no "scrub in place" for them the
+  // way there is for a text field, so they get the same hard-delete treatment as chat
+  // transcripts below (the "highest-risk content class" precedent), not a soft anonymize.
+  // Storage lives outside the DB transaction; best-effort and logged, never blocks erasure.
+  await deleteAllUserFrames(id).catch((err: unknown) =>
+    logger.error({ err, userId: id }, 'anonymizeUserById: failed to delete palm storage objects'),
+  );
+
   await db.transaction(async (tx) => {
+    await tx.delete(palmReadings).where(eq(palmReadings.userId, id));
     await tx
       .update(users)
       .set({
@@ -373,6 +427,13 @@ export async function anonymizeUserById(id: string): Promise<void> {
 }
 
 export async function hardDeleteUserById(id: string): Promise<void> {
+  // palm_readings rows themselves cascade away with the user row below, but the actual
+  // photograph objects in Cloud Storage do not — delete them explicitly or they're orphaned.
+  // Best-effort and logged, never blocks the (legally required) DB erasure.
+  await deleteAllUserFrames(id).catch((err: unknown) =>
+    logger.error({ err, userId: id }, 'hardDeleteUserById: failed to delete palm storage objects'),
+  );
+
   await db.transaction(async (tx) => {
     // Delete consent logs first to bypass ON DELETE RESTRICT
     await tx.delete(userConsentLog).where(eq(userConsentLog.userId, id));
@@ -455,6 +516,55 @@ export async function countNewUsersThisWeek(): Promise<number> {
   return res?.count ?? 0;
 }
 
+/** Active in the last N minutes — the "logged in simultaneously" signal for admin-alerts.service.ts. */
+export async function countUsersActiveSince(since: Date): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.lastActiveAt, since)));
+  return res?.count ?? 0;
+}
+
+/** Generic version of `countNewUsersToday` — powers the new-user-burst check in admin-alerts.service.ts. */
+export async function countNewUsersSince(since: Date): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.createdAt, since)));
+  return res?.count ?? 0;
+}
+
+/**
+ * `DateRange`-bounded sibling of `countUsersActiveSince` — added alongside it
+ * (not a replacement) so admin-alerts.service.ts's existing open-ended
+ * "since" call keeps working unchanged. Powers the admin dashboard's active-
+ * users metric, which needs a closed [from, to) window rather than "since".
+ */
+export async function usersActiveBetween(range: DateRange): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(
+      and(
+        isNull(users.deletedAt),
+        gte(users.lastActiveAt, range.from),
+        lt(users.lastActiveAt, range.to),
+      ),
+    );
+  return res?.count ?? 0;
+}
+
+/** `DateRange`-bounded sibling of `countNewUsersSince` — see `usersActiveBetween`'s comment. */
+export async function usersCreatedBetween(range: DateRange): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(
+      and(isNull(users.deletedAt), gte(users.createdAt, range.from), lt(users.createdAt, range.to)),
+    );
+  return res?.count ?? 0;
+}
+
 /** Sum of every active user's wallet balance — the platform's outstanding liability. */
 export async function sumWalletBalanceOutstanding(): Promise<number> {
   const [res] = await db
@@ -464,7 +574,30 @@ export async function sumWalletBalanceOutstanding(): Promise<number> {
   return Number(res?.total ?? 0);
 }
 
-export async function listUsersPage(limit: number, offset: number) {
+/**
+ * `q`'s search behavior is asymmetric across columns because phoneE164 is
+ * encrypted at rest (non-deterministic ciphertext — see decryptUserRow's
+ * doc comment): displayName/email are plaintext columns and can be ILIKE'd
+ * for a partial match, but phone can only be matched EXACTLY via its
+ * deterministic lookup hash (the same primitive findUserByPhoneE164 uses),
+ * never partially.
+ */
+function userSearchWhere(q?: string) {
+  const notDeleted = isNull(users.deletedAt);
+  if (!q) return notDeleted;
+  const like = `%${q}%`;
+  return and(
+    notDeleted,
+    or(
+      ilike(users.displayName, like),
+      ilike(users.email, like),
+      eq(users.phoneE164Hash, hashForLookup(q)),
+    ),
+  );
+}
+
+/** Powers both the Telegram `/users` command (no `q`) and the admin dashboard's `GET /v1/admin/users?q=` search. */
+export async function listUsersPage(limit: number, offset: number, q?: string) {
   const rows = await db
     .select({
       id: users.id,
@@ -476,11 +609,17 @@ export async function listUsersPage(limit: number, offset: number) {
       lastActiveAt: users.lastActiveAt,
     })
     .from(users)
-    .where(isNull(users.deletedAt))
+    .where(userSearchWhere(q))
     .orderBy(desc(users.createdAt))
     .limit(limit)
     .offset(offset);
   return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
+}
+
+/** Total matching `listUsersPage`'s own search predicate — powers the admin dashboard's pagination total. */
+export async function countUsersMatching(q?: string): Promise<number> {
+  const [res] = await db.select({ count: count() }).from(users).where(userSearchWhere(q));
+  return res?.count ?? 0;
 }
 
 /** Cost in paise to unlock one kundli house's detail view (Rs 50 = 5 credits at the old rate). Reused by `unlockHouseForOwnedProfile` (birth-profiles.repo.ts) for the additional-profile case. */
@@ -546,6 +685,32 @@ export async function unlockGemstoneForUser(userId: string): Promise<boolean> {
       delta: -GEMSTONE_UNLOCK_COST_PAISE,
       reason: 'gemstone_unlock',
       balanceAfter: unlocked.walletBalancePaise,
+    });
+    return true;
+  });
+}
+
+/**
+ * Reverts an unlock when background generation fails.
+ * Refunds the balance and sets gemstoneUnlockedAt back to null.
+ */
+export async function relockGemstoneForUser(userId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [relocked] = await tx
+      .update(users)
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} + ${GEMSTONE_UNLOCK_COST_PAISE}`,
+        gemstoneUnlockedAt: null,
+      })
+      .where(and(eq(users.id, userId), isNotNull(users.gemstoneUnlockedAt)))
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!relocked) return false;
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: GEMSTONE_UNLOCK_COST_PAISE,
+      reason: 'refund:gemstone_report',
+      balanceAfter: relocked.walletBalancePaise,
     });
     return true;
   });

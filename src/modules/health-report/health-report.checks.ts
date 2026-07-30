@@ -4,6 +4,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { env } from '../../config/env.js';
 import { getRedis } from '../../config/redis.js';
+import { pickKey } from '../../lib/llm/gemini-key-pool.js';
 
 const execAsync = promisify(exec);
 
@@ -51,8 +52,14 @@ export async function checkRedis(): Promise<CheckResult> {
 export async function checkGemini(): Promise<CheckResult> {
   return measure(
     async () => {
+      // A single pick is enough for a low-volume health check — no
+      // retry/failover here, unlike gemini-client.ts's request path.
+      const picked = await pickKey();
+      if (!picked) {
+        throw new Error('Gemini key pool exhausted (every key is cooling down)');
+      }
       const res = await fetch(`${env.GEMINI_BASE_URL}/models`, {
-        headers: { Authorization: `Bearer ${env.GEMINI_API_KEY}` },
+        headers: { Authorization: `Bearer ${picked.key}` },
         signal: AbortSignal.timeout(5000),
       });
       if (!res.ok) {

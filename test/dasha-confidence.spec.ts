@@ -4,6 +4,7 @@ import {
   DOMAIN_CONFIG,
   type Domain,
 } from '../src/lib/astro-engine/dasha-confidence.js';
+import { findFavorableWindows } from '../src/lib/dasha-window.js';
 
 /** Same synthetic mahadasha builder as dasha-window.spec.ts. */
 function makeDasha(now: Date) {
@@ -110,13 +111,85 @@ describe('scoreDomainWindows', () => {
     expect(result.windows[0]!.dashaLevel).toBe('antardasha');
   });
 
-  it('caps at the top 3 windows', () => {
+  it("caps at the top 3 windows BY DEFAULT (no opts) — chat-grounding.ts's direct calls must keep this exact output size/order", () => {
     const now = new Date('2026-01-01T00:00:00Z');
     const dasha = makeDasha(now);
     // Venus recurs as a pratyantardasha within every antardasha across 3
-    // mahadashas -- comfortably more than 3 raw candidates.
+    // mahadashas -- comfortably more than 3 raw candidates. Without opting
+    // into ensureNearTermAnchor, the near-term-rescue below must NOT engage
+    // — chat-grounding.ts scores up to ~14 domains per request and would
+    // otherwise see its prompt grow domain-by-domain (see
+    // test/verify-chat-fix.spec.ts's prompt-size ceiling).
     const result = scoreDomainWindows('wealth', ['Venus'], dasha, null, now, NO_TRANSITS);
     expect(result.windows.length).toBeLessThanOrEqual(3);
+  });
+
+  it('with ensureNearTermAnchor, caps at 3 plus at most one rescued near-term anchor', () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    const dasha = makeDasha(now);
+    const result = scoreDomainWindows(
+      'wealth',
+      ['Venus'],
+      dasha,
+      null,
+      now,
+      NO_TRANSITS,
+      undefined,
+      { ensureNearTermAnchor: true },
+    );
+    expect(result.windows.length).toBeLessThanOrEqual(4);
+  });
+
+  it('with ensureNearTermAnchor, always includes the window nearest to now, even when tier/score ranking would otherwise exclude it', () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    const dasha = makeDasha(now);
+    // Independently recompute the true nearest-to-now candidate from the SAME raw
+    // pre-truncation search scoreDomainWindows runs internally (findFavorableWindows with the
+    // same significators/lookahead), rather than trusting scoreDomainWindows' own output for
+    // this -- otherwise this test could pass vacuously.
+    const rawCandidates = findFavorableWindows(dasha, ['Venus'], now, 3, 8);
+    expect(rawCandidates.length).toBeGreaterThan(3); // sanity: truncation is actually exercised
+    const nowMs = now.getTime();
+    const nearest = rawCandidates.reduce((best, w) => {
+      const d = Math.abs(new Date(w.startDate).getTime() - nowMs);
+      const bestD = Math.abs(new Date(best.startDate).getTime() - nowMs);
+      return d < bestD ? w : best;
+    });
+
+    const result = scoreDomainWindows(
+      'wealth',
+      ['Venus'],
+      dasha,
+      null,
+      now,
+      NO_TRANSITS,
+      undefined,
+      { ensureNearTermAnchor: true },
+    );
+    expect(
+      result.windows.some(
+        (w) => w.startDate === nearest.startDate && w.endDate === nearest.endDate,
+      ),
+    ).toBe(true);
+  });
+
+  it('without ensureNearTermAnchor (default), the near-term anchor is NOT guaranteed — demonstrates the flag actually gates the behavior', () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    const dasha = makeDasha(now);
+    const rawCandidates = findFavorableWindows(dasha, ['Venus'], now, 3, 8);
+    const nowMs = now.getTime();
+    const nearest = rawCandidates.reduce((best, w) => {
+      const d = Math.abs(new Date(w.startDate).getTime() - nowMs);
+      const bestD = Math.abs(new Date(best.startDate).getTime() - nowMs);
+      return d < bestD ? w : best;
+    });
+
+    const result = scoreDomainWindows('wealth', ['Venus'], dasha, null, now, NO_TRANSITS);
+    expect(
+      result.windows.some(
+        (w) => w.startDate === nearest.startDate && w.endDate === nearest.endDate,
+      ),
+    ).toBe(false);
   });
 
   it('does not credit transit alignment for a window far beyond the ~13-month relevance horizon', () => {

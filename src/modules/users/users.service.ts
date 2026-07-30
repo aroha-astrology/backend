@@ -1,4 +1,5 @@
 import type { NewUserRow, NewUserConsentLogRow, UserRow } from '../../db/schema.js';
+import { env } from '../../config/env.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -7,6 +8,7 @@ import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
+import type { ResolvedFeature } from '../features/features.service.js';
 import {
   unlockGemstoneForOwnedProfile,
   unlockHouseForOwnedProfile,
@@ -41,8 +43,17 @@ const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean 
  * must be resolved via {@link resolveActiveProfileContext} (or an equivalent
  * `resolveProfileContext` call) by the caller so a secondary profile's own
  * unlock state is returned instead of the primary's.
+ *
+ * `features` is the server-resolved, per-user, group-aware feature registry
+ * (see `resolveFeaturesForUser()` in `features.service.ts`) — passed in
+ * rather than resolved here so this stays a pure, synchronous mapper; every
+ * call site resolves it once per request.
  */
-export function toUserDto(row: UserRow, profile: ProfileContext): UserDto {
+export function toUserDto(
+  row: UserRow,
+  profile: ProfileContext,
+  features: Record<string, ResolvedFeature>,
+): UserDto {
   return {
     id: row.id,
     firebaseUid: row.firebaseUid,
@@ -106,6 +117,12 @@ export function toUserDto(row: UserRow, profile: ProfileContext): UserDto {
     unlockedHouses: profile.unlockedHouses,
     gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
 
+    features,
+
+    // UI affordance only (see the field's schema doc) — the DB column is fine
+    // to read here since this never gates a request, unlike requireAdmin.
+    isAdmin: env.ADMIN_PHONE_E164.includes(row.phoneE164 ?? ''),
+
     referralSource: row.referralSource,
     referredByCode: row.referredByCode,
     referralCode: row.referralCode,
@@ -124,6 +141,9 @@ export function toUserDto(row: UserRow, profile: ProfileContext): UserDto {
       row.dataProcessingConsentAt,
       row.dataProcessingConsentRevokedAt,
     ),
+    voiceConsentAt: iso(row.voiceConsentAt),
+    voiceConsentRevokedAt: iso(row.voiceConsentRevokedAt),
+    voiceConsentActive: consentActive(row.voiceConsentAt, row.voiceConsentRevokedAt),
     termsAcceptedAt: iso(row.termsAcceptedAt),
     termsVersion: row.termsVersion,
     privacyPolicyAcceptedAt: iso(row.privacyPolicyAcceptedAt),
@@ -246,6 +266,21 @@ function applyConsent(
       ...base,
       consentType: 'data_processing',
       action: consent.dataProcessing ? 'granted' : 'withdrawn',
+    });
+  }
+  if (consent.voice !== undefined) {
+    if (consent.voice) {
+      patch.voiceConsentAt = now;
+      patch.voiceConsentRevokedAt = null;
+    } else {
+      // Same "keep the grant, record the withdrawal" shape as dataProcessing
+      // above — the audit trail needs both timestamps, not one overwritten one.
+      patch.voiceConsentRevokedAt = now;
+    }
+    logs.push({
+      ...base,
+      consentType: 'voice',
+      action: consent.voice ? 'granted' : 'withdrawn',
     });
   }
   if (consent.marketing !== undefined) {
@@ -534,6 +569,27 @@ export async function unlockGemstone(userId: string, birthProfileId: string | nu
   }
 }
 
+export async function refundGemstoneUnlock(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<void> {
+  let success: boolean;
+  if (birthProfileId === null) {
+    const { relockGemstoneForUser } = await import('./users.repo.js');
+    success = await relockGemstoneForUser(userId);
+  } else {
+    const { relockGemstoneForOwnedProfile } =
+      await import('../birth-profiles/birth-profiles.repo.js');
+    success = await relockGemstoneForOwnedProfile(birthProfileId, userId);
+  }
+  if (!success) {
+    logger.warn(
+      { userId, birthProfileId },
+      'Failed to relock gemstone report (maybe already locked?)',
+    );
+  }
+}
+
 export async function getNotifications(userId: string) {
   const rows = await getNotificationsForUser(userId);
   return rows.map((r) => ({
@@ -541,6 +597,7 @@ export async function getNotifications(userId: string) {
     title: r.title,
     body: r.body,
     type: r.type,
+    link: r.link ?? null,
     readAt: iso(r.readAt),
     createdAt: r.createdAt.toISOString(),
   }));

@@ -350,6 +350,15 @@ export function scoreDomainWindows(
   now: Date,
   transits: { saturnSignIndex: number | null; jupiterSignIndex: number | null },
   sharedSubPeriods?: Map<string, ReturnType<typeof buildSubPeriods>>,
+  /** Opt-in only (default off) — appends the window nearest `now` if the tier/score truncation
+   * below would otherwise exclude it entirely. Off by default so chat-grounding.ts's DIRECT
+   * callers (which score up to ~14 domains per request and label windows[0] 'STRONGEST') keep
+   * their exact existing output size/order — growing every domain's window count here compounds
+   * across domains into a real chat prompt-size regression (caught by
+   * test/verify-chat-fix.spec.ts). report-timing.ts's report-facing wrapper opts in explicitly;
+   * that's the one seam where an occasional 4th window is an acceptable, bounded cost for
+   * guaranteeing a near-term answer. */
+  opts?: { ensureNearTermAnchor?: boolean },
 ): DomainWindowResult {
   const config = DOMAIN_CONFIG[domain];
   const candidates = findFavorableWindows(dasha, significatorLords, now, 3, 8, sharedSubPeriods);
@@ -401,5 +410,33 @@ export function scoreDomainWindows(
     return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
   });
 
-  return { domain, windows: scored.slice(0, 3) };
+  const top3 = scored.slice(0, 3);
+
+  // Rescue (opt-in only, see `opts` doc comment above): the tier/score truncation above can
+  // otherwise exclude every near-term window in favor of ones years out (a "bigger" antardasha
+  // tier match beats a nearer pratyantardasha one regardless of how far away it is). Appends
+  // (never evicts a slot, never re-sorts) the window nearest `now` if it isn't already in the top
+  // 3 — from the FULL pre-slice `scored` array, so it can't have already been cut.
+  if (opts?.ensureNearTermAnchor) {
+    const anchor = nearestToNow(scored, now);
+    if (anchor && !top3.includes(anchor)) top3.push(anchor);
+  }
+
+  return { domain, windows: top3 };
+}
+
+/** The window containing `now`, or failing that, the one whose start date is closest to it — see
+ * dasha-window.ts's identical helper/rationale for `FavorableWindow`; duplicated here rather than
+ * shared since the two candidate shapes (`RankedWindow` vs `FavorableWindow`) differ. */
+function nearestToNow(windows: RankedWindow[], now: Date): RankedWindow | undefined {
+  const nowMs = now.getTime();
+  const containing = windows.find(
+    (w) => new Date(w.startDate).getTime() <= nowMs && new Date(w.endDate).getTime() > nowMs,
+  );
+  if (containing) return containing;
+  return windows.reduce<{ window: RankedWindow; distance: number } | undefined>((best, w) => {
+    const distance = Math.abs(new Date(w.startDate).getTime() - nowMs);
+    if (!best || distance < best.distance) return { window: w, distance };
+    return best;
+  }, undefined)?.window;
 }

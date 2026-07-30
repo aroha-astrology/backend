@@ -79,6 +79,10 @@ export async function saveFollowUp(
   id: string,
   followUp: { question: string; answer: string },
 ): Promise<void> {
+  // Also resets `translations` to force a fresh (now-complete, including
+  // this followUp) translation on the next non-English read — a cached
+  // translation from before this follow-up was asked has no `followUp`
+  // field at all, and would otherwise silently omit it forever.
   await db.execute(sql`
     UPDATE ${vastuPlans}
     SET analysis = jsonb_set(
@@ -86,7 +90,8 @@ export async function saveFollowUp(
       '{followUp}',
       ${JSON.stringify(followUp)}::jsonb,
       true
-    )
+    ),
+    translations = '{}'::jsonb
     WHERE id = ${id}
   `);
 }

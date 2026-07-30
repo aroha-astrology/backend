@@ -20,7 +20,7 @@ export const AnalyzeVastuBodySchema = z
 export type AnalyzeVastuBody = z.infer<typeof AnalyzeVastuBodySchema>;
 
 export const AskVastuBodySchema = z
-  .object({ question: z.string().min(2).max(500) })
+  .object({ question: z.string().min(2).max(500), language: z.string().optional() })
   .openapi('AskVastuBody');
 
 export type AskVastuBody = z.infer<typeof AskVastuBodySchema>;

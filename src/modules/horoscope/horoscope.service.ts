@@ -11,12 +11,14 @@ import type {
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import {
   resolveActiveProfileContext,
+  resolveProfileContext,
   type ProfileContext,
 } from '../birth-profiles/profile-context.js';
 import type { HoroscopeDto, HoroscopePeriod } from './horoscope.schemas.js';
 import {
   claimHoroscopeGeneration,
   findHoroscope,
+  listFailedOrStaleHoroscopes,
   listRecentlyActiveUsersAfter,
   markHoroscopeFailed,
   markHoroscopeReady,
@@ -28,6 +30,7 @@ import {
   failBatchRun,
   resetBatchRun,
 } from './horoscope.repo.js';
+import { findActiveUserById } from '../users/users.repo.js';
 import { notifyError } from '../../lib/notifications/telegram.js';
 
 /** The app's reference timezone — horoscopes are dated by the IST calendar day. */
@@ -505,6 +508,136 @@ export async function runAllHoroscopeBatches(
   }
 
   return results;
+}
+
+const SELFHEAL_JOB_NAME = 'horoscope-selfheal';
+const SELFHEAL_PAGE = 200;
+
+export interface SelfHealRunResult {
+  processed: number;
+  generated: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * Narrow safety-net sweep: pages through ONLY rows currently in 'failed'
+ * status or 'generating' rows abandoned past STALE_GENERATING_MS — NOT every
+ * recently-active user (that's runHoroscopeBatch). For each row it fetches the
+ * owner user and resolves the row's specific birth profile (not the user's
+ * currently-active profile, which may differ) before forcing a single bounded
+ * re-attempt via requestHoroscopeGeneration with `force: true, retryForever:
+ * false`. Checkpointed under 'horoscope-selfheal' — never collides with the
+ * 'horoscope-batch' row for the same (period, forDate).
+ *
+ * Designed to be called on a frequent short interval (e.g. every 15 min) to
+ * recover rows that failed while they were still within their active period,
+ * rather than waiting up to 24h for the next nightly batch.
+ */
+export async function runHoroscopeSelfHeal(
+  opts: { limit?: number } = {},
+): Promise<SelfHealRunResult> {
+  const today = todayForApp();
+
+  // We reuse the cron_batch_runs checkpoint under a deduplicated virtual key:
+  // period='all', forDate=today. The selfheal sweeps all periods in one pass
+  // so splitting by period would over-complicate the checkpoint without
+  // adding safety — the forDate=today ensures the run restarts fresh each
+  // calendar day (same semantics as a 'completed' horoscope-batch row).
+  let run = await getOrCreateBatchRun(SELFHEAL_JOB_NAME, 'all', today);
+  if (run.status === 'completed') {
+    run = await resetBatchRun(SELFHEAL_JOB_NAME, 'all', today);
+  }
+
+  let lastId: string | null = run.lastId;
+  let processed = 0;
+  let generated = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  try {
+    for (;;) {
+      const remaining = opts.limit ? opts.limit - processed : SELFHEAL_PAGE;
+      if (remaining <= 0) break;
+      const rows = await listFailedOrStaleHoroscopes(lastId, Math.min(SELFHEAL_PAGE, remaining));
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        processed++;
+        try {
+          const user = await findActiveUserById(row.userId);
+          if (!user) {
+            // User was soft-deleted after the row was written — skip cleanly.
+            skipped++;
+            continue;
+          }
+          // Resolve the profile that owns *this specific row*, not the user's
+          // currently-active profile, which could have changed since the row
+          // was first created.
+          const profile = await resolveProfileContext(user, row.birthProfileId);
+          // Claim using the row's stored periodKey directly — do NOT recompute
+          // via periodKeyFor(period, forDate), because the stored periodKey is
+          // the authoritative cache key for this row. (requestHoroscopeGeneration
+          // would recompute it from forDate, which may differ for rows written
+          // during a period rollover boundary.)
+          const claimed = await claimHoroscopeGeneration(
+            user.id,
+            profile.birthProfileId,
+            row.period,
+            row.periodKey,
+            row.forDate,
+            { force: true },
+          );
+          if (!claimed?.startedAt) {
+            skipped++;
+            continue;
+          }
+          const outcome = await runHoroscopeGeneration(
+            user,
+            profile,
+            row.period,
+            row.periodKey,
+            row.forDate,
+            claimed.startedAt,
+            /* retryForever */ false,
+          );
+          if (outcome === 'generated') generated++;
+          else skipped++;
+        } catch (err) {
+          logger.error(
+            { err, horoscopeId: row.id, userId: row.userId, period: row.period },
+            'horoscope self-heal failed for row',
+          );
+          failed++;
+        }
+      }
+
+      const last = rows[rows.length - 1];
+      if (!last) break;
+      lastId = last.id;
+
+      await checkpointBatchRun(run.id, {
+        lastId,
+        processed,
+        generated,
+        skipped,
+        failed,
+      });
+      // Always fetch the next page — stop only when the page comes back empty.
+      // (Unlike the nightly batch, there's no early-break optimization here:
+      // self-heal pages are cheap, and a page that returned fewer rows than
+      // the cap doesn't mean there are no more — a concurrent run could have
+      // inserted new failed rows into the scan window.)
+    }
+  } catch (err) {
+    await failBatchRun(run.id, err instanceof Error ? err.message : String(err));
+    throw err;
+  }
+
+  const totals = { processed, generated, skipped, failed };
+  await completeBatchRun(run.id, totals);
+  logger.info(totals, 'horoscope self-heal sweep complete');
+  return totals;
 }
 
 /**

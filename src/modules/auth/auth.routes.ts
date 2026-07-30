@@ -2,9 +2,14 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireFirebaseToken } from '../../middleware/auth.js';
 import { toUserDto } from '../users/users.service.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
+import { resolveFeaturesForUser } from '../features/features.service.js';
 import { establishSession } from './auth.service.js';
 import { SessionResponseSchema } from './auth.schemas.js';
 import { notifyNewSignup } from '../../lib/notifications/telegram.js';
+import {
+  checkNewUserBurst,
+  checkTotalUserMilestone,
+} from '../admin-alerts/admin-alerts.service.js';
 
 const ErrorSchema = z
   .object({
@@ -53,9 +58,12 @@ authRouter.openapi(sessionRoute, async (c) => {
 
   if (created) {
     void notifyNewSignup({ id: user.id, email: user.email, phone: user.phoneE164 }).catch(() => {});
+    void checkNewUserBurst().catch(() => {});
+    void checkTotalUserMilestone().catch(() => {});
   }
 
   const profile = await resolveActiveProfileContext(user);
-  const body = { user: toUserDto(user, profile), created };
+  const features = await resolveFeaturesForUser(user.id);
+  const body = { user: toUserDto(user, profile, features), created };
   return c.json(body, created ? 201 : 200);
 });

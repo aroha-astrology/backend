@@ -62,6 +62,7 @@ interface PlanetFact {
   nakshatra: string;
   nakshatraPada: number;
   nakshatraLord: string;
+  longitude: number;
 }
 
 function getHouses(chart: Record<string, unknown> | null): HouseFact[] {
@@ -83,7 +84,27 @@ function getPlanets(chart: Record<string, unknown> | null): PlanetFact[] {
       nakshatra: String(p.nakshatra ?? ''),
       nakshatraPada: Number(p.nakshatraPada ?? 0),
       nakshatraLord: String(p.nakshatraLord ?? ''),
+      longitude: Number(p.longitude ?? 0),
     }));
+}
+
+/**
+ * The app's UI shows "Sun Sign" as the Western tropical sign (what someone
+ * means by "I'm a Cancer"), not the Vedic sidereal sign used everywhere else
+ * in this chart — see `lib/kundli-helpers.ts#westernSunSign` on the frontend
+ * (the two must stay in sync, or the astrologer's chat answer will contradict
+ * what the user sees on screen). Derived from the sidereal longitude +
+ * ayanamsaValue rather than a calendar-date table, so it's exact for cusp
+ * births too. Returns undefined if ayanamsaValue is missing (older/degraded
+ * charts) — callers should fall back to the sidereal sign name.
+ */
+function westernSunSign(
+  sunLongitude: number,
+  ayanamsaValue: number | undefined,
+): string | undefined {
+  if (typeof ayanamsaValue !== 'number') return undefined;
+  const tropicalLongitude = (((sunLongitude + ayanamsaValue) % 360) + 360) % 360;
+  return SIGNS[Math.floor(tropicalLongitude / 30)];
 }
 
 function houseLord(houses: HouseFact[], houseNum: number): HouseFact | undefined {
@@ -710,7 +731,24 @@ export async function buildGroundingFacts(
     );
   }
   const sun = planetPlacement(planets, 'Sun');
-  if (sun) facts.push(`Sun Sign is natally in ${sun.sign} (house ${sun.house})`);
+  if (sun) {
+    facts.push(
+      `Sun Sign (Vedic sidereal, used for all astrological analysis) is natally in ${sun.sign} (house ${sun.house})`,
+    );
+    // The app's UI shows the Western tropical Sun sign specifically (see the
+    // helper doc comment above) — surfaced separately so a casual "what's my
+    // sun sign / zodiac sign" question gets the same answer the user sees on
+    // screen, without the astrologer using the tropical sign for any actual
+    // Vedic reasoning (dignity, yogas, etc. all stay sidereal, above).
+    const ayanamsaValue =
+      typeof src.chart?.ayanamsaValue === 'number' ? src.chart.ayanamsaValue : undefined;
+    const tropicalSunSign = westernSunSign(sun.longitude, ayanamsaValue);
+    if (tropicalSunSign && tropicalSunSign !== sun.sign) {
+      facts.push(
+        `If the user casually asks "what's my sun sign" or "what's my zodiac sign" (the popular Western meaning), answer ${tropicalSunSign} — that is the Western tropical sign this app displays for that specific question, distinct from the Vedic sidereal Sun Sign above.`,
+      );
+    }
+  }
 
   const venus = planetPlacement(planets, 'Venus');
   if (venus) {

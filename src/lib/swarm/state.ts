@@ -2,12 +2,7 @@
 // Swarm State - Shared state interfaces for the orchestration pipeline
 // =============================================================================
 
-export type Intent =
-  | 'onboarding'
-  | 'daily_forecast'
-  | 'matchmaking'
-  | 'panchang'
-  | 'chat';
+export type Intent = 'onboarding' | 'daily_forecast' | 'matchmaking' | 'panchang' | 'chat';
 
 export interface BirthRecord {
   date: string;
@@ -47,7 +42,7 @@ export interface SwarmState {
   synthesis?: Record<string, unknown>;
   atmosphere?: Record<string, unknown>;
   compatibility?: Record<string, unknown>;
-  chatContext?: { history: ChatMessage[]; summary: string };
+  chatContext?: { history: ChatMessage[]; summary: string; lastActivityAt?: Date };
   response?: Record<string, unknown>;
   errors: string[];
   warnings: string[];

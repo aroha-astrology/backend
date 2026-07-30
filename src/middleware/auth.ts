@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { getFirebaseAuth } from '../config/firebase.js';
+import { env } from '../config/env.js';
 import { Errors } from '../lib/errors.js';
 import { findUserByFirebaseUid, touchUserLastActive } from '../modules/users/users.repo.js';
 
@@ -72,4 +73,38 @@ export const requireUser: MiddlewareHandler = async (c, next) => {
   }
 
   await next();
+};
+
+/**
+ * Gates the HTTP admin API (`/v1/admin/*`) to an allowlisted set of phone
+ * numbers (`ADMIN_PHONE_E164`, see config/env.ts). Wraps `requireUser` by
+ * direct function call rather than composing two independent entries in a
+ * route's `middleware: [...]` array (the pattern used elsewhere for e.g.
+ * `[requireUser, llmRateLimit, requireConsent]`) — this codebase has no
+ * existing precedent for one middleware assuming another already ran
+ * upstream and then re-deriving that assumption in isolation, and a single
+ * self-contained export is what actually needs unit testing here (the
+ * "unauthenticated delegates to requireUser" case included). `requireUser`
+ * is a plain (c, next) => Promise<void> function like any Hono middleware,
+ * so calling it directly with a synthetic `next` is valid composition, not a
+ * Hono-internal hack.
+ *
+ * Deliberately checks the Firebase ID token's `phone_number` CLAIM, not the
+ * `users.phoneE164` DB column — a DB column would make admin access follow a
+ * phone NUMBER rather than a verified identity, so a recycled number that
+ * once belonged to an admin could inherit admin access for whoever picks it
+ * up next (see the phone-recycling-takeover finding in the 2026-07-17
+ * security audit). The `/v1/me` `isAdmin` flag is the one place that reads
+ * the DB column instead — deliberately, since it's just a UI affordance
+ * (whether to render the `/admin` link) and not an authorization boundary.
+ */
+export const requireAdmin: MiddlewareHandler = async (c, next) => {
+  await requireUser(c, async () => {
+    const token = c.get('firebaseToken');
+    const phone = typeof token.phone_number === 'string' ? token.phone_number : null;
+    if (!phone || !env.ADMIN_PHONE_E164.includes(phone)) {
+      throw Errors.forbidden('Admin access required');
+    }
+    await next();
+  });
 };

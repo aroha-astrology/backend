@@ -1,6 +1,14 @@
 import { getFirebaseApp } from '../../config/firebase.js';
 import { getMessaging } from 'firebase-admin/messaging';
 import { logger } from '../logger.js';
+import { revokeTokensByValue } from '../../modules/device-tokens/device-tokens.repo.js';
+
+/** FCM error codes that mean the token will never work again — safe to stop retrying. */
+const PERMANENT_FAILURE_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-argument',
+  'messaging/invalid-registration-token',
+]);
 
 export async function sendPush(
   deviceToken: string,
@@ -54,6 +62,7 @@ export async function sendPushBatch(
 
   let success = 0;
   let failure = 0;
+  const deadTokens: string[] = [];
   for (const tokenChunk of chunk(tokens, FCM_MAX_MESSAGES_PER_CALL)) {
     const messages = tokenChunk.map((token) => ({
       token,
@@ -64,6 +73,18 @@ export async function sendPushBatch(
       const response = await messaging.sendEach(messages);
       success += response.successCount;
       failure += response.failureCount;
+      response.responses?.forEach((r, i) => {
+        if (r.success || !r.error) return;
+        const token = tokenChunk[i]!;
+        if (PERMANENT_FAILURE_CODES.has(r.error.code)) {
+          deadTokens.push(token);
+        } else {
+          logger.warn(
+            { code: r.error.code, tokenTail: token.slice(-8) },
+            'fcm:sendPushBatch token send failed (transient)',
+          );
+        }
+      });
     } catch (err) {
       // Only this chunk is lost — a transient failure partway through a
       // large broadcast must not discard counts already collected from
@@ -71,6 +92,10 @@ export async function sendPushBatch(
       logger.error({ err, chunkSize: tokenChunk.length }, 'fcm:sendPushBatch chunk failed');
       failure += tokenChunk.length;
     }
+  }
+  if (deadTokens.length > 0) {
+    logger.info({ count: deadTokens.length }, 'fcm:sendPushBatch revoking permanently dead tokens');
+    await revokeTokensByValue(deadTokens);
   }
   return { success, failure };
 }

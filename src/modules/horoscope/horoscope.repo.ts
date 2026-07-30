@@ -63,6 +63,32 @@ export async function listRecentlyActiveUsersAfter(
   return rows.map(decryptUserRow);
 }
 
+/**
+ * Keyset page of daily_horoscopes rows needing a self-heal retry — a narrow
+ * safety net, NOT the nightly active-user sweep: only 'failed' rows, or
+ * 'generating' rows stuck past STALE_GENERATING_MS (an abandoned run, the
+ * same threshold claimHoroscopeGeneration itself uses to decide a row is
+ * reclaimable). Ordered by id for stable keyset paging, same style as
+ * listRecentlyActiveUsersAfter above — just scanning daily_horoscopes rows
+ * directly instead of every recently-active user.
+ */
+export async function listFailedOrStaleHoroscopes(
+  afterId: string | null,
+  limit: number,
+): Promise<DailyHoroscopeRow[]> {
+  const staleSeconds = STALE_GENERATING_MS / 1000;
+  const conditions = [
+    sql`(${dailyHoroscopes.status} = 'failed' OR (${dailyHoroscopes.status} = 'generating' AND ${dailyHoroscopes.updatedAt} < now() - ${staleSeconds} * interval '1 second'))`,
+  ];
+  if (afterId) conditions.push(gt(dailyHoroscopes.id, afterId));
+  return db
+    .select()
+    .from(dailyHoroscopes)
+    .where(and(...conditions))
+    .orderBy(asc(dailyHoroscopes.id))
+    .limit(limit);
+}
+
 export async function findHoroscope(
   userId: string,
   birthProfileId: string | null,

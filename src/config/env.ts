@@ -41,6 +41,13 @@ const EnvSchema = z
     // that sign in as a client (scripts/dev-token.ts).
     FIREBASE_WEB_API_KEY: z.string().min(1).optional(),
 
+    // Local disk directory for palm-reading photographs (biometric data — never served
+    // publicly, only through the authenticated frame routes; see lib/palm/storage.ts).
+    // Lives on the same EC2 instance as the API process itself — no separate cloud storage
+    // service. Relative paths resolve against process.cwd(). Untracked (see .gitignore) so a
+    // `git reset --hard` deploy never touches previously-uploaded frames.
+    PALM_UPLOAD_DIR: z.string().min(1).default('uploads'),
+
     // --- Google Play Billing (Android in-app purchases) --------------------
     // Either point at a service account JSON file (preferred) ...
     GOOGLE_PLAY_SERVICE_ACCOUNT_PATH: z.string().min(1).optional(),
@@ -58,9 +65,50 @@ const EnvSchema = z
     GOOGLE_PLAY_PACKAGE_NAME: z.string().min(1).default('com.aroha.astrology'),
 
     // --- Gemini (sole LLM provider) ----------------------------------------
-    GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required'),
+    // Multi-key rotation pool (see lib/llm/gemini-key-pool.ts): comma-separated
+    // list of Gemini API keys, same convention as CORS_ORIGINS/
+    // TELEGRAM_ADMIN_CHAT_IDS above. Takes precedence over the single
+    // GEMINI_API_KEY below when non-empty — see GEMINI_KEY_POOL.
+    GEMINI_API_KEYS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((key) => key.trim())
+          .filter(Boolean),
+      ),
+    // Single-key fallback, kept for back-compat with existing deployments that
+    // haven't migrated to GEMINI_API_KEYS yet. Optional now — validated below
+    // (superRefine) so boot only fails if BOTH this and GEMINI_API_KEYS are
+    // unset, not because this alone is missing.
+    GEMINI_API_KEY: z.string().min(1).optional(),
     GEMINI_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta/openai'),
     GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
+
+    // --- Gemini Live (realtime voice) --------------------------------------
+    // A SEPARATE model from GEMINI_MODEL above, not a variant of it.
+    // `gemini-3.1-flash-lite` is the text/batch tier and cannot do realtime
+    // audio at all; `gemini-3.1-flash-live-preview` is a native audio-to-audio
+    // model reached over a WebSocket rather than the OpenAI-compatible
+    // /chat/completions endpoint every other call site here uses. Nothing
+    // outside the voice module reads these, and GEMINI_MODEL is untouched.
+    //
+    // The native (non-OpenAI-compat) base URL, because ephemeral-token minting
+    // and the Live socket both live under v1beta directly.
+    GEMINI_LIVE_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta'),
+    GEMINI_LIVE_MODEL: z.string().default('gemini-3.1-flash-live-preview'),
+    // A kill switch that sits BELOW the `paid.voiceChat` feature flag: the flag
+    // is the product control (admin-togglable, per-user/per-group), this is the
+    // operational one. It exists so voice can be cut instantly from the box —
+    // without a deploy or a DB write — if it starts eating the shared Gemini
+    // free-tier quota that every text feature also depends on. Defaults off:
+    // the model is a preview whose quota Google does not publish, so it must be
+    // switched on deliberately after watching it against real traffic.
+    GEMINI_LIVE_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
 
     // --- Redis -------------------------------------------------------------
     REDIS_URL: z.string().default('redis://localhost:6379/0'),
@@ -124,7 +172,37 @@ const EnvSchema = z
           .map((id) => id.trim())
           .filter(Boolean),
       ),
+    // Extra recipients for the new-support-ticket alert specifically — same
+    // reasoning as TELEGRAM_DOWNVOTE_EXTRA_CHAT_IDS, kept as its own env var
+    // rather than folded into it so the two alert fan-outs can be tuned
+    // independently (e.g. a support-only Telegram group).
+    TELEGRAM_SUPPORT_EXTRA_CHAT_IDS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+    // Phone allowlist (E.164) gating the HTTP admin API (/v1/admin/*) — see
+    // requireAdmin in middleware/auth.ts. Checked against the Firebase ID
+    // token's own `phone_number` claim, NOT a DB column (a DB column would
+    // let phone-recycling silently hand admin access to whoever picks up a
+    // once-admin number later — see the phone-recycling-takeover finding in
+    // the 2026-07-17 security audit). Same comma-split/trim/filter/default
+    // pattern as TELEGRAM_ADMIN_CHAT_IDS above.
+    ADMIN_PHONE_E164: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean),
+      ),
 
     // Nightly horoscope batch skips users with no activity in this many days
     // (lastActiveAt, falling back to createdAt) — a dormant user's reading is
@@ -163,6 +241,17 @@ const EnvSchema = z
           'Provide GOOGLE_PLAY_SERVICE_ACCOUNT_PATH, all three of GOOGLE_PLAY_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY, or omit all Google Play config',
       });
     }
+
+    // At least one key pool source is required — any pool size from 1 up to
+    // however many keys are configured is valid, this is not a fixed-size
+    // requirement. GEMINI_API_KEYS wins when both are set (see GEMINI_KEY_POOL).
+    if (value.GEMINI_API_KEYS.length === 0 && !value.GEMINI_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GEMINI_API_KEYS'],
+        message: 'Provide GEMINI_API_KEYS (comma-separated) or GEMINI_API_KEY',
+      });
+    }
   });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -184,3 +273,15 @@ export const env: Env = loadEnv();
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
+
+// Derived Gemini key pool for lib/llm/gemini-key-pool.ts's round-robin
+// rotation: prefer the comma-separated GEMINI_API_KEYS list when set, else
+// fall back to the single GEMINI_API_KEY, else an empty pool (only reachable
+// if the superRefine check above were ever bypassed, e.g. in a test that
+// constructs Env by hand rather than through loadEnv()).
+export const GEMINI_KEY_POOL: readonly string[] =
+  env.GEMINI_API_KEYS.length > 0
+    ? env.GEMINI_API_KEYS
+    : env.GEMINI_API_KEY
+      ? [env.GEMINI_API_KEY]
+      : [];

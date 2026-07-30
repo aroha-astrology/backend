@@ -118,6 +118,7 @@ export const TransactionSchema = z
         'gemstone_unlock',
         'profile_creation',
         'referral_bonus',
+        'admin_adjustment',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),
@@ -132,6 +133,17 @@ export const TransactionSchema = z
       balanceAfterPaise: z.number(),
       isRefund: z.boolean(),
       houseNumber: z.number(),
+    }),
+    z.object({
+      id: z.string(),
+      kind: z.literal('report_unlock'),
+      createdAt: z.string(),
+      amountPaise: z.number(),
+      balanceAfterPaise: z.number(),
+      isRefund: z.boolean(),
+      reportKey: z.string(),
+      periodMonth: z.string().optional(),
+      bundleMonths: z.number().optional(),
     }),
   ])
   .openapi('Transaction');

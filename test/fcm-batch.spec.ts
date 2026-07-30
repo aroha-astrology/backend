@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // internally", which isn't true. This suite pins the chunking behavior that
 // makes a >500-token broadcast not fail outright.
 
-const state = vi.hoisted(() => ({ sendEach: vi.fn() }));
+const state = vi.hoisted(() => ({ sendEach: vi.fn(), revokeTokensByValue: vi.fn() }));
 
 vi.mock('../src/config/firebase.js', () => ({
   getFirebaseApp: vi.fn(() => ({})),
@@ -15,11 +15,16 @@ vi.mock('firebase-admin/messaging', () => ({
   getMessaging: vi.fn(() => ({ sendEach: state.sendEach })),
 }));
 
+vi.mock('../src/modules/device-tokens/device-tokens.repo.js', () => ({
+  revokeTokensByValue: state.revokeTokensByValue,
+}));
+
 import { sendPushBatch } from '../src/lib/notifications/fcm.js';
 
 describe('sendPushBatch — chunking above the 500-message FCM ceiling', () => {
   beforeEach(() => {
     state.sendEach.mockReset();
+    state.revokeTokensByValue.mockReset();
   });
 
   it('sends everything in one call when at or under 500 tokens', async () => {
@@ -69,5 +74,51 @@ describe('sendPushBatch — chunking above the 500-message FCM ceiling', () => {
 
     expect(result).toEqual({ success: 0, failure: 1 });
     expect(state.sendEach).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendPushBatch — dead-token pruning', () => {
+  beforeEach(() => {
+    state.sendEach.mockReset();
+    state.revokeTokensByValue.mockReset();
+  });
+
+  it('revokes a token FCM reports as permanently unregistered', async () => {
+    state.sendEach.mockResolvedValueOnce({
+      successCount: 1,
+      failureCount: 1,
+      responses: [
+        { success: true, messageId: 'msg-1' },
+        { success: false, error: { code: 'messaging/registration-token-not-registered' } },
+      ],
+    });
+
+    const result = await sendPushBatch(['tok-good', 'tok-dead'], 'Title', 'Body');
+
+    expect(result).toEqual({ success: 1, failure: 1 });
+    expect(state.revokeTokensByValue).toHaveBeenCalledTimes(1);
+    expect(state.revokeTokensByValue).toHaveBeenCalledWith(['tok-dead']);
+  });
+
+  it('does not revoke a token that failed for a transient reason', async () => {
+    state.sendEach.mockResolvedValueOnce({
+      successCount: 0,
+      failureCount: 1,
+      responses: [{ success: false, error: { code: 'messaging/internal-error' } }],
+    });
+
+    const result = await sendPushBatch(['tok-flaky'], 'Title', 'Body');
+
+    expect(result).toEqual({ success: 0, failure: 1 });
+    expect(state.revokeTokensByValue).not.toHaveBeenCalled();
+  });
+
+  it('does not attempt to revoke anything when the FCM response has no per-message responses', async () => {
+    state.sendEach.mockResolvedValueOnce({ successCount: 1, failureCount: 0 });
+
+    const result = await sendPushBatch(['tok-1'], 'Title', 'Body');
+
+    expect(result).toEqual({ success: 1, failure: 0 });
+    expect(state.revokeTokensByValue).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   devicePushTokens,
@@ -83,6 +83,15 @@ export async function revokeOtherTokensForDevice(
         isNull(devicePushTokens.revokedAt),
       ),
     );
+}
+
+/** Bulk-revoke tokens FCM reports as permanently dead (e.g. app uninstalled). */
+export async function revokeTokensByValue(tokens: string[]): Promise<void> {
+  if (tokens.length === 0) return;
+  await db
+    .update(devicePushTokens)
+    .set({ revokedAt: new Date(), updatedAt: new Date() })
+    .where(and(inArray(devicePushTokens.token, tokens), isNull(devicePushTokens.revokedAt)));
 }
 
 export async function revokeOwnedDeviceToken(

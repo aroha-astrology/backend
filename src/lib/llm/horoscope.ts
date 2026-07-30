@@ -421,10 +421,22 @@ CATEGORY GUIDELINES:
  */
 const RAW_JARGON_PATTERN = /\b(mahadasha|antardasha|dasha|ascendant|nakshatra|yoga)\b/i;
 
-export function hasRawJargon(s: string): boolean {
-  // Disable jargon check: the LLM natively knows these words and using them
-  // occasionally is fine. Strict rejections caused infinite generation loops.
-  return false;
+export function hasRawJargon(text: string): boolean {
+  const RAW_JARGON = [
+    /\bmahadasha\b/i,
+    /\bantardasha\b/i,
+    /\bascendant\b/i,
+    /\bnakshatra\b/i,
+    /\byoga\b/i,
+    /\bpratyantardasha\b/i,
+    /\bgraha\b/i,
+    /\bbhava\b/i,
+    /\bdosha\b/i,
+    /\brasi\b/i,
+    /\blagna\b/i,
+    /\bvimshottari\b/i,
+  ];
+  return RAW_JARGON.some((re) => re.test(text));
 }
 
 export function cleanJsonString(raw: string): string {

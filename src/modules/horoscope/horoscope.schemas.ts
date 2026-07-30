@@ -169,3 +169,27 @@ export const DailyHoroscopeRunBodySchema = z
   })
   .strict()
   .openapi('DailyHoroscopeRunBody');
+
+/** Body for the narrow self-heal sweep (POST /cron/horoscopes-selfheal). */
+export const SelfHealRunBodySchema = z
+  .object({
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .max(100000)
+      .optional()
+      .describe('Cap rows processed in this run.'),
+  })
+  .strict()
+  .openapi('SelfHealRunBody');
+
+/** Result of one self-heal sweep (POST /cron/horoscopes-selfheal). */
+export const SelfHealRunResultSchema = z
+  .object({
+    processed: z.number().int(),
+    generated: z.number().int(),
+    skipped: z.number().int(),
+    failed: z.number().int(),
+  })
+  .openapi('SelfHealRunResult');

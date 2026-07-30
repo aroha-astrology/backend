@@ -110,3 +110,22 @@ export function makeDecodedToken(uid = 'firebase-uid-1', phone = '+919999999999'
   };
   return token;
 }
+
+/** A Google-sign-in-shaped token: has `email`, deliberately no `phone_number`. */
+export function makeGoogleDecodedToken(
+  uid = 'firebase-uid-google-1',
+  email = 'user@example.com',
+): DecodedIdToken {
+  const token: DecodedIdToken = {
+    uid,
+    aud: 'test',
+    auth_time: 0,
+    exp: 0,
+    iat: 0,
+    iss: 'test',
+    sub: uid,
+    firebase: { identities: {}, sign_in_provider: 'google.com' },
+    email,
+  };
+  return token;
+}

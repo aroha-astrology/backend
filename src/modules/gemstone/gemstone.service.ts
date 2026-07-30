@@ -81,6 +81,10 @@ async function runGemstoneGeneration(
       claimedAt,
       err instanceof Error ? err.message : String(err),
     );
+    const { refundGemstoneUnlock } = await import('../users/users.service.js');
+    await refundGemstoneUnlock(userId, birthProfileId).catch((e) => {
+      logger.error({ err: e, userId, birthProfileId }, 'failed to refund gemstone unlock');
+    });
   }
 }
 

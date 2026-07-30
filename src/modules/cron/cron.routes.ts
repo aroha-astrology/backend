@@ -5,8 +5,14 @@ import {
   DailyHoroscopeRunSchema,
   HoroscopeRunBodySchema,
   HoroscopeRunResponseSchema,
+  SelfHealRunBodySchema,
+  SelfHealRunResultSchema,
 } from '../horoscope/horoscope.schemas.js';
-import { runAllHoroscopeBatches, runHoroscopeBatch } from '../horoscope/horoscope.service.js';
+import {
+  runAllHoroscopeBatches,
+  runHoroscopeBatch,
+  runHoroscopeSelfHeal,
+} from '../horoscope/horoscope.service.js';
 import { PanchangWarmupBodySchema, PanchangWarmupResultSchema } from '../astro/astro.schemas.js';
 import { warmupPanchangCache } from '../astro/astro.service.js';
 import { runHealthReport } from '../health-report/health-report.service.js';
@@ -18,6 +24,9 @@ import {
   sendTransitAlerts,
 } from './transit-alert.service.js';
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
+import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js';
+import { reapStaleReports } from '../reports/reports.service.js';
+import { reapStalePalmReadings } from '../palm/palm.service.js';
 
 const ErrorSchema = z
   .object({
@@ -103,6 +112,37 @@ const dailyHoroscopesRoute = createRoute({
 cronRouter.openapi(dailyHoroscopesRoute, async (c) => {
   const body = c.req.valid('json') ?? {};
   const result = await runHoroscopeBatch('daily', body);
+  return c.json(result, 200);
+});
+
+const selfHealRoute = createRoute({
+  method: 'post',
+  path: '/cron/horoscopes-selfheal',
+  tags: ['Cron'],
+  summary: 'Retry failed or stale-generating horoscope rows',
+  description:
+    'Narrow safety-net sweep: unlike POST /cron/horoscopes (which pages through ALL recently-active ' +
+    'users), this only re-attempts rows that are currently in "failed" status or stuck in ' +
+    '"generating" past the stale threshold — so it is very cheap to run frequently (every 15 min). ' +
+    'Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: {
+      required: false,
+      content: { 'application/json': { schema: SelfHealRunBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: SelfHealRunResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(selfHealRoute, async (c) => {
+  const body = c.req.valid('json') ?? {};
+  const result = await runHoroscopeSelfHeal(body);
   return c.json(result, 200);
 });
 
@@ -285,4 +325,103 @@ cronRouter.openapi(transitAlertsRoute, async (c) => {
   // the boolean is folded into `reason` rather than overloading the field.
   const { skipped: _skipped, reason, ...rest } = r;
   return c.json({ action: 'send' as const, ...rest, ...(reason ? { reason } : {}) }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Live-activity check — polls how many users have been active in the last 5
+// minutes for the ">15 simultaneous" and online-milestone Telegram alerts.
+// Wired to run every 2 minutes (see scripts/cron-live-activity.sh).
+// ---------------------------------------------------------------------------
+
+const liveActivityCheckRoute = createRoute({
+  method: 'post',
+  path: '/cron/live-activity-check',
+  tags: ['Cron'],
+  summary: 'Poll concurrent active-user count for admin Telegram alerts',
+  description:
+    'Machine-to-machine endpoint, meant to run every 2 minutes via the OS crontab. Computes ' +
+    'how many users have been active in the last 5 minutes; alerts (throttled to once per 15 ' +
+    'min) if that exceeds 15, and separately alerts whenever it crosses a new 50/100/250/500 ' +
+    'milestone band. Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Check completed',
+      content: {
+        'application/json': {
+          schema: z.object({
+            activeCount: z.number(),
+            onlineMilestoneCrossed: z.number().nullable(),
+          }),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(liveActivityCheckRoute, async (c) => {
+  const result = await checkConcurrentActivity();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Reports stale-generating reaper — self-heals any purchased-report row stuck
+// at 'generating' because the process that claimed it crashed mid-run. Wired
+// to run every 5 minutes (see scripts/cron-reports-reap-stale.sh), matching
+// REPORT_STALE_GENERATING_MS in reports.repo.ts.
+// ---------------------------------------------------------------------------
+
+const reportsReapStaleRoute = createRoute({
+  method: 'post',
+  path: '/cron/reports-reap-stale',
+  tags: ['Cron'],
+  summary: "Reap purchased-report rows stuck at 'generating' past the stale threshold",
+  description:
+    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. Marks any ' +
+    "report row whose generation claim is older than REPORT_STALE_GENERATING_MS as 'failed' " +
+    '(reason: generation timed out) and refunds its price share — the same self-heal a repeat ' +
+    'purchase against the same identity already gets via claimReportRow, but without requiring ' +
+    'one. Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: z.object({ reaped: z.number() }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(reportsReapStaleRoute, async (c) => {
+  const result = await reapStaleReports();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Palm readings stale-generating reaper — same self-heal as reports above,
+// keyed to PALM_STALE_GENERATING_MS in palm.repo.ts (see
+// scripts/cron-palm-reap-stale.sh).
+// ---------------------------------------------------------------------------
+
+const palmReapStaleRoute = createRoute({
+  method: 'post',
+  path: '/cron/palm-reap-stale',
+  tags: ['Cron'],
+  summary: "Reap palm_readings rows stuck at 'generating' past the stale threshold",
+  description:
+    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. Marks any ' +
+    "palm reading whose generation claim is older than PALM_STALE_GENERATING_MS as 'failed' " +
+    '(reason: generation timed out) and refunds its price. Authenticated via the ' +
+    'X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: z.object({ reaped: z.number() }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(palmReapStaleRoute, async (c) => {
+  const result = await reapStalePalmReadings();
+  return c.json(result, 200);
 });

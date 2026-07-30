@@ -33,11 +33,18 @@ vi.mock('../src/lib/notifications/telegram.js', () => ({
   sendAlert: () => Promise.resolve(true),
 }));
 
+// Spied rather than passed through, so the `silent` tests below can assert on
+// whether an alert was raised at all.
+const alertThrottledMock = vi.fn(() => Promise.resolve(true));
+vi.mock('../src/lib/notifications/alerts.js', () => ({
+  alertThrottled: alertThrottledMock,
+}));
+
 const { rateLimiter } = await import('../src/middleware/rate-limit.js');
 const { errorHandler } = await import('../src/middleware/error.js');
 
 /** Build an app whose limiter sees `user` only if one is supplied. */
-function makeApp(opts: { max: number; name: string; user?: { id: string } }) {
+function makeApp(opts: { max: number; name: string; user?: { id: string }; silent?: boolean }) {
   const app = new Hono();
   // Mirror the real app so AppError('TOO_MANY_REQUESTS') surfaces as a 429
   // rather than an unhandled 500.
@@ -48,7 +55,15 @@ function makeApp(opts: { max: number; name: string; user?: { id: string } }) {
       await next();
     });
   }
-  app.use('*', rateLimiter({ windowMs: 60_000, max: opts.max, name: opts.name }));
+  app.use(
+    '*',
+    rateLimiter({
+      windowMs: 60_000,
+      max: opts.max,
+      name: opts.name,
+      ...(opts.silent === undefined ? {} : { silent: opts.silent }),
+    }),
+  );
   app.get('/ping', (c) => c.text('ok'));
   return app;
 }
@@ -68,6 +83,7 @@ beforeEach(() => {
   store.clear();
   evalCalls.length = 0;
   fakeEnv.TRUST_PROXY = false;
+  alertThrottledMock.mockClear();
 });
 
 describe('rateLimiter keying', () => {
@@ -148,5 +164,38 @@ describe('rateLimiter namespacing', () => {
     const chatFirst = await request(chat, '203.0.113.30');
     expect(chatFirst.status).toBe(200);
     expect(new Set(evalCalls).size).toBe(2);
+  });
+});
+
+describe('rateLimiter silent mode', () => {
+  // The per-user chat pacing limiter is sized so ordinary impatient people
+  // reach it. Alerting on that would page continuously and mean nothing, and
+  // naming the ceiling in the response would advertise a quota the product
+  // deliberately never mentions.
+  it('still rejects, but raises no alert', async () => {
+    const app = makeApp({ max: 1, name: 'chat-question', silent: true, user: { id: 'u1' } });
+
+    expect((await request(app, '203.0.113.50')).status).toBe(200);
+    expect((await request(app, '203.0.113.50')).status).toBe(429);
+    expect(alertThrottledMock).not.toHaveBeenCalled();
+  });
+
+  it('does not disclose the limit or the retry delay in the response body', async () => {
+    const app = makeApp({ max: 1, name: 'chat-question', silent: true, user: { id: 'u2' } });
+
+    await request(app, '203.0.113.51');
+    const rejected = await request(app, '203.0.113.51');
+    const body = await rejected.text();
+
+    expect(body).not.toMatch(/rate limit/i);
+    expect(body).not.toMatch(/\d+\s*seconds/i);
+  });
+
+  it('leaves alerting on by default, so existing limiters are unaffected', async () => {
+    const app = makeApp({ max: 1, name: 'baseline', user: { id: 'u3' } });
+
+    await request(app, '203.0.113.52');
+    expect((await request(app, '203.0.113.52')).status).toBe(429);
+    expect(alertThrottledMock).toHaveBeenCalledTimes(1);
   });
 });

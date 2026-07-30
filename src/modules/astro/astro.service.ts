@@ -16,7 +16,7 @@ import {
 import {
   dateToJulianDay,
   calculatePlanetPositions,
-  calculateFullPanchang,
+  calculateFullPanchangAsync,
   detectMangalDosha,
 } from '../../lib/astro-engine/index.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
@@ -27,6 +27,12 @@ import { findActiveUserById } from '../users/users.repo.js';
 import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
+import '../reports/generators/index.js';
+import { findReportById } from '../reports/reports.repo.js';
+import { partnerInputToBirthRecord } from '../reports/reports.service.js';
+import { REPORT_GENERATORS } from '../reports/report-generator.types.js';
+import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import type { MatchReportScores } from '../../lib/astro-engine/reports/match-report.js';
 import {
   PANCHANG_REFERENCE_POINTS,
   snapToReferencePoint,
@@ -42,7 +48,7 @@ import type {
   ForecastResponse,
   MatchmakingResponse,
 } from './astro.schemas.js';
-import type { MangalDosha } from '@aroha-astrology/shared';
+import type { MangalDosha, RegionId, RegionalMonth } from '@aroha-astrology/shared';
 
 /* -------------------------------------------------------------------------- */
 /* Onboarding                                                                  */
@@ -420,7 +426,14 @@ export async function getPanchang(
   const moonLong = moon?.longitude ?? 0;
 
   // Calculate full panchang using the astro-engine
-  const panchang = calculateFullPanchang(date, lat, lon, sunLong, moonLong, timezoneOffset);
+  const panchang = await calculateFullPanchangAsync(
+    date,
+    lat,
+    lon,
+    sunLong,
+    moonLong,
+    timezoneOffset,
+  );
 
   await upsertCachedPanchang({ forDate: isoDate, refKey, lat, lon, data: panchang });
 
@@ -460,6 +473,15 @@ export interface PanchangMonthDay {
   isEkadashi: boolean;
 }
 
+export interface PanchangMonthResult {
+  days: PanchangMonthDay[];
+  /** The regional lunar/solar calendar view (Vikram Samvat, Shalivahana Shaka, Bengali San) for
+   * this month, taken from a single representative day (the 15th) rather than recomputed per
+   * day — a whole-month label, not a per-day fact, and mid-month avoids the edge case where day 1
+   * could sit just before/after a regional new-year boundary. */
+  regionalMonths: Record<RegionId, RegionalMonth> | null;
+}
+
 /**
  * Lightweight per-day summaries for a calendar month view. Reuses getPanchang
  * per day (which already caches per reference point), fetched in parallel —
@@ -472,15 +494,21 @@ export async function getPanchangMonth(
   month: number,
   lat: number,
   lon: number,
-): Promise<PanchangMonthDay[]> {
+): Promise<PanchangMonthResult> {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const midMonthDay = Math.min(15, daysInMonth);
 
-  return Promise.all(
+  let regionalMonths: Record<RegionId, RegionalMonth> | null = null;
+
+  const days = await Promise.all(
     dayNumbers.map(async (day) => {
       const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const panchang = await getPanchang(lat, lon, isoDate);
       const { isFullMoon, isNewMoon, isEkadashi } = classifyTithiForCalendar(panchang.tithi.number);
+      if (day === midMonthDay) {
+        regionalMonths = panchang.regionalMonths ?? null;
+      }
       return {
         day,
         isoDate,
@@ -495,6 +523,8 @@ export async function getPanchangMonth(
       };
     }),
   );
+
+  return { days, regionalMonths };
 }
 
 export interface PanchangWarmupResult {
@@ -996,6 +1026,57 @@ export async function buildSecondChartFacts(
   ];
 }
 
+/**
+ * Loads an already-purchased match_report row (see POST /v1/reports/purchase, key='match_report')
+ * and builds labeled facts for chat grounding: the real Guna Milan score, all 8 life-area risk
+ * factors with their classical evidence, and the purchased narrative cards — so "Ask Astrologer"
+ * from the compatibility report page can answer follow-up questions grounded in the SAME data the
+ * user already paid for and read, not a re-typed summary or a guess. Owner-scoped (404 on a row
+ * belonging to someone else reads the same as "not found" — never leaks existence) and best-
+ * effort throughout: any failure here must never break the chat reply, just degrade to no
+ * match-report facts, same contract as buildSecondChartFacts above.
+ */
+export async function buildMatchReportFacts(userId: string, reportId: string): Promise<string[]> {
+  const row = await findReportById(reportId);
+  if (!row || row.userId !== userId || row.reportKey !== 'match_report' || row.status !== 'ready') {
+    return [];
+  }
+
+  const generator = REPORT_GENERATORS.match_report;
+  if (!generator) return [];
+
+  const kundli = await findKundliByUserId(row.userId, row.birthProfileId);
+  const chart = kundli?.chartData ?? null;
+
+  let partnerChart: Record<string, unknown> | null = null;
+  if (row.input) {
+    const metrology = await computeMetrology(partnerInputToBirthRecord(row.input));
+    partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
+  }
+
+  const scores = generator.computeScores(
+    { chart, partnerChart },
+    row.periodMonth,
+  ) as MatchReportScores;
+  const content = row.content as {
+    sections?: Array<{ heading: string; paragraphs: string[] }>;
+  } | null;
+  const sections = content?.sections ?? [];
+
+  const lines: string[] = [
+    `Real Compatibility Match Report the user ALREADY PURCHASED and read (report id ${reportId}, ` +
+      `not a guess): Guna Milan score ${scores.gunaMilanScore}/${scores.gunaMaxScore} ` +
+      `(${scores.compatibilityBand}).`,
+  ];
+  for (const f of scores.riskFactors) {
+    lines.push(`Life area "${f.key}" — severity ${f.severity}. ${f.evidence.join(' ')}`);
+  }
+  for (const s of sections) {
+    lines.push(`${s.heading}: ${s.paragraphs.join(' ')}`);
+  }
+  return lines;
+}
+
 export async function* chatStream(
   userId: string,
   message: string,
@@ -1005,6 +1086,9 @@ export async function* chatStream(
   signal?: AbortSignal,
   locale: string = 'en',
   compareProfileId?: string,
+  // ID of an already-purchased match_report row — see ChatRequestSchema's doc comment.
+  // Independent of compareProfileId (a match_report is not a saved birth_profiles row).
+  matchReportId?: string,
   // The active profile (primary or an additional saved one), already resolved
   // ONCE by the caller (astro.routes.ts's chatRoute — it needs the same
   // resolution for chat-session scoping) and threaded through here rather
@@ -1013,6 +1097,11 @@ export async function* chatStream(
   // the one exception, doing a second, redundant `resolveActiveProfileContext`
   // call on every single message.
   profile?: ProfileContext,
+  // When resuming a stored session, its `updatedAt` — lets buildChatMessages
+  // warn the model that the replayed history above may be from a much
+  // earlier date (see historyStalenessNote in scholar.ts). Undefined for a
+  // brand-new session, which needs no such warning.
+  sessionLastActivityAt?: Date,
 ): AsyncGenerator<ChatStreamEvent> {
   // Death/self-harm policy gate — runs before checkTopicGate (and before any
   // chart/grounding work) so a self-harm message never reaches the topic
@@ -1081,7 +1170,13 @@ export async function* chatStream(
     // Fire-and-forget — a facts-save failure must never break the chat reply.
     void saveUserFacts(userId, profile?.birthProfileId ?? null, facts).catch(() => {});
   }
-  state.chatContext = { history: recentHistory, summary };
+  state.chatContext = {
+    history: recentHistory,
+    summary,
+    // exactOptionalPropertyTypes: omit the key entirely for a new session
+    // rather than setting it to `undefined`.
+    ...(sessionLastActivityAt ? { lastActivityAt: sessionLastActivityAt } : {}),
+  };
 
   // Share-safe, non-identifying context (gender/relationship/interests) —
   // does not touch the "never the name" rule, see buildProfileFacts's
@@ -1113,6 +1208,14 @@ export async function* chatStream(
     ? await buildSecondChartFacts(userId, groundingSource, compareProfileId).catch(() => [])
     : [];
 
+  // A purchased Compatibility Match Report — only when the client explicitly asks for one via
+  // matchReportId (see ChatRequestSchema). Independent of compareProfileId/secondChartFacts above
+  // (a match_report is not a saved birth_profiles row). Best-effort: a bad id, an owner mismatch,
+  // or a not-yet-ready report must never break the chat reply.
+  const matchReportFacts = matchReportId
+    ? await buildMatchReportFacts(userId, matchReportId).catch(() => [])
+    : [];
+
   // Relocation/astrocartography scan — only when the message actually asks a
   // "where" question (see RELOCATION_KEYWORDS above for why this is gated
   // unlike Panchang).
@@ -1130,7 +1233,13 @@ export async function* chatStream(
         }).catch(() => [])
       : [];
 
-  const extraFacts = [...profileFacts, ...panchangFacts, ...secondChartFacts, ...relocationFacts];
+  const extraFacts = [
+    ...profileFacts,
+    ...panchangFacts,
+    ...secondChartFacts,
+    ...matchReportFacts,
+    ...relocationFacts,
+  ];
 
   const tokenStream = scholarStream(
     state,

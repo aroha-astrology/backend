@@ -13,6 +13,9 @@ import { calculateRahuKaal, calculateGulikaKaal, calculateYamagandaKaal } from '
 import { calculateRegionalMonths } from './regional';
 import { calculateChoghadiya } from './choghadiya';
 import { calculateHora } from './hora';
+import { getMoonriseMoonset } from './rise-set';
+import { getTithiBoundary, getNakshatraBoundary } from './boundaries';
+import { dateToJulianDay } from '../calculations/planetPositions.core';
 
 export { calculateTithi } from './tithi';
 export { calculateNakshatra } from './nakshatra';
@@ -22,6 +25,8 @@ export { calculateRahuKaal, calculateGulikaKaal, calculateYamagandaKaal } from '
 export { calculateChoghadiya } from './choghadiya';
 export { calculateHora } from './hora';
 export { calculateRegionalMonths } from './regional';
+export { getMoonriseMoonset } from './rise-set';
+export { getTithiBoundary, getNakshatraBoundary } from './boundaries';
 
 // Weekday names
 const WEEKDAY_NAMES = [
@@ -169,6 +174,77 @@ export function calculateFullPanchang(
     regionalMonths,
     choghadiya: { day: choghadiyaAll.slice(0, 8), night: choghadiyaAll.slice(8, 16) },
     hora,
+  };
+}
+
+/**
+ * Calculates the full Panchang PLUS two additive data points that need a
+ * real (not the NOAA-approximated) swisseph ephemeris lookup: moonrise/
+ * moonset, and the end-time (+ next name) of the current tithi and
+ * nakshatra. `calculateFullPanchang` above stays synchronous and unchanged
+ * (its existing callers/tests are unaffected) — this wraps it and is what
+ * `getPanchang` (astro/astro.service.ts) calls.
+ *
+ * Both new lookups are independent, real computations via `swe_rise_trans`
+ * (rise-set.ts) and an angle-crossing bisection (boundaries.ts) — see those
+ * modules for details, including a documented bug in `swisseph-wasm`'s own
+ * `rise_trans()` convenience method that rise-set.ts works around.
+ *
+ * @param date - The date for which to calculate the panchang.
+ * @param latitude - Geographic latitude.
+ * @param longitude - Geographic longitude.
+ * @param sunLong - Sidereal longitude of the Sun (0-360), for the same
+ *   moment `calculateFullPanchang` was already given this for.
+ * @param moonLong - Sidereal longitude of the Moon (0-360), ditto.
+ * @param timezoneOffsetHours - Civil UTC offset in hours (e.g. 5.5 for IST).
+ * @returns Complete PanchangData, including moonriseTime/moonsetTime and
+ *   tithi.endsAt/tithi.nextName/nakshatra.endsAt/nakshatra.nextName.
+ */
+export async function calculateFullPanchangAsync(
+  date: Date,
+  latitude: number,
+  longitude: number,
+  sunLong: number,
+  moonLong: number,
+  timezoneOffsetHours: number,
+): Promise<PanchangData> {
+  const base = calculateFullPanchang(
+    date,
+    latitude,
+    longitude,
+    sunLong,
+    moonLong,
+    timezoneOffsetHours,
+  );
+
+  // Reference moment for the boundary searches: local noon on `date`, same
+  // convention getPanchang (astro.service.ts) already uses to compute
+  // sunLong/moonLong in the first place.
+  const jdNoon = await dateToJulianDay(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    date.getDate(),
+    12,
+    0,
+    timezoneOffsetHours,
+  );
+
+  const [moonRiseSet, tithiBoundary, nakshatraBoundary] = await Promise.all([
+    getMoonriseMoonset(date, latitude, longitude, timezoneOffsetHours),
+    getTithiBoundary(jdNoon, timezoneOffsetHours),
+    getNakshatraBoundary(jdNoon, timezoneOffsetHours),
+  ]);
+
+  return {
+    ...base,
+    moonriseTime: moonRiseSet.moonrise ?? undefined,
+    moonsetTime: moonRiseSet.moonset ?? undefined,
+    tithi: { ...base.tithi, endsAt: tithiBoundary.endsAt, nextName: tithiBoundary.nextName },
+    nakshatra: {
+      ...base.nakshatra,
+      endsAt: nakshatraBoundary.endsAt,
+      nextName: nakshatraBoundary.nextName,
+    },
   };
 }
 

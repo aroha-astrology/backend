@@ -23,6 +23,16 @@ export const KundliSchema = z
 
 export type KundliDto = z.infer<typeof KundliSchema>;
 
+/** Optional request-scoped language override for yoga/dosha name+description — same convention as HouseInsightQuerySchema. */
+export const KundliQuerySchema = z.object({
+  language: z
+    .string()
+    .min(2)
+    .max(35)
+    .optional()
+    .openapi({ param: { name: 'language', in: 'query' } }),
+});
+
 /** 202 — generation status while the kundli is not yet available. */
 export const KundliStatusSchema = z
   .object({
