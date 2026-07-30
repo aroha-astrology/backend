@@ -153,7 +153,7 @@ function positionOf(positions: PlanetPosition[], planet: string): PlanetPosition
  * happened yet?" — the returned instant is the first sampled moment at which
  * it has.
  */
-async function refine(
+export async function refine(
   jdLow: number,
   jdHigh: number,
   stillBefore: (positions: PlanetPosition[]) => boolean,
