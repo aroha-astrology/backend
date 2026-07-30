@@ -18,6 +18,10 @@ import { scoreDomainWindows, DOMAIN_CONFIG, type Domain } from './astro-engine/d
 import { buildSharedDashaTree } from './dasha-window.js';
 import { calculateAllDivisionalChartsWithLagna } from './astro-engine/charts/divisionalCharts.js';
 import type { DailySynthesisResult } from './astro-tools/daily-synthesis.js';
+import {
+  evaluateSavBand,
+  hasBinduMandate,
+} from './astro-engine/calculations/ashtakavarga-shodhana.js';
 import type { ChartData } from '@aroha-astrology/shared';
 import {
   calculateArudhaLagna,
@@ -55,7 +59,7 @@ interface HouseFact {
   sign: string;
 }
 
-interface PlanetFact {
+export interface PlanetFact {
   planet: string;
   sign: string;
   signIndex: number;
@@ -348,7 +352,7 @@ function doshaFacts(doshas: Record<string, unknown> | null): string[] {
  * Thresholds (<25 weak, >30 strong) are the traditional rule of thumb against
  * the classical 337-point/12-house average of ~28.
  */
-function ashtakavargaFacts(
+export function ashtakavargaFacts(
   ashtakavarga: Record<string, unknown> | null,
   ascSignIndex: number | null,
 ): string[] {
@@ -366,11 +370,43 @@ function ashtakavargaFacts(
   const weak = byHouse.filter((h) => h.bindus < 25).map((h) => `House ${h.house}`);
   const strong = byHouse.filter((h) => h.bindus > 30).map((h) => `House ${h.house}`);
 
-  let line = `Ashtakavarga (Sarvashtakavarga bindu count per house): ${summary}.`;
+  let line = `Ashtakavarga (raw Sarvashtakavarga bindu count per house): ${summary}.`;
   if (weak.length > 0) line += ` Structurally weak (<25 bindus): ${weak.join(', ')}.`;
   if (strong.length > 0) line += ` Structurally strong (>30 bindus): ${strong.join(', ')}.`;
 
-  return [line];
+  const facts = [line];
+
+  // Reduced (Trikona + Ekadhipatya Shodhana) SAV — the classically correct
+  // basis for fine-grained house judgment; the raw table above is kept as
+  // context but is not what should drive a "this house is a power center"
+  // claim. Only present on kundlis generated after this reduction shipped —
+  // absent on older rows, which is why this is additive rather than a
+  // replacement of the raw line.
+  const reduced = ashtakavarga.reduced as Record<string, unknown> | undefined;
+  const reducedSarva = reduced?.sarva as Record<string, unknown> | undefined;
+  const reducedBindus = Array.isArray(reducedSarva?.bindus)
+    ? (reducedSarva.bindus as number[])
+    : null;
+  if (reducedBindus && reducedBindus.length === 12) {
+    const byHouseReduced = Array.from({ length: 12 }, (_, signIdx) => ({
+      house: ((signIdx - ascSignIndex + 12) % 12) + 1,
+      bindus: Number(reducedBindus[signIdx] ?? 0),
+    })).sort((a, b) => a.house - b.house);
+    const powerCenters = byHouseReduced
+      .filter((h) => evaluateSavBand(h.bindus) === 'power-center')
+      .map((h) => `House ${h.house}`);
+    const karmicStruggle = byHouseReduced
+      .filter((h) => evaluateSavBand(h.bindus) === 'karmic-struggle')
+      .map((h) => `House ${h.house}`);
+    let reducedLine = `Reduced Ashtakavarga (after Trikona + Ekadhipatya Shodhana — the more accurate basis for house-strength judgment): ${byHouseReduced.map((h) => `H${h.house}:${h.bindus}`).join(', ')}.`;
+    if (powerCenters.length > 0)
+      reducedLine += ` Power centers (>=30, even malefics deliver good results here): ${powerCenters.join(', ')}.`;
+    if (karmicStruggle.length > 0)
+      reducedLine += ` Karmic-struggle zones (<=25, results demand real effort): ${karmicStruggle.join(', ')}.`;
+    facts.push(reducedLine);
+  }
+
+  return facts;
 }
 
 /**
@@ -380,13 +416,17 @@ function ashtakavargaFacts(
  * `ashtakavargaFacts` above only surfaces the Sarva (total) table; this adds
  * the per-planet detail the interface already carries but nothing read.
  */
-function bhinnashtakavargaFacts(
+export function bhinnashtakavargaFacts(
   ashtakavarga: Record<string, unknown> | null,
   planets: PlanetFact[],
 ): string[] {
   if (!ashtakavarga) return [];
   const bhinna = ashtakavarga.bhinna as Array<Record<string, unknown>> | undefined;
   if (!Array.isArray(bhinna)) return [];
+
+  const reducedBhinna = (ashtakavarga.reduced as Record<string, unknown> | undefined)?.bhinna as
+    | Array<Record<string, unknown>>
+    | undefined;
 
   const lines: string[] = [];
   for (const entry of bhinna) {
@@ -396,9 +436,18 @@ function bhinnashtakavargaFacts(
     const placement = planets.find((p) => p.planet === planetName);
     if (!placement) continue;
     const ownBindus = bindus[placement.signIndex] ?? 0;
-    lines.push(
-      `${planetName} has ${ownBindus} Bhinnashtakavarga bindus in its own natal house (house ${placement.house}, ${placement.sign}) — self-support at its own placement`,
-    );
+    let line = `${planetName} has ${ownBindus} raw Bhinnashtakavarga bindus in its own natal house (house ${placement.house}, ${placement.sign}) — self-support at its own placement`;
+
+    const reducedEntry = reducedBhinna?.find((b) => String(b.planet) === planetName);
+    const reducedPlanetBindus = Array.isArray(reducedEntry?.bindus)
+      ? (reducedEntry.bindus as number[])
+      : null;
+    if (reducedPlanetBindus && reducedPlanetBindus.length === 12) {
+      const reducedOwnBindus = reducedPlanetBindus[placement.signIndex] ?? 0;
+      const mandate = hasBinduMandate(reducedOwnBindus) ? 'has' : 'lacks';
+      line += `; after Shodhana reduction this is ${reducedOwnBindus} bindus, which ${mandate} the classical mandate (>=4) to deliver favorable results when transited`;
+    }
+    lines.push(line);
   }
   return lines;
 }

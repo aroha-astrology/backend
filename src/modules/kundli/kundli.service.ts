@@ -9,6 +9,7 @@ import {
   getCurrentSaturnLongitude,
   detectCurrentSadeSati,
 } from '../../lib/astro-engine/index.js';
+import { computeReducedAshtakavarga } from '../../lib/astro-engine/calculations/ashtakavarga-shodhana.js';
 import type { ZodiacSign, Yoga } from '@aroha-astrology/shared';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
@@ -284,6 +285,13 @@ async function runGeneration(
     const yogas = tryCompute('yogas', () => detectAllYogas(chart));
     const doshas = tryCompute('doshas', () => analyzeAllDoshas(chart, currentSaturnLongitude));
     const ashtakavarga = tryCompute('ashtakavarga', () => calculateAshtakavarga(chart));
+    // Trikona + Ekadhipatya Shodhana reductions, stored alongside (never
+    // instead of) the raw bhinna/sarva tables above — see
+    // ashtakavarga-shodhana.ts for why the raw 337-point SAV total isn't
+    // what should drive fine-grained transit judgment.
+    const reducedAshtakavarga = ashtakavarga
+      ? tryCompute('reducedAshtakavarga', () => computeReducedAshtakavarga(ashtakavarga, chart))
+      : null;
 
     await markKundliReady(user.id, profile.birthProfileId, claimedAt, {
       ayanamsa: inputs.ayanamsa,
@@ -294,7 +302,7 @@ async function runGeneration(
       dashaData: { vimshottari: dasha, yogini },
       yogaData: yogas ? { yogas } : null,
       doshaData: doshas ? (doshas as unknown as Record<string, unknown>) : null,
-      ashtakavargaData: ashtakavarga ? (ashtakavarga as unknown as Record<string, unknown>) : null,
+      ashtakavargaData: ashtakavarga ? { ...ashtakavarga, reduced: reducedAshtakavarga } : null,
     });
 
     // The horoscope LLM context is only grounded once the kundli is actually
