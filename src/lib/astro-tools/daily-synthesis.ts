@@ -59,6 +59,10 @@ export interface DailySynthesisResult {
   date: string;
   /** Aggregate score 1 (poor) – 5 (excellent) */
   score: number;
+  /** The Mahadasha/Antardasha-derived band this score was positioned within — see computeAggregateScore. */
+  scoreBand: { floor: number; ceiling: number };
+  /** Human-readable chain explaining the band and where today's transits placed the score inside it. */
+  scoreReasoning: string[];
   dashaTransit: {
     mahadasha?: DashaTranistDetail | undefined;
     antardasha?: DashaTranistDetail | undefined;
@@ -185,42 +189,134 @@ async function getCurrentSky(asOf?: string): Promise<{
 }
 
 // =============================================================================
-// Score computation
+// Score computation — Mahadasha/Antardasha/Gochara hierarchy
+// =============================================================================
+// BPHS mandates a strict hierarchy, not a flat sum of equal layers:
+// Mahadasha sets the absolute ceiling/floor of what a period can deliver,
+// Antardasha narrows that range toward its own theme, and Gochara (transits:
+// Kakshya, Vedha, Tara Bala/Chandrabala, Panchaka) only decides WHERE within
+// that already-bounded range a given day lands. A brilliant transit during a
+// debilitated Mahadasha still can't outrank a mediocre transit during an
+// exalted one — that's the whole point of the hierarchy, and is exactly what
+// the flat additive model this replaces got backwards.
 // =============================================================================
 
-function computeAggregateScore(
+const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value));
+
+/**
+ * The Mahadasha lord's dignity sets a 2-point-wide absolute band on the 1-5
+ * scale: a debilitated lord (qualityScore 0) caps the period at [1,3]; an
+ * exalted lord (qualityScore 5) floors it at [3,5]. Nothing later in the
+ * pipeline is allowed to place a score outside this band.
+ */
+export function mahadashaBand(mdQuality: DashaTranistDetail | undefined): [number, number] {
+  if (!mdQuality) return [1, 5];
+  const center = 2 + mdQuality.qualityScore * 0.4; // 2 (debilitated) .. 4 (exalted)
+  return [clamp(center - 1, 1, 5), clamp(center + 1, 1, 5)];
+}
+
+/**
+ * The Antardasha lord narrows the Mahadasha band toward its own dignity —
+ * quartering the band's width and re-centering it at the AD lord's implied
+ * position within the MD band — but can never widen it or push outside the
+ * MD band's own floor/ceiling. A weak AD lord narrows toward the MD band's
+ * low end; a strong one narrows toward its high end.
+ */
+export function narrowByAntardasha(
+  mdBand: [number, number],
+  adQuality: DashaTranistDetail | undefined,
+): [number, number] {
+  if (!adQuality) return mdBand;
+  const [floor, ceiling] = mdBand;
+  const width = ceiling - floor;
+  const adPosition = adQuality.qualityScore / 5; // 0 (debilitated) .. 1 (exalted)
+  const adCenter = floor + adPosition * width;
+  const narrowedHalfWidth = (width / 2) * 0.5; // quarter of the original width
+  return [
+    clamp(adCenter - narrowedHalfWidth, floor, ceiling),
+    clamp(adCenter + narrowedHalfWidth, floor, ceiling),
+  ];
+}
+
+/**
+ * Gochara (transits) never set the band — they only decide where within it a
+ * given day falls, expressed as a 0 (worst) .. 1 (best) fraction. Combines
+ * Kakshya, Tara Bala/Chandrabala, Vedha, and Panchaka the same way the old
+ * flat model weighted them, just renormalized onto [0,1] instead of added to
+ * an absolute score.
+ */
+export function gocharaFraction(
+  kakshya: Record<string, unknown>,
+  lunar: Record<string, unknown> | undefined,
+  vedhaBlockedCount: number,
+  panchaka: Record<string, unknown> | undefined,
+): number {
+  let raw = 0; // ranges roughly [-2.5, 2] across all inputs below
+
+  const kakshyaMap: Record<string, number> = { good: 1, average: 0, poor: -0.5 };
+  raw += kakshyaMap[(kakshya.quality as string) ?? 'average'] ?? 0;
+
+  if (lunar) {
+    const lunarMap: Record<string, number> = { excellent: 1, good: 0.5, average: 0, poor: -1 };
+    raw += lunarMap[(lunar.overallQuality as string) ?? 'average'] ?? 0;
+  }
+
+  raw -= vedhaBlockedCount * 0.2;
+
+  if (panchaka?.isDangerous) raw -= 0.5;
+
+  // raw's typical range is [-2.5, 2] (best case 1 + 1 = 2; worst case
+  // -0.5 - 1 - 0.5 - a few tenths of Vedha blocks = around -2.5); an
+  // unusually large Vedha block count can push raw further negative, which
+  // the final clamp below simply saturates to fraction 0 rather than going
+  // out of range.
+  return clamp((raw + 2.5) / 4.5, 0, 1);
+}
+
+export interface AggregateScoreResult {
+  score: number;
+  band: { floor: number; ceiling: number };
+  reasoning: string[];
+}
+
+export function computeAggregateScore(
   mdQuality: DashaTranistDetail | undefined,
   adQuality: DashaTranistDetail | undefined,
   kakshya: Record<string, unknown>,
   lunar: Record<string, unknown> | undefined,
   vedhaBlockedCount: number,
   panchaka: Record<string, unknown>,
-): number {
-  let score = 3.0; // neutral baseline
+): AggregateScoreResult {
+  const reasoning: string[] = [];
 
-  if (mdQuality) score += (mdQuality.qualityScore - 3) * 0.3;
-  if (adQuality) score += (adQuality.qualityScore - 3) * 0.2;
-
-  const kakshyaMap: Record<string, number> = { good: 1, average: 0, poor: -0.5 };
-  score += kakshyaMap[(kakshya.quality as string) ?? 'average'] ?? 0;
-
-  if (lunar) {
-    const lunarMap: Record<string, number> = {
-      excellent: 1,
-      good: 0.5,
-      average: 0,
-      poor: -1,
-    };
-    score += lunarMap[(lunar.overallQuality as string) ?? 'average'] ?? 0;
+  const mdBand = mahadashaBand(mdQuality);
+  if (mdQuality) {
+    reasoning.push(
+      `Mahadasha lord ${mdQuality.planet} is ${mdQuality.dignity} (transiting ${mdQuality.transitSign}), setting this period's absolute range to ${mdBand[0].toFixed(1)}-${mdBand[1].toFixed(1)}.`,
+    );
+  } else {
+    reasoning.push('No active Mahadasha lord known — using the full 1-5 range as the period band.');
   }
 
-  score -= vedhaBlockedCount * 0.2;
-
-  if (panchaka && (panchaka.isDangerous as boolean)) {
-    score -= 0.5;
+  const narrowedBand = narrowByAntardasha(mdBand, adQuality);
+  if (adQuality) {
+    reasoning.push(
+      `Antardasha lord ${adQuality.planet} is ${adQuality.dignity}, narrowing today's range to ${narrowedBand[0].toFixed(1)}-${narrowedBand[1].toFixed(1)} within that Mahadasha band.`,
+    );
   }
 
-  return Math.max(1, Math.min(5, Math.round(score)));
+  const fraction = gocharaFraction(kakshya, lunar, vedhaBlockedCount, panchaka);
+  const raw = narrowedBand[0] + fraction * (narrowedBand[1] - narrowedBand[0]);
+  const score = clamp(Math.round(raw), 1, 5);
+  reasoning.push(
+    `Today's transits (Kakshya/lunar day quality/Vedha/Panchaka) place the day at ${(fraction * 100).toFixed(0)}% through that range, giving a final score of ${score}/5.`,
+  );
+
+  return {
+    score,
+    band: { floor: narrowedBand[0], ceiling: narrowedBand[1] },
+    reasoning,
+  };
 }
 
 // =============================================================================
@@ -344,7 +440,7 @@ export async function synthesizeDailyForecast(
   );
 
   // ── Score ─────────────────────────────────────────────────────────────────
-  const score = computeAggregateScore(
+  const { score, band, reasoning } = computeAggregateScore(
     mdQuality,
     adQuality,
     kakshya as unknown as Record<string, unknown>,
@@ -356,6 +452,8 @@ export async function synthesizeDailyForecast(
   return {
     date: dateStr,
     score,
+    scoreBand: band,
+    scoreReasoning: reasoning,
     dashaTransit: {
       ...(mdQuality !== undefined ? { mahadasha: mdQuality } : {}),
       ...(adQuality !== undefined ? { antardasha: adQuality } : {}),

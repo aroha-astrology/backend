@@ -6,6 +6,8 @@ function baseSynthesis(overrides: Partial<DailySynthesisResult> = {}): DailySynt
   return {
     date: '2026-08-01',
     score: 3,
+    scoreBand: { floor: 1, ceiling: 5 },
+    scoreReasoning: [],
     dashaTransit: {},
     vedha: { blockedCount: 0, details: [] },
     kakshya: undefined,
@@ -27,6 +29,25 @@ describe('chat-grounding: synthesisFacts', () => {
     const facts = synthesisFacts(baseSynthesis({ score: 4 }));
     expect(facts[0]).toContain('DETERMINISTIC DAILY SCORE');
     expect(facts[0]).toContain('4/5');
+  });
+
+  it('surfaces the score-band reasoning chain as its own fact, right after the score', () => {
+    const facts = synthesisFacts(
+      baseSynthesis({
+        scoreReasoning: [
+          'Mahadasha lord Saturn is debilitated, setting this range to 1.0-3.0.',
+          'Transits place the day at 80% through that range, giving a final score of 3/5.',
+        ],
+      }),
+    );
+    expect(facts[1]).toContain('SCORE REASONING');
+    expect(facts[1]).toContain('debilitated');
+    expect(facts[1]).toContain('1.0-3.0');
+  });
+
+  it('omits the reasoning fact when the chain is empty', () => {
+    const facts = synthesisFacts(baseSynthesis({ scoreReasoning: [] }));
+    expect(facts.some((f) => f.startsWith('SCORE REASONING'))).toBe(false);
   });
 
   it('surfaces the Mahadasha/Antardasha lord dignity in plain-language-adjacent form', () => {

@@ -704,6 +704,14 @@ export function synthesisFacts(synthesis: DailySynthesisResult | null | undefine
     `DETERMINISTIC DAILY SCORE (computed from the classical layers below, not narrated): ${synthesis.score}/5. Your per-area scores must stay within 1 point of this — do not narrate a markedly better or worse day than this number supports.`,
   );
 
+  // Why the score sits where it does — the Mahadasha/Antardasha/Gochara
+  // hierarchy's own reasoning chain (see daily-synthesis.ts's
+  // computeAggregateScore), so the narrative can say "the period's ceiling
+  // is X because Y" instead of presenting the score as unexplained.
+  if (synthesis.scoreReasoning.length > 0) {
+    facts.push(`SCORE REASONING: ${synthesis.scoreReasoning.join(' ')}`);
+  }
+
   const { mahadasha, antardasha } = synthesis.dashaTransit;
   if (mahadasha) {
     facts.push(
