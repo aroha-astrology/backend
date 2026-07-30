@@ -22,6 +22,7 @@ import { checkAllVedha } from './vedha.js';
 import { dailyKakshyaScore } from './kakshya.js';
 import { dailyLunarAssessment } from './tara-bala.js';
 import { detectDoubleTransit, dashaLordTransitQuality, SIGNS } from './transit.js';
+import { findTransitEvents } from './transit-events.js';
 import { computePanchaka } from './panchaka.js';
 import { calculateTithi } from '../astro-engine/panchang/tithi.js';
 import type { Category, CategoryReading } from '@aroha-astrology/shared';
@@ -122,6 +123,23 @@ export interface PeriodicMoonSignPrediction {
   luckyNumber: number;
   /** Snapshot of major-planet placements relative to this sign, taken at periodStart. */
   keyTransits: { planet: string; sign: string; house: number; influence: string }[];
+  /**
+   * The macro pivot points (ingresses/stations) that actually happen WITHIN
+   * this period, chronologically — the primary narrative material for what
+   * makes this specific week/month/year different from another one, as
+   * opposed to `keyTransits`' single-moment snapshot or the day-sampling
+   * average below. See the "Weekly / Monthly / Yearly" section header for
+   * why this exists alongside (not instead of) the sampled-day aggregate.
+   */
+  keyEvents: {
+    planet: string;
+    eventType: 'ingress' | 'retrograde' | 'direct';
+    date: string;
+    house: number;
+    /** True for retrograde/direct stations — the audit's volatility flag: a station intensifies that planet's effect on this house for the rest of the period. */
+    isVolatile: boolean;
+    description: string;
+  }[];
   /** Health/Career/Marriage + a derived Overall, aggregated across the sampled daily predictions. */
   categories: Record<Category, CategoryReading>;
 }
@@ -954,9 +972,18 @@ export async function moonSignPrediction(
 // =============================================================================
 // Weekly / Monthly / Yearly moon-sign aggregation
 // =============================================================================
-// Per spec 1.1: these MUST be aggregates of the daily engine output, never
-// independent narration — every number here traces back to moonSignPrediction
-// calls at sampled dates, just averaged/summarized differently per period.
+// UPDATED per the 2026-07-30 predictive-engine audit: pure day-sampling
+// averages flatten a period into a single number and miss the actual pivot
+// points — a Mercury ingress on the 12th, a Saturn station on the 20th — that
+// are what genuinely distinguish one week/month from another. The sampled
+// daily aggregate (score/quality/favorableDays/bestDay/worstDay) is kept —
+// it's still a real, useful "how many good days did you get" signal, per the
+// audit's own guidance to demote rather than delete it — but `keyEvents`
+// (the real macro ingresses/stations within the period, from
+// astro-tools/transit-events.ts) is now the PRIMARY narrative material a
+// consumer should lead with; stations are flagged as volatility per the
+// audit's own framing (a retrograde/direct turn matters more than an
+// ordinary sign change).
 
 function isoDateNDaysFrom(base: Date, days: number): string {
   const d = new Date(base);
@@ -1064,6 +1091,8 @@ async function buildPeriodic(
     { description, advice },
   );
 
+  const keyEvents = await buildKeyEvents(moonSignIndex, periodStart, periodEnd);
+
   return {
     sign: signName,
     period,
@@ -1081,8 +1110,45 @@ async function buildPeriodic(
     luckyColor: LUCKY_COLORS[signName] ?? 'White',
     luckyNumber: ((moonSignIndex + dayOfYearFor(new Date(periodStart))) % 9) + 1,
     keyTransits,
+    keyEvents,
     categories: { overall, health, career, marriage, finance, education },
   };
+}
+
+/**
+ * The real macro pivot points (ingresses/stations) within [periodStart,
+ * periodEnd), mapped to their house from this sign. Best-effort: an
+ * ephemeris-search failure yields an empty list, never a failed prediction —
+ * the sampled-day aggregate above is always still valid on its own.
+ */
+async function buildKeyEvents(
+  moonSignIndex: number,
+  periodStart: string,
+  periodEnd: string,
+): Promise<PeriodicMoonSignPrediction['keyEvents']> {
+  try {
+    const events = await findTransitEvents(new Date(periodStart), new Date(periodEnd));
+    return events.map((e) => {
+      const relevantSign = e.eventType === 'ingress' ? e.toSign : e.fromSign;
+      const signIndex = relevantSign ? SIGNS.indexOf(relevantSign) : -1;
+      const house = signIndex >= 0 ? ((signIndex - moonSignIndex + 12) % 12) + 1 : 0;
+      const isVolatile = e.eventType !== 'ingress';
+      const description =
+        e.eventType === 'ingress'
+          ? `${e.planet} moves into ${e.toSign} — a shift in your ${HOUSE_THEMES[house] ?? `${house}th house`} focus.`
+          : `${e.planet} turns ${e.eventType} in ${e.fromSign} — intensifies its effect on your ${HOUSE_THEMES[house] ?? `${house}th house`} focus for the rest of the period.`;
+      return {
+        planet: e.planet,
+        eventType: e.eventType,
+        date: e.forDate,
+        house,
+        isVolatile,
+        description,
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 /** Aggregates the next 7 daily predictions — one call per day, per spec 1.1. */

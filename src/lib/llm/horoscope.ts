@@ -17,9 +17,10 @@ import {
   HOROSCOPE_YEARLY_PROFILE,
   MODEL,
 } from '../../config/llm.js';
-import { buildGroundingFacts, type GroundingSource } from '../chat-grounding.js';
+import { buildGroundingFacts, periodEventFacts, type GroundingSource } from '../chat-grounding.js';
 import { getDailyLuckyElements } from '../astro-engine/lucky-elements.js';
 import { synthesizeDailyForecastFromKundli } from '../astro-tools/daily-synthesis.js';
+import { findTransitEvents } from '../astro-tools/transit-events.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';
 import type { MonthlyBreakdownEntry, StructuredHoroscope } from '../../db/schema.js';
 import type { CategoryReading } from '@aroha-astrology/shared';
@@ -292,6 +293,29 @@ const HOROSCOPE_YEARLY_RESPONSE_SCHEMA = {
   ],
 };
 
+/**
+ * The last calendar day (inclusive) of a period that started on `forDate`.
+ * Daily/tomorrow are single-day periods, so their "end" is just `forDate`
+ * itself — only weekly/monthly/yearly span a real range worth scanning for
+ * events (see periodEventFacts).
+ */
+export function periodEndDate(period: HoroscopePeriod, forDate: string): string {
+  const [y, m, d] = forDate.split('-').map(Number) as [number, number, number];
+  if (period === 'weekly') {
+    const dt = new Date(Date.UTC(y, m - 1, d + 6));
+    return dt.toISOString().slice(0, 10);
+  }
+  if (period === 'monthly') {
+    // Day 0 of the NEXT month is the last day of THIS month.
+    const dt = new Date(Date.UTC(y, m, 0));
+    return dt.toISOString().slice(0, 10);
+  }
+  if (period === 'yearly') {
+    return `${y}-12-31`;
+  }
+  return forDate;
+}
+
 function describePeriod(period: HoroscopePeriod, forDate: string): string {
   const [y, m] = forDate.split('-').map(Number);
   switch (period) {
@@ -345,7 +369,34 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
       )
     : null;
 
-  const facts = await buildGroundingFacts(source, ctx.forDate, undefined, synthesis);
+  // weekly/monthly/yearly span a real range, not a single day — without this,
+  // buildGroundingFacts only ever sees the sky at the period's FIRST day (a
+  // monthly reading grounded on the 1st, a yearly one on Jan 1), so the model
+  // had no way to narrate anything that changed afterward. Best-effort: a
+  // scan failure just means no period-events fact, never a failed generation.
+  let periodEvents: string[] = [];
+  if (ctx.period !== 'daily' && ctx.period !== 'tomorrow' && source.chart) {
+    try {
+      const natalPlanets =
+        (source.chart.planets as Array<Record<string, unknown>> | undefined) ?? [];
+      const moonSignIdx = natalPlanets.find((p) => p.planet === 'Moon')?.signIndex as
+        | number
+        | undefined;
+      const periodEnd = periodEndDate(ctx.period, ctx.forDate);
+      const events = await findTransitEvents(
+        new Date(`${ctx.forDate}T00:00:00.000Z`),
+        new Date(`${periodEnd}T23:59:59.999Z`),
+      );
+      periodEvents = periodEventFacts(events, moonSignIdx ?? null);
+    } catch {
+      // best-effort — see comment above
+    }
+  }
+
+  const facts = [
+    ...(await buildGroundingFacts(source, ctx.forDate, undefined, synthesis)),
+    ...periodEvents,
+  ];
   const factsBlock =
     facts.length > 0
       ? `CHART DATA:\n${facts.map((f) => `- ${f}`).join('\n')}`

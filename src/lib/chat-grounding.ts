@@ -22,6 +22,7 @@ import {
   evaluateSavBand,
   hasBinduMandate,
 } from './astro-engine/calculations/ashtakavarga-shodhana.js';
+import type { TransitEvent } from './astro-tools/transit-events.js';
 import type { ChartData } from '@aroha-astrology/shared';
 import {
   calculateArudhaLagna,
@@ -770,6 +771,44 @@ export function synthesisFacts(synthesis: DailySynthesisResult | null | undefine
   }
 
   return facts;
+}
+
+/**
+ * The macro events (ingresses/stations) that actually happened WITHIN a
+ * weekly/monthly/yearly period, so the LLM can narrate the period's real arc
+ * instead of only ever seeing the single-day snapshot at its start date (the
+ * bug this responds to: buildGroundingFacts(source, ctx.forDate) was called
+ * with only the period's FIRST day, so a monthly reading was grounded on the
+ * sky of the 1st and a yearly reading on Jan 1, no matter what changed
+ * afterward). Stations get an explicit "intensifies" callout per the audit's
+ * volatility framing — a retrograde/direct turn during the period matters
+ * more than an ordinary sign change.
+ */
+export function periodEventFacts(
+  events: TransitEvent[],
+  natalMoonSignIdx: number | null,
+): string[] {
+  if (events.length === 0) return [];
+
+  const lines = events.map((e) => {
+    const relevantSign = e.eventType === 'ingress' ? e.toSign : e.fromSign;
+    const signIndex = relevantSign ? SIGNS.indexOf(relevantSign) : -1;
+    const houseFromMoon =
+      natalMoonSignIdx != null && signIndex >= 0
+        ? ((signIndex - natalMoonSignIdx + 12) % 12) + 1
+        : null;
+    const houseNote = houseFromMoon ? ` (your ${houseFromMoon}th house from the Moon)` : '';
+
+    if (e.eventType === 'ingress') {
+      return `${e.planet} moves from ${e.fromSign} into ${e.toSign} on ${e.forDate}${houseNote} — a shift in that life area's focus partway through the period.`;
+    }
+    const verb = e.eventType === 'retrograde' ? 'turns retrograde' : 'turns direct';
+    return `${e.planet} ${verb} in ${e.fromSign} on ${e.forDate}${houseNote} — this intensifies ${e.planet}'s effect on that life area for the rest of the period.`;
+  });
+
+  return [
+    `KEY EVENTS DURING THIS PERIOD (narrate the period's actual arc around these — do not just describe the sky as it was on day one): ${lines.join(' ')}`,
+  ];
 }
 
 /**
