@@ -1770,6 +1770,67 @@ export type TransitAlertCopyRow = typeof transitAlertCopy.$inferSelect;
 export type NewTransitAlertCopyRow = typeof transitAlertCopy.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* saturn_phases — each user's current Sade Sati / Dhaiya phase, persisted    */
+/* -------------------------------------------------------------------------- */
+
+export const saturnPhaseEnum = pgEnum('saturn_phase', [
+  'sade-sati-rising',
+  'sade-sati-peak',
+  'sade-sati-setting',
+  'dhaiya-4th',
+  'dhaiya-8th',
+  'none',
+]);
+
+/**
+ * One row per (user, profile) recording the CURRENT Saturn phase from
+ * astro-engine/doshas/saturnPhaseTimeline.ts's real-ingress detection
+ * (detectRealSadeSati/detectRealDhaiya), not the cheap live-arithmetic
+ * estimate in doshas/sadeSati.ts. Upserted by the phase-detection cron; a
+ * phase value that differs from the previously stored row is a transition —
+ * see modules/cron/saturn-phase-alert.service.ts.
+ */
+export const saturnPhases = pgTable(
+  'saturn_phases',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = primary/self profile, same convention as kundlis.birthProfileId. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    phase: saturnPhaseEnum('phase').notNull(),
+    /** The full merged window containing `phase`, if it's an active phase (not 'none'). */
+    windowStart: timestamp('window_start', { withTimezone: true }),
+    windowEnd: timestamp('window_end', { withTimezone: true }),
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userPrimaryUnique: uniqueIndex('saturn_phases_user_primary_unique')
+      .on(table.userId)
+      .where(sql`${table.birthProfileId} is null`),
+    userProfileUnique: uniqueIndex('saturn_phases_user_profile_unique')
+      .on(table.userId, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
+  }),
+);
+
+export type SaturnPhaseRow = typeof saturnPhases.$inferSelect;
+export type NewSaturnPhaseRow = typeof saturnPhases.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* feature_flags — admin-editable overrides on top of the FEATURE_REGISTRY     */
 /* -------------------------------------------------------------------------- */
 

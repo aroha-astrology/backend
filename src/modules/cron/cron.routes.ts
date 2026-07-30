@@ -24,6 +24,11 @@ import {
   sendTransitAlerts,
 } from './transit-alert.service.js';
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
+import {
+  detectSaturnPhaseTransitions,
+  sendSaturnPhaseAlerts,
+} from './saturn-phase-alert.service.js';
+import { SaturnPhaseRunBodySchema, SaturnPhaseRunResultSchema } from './saturn-phase.schemas.js';
 import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js';
 import { reapStaleReports } from '../reports/reports.service.js';
 import { reapStalePalmReadings } from '../palm/palm.service.js';
@@ -325,6 +330,45 @@ cronRouter.openapi(transitAlertsRoute, async (c) => {
   // the boolean is folded into `reason` rather than overloading the field.
   const { skipped: _skipped, reason, ...rest } = r;
   return c.json({ action: 'send' as const, ...rest, ...(reason ? { reason } : {}) }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Saturn phase (Sade Sati / Dhaiya) detection + persistence + change alert.
+// Single combined action, unlike transit-alerts' 3-phase split: copy here is
+// static (not Gemini-drafted), so there's no draft step to isolate a model
+// failure from — see saturn-phase-alert.service.ts's header comment.
+// ---------------------------------------------------------------------------
+
+const saturnPhasesRoute = createRoute({
+  method: 'post',
+  path: '/cron/saturn-phases',
+  tags: ['Cron'],
+  summary: 'Detect Sade Sati/Dhaiya phase transitions, persist, and alert',
+  description:
+    "Recomputes every ready kundli's current Saturn phase from the real-ingress timeline " +
+    '(astro-engine/doshas/saturnPhaseTimeline.ts), persists it to saturn_phases, and pushes a ' +
+    'notification for every primary-profile user whose phase changed since the last run. ' +
+    'Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: SaturnPhaseRunBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Detection completed',
+      content: { 'application/json': { schema: SaturnPhaseRunResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(saturnPhasesRoute, async (c) => {
+  const body = c.req.valid('json');
+  const { checked, transitions } = await detectSaturnPhaseTransitions();
+  const alertsSent = body.dryRun ? 0 : await sendSaturnPhaseAlerts(transitions);
+  return c.json({ checked, transitions: transitions.length, alertsSent }, 200);
 });
 
 // ---------------------------------------------------------------------------
