@@ -19,6 +19,7 @@ import {
 } from '../../config/llm.js';
 import { buildGroundingFacts, type GroundingSource } from '../chat-grounding.js';
 import { getDailyLuckyElements } from '../astro-engine/lucky-elements.js';
+import { synthesizeDailyForecastFromKundli } from '../astro-tools/daily-synthesis.js';
 import type { HoroscopePeriod } from '../../modules/horoscope/horoscope.schemas.js';
 import type { MonthlyBreakdownEntry, StructuredHoroscope } from '../../db/schema.js';
 import type { CategoryReading } from '@aroha-astrology/shared';
@@ -330,7 +331,21 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
     ashtakavarga: (ctx.kundli?.ashtakavarga as Record<string, unknown> | undefined) ?? null,
   };
 
-  const facts = await buildGroundingFacts(source, ctx.forDate);
+  // The deterministic synthesis engine (Kakshya/Vedha/Tara Bala/Dasha-transit
+  // dignity/double-transit) is the authority for what today's reading says;
+  // Gemini narrates it, it doesn't invent its own read. `forDate` is a plain
+  // IST calendar day (YYYY-MM-DD) — anchor it to midday UTC so the ephemeris
+  // lookup lands on the intended day regardless of server timezone, matching
+  // chat-grounding.ts's `parseDateMidday` convention for the same input shape.
+  const synthesis = source.chart
+    ? await synthesizeDailyForecastFromKundli(
+        source.chart,
+        source.dasha,
+        `${ctx.forDate}T12:00:00.000Z`,
+      )
+    : null;
+
+  const facts = await buildGroundingFacts(source, ctx.forDate, undefined, synthesis);
   const factsBlock =
     facts.length > 0
       ? `CHART DATA:\n${facts.map((f) => `- ${f}`).join('\n')}`
@@ -372,7 +387,7 @@ CATEGORY GUIDELINES:
         { role: 'user', content: `Write ${describePeriod('yearly', ctx.forDate)}.` },
       ],
     });
-    const parsed = parseYearlyResponse(raw);
+    const parsed = parseYearlyResponse(raw, synthesis?.score);
     if (!parsed) {
       void import('../logger.js').then((m) =>
         m.logger.error({ raw }, 'unparseable JSON in yearly horoscope'),
@@ -396,7 +411,7 @@ CATEGORY GUIDELINES:
       { role: 'user', content: `Write ${describePeriod(ctx.period, ctx.forDate)}.` },
     ],
   });
-  const structured = parseStructuredResponse(raw);
+  const structured = parseStructuredResponse(raw, synthesis?.score);
   if (!structured) {
     void import('../logger.js').then((m) =>
       m.logger.error({ raw }, 'unparseable JSON in horoscope'),
@@ -447,7 +462,24 @@ export function cleanJsonString(raw: string): string {
   return cleaned.trim();
 }
 
-export function parseStructuredResponse(raw: string): StructuredHoroscope | null {
+/**
+ * Bounds a model-reported score to within 1 point of the deterministic
+ * synthesis engine's score (see synthesizeDailyForecastFromKundli). Gemini
+ * narrates the day; it does not get to independently decide "excellent
+ * career" on a day the math scores 1. Widening the band beyond ±1 would let
+ * the narrative drift back to ignoring the math; narrower would leave no
+ * room for the model's own per-category read.
+ */
+function clampToSynthesisBand(score: number, synthesisScore: number): number {
+  const lo = Math.max(1, synthesisScore - 1);
+  const hi = Math.min(5, synthesisScore + 1);
+  return Math.min(hi, Math.max(lo, score));
+}
+
+export function parseStructuredResponse(
+  raw: string,
+  synthesisScore?: number,
+): StructuredHoroscope | null {
   try {
     const data = JSON.parse(cleanJsonString(raw)) as {
       health?: unknown;
@@ -470,13 +502,34 @@ export function parseStructuredResponse(raw: string): StructuredHoroscope | null
     if (typeof data.luckyColor !== 'string' || !data.luckyColor.trim()) return null;
     if (typeof data.luckyNumber !== 'number') return null;
 
+    const clamp = (c: CategoryReading): CategoryReading => {
+      if (synthesisScore == null) return c;
+      const score = clampToSynthesisBand(c.score, synthesisScore);
+      return score === c.score ? c : { ...c, score, quality: scoreToQuality(score) };
+    };
+    const healthC = clamp(health);
+    const careerC = clamp(career);
+    const marriageC = clamp(marriage);
+    const financeC = clamp(finance);
+    const educationC = clamp(education);
+
     // Overall's score/quality is always server-derived — never trust the model's own
     // number for it, only its narrative text (see design doc).
-    const subScores = [health.score, career.score, marriage.score, finance.score, education.score];
-    const overallScore = Math.max(
+    const subScores = [
+      healthC.score,
+      careerC.score,
+      marriageC.score,
+      financeC.score,
+      educationC.score,
+    ];
+    const overallScoreRaw = Math.max(
       1,
       Math.min(5, Math.round(subScores.reduce((a, b) => a + b, 0) / subScores.length)),
     );
+    const overallScore =
+      synthesisScore != null
+        ? clampToSynthesisBand(overallScoreRaw, synthesisScore)
+        : overallScoreRaw;
     const overall: CategoryReading = {
       ...overallRaw,
       score: overallScore,
@@ -492,7 +545,14 @@ export function parseStructuredResponse(raw: string): StructuredHoroscope | null
       score: overall.score,
       luckyColor: data.luckyColor.trim(),
       luckyNumber: Math.min(9, Math.max(1, Math.round(data.luckyNumber))),
-      categories: { overall, health, career, marriage, finance, education },
+      categories: {
+        overall,
+        health: healthC,
+        career: careerC,
+        marriage: marriageC,
+        finance: financeC,
+        education: educationC,
+      },
     };
   } catch {
     return null;
@@ -575,8 +635,9 @@ function parseMonthCategoryHooks(
 
 export function parseYearlyResponse(
   raw: string,
+  synthesisScore?: number,
 ): { structured: StructuredHoroscope; months: MonthlyBreakdownEntry[] } | null {
-  const structured = parseStructuredResponse(raw);
+  const structured = parseStructuredResponse(raw, synthesisScore);
   if (!structured) return null;
   try {
     const data = JSON.parse(cleanJsonString(raw)) as {

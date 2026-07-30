@@ -22,6 +22,7 @@ import { dailyKakshyaScore } from './kakshya.js';
 import { dailyLunarAssessment } from './tara-bala.js';
 import { detectDoubleTransit, dashaLordTransitQuality, SIGNS } from './transit.js';
 import { computePanchaka } from './panchaka.js';
+import { calculateTithi } from '../astro-engine/panchang/tithi.js';
 import type { Category, CategoryReading } from '@aroha-astrology/shared';
 
 // =============================================================================
@@ -328,13 +329,11 @@ export async function synthesizeDailyForecast(
   const doubleTransit = detectDoubleTransit(jupSign, satSign, natalMoonSignIdx);
 
   // ── 7. Panchaka ──────────────────────────────────────────────────────────
-  // Panchaka needs tithi, vara, nakshatra, lagna indices (all 1-based)
-  // Use transit moon sign index as a proxy for nakshatra (1-based)
+  // Panchaka needs tithi, vara, nakshatra, lagna indices (all 1-based).
   const varaIndex = now.getUTCDay() + 1; // 1=Sunday .. 7=Saturday
-  // tithi: rough estimate from moon-sun angular difference / 12
-  // For a full panchang we'd need calculatePanchang; here we use the transit moon nakshatra
+  const tithi = calculateTithi(transitLons['Moon'] ?? 0, transitLons['Sun'] ?? 0);
   const panchakaResult = computePanchaka(
-    (((transitMoonNakIdx ?? 0) + 1) % 30) + 1, // proxy tithi 1-30
+    tithi.number, // real tithi (1-30), not a nakshatra-derived proxy
     varaIndex,
     (transitMoonNakIdx ?? 0) + 1, // nakshatra 1-based
     natalAscSignIdx + 1, // lagna 1-based
@@ -364,6 +363,62 @@ export async function synthesizeDailyForecast(
     panchaka: panchakaResult,
     savTransit,
   };
+}
+
+/**
+ * Extract the inputs `synthesizeDailyForecast` needs from a stored kundli's
+ * raw `chartData`/`dashaData` (same shape as `GroundingSource.chart`/`.dasha`
+ * in chat-grounding.ts). Mirrors the extraction `astro.service.ts`'s
+ * `dailyFullSynthesis` already does inline — centralized here so the
+ * personalized horoscope pipeline (horoscope.service.ts) can reuse it without
+ * duplicating the field-plucking logic.
+ *
+ * Returns null when the chart lacks a natal Moon placement (chart not ready
+ * or malformed) — the only precondition the synthesis engine actually needs.
+ */
+export function extractSynthesisInputs(
+  chart: Record<string, unknown> | null | undefined,
+  dasha: Record<string, unknown> | null | undefined,
+): DailySynthesisParams | null {
+  const natalPlanets = (chart?.planets as Array<Record<string, unknown>> | undefined) ?? [];
+  const moonPlanet = natalPlanets.find((p) => p.planet === 'Moon');
+  if (!moonPlanet) return null;
+
+  const ascendant = chart?.ascendant as Record<string, unknown> | undefined;
+  const natalAscSignIdx = (ascendant?.signIndex as number | undefined) ?? 0;
+  const natalMoonSignIdx = (moonPlanet.signIndex as number | undefined) ?? 0;
+  const natalMoonNakIdx = (moonPlanet.nakshatraIndex as number | undefined) ?? 0;
+
+  const vimshottari = (dasha?.vimshottari as Record<string, unknown> | undefined) ?? {};
+  const currentMd = vimshottari.currentMahadasha as Record<string, unknown> | undefined;
+  const currentAd = vimshottari.currentAntardasha as Record<string, unknown> | undefined;
+  const currentMdPlanet = (currentMd?.lord ?? currentMd?.planet) as string | undefined;
+  const currentAdPlanet = (currentAd?.lord ?? currentAd?.planet) as string | undefined;
+
+  return {
+    natalPlanets,
+    natalAscSignIdx,
+    natalMoonSignIdx,
+    natalMoonNakIdx,
+    ...(currentMdPlanet ? { currentMdPlanet } : {}),
+    ...(currentAdPlanet ? { currentAdPlanet } : {}),
+  };
+}
+
+/**
+ * Run the full daily synthesis engine against a stored kundli for a given
+ * date. Returns null when the kundli isn't ready/has no natal Moon — callers
+ * should treat a null result the same as "no synthesis data available" and
+ * fall back to prose-only grounding, never throw.
+ */
+export async function synthesizeDailyForecastFromKundli(
+  chart: Record<string, unknown> | null | undefined,
+  dasha: Record<string, unknown> | null | undefined,
+  asOf?: string,
+): Promise<DailySynthesisResult | null> {
+  const inputs = extractSynthesisInputs(chart, dasha);
+  if (!inputs) return null;
+  return synthesizeDailyForecast({ ...inputs, ...(asOf ? { asOf } : {}) });
 }
 
 // =============================================================================

@@ -144,7 +144,7 @@ describe('verify: childbirth chat-fix end-to-end', () => {
     const systemPromptContent = messages[0]!.content;
     console.log('=== SYSTEM PROMPT length (chars) ===', systemPromptContent.length);
 
-    expect(systemPromptContent).toContain(`Today is ${todayIST}`);
+    expect(systemPromptContent).toContain(`formatted as ${todayIST} in IST`);
     expect(systemPromptContent).toContain("Never invent or presume the user's life circumstances");
     expect(systemPromptContent).toContain('legitimate accuracy check');
     expect(systemPromptContent).toContain('STRONGEST FIRST');

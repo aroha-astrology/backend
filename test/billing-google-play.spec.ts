@@ -28,7 +28,6 @@ const baseOrder = {
   id: 'order-1',
   userId: 'user-1',
   packId: 'starter',
-  credits: 60,
   amountPaise: 4900,
   discountPaise: 0,
   finalAmountPaise: 4900,
@@ -61,7 +60,7 @@ describe('confirmGooglePlayPurchase', () => {
     vi.mocked(verifyGooglePlayPurchase).mockResolvedValue(true);
     vi.mocked(confirmOrderAndGrantCredits).mockResolvedValue({
       order: { ...baseOrder, status: 'paid', gatewayPaymentId: 'tok' },
-      credits: 60,
+      walletBalancePaise: 6000,
     });
     vi.mocked(consumeGooglePlayPurchase).mockResolvedValue(undefined);
 
@@ -79,7 +78,7 @@ describe('confirmGooglePlayPurchase', () => {
       productId: 'starter',
       purchaseToken: 'tok',
     });
-    expect(result.credits).toBe(60);
+    expect(result.walletBalancePaise).toBe(6000);
   });
 
   it('rejects when Google reports the purchase is not in a completed state', async () => {
@@ -98,7 +97,7 @@ describe('confirmGooglePlayPurchase', () => {
       status: 'paid',
       gatewayPaymentId: 'tok',
     });
-    vi.mocked(findActiveUserById).mockResolvedValue({ credits: 60 } as never);
+    vi.mocked(findActiveUserById).mockResolvedValue({ walletBalancePaise: 6000 } as never);
     vi.mocked(consumeGooglePlayPurchase).mockResolvedValue(undefined);
 
     const result = await confirmGooglePlayPurchase('user-1', {
@@ -111,7 +110,7 @@ describe('confirmGooglePlayPurchase', () => {
       productId: 'starter',
       purchaseToken: 'tok',
     });
-    expect(result.credits).toBe(60);
+    expect(result.walletBalancePaise).toBe(6000);
   });
 
   it('retries consume on idempotent replay even when the earlier consume attempt failed', async () => {
@@ -120,12 +119,12 @@ describe('confirmGooglePlayPurchase', () => {
       status: 'paid',
       gatewayPaymentId: 'tok',
     });
-    vi.mocked(findActiveUserById).mockResolvedValue({ credits: 60 } as never);
+    vi.mocked(findActiveUserById).mockResolvedValue({ walletBalancePaise: 6000 } as never);
     vi.mocked(consumeGooglePlayPurchase).mockRejectedValue(new Error('still unconsumed'));
 
     await expect(
       confirmGooglePlayPurchase('user-1', { purchaseToken: 'tok', productId: 'starter' }),
-    ).resolves.toMatchObject({ credits: 60 });
+    ).resolves.toMatchObject({ walletBalancePaise: 6000 });
 
     expect(consumeGooglePlayPurchase).toHaveBeenCalledWith({
       productId: 'starter',
@@ -164,7 +163,7 @@ describe('confirmGooglePlayPurchase', () => {
       .mockResolvedValueOnce({ ...baseOrder, status: 'paid', gatewayPaymentId: 'tok' });
     vi.mocked(verifyGooglePlayPurchase).mockResolvedValue(true);
     vi.mocked(confirmOrderAndGrantCredits).mockResolvedValue(undefined);
-    vi.mocked(findActiveUserById).mockResolvedValue({ credits: 60 } as never);
+    vi.mocked(findActiveUserById).mockResolvedValue({ walletBalancePaise: 6000 } as never);
 
     const result = await confirmGooglePlayPurchase('user-1', {
       purchaseToken: 'tok',
@@ -172,7 +171,7 @@ describe('confirmGooglePlayPurchase', () => {
     });
 
     expect(findLatestOrderForPack).toHaveBeenCalledTimes(2);
-    expect(result.credits).toBe(60);
+    expect(result.walletBalancePaise).toBe(6000);
     expect(consumeGooglePlayPurchase).not.toHaveBeenCalled();
   });
 
@@ -181,12 +180,12 @@ describe('confirmGooglePlayPurchase', () => {
     vi.mocked(verifyGooglePlayPurchase).mockResolvedValue(true);
     vi.mocked(confirmOrderAndGrantCredits).mockResolvedValue({
       order: { ...baseOrder, status: 'paid', gatewayPaymentId: 'tok' },
-      credits: 60,
+      walletBalancePaise: 6000,
     });
     vi.mocked(consumeGooglePlayPurchase).mockRejectedValue(new Error('already consumed'));
 
     await expect(
       confirmGooglePlayPurchase('user-1', { purchaseToken: 'tok', productId: 'starter' }),
-    ).resolves.toMatchObject({ credits: 60 });
+    ).resolves.toMatchObject({ walletBalancePaise: 6000 });
   });
 });

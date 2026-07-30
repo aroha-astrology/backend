@@ -17,6 +17,7 @@ import { NAKSHATRAS } from '@aroha-astrology/shared';
 import { scoreDomainWindows, DOMAIN_CONFIG, type Domain } from './astro-engine/dasha-confidence.js';
 import { buildSharedDashaTree } from './dasha-window.js';
 import { calculateAllDivisionalChartsWithLagna } from './astro-engine/charts/divisionalCharts.js';
+import type { DailySynthesisResult } from './astro-tools/daily-synthesis.js';
 import type { ChartData } from '@aroha-astrology/shared';
 import {
   calculateArudhaLagna,
@@ -634,6 +635,87 @@ async function fullGocharFacts(ascSignIndex: number | null, asOfDate?: string): 
 }
 
 /**
+ * Facts derived from the deterministic daily synthesis engine
+ * (astro-tools/daily-synthesis.ts's `synthesizeDailyForecast`) — the
+ * authoritative score and the layers that produced it. Only the horoscope
+ * pipeline currently passes a `synthesis` result (chat has no single `asOf`
+ * day to score); when absent this returns no facts and grounding behaves
+ * exactly as before.
+ *
+ * Deliberately plain-language + parenthetical Sanskrit, matching the rest of
+ * this file's fact style (e.g. "Rising Sign (Ascendant)") rather than bare
+ * jargon — these are input facts, not the model's output, but there's no
+ * reason to make the model's translation job harder than it needs to be.
+ */
+export function synthesisFacts(synthesis: DailySynthesisResult | null | undefined): string[] {
+  if (!synthesis) return [];
+  const facts: string[] = [];
+
+  facts.push(
+    `DETERMINISTIC DAILY SCORE (computed from the classical layers below, not narrated): ${synthesis.score}/5. Your per-area scores must stay within 1 point of this — do not narrate a markedly better or worse day than this number supports.`,
+  );
+
+  const { mahadasha, antardasha } = synthesis.dashaTransit;
+  if (mahadasha) {
+    facts.push(
+      `The major life-period lord (${mahadasha.planet}) is currently transiting ${mahadasha.transitSign} — ${mahadasha.dignity} dignity (${mahadasha.description}).`,
+    );
+  }
+  if (antardasha) {
+    facts.push(
+      `The minor life-period lord (${antardasha.planet}) is currently transiting ${antardasha.transitSign} — ${antardasha.dignity} dignity (${antardasha.description}).`,
+    );
+  }
+
+  if (synthesis.vedha.blockedCount > 0) {
+    facts.push(
+      `${synthesis.vedha.blockedCount} otherwise-favorable transit(s) today are currently obstructed (Vedha) — read those areas as blocked or delayed, not fully supportive.`,
+    );
+  }
+
+  const kakshya = synthesis.kakshya as
+    | { quality?: string; activeBindus?: number; total?: number }
+    | undefined;
+  if (kakshya?.quality) {
+    facts.push(
+      `Today's finer planetary sub-window quality (Kakshya): ${kakshya.quality}${
+        typeof kakshya.activeBindus === 'number' && typeof kakshya.total === 'number'
+          ? ` (${kakshya.activeBindus}/${kakshya.total} planets in a favorable compartment)`
+          : ''
+      }.`,
+    );
+  }
+
+  const lunar = synthesis.lunar as { overallQuality?: string } | undefined;
+  if (lunar?.overallQuality) {
+    facts.push(`Today's lunar day quality (Tara Bala / Chandra Bala): ${lunar.overallQuality}.`);
+  }
+
+  const doubleTransit = synthesis.doubleTransit as
+    | Array<{ house: number; sign: string }>
+    | undefined;
+  if (doubleTransit && doubleTransit.length > 0) {
+    const houses = doubleTransit.map((d) => d.house).join(', ');
+    facts.push(
+      `Jupiter and Saturn are jointly aspecting house(s) ${houses} from your Moon sign today — a rare double-transit window associated with amplified, high-probability change in those life areas.`,
+    );
+  }
+
+  const panchaka = synthesis.panchaka as
+    | { isDangerous?: boolean; name?: string | null; danger?: string | null; safe?: string | null }
+    | undefined;
+  if (panchaka?.isDangerous) {
+    facts.push(
+      `Today falls in a Panchaka caution window${panchaka.name ? ` (${panchaka.name})` : ''}${
+        panchaka.danger ? `: ${panchaka.danger}` : ''
+      }${panchaka.safe ? `. Favorable instead for: ${panchaka.safe}` : ''}.`,
+    );
+  }
+
+  return facts;
+}
+
+/**
  * Build the comprehensive "CHART DATA" fact lines for the single astrologer.
  * Every line is traceable to a value already present in the user's stored
  * kundli (or, for the transit lines, a planet-position calculation for
@@ -649,11 +731,16 @@ async function fullGocharFacts(ascSignIndex: number | null, asOfDate?: string): 
  *                  date comparison in a single chat turn — the anchor text,
  *                  the elapsed/upcoming window filtering, the confidence
  *                  scoring — uses the exact same instant. Defaults to now.
+ * @param synthesis Optional deterministic daily-synthesis result (horoscope
+ *                  pipeline only) — when present, its score and layers are
+ *                  surfaced as the authoritative facts above the LLM's own
+ *                  per-area read (see `synthesisFacts`).
  */
 export async function buildGroundingFacts(
   src: GroundingSource,
   asOfDate?: string,
   now: Date = new Date(),
+  synthesis?: DailySynthesisResult | null,
 ): Promise<string[]> {
   const houses = getHouses(src.chart);
   const planets = getPlanets(src.chart);
@@ -667,6 +754,12 @@ export async function buildGroundingFacts(
   facts.push(
     `TODAY'S DATE: ${todayIST(now)} (IST). Any window below that ended before this date has already passed.`,
   );
+
+  // --- Deterministic daily synthesis (horoscope pipeline only) -----------
+  // Placed early, right after the date anchor, so it's never lost to
+  // clip() truncation and the model sees the authoritative score before
+  // it starts reasoning about individual layers below.
+  facts.push(...synthesisFacts(synthesis));
 
   // --- Active dasha -----------------------------------------------------
   if (dasha.mahadasha) {
