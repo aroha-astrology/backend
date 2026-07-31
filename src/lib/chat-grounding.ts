@@ -11,8 +11,12 @@
 // from the user's already-computed, stored kundli.
 // =============================================================================
 
-import { dashaLordTransitQuality, SIGNS } from './astro-tools/index.js';
-import { dateToJulianDay, calculatePlanetPositions } from './astro-engine/index.js';
+import { dashaLordTransitQuality, detectDoubleTransit, SIGNS } from './astro-tools/index.js';
+import {
+  dateToJulianDay,
+  calculatePlanetPositions,
+  getLalKitabRemedies,
+} from './astro-engine/index.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
 import { scoreDomainWindows, DOMAIN_CONFIG, type Domain } from './astro-engine/dasha-confidence.js';
 import { buildSharedDashaTree } from './dasha-window.js';
@@ -649,6 +653,9 @@ const GOCHAR_PLANETS = [
   'Ketu',
 ];
 
+/** Same 9 as GOCHAR_PLANETS, as a Set for the Lal Kitab natal-remedy scan (Set.has vs Array.includes). */
+const CLASSICAL_NINE = new Set(GOCHAR_PLANETS);
+
 /**
  * Full Gochar (live transit) snapshot — every planet's current sign and house
  * from the Ascendant, not just the Saturn/Jupiter sign-index checks and Moon
@@ -802,9 +809,6 @@ export function karmicProfileFacts(chart: Record<string, unknown> | null): strin
     const profile = buildKarmicProfile(chart as unknown as ChartData);
     const facts: string[] = [];
 
-    // Pakka Ghar (a strength note, not a problem to flag) is deliberately
-    // omitted here to stay within the CHART DATA block's char budget — debts
-    // and blind planets are the more actionable, audit-relevant content.
     for (const debt of profile.presentDebts) {
       facts.push(
         `Karmic debt (${debt.type}): ${debt.indicators.join('; ')}. Remedy: ${debt.remedies[0] ?? 'see full remedy list'}.`,
@@ -815,6 +819,14 @@ export function karmicProfileFacts(chart: Record<string, unknown> | null): strin
       facts.push(
         `Lal Kitab blind planets (obstructed): ${profile.blindPlanets.map((p) => `${p.planet} (${p.isBlind ? 'full' : 'half'}, house ${p.house})`).join(', ')}.`,
       );
+    }
+
+    // Kept to just the planet list (no extra wording) to stay within the
+    // CHART DATA block's char budget — this is a supporting strength note,
+    // not the priority content (debts/blind planets above).
+    const inOwnHouse = profile.pakkaGharPlacements.filter((p) => p.isInPakkaGhar);
+    if (inOwnHouse.length > 0) {
+      facts.push(`Pakka Ghar (strong): ${inOwnHouse.map((p) => p.planet).join(', ')}.`);
     }
 
     return facts;
@@ -884,6 +896,33 @@ export function periodEventFacts(
  *                  surfaced as the authoritative facts above the LLM's own
  *                  per-area read (see `synthesisFacts`).
  */
+/** Pure — instantaneous Jupiter+Saturn double-transit fact, or null when none of the three sign indices are known or no house is jointly aspected. */
+export function buildDoubleTransitFact(
+  moonSignIndex: number | null | undefined,
+  saturnSignIndex: number | null | undefined,
+  jupiterSignIndex: number | null | undefined,
+  transitLabel: string,
+): string | null {
+  if (moonSignIndex == null || saturnSignIndex == null || jupiterSignIndex == null) return null;
+  const doubleTransit = detectDoubleTransit(jupiterSignIndex, saturnSignIndex, moonSignIndex);
+  if (doubleTransit.length === 0) return null;
+  return `Jupiter+Saturn aspect house(s) ${doubleTransit.map((d) => d.house).join(', ')} from Moon sign ${transitLabel} — double-transit window, high-probability change.`;
+}
+
+/** Pure — Lal Kitab remedy fact for the first NATALLY debilitated classical (Sun-Ketu) planet found, or null when none are debilitated. */
+export function buildNatalDebilitationRemedyFact(planets: PlanetFact[]): string | null {
+  for (const p of planets) {
+    if (!CLASSICAL_NINE.has(p.planet)) continue;
+    const dignity = dashaLordTransitQuality(p.planet, p.signIndex).dignity;
+    if (dignity !== 'debilitated') continue;
+    const { remedies: lalKitabRemedies } = getLalKitabRemedies(p.planet as never, p.house);
+    if (lalKitabRemedies.length > 0) {
+      return `Lal Kitab remedy (${p.planet} debil., house ${p.house}): ${lalKitabRemedies[0]}.`;
+    }
+  }
+  return null;
+}
+
 export async function buildGroundingFacts(
   src: GroundingSource,
   asOfDate?: string,
@@ -1011,6 +1050,29 @@ export async function buildGroundingFacts(
   const transitLabel = asOfDate ? `as of ${asOfDate}` : 'currently';
   const saturnSignIdx = await currentTransitSignIndex('Saturn', asOfDate);
   const jupiterSignIdx = await currentTransitSignIndex('Jupiter', asOfDate);
+
+  // --- Double transit (Jupiter + Saturn jointly aspecting a house from Moon)
+  // Instantaneous only (cheap — reuses the signs just fetched above); the
+  // forward-scanning window search (astro-tools/double-transit.ts) is NOT
+  // run here to keep this hot, streaming-latency-critical path fast — that
+  // scan is for a bounded, on-demand surface, not every chat turn.
+  const doubleTransitFact = buildDoubleTransitFact(
+    moon?.signIndex,
+    saturnSignIdx,
+    jupiterSignIdx,
+    transitLabel,
+  );
+  if (doubleTransitFact) facts.push(doubleTransitFact);
+
+  // --- Lal Kitab remedy for the worst NATALLY debilitated classical planet -
+  // Reuses the same 108-combination remedy database wired into GET
+  // /v1/remedies and the daily reading's Dasha-lord remedy — dignity here is
+  // the NATAL placement, not a live transit, so this is stable across a
+  // whole conversation rather than changing turn to turn. Capped to one
+  // (the char-budget for this whole block is tight; the daily-synthesis
+  // reading is where the exhaustive per-planet remedy list lives).
+  const debilitationRemedyFact = buildNatalDebilitationRemedyFact(planets);
+  if (debilitationRemedyFact) facts.push(debilitationRemedyFact);
 
   if (ascSignIndex != null) {
     const moonTransit = await currentTransitMoonDetail(asOfDate);
