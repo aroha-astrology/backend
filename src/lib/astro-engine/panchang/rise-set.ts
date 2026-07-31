@@ -43,6 +43,7 @@
 
 import { dateToJulianDay, getSwe } from '../calculations/planetPositions.core';
 
+const SE_SUN = 0;
 const SE_MOON = 1;
 const SEFLG_SWIEPH = 2;
 const SE_CALC_RISE = 1;
@@ -70,6 +71,7 @@ async function riseTransUt(
   latitude: number,
   altitudeMeters: number,
   rsmi: number,
+  planet: number = SE_MOON,
 ): Promise<number | null> {
   const swe = await getSwe();
   const M = swe.SweModule;
@@ -98,7 +100,7 @@ async function riseTransUt(
         'pointer', // tret[10] (out)
         'pointer', // serr (out, unused)
       ],
-      [tjdUt, SE_MOON, 0, SEFLG_SWIEPH, rsmi, geoposPtr, 0, 0, tretPtr, serrPtr],
+      [tjdUt, planet, 0, SEFLG_SWIEPH, rsmi, geoposPtr, 0, 0, tretPtr, serrPtr],
     );
 
     if (retFlag < 0) return null;
@@ -184,5 +186,58 @@ export async function getMoonriseMoonset(
     // Never throw — moonrise/moonset is an additive data point; any
     // unexpected failure degrades to "unavailable today", not a broken page.
     return { moonrise: null, moonset: null };
+  }
+}
+
+export interface SunTimes {
+  sunrise: Date | null;
+  sunset: Date | null;
+}
+
+/** UT Julian day -> JS Date (UTC instant). 2440587.5 = the Unix epoch as a JD. */
+function jdToDate(jdUt: number): Date {
+  return new Date((jdUt - 2440587.5) * 86_400_000);
+}
+
+/**
+ * Real swisseph-derived sunrise/sunset as precise UTC instants (not display
+ * strings — see getMoonriseMoonset for that) for the civil day `date` falls
+ * on. Needed wherever a downstream calculation must interpolate WITHIN the
+ * sunrise-to-sunset span (e.g. Pancha Pakshi Yama boundaries,
+ * panchapakshi/yamas.ts) rather than just display a time-of-day.
+ *
+ * Deliberately NOT the NOAA closed-form approximation in panchang/index.ts's
+ * `estimateSunriseSunset` — that function is a documented, separate
+ * approximation used elsewhere in the Panchang pipeline; anything that needs
+ * sub-day precision derived FROM the sunrise/sunset instant should use this
+ * swisseph path instead, the same way moonrise/moonset already does.
+ */
+export async function getSunriseSunset(
+  date: Date,
+  latitude: number,
+  longitude: number,
+  timezoneOffsetHours: number,
+): Promise<SunTimes> {
+  try {
+    const dayStartUt = await dateToJulianDay(
+      date.getFullYear(),
+      date.getMonth() + 1,
+      date.getDate(),
+      0,
+      0,
+      timezoneOffsetHours,
+    );
+
+    const [riseJd, setJd] = await Promise.all([
+      riseTransUt(dayStartUt, longitude, latitude, 0, SE_CALC_RISE, SE_SUN),
+      riseTransUt(dayStartUt, longitude, latitude, 0, SE_CALC_SET, SE_SUN),
+    ]);
+
+    return {
+      sunrise: withinCivilDay(riseJd, dayStartUt) ? jdToDate(riseJd as number) : null,
+      sunset: withinCivilDay(setJd, dayStartUt) ? jdToDate(setJd as number) : null,
+    };
+  } catch {
+    return { sunrise: null, sunset: null };
   }
 }
