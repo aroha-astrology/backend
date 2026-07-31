@@ -62,4 +62,19 @@ describe('buildChatMessages history staleness', () => {
     const note = messages.find((m) => m.role === 'system' && /previous session/i.test(m.content));
     expect(note).toBeUndefined();
   });
+
+  it('still carries the explicit current date via TEMPORAL_ANCHOR after removing the redundant pre-user reminder', () => {
+    const now = new Date('2026-07-31T12:00:00Z');
+    const messages = buildChatMessages(state(), 'Hello', [], false, 'direct', 'en', [], now);
+    const anchor = messages.find((m) => m.role === 'system' && /TEMPORAL_ANCHOR/.test(m.content));
+    expect(anchor).toBeDefined();
+    expect(anchor!.content).toMatch(/July 31, 2026/);
+
+    // The regression: a bare "[URGENT SYSTEM REMINDER]" pushed as the last
+    // system message right before the user turn out-ranked GROUNDING_INSTRUCTION
+    // and CONTEXT_DISCIPLINE, causing the model to ask for birth details it
+    // already had. Must not come back.
+    const lastSystem = [...messages].reverse().find((m) => m.role === 'system');
+    expect(lastSystem!.content).not.toMatch(/URGENT SYSTEM REMINDER/);
+  });
 });

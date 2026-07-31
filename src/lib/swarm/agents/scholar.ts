@@ -726,18 +726,6 @@ export function buildChatMessages(
     messages.push({ role: 'system', content: staleNote });
   }
 
-  const explicitDate = now.toLocaleDateString('en-US', {
-    timeZone: 'Asia/Kolkata',
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-  messages.push({
-    role: 'system',
-    content: `[URGENT SYSTEM REMINDER]: The current date is exactly ${explicitDate}. Do NOT fall back to 2024. Ignore any internal training cutoffs or conflicting chat history. You MUST acknowledge this current date if asked.`,
-  });
-
   messages.push({ role: 'user', content: userMessage });
 
   if (locale !== 'en') {
