@@ -23,6 +23,7 @@ import { dailyKakshyaScore } from './kakshya.js';
 import { dailyLunarAssessment } from './tara-bala.js';
 import { detectDoubleTransit, dashaLordTransitQuality, SIGNS } from './transit.js';
 import { findTransitEvents } from './transit-events.js';
+import { reduceToSingleDigit } from '../astro-engine/numerology/chaldean.js';
 import { computePanchaka } from './panchaka.js';
 import { calculateTithi } from '../astro-engine/panchang/tithi.js';
 import type { Category, CategoryReading } from '@aroha-astrology/shared';
@@ -907,7 +908,11 @@ export async function moonSignPrediction(
 
   const effectiveDate = asOf ? new Date(asOf) : new Date();
   const dayOfYear = dayOfYearFor(effectiveDate);
-  const luckyNumber = ((moonSignIndex + dayOfYear) % 9) + 1;
+  // No birth data available in this anonymous/generic-sign engine (see
+  // astro-engine/numerology/chaldean.ts for the personalized, Moolank-based
+  // version used by the actual per-user horoscope) -- this is still a real
+  // Chaldean day-number, just not cross-referenced against a personal Moolank.
+  const luckyNumber = reduceToSingleDigit(effectiveDate.getUTCDate());
   const hook = buildHook(quality, houseFromSign, moonSignIndex + dayOfYear);
 
   const domainSeed = moonSignIndex + dayOfYear;
@@ -1108,7 +1113,7 @@ async function buildPeriodic(
     description,
     advice,
     luckyColor: LUCKY_COLORS[signName] ?? 'White',
-    luckyNumber: ((moonSignIndex + dayOfYearFor(new Date(periodStart))) % 9) + 1,
+    luckyNumber: reduceToSingleDigit(new Date(periodStart).getUTCDate()),
     keyTransits,
     keyEvents,
     categories: { overall, health, career, marriage, finance, education },

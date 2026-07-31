@@ -407,11 +407,12 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
     : 'unknown';
   const relFact = `User's relationship status is: ${relStatus}. If single, do not mention a spouse/partner; focus on self-love, dating, or boundaries. If partnered, focus on connection/communication.`;
 
-  let luckyFact = '';
-  if (ctx.kundli?.chart) {
-    const lucky = getDailyLuckyElements(ctx.kundli.chart, ctx.kundli.dasha, ctx.forDate);
-    luckyFact = `MANDATORY LUCKY ELEMENTS: You MUST set "luckyColor": "${lucky.luckyColor}" and "luckyNumber": ${lucky.luckyNumber} in the JSON root exactly.`;
-  }
+  // Chaldean numerology (Moolank from date of birth) — genuinely varies by
+  // date, unlike the retired nakshatra/pada + Mahadasha-lord formula this
+  // replaced. Needs only date of birth, not the full chart, so this no
+  // longer gates on ctx.kundli.chart being ready.
+  const lucky = getDailyLuckyElements(ctx.profile.dateOfBirth as string | undefined, ctx.forDate);
+  const luckyFact = `MANDATORY LUCKY ELEMENTS: You MUST set "luckyColor": "${lucky.luckyColor}" and "luckyNumber": ${lucky.luckyNumber} in the JSON root exactly.`;
 
   const categoryGrounding = `
 CATEGORY GUIDELINES:
