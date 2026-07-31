@@ -19,6 +19,7 @@ import {
   type ReportDef,
   type ReportKey,
 } from '../../config/reports.js';
+import { assignSectionIds } from '../../config/report-sections.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import { deductWalletBalance, addWalletBalance, findActiveUserById } from '../users/users.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
@@ -52,6 +53,11 @@ import {
   summarizeTimingWindows,
   type PersistedWindowSummaries,
 } from '../../lib/llm/reports/window-summary.js';
+import {
+  generateReportVerdict,
+  translateReportVerdict,
+  type ReportVerdict,
+} from '../../lib/llm/reports/verdict.js';
 import {
   REPORT_GENERATORS,
   type ReportSection,
@@ -270,6 +276,24 @@ async function computeWindowSummaries(
   }
 }
 
+/**
+ * One shared "Final Verdict" card per report, generation-time only — same never-throws,
+ * generation-only contract as `computeWindowSummaries` above (this MUST NOT run in
+ * `recomputeScoresForRead`, which fires on every page view). Returns `null` (nothing to
+ * persist) on any failure — losing the closing summary card is a much smaller loss than
+ * failing the whole report over a non-essential enrichment call.
+ */
+async function computeReportVerdict(
+  scores: Record<string, unknown>,
+): Promise<ReportVerdict | null> {
+  try {
+    return await generateReportVerdict(scores);
+  } catch (err) {
+    logger.warn({ err }, 'report verdict generation failed, continuing without it');
+    return null;
+  }
+}
+
 async function runReportGeneration(row: ReportRow, birthProfileId: string | null): Promise<void> {
   const claimedAt = row.startedAt;
   if (!claimedAt) return; // claimReportRow always sets this when it returns a row — defensive only.
@@ -307,9 +331,14 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     );
     const sections = await generator.generateNarrative(scores, 'en');
     const windowSummaries = await computeWindowSummaries(scores);
+    const verdict = await computeReportVerdict(scores);
 
     await markReportReady(row.id, claimedAt, {
-      content: { sections, ...(windowSummaries ? { windowSummaries } : {}) },
+      content: {
+        sections,
+        ...(windowSummaries ? { windowSummaries } : {}),
+        ...(verdict ? { verdict } : {}),
+      },
       model: MODEL,
     });
     void notifyReportReady(row.userId, row.reportKey, row.id).catch(() => {
@@ -672,9 +701,15 @@ export async function getReportForUser(
   const content = (row.content ?? {}) as {
     sections?: ReportSection[];
     windowSummaries?: PersistedWindowSummaries;
+    verdict?: ReportVerdict;
   };
-  const englishScores = spliceWindowSummaries(recomputedScores, content.windowSummaries);
-  const englishSections = content.sections ?? [];
+  const scoresWithWindows = spliceWindowSummaries(recomputedScores, content.windowSummaries);
+  // `verdict` is generation-time-only (see computeReportVerdict's doc comment) — merged straight
+  // onto the freshly-recomputed `scores` here, same as windowSummaries, rather than recomputed.
+  const englishScores = content.verdict
+    ? { ...scoresWithWindows, verdict: content.verdict }
+    : scoresWithWindows;
+  const englishSections = assignSectionIds(row.reportKey, content.sections ?? []);
   const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
 
   if (language === 'en' || !generator) {
@@ -688,7 +723,21 @@ export async function getReportForUser(
     };
   }
 
-  const scores = await withTranslatedScoresProse(row, englishScores, language);
+  let scores = await withTranslatedScoresProse(row, englishScores, language);
+  if (content.verdict) {
+    const cachedVerdict = row.translations?.[language]?.verdict as ReportVerdict | undefined;
+    if (cachedVerdict) {
+      scores = { ...scores, verdict: cachedVerdict };
+    } else {
+      try {
+        const translatedVerdict = await translateReportVerdict(content.verdict, language);
+        await saveReportTranslation(row.id, language, { verdict: translatedVerdict });
+        scores = { ...scores, verdict: translatedVerdict };
+      } catch (err) {
+        logger.warn({ err, reportId: row.id, language }, 'failed to translate report verdict');
+      }
+    }
+  }
   const readyBase = {
     status: 'ready' as const,
     reportKey: row.reportKey,
@@ -699,13 +748,13 @@ export async function getReportForUser(
 
   const cached = row.translations?.[language] as { sections?: ReportSection[] } | undefined;
   if (cached?.sections) {
-    return { ...readyBase, sections: cached.sections };
+    return { ...readyBase, sections: assignSectionIds(row.reportKey, cached.sections) };
   }
 
   try {
     const translated = await generator.translateNarrative(englishSections, language);
     await saveReportTranslation(row.id, language, { sections: translated });
-    return { ...readyBase, sections: translated };
+    return { ...readyBase, sections: assignSectionIds(row.reportKey, translated) };
   } catch (err) {
     logger.warn({ err, reportId: row.id, language }, 'failed to translate report');
     return { ...readyBase, sections: englishSections };
@@ -825,9 +874,14 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
   );
   const sections = await generator.generateNarrative(scores, 'en');
   const windowSummaries = await computeWindowSummaries(scores);
+  const verdict = await computeReportVerdict(scores);
 
   await overwriteReadyReportContent(row.id, {
-    content: { sections, ...(windowSummaries ? { windowSummaries } : {}) },
+    content: {
+      sections,
+      ...(windowSummaries ? { windowSummaries } : {}),
+      ...(verdict ? { verdict } : {}),
+    },
     model: MODEL,
   });
   return 'regenerated';

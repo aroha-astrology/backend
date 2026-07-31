@@ -35,11 +35,15 @@ import { computeReportTimingWindows, type RankedWindow } from './report-timing.j
 import { computeAgeBandTable, type AgeBand } from './report-age-bands.js';
 import { computeDecadeArc, type DecadeBand } from './report-decade-arc.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { computeLifeContext } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import { buildReportGemstones } from './report-gemstones.js';
+import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export type MarriageBand = 'slow_build' | 'steady' | 'accelerated';
 
-export interface MarriageScores extends Record<string, unknown> {
+export interface MarriageScores extends Record<string, unknown>, ReportSharedFactsWithGemstones {
   marriageScore: number;
   band: MarriageBand;
   manglik: { isManglik: boolean; cancelled: boolean };
@@ -346,7 +350,14 @@ export function computeMarriageScores(
     seventhHousePlanetCount: planetsInHouse(7, chart).length,
   };
 
+  const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);
+  const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+  const gemstones = buildReportGemstones('marriage', chart);
+
   return {
+    header,
+    lifeContext,
+    gemstones,
     marriageScore,
     band,
     manglik,

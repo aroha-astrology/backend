@@ -11,6 +11,7 @@
 
 import { computeMatchRiskFactors, type MatchRiskFactor } from '../matching/match-risks.js';
 import { computeKundliMilanScores, type KundliMilanScores } from './kundli-milan.js';
+import { buildReportGemstones } from './report-gemstones.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export interface MatchReportScores extends KundliMilanScores {
@@ -28,5 +29,10 @@ export function computeMatchReportScores(
     kundliMilan,
     ctx.dashaData ?? null,
   );
-  return { ...kundliMilan, riskFactors };
+  // match_report deliberately does NOT get a gemstone section (product decision — only the 5
+  // flagship report types do, see report-gemstones.ts's doc comment) — overrides kundli-milan's
+  // own gemstones (which computeKundliMilanScores computes for ITS OWN report type) with
+  // match_report's own (always empty, since 'match_report' isn't in REPORT_GEMSTONE_SLOTS).
+  const gemstones = buildReportGemstones('match_report', ctx.chart);
+  return { ...kundliMilan, riskFactors, gemstones };
 }

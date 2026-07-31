@@ -9,6 +9,9 @@
 import { analyzePlanetStrengths, type PlanetStrength } from '../gemstones.js';
 import { getHouseLord, getPlanetPosition, strengthOfPlanet } from './chart-facts.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { computeLifeContext } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export interface KarmicArchetype {
@@ -80,7 +83,7 @@ function computeKarmicArchetype(
   return HOUSE_AXIS_THEMES[axisIdForHouse(house)] ?? DEFAULT_KARMIC_ARCHETYPE;
 }
 
-export interface PastLifeScores extends Record<string, unknown> {
+export interface PastLifeScores extends Record<string, unknown>, ReportSharedFacts {
   rahuHouse: number | null;
   rahuSign: string | null;
   ketuHouse: number | null;
@@ -133,7 +136,12 @@ export function computePastLifeScores(
     ['mahapurusha', 'benefic'],
   );
 
+  const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
+  const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+
   return {
+    header,
+    lifeContext,
     rahuHouse,
     rahuSign: rahu?.sign ?? null,
     ketuHouse,

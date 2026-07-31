@@ -15,7 +15,11 @@
 import type { Nakshatra } from '@aroha-astrology/shared';
 import { calculateNakshatra } from '../panchang/nakshatra.js';
 import { getPlanetPosition } from './chart-facts.js';
+import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { computeLifeContext } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 /**
@@ -59,7 +63,7 @@ export const NAKSHATRA_PADA_SYLLABLE: Record<Nakshatra, [string, string, string,
   Revati: ['De', 'Do', 'Cha', 'Chi'],
 };
 
-export interface BabyNameScores extends Record<string, unknown> {
+export interface BabyNameScores extends Record<string, unknown>, ReportSharedFacts {
   moonNakshatra: Nakshatra;
   moonPada: number;
   /** The single starting syllable for this exact nakshatra+pada (an array for interface
@@ -104,7 +108,13 @@ export function computeBabyNameScores(
     ['raja', 'dhana'],
   );
 
+  const analyses = analyzePlanetStrengths(chart);
+  const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
+  const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+
   return {
+    header,
+    lifeContext,
     moonNakshatra: nakshatraData.name,
     moonPada: nakshatraData.pada,
     startingSyllables,

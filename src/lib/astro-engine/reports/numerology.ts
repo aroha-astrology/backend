@@ -43,6 +43,10 @@ import {
   type KuaData,
 } from '../numerology/vedic.js';
 import { computeNameAlignment, type NameAlignmentResult } from '../numerology/nameCorrection.js';
+import { analyzePlanetStrengths } from '../gemstones.js';
+import { computeLifeContext } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 /**
@@ -91,7 +95,7 @@ export interface NumerologyMonthForecast {
   personalYear: number;
 }
 
-export interface NumerologyScores extends Record<string, unknown> {
+export interface NumerologyScores extends Record<string, unknown>, ReportSharedFacts {
   /** The name actually used for the name-derived numbers below — `ctx.personName`, or
    * FALLBACK_NAME on the defensive path (see module doc comment). Surfaced so the narrative
    * layer can refer to it and so a defensive fallback is visible, not silently swallowed. */
@@ -201,7 +205,18 @@ export function computeNumerologyScores(
     return { year, personalYear: calculatePersonalYear(dob, year) };
   });
 
+  // header/lifeContext read the person's REAL birth chart (ctx.chart) — orthogonal to this
+  // report's own name+DOB numerology math, which intentionally never touches ctx.chart (see
+  // this module's doc comment). A chart-less account (should not happen in practice, see that
+  // same doc comment) degrades gracefully: every astro-engine primitive here already tolerates
+  // a null chart.
+  const analyses = analyzePlanetStrengths(ctx.chart);
+  const lifeContext = computeLifeContext(ctx.chart, analyses, ctx.dashaData ?? null, now);
+  const header = buildReportHeader(ctx.chart, ctx.personName, ctx.personDob, lifeContext);
+
   return {
+    header,
+    lifeContext,
     name,
     dob: dobString,
     mulank,

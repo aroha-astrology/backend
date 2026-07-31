@@ -17,15 +17,20 @@ import {
   type MonthSubPeriod,
 } from './monthly-dasha-context.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { computeLifeContext, HEALTH_KEY_HOUSES } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 /** 6th house = ailments/obstacles, 1st house = vitality/the body itself, 8th house =
  * longevity/transformation/chronic or hidden conditions — added alongside the dosha/yoga
  * summary below so the report's house-affinity scoring and its dosha checks are both looking
  * at the full classical health-house set, not just 6/1. */
-const KEY_HOUSES = [6, 1, 8];
+// KEY_HOUSES imported from report-life-context.ts (single source of truth) rather than declared
+// here, to avoid a circular import (that module also imports `computeLifeContext` used below).
+const KEY_HOUSES = HEALTH_KEY_HOUSES;
 
-export interface HealthMonthlyScores extends Record<string, unknown> {
+export interface HealthMonthlyScores extends Record<string, unknown>, ReportSharedFacts {
   periodMonth: string;
   activeMahadashaLord: string;
   activeAntardashaLord: string;
@@ -73,7 +78,12 @@ export function computeHealthMonthlyScores(
     ? computeConnectedHouses(period.antardashaLord, KEY_HOUSES, chart)
     : [];
 
+  const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
+  const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+
   return {
+    header,
+    lifeContext,
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
     activeAntardashaLord: period?.antardashaLord ?? 'Unknown',

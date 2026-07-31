@@ -125,6 +125,9 @@ export type ReportHistoryEntryDto = z.infer<typeof ReportHistoryEntrySchema>;
 
 export const ReportSectionSchema = z
   .object({
+    /** Canonical section id (config/report-sections.ts) — absent for a report type not yet
+     * listed there, or a section-count mismatch. Client falls back to `heading` in that case. */
+    id: z.string().optional(),
     heading: z.string(),
     paragraphs: z.array(z.string()),
   })

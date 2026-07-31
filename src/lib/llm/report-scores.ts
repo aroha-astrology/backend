@@ -51,12 +51,20 @@ export const SCORES_PROSE_ALLOWLIST: Record<string, string[]> = {
     // `windows[].summary` by reports.service.ts's getReportForUser BEFORE this translation step
     // runs, so it's present in `scores` here exactly like any other prose field.
     'windows[].summary',
+    // report-gemstones.ts — backend-authored English role/benefit prose, same convention as
+    // the fields above.
+    'gemstones[].role',
+    'gemstones[].benefit',
+    'gemstones[].reason',
   ],
   kundli_milan: [
     'primaryDoshaYoga.positives[].label',
     'primaryDoshaYoga.positives[].detail',
     'primaryDoshaYoga.cautions[].label',
     'primaryDoshaYoga.cautions[].detail',
+    'gemstones[].role',
+    'gemstones[].benefit',
+    'gemstones[].reason',
   ],
   match_report: [
     'primaryDoshaYoga.positives[].label',
@@ -64,8 +72,9 @@ export const SCORES_PROSE_ALLOWLIST: Record<string, string[]> = {
     'primaryDoshaYoga.cautions[].label',
     'primaryDoshaYoga.cautions[].detail',
   ],
-  true_love: ['windows[].summary'],
-  wealth: ['windows[].summary'],
+  true_love: ['windows[].summary', 'gemstones[].role', 'gemstones[].benefit', 'gemstones[].reason'],
+  wealth: ['windows[].summary', 'gemstones[].role', 'gemstones[].benefit', 'gemstones[].reason'],
+  remedies: ['gemstones[].role', 'gemstones[].benefit', 'gemstones[].reason'],
 };
 
 interface ExtractedLeaf {

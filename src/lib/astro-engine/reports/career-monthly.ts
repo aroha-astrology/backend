@@ -18,10 +18,15 @@ import {
 } from './monthly-dasha-context.js';
 import { computeArchetype, type Archetype } from './report-archetype.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { computeLifeContext, CAREER_KEY_HOUSES } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
-/** 10th house = career/public status, 6th house = daily work/service. */
-const KEY_HOUSES = [10, 6];
+/** 10th house = career/public status, 6th house = daily work/service — imported from
+ * report-life-context.ts (single source of truth) rather than declared here, to avoid a
+ * circular import (that module also imports `computeLifeContext` used below). */
+const KEY_HOUSES = CAREER_KEY_HOUSES;
 
 // =============================================================================
 // industryFit — deterministic (non-LLM) 10th-house-lord -> industry lookup
@@ -83,7 +88,7 @@ function industryFitForTenthLord(tenthLordPlanet: string | undefined): IndustryF
   return { likelyIndustries: [...likelyIndustries], note };
 }
 
-export interface CareerMonthlyScores extends Record<string, unknown> {
+export interface CareerMonthlyScores extends Record<string, unknown>, ReportSharedFacts {
   periodMonth: string;
   activeMahadashaLord: string;
   activeAntardashaLord: string;
@@ -135,7 +140,12 @@ export function computeCareerMonthlyScores(
   const industryFit = industryFitForTenthLord(getHouseLord(10, chart));
   const subPeriods = findMonthSubPeriods(chart, periodMonth, KEY_HOUSES, analyses);
 
+  const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
+  const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+
   return {
+    header,
+    lifeContext,
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
     activeAntardashaLord: period?.antardashaLord ?? 'Unknown',

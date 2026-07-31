@@ -34,6 +34,7 @@ const state = vi.hoisted(() => {
     findActiveTokensForUser: vi.fn(),
     sendPushBatch: vi.fn(),
     summarizeTimingWindows: vi.fn(),
+    generateReportVerdict: vi.fn(),
     REPORT_GENERATORS,
   };
 });
@@ -91,6 +92,14 @@ vi.mock('../src/lib/llm/reports/window-summary.js', async () => {
     summarizeTimingWindows: state.summarizeTimingWindows,
   };
 });
+
+// Same reasoning as window-summary.js above: computeReportVerdict calls the real
+// generateReportVerdict (a live Gemini call) at generation time for every report type, not just
+// the ones a given test cares about — must be mocked so unrelated tests don't hang/time out.
+vi.mock('../src/lib/llm/reports/verdict.js', () => ({
+  generateReportVerdict: state.generateReportVerdict,
+  translateReportVerdict: vi.fn(),
+}));
 
 vi.mock('../src/modules/reports/report-generator.types.js', async () => {
   const actual = await vi.importActual<typeof ReportGeneratorTypesModule>(
@@ -164,6 +173,9 @@ beforeEach(() => {
   state.computeMetrology.mockReset().mockResolvedValue({ chart: { planets: [] } });
   state.findActiveTokensForUser.mockReset().mockResolvedValue([]);
   state.summarizeTimingWindows.mockReset().mockResolvedValue([]);
+  state.generateReportVerdict
+    .mockReset()
+    .mockResolvedValue({ headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' });
   state.overwriteReadyReportContent.mockReset().mockResolvedValue(undefined);
   state.sendPushBatch.mockReset().mockResolvedValue({ success: 0, failure: 0 });
 });
@@ -1013,7 +1025,8 @@ describe('getReportForUser', () => {
     const dto = await getReportForUser('report-1', 'user-1', 'en');
 
     expect(
-      (dto as { scores: { windows: Array<{ summary?: string }> } }).scores.windows[0].summary,
+      (dto as unknown as { scores: { windows: Array<{ summary?: string }> } }).scores.windows[0]
+        .summary,
     ).toBeUndefined();
   });
 
@@ -1282,7 +1295,10 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
     expect(result).toBe('regenerated');
     expect(generateNarrative).toHaveBeenCalledWith({ score: 1 }, 'en');
     expect(state.overwriteReadyReportContent).toHaveBeenCalledWith('r1', {
-      content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      content: {
+        sections: [{ heading: 'H', paragraphs: ['p'] }],
+        verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
+      },
       model: expect.any(String),
     });
     expect(state.markReportReady).not.toHaveBeenCalled();

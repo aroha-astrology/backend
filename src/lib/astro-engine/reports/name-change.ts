@@ -21,6 +21,10 @@ import {
   generateDeterministicVariants,
   type NameAlignmentResult,
 } from '../numerology/nameCorrection.js';
+import { analyzePlanetStrengths } from '../gemstones.js';
+import { computeLifeContext } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 /** Defensive-only fallbacks — see numerology.ts's module doc comment for why these should never
@@ -39,7 +43,7 @@ export interface NameChangeVariant {
   change: string;
 }
 
-export interface NameChangeScores extends Record<string, unknown> {
+export interface NameChangeScores extends Record<string, unknown>, ReportSharedFacts {
   /** The name actually used — `ctx.personName`, or FALLBACK_NAME on the defensive path (see
    * numerology.ts's module doc comment for why this fallback should never trigger in practice). */
   currentName: string;
@@ -79,7 +83,13 @@ export function computeNameChangeScores(
   const alignment = computeNameAlignment(currentName, dob);
   const variants = generateDeterministicVariants(currentName, alignment.targets, VARIANT_COUNT);
 
+  const analyses = analyzePlanetStrengths(ctx.chart);
+  const lifeContext = computeLifeContext(ctx.chart, analyses, ctx.dashaData ?? null, new Date());
+  const header = buildReportHeader(ctx.chart, ctx.personName, ctx.personDob, lifeContext);
+
   return {
+    header,
+    lifeContext,
     currentName,
     dob: dobString,
     alignment,

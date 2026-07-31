@@ -24,6 +24,11 @@
 import { getLalKitabRemedies } from '../lalkitab/remedies.js';
 import { buildKarmicProfile, type KarmicProfile } from '../lalkitab/karmicProfile.js';
 import { getPlanetPosition } from './chart-facts.js';
+import { analyzePlanetStrengths } from '../gemstones.js';
+import { computeLifeContext } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import { buildReportGemstones } from './report-gemstones.js';
+import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 import type { ChartData, Planet } from '@aroha-astrology/shared';
 
@@ -46,7 +51,7 @@ export interface RemediesPlanetEntry {
   totke: string[];
 }
 
-export interface RemediesScores extends Record<string, unknown> {
+export interface RemediesScores extends Record<string, unknown>, ReportSharedFactsWithGemstones {
   /** One entry per classical planet whose natal house has a Lal Kitab remedy on file — omitted (not zero-filled) when the chart has no house data for that planet. */
   planetRemedies: RemediesPlanetEntry[];
   presentDebts: KarmicProfile['presentDebts'];
@@ -89,7 +94,15 @@ export function computeRemediesScores(
 
   const profile = safeKarmicProfile(chart);
 
+  const analyses = analyzePlanetStrengths(chart);
+  const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
+  const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+  const gemstones = buildReportGemstones('remedies', chart);
+
   return {
+    header,
+    lifeContext,
+    gemstones,
     planetRemedies,
     presentDebts: profile.presentDebts,
     pakkaGharPlacements: profile.pakkaGharPlacements.filter((p) => p.isInPakkaGhar),

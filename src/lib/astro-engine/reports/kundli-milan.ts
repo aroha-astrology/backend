@@ -15,6 +15,11 @@ import { calculateDashakoota } from '../matching/dashakoota.js';
 import { detectMangalDosha } from '../doshas/mangalDosha.js';
 import { computeMatchRiskFactors, type MatchRiskFactor } from '../matching/match-risks.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { analyzePlanetStrengths } from '../gemstones.js';
+import { computeLifeContext } from './report-life-context.js';
+import { buildReportHeader } from './report-header.js';
+import { buildReportGemstones } from './report-gemstones.js';
+import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export interface MoonPlacement {
@@ -65,7 +70,7 @@ export interface KootaBreakdownEntry {
   description: string;
 }
 
-export interface KundliMilanScores extends Record<string, unknown> {
+export interface KundliMilanScores extends Record<string, unknown>, ReportSharedFactsWithGemstones {
   gunaMilanScore: number;
   gunaMaxScore: number;
   gunaBreakdown: KootaBreakdownEntry[];
@@ -206,5 +211,13 @@ export function computeKundliMilanScores(
     ctx.dashaData ?? null,
   );
 
-  return { ...baseScores, riskFactors };
+  // header/lifeContext/gemstones are scoped to the PRIMARY person (chart1) only — same
+  // "primary person's own chart, never the partner's" precedent as primaryDoshaYoga above.
+  const now = new Date();
+  const analyses1 = analyzePlanetStrengths(chart1);
+  const lifeContext = computeLifeContext(chart1, analyses1, ctx.dashaData ?? null, now);
+  const header = buildReportHeader(chart1, ctx.personName, ctx.personDob, lifeContext);
+  const gemstones = buildReportGemstones('kundli_milan', chart1);
+
+  return { ...baseScores, riskFactors, header, lifeContext, gemstones };
 }
