@@ -963,6 +963,55 @@ describe('getReportForUser', () => {
     });
   });
 
+  it('fires a background regeneration for a ready row whose content predates CONTENT_VERSION, without blocking the response', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({ score: 1 }),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'New', paragraphs: ['p2'] }]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        id: 'stale-report',
+        status: 'ready',
+        content: { sections: [{ heading: 'Old', paragraphs: ['p1'] }] }, // no contentVersion
+      }),
+    );
+
+    const dto = await getReportForUser('stale-report', 'user-1', 'en');
+    // The OLD content is still served immediately — regeneration is fire-and-forget.
+    expect(dto).toMatchObject({ sections: [{ heading: 'Old', paragraphs: ['p1'] }] });
+
+    await vi.waitFor(() => {
+      expect(state.overwriteReadyReportContent).toHaveBeenCalledWith(
+        'stale-report',
+        expect.objectContaining({ content: expect.objectContaining({ contentVersion: 2 }) }),
+      );
+    });
+  });
+
+  it('does not fire a regeneration for a ready row already on the current CONTENT_VERSION', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({ score: 1 }),
+      generateNarrative: vi.fn(),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ chartData: { planets: [] } });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        id: 'current-report',
+        status: 'ready',
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 2 },
+      }),
+    );
+
+    await getReportForUser('current-report', 'user-1', 'en');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(state.overwriteReadyReportContent).not.toHaveBeenCalled();
+  });
+
   it('splices persisted window summaries onto freshly recomputed scores by position', async () => {
     const window = {
       startDate: '2026-10-22T00:00:00.000Z',
@@ -1297,6 +1346,7 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
     expect(state.overwriteReadyReportContent).toHaveBeenCalledWith('r1', {
       content: {
         sections: [{ heading: 'H', paragraphs: ['p'] }],
+        contentVersion: 2,
         verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
       },
       model: expect.any(String),

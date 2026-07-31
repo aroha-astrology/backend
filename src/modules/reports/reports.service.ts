@@ -76,6 +76,51 @@ import type {
 } from './reports.schemas.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 
+/**
+ * Bumped whenever the persisted `content` shape changes meaningfully (new section-skeleton /
+ * life-context / gemstones / verdict rebuild = version 2). Stamped onto `content.contentVersion`
+ * by both write paths (`runReportGeneration`, `regenerateReportContent`). A `ready` row whose
+ * stamp doesn't match the current version was generated before this shape existed — `getReportForUser`
+ * detects this on read and fires a background regeneration (see `triggerLazyRegenerationIfStale`)
+ * so an already-purchased report catches up to the new structure the next time its owner actually
+ * opens it, rather than a single expensive bulk sweep regenerating reports nobody may ever look at
+ * again. No refund, no re-purchase — same no-cost-to-the-user contract `regenerateReportContent`
+ * already documents.
+ */
+const CONTENT_VERSION = 2;
+
+// ponytail: process-local dedup only, not a distributed/DB-backed claim — with pm2's cluster
+// workers, two near-simultaneous requests landing on DIFFERENT worker processes could each fire
+// their own regeneration of the same row (one extra Gemini call, not a correctness bug: the last
+// overwriteReadyReportContent call just wins). Upgrade to a DB claim (mirroring claimReportRow)
+// if that inefficiency ever matters at this feature's actual traffic.
+const regeneratingReportIds = new Set<string>();
+
+/**
+ * Fires a background regeneration (see `regenerateReportContent`) for a `ready` row whose
+ * persisted content predates `CONTENT_VERSION` — never awaited, never blocks the read it's
+ * called from. Guarded against a second concurrent fire for the same row id (same process only,
+ * see the doc comment above); once the regeneration lands, the row's `contentVersion` matches and
+ * later reads stop triggering. No refund, no re-purchase, no user-visible action required — the
+ * next time this report's owner opens it (possibly the read AFTER this one, if generation is
+ * fast) they see the rebuilt structure.
+ */
+function triggerLazyRegenerationIfStale(row: ReportRow): void {
+  const contentVersion = (row.content as { contentVersion?: number } | null)?.contentVersion;
+  if (contentVersion === CONTENT_VERSION) return;
+  if (regeneratingReportIds.has(row.id)) return;
+
+  regeneratingReportIds.add(row.id);
+  void regenerateReportContent(row)
+    .catch((err: unknown) => {
+      logger.error(
+        { err, reportId: row.id, reportKey: row.reportKey },
+        'lazy report regeneration failed',
+      );
+    })
+    .finally(() => regeneratingReportIds.delete(row.id));
+}
+
 const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
 
 function monthKeyToDate(monthKey: string): string {
@@ -336,6 +381,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     await markReportReady(row.id, claimedAt, {
       content: {
         sections,
+        contentVersion: CONTENT_VERSION,
         ...(windowSummaries ? { windowSummaries } : {}),
         ...(verdict ? { verdict } : {}),
       },
@@ -697,11 +743,17 @@ export async function getReportForUser(
       error: 'Report generation failed. Any amount charged has been automatically refunded.',
     };
 
+  // row.status is 'ready' past this point (generating/failed both returned above). Fire-and-forget:
+  // this request still serves the CURRENT (possibly stale) content immediately below; the
+  // regenerated content lands in time for the owner's next view. See CONTENT_VERSION's doc comment.
+  triggerLazyRegenerationIfStale(row);
+
   const recomputedScores = await recomputeScoresForRead(row);
   const content = (row.content ?? {}) as {
     sections?: ReportSection[];
     windowSummaries?: PersistedWindowSummaries;
     verdict?: ReportVerdict;
+    contentVersion?: number;
   };
   const scoresWithWindows = spliceWindowSummaries(recomputedScores, content.windowSummaries);
   // `verdict` is generation-time-only (see computeReportVerdict's doc comment) — merged straight
@@ -879,6 +931,7 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
   await overwriteReadyReportContent(row.id, {
     content: {
       sections,
+      contentVersion: CONTENT_VERSION,
       ...(windowSummaries ? { windowSummaries } : {}),
       ...(verdict ? { verdict } : {}),
     },
