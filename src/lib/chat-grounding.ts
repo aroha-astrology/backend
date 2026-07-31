@@ -23,6 +23,7 @@ import {
   hasBinduMandate,
 } from './astro-engine/calculations/ashtakavarga-shodhana.js';
 import type { TransitEvent } from './astro-tools/transit-events.js';
+import { buildKarmicProfile } from './astro-engine/lalkitab/karmicProfile.js';
 import type { ChartData } from '@aroha-astrology/shared';
 import {
   calculateArudhaLagna,
@@ -783,6 +784,48 @@ export function synthesisFacts(synthesis: DailySynthesisResult | null | undefine
 }
 
 /**
+ * Karmic profile facts — ancestral/karmic debts (Rin), Pakka Ghar
+ * (permanent-house) placements, and blind planets, from Lal Kitab's own
+ * fixed-house convention (Aries always the 1st house — see
+ * lalkitab/chart.ts). All three sub-modules (debts.ts, pakkaghar.ts,
+ * blindPlanets.ts) existed with no caller anywhere in the codebase before
+ * this wiring. `src.chart` is the stored kundli's full chartData, which
+ * already carries the house/occupant fields these need (assignPlanetsToHouses
+ * populates both `planet.house` and `houses[].planets` at kundli-generation
+ * time), so no re-derivation from a stripped-down shape is needed here,
+ * unlike divisionalChartFacts' minimal {planet, longitude} chart above.
+ */
+export function karmicProfileFacts(chart: Record<string, unknown> | null): string[] {
+  if (!chart || !Array.isArray(chart.planets) || !Array.isArray(chart.houses)) return [];
+
+  try {
+    const profile = buildKarmicProfile(chart as unknown as ChartData);
+    const facts: string[] = [];
+
+    // Pakka Ghar (a strength note, not a problem to flag) is deliberately
+    // omitted here to stay within the CHART DATA block's char budget — debts
+    // and blind planets are the more actionable, audit-relevant content.
+    for (const debt of profile.presentDebts) {
+      facts.push(
+        `Karmic debt (${debt.type}): ${debt.indicators.join('; ')}. Remedy: ${debt.remedies[0] ?? 'see full remedy list'}.`,
+      );
+    }
+
+    if (profile.blindPlanets.length > 0) {
+      facts.push(
+        `Lal Kitab blind planets (obstructed): ${profile.blindPlanets.map((p) => `${p.planet} (${p.isBlind ? 'full' : 'half'}, house ${p.house})`).join(', ')}.`,
+      );
+    }
+
+    return facts;
+  } catch {
+    // Best-effort — a malformed/older chart shape should never break the
+    // rest of the grounding fact set.
+    return [];
+  }
+}
+
+/**
  * The macro events (ingresses/stations) that actually happened WITHIN a
  * weekly/monthly/yearly period, so the LLM can narrate the period's real arc
  * instead of only ever seeing the single-day snapshot at its start date (the
@@ -1046,6 +1089,9 @@ export async function buildGroundingFacts(
 
   // --- All 24 divisional (varga) charts --------------------------------------
   facts.push(...divisionalChartFacts(src.chart));
+
+  // --- Lal Kitab karmic profile (Rin debts, Pakka Ghar, blind planets) -------
+  facts.push(...karmicProfileFacts(src.chart));
 
   // --- Chandra/Surya Kundali (Moon/Sun as 1st house) --------------------------
   facts.push(...chandraSuryaKundaliFacts(planets));
