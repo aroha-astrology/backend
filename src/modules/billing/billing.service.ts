@@ -24,11 +24,11 @@ import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
  * Play Console product edit).
  */
 export const TOP_UP_AMOUNTS = [
-  { id: 'topup_50', amountPaise: 5000, currency: 'INR', label: '₹50' },
-  { id: 'topup_100', amountPaise: 10000, currency: 'INR', label: '₹100' },
-  { id: 'topup_200', amountPaise: 20000, currency: 'INR', label: '₹200', popular: true },
-  { id: 'topup_500', amountPaise: 50000, currency: 'INR', label: '₹500' },
-  { id: 'topup_1000', amountPaise: 100000, currency: 'INR', label: '₹1000' },
+  { id: 'recharge_25', amountPaise: 2500, currency: 'INR', label: '₹25' },
+  { id: 'recharrge_50', amountPaise: 5000, currency: 'INR', label: '₹50' },
+  { id: '100_recharge', amountPaise: 10000, currency: 'INR', label: '₹100' },
+  { id: 'recharge_250', amountPaise: 25000, currency: 'INR', label: '₹250', popular: true },
+  { id: 'recharge_500', amountPaise: 50000, currency: 'INR', label: '₹500' },
 ] as const;
 
 export function getTopUpAmounts() {
