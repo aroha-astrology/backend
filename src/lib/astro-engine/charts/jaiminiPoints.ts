@@ -1,13 +1,15 @@
 // =============================================================================
 // Jaimini Special Points — Arudha Lagna, Upapada Lagna, Karakamsha
 // =============================================================================
-// Deliberately NOT included here: Varshaphala/Tajika (a full parallel system —
-// Muntha, Varshesh, Tajika aspects/yogas, Patyayini/Mudda Dasha — each with its
-// own rule set) and Prashna (cast for the moment a question is asked, not
-// derivable from birth data at all). Shipping partial/guessed rules for either
-// into a live chat-grounding path would be exactly the kind of fabricated
-// specificity this module exists to avoid; they need their own dedicated,
-// separately-verified effort.
+// UPDATE (2026-07-31 predictive-engine effort): Varshaphala/Tajika now HAS a
+// dedicated, separately-verified implementation — see
+// astro-engine/varshphal/ (solar return, Muntha, Varsheshwara, Sahams). Each
+// of its modules documents its own sourcing/scope notes, including where a
+// classical sub-system (Panchavargiya Bala) could not be verified with
+// confidence and was honestly substituted rather than guessed. Prashna
+// (cast for the moment a question is asked, not derivable from birth data at
+// all) remains genuinely out of scope for a chart-grounding path and is not
+// implemented anywhere.
 //
 // All formulas below are the standard Jaimini/BPHS rules, verified against
 // published worked examples before being encoded (see each function's doc).

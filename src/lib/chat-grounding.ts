@@ -599,8 +599,9 @@ function chandraSuryaKundaliFacts(planets: PlanetFact[]): string[] {
  * Jaimini special points — Arudha Lagna (worldly image/reputation), Upapada
  * Lagna (marriage/spouse timing), and Karakamsha (soul purpose, via
  * Atmakaraka's D9 placement). See `astro-engine/charts/jaiminiPoints.ts` for
- * the verified formulas and what's deliberately NOT included (Varshaphala,
- * Prashna).
+ * the verified formulas. Varshaphala now has its own dedicated module
+ * (`astro-engine/varshphal/`); Prashna remains out of scope (not derivable
+ * from birth data alone).
  */
 function jaiminiPointFacts(
   chart: Record<string, unknown> | null,

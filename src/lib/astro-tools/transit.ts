@@ -39,54 +39,63 @@ export interface TransitDignity {
 
 /** The 12 zodiac signs in order (index 0 = Aries). */
 export const SIGNS: string[] = [
-  'Aries', 'Taurus', 'Gemini', 'Cancer',
-  'Leo', 'Virgo', 'Libra', 'Scorpio',
-  'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces',
+  'Aries',
+  'Taurus',
+  'Gemini',
+  'Cancer',
+  'Leo',
+  'Virgo',
+  'Libra',
+  'Scorpio',
+  'Sagittarius',
+  'Capricorn',
+  'Aquarius',
+  'Pisces',
 ];
 
 /**
  * Exaltation signs for each planet (0-based sign index).
  */
 export const EXALTATION: Record<string, number> = {
-  Sun: 0,       // Aries
-  Moon: 1,      // Taurus
-  Mars: 9,      // Capricorn
-  Mercury: 5,   // Virgo
-  Jupiter: 3,   // Cancer
-  Venus: 11,    // Pisces
-  Saturn: 6,    // Libra
-  Rahu: 1,      // Taurus
-  Ketu: 7,      // Scorpio
+  Sun: 0, // Aries
+  Moon: 1, // Taurus
+  Mars: 9, // Capricorn
+  Mercury: 5, // Virgo
+  Jupiter: 3, // Cancer
+  Venus: 11, // Pisces
+  Saturn: 6, // Libra
+  Rahu: 1, // Taurus
+  Ketu: 7, // Scorpio
 };
 
 /**
  * Debilitation signs for each planet (0-based sign index).
  */
 export const DEBILITATION: Record<string, number> = {
-  Sun: 6,       // Libra
-  Moon: 7,      // Scorpio
-  Mars: 3,      // Cancer
-  Mercury: 11,  // Pisces
-  Jupiter: 9,   // Capricorn
-  Venus: 5,     // Virgo
-  Saturn: 0,    // Aries
-  Rahu: 7,      // Scorpio
-  Ketu: 1,      // Taurus
+  Sun: 6, // Libra
+  Moon: 7, // Scorpio
+  Mars: 3, // Cancer
+  Mercury: 11, // Pisces
+  Jupiter: 9, // Capricorn
+  Venus: 5, // Virgo
+  Saturn: 0, // Aries
+  Rahu: 7, // Scorpio
+  Ketu: 1, // Taurus
 };
 
 /**
  * Own signs for each planet (0-based sign indices).
  */
 export const OWN_SIGNS: Record<string, number[]> = {
-  Sun: [4],          // Leo
-  Moon: [3],         // Cancer
-  Mars: [0, 7],      // Aries, Scorpio
-  Mercury: [2, 5],   // Gemini, Virgo
-  Jupiter: [8, 11],  // Sagittarius, Pisces
-  Venus: [1, 6],     // Taurus, Libra
-  Saturn: [9, 10],   // Capricorn, Aquarius
-  Rahu: [10],        // Aquarius
-  Ketu: [7],         // Scorpio
+  Sun: [4], // Leo
+  Moon: [3], // Cancer
+  Mars: [0, 7], // Aries, Scorpio
+  Mercury: [2, 5], // Gemini, Virgo
+  Jupiter: [8, 11], // Sagittarius, Pisces
+  Venus: [1, 6], // Taurus, Libra
+  Saturn: [9, 10], // Capricorn, Aquarius
+  Rahu: [10], // Aquarius
+  Ketu: [7], // Scorpio
 };
 
 /**
@@ -94,30 +103,30 @@ export const OWN_SIGNS: Record<string, number[]> = {
  * Based on natural friendship (naisargika maitri) in Vedic astrology.
  */
 export const FRIENDS: Record<string, number[]> = {
-  Sun: [0, 3, 7, 8, 11],       // Mars, Moon, Jupiter signs
-  Moon: [1, 2, 4, 5, 6],       // Sun, Mercury signs + own
-  Mars: [3, 4, 8, 11],         // Sun, Moon, Jupiter signs
-  Mercury: [1, 4, 6, 9, 10],   // Venus, Saturn signs + Sun
-  Jupiter: [0, 3, 4, 7],       // Sun, Moon, Mars signs
-  Venus: [2, 5, 9, 10],        // Mercury, Saturn signs
-  Saturn: [1, 2, 5, 6, 11],    // Venus, Mercury signs
-  Rahu: [2, 5, 8, 11],         // Mercury, Jupiter signs
-  Ketu: [0, 3, 4, 8, 11],      // Mars, Moon, Jupiter signs
+  Sun: [0, 3, 7, 8, 11], // Mars, Moon, Jupiter signs
+  Moon: [1, 2, 4, 5, 6], // Sun, Mercury signs + own
+  Mars: [3, 4, 8, 11], // Sun, Moon, Jupiter signs
+  Mercury: [1, 4, 6, 9, 10], // Venus, Saturn signs + Sun
+  Jupiter: [0, 3, 4, 7], // Sun, Moon, Mars signs
+  Venus: [2, 5, 9, 10], // Mercury, Saturn signs
+  Saturn: [1, 2, 5, 6, 11], // Venus, Mercury signs
+  Rahu: [2, 5, 8, 11], // Mercury, Jupiter signs
+  Ketu: [0, 3, 4, 8, 11], // Mars, Moon, Jupiter signs
 };
 
 /**
  * Enemy signs for each planet (0-based sign indices).
  */
 export const ENEMIES: Record<string, number[]> = {
-  Sun: [1, 6, 9, 10],          // Venus, Saturn signs
-  Moon: [7, 9, 10],            // Saturn, Mars (Scorpio)
-  Mars: [2, 5, 6],             // Mercury signs, Libra
-  Mercury: [0, 3, 7],          // Mars, Moon signs
-  Jupiter: [1, 2, 5, 6],       // Mercury, Venus signs
-  Venus: [0, 3, 4, 7],         // Sun, Moon, Mars signs
-  Saturn: [0, 3, 4, 7, 8],     // Sun, Moon, Mars signs
-  Rahu: [0, 4, 7],             // Sun, Mars signs
-  Ketu: [1, 2, 5, 6],          // Venus, Mercury signs
+  Sun: [1, 6, 9, 10], // Venus, Saturn signs
+  Moon: [7, 9, 10], // Saturn, Mars (Scorpio)
+  Mars: [2, 5, 6], // Mercury signs, Libra
+  Mercury: [0, 3, 7], // Mars, Moon signs
+  Jupiter: [1, 2, 5, 6], // Mercury, Venus signs
+  Venus: [0, 3, 4, 7], // Sun, Moon, Mars signs
+  Saturn: [0, 3, 4, 7, 8], // Sun, Moon, Mars signs
+  Rahu: [0, 4, 7], // Sun, Mars signs
+  Ketu: [1, 2, 5, 6], // Venus, Mercury signs
 };
 
 /**
@@ -141,7 +150,7 @@ export const SPECIAL_ASPECTS: Record<string, number[]> = {
  * Every planet has 7th house aspect; Jupiter, Mars, Saturn have additional aspects.
  * Returns an array of sign indices (0-11) that the planet aspects.
  */
-function getAspectedSigns(planetName: string, signIndex: number): number[] {
+export function getAspectedSigns(planetName: string, signIndex: number): number[] {
   const aspectHouses = SPECIAL_ASPECTS[planetName] ?? [7];
   // Ensure 7th aspect is always included
   const houses = new Set(aspectHouses);
@@ -174,7 +183,7 @@ function houseFromMoon(signIndex: number, moonSignIndex: number): number {
 export function detectDoubleTransit(
   jupiterSign: number,
   saturnSign: number,
-  natalMoonSign: number
+  natalMoonSign: number,
 ): DoubleTransitResult[] {
   // Get all signs Jupiter aspects (including its position)
   const jupiterAspectedSigns = new Set<number>([
@@ -215,10 +224,7 @@ export function detectDoubleTransit(
  * @param transitSignIndex - 0-based sign index (0-11)
  * @returns TransitDignity with quality score and description
  */
-export function dashaLordTransitQuality(
-  planet: string,
-  transitSignIndex: number
-): TransitDignity {
+export function dashaLordTransitQuality(planet: string, transitSignIndex: number): TransitDignity {
   const transitSign = SIGNS[transitSignIndex] ?? 'Unknown';
 
   // Check dignity in order of specificity
