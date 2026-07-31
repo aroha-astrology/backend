@@ -17,7 +17,9 @@ import {
   calculatePlanetPositions,
   calculateAshtakavarga,
   calculateBhinnaAshtakavargaDetailed,
+  getLalKitabRemedies,
 } from '../astro-engine/index.js';
+import { getMoonTransitRemedy } from '../astro-engine/lalkitab/transitRemedies.js';
 import { checkAllVedha } from './vedha.js';
 import { dailyKakshyaScore } from './kakshya.js';
 import { dailyLunarAssessment } from './tara-bala.js';
@@ -79,6 +81,21 @@ export interface DailySynthesisResult {
   panchaka: unknown;
   /** SAV bindu count per transit sign */
   savTransit: Record<string, number>;
+  /**
+   * Lal Kitab remedies for whatever this reading flags as challenging today
+   * (a debilitated Mahadasha/Antardasha lord, and/or Moon transiting a
+   * covered house from natal Moon) — see remedies.ts/transitRemedies.ts.
+   * Empty when nothing challenging is flagged; never fabricated when a
+   * flagged planet/house has no entry (transitRemedies.ts only covers
+   * houses 1-8, by design — see its header).
+   */
+  remedies: DailySynthesisRemedy[];
+}
+
+export interface DailySynthesisRemedy {
+  /** What triggered this remedy — e.g. "Debilitated Mahadasha lord (Saturn)" or "Moon transiting your 8th house". */
+  reason: string;
+  remedies: string[];
 }
 
 export interface MoonSignPrediction {
@@ -338,6 +355,39 @@ export function computeAggregateScore(
   };
 }
 
+/**
+ * Builds a Lal Kitab remedy for a Dasha lord that is debilitated IN ITS
+ * CURRENT TRANSIT SIGN (quality.dignity, from dashaLordTransitQuality — see
+ * that function's own doc: this is transit dignity, not natal dignity), keyed
+ * to the planet's NATAL house (getLalKitabRemedies' actual indexing) — using
+ * a live transit signal to decide WHEN a natal-house remedy is worth
+ * surfacing, which is a defensible reading of "this planet needs support
+ * right now" even though the trigger and the remedy key are on different
+ * axes (transit vs. natal). Returns null when nothing qualifies (not
+ * debilitated in transit, or the natal house is unknown/unassigned) — pure
+ * and independent of live ephemeris, so it's directly unit-testable.
+ */
+export function buildDashaLordRemedy(
+  label: 'Mahadasha' | 'Antardasha',
+  quality: DashaTranistDetail | undefined,
+  natalPlanets: Array<Record<string, unknown>>,
+): DailySynthesisRemedy | null {
+  if (quality?.dignity !== 'debilitated') return null;
+  // Requires house-assigned natalPlanets (true of the production path via
+  // extractSynthesisInputs' stored chartData.planets; the less-used
+  // dailyFullSynthesis raw-metrology path lacks house assignment, so this
+  // degrades to "no remedy" there rather than throwing).
+  const natalPlanet = natalPlanets.find((p) => p.planet === quality.planet);
+  const house = natalPlanet?.house as number | undefined;
+  if (house === undefined) return null;
+  const { remedies } = getLalKitabRemedies(quality.planet as never, house);
+  if (remedies.length === 0) return null;
+  return {
+    reason: `Debilitated ${label} lord (${quality.planet}, natal house ${house})`,
+    remedies: remedies.slice(0, 2),
+  };
+}
+
 // =============================================================================
 // Public API
 // =============================================================================
@@ -468,6 +518,27 @@ export async function synthesizeDailyForecast(
     panchakaResult as unknown as Record<string, unknown>,
   );
 
+  // ── Remedies ──────────────────────────────────────────────────────────────
+  // Never flag a challenge without pairing it with a mitigation (the audit's
+  // #1 complaint) — a debilitated running Dasha lord, and/or Moon transiting
+  // a house from natal Moon this codebase's Lal Kitab remedy tables cover.
+  const remedies: DailySynthesisRemedy[] = [];
+  const mdRemedy = buildDashaLordRemedy('Mahadasha', mdQuality, natalPlanets);
+  if (mdRemedy) remedies.push(mdRemedy);
+  const adRemedy = buildDashaLordRemedy('Antardasha', adQuality, natalPlanets);
+  if (adRemedy) remedies.push(adRemedy);
+
+  if (transitMoonSignIdx !== undefined) {
+    const houseFromMoon = ((transitMoonSignIdx - natalMoonSignIdx + 12) % 12) + 1;
+    const moonRemedy = getMoonTransitRemedy(houseFromMoon);
+    if (moonRemedy.covered && (houseFromMoon === 8 || vedhaBlockedCount > 0)) {
+      remedies.push({
+        reason: `Moon transiting your ${houseFromMoon}th house from natal Moon`,
+        remedies: moonRemedy.remedies,
+      });
+    }
+  }
+
   return {
     date: dateStr,
     score,
@@ -483,6 +554,7 @@ export async function synthesizeDailyForecast(
     doubleTransit,
     panchaka: panchakaResult,
     savTransit,
+    remedies,
   };
 }
 

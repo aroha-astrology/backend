@@ -771,6 +771,14 @@ export function synthesisFacts(synthesis: DailySynthesisResult | null | undefine
     );
   }
 
+  // Never flag a challenge above without pairing it with a mitigation — see
+  // synthesizeDailyForecast's remedies field (astro-tools/daily-synthesis.ts).
+  for (const r of synthesis.remedies) {
+    facts.push(
+      `REMEDY (for: ${r.reason}): ${r.remedies.join('; ')}. Weave 1 of these into the advice for the relevant life area — do not list all of them verbatim.`,
+    );
+  }
+
   return facts;
 }
 

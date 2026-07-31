@@ -15,6 +15,7 @@ function baseSynthesis(overrides: Partial<DailySynthesisResult> = {}): DailySynt
     doubleTransit: [],
     panchaka: undefined,
     savTransit: {},
+    remedies: [],
     ...overrides,
   };
 }

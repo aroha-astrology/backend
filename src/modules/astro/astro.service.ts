@@ -18,6 +18,7 @@ import {
   calculatePlanetPositions,
   calculateFullPanchangAsync,
   detectMangalDosha,
+  getLalKitabRemedies,
 } from '../../lib/astro-engine/index.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
@@ -48,7 +49,7 @@ import type {
   ForecastResponse,
   MatchmakingResponse,
 } from './astro.schemas.js';
-import type { MangalDosha, RegionId, RegionalMonth } from '@aroha-astrology/shared';
+import type { MangalDosha, RegionId, RegionalMonth, Planet } from '@aroha-astrology/shared';
 
 /* -------------------------------------------------------------------------- */
 /* Onboarding                                                                  */
@@ -149,9 +150,16 @@ export async function dailyFullSynthesis(
   // Step 1: run the metrologist to get natal chart data
   const metrology = await computeMetrology(birthRecord);
 
-  // Step 2: extract synthesis inputs from metrology
-  const natalPlanets = (metrology.planets as Array<Record<string, unknown>>) ?? [];
+  // Step 2: extract synthesis inputs from metrology.
+  // metrology.chart.planets (not the raw metrology.planets) — only the
+  // former has house assignment (calculateChart's assignPlanetsToHouses),
+  // which synthesizeDailyForecast's Lal Kitab remedy lookup needs to find a
+  // debilitated Dasha lord's natal house.
   const chart = (metrology.chart as Record<string, unknown>) ?? {};
+  const natalPlanets =
+    (chart.planets as Array<Record<string, unknown>> | undefined) ??
+    (metrology.planets as Array<Record<string, unknown>>) ??
+    [];
   const dasha = (metrology.dasha as Record<string, unknown>) ?? {};
 
   // Extract ascendant sign index
@@ -778,7 +786,14 @@ export interface RemedyItem {
 
 /**
  * Get remedies. If birth data is provided, compute the natal chart, identify
- * debilitated / weak planets, and return planet-specific remedies.
+ * debilitated / weak planets, and return Lal Kitab remedies specific to each
+ * weak planet's ACTUAL natal house (getLalKitabRemedies, planet x house — a
+ * 1,494-line, 108-combination database that existed with no caller anywhere
+ * in the codebase until this wiring). Falls back to the older single-remedy-
+ * per-planet PLANET_REMEDIES table only if the Lal Kitab lookup comes back
+ * empty (should not happen for any real 1-12 house, but the natal chart's
+ * house-assignment step is best-effort elsewhere in this codebase, so this
+ * stays defensive rather than assuming it always succeeds).
  * Otherwise return general remedies.
  */
 export async function getRemedies(birthData?: {
@@ -794,20 +809,29 @@ export async function getRemedies(birthData?: {
 
   try {
     const met = await computeMetrology(birthData);
-    const planets = (met.planets as Array<Record<string, unknown>>) ?? [];
+    // `met.planets` (raw calculatePlanetPositions output) has no house
+    // assignment — that only happens inside calculateChart's
+    // assignPlanetsToHouses step, so house-specific remedies must read
+    // met.chart.planets, not met.planets.
+    const chartPlanets =
+      ((met.chart as Record<string, unknown> | undefined)?.planets as
+        | Array<Record<string, unknown>>
+        | undefined) ?? [];
 
     // Identify weak planets: debilitated or retrograde
-    const weakPlanets: string[] = [];
-    for (const p of planets) {
+    const weakPlanets: Array<{ name: string; house: number }> = [];
+    for (const p of chartPlanets) {
       const name = p.planet as string;
       const sign = p.sign as string;
+      const house = p.house as number | undefined;
       const isRetrograde = p.isRetrograde as boolean | undefined;
+      if (house === undefined) continue;
 
       if (DEBILITATION_SIGNS[name] && sign === DEBILITATION_SIGNS[name]) {
-        weakPlanets.push(name);
+        weakPlanets.push({ name, house });
       } else if (isRetrograde && name !== 'Rahu' && name !== 'Ketu') {
         // Retrograde planets (excluding always-retrograde nodes) need attention
-        weakPlanets.push(name);
+        weakPlanets.push({ name, house });
       }
     }
 
@@ -816,13 +840,22 @@ export async function getRemedies(birthData?: {
       return GENERAL_REMEDIES;
     }
 
-    // Return remedies for weak/afflicted planets
-    const remedies: RemedyItem[] = weakPlanets
-      .filter((name) => PLANET_REMEDIES[name])
-      .map((name) => ({
-        planet: name,
-        ...PLANET_REMEDIES[name],
-      }));
+    // Lal Kitab remedy per weak planet's actual natal house, falling back to
+    // the generic per-planet remedy only if the lookup is unexpectedly empty.
+    const remedies: RemedyItem[] = weakPlanets.map(({ name, house }) => {
+      const lalKitab = getLalKitabRemedies(name as Planet, house);
+      if (lalKitab.remedies.length > 0) {
+        return {
+          planet: name,
+          title: `${name} in your ${house}${houseOrdinalSuffix(house)} house`,
+          icon: PLANET_REMEDIES[name]?.icon ?? 'sparkles',
+          remedy: lalKitab.remedies.slice(0, 2).join(' Also: '),
+        };
+      }
+      return PLANET_REMEDIES[name]
+        ? { planet: name, ...PLANET_REMEDIES[name] }
+        : { planet: name, title: `Strengthen ${name}`, icon: 'sparkles', remedy: '' };
+    });
 
     // Pad with general remedies if we have fewer than 3 planet-specific ones
     if (remedies.length < 3) {
@@ -835,6 +868,13 @@ export async function getRemedies(birthData?: {
     // If chart computation fails, fall back to general remedies
     return GENERAL_REMEDIES;
   }
+}
+
+function houseOrdinalSuffix(house: number): string {
+  if (house === 1) return 'st';
+  if (house === 2) return 'nd';
+  if (house === 3) return 'rd';
+  return 'th';
 }
 
 /* -------------------------------------------------------------------------- */
