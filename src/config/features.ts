@@ -24,6 +24,12 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   { key: 'nav.askAI', label: 'Ask AI tab', group: 'nav', defaultEnabled: true },
   { key: 'nav.horoscope', label: 'Horoscope tab', group: 'nav', defaultEnabled: true },
   { key: 'nav.panchang', label: 'Panchang tab', group: 'nav', defaultEnabled: true },
+  // New nav entry ships dark per the standing "new features ship dark" rule
+  // (see home.reportsSection/home.palmReading above) — turned on deliberately
+  // from Admin -> Features once the /remedies page (karmic profile + Lal
+  // Kitab remedy list) has been checked end-to-end. Not a bottom-tab slot
+  // (those five are fixed); this gates a ListRow in the profile drawer menu.
+  { key: 'nav.remedies', label: 'Remedies menu entry', group: 'nav', defaultEnabled: false },
   // home
   { key: 'home.todayReading', label: 'Today Reading card', group: 'home', defaultEnabled: true },
   { key: 'home.kundliCard', label: 'Kundli card', group: 'home', defaultEnabled: true },
