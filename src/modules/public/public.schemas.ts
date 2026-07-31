@@ -73,3 +73,75 @@ export const MoonSignResponseSchema = z
   .openapi('MoonSignResponse');
 
 export type MoonSignResponse = z.infer<typeof MoonSignResponseSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* Kundli chart (D1) — request/response                                       */
+/* -------------------------------------------------------------------------- */
+
+// Unlike Moon sign (geocentric, location-independent), houses/ascendant need
+// an observer location, so lat/lng are required here.
+export const KundliChartRequestSchema = z
+  .object({
+    date: MoonSignRequestSchema.shape.date,
+    time: MoonSignRequestSchema.shape.time,
+    tzOffsetMinutes: MoonSignRequestSchema.shape.tzOffsetMinutes,
+    lat: z
+      .number()
+      .min(-90, 'lat must be >= -90')
+      .max(90, 'lat must be <= 90')
+      .openapi({ example: 28.6139, description: 'Birth latitude, decimal degrees' }),
+    lng: z
+      .number()
+      .min(-180, 'lng must be >= -180')
+      .max(180, 'lng must be <= 180')
+      .openapi({ example: 77.209, description: 'Birth longitude, decimal degrees' }),
+  })
+  .openapi('KundliChartRequest');
+
+export type KundliChartRequest = z.infer<typeof KundliChartRequestSchema>;
+
+const PlanetPositionSchema = z
+  .object({
+    planet: z.string().openapi({ example: 'Moon' }),
+    sign: z.string().openapi({ example: 'Cancer' }),
+    signIndex: z.number().int().min(0).max(11),
+    signDegree: z.number().min(0).max(30),
+    nakshatra: z.string().openapi({ example: 'Pushya' }),
+    nakshatraIndex: z.number().int().min(0).max(26),
+    nakshatraPada: z.number().int().min(1).max(4),
+    nakshatraLord: z.string(),
+    isRetrograde: z.boolean(),
+    house: z.number().int().min(1).max(12),
+  })
+  .openapi('KundliPlanetPosition');
+
+const HouseDataSchema = z
+  .object({
+    house: z.number().int().min(1).max(12),
+    sign: z.string(),
+    signIndex: z.number().int().min(0).max(11),
+    lord: z.string(),
+    planets: z.array(z.string()),
+  })
+  .openapi('KundliHouseData');
+
+const AscendantDataSchema = z
+  .object({
+    sign: z.string(),
+    signIndex: z.number().int().min(0).max(11),
+    degree: z.number().min(0).max(30),
+    nakshatra: z.string(),
+    nakshatraPada: z.number().int().min(1).max(4),
+  })
+  .openapi('KundliAscendant');
+
+export const KundliChartResponseSchema = z
+  .object({
+    planets: z.array(PlanetPositionSchema),
+    houses: z.array(HouseDataSchema),
+    ascendant: AscendantDataSchema,
+    ayanamsa: z.string().openapi({ example: 'lahiri' }),
+  })
+  .openapi('KundliChartResponse');
+
+export type KundliChartResponse = z.infer<typeof KundliChartResponseSchema>;

@@ -1,7 +1,13 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
+import type { Context } from 'hono';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import * as publicService from './public.service.js';
-import { MoonSignRequestSchema, MoonSignResponseSchema } from './public.schemas.js';
+import {
+  MoonSignRequestSchema,
+  MoonSignResponseSchema,
+  KundliChartRequestSchema,
+  KundliChartResponseSchema,
+} from './public.schemas.js';
 
 /* -------------------------------------------------------------------------- */
 /* Shared helpers (same shape as astro.routes.ts's ErrorSchema/errorResponse) */
@@ -62,6 +68,23 @@ const moonSignRoute = createRoute({
   },
 });
 
+type ValidationResult = { success: true; data: unknown } | { success: false; error: z.ZodError };
+
+const validationFailureHandler = (result: ValidationResult, c: Context) => {
+  if (!result.success) {
+    return c.json(
+      {
+        error: {
+          code: 'UNPROCESSABLE',
+          message: 'Validation failed',
+          details: result.error.flatten(),
+        },
+      },
+      422,
+    );
+  }
+};
+
 publicRouter.openapi(
   moonSignRoute,
   async (c) => {
@@ -75,18 +98,48 @@ publicRouter.openapi(
   // route's documented contract is a 422 (matching the rest of the astro
   // API's `Errors.unprocessable` shape), so validation failures are mapped
   // to that shape explicitly here instead of relying on the library default.
-  (result, c) => {
-    if (!result.success) {
-      return c.json(
-        {
-          error: {
-            code: 'UNPROCESSABLE',
-            message: 'Validation failed',
-            details: result.error.flatten(),
-          },
-        },
-        422,
-      );
-    }
+  validationFailureHandler,
+);
+
+/* -------------------------------------------------------------------------- */
+/* POST /public/kundli-chart                                                  */
+/* -------------------------------------------------------------------------- */
+
+// Same ceiling as moon-sign, but this is a heavier compute per call (full
+// houses + ascendant + all 9 planets, not just Moon).
+const kundliChartRateLimit = rateLimiter({
+  windowMs: 60_000,
+  max: 10,
+  name: 'public-kundli-chart',
+});
+
+const kundliChartRoute = createRoute({
+  method: 'post',
+  path: '/public/kundli-chart',
+  tags: ['Public'],
+  summary: 'Compute a full D1 birth chart — public, unauthenticated, no interpretation',
+  middleware: [kundliChartRateLimit] as const,
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: KundliChartRequestSchema } },
+    },
   },
+  responses: {
+    200: {
+      description: 'D1 chart result',
+      content: { 'application/json': { schema: KundliChartResponseSchema } },
+    },
+    422: errorResponse('Malformed/out-of-range date, time, tzOffsetMinutes, lat, or lng'),
+  },
+});
+
+publicRouter.openapi(
+  kundliChartRoute,
+  async (c) => {
+    const body = c.req.valid('json');
+    const result = await publicService.computeKundliChart(body);
+    return c.json(result, 200);
+  },
+  validationFailureHandler,
 );

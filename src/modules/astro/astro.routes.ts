@@ -23,6 +23,13 @@ const CHAT_MESSAGE_COST_PAISE = 2000;
 /** Expensive LLM/swarm routes: cap per authenticated user. */
 const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20, name: 'astro-llm' });
 
+// Panchang is unauthenticated (no requireUser on this router's panchang
+// routes) and now backs a real, crawlable /panchang marketing page rather
+// than just an ISR-cached homepage section — same abuse reasoning as
+// public-moon-sign/public-kundli-chart. Cache hits make repeat requests for
+// the same day/location cheap, hence the higher ceiling than those.
+const panchangRateLimit = rateLimiter({ windowMs: 60_000, max: 30, name: 'panchang' });
+
 /**
  * Backstop ceiling on how fast one account can ask questions, sitting *under*
  * `llmRateLimit`'s broader 20/min (which is shared across every astro LLM
@@ -359,6 +366,7 @@ const panchangRoute = createRoute({
   path: '/panchang',
   tags: ['Astro'],
   summary: 'Get panchang for a given date and location (public)',
+  middleware: [panchangRateLimit] as const,
   request: { query: PanchangQuerySchema },
   responses: {
     200: {
@@ -431,6 +439,7 @@ const panchangMonthRoute = createRoute({
   path: '/panchang/month',
   tags: ['Astro'],
   summary: 'Get lightweight per-day panchang summaries for a calendar month (public)',
+  middleware: [panchangRateLimit] as const,
   request: { query: PanchangMonthQuerySchema },
   responses: {
     200: {
