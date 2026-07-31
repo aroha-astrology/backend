@@ -9,12 +9,13 @@
 // (not the individual generator modules) so registration always runs before
 // any purchase or read, regardless of which report key is requested first.
 //
-// All 13 catalogue keys are now registered here (kundli_milan was the original
+// All 14 catalogue keys are now registered here (kundli_milan was the original
 // worked example; the next 9 were added in a later task; match_report is the
 // paid Compatibility Match Report, reusing kundli_milan's scoring underneath
 // its own 8 life-area cards; numerology/name_change are pure name+DOB math,
-// no chart involved). Nothing else in the reports feature needs to change to
-// pick up a newly-registered key.
+// no chart involved; remedies composes the previously-dormant Lal Kitab debts/
+// Pakka Ghar/blind-planet/remedy-database modules). Nothing else in the
+// reports feature needs to change to pick up a newly-registered key.
 // =============================================================================
 
 import './kundli-milan.generator.js';
@@ -30,3 +31,4 @@ import './relationship-monthly.generator.js';
 import './match-report.generator.js';
 import './numerology.generator.js';
 import './name-change.generator.js';
+import './remedies.generator.js';

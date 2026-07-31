@@ -202,19 +202,33 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: true,
     defaultPricePaise: 5000,
   },
+  // Both have a fully registered generator (real LLM narrative, full i18n) --
+  // switched on 2026-07-31 at the user's explicit request, unlike the other
+  // reports.* keys above which still ship dark pending a deliberate decision.
   {
     key: 'reports.numerology',
     label: 'Numerology Report',
     group: 'reports',
-    defaultEnabled: false,
+    defaultEnabled: true,
     defaultPricePaise: 9900,
   },
   {
     key: 'reports.name_change',
     label: 'Name Change Report',
     group: 'reports',
-    defaultEnabled: false,
+    defaultEnabled: true,
     defaultPricePaise: 4900,
+  },
+  // New report type, ships dark per the standing rule -- turn on from
+  // Admin -> Features once checked end-to-end. Full paid report generator
+  // (not the free /remedies page): karmic debts, Pakka Ghar, blind planets,
+  // and a Lal Kitab natal remedy per classical planet, narrated by the LLM.
+  {
+    key: 'reports.remedies',
+    label: 'Remedies Report (Lal Kitab)',
+    group: 'reports',
+    defaultEnabled: false,
+    defaultPricePaise: 9900,
   },
 ] as const;
 

@@ -26,7 +26,8 @@ export type ReportKey =
   | 'relationship_monthly'
   | 'match_report'
   | 'numerology'
-  | 'name_change';
+  | 'name_change'
+  | 'remedies';
 
 export interface ReportDef {
   key: ReportKey;
@@ -159,6 +160,18 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     // exactly — a judgment call, not an exact science; see match_report's ₹50 for another
     // report type that similarly sits between the ₹25/₹99 tiers.
     basePricePaise: 4900,
+  },
+  {
+    key: 'remedies',
+    featureFlagKey: 'reports.remedies',
+    label: 'Remedies Report (Lal Kitab)',
+    isMonthly: false,
+    requiresPartner: false,
+    // Same ₹99 tier as numerology/marriage/wealth/baby_name: comparable content depth (karmic
+    // debts + Pakka Ghar + blind planets + a natal Lal Kitab remedy per classical planet).
+    // Distinct from the free /remedies page (app/remedies/page.tsx), which live-fetches a
+    // thinner "weak planets only" list via GET /v1/remedies and isn't part of this catalogue.
+    basePricePaise: 9900,
   },
 ] as const;
 
