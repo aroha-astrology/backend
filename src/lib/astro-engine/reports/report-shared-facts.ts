@@ -16,6 +16,10 @@ import type { ReportGemstone } from './report-gemstones.js';
 export interface ReportSharedFacts {
   header: ReportHeader;
   lifeContext: LifeContext;
+  /** Optional pre-purchase questionnaire answers, carried onto `scores` by the report types that
+   * have a configured question set — see `ReportScoreContext.userAnswers`'s doc comment for why
+   * this is sourced fresh from the purchase request rather than being a truly deterministic fact. */
+  userAnswers?: Record<string, string> | null;
 }
 
 export interface ReportSharedFactsWithGemstones extends ReportSharedFacts {

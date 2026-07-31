@@ -28,6 +28,8 @@ const GENTLE_DOSHA_RULE =
   'This report is read by a new or expecting parent about their baby. If a dosha (e.g. Mangal Dosha, Kaal Sarp Dosha) is listed as present, mention it matter-of-factly and calmly, never alarmingly — classical doshas are common chart features with their own classical remedies/timing, not a flaw in the baby. Do not recommend specific remedies, pujas, or purchases. If a favorable yoga (Raja/Dhana) is present, you may mention it warmly and briefly. If neither is present, skip this note or fold it into a single reassuring line.';
 const STYLE_RULE =
   "Deliberately spread the suggested names across three flavors — some more traditional/classical-sounding, some more modern/contemporary-sounding, and at least one or two deity-inspired (drawn from the given nakshatra deity, e.g. a name derived from or referencing that deity) — briefly noting which flavor each name leans toward. This directly helps the reader decide whether to lean traditional, modern, or deity-inspired for this chart, so do not suggest a one-note list that's all of a single style.";
+const PREFERENCE_RULE =
+  "If the reader gave optional context below (whether they already have a child and its gender, whether they're planning one, and/or a preferred name style — Western/Indian/Ancient/Other), tailor the suggested names toward that stated style/gender preference instead of a generic mixed-gender list, and acknowledge their situation naturally in the opening. If no such context was given, fall back to the default mixed-gender, mixed-style approach in NAMES_RULE/STYLE_RULE.";
 
 function narrativeSystemPrompt(): string {
   return `You are writing a Baby Name Report for a mobile Vedic astrology app, grounded in the classical Moon-nakshatra-to-starting-syllable naming convention. The app already computed the reader's Moon nakshatra, pada, the classical starting syllable for naming, the nakshatra's ruling planet and deity, and a gentle dosha/yoga summary. Your job is ONLY to write the narrative + name list.
@@ -40,6 +42,7 @@ ${THEME_RULE}
 ${PADA_RULE}
 ${AVOID_SOUNDS_RULE}
 ${GENTLE_DOSHA_RULE}
+${PREFERENCE_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -73,6 +76,13 @@ function buildFacts(scores: BabyNameScores): string {
           .join('; ')}.`
       : "No specifically flagged doshas on the baby's chart.",
   );
+  const a = scores.userAnswers;
+  if (a?.hasChild) lines.push(`Reader-provided context — already has a child: ${a.hasChild}.`);
+  if (a?.childGender) lines.push(`Reader-provided context — child's gender: ${a.childGender}.`);
+  if (a?.planningBaby)
+    lines.push(`Reader-provided context — planning to have a baby: ${a.planningBaby}.`);
+  if (a?.namePreference)
+    lines.push(`Reader-provided context — preferred name style: ${a.namePreference}.`);
   return lines.join('\n');
 }
 

@@ -20,6 +20,8 @@ const SAFETY_RULE =
   'Use tendency language ("suggests", "supports") — never guarantee a promotion, raise, or specific career outcome.';
 const SUB_PERIOD_RULE =
   'The given within-month sub-periods (if any) break the month into specific date ranges, each with its own ruling planet and 0-100 score — directly answer "are there specific dates this month best for important career moves" by naming the date range(s) with a notably HIGHER score as the best windows to push forward (ask for a raise, switch jobs, take a risk) and any with a notably LOWER score as ones to move more cautiously. If no sub-periods are given, say plainly that no date-level breakdown is available for this chart rather than inventing one.';
+const CONCERN_RULE =
+  'If the reader gave an optional current career concern below (e.g. facing difficulty at work, or job-hunting), weave a direct, practical response to it into "Support & Obstacles This Month" and "Industries That Fit", tied to the given month score/tone/dosha-yoga facts — do not ignore it. If no concern was given, skip this entirely rather than asking for one.';
 
 function narrativeSystemPrompt(): string {
   return `You are writing this month's Career Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 10th house (${HOUSE_SIGNIFICATIONS[10]}) and 6th house (${HOUSE_SIGNIFICATIONS[6]}); a "work style" archetype with 5 named trait tilts (0-10 each); whether a Raja Yoga (status/career-elevating combination) is present; whether either of two obstacle-themed doshas (Sade Sati, Kaal Sarp) is currently present; and a short list of classically-associated industries for the 10th-house lord's planet. Your job is ONLY to write the narrative explanation.
@@ -28,6 +30,7 @@ ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
 ${SUB_PERIOD_RULE}
+${CONCERN_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -83,6 +86,11 @@ function buildFacts(scores: CareerMonthlyScores): string {
     }
   } else {
     lines.push('Within-month sub-periods: none available.');
+  }
+  if (scores.userAnswers?.concern) {
+    lines.push(
+      `Reader-provided context — an optional current career concern (facing difficulty, job-hunting, etc.) to directly respond to: ${scores.userAnswers.concern}`,
+    );
   }
   return lines.join('\n');
 }

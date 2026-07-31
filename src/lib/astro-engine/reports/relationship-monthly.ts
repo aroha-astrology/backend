@@ -33,6 +33,11 @@ export interface RelationshipMonthlyScores extends Record<string, unknown>, Repo
   monthScore: number;
   keyHouses: number[];
   tone: MonthlyTone;
+  /** Account-level `users.relationship_status` (single/in_relationship/married/...) — read fresh
+   * from `ctx.personRelationshipStatus` on every generation, same sourcing marriage.ts's
+   * `relationshipStatus` field uses, so the narrative can frame partnership guidance around
+   * whether the reader currently has a partner rather than assuming one exists. */
+  relationshipStatus: string | null;
   /** Mangal Dosha caution (previously completely missing from this report, same gap as
    * true_love) — no yoga-type filter, since this report is scoped to a single month and no
    * yoga `type` in this codebase reads as month-specific (yogas are fixed natal placements,
@@ -78,12 +83,14 @@ export function computeRelationshipMonthlyScores(
   return {
     header,
     lifeContext,
+    userAnswers: ctx.userAnswers ?? null,
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
     activeAntardashaLord: period?.antardashaLord ?? 'Unknown',
     monthScore,
     keyHouses: KEY_HOUSES,
     tone: toneFromMonthScore(monthScore),
+    relationshipStatus: ctx.personRelationshipStatus ?? null,
     doshaYoga,
     subPeriods,
   };

@@ -25,6 +25,11 @@ export const PurchaseReportBodySchema = z
     birthProfileId: z.string().uuid().nullable().optional(),
     /** kundli_milan only. */
     partner: PartnerBirthDetailsSchema.optional(),
+    /** Optional answers to a small, skippable pre-purchase questionnaire (see frontend's
+     * lib/report-questions.ts) — only meaningful for report types with a configured question
+     * set; ignored by every other report type's generator. Never persisted — read once by
+     * runReportGeneration and discarded. */
+    answers: z.record(z.string(), z.string()).optional(),
   })
   .openapi('PurchaseReportBody');
 

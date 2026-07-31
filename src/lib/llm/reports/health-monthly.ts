@@ -20,6 +20,8 @@ const SUB_PERIOD_RULE =
   'The given within-month sub-periods (if any) break the month into specific date ranges, each with its own ruling planet and 0-100 score — directly answer "are there specific weeks this month I should be extra careful about my health" by naming the date range(s) with a notably LOWER score as a heads-up (early warning sign to watch for, not alarming) and any with a notably HIGHER score as an easier stretch. If no sub-periods are given, say plainly that no week-level breakdown is available for this chart rather than inventing one.';
 const CONNECTED_HOUSES_RULE =
   'If any connected houses are given, name that specific classical house theme as the area needing the most attention this month — directly answering "which health areas need the most attention this month" — rather than only giving one combined score. If none are given, say the month\'s energy is spread evenly rather than concentrated in one area.';
+const CONCERN_RULE =
+  "If the reader gave an optional current health concern below, acknowledge it briefly and empathetically in the 'Practical Guidance' section and connect it to the given month score/tone/dosha framing where it genuinely fits — but the DISCLAIMER_RULE still applies in full: never diagnose it, never name it as a specific disease, never recommend a treatment. If no concern was given, skip this entirely rather than asking for one.";
 
 function narrativeSystemPrompt(): string {
   return `You are writing this month's Health Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 6th house (${HOUSE_SIGNIFICATIONS[6]}), 1st house (${HOUSE_SIGNIFICATIONS[1]}), and 8th house (${HOUSE_SIGNIFICATIONS[8]}); whether any of three resilience-themed doshas (Kemdruma, Sade Sati, Grahan) are currently present; and whether any supportive/protective (benefic or mahapurusha) yoga is currently present. Your job is ONLY to write the narrative explanation.
@@ -29,6 +31,7 @@ ${PLAIN_LANGUAGE_RULE}
 ${DISCLAIMER_RULE}
 ${SUB_PERIOD_RULE}
 ${CONNECTED_HOUSES_RULE}
+${CONCERN_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -81,6 +84,11 @@ function buildFacts(scores: HealthMonthlyScores): string {
     }
   } else {
     lines.push('Within-month sub-periods: none available.');
+  }
+  if (scores.userAnswers?.concern) {
+    lines.push(
+      `Reader-provided context — an optional current health concern to keep in mind (never diagnose it, see CONCERN_RULE): ${scores.userAnswers.concern}`,
+    );
   }
   return lines.join('\n');
 }

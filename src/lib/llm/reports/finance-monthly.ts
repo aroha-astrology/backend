@@ -18,6 +18,8 @@ const DISCLAIMER_RULE =
   'This is NOT financial advice. Frame everything as traditional astrological guidance about tendencies and themes only — never recommend specific investments, products, or financial decisions.';
 const SUB_PERIOD_RULE =
   'The given within-month sub-periods (if any) break the month into specific date ranges, each with its own ruling planet and 0-100 score — directly answer "are there windows this month good for investments or big purchases" by naming the date range(s) with a notably HIGHER score as the better windows, and "what financial decisions are better postponed until next month" by naming any notably LOWER-scored date range(s) as ones to move cautiously or wait out. If no sub-periods are given, say plainly that no date-level breakdown is available for this chart rather than inventing one.';
+const CONCERN_RULE =
+  'If the reader gave an optional current financial concern or plan below, weave a direct, practical response to it into "Practical Guidance", tied to the given month score/tone/dosha-yoga facts — the DISCLAIMER_RULE still applies in full: never name a specific investment/product. If no concern was given, skip this entirely rather than asking for one.';
 
 function narrativeSystemPrompt(): string {
   return `You are writing this month's Finance Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 2nd house (${HOUSE_SIGNIFICATIONS[2]}) and 11th house (${HOUSE_SIGNIFICATIONS[11]}), and a dosha/yoga check for any classical wealth-yoga or wealth-related dosha caution currently relevant. Your job is ONLY to write the narrative explanation.
@@ -26,6 +28,7 @@ ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${DISCLAIMER_RULE}
 ${SUB_PERIOD_RULE}
+${CONCERN_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -62,7 +65,7 @@ function formatSubPeriods(subPeriods: FinanceMonthlyScores['subPeriods']): strin
 }
 
 function buildFacts(scores: FinanceMonthlyScores): string {
-  return [
+  const lines = [
     `Period: ${scores.periodMonth}.`,
     `Active Mahadasha lord: ${scores.activeMahadashaLord}.`,
     `Active Antardasha lord: ${scores.activeAntardashaLord}.`,
@@ -70,7 +73,13 @@ function buildFacts(scores: FinanceMonthlyScores): string {
     `Tone: ${scores.tone}.`,
     formatDoshaYoga(scores.doshaYoga),
     formatSubPeriods(scores.subPeriods),
-  ].join('\n');
+  ];
+  if (scores.userAnswers?.concern) {
+    lines.push(
+      `Reader-provided context — an optional current financial concern or plan to directly respond to: ${scores.userAnswers.concern}`,
+    );
+  }
+  return lines.join('\n');
 }
 
 const SECTIONS_SCHEMA = {

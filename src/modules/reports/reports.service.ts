@@ -339,7 +339,11 @@ async function computeReportVerdict(
   }
 }
 
-async function runReportGeneration(row: ReportRow, birthProfileId: string | null): Promise<void> {
+async function runReportGeneration(
+  row: ReportRow,
+  birthProfileId: string | null,
+  answers: Record<string, string> | null = null,
+): Promise<void> {
   const claimedAt = row.startedAt;
   if (!claimedAt) return; // claimReportRow always sets this when it returns a row — defensive only.
 
@@ -371,6 +375,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
         ashtakavargaData: kundli.ashtakavargaData ?? null,
         dashaData: kundli.dashaData ?? null,
         ...personContext,
+        userAnswers: answers,
       },
       row.periodMonth,
     );
@@ -407,8 +412,12 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
 }
 
 /** Kick off background generation without blocking the caller. */
-function fireReportGeneration(row: ReportRow, birthProfileId: string | null): void {
-  void runReportGeneration(row, birthProfileId).catch((err: unknown) => {
+function fireReportGeneration(
+  row: ReportRow,
+  birthProfileId: string | null,
+  answers: Record<string, string> | null = null,
+): void {
+  void runReportGeneration(row, birthProfileId, answers).catch((err: unknown) => {
     logger.error({ err, reportId: row.id }, 'report background generation errored unexpectedly');
   });
 }
@@ -443,6 +452,7 @@ export async function purchaseReport(
     ? ((body.partner as unknown as Record<string, unknown>) ?? null)
     : null;
   const purchaseReason = reasonForPurchase(def.key, months);
+  const answers = body.answers && Object.keys(body.answers).length > 0 ? body.answers : null;
 
   const charged = await deductWalletBalance(user.id, totalPricePaise, purchaseReason);
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
@@ -472,7 +482,7 @@ export async function purchaseReport(
           periodMonth: claimed.periodMonth,
           status: claimed.status,
         });
-        fireReportGeneration(claimed, birthProfileId);
+        fireReportGeneration(claimed, birthProfileId, answers);
       } else {
         // A row already exists at this exact identity that claimReportRow's own claimability
         // guard couldn't reclaim — the DB layer guaranteed no duplicate row was ever inserted

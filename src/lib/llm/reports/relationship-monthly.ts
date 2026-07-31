@@ -30,6 +30,8 @@ const SAFETY_RULE =
   'Use tendency language ("suggests", "supports") — never guarantee a specific relationship outcome or event. If a caution (e.g. Mangal Dosha) is listed, mention it calmly and factually, never alarmingly, and do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
 const SUB_PERIOD_RULE =
   'The given within-month sub-periods (if any) break the month into specific date ranges, each with its own ruling planet and 0-100 score — directly answer "are there specific days this month best for important relationship talks" by naming the date range(s) with a notably HIGHER score as the better windows for an important conversation, and any notably LOWER-scored range(s) as ones to avoid for sensitive topics. If no sub-periods are given, say plainly that no date-level breakdown is available for this chart rather than inventing one.';
+const RELATIONSHIP_STATUS_RULE =
+  "The reader's current relationship status is given below — if it is single/not provided, do not assume an existing partner; frame guidance around dating/romance readiness instead of an existing relationship. If it names an existing partner (in a relationship/engaged/married/etc.), frame guidance around that existing partnership.";
 
 function narrativeSystemPrompt(): string {
   return `You are writing this month's Relationship Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, and a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 7th house (${HOUSE_SIGNIFICATIONS[7]}) and 5th house (${HOUSE_SIGNIFICATIONS[5]}). Your job is ONLY to write the narrative explanation.
@@ -38,6 +40,7 @@ ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
 ${SUB_PERIOD_RULE}
+${RELATIONSHIP_STATUS_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -58,7 +61,14 @@ function buildFacts(scores: RelationshipMonthlyScores): string {
     `Active Antardasha lord: ${scores.activeAntardashaLord}.`,
     `Month score: ${scores.monthScore} out of 100.`,
     `Tone: ${scores.tone}.`,
+    `Reader's current relationship status: ${scores.relationshipStatus ?? 'not provided'}.`,
   ];
+
+  if (scores.userAnswers?.concern) {
+    lines.push(
+      `Reader-provided context — a specific concern they'd like this reading to keep in mind (optional, take it into account where relevant): ${scores.userAnswers.concern}`,
+    );
+  }
 
   if (scores.doshaYoga.cautions.length > 0) {
     lines.push('Cautions to hold carefully (given):');

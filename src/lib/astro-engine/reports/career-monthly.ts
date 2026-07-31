@@ -146,6 +146,7 @@ export function computeCareerMonthlyScores(
   return {
     header,
     lifeContext,
+    userAnswers: ctx.userAnswers ?? null,
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
     activeAntardashaLord: period?.antardashaLord ?? 'Unknown',

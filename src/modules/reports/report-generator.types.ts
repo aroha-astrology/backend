@@ -72,6 +72,17 @@ export interface ReportScoreContext {
    * above: existing report-type test files construct `ReportScoreContext` without it.
    */
   personRelationshipStatus?: string | null;
+  /**
+   * Optional free-text/enum answers the user gave to a small, skippable pre-purchase
+   * questionnaire (see `PurchaseReportBody.answers`, threaded through purely in-memory from
+   * `purchaseReport` to `runReportGeneration` — never persisted, since it's only consumed once
+   * by `generateNarrative` at generation time, unlike the deterministic fields above that
+   * `computeScores` must reproduce on every read). Only the report types with a configured
+   * question set (see frontend's `lib/report-questions.ts`) ever have this populated; every
+   * other report type's `computeScores` ignores it entirely, same additive-only reasoning as
+   * `personRelationshipStatus` above.
+   */
+  userAnswers?: Record<string, string> | null;
 }
 
 /**

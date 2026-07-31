@@ -115,6 +115,7 @@ export function computeBabyNameScores(
   return {
     header,
     lifeContext,
+    userAnswers: ctx.userAnswers ?? null,
     moonNakshatra: nakshatraData.name,
     moonPada: nakshatraData.pada,
     startingSyllables,
