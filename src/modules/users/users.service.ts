@@ -556,13 +556,17 @@ export async function unlockHouse(
   }
 }
 
-export async function unlockGemstone(userId: string, birthProfileId: string | null): Promise<void> {
+export async function unlockGemstone(
+  userId: string,
+  birthProfileId: string | null,
+  weightKg: number | null = null,
+): Promise<void> {
   let success: boolean;
   if (birthProfileId === null) {
     const { unlockGemstoneForUser } = await import('./users.repo.js');
-    success = await unlockGemstoneForUser(userId);
+    success = await unlockGemstoneForUser(userId, weightKg);
   } else {
-    success = await unlockGemstoneForOwnedProfile(birthProfileId, userId);
+    success = await unlockGemstoneForOwnedProfile(birthProfileId, userId, weightKg);
   }
   if (!success) {
     throw Errors.conflict('Insufficient credits or gemstone report already unlocked');

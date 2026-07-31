@@ -184,6 +184,7 @@ class UnlockGuardFailed extends Error {}
 export async function unlockGemstoneForOwnedProfile(
   id: string,
   ownerUserId: string,
+  weightKg: number | null = null,
 ): Promise<boolean> {
   try {
     return await db.transaction(async (tx) => {
@@ -200,7 +201,11 @@ export async function unlockGemstoneForOwnedProfile(
 
       const [unlocked] = await tx
         .update(birthProfiles)
-        .set({ gemstoneUnlockedAt: new Date(), updatedAt: new Date() })
+        .set({
+          gemstoneUnlockedAt: new Date(),
+          updatedAt: new Date(),
+          ...(weightKg !== null ? { gemstoneWeightKg: weightKg } : {}),
+        })
         .where(
           and(
             eq(birthProfiles.id, id),

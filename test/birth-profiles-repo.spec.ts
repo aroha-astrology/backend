@@ -246,6 +246,28 @@ describe('unlockGemstoneForOwnedProfile', () => {
     });
   });
 
+  it('sets gemstoneWeightKg on the birth_profiles update patch when a weight is given', async () => {
+    const { birthProfilesChain } = setupTransaction(
+      [{ walletBalancePaise: 76000 }],
+      [{ id: 'profile-1' }],
+    );
+
+    await unlockGemstoneForOwnedProfile('profile-1', 'user-1', 72);
+
+    expect(birthProfilesChain.calls.set).toMatchObject({ gemstoneWeightKg: 72 });
+  });
+
+  it('does not set gemstoneWeightKg when no weight is given', async () => {
+    const { birthProfilesChain } = setupTransaction(
+      [{ walletBalancePaise: 76000 }],
+      [{ id: 'profile-1' }],
+    );
+
+    await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
+
+    expect(birthProfilesChain.calls.set).not.toHaveProperty('gemstoneWeightKg');
+  });
+
   it('returns false without touching birth_profiles when the owner has insufficient credits', async () => {
     const { updateMock } = setupTransaction([], [{ id: 'profile-1' }]);
 

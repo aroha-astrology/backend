@@ -323,6 +323,13 @@
       "when": 1785426290137,
       "tag": "0045_saturn_phases",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1785471515909,
+      "tag": "0046_gemstone_weight",
+      "breakpoints": true
     }
   ]
 }

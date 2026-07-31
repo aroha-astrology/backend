@@ -92,7 +92,12 @@ gemstoneRouter.openapi(getGemstoneRoute, async (c) => {
 
   if (existing?.status === 'ready') {
     return c.json(
-      await toGemstoneReportDtoForLanguage(existing, language || 'en', kundli.chartData),
+      await toGemstoneReportDtoForLanguage(
+        existing,
+        language || 'en',
+        kundli.chartData,
+        profile.gemstoneWeightKg,
+      ),
       200,
     );
   }

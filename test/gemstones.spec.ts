@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { GEMSTONE_DATA, analyzePlanetStrengths } from '../src/lib/astro-engine/gemstones.js';
+import {
+  GEMSTONE_DATA,
+  analyzePlanetStrengths,
+  recommendedGemstoneCarats,
+} from '../src/lib/astro-engine/gemstones.js';
 
 // Minimal chart fixtures — only the fields the condition checks read
 // (chart.planets[].{planet,sign,house,longitude}, chart.houses[].{house,lord}).
@@ -157,5 +161,33 @@ describe('gemstones: analyzePlanetStrengths — unaffected by the conditionalDon
     const mercury = result.find((r) => r.planet === 'Mercury')!;
     expect(mercury.strength).toBe('weak');
     expect(mercury.reason).toContain('Combust');
+  });
+});
+
+describe('recommendedGemstoneCarats — weight-based carat recommendation', () => {
+  it('scales roughly 1 carat per 6kg for a typical adult weight', () => {
+    expect(recommendedGemstoneCarats(60)).toBe(10);
+    expect(recommendedGemstoneCarats(90)).toBe(15);
+  });
+
+  it('clamps to the practical minimum for a very light weight', () => {
+    expect(recommendedGemstoneCarats(5)).toBe(3);
+    expect(recommendedGemstoneCarats(1)).toBe(3);
+  });
+
+  it('clamps to the sanity ceiling for an unrealistic/erroneous weight', () => {
+    expect(recommendedGemstoneCarats(1000)).toBe(25);
+  });
+
+  it('rounds to 1 decimal place', () => {
+    expect(recommendedGemstoneCarats(65)).toBeCloseTo(10.8, 1);
+  });
+
+  it('is monotonically non-decreasing with weight', () => {
+    for (let kg = 20; kg < 200; kg += 10) {
+      expect(recommendedGemstoneCarats(kg + 10)).toBeGreaterThanOrEqual(
+        recommendedGemstoneCarats(kg),
+      );
+    }
   });
 });

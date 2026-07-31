@@ -33,6 +33,7 @@ export interface ProfileContext {
   /** Normalized to `[]` (never null) — callers do array membership checks. */
   unlockedHouses: number[];
   gemstoneUnlockedAt: Date | null;
+  gemstoneWeightKg: number | null;
 }
 
 function primaryProfileContext(user: UserRow): ProfileContext {
@@ -48,6 +49,7 @@ function primaryProfileContext(user: UserRow): ProfileContext {
     birthLocationAccuracy: user.birthLocationAccuracy,
     unlockedHouses: user.unlockedHouses ?? [],
     gemstoneUnlockedAt: user.gemstoneUnlockedAt,
+    gemstoneWeightKg: user.gemstoneWeightKg,
   };
 }
 
@@ -95,6 +97,7 @@ export async function resolveProfileContext(
     birthLocationAccuracy: profile.birthLocationAccuracy,
     unlockedHouses: profile.unlockedHouses ?? [],
     gemstoneUnlockedAt: profile.gemstoneUnlockedAt,
+    gemstoneWeightKg: profile.gemstoneWeightKg,
   };
 }
 

@@ -662,13 +662,17 @@ export const GEMSTONE_UNLOCK_COST_PAISE = 10000;
  * if the user has too little balance OR the report is already unlocked, so a
  * second click can never double-charge.
  */
-export async function unlockGemstoneForUser(userId: string): Promise<boolean> {
+export async function unlockGemstoneForUser(
+  userId: string,
+  weightKg: number | null = null,
+): Promise<boolean> {
   return db.transaction(async (tx) => {
     const [unlocked] = await tx
       .update(users)
       .set({
         walletBalancePaise: sql`${users.walletBalancePaise} - ${GEMSTONE_UNLOCK_COST_PAISE}`,
         gemstoneUnlockedAt: new Date(),
+        ...(weightKg !== null ? { gemstoneWeightKg: weightKg } : {}),
       })
       .where(
         and(

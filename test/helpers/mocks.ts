@@ -74,6 +74,7 @@ export function makeUserRow(overrides: Partial<UserRow> = {}): UserRow {
     activeProfileId: null,
     unlockedHouses: [],
     gemstoneUnlockedAt: null,
+    gemstoneWeightKg: null,
     ...overrides,
   };
 }
@@ -92,6 +93,7 @@ export function makeProfileContext(overrides: Partial<ProfileContext> = {}): Pro
     birthLocationAccuracy: null,
     unlockedHouses: [],
     gemstoneUnlockedAt: null,
+    gemstoneWeightKg: null,
     ...overrides,
   };
 }

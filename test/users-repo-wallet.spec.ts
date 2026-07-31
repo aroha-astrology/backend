@@ -164,4 +164,20 @@ describe('unlockGemstoneForUser', () => {
       balanceAfter: 90000,
     });
   });
+
+  it('does not set gemstoneWeightKg on the update patch when no weight is given', async () => {
+    const { updateChain } = setupTransaction([{ walletBalancePaise: 90000 }]);
+
+    await unlockGemstoneForUser('user-1');
+
+    expect(updateChain.calls.set).not.toHaveProperty('gemstoneWeightKg');
+  });
+
+  it('sets gemstoneWeightKg on the update patch when a weight is given', async () => {
+    const { updateChain } = setupTransaction([{ walletBalancePaise: 90000 }]);
+
+    await unlockGemstoneForUser('user-1', 68);
+
+    expect(updateChain.calls.set).toMatchObject({ gemstoneWeightKg: 68 });
+  });
 });

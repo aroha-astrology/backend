@@ -3,6 +3,7 @@ import {
   analyzePlanetStrengths,
   GEMSTONE_DATA,
   GEMSTONE_PLANET_ORDER,
+  recommendedGemstoneCarats,
   type PlanetAnalysis,
 } from '../../lib/astro-engine/gemstones.js';
 import {
@@ -140,13 +141,20 @@ export async function toGemstoneReportDtoForLanguage(
   row: GemstoneRecommendationRow,
   language: string,
   chart: Record<string, unknown> | null,
+  weightKg: number | null = null,
 ): Promise<GemstoneReportDto> {
   const analysis = (row.analysis ?? {}) as unknown as StoredAnalysis;
   const gems = buildDeterministicGems(analyzePlanetStrengths(chart), chart);
   const base: GemstoneNarrative = { intro: analysis.intro ?? '', notes: analysis.notes ?? {} };
+  const recommendedCarats = weightKg !== null ? recommendedGemstoneCarats(weightKg) : null;
 
   if (language === 'en') {
-    return { status: 'ready', intro: base.intro, gems: mergeGems(gems, base.notes) };
+    return {
+      status: 'ready',
+      intro: base.intro,
+      gems: mergeGems(gems, base.notes),
+      recommendedCarats,
+    };
   }
 
   const cached = row.translations?.[language] as unknown as GemstoneNarrative | undefined;
@@ -155,6 +163,7 @@ export async function toGemstoneReportDtoForLanguage(
       status: 'ready',
       intro: cached.intro,
       gems: mergeGems(gems, cached.notes ?? base.notes),
+      recommendedCarats,
     };
   }
 
@@ -166,9 +175,19 @@ export async function toGemstoneReportDtoForLanguage(
       language,
       translated as unknown as Record<string, unknown>,
     );
-    return { status: 'ready', intro: translated.intro, gems: mergeGems(gems, translated.notes) };
+    return {
+      status: 'ready',
+      intro: translated.intro,
+      gems: mergeGems(gems, translated.notes),
+      recommendedCarats,
+    };
   } catch (err) {
     logger.warn({ err, userId: row.userId, language }, 'failed to translate gemstone report');
-    return { status: 'ready', intro: base.intro, gems: mergeGems(gems, base.notes) };
+    return {
+      status: 'ready',
+      intro: base.intro,
+      gems: mergeGems(gems, base.notes),
+      recommendedCarats,
+    };
   }
 }

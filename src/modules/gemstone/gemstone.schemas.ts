@@ -38,6 +38,10 @@ export const GemstoneReportSchema = z
     /** AI-authored personalized overview (translated on read). */
     intro: z.string(),
     gems: z.array(GemstoneItemSchema),
+    /** Recommended gemstone weight in carats, computed from the body weight (kg) captured at
+     * unlock time — see recommendedGemstoneCarats in astro-engine/gemstones.ts. Null when no
+     * weight was ever supplied (e.g. unlocked before this field existed). */
+    recommendedCarats: z.number().nullable(),
   })
   .openapi('GemstoneReport');
 

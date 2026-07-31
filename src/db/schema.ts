@@ -330,6 +330,8 @@ export const users = pgTable(
       .default(sql`ARRAY[]::integer[]`),
     /** Set the moment the user spends credits to unlock the gemstone report; null = still locked. One-time, whole-report unlock. */
     gemstoneUnlockedAt: timestamp('gemstone_unlocked_at', { withTimezone: true }),
+    /** Body weight (kg) captured at gemstone-unlock time — drives the recommended-carat calculation (see recommendedGemstoneCarats in astro-engine/gemstones.ts). Null for users who unlocked before this field existed, or never wore a physical gemstone. Stored for reuse elsewhere (not just this one calculation). */
+    gemstoneWeightKg: doublePrecision('gemstone_weight_kg'),
 
     // --- multi-profile (2026-07-18) ----------------------------------------
     // NULL = the primary/self profile (this users row) is currently active;
@@ -435,6 +437,8 @@ export const birthProfiles = pgTable(
     unlockedHouses: integer('unlocked_houses').array(),
     /** Set the moment the owner spends credits to unlock this profile's gemstone report; null = still locked. */
     gemstoneUnlockedAt: timestamp('gemstone_unlocked_at', { withTimezone: true }),
+    /** Mirrors users.gemstoneWeightKg — see that column's comment. */
+    gemstoneWeightKg: doublePrecision('gemstone_weight_kg'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

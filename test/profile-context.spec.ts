@@ -35,6 +35,7 @@ function makeBirthProfileRow(overrides: Partial<BirthProfileRow> = {}): BirthPro
     notes: null,
     unlockedHouses: [2, 5],
     gemstoneUnlockedAt: null,
+    gemstoneWeightKg: null,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -78,6 +79,7 @@ describe('resolveProfileContext', () => {
       birthLocationAccuracy: 'exact',
       unlockedHouses: [1, 3],
       gemstoneUnlockedAt: null,
+      gemstoneWeightKg: null,
     });
     expect(findOwnedBirthProfile).not.toHaveBeenCalled();
   });
@@ -101,6 +103,7 @@ describe('resolveProfileContext', () => {
       birthLocationAccuracy: 'exact',
       unlockedHouses: [2, 5],
       gemstoneUnlockedAt: null,
+      gemstoneWeightKg: null,
     });
     expect(logger.warn).not.toHaveBeenCalled();
   });

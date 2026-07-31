@@ -86,6 +86,16 @@ describe('toGemstoneReportDtoForLanguage — self-healing read-time recompute', 
     expect(notApplies.gems.find((g) => g.planet === 'Mars')!.conditionalCautionApplies).toBe(false);
   });
 
+  it('recommendedCarats is null when no weight is given', async () => {
+    const dto = await toGemstoneReportDtoForLanguage(makeRow(), 'en', NEUTRAL_CHART);
+    expect(dto.recommendedCarats).toBeNull();
+  });
+
+  it('recommendedCarats reflects the given weight via recommendedGemstoneCarats', async () => {
+    const dto = await toGemstoneReportDtoForLanguage(makeRow(), 'en', NEUTRAL_CHART, 66);
+    expect(dto.recommendedCarats).toBe(11);
+  });
+
   it('still merges the cached AI intro/note on top of the freshly computed gems', async () => {
     const dto = await toGemstoneReportDtoForLanguage(makeRow(), 'en', NEUTRAL_CHART);
     expect(dto.intro).toBe('Your chart shows a mix of strong and supportive placements.');

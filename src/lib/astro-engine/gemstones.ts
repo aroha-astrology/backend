@@ -351,3 +351,37 @@ export function analyzePlanetStrengths(chart: Record<string, unknown> | null): P
     };
   });
 }
+
+// =============================================================================
+// Weight-based carat recommendation
+// =============================================================================
+// Practicing gemstone consultants commonly scale a stone's weight to the
+// wearer's own body weight, on the reasoning that a gemstone's astrological
+// "dose" should be proportionate to the person carrying it — the most
+// widely-cited practical rule of thumb is roughly 1 carat per 6 kg of body
+// weight. There is no single canonical scriptural source for the exact ratio
+// (unlike, say, the Ashtakavarga Gunakar tables elsewhere in this module,
+// which come from a specific published reference) — this is a commonly
+// applied heuristic among Vedic gemstone practitioners, not the one
+// unimpeachable formula, so it is presented to the user as advisory guidance
+// (same disclaimer as the rest of the gemstone report) rather than a precise
+// prescription.
+// =============================================================================
+
+const CARATS_PER_KG = 1 / 6;
+/** Below this, a stone is impractically small to cut/set — matches the lowest end of GEMSTONE_DATA's own static weightCarats ranges (e.g. Sun's "3-5 carats"). */
+const MIN_RECOMMENDED_CARATS = 3;
+/** Sanity ceiling — guards against a wildly out-of-range weight input producing an absurd recommendation. */
+const MAX_RECOMMENDED_CARATS = 25;
+
+/**
+ * Recommended gemstone weight in carats for a person of the given body
+ * weight (kg), rounded to 1 decimal and clamped to a practical range. Pure —
+ * no chart/DB access. See this module's "Weight-based carat recommendation"
+ * header comment for the formula's provenance and caveats.
+ */
+export function recommendedGemstoneCarats(weightKg: number): number {
+  const raw = weightKg * CARATS_PER_KG;
+  const clamped = Math.max(MIN_RECOMMENDED_CARATS, Math.min(MAX_RECOMMENDED_CARATS, raw));
+  return Math.round(clamped * 10) / 10;
+}

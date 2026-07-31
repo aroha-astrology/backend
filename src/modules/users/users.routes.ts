@@ -102,8 +102,24 @@ const unlockGemstoneRoute = createRoute({
   path: '/me/unlock-gemstone',
   tags: ['Users'],
   summary: 'Unlock the full gemstone report using wallet balance (one-time, whole report)',
+  description:
+    'Optional body { weightKg } captures the body weight used to compute a recommended ' +
+    'gemstone carat weight (see GET /v1/gemstone). Not required — an unlock without it ' +
+    'simply leaves the recommendation unavailable until re-supplied on a future unlock ' +
+    "attempt of a DIFFERENT profile (this profile's unlock is one-time, so it can only be " +
+    'set here, at unlock time).',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({ weightKg: z.number().min(20).max(300).optional() }),
+        },
+      },
+    },
+  },
   responses: {
     200: {
       description: 'Success',
@@ -194,8 +210,9 @@ usersRouter.openapi(unlockHouseRoute, async (c) => {
 
 usersRouter.openapi(unlockGemstoneRoute, async (c) => {
   const user = c.get('user');
+  const body = c.req.valid('json');
   const profile = await resolveActiveProfileContext(user);
-  await unlockGemstone(user.id, profile.birthProfileId);
+  await unlockGemstone(user.id, profile.birthProfileId, body.weightKg ?? null);
   return c.json({ success: true }, 200);
 });
 
