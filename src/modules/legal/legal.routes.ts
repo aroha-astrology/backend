@@ -23,6 +23,24 @@ const errorResponse = (description: string) => ({
   content: { 'application/json': { schema: ErrorSchema } },
 });
 
+/**
+ * Version of the Terms / Privacy Policy / Disclaimer currently in force.
+ *
+ * The documents themselves live in the client repos — the canonical text is
+ * `frontend/lib/legal-content.ts`, mirrored to `landing/src/lib/legal-content.ts`
+ * which renders the public arohaastrology.in/legal/* pages linked below. All
+ * three repos must carry the SAME version string, and there is no shared CI to
+ * enforce it: bump this whenever you bump `LEGAL_VERSION` there.
+ *
+ * This used to be three separate '1.0.0' literals inlined below while the
+ * rendered documents said '1.1.0' — which meant the version this API reported
+ * named a document nobody had ever been shown. One constant, no literals.
+ */
+export const LEGAL_VERSION = '1.2.0';
+
+/** Public, unauthenticated home of the legal documents (landing repo). */
+const LEGAL_BASE_URL = 'https://arohaastrology.in/legal';
+
 export const legalRouter = new OpenAPIHono();
 
 /* -------------------------------------------------------------------------- */
@@ -43,12 +61,11 @@ const currentLegalRoute = createRoute({
 });
 
 legalRouter.openapi(currentLegalRoute, async (c) => {
-  // TODO: read from config or database
   return c.json(
     {
-      terms: { version: '1.0.0', url: 'https://arohaastrology.in/legal/terms' },
-      privacy: { version: '1.0.0', url: 'https://arohaastrology.in/legal/privacy' },
-      disclaimer: { version: '1.0.0', url: 'https://arohaastrology.in/legal/disclaimer' },
+      terms: { version: LEGAL_VERSION, url: `${LEGAL_BASE_URL}/terms` },
+      privacy: { version: LEGAL_VERSION, url: `${LEGAL_BASE_URL}/privacy` },
+      disclaimer: { version: LEGAL_VERSION, url: `${LEGAL_BASE_URL}/disclaimer` },
     },
     200,
   );

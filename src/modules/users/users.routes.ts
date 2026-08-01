@@ -2,7 +2,8 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
-import { ensureReferralCode } from './users.repo.js';
+import { ensureReferralCode, collectUserExport } from './users.repo.js';
+import { Errors } from '../../lib/errors.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
 import {
   deleteMe,
@@ -143,6 +144,41 @@ const deleteMeRoute = createRoute({
   },
 });
 
+const exportMeRoute = createRoute({
+  method: 'get',
+  path: '/me/export',
+  tags: ['Users'],
+  summary: 'Export everything the account holds on the caller (DPDP §11 / GDPR Art. 15 & 20)',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Machine-readable export of the caller’s own data',
+      content: {
+        'application/json': {
+          // Per-section `z.any()` rather than a full restatement of every
+          // column in eight tables — same pattern astro.routes.ts uses for
+          // its forecast/panchang payloads. The export is a snapshot, not a
+          // contract to keep in sync with every future migration.
+          schema: z.object({
+            exportedAt: z.string(),
+            account: z.any(),
+            birthProfiles: z.any(),
+            chatSessions: z.any(),
+            rememberedFacts: z.any(),
+            walletTransactions: z.any(),
+            consentHistory: z.any(),
+            notifications: z.any(),
+            palmReadings: z.any(),
+          }),
+        },
+      },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('User not found'),
+  },
+});
+
 const getNotificationsRoute = createRoute({
   method: 'get',
   path: '/me/notifications',
@@ -198,6 +234,17 @@ usersRouter.openapi(deleteMeRoute, async (c) => {
   const user = c.get('user');
   await deleteMe(user.id);
   return c.body(null, 204);
+});
+
+// Scoped to `user.id` from the bearer token — there is deliberately no
+// user-id parameter to tamper with, so this can only ever return the
+// caller's own data.
+usersRouter.openapi(exportMeRoute, async (c) => {
+  const user = c.get('user');
+  const data = await collectUserExport(user.id);
+  if (!data) throw Errors.notFound('User not found');
+  c.header('Content-Disposition', 'attachment; filename="aroha-my-data.json"');
+  return c.json(data, 200);
 });
 
 usersRouter.openapi(unlockHouseRoute, async (c) => {

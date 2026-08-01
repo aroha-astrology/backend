@@ -719,3 +719,83 @@ export async function relockGemstoneForUser(userId: string): Promise<boolean> {
     return true;
   });
 }
+
+/**
+ * Everything the account holds on one user, decrypted, for the DSAR export at
+ * GET /v1/me/export (DPDP Act §11 access; GDPR Arts. 15 and 20).
+ *
+ * Reads go through this module rather than being assembled at the route,
+ * because these tables are encrypted at rest and the decryption belongs at the
+ * DB boundary — see the note on `decryptUserRow` above.
+ *
+ * Two deliberate omissions, both of which would make the export less safe
+ * rather than more complete:
+ *  - device push tokens: still-live device credentials, not information about
+ *    the user. A leaked export must not let anyone push to their phone.
+ *  - palm photographs: only the reading metadata is listed, never the image
+ *    bytes. The frames stay behind the authenticated, ownership-checked route
+ *    they already live behind (see palm.service.ts).
+ */
+export async function collectUserExport(userId: string) {
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) return null;
+
+  const [profiles, sessions, facts, transactions, consents, notifs, palms] = await Promise.all([
+    db.select().from(birthProfiles).where(eq(birthProfiles.ownerUserId, userId)),
+    db.select().from(chatSessions).where(eq(chatSessions.userId, userId)),
+    db.select().from(userFacts).where(eq(userFacts.userId, userId)),
+    db
+      .select()
+      .from(walletTransactions)
+      .where(eq(walletTransactions.userId, userId))
+      .orderBy(desc(walletTransactions.createdAt)),
+    db
+      .select()
+      .from(userConsentLog)
+      .where(eq(userConsentLog.userId, userId))
+      .orderBy(desc(userConsentLog.occurredAt)),
+    db.select().from(notifications).where(eq(notifications.userId, userId)),
+    db
+      .select({
+        id: palmReadings.id,
+        status: palmReadings.status,
+        primaryHand: palmReadings.primaryHand,
+        createdAt: palmReadings.createdAt,
+      })
+      .from(palmReadings)
+      .where(eq(palmReadings.userId, userId)),
+  ]);
+
+  const decrypted = decryptUserRow(user);
+  return {
+    exportedAt: new Date().toISOString(),
+    account: {
+      ...decrypted,
+      // Blind-index lookup hashes are internal plumbing, not the user's data,
+      // and publishing them would weaken the lookup they exist to protect.
+      phoneHash: undefined,
+      emailHash: undefined,
+    },
+    birthProfiles: profiles.map((p) => ({
+      ...p,
+      dateOfBirth: decryptField(p.dateOfBirth),
+      timeOfBirth: decryptField(p.timeOfBirth),
+      placeOfBirth: decryptJson<PlaceOfBirth>(p.placeOfBirth as unknown as string | null),
+      gotra: decryptField(p.gotra),
+    })),
+    chatSessions: sessions.map((s) => ({
+      ...s,
+      history: JSON.parse(decryptField(s.history) ?? '[]') as unknown,
+      summary: decryptField(s.summary),
+    })),
+    rememberedFacts: facts.map((f) => ({
+      ...f,
+      fact: decryptField(f.fact),
+      followUpQuestion: decryptField(f.followUpQuestion),
+    })),
+    walletTransactions: transactions,
+    consentHistory: consents,
+    notifications: notifs,
+    palmReadings: palms,
+  };
+}
