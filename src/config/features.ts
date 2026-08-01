@@ -12,7 +12,7 @@
 export interface FeatureDef {
   key: string;
   label: string;
-  group: 'nav' | 'home' | 'paid' | 'reports';
+  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang';
   defaultEnabled: boolean;
   defaultPricePaise?: number;
 }
@@ -20,9 +20,14 @@ export interface FeatureDef {
 export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // nav
   { key: 'nav.home', label: 'Home tab', group: 'nav', defaultEnabled: true },
-  { key: 'nav.vastu', label: 'Vastu tab', group: 'nav', defaultEnabled: true },
+  // No longer a bottom-tab slot (moved to a Home card, see home.vastuCard
+  // below) — still gates the /vastu page itself directly (FeatureGuard).
+  { key: 'nav.vastu', label: 'Vastu page', group: 'nav', defaultEnabled: true },
   { key: 'nav.askAI', label: 'Ask AI tab', group: 'nav', defaultEnabled: true },
   { key: 'nav.horoscope', label: 'Horoscope tab', group: 'nav', defaultEnabled: true },
+  // Re-added as a bottom-tab slot (previously reachable only via Home's "See
+  // All"/home.reportsSection) — takes the tab-bar position Vastu vacated.
+  { key: 'nav.reports', label: 'Reports tab', group: 'nav', defaultEnabled: true },
   { key: 'nav.panchang', label: 'Panchang tab', group: 'nav', defaultEnabled: true },
   // New nav entry ships dark per the standing "new features ship dark" rule
   // (see home.reportsSection/home.palmReading above) — turned on deliberately
@@ -35,6 +40,10 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   { key: 'home.kundliCard', label: 'Kundli card', group: 'home', defaultEnabled: true },
   { key: 'home.horoscopeSlider', label: 'Horoscope slider', group: 'home', defaultEnabled: true },
   { key: 'home.matchmaking', label: 'Matchmaking card', group: 'home', defaultEnabled: true },
+  // Vastu's new Home entry point now that it's off the bottom tab bar — an
+  // existing, already-shipped feature being relocated, not a new one under
+  // review, so this defaults ON like matchmaking/kundliCard above.
+  { key: 'home.vastuCard', label: 'Vastu card (home)', group: 'home', defaultEnabled: true },
   // New card: defaults OFF per standing rule — every new card ships dark and
   // is turned on deliberately from the admin panel once ready (see memory
   // feedback-new-cards-default-off-in-admin).
@@ -229,6 +238,13 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'reports',
     defaultEnabled: false,
     defaultPricePaise: 9900,
+  },
+  // panchang
+  {
+    key: 'panchang.purchasePlan',
+    label: 'Planning to Buy card',
+    group: 'panchang',
+    defaultEnabled: true,
   },
 ] as const;
 
