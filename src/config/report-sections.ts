@@ -110,7 +110,15 @@ export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> =
     'twelve_month_forecast',
     'luckiest_days_colors_years',
   ],
-  name_change: ['numerological_signature', 'suggested_spelling_adjustments', 'practical_guidance'],
+  // `suggested_names` is deliberately the same id baby_name uses — the frontend's heading keys are
+  // flat (`reports.sectionHeading.<id>`), so both report types share the one already-translated
+  // "Suggested Names" string rather than adding a near-duplicate key in all 7 languages.
+  name_change: [
+    'numerological_signature',
+    'suggested_names',
+    'suggested_spelling_adjustments',
+    'practical_guidance',
+  ],
   remedies: ['karmic_debts', 'planet_remedies', 'strengths_cautions', 'how_to_use_remedies'],
   past_life: ['karmic_pattern', 'karmic_axis_theme', 'unfinished_business_soul_lesson'],
 };

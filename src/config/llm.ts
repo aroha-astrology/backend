@@ -321,13 +321,20 @@ export const TRANSIT_ALERT_PROFILE: GenerationProfile = {
  * as PURCHASE_PLAN/VASTU/GEMSTONE: a report can have several named sections
  * each with multiple paragraphs, and generation always runs in a background
  * fire-and-forget job, never in a blocking request path.
+ *
+ * Raised 4096 -> 8192 when baby_name and name_change began emitting a 25-name
+ * list as one short paragraph per name. Those two are now the longest reports
+ * in the catalogue by paragraph count, and 4096 left no headroom above the
+ * English original — the failure mode is a truncated mid-JSON response that
+ * fails parsing outright, so the ceiling is sized for the longest report
+ * rather than the average one. Background job, never blocking.
  */
 export const REPORT_PROFILE: GenerationProfile = {
   name: 'report',
   temperature: 0.5,
   jsonMode: true,
   stream: false,
-  maxTokens: 4096,
+  maxTokens: 8192,
 };
 
 /**
@@ -336,18 +343,20 @@ export const REPORT_PROFILE: GenerationProfile = {
  * problem documented on HOUSE_INSIGHT_TRANSLATION_PROFILE/
  * FORECAST_TRANSLATION_PROFILE above: a ceiling sized for the *English*
  * original routinely truncates a Hindi/Bengali/Tamil re-emission of the same
- * content mid-JSON. Matches REPORT_PROFILE's own 4096 generation ceiling
+ * content mid-JSON. Matches REPORT_PROFILE's own 8192 generation ceiling
  * rather than trying to size a smaller "translation only" budget, for the
  * same reason those other translation profiles don't undercut their English
- * counterpart either. Cached forever per (report, language) after the first
- * successful call, so the larger ceiling is not a recurring per-request cost.
+ * counterpart either — and tracks it upward for the same 25-name-list reason
+ * (a Devanagari/Bengali re-emission of that list is the single largest output
+ * this profile has to survive). Cached forever per (report, language) after
+ * the first successful call, so the larger ceiling is not a recurring cost.
  */
 export const REPORT_TRANSLATION_PROFILE: GenerationProfile = {
   name: 'report-translation',
   temperature: 0.3,
   jsonMode: true,
   stream: false,
-  maxTokens: 4096,
+  maxTokens: 8192,
 };
 
 /**
