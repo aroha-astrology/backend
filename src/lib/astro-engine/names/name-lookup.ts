@@ -8,7 +8,12 @@
 // =============================================================================
 
 import { ALL_GIVEN_NAMES, FEMALE_GIVEN_NAMES, MALE_GIVEN_NAMES } from './name-corpus.js';
-import { variantHitsTarget } from '../numerology/nameCorrection.js';
+import { variantHitsTarget, type NameAlignmentResult } from '../numerology/nameCorrection.js';
+import {
+  scoreCandidateName,
+  rankScoredNames,
+  type ScoredName,
+} from '../numerology/name-scoring.js';
 
 /** Every real given name starting with `syllable` (case-insensitive, exact prefix match — the
  * same convention baby_name's nakshatra table already uses for the syllable itself), shuffled so
@@ -74,4 +79,26 @@ export function namesHittingTarget(targets: number[], limit: number): TargetHitt
     }
   }
   return hits;
+}
+
+/** How many candidates to pull from the corpus before scoring+ranking down to `limit` — wide
+ * enough that the score spread is meaningful, small enough to stay cheap over a few thousand
+ * strings. */
+const RANKING_POOL_SIZE = 120;
+
+/**
+ * The name_change report's "which suggested names are the best match" list: pulls a wide pool of
+ * real corpus names hitting `a.targets` (same shuffle-then-truncate as `namesHittingTarget`, so a
+ * repeat purchase still varies), scores every one against the reader's own alignment via
+ * `scoreCandidateName`, ranks them, and returns the top `limit` with the top 2 flagged
+ * `recommended`. Deterministic, synchronous, no LLM call.
+ */
+export function rankNamesForTargets(
+  a: NameAlignmentResult,
+  currentName: string,
+  limit: number,
+): ScoredName[] {
+  const pool = namesHittingTarget(a.targets, RANKING_POOL_SIZE);
+  const scored = pool.map((n) => scoreCandidateName(n.name, n.chaldean, currentName, a));
+  return rankScoredNames(scored).slice(0, limit);
 }

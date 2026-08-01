@@ -115,6 +115,7 @@ export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> =
   // "Suggested Names" string rather than adding a near-duplicate key in all 7 languages.
   name_change: [
     'numerological_signature',
+    'name_change_benefits',
     'suggested_names',
     'suggested_spelling_adjustments',
     'practical_guidance',

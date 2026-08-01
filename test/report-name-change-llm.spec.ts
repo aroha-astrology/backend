@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NameChangeScores } from '../src/lib/astro-engine/reports/name-change.js';
+import type { ScoredName } from '../src/lib/astro-engine/numerology/name-scoring.js';
 
 const state = vi.hoisted(() => ({
   generate: vi.fn(),
-  namesHittingTarget: vi.fn(),
+  rankNamesForTargets: vi.fn(),
 }));
 
 vi.mock('../src/lib/llm/gemini-client.js', () => ({ generate: state.generate }));
 vi.mock('../src/lib/astro-engine/names/name-lookup.js', () => ({
-  namesHittingTarget: state.namesHittingTarget,
+  rankNamesForTargets: state.rankNamesForTargets,
 }));
 
 const { generateNameChangeNarrative, translateNameChangeNarrative } =
@@ -38,20 +39,57 @@ function makeScores(overrides: Partial<NameChangeScores> = {}): NameChangeScores
   };
 }
 
-const SUGGESTIONS = [
-  { name: 'Aarav', chaldean: 3 },
-  { name: 'Kavya', chaldean: 6 },
-  { name: 'Rohan', chaldean: 9 },
+const RANKED: ScoredName[] = [
+  {
+    name: 'Aarav',
+    chaldean: 3,
+    score: 88,
+    reasons: ['Lands exactly on your destiny number 3'],
+    recommended: true,
+  },
+  {
+    name: 'Kavya',
+    chaldean: 6,
+    score: 79,
+    reasons: ['Matches your psychic number 6'],
+    recommended: true,
+  },
+  {
+    name: 'Rohan',
+    chaldean: 9,
+    score: 63,
+    reasons: ['Reaches one of your target numbers'],
+    recommended: false,
+  },
 ];
 
-const fourSectionResponse = JSON.stringify({
+const fiveSectionResponse = JSON.stringify({
   sections: [
     {
       heading: "Your Name's Numerological Signature",
       paragraphs: ['Your name is partially aligned, targeting 3.'],
     },
-    { heading: 'Suggested Names', paragraphs: ['These all reach your target.', 'Aarav — steady.'] },
-    { heading: 'Suggested Spelling Adjustments', paragraphs: ['Try adding an "a" at the end.'] },
+    {
+      heading: 'What Changing Your Name Could Bring You',
+      paragraphs: ['A shift toward 3 tends to bring the following.'],
+      bullets: ['Fewer stop-start months on income', 'Less friction in negotiations'],
+    },
+    {
+      heading: 'Suggested Names',
+      paragraphs: ['These all reach your target, ranked by match.'],
+      items: [
+        { title: 'Aarav', bullets: ['Steadier finances', 'Clearer communication'] },
+        { title: 'Kavya', bullets: ['Calmer relationships', 'Better follow-through'] },
+        { title: 'Rohan', bullets: ['Fresh start energy', 'Warmer first impressions'] },
+      ],
+    },
+    {
+      heading: 'Suggested Spelling Adjustments',
+      paragraphs: ['A smaller footnote to the names above.'],
+      items: [
+        { title: 'Priya Sharmaa', bullets: ['Adds a settling final vowel', 'Nudges toward 6'] },
+      ],
+    },
     {
       heading: 'Practical Guidance',
       paragraphs: [
@@ -78,68 +116,111 @@ function narrativePrompt(): string {
 
 beforeEach(() => {
   state.generate.mockReset();
-  state.namesHittingTarget.mockReset();
-  state.namesHittingTarget.mockReturnValue(SUGGESTIONS);
+  state.rankNamesForTargets.mockReset();
+  state.rankNamesForTargets.mockReturnValue(RANKED);
 });
 
 describe('generateNameChangeNarrative', () => {
-  it('returns 4 sections from exactly 1 LLM call — names come from the corpus, not the model', async () => {
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
+  it('returns 5 sections from exactly 1 LLM call — names come from the ranked corpus, not the model', async () => {
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
     const sections = await generateNameChangeNarrative(makeScores());
     expect(state.generate).toHaveBeenCalledTimes(1);
-    expect(sections).toHaveLength(4);
+    expect(sections).toHaveLength(5);
     expect(sections.map((s) => s.heading)).toEqual([
       "Your Name's Numerological Signature",
+      'What Changing Your Name Could Bring You',
       'Suggested Names',
       'Suggested Spelling Adjustments',
       'Practical Guidance',
     ]);
   });
 
-  it('asks the real corpus for candidates using the given target numbers, and embeds exactly what it returns', async () => {
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
+  it('asks for 10 ranked candidates seeded from the current name+alignment, and embeds exactly what it returns', async () => {
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(
       makeScores({ alignment: { ...makeScores().alignment, targets: [3, 6, 9] } }),
     );
 
-    expect(state.namesHittingTarget).toHaveBeenCalledWith([3, 6, 9], 25);
+    expect(state.rankNamesForTargets).toHaveBeenCalledWith(
+      expect.objectContaining({ targets: [3, 6, 9] }),
+      'Priya Sharma',
+      10,
+    );
     const content = narrativePrompt();
-    for (const { name, chaldean } of SUGGESTIONS) {
-      expect(content).toContain(`"${name}" -> Chaldean number ${chaldean}`);
+    for (const { name, chaldean, score } of RANKED) {
+      expect(content).toContain(`"${name}" -> Chaldean ${chaldean}, match score ${score}`);
     }
     expect(content.toUpperCase()).toContain('GIVEN FACT');
   });
 
+  it('renders the given suggested names as ranked/scored items, not paragraphs', async () => {
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
+    const sections = await generateNameChangeNarrative(makeScores());
+    const suggested = sections.find((s) => s.heading === 'Suggested Names');
+    expect(suggested?.items).toHaveLength(3);
+    expect(suggested?.items?.[0]).toMatchObject({
+      title: 'Aarav',
+      badge: 'Chaldean 3',
+      score: 88,
+      highlight: true,
+    });
+    expect(suggested?.items?.[0]?.bullets.length).toBeGreaterThan(0);
+    // The score/badge/highlight are the app's given facts, not whatever the model echoed.
+    expect(suggested?.items?.every((i) => typeof i.score === 'number')).toBe(true);
+  });
+
+  it('drops an item whose title is not one of the given facts rather than inventing one', async () => {
+    const withRogueItem = JSON.parse(fiveSectionResponse);
+    withRogueItem.sections[2].items.push({ title: 'Made Up Name', bullets: ['Not real'] });
+    state.generate.mockResolvedValueOnce(JSON.stringify(withRogueItem));
+    const sections = await generateNameChangeNarrative(makeScores());
+    const suggested = sections.find((s) => s.heading === 'Suggested Names');
+    expect(suggested?.items?.map((i) => i.title)).toEqual(['Aarav', 'Kavya', 'Rohan']);
+  });
+
+  it('renders spelling variants as items carrying the given note (the exact edit)', async () => {
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
+    const sections = await generateNameChangeNarrative(makeScores());
+    const adjustments = sections.find((s) => s.heading === 'Suggested Spelling Adjustments');
+    expect(adjustments?.items?.[0]).toMatchObject({
+      title: 'Priya Sharmaa',
+      badge: 'Chaldean 6',
+      note: 'added "a" at the end',
+    });
+  });
+
+  it('renders the benefits section as bullets grounded in the target-number gap', async () => {
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
+    const sections = await generateNameChangeNarrative(makeScores());
+    const benefits = sections.find((s) => s.heading === 'What Changing Your Name Could Bring You');
+    expect(benefits?.bullets?.length).toBeGreaterThan(0);
+    const content = narrativePrompt().toLowerCase();
+    expect(content).toContain('everyday outcome');
+  });
+
   it('says so plainly rather than inventing names when the corpus has no match', async () => {
-    state.namesHittingTarget.mockReturnValue([]);
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
+    state.rankNamesForTargets.mockReturnValue([]);
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(makeScores());
     expect(narrativePrompt()).toContain('Suggested names: NONE');
   });
 
   it('instructs the model never to invent, drop, or renumber a given suggested name', async () => {
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(makeScores());
     const content = narrativePrompt().toLowerCase();
     expect(content).toContain('never invent an extra name');
     expect(content).toContain('never suggest a name that is not on the list');
   });
 
-  it('instructs a one-or-two-line "what this name brings into your life" note per suggested name', async () => {
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
-    await generateNameChangeNarrative(makeScores());
-    const content = narrativePrompt().toLowerCase();
-    expect(content).toContain('bringing into the reader');
-  });
-
-  it('still parses a legacy-shaped 2-section response (caller is not required to return exactly 4)', async () => {
+  it('still parses a legacy-shaped 2-section response (caller is not required to return exactly 5)', async () => {
     state.generate.mockResolvedValueOnce(twoSectionResponse);
     const sections = await generateNameChangeNarrative(makeScores());
     expect(sections).toHaveLength(2);
   });
 
   it('embeds the given mulank/bhagyank/chaldean/alignment facts as GIVEN FACTS', async () => {
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(makeScores());
     const content = narrativePrompt();
     expect(content).toContain('Mulank: 6');
@@ -149,7 +230,7 @@ describe('generateNameChangeNarrative', () => {
   });
 
   it('embeds the given target numbers and instructs section 1 to explicitly state them (covers "what number should my name ideally add up to")', async () => {
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(
       makeScores({ alignment: { ...makeScores().alignment, targets: [3, 6, 9] } }),
     );
@@ -159,13 +240,13 @@ describe('generateNameChangeNarrative', () => {
   });
 
   it('embeds the given spelling variants, never inventing one when the list is empty', async () => {
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(makeScores({ variants: [] }));
     expect(narrativePrompt()).toContain('NONE — the deterministic method found no small edit');
   });
 
   it('instructs a Practical Guidance section covering realistic-impact expectations, phasing in gradually, and what to stay mindful of if keeping the current name (covers 3 previously-unanswered bullets, using only already-given facts)', async () => {
-    state.generate.mockResolvedValueOnce(fourSectionResponse);
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(makeScores());
     const content = narrativePrompt();
     expect(content.toLowerCase()).toContain('realistic difference');
@@ -183,20 +264,72 @@ describe('generateNameChangeNarrative', () => {
 describe('translateNameChangeNarrative', () => {
   const sections = [
     { heading: "Your Name's Numerological Signature", paragraphs: ['Partially aligned.'] },
-    { heading: 'Suggested Names', paragraphs: ['Aarav — steady.'] },
-    { heading: 'Suggested Spelling Adjustments', paragraphs: ['Add an "a".'] },
+    {
+      heading: 'What Changing Your Name Could Bring You',
+      paragraphs: ['A shift toward 3.'],
+      bullets: ['Fewer stop-start months on income'],
+    },
+    {
+      heading: 'Suggested Names',
+      paragraphs: ['Ranked by match.'],
+      items: [
+        { title: 'Aarav', badge: 'Chaldean 3', score: 88, highlight: true, bullets: ['Steady.'] },
+      ],
+    },
+    {
+      heading: 'Suggested Spelling Adjustments',
+      paragraphs: ['Add an "a".'],
+      items: [
+        {
+          title: 'Priya Sharmaa',
+          badge: 'Chaldean 6',
+          note: 'added "a" at the end',
+          bullets: ['Nudges toward 6.'],
+        },
+      ],
+    },
     { heading: 'Practical Guidance', paragraphs: ['A modest nudge.'] },
   ];
 
   it('parses a valid translated response preserving section count', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({
-        sections: sections.map((s) => ({ heading: `HI ${s.heading}`, paragraphs: ['हिंदी।'] })),
+        sections: sections.map((s) => ({
+          heading: `HI ${s.heading}`,
+          paragraphs: ['हिंदी।'],
+          ...(s.bullets ? { bullets: ['हिंदी बुलेट'] } : {}),
+          ...(s.items
+            ? { items: s.items.map((i) => ({ title: i.title, bullets: ['हिंदी।'] })) }
+            : {}),
+        })),
       }),
     );
     const translated = await translateNameChangeNarrative(sections, 'hi');
-    expect(translated).toHaveLength(4);
-    expect(translated[3]?.heading).toBe('HI Practical Guidance');
+    expect(translated).toHaveLength(5);
+    expect(translated[4]?.heading).toBe('HI Practical Guidance');
+  });
+
+  it('re-attaches the original given facts (badge/score/highlight/note) onto translated items, never trusting the model for them', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({
+        sections: sections.map((s) => ({
+          heading: s.heading,
+          paragraphs: s.paragraphs,
+          ...(s.bullets ? { bullets: s.bullets } : {}),
+          ...(s.items
+            ? { items: s.items.map((i) => ({ title: i.title, bullets: ['अनुवादित।'] })) }
+            : {}),
+        })),
+      }),
+    );
+    const translated = await translateNameChangeNarrative(sections, 'hi');
+    const suggested = translated.find((s) => s.heading === 'Suggested Names');
+    expect(suggested?.items?.[0]).toMatchObject({
+      title: 'Aarav',
+      badge: 'Chaldean 3',
+      score: 88,
+      highlight: true,
+    });
   });
 
   it('throws on an unparseable translated response', async () => {
