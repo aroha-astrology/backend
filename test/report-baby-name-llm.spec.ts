@@ -16,6 +16,7 @@ function makeScores(overrides: Partial<BabyNameScores> = {}): BabyNameScores {
     nakshatraLord: 'Ketu',
     nakshatraDeity: 'Ashwini Kumaras',
     doshaYoga: { positives: [], cautions: [] },
+    candidateNames: ['Chudamani', 'Chuni', 'Chunni'],
     ...overrides,
   };
 }
@@ -65,6 +66,41 @@ describe('generateBabyNameNarrative', () => {
   it('throws on an unparseable response', async () => {
     state.generate.mockResolvedValueOnce('not json');
     await expect(generateBabyNameNarrative(makeScores())).rejects.toThrow();
+  });
+
+  it('embeds the given candidate names as a GIVEN FACT and forbids inventing any', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateBabyNameNarrative(
+      makeScores({ candidateNames: ['Chudamani', 'Chuni', 'Chunni'] }),
+    );
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Chudamani, Chuni, Chunni');
+    expect(content.toUpperCase()).toContain('GIVEN FACT');
+    expect(content.toLowerCase()).toContain('never invent an extra name');
+  });
+
+  it('never asks the model to source/invent names — only to write about the given ones', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateBabyNameNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content.toLowerCase()).not.toContain('at least 25');
+    expect(content.toLowerCase()).toContain('your job is only to write about the given names');
+  });
+
+  it('says so plainly rather than inventing names when the corpus has no match for the syllable', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generateBabyNameNarrative(makeScores({ candidateNames: [] }));
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toContain('Suggested names: NONE');
   });
 
   it('embeds the given nakshatra lord/deity facts', async () => {

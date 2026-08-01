@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NameChangeScores } from '../src/lib/astro-engine/reports/name-change.js';
-import { variantHitsTarget } from '../src/lib/astro-engine/numerology/nameCorrection.js';
 
-const state = vi.hoisted(() => ({ generate: vi.fn() }));
+const state = vi.hoisted(() => ({
+  generate: vi.fn(),
+  namesHittingTarget: vi.fn(),
+}));
 
 vi.mock('../src/lib/llm/gemini-client.js', () => ({ generate: state.generate }));
+vi.mock('../src/lib/astro-engine/names/name-lookup.js', () => ({
+  namesHittingTarget: state.namesHittingTarget,
+}));
 
 const { generateNameChangeNarrative, translateNameChangeNarrative } =
   await import('../src/lib/llm/reports/name-change.js');
@@ -33,37 +38,11 @@ function makeScores(overrides: Partial<NameChangeScores> = {}): NameChangeScores
   };
 }
 
-/** A broad candidate pool — the point of these tests is that the code itself decides which of
- * these survive, using the real deterministic Chaldean check rather than trusting the model. */
-const CANDIDATES = [
-  'Aarav',
-  'Ananya',
-  'Bhavesh',
-  'Chetana',
-  'Devika',
-  'Esha',
-  'Gaurav',
-  'Harini',
-  'Ishaan',
-  'Jyoti',
-  'Kavya',
-  'Lakshmi',
-  'Meera',
-  'Nikhil',
-  'Ojas',
-  'Pallavi',
-  'Rohan',
-  'Sanjana',
-  'Tanvi',
-  'Varun',
+const SUGGESTIONS = [
+  { name: 'Aarav', chaldean: 3 },
+  { name: 'Kavya', chaldean: 6 },
+  { name: 'Rohan', chaldean: 9 },
 ];
-
-const namePoolResponse = JSON.stringify({ names: CANDIDATES });
-
-/** What the production code should keep, derived from the same function it uses. */
-function expectedSurvivors(targets: number[]): string[] {
-  return CANDIDATES.filter((n) => variantHitsTarget(n, targets).hits);
-}
 
 const fourSectionResponse = JSON.stringify({
   sections: [
@@ -92,44 +71,22 @@ const twoSectionResponse = JSON.stringify({
   ],
 });
 
-function promptOf(call: { messages: Array<{ content: string }> }): string {
-  return call.messages.map((m) => m.content).join('\n');
-}
-
-/** Dispatches by WHICH call is being made rather than by call order — the candidate-pool step may
- * run more than one round (see MAX_PROPOSAL_ROUNDS), so a positional mock queue would desync. */
-function mockBothCalls(narrative = fourSectionResponse, pool = namePoolResponse): void {
-  state.generate.mockImplementation((opts: { messages: Array<{ content: string }> }) =>
-    Promise.resolve(promptOf(opts).includes('<report_facts>') ? narrative : pool),
-  );
-}
-
-function callsMatching(needle: string): string[] {
-  return (state.generate.mock.calls as Array<[{ messages: Array<{ content: string }> }]>)
-    .map((c) => promptOf(c[0]))
-    .filter((prompt) => prompt.includes(needle));
-}
-
-/** The prompt actually sent to the NARRATIVE call (the one carrying the report facts). */
 function narrativePrompt(): string {
-  return callsMatching('<report_facts>').at(-1) ?? '';
-}
-
-/** The prompt sent to the candidate-pool call. */
-function poolPrompt(): string {
-  return callsMatching('candidate given names')[0] ?? '';
+  const call = state.generate.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
+  return call.messages.map((m) => m.content).join('\n');
 }
 
 beforeEach(() => {
   state.generate.mockReset();
+  state.namesHittingTarget.mockReset();
+  state.namesHittingTarget.mockReturnValue(SUGGESTIONS);
 });
 
 describe('generateNameChangeNarrative', () => {
-  it('returns 4 sections, proposing candidates first and writing the narrative exactly once', async () => {
-    mockBothCalls();
+  it('returns 4 sections from exactly 1 LLM call — names come from the corpus, not the model', async () => {
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
     const sections = await generateNameChangeNarrative(makeScores());
-    expect(callsMatching('candidate given names').length).toBeGreaterThanOrEqual(1);
-    expect(callsMatching('<report_facts>')).toHaveLength(1);
+    expect(state.generate).toHaveBeenCalledTimes(1);
     expect(sections).toHaveLength(4);
     expect(sections.map((s) => s.heading)).toEqual([
       "Your Name's Numerological Signature",
@@ -139,97 +96,60 @@ describe('generateNameChangeNarrative', () => {
     ]);
   });
 
-  it('keeps ONLY candidate names whose Chaldean number the app itself computes onto a target', async () => {
-    mockBothCalls();
-    await generateNameChangeNarrative(makeScores());
+  it('asks the real corpus for candidates using the given target numbers, and embeds exactly what it returns', async () => {
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
+    await generateNameChangeNarrative(
+      makeScores({ alignment: { ...makeScores().alignment, targets: [3, 6, 9] } }),
+    );
+
+    expect(state.namesHittingTarget).toHaveBeenCalledWith([3, 6, 9], 25);
     const content = narrativePrompt();
-
-    const survivors = expectedSurvivors([3, 6, 9]);
-    const rejected = CANDIDATES.filter((n) => !survivors.includes(n));
-    // Guard the fixture itself: the test is meaningless if everything (or nothing) passes.
-    expect(survivors.length).toBeGreaterThan(0);
-    expect(rejected.length).toBeGreaterThan(0);
-
-    for (const name of survivors) expect(content).toContain(`"${name}"`);
-    for (const name of rejected) expect(content).not.toContain(`"${name}"`);
-  });
-
-  it('states each surviving name with the number the app computed, never one the model asserted', async () => {
-    mockBothCalls();
-    await generateNameChangeNarrative(makeScores());
-    const content = narrativePrompt();
-    for (const name of expectedSurvivors([3, 6, 9])) {
-      const { chaldean } = variantHitsTarget(name, [3, 6, 9]);
+    for (const { name, chaldean } of SUGGESTIONS) {
       expect(content).toContain(`"${name}" -> Chaldean number ${chaldean}`);
     }
+    expect(content.toUpperCase()).toContain('GIVEN FACT');
   });
 
-  it('never asks the candidate-pool call for numbers or meanings — names only', async () => {
-    mockBothCalls();
-    await generateNameChangeNarrative(makeScores());
-    const prompt = poolPrompt();
-    expect(prompt.toLowerCase()).toContain('no meaning');
-    expect(prompt.toLowerCase()).toContain('no numbers');
-    expect(prompt).toContain('Priya Sharma'); // style/gender cue
-  });
-
-  it('skips the pool call entirely when there are no target numbers to hit', async () => {
-    mockBothCalls();
-    await generateNameChangeNarrative(
-      makeScores({ alignment: { ...makeScores().alignment, targets: [] } }),
-    );
-    expect(callsMatching('candidate given names')).toHaveLength(0);
-    expect(narrativePrompt()).toContain('Suggested names: NONE');
-  });
-
-  it('says so plainly rather than inventing names when no candidate reaches a target', async () => {
-    mockBothCalls(fourSectionResponse, JSON.stringify({ names: [] }));
+  it('says so plainly rather than inventing names when the corpus has no match', async () => {
+    state.namesHittingTarget.mockReturnValue([]);
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
     await generateNameChangeNarrative(makeScores());
     expect(narrativePrompt()).toContain('Suggested names: NONE');
   });
 
-  it('survives a malformed candidate pool instead of failing the whole report', async () => {
-    mockBothCalls(fourSectionResponse, 'not json');
-    const sections = await generateNameChangeNarrative(makeScores());
-    expect(sections).toHaveLength(4);
-    expect(narrativePrompt()).toContain('Suggested names: NONE');
+  it('instructs the model never to invent, drop, or renumber a given suggested name', async () => {
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
+    await generateNameChangeNarrative(makeScores());
+    const content = narrativePrompt().toLowerCase();
+    expect(content).toContain('never invent an extra name');
+    expect(content).toContain('never suggest a name that is not on the list');
   });
 
-  it('deduplicates candidates case-insensitively', async () => {
-    // Built from a name that actually survives verification, so the assertion tests dedup
-    // rather than accidentally re-testing the target filter.
-    const survivor = expectedSurvivors([3, 6, 9])[0]!;
-    const dupes = JSON.stringify({
-      names: [survivor, survivor.toLowerCase(), survivor.toUpperCase(), `${survivor} `],
-    });
-    mockBothCalls(fourSectionResponse, dupes);
+  it('instructs a one-or-two-line "what this name brings into your life" note per suggested name', async () => {
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
     await generateNameChangeNarrative(makeScores());
-    const content = narrativePrompt();
-    expect((content.match(new RegExp(`"${survivor}" -> Chaldean number`, 'g')) ?? []).length).toBe(
-      1,
-    );
-    expect(content).not.toContain(`"${survivor.toUpperCase()}"`);
+    const content = narrativePrompt().toLowerCase();
+    expect(content).toContain('bringing into the reader');
   });
 
   it('still parses a legacy-shaped 2-section response (caller is not required to return exactly 4)', async () => {
-    mockBothCalls(twoSectionResponse);
+    state.generate.mockResolvedValueOnce(twoSectionResponse);
     const sections = await generateNameChangeNarrative(makeScores());
     expect(sections).toHaveLength(2);
   });
 
   it('embeds the given mulank/bhagyank/chaldean/alignment facts as GIVEN FACTS', async () => {
-    mockBothCalls();
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
     await generateNameChangeNarrative(makeScores());
     const content = narrativePrompt();
     expect(content).toContain('Mulank: 6');
     expect(content).toContain('Bhagyank: 3');
     expect(content).toContain('Chaldean number: 27');
     expect(content).toContain('partially_aligned');
-    expect(content.toUpperCase()).toContain('GIVEN FACT');
   });
 
   it('embeds the given target numbers and instructs section 1 to explicitly state them (covers "what number should my name ideally add up to")', async () => {
-    mockBothCalls();
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
     await generateNameChangeNarrative(
       makeScores({ alignment: { ...makeScores().alignment, targets: [3, 6, 9] } }),
     );
@@ -238,22 +158,14 @@ describe('generateNameChangeNarrative', () => {
     expect(content.toLowerCase()).toContain('what number should my name ideally add up to');
   });
 
-  it('instructs a one-or-two-line "what this name brings into your life" note per suggested name', async () => {
-    mockBothCalls();
-    await generateNameChangeNarrative(makeScores());
-    const content = narrativePrompt().toLowerCase();
-    expect(content).toContain('bringing into the reader');
-    expect(content).toContain('not a dictionary definition');
-  });
-
   it('embeds the given spelling variants, never inventing one when the list is empty', async () => {
-    mockBothCalls();
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
     await generateNameChangeNarrative(makeScores({ variants: [] }));
     expect(narrativePrompt()).toContain('NONE — the deterministic method found no small edit');
   });
 
   it('instructs a Practical Guidance section covering realistic-impact expectations, phasing in gradually, and what to stay mindful of if keeping the current name (covers 3 previously-unanswered bullets, using only already-given facts)', async () => {
-    mockBothCalls();
+    state.generate.mockResolvedValueOnce(fourSectionResponse);
     await generateNameChangeNarrative(makeScores());
     const content = narrativePrompt();
     expect(content.toLowerCase()).toContain('realistic difference');
@@ -263,7 +175,7 @@ describe('generateNameChangeNarrative', () => {
   });
 
   it('throws on an unparseable narrative response', async () => {
-    mockBothCalls('not json');
+    state.generate.mockResolvedValueOnce('not json');
     await expect(generateNameChangeNarrative(makeScores())).rejects.toThrow();
   });
 });

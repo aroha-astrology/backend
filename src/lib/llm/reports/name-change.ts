@@ -1,11 +1,13 @@
 // =============================================================================
 // Name Change report — LLM narrative
 // =============================================================================
-// 1 LLM call, 3 sections — given the current name's full numerological
-// signature and up to 5 deterministic spelling variants (each already
-// validated to hit a target number), explain the alignment and why each
-// suggested change helps. No fallback filler on a bad response — same
-// discipline as generateMarriageNarrative/generateBabyNameNarrative.
+// 1 LLM call, 4 sections — given the current name's full numerological
+// signature, up to 25 REAL suggested names (see astro-engine/names/, sourced
+// from the checked-in corpus and already verified to hit a target number —
+// never proposed by the LLM), and up to 5 deterministic spelling variants of
+// the reader's OWN name, explain the alignment and why each helps. No
+// fallback filler on a bad response — same discipline as
+// generateMarriageNarrative/generateBabyNameNarrative.
 //
 // Section 3 ("Practical Guidance") was added to close 3 covers.name_change gaps: "how much
 // difference could a name change realistically make," "what's the best way to phase in a name
@@ -21,93 +23,12 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
-import { variantHitsTarget } from '../../astro-engine/numerology/nameCorrection.js';
+import { namesHittingTarget } from '../../astro-engine/names/name-lookup.js';
 import type { NameChangeScores } from '../../astro-engine/reports/name-change.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
 /** How many verified name suggestions the report aims to present. */
 const SUGGESTION_COUNT = 25;
-/** Candidates requested per proposal round. Deliberately several times
- * SUGGESTION_COUNT because only the fraction whose Chaldean number happens to
- * land on a target survives verification. */
-const CANDIDATE_POOL = 120;
-const MAX_PROPOSAL_ROUNDS = 2;
-
-export interface SuggestedName {
-  name: string;
-  chaldean: number;
-}
-
-const NAMES_SCHEMA = {
-  type: 'object',
-  properties: { names: { type: 'array', items: { type: 'string' } } },
-  required: ['names'],
-} as const;
-
-/**
- * Builds the suggested-name list the narrative then writes about.
- *
- * The model proposes candidate names ONLY — it is never asked for, and never
- * trusted with, a numerology number. Every candidate is run through the same
- * deterministic `variantHitsTarget` the spelling variants already use, and
- * only those whose computed Chaldean number actually lands on one of the
- * reader's target numbers survive. That keeps the report's core claim ("this
- * name adds up to your target") true by construction rather than by asking a
- * language model to do arithmetic it is bad at.
- *
- * Returns fewer than SUGGESTION_COUNT (possibly zero) rather than padding with
- * unverified names — the narrative layer states the real count.
- */
-async function proposeVerifiedNames(scores: NameChangeScores): Promise<SuggestedName[]> {
-  const targets = scores.alignment.targets;
-  if (targets.length === 0) return [];
-
-  const verified: SuggestedName[] = [];
-  const seen = new Set<string>();
-
-  for (let round = 0; round < MAX_PROPOSAL_ROUNDS && verified.length < SUGGESTION_COUNT; round++) {
-    const exclude =
-      seen.size > 0
-        ? `\nDo NOT repeat any of these already-seen names: ${[...seen].join(', ')}.`
-        : '';
-    const raw = await generate({
-      profile: REPORT_PROFILE,
-      responseSchema: NAMES_SCHEMA,
-      messages: [
-        {
-          role: 'system',
-          content: `You generate candidate given names for a numerology name-correction report. Return STRICT JSON only, shape {"names": string[]}.
-
-Return ${CANDIDATE_POOL} REAL, commonly used Indian/Sanskrit given names that actually exist in real use — never invent a name. Give the name only, with no meaning, no explanation and no numbers. Vary the spellings and lengths widely, since the reader needs a broad pool to choose from.
-
-Match the cultural style and the likely gender of the reader's current name, which is "${scores.currentName}".${exclude}`,
-        },
-        { role: 'user', content: 'List the candidate names.' },
-      ],
-    });
-
-    let names: unknown;
-    try {
-      names = (JSON.parse(cleanJsonString(raw)) as { names?: unknown }).names;
-    } catch {
-      break; // A malformed pool is not worth a retry — report what we have.
-    }
-    if (!Array.isArray(names)) break;
-
-    for (const entry of names) {
-      if (typeof entry !== 'string') continue;
-      const name = entry.trim();
-      const key = name.toLowerCase();
-      if (!name || seen.has(key)) continue;
-      seen.add(key);
-      const { chaldean, hits } = variantHitsTarget(name, targets);
-      if (hits) verified.push({ name, chaldean });
-      if (verified.length >= SUGGESTION_COUNT) break;
-    }
-  }
-
-  return verified.slice(0, SUGGESTION_COUNT);
-}
 
 const GROUNDING_RULE =
   'Every number below (mulank, bhagyank, pythagorean, chaldean, soul urge, personality, target numbers, alignment status, friendly/enemy numbers) is a GIVEN FACT, already computed by deterministic Vedic and Chaldean numerology formulas. Every suggested spelling variant below is ALSO a GIVEN FACT — it was already generated by a deterministic algorithm and its own Chaldean number was already checked against the target numbers. Never recompute, second-guess, invent a new number, or invent a different spelling variant than the ones given — your job is ONLY to explain what the alignment means and why each given change helps.';
@@ -143,7 +64,10 @@ Write EXACTLY 4 sections, in this order:
 Each paragraph should be 2-4 sentences, EXCEPT the per-name paragraphs in section 2, which are 1-2 sentences each. Second person ("you").`;
 }
 
-function buildFacts(scores: NameChangeScores, suggestions: SuggestedName[]): string {
+function buildFacts(
+  scores: NameChangeScores,
+  suggestions: ReturnType<typeof namesHittingTarget>,
+): string {
   const lines: string[] = [];
   const a = scores.alignment;
   lines.push(`Current name: ${scores.currentName}. Date of birth used: ${scores.dob}.`);
@@ -219,7 +143,7 @@ function parseSections(raw: string): ReportSection[] | null {
 export async function generateNameChangeNarrative(
   scores: NameChangeScores,
 ): Promise<ReportSection[]> {
-  const suggestions = await proposeVerifiedNames(scores);
+  const suggestions = namesHittingTarget(scores.alignment.targets, SUGGESTION_COUNT);
   const raw = await generate({
     profile: REPORT_PROFILE,
     responseSchema: SECTIONS_SCHEMA,

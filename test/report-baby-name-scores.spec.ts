@@ -48,6 +48,37 @@ describe('computeBabyNameScores', () => {
     ]);
   });
 
+  it('populates candidateNames with real names actually starting with the derived syllable', () => {
+    const longitude = 0.5; // Ashwini pada 1 -> syllable "Chu"
+    const chart = makeChart(longitude);
+    const scores = computeBabyNameScores({ chart, partnerChart: null }, null);
+
+    expect(scores.startingSyllables).toEqual(['Chu']);
+    expect(scores.candidateNames.length).toBeGreaterThan(0);
+    for (const name of scores.candidateNames) {
+      expect(name.toLowerCase().startsWith('chu')).toBe(true);
+    }
+    // No duplicates.
+    expect(new Set(scores.candidateNames).size).toBe(scores.candidateNames.length);
+  });
+
+  it('narrows candidateNames by childGender ("boy"/"girl") when the reader answered that question', () => {
+    const longitude = 0.5;
+    const chart = makeChart(longitude);
+    const boyScores = computeBabyNameScores(
+      { chart, partnerChart: null, userAnswers: { childGender: 'boy' } },
+      null,
+    );
+    const girlScores = computeBabyNameScores(
+      { chart, partnerChart: null, userAnswers: { childGender: 'girl' } },
+      null,
+    );
+    // The two gender-narrowed pools should not be identical (both non-empty for "Chu").
+    expect(boyScores.candidateNames.length).toBeGreaterThan(0);
+    expect(girlScores.candidateNames.length).toBeGreaterThan(0);
+    expect(new Set(boyScores.candidateNames)).not.toEqual(new Set(girlScores.candidateNames));
+  });
+
   it('falls back to Ashwini pada 1 when the chart has no Moon longitude', () => {
     const scores = computeBabyNameScores({ chart: { planets: [] }, partnerChart: null }, null);
     expect(scores.moonNakshatra).toBe('Ashwini');

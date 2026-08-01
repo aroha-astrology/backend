@@ -1,9 +1,12 @@
 // =============================================================================
 // Baby Name report — LLM narrative
 // =============================================================================
-// 1 LLM call — given the starting syllable(s), generate a modest list of real
-// Sanskrit/Indian given names starting with those syllables, each with a
-// one-line meaning. No fallback filler on a bad response.
+// 1 LLM call — given a list of already-verified REAL names starting with the
+// required syllable (see astro-engine/reports/baby-name.ts's candidateNames,
+// sourced from astro-engine/names/name-corpus.ts), write a one-line meaning +
+// one-line "what it brings" note per name. The model is never asked to invent
+// a name, only to write about names this app already knows are real. No
+// fallback filler on a bad response.
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
@@ -13,9 +16,11 @@ import type { BabyNameScores } from '../../astro-engine/reports/baby-name.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
 const GROUNDING_RULE =
-  'The Moon nakshatra, pada, and starting syllable below are GIVEN FACTS, already computed from the chart. Every suggested name MUST start with the exact given syllable — do not invent a different syllable or drift from it.';
+  'The Moon nakshatra, pada, and starting syllable below are GIVEN FACTS, already computed from the chart.';
 const NAMES_RULE =
-  "Only suggest REAL, checkable Sanskrit/Indian given names that actually exist in real use — never invent a name or fabricate a meaning, and never repeat the same name twice. Keep the syllable-starting constraint exact (case-insensitive, allowing for standard transliteration spelling variants of the same syllable). Suggest AT LEAST 25 distinct names — this is a hard minimum, not a target to fall short of — mixed gender in framing (the app cannot know the baby's gender) unless a preferred child gender was given below, each with a one-line real meaning AND one short line on what that name is classically associated with bringing into the child's life (e.g. a steady temperament, an easy way with people, natural focus, resilience). Keep that second line warm, positive and concrete, phrased as classical association rather than a prediction about who the child will actually become, and vary it per name — never repeat the same benefit wording twice.";
+  "The suggested names list below is a GIVEN FACT — every one of these names was already verified by this app as a real, actually-in-use given name starting with the exact required syllable. Never invent an extra name, never drop one, never alter a spelling, and never suggest any name that is not on the given list — your job is ONLY to write about the given names, not to source them. Write ONE short paragraph per given name: the name, then its one-line real meaning, AND one short line on what that name is classically associated with bringing into the child's life (e.g. a steady temperament, an easy way with people, natural focus, resilience). Keep that second line warm, positive and concrete, phrased as classical association rather than a prediction about who the child will actually become, and vary it per name — never repeat the same benefit wording twice.";
+const EMPTY_NAMES_RULE =
+  'If NO suggested names are given below (an empty list — this happens for a rare syllable few real names start with), say so plainly in that section as a neutral fact rather than inventing names to fill the gap, and reassure the reader the rest of the reading still applies. Still write the section; never omit it.';
 const SCOPE_RULE =
   "The very first line of your response MUST explicitly state: this guidance is grounded in the READER'S OWN Moon nakshatra (a simplification, since the app does not yet collect a separate unborn child's birth details) rather than the child's own birth chart, which is the more traditional approach — say this plainly, not apologetically. Also state that regional naming traditions vary slightly on some nakshatra-to-syllable mappings, so this is a standard reference table, not the only valid one.";
 const THEME_RULE =
@@ -27,9 +32,9 @@ const AVOID_SOUNDS_RULE =
 const GENTLE_DOSHA_RULE =
   'This report is read by a new or expecting parent about their baby. If a dosha (e.g. Mangal Dosha, Kaal Sarp Dosha) is listed as present, mention it matter-of-factly and calmly, never alarmingly — classical doshas are common chart features with their own classical remedies/timing, not a flaw in the baby. Do not recommend specific remedies, pujas, or purchases. If a favorable yoga (Raja/Dhana) is present, you may mention it warmly and briefly. If neither is present, skip this note or fold it into a single reassuring line.';
 const STYLE_RULE =
-  "Deliberately spread the suggested names across three flavors — some more traditional/classical-sounding, some more modern/contemporary-sounding, and at least one or two deity-inspired (drawn from the given nakshatra deity, e.g. a name derived from or referencing that deity) — briefly noting which flavor each name leans toward. This directly helps the reader decide whether to lean traditional, modern, or deity-inspired for this chart, so do not suggest a one-note list that's all of a single style.";
+  'For each given name, briefly note whether it reads as more traditional/classical, more modern/contemporary, or deity-inspired (drawn from the given nakshatra deity) — describe the flavor the name ALREADY has, do not reshape or filter the given list to force an even spread across the three, since the list itself is fixed.';
 const PREFERENCE_RULE =
-  "If the reader gave optional context below (whether they already have a child and its gender, whether they're planning one, and/or a preferred name style — Western/Indian/Ancient/Other), tailor the suggested names toward that stated style/gender preference instead of a generic mixed-gender list, and acknowledge their situation naturally in the opening. If no such context was given, fall back to the default mixed-gender, mixed-style approach in NAMES_RULE/STYLE_RULE.";
+  "If the reader gave optional context below (whether they already have a child and its gender, whether they're planning one, and/or a preferred name style), acknowledge their situation naturally in the opening. The given names list is already gender-narrowed by the app when a child gender was given — you do not need to filter it further, only reflect the context in your framing.";
 
 function narrativeSystemPrompt(): string {
   return `You are writing a Baby Name Report for a mobile Vedic astrology app, grounded in the classical Moon-nakshatra-to-starting-syllable naming convention. The app already computed the reader's Moon nakshatra, pada, the classical starting syllable for naming, the nakshatra's ruling planet and deity, and a gentle dosha/yoga summary. Your job is ONLY to write the narrative + name list.
@@ -37,6 +42,7 @@ function narrativeSystemPrompt(): string {
 ${GROUNDING_RULE}
 ${SCOPE_RULE}
 ${NAMES_RULE}
+${EMPTY_NAMES_RULE}
 ${STYLE_RULE}
 ${THEME_RULE}
 ${PADA_RULE}
@@ -48,7 +54,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Suggested Names". The FIRST paragraph must contain the required scope-limitation disclaimer (see above). The remaining paragraphs should present AT LEAST 25 distinct name suggestions (count them before responding — fewer than 25 is not acceptable) — one name per short paragraph, giving its one-line real meaning AND the one-line "what it brings to the child" note per NAMES_RULE (e.g. "Chudamani — one who wears the crest jewel of virtue. Classically linked with quiet self-respect and a child who holds their own without needing to prove it.") — spread across traditional, modern, and deity-inspired flavors per STYLE_RULE, naming which flavor each leans toward.
+1. Heading close to "Suggested Names". The FIRST paragraph must contain the required scope-limitation disclaimer (see above). Then write ONE paragraph per given suggested name (see NAMES_RULE — if 25 names are given, write 25 name paragraphs, no more, no fewer), each giving its one-line real meaning AND the one-line "what it brings to the child" note (e.g. "Chudamani — one who wears the crest jewel of virtue. Classically linked with quiet self-respect and a child who holds their own without needing to prove it.") and naming which flavor it leans toward per STYLE_RULE.
 2. Heading close to "Naming Themes & Blessings" — 2-3 short paragraphs: the nakshatra lord/deity naming-theme flavor AND birth-star personality traits (per THEME_RULE), the pada explanation (per PADA_RULE), whether there are sounds/letters to avoid (per AVOID_SOUNDS_RULE), and a brief, gentle dosha/yoga note (per GENTLE_DOSHA_RULE).
 
 Each paragraph in section 2 should be 2-3 sentences.`;
@@ -62,6 +68,11 @@ function buildFacts(scores: BabyNameScores): string {
   );
   lines.push(`Nakshatra ruling planet (lord): ${scores.nakshatraLord ?? 'unavailable'}.`);
   lines.push(`Nakshatra presiding deity: ${scores.nakshatraDeity ?? 'unavailable'}.`);
+  lines.push(
+    scores.candidateNames.length > 0
+      ? `Suggested names (each ALREADY verified by this app as real and starting with the required syllable — write one paragraph for every one of these ${scores.candidateNames.length}): ${scores.candidateNames.join(', ')}.`
+      : "Suggested names: NONE — no real name in this app's corpus starts with the required syllable.",
+  );
   lines.push(
     scores.doshaYoga.positives.length > 0
       ? `Favorable yogas present on the baby's chart: ${scores.doshaYoga.positives

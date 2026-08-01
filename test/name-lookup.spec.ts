@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'vitest';
+import {
+  namesStartingWith,
+  namesHittingTarget,
+} from '../src/lib/astro-engine/names/name-lookup.js';
+import { variantHitsTarget } from '../src/lib/astro-engine/numerology/nameCorrection.js';
+import { ALL_GIVEN_NAMES } from '../src/lib/astro-engine/names/name-corpus.js';
+
+describe('namesStartingWith', () => {
+  it('returns only real corpus names that actually start with the given syllable', () => {
+    const names = namesStartingWith('Chu', 25);
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(name.toLowerCase().startsWith('chu')).toBe(true);
+      expect(ALL_GIVEN_NAMES).toContain(name);
+    }
+  });
+
+  it('is case-insensitive on the syllable', () => {
+    expect(namesStartingWith('chu', 25).sort()).toEqual(namesStartingWith('CHU', 25).sort());
+  });
+
+  it('never returns more than the requested limit', () => {
+    expect(namesStartingWith('A', 5)).toHaveLength(5);
+  });
+
+  it('returns an empty list for a blank syllable rather than the whole corpus', () => {
+    expect(namesStartingWith('', 25)).toEqual([]);
+  });
+
+  it('returns no duplicates even though unisex names appear in both source gender lists', () => {
+    const names = namesStartingWith('A', 200);
+    expect(new Set(names.map((n) => n.toLowerCase())).size).toBe(names.length);
+  });
+
+  it('narrows to the male-coded pool for childGender="boy" and female-coded for "girl"', () => {
+    const boy = new Set(namesStartingWith('A', 200, 'boy'));
+    const girl = new Set(namesStartingWith('A', 200, 'girl'));
+    // Narrowed pools shouldn't be identical to the unfiltered mixed pool.
+    const mixed = new Set(namesStartingWith('A', 200));
+    expect(boy).not.toEqual(mixed);
+    expect(girl).not.toEqual(mixed);
+  });
+});
+
+describe('namesHittingTarget', () => {
+  it('returns real corpus names whose OWN computed Chaldean number lands on a given target', () => {
+    const targets = [3, 6, 9];
+    const hits = namesHittingTarget(targets, 25);
+    expect(hits.length).toBeGreaterThan(0);
+    for (const { name, chaldean } of hits) {
+      expect(ALL_GIVEN_NAMES).toContain(name);
+      const recomputed = variantHitsTarget(name, targets);
+      expect(recomputed.hits).toBe(true);
+      expect(recomputed.chaldean).toBe(chaldean);
+    }
+  });
+
+  it('returns an empty list for an empty target list rather than the whole corpus', () => {
+    expect(namesHittingTarget([], 25)).toEqual([]);
+  });
+
+  it('never returns more than the requested limit', () => {
+    expect(namesHittingTarget([1, 2, 3, 4, 5, 6, 7, 8, 9], 10)).toHaveLength(10);
+  });
+
+  it('returns no duplicate names even though unisex names appear in both source gender lists', () => {
+    const hits = namesHittingTarget([1, 2, 3, 4, 5, 6, 7, 8, 9], 300);
+    const names = hits.map((h) => h.name.toLowerCase());
+    expect(new Set(names).size).toBe(names.length);
+  });
+});

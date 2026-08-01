@@ -19,8 +19,13 @@ import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
+import { namesStartingWith } from '../names/name-lookup.js';
 import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
+
+/** How many real candidate names to hand the narrative layer — see `NAMES_RULE` in
+ * lib/llm/reports/baby-name.ts for why 25 is the report's own target. */
+const CANDIDATE_NAME_COUNT = 25;
 
 /**
  * Standard classical Moon-nakshatra-pada -> starting-syllable table (verbatim, as specified).
@@ -82,6 +87,12 @@ export interface BabyNameScores extends Record<string, unknown>, ReportSharedFac
    * see this module's own top-of-file scope note). Framed gently in the narrative — see
    * lib/llm/reports/baby-name.ts's GENTLE_DOSHA_RULE — this report is read by a new parent. */
   doshaYoga: DoshaYogaSummary;
+  /** Real given names (see lib/astro-engine/names/name-corpus.ts) starting with
+   * `startingSyllables[0]`, up to CANDIDATE_NAME_COUNT — GIVEN FACTS the narrative writes about,
+   * never a list the LLM is asked to invent. Gender-narrowed when `ctx.userAnswers.childGender`
+   * was given. Can be shorter than CANDIDATE_NAME_COUNT (rarely empty) for an uncommon syllable —
+   * the narrative layer states the real count rather than padding it. */
+  candidateNames: string[];
 }
 
 export function computeBabyNameScores(
@@ -112,6 +123,10 @@ export function computeBabyNameScores(
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
 
+  const candidateNames = startingSyllables[0]
+    ? namesStartingWith(startingSyllables[0], CANDIDATE_NAME_COUNT, ctx.userAnswers?.childGender)
+    : [];
+
   return {
     header,
     lifeContext,
@@ -122,5 +137,6 @@ export function computeBabyNameScores(
     nakshatraLord: nakshatraData.lord,
     nakshatraDeity: nakshatraData.deity,
     doshaYoga,
+    candidateNames,
   };
 }
