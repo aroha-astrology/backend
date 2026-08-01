@@ -15,8 +15,12 @@ import type { PanchangData } from '@aroha-astrology/shared';
  * v3: regionalMonths gained 6 new RegionId keys (gujarat/odisha/assam/tamil/
  * malayalam/punjab/kannada) — pre-v3 rows are missing them, which would
  * silently make the new regions "unavailable" forever for already-cached days.
+ * v4: each RegionalMonth gained an optional dayOfMonth field (solar regions:
+ * approximate; Nanakshahi: exact) — pre-v4 rows lack it, which would
+ * silently make the monthly-calendar grid fall back to showing the same
+ * tithi number for every region forever, for already-cached days.
  */
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 
 /** Folds `CACHE_VERSION` into the DB key so a version bump can't collide with, or accidentally match, a row from a previous shape. */
 function versionedKey(refKey: string): string {

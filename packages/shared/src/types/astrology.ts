@@ -453,6 +453,7 @@ export interface RegionalMonth {
   monthSystem: MonthSystem;
   monthIndex: number; // 0..11
   monthName: string; // localised name in the regional convention
+  dayOfMonth?: number; // 1-indexed; solar (approx) and fixed_solar (exact) only
   paksha?: 'shukla' | 'krishna'; // omitted for solar (East)
   year: number; // era year (Vikram 2083, Shaka 1948, Bengali 1433, ...)
   isAdhikMaas?: boolean; // true on dates inside an Adhik Maas range (lunisolar regions only)

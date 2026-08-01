@@ -464,6 +464,8 @@ export interface RegionalMonth {
   monthSystem: MonthSystem;
   monthIndex: number; // 0..11
   monthName: string; // localised name in the regional convention
+  /** 1-indexed day within this regional month — only set for `solar` (approximate, ±1 day; see regional.ts) and `fixed_solar` (exact) systems. Lunisolar (purnimanta/amanta) regions have no separate day-of-month concept distinct from the tithi, so this is omitted for them. */
+  dayOfMonth?: number;
   paksha?: 'shukla' | 'krishna'; // omitted for solar (East)
   year: number; // era year (Vikram 2083, Shaka 1948, Bengali 1433, ...)
   isAdhikMaas?: boolean; // true on dates inside an Adhik Maas range (lunisolar regions only)

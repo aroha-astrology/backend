@@ -479,6 +479,8 @@ export interface PanchangMonthDay {
   isFullMoon: boolean;
   isNewMoon: boolean;
   isEkadashi: boolean;
+  /** This day's own regional-month view, per region — unlike the whole-month `PanchangMonthResult.regionalMonths` label below, this reflects THIS specific day (needed for the calendar grid's per-day date, e.g. day-of-solar-month, which can differ from a mid-month snapshot near a regional month boundary). */
+  regionalMonths: Record<RegionId, RegionalMonth> | null;
 }
 
 export interface PanchangMonthResult {
@@ -528,6 +530,7 @@ export async function getPanchangMonth(
         isFullMoon,
         isNewMoon,
         isEkadashi,
+        regionalMonths: panchang.regionalMonths ?? null,
       };
     }),
   );

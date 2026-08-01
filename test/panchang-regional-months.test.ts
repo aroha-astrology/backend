@@ -104,4 +104,61 @@ describe('calculateRegionalMonths — Nanakshahi (Punjab)', () => {
     expect(result.punjab.paksha).toBeUndefined();
     expect(result.punjab.isAdhikMaas).toBeUndefined();
   });
+
+  it('gives Nanakshahi an exact dayOfMonth — 1 on Chet 1, 1 again 31 days later at the Vaisakh boundary', () => {
+    const chet1 = calculateRegionalMonths({
+      isoDate: '2026-03-14',
+      gregorianYear: 2026,
+      sunSiderealLong: rashiLong(11),
+      paksha: 'shukla',
+    });
+    const vaisakh1 = calculateRegionalMonths({
+      isoDate: '2026-04-14',
+      gregorianYear: 2026,
+      sunSiderealLong: rashiLong(0),
+      paksha: 'shukla',
+    });
+    expect(chet1.punjab.dayOfMonth).toBe(1);
+    expect(vaisakh1.punjab.dayOfMonth).toBe(1);
+  });
+});
+
+describe('calculateRegionalMonths — solar dayOfMonth (approximate)', () => {
+  it('is 1 right at a rashi boundary (0° into the rashi) for every solar region', () => {
+    const result = calculateRegionalMonths({
+      isoDate: '2026-04-14',
+      gregorianYear: 2026,
+      sunSiderealLong: 0, // exactly at the Mesha boundary
+      paksha: 'shukla',
+    });
+    expect(result.east.dayOfMonth).toBe(1);
+    expect(result.odisha.dayOfMonth).toBe(1);
+    expect(result.assam.dayOfMonth).toBe(1);
+    expect(result.tamil.dayOfMonth).toBe(1);
+    expect(result.malayalam.dayOfMonth).toBe(1);
+  });
+
+  it('increases with degrees into the rashi, independent of which region names the month', () => {
+    const result = calculateRegionalMonths({
+      isoDate: '2026-04-20',
+      gregorianYear: 2026,
+      sunSiderealLong: 5, // 5° into Mesha
+      paksha: 'shukla',
+    });
+    expect(result.east.dayOfMonth).toBeGreaterThan(1);
+    expect(result.east.dayOfMonth).toBe(result.tamil.dayOfMonth);
+    expect(result.east.dayOfMonth).toBe(result.malayalam.dayOfMonth);
+  });
+
+  it('leaves dayOfMonth unset for lunisolar (purnimanta/amanta) regions', () => {
+    const result = calculateRegionalMonths({
+      isoDate: '2026-04-20',
+      gregorianYear: 2026,
+      sunSiderealLong: rashiLong(1),
+      paksha: 'shukla',
+    });
+    expect(result.north.dayOfMonth).toBeUndefined();
+    expect(result.west.dayOfMonth).toBeUndefined();
+    expect(result.gujarat.dayOfMonth).toBeUndefined();
+  });
 });

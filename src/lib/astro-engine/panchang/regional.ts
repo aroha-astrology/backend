@@ -432,6 +432,9 @@ function calculateNanakshahi(isoDate: string): RegionalMonth {
     monthSystem: 'fixed_solar',
     monthIndex,
     monthName: NANAKSHAHI_MONTHS[monthIndex],
+    // Exact — fixed month lengths, no approximation needed (unlike the
+    // ephemeris-tracking solar regions below).
+    dayOfMonth: dayOfYear - NANAKSHAHI_MONTH_START_OFFSETS[monthIndex] + 1,
     year: boundaryYear - NANAKSHAHI_EPOCH_OFFSET,
   };
 }
@@ -467,6 +470,23 @@ export function calculateRegionalMonths(args: RegionalMonthArgs): Record<RegionI
   // shift the index so Chingam comes out as month 0.
   const malayalamIndex = (sunRashi + 8) % 12;
 
+  // ponytail: day-of-solar-month, approximated from how far the Sun has
+  // moved into its current rashi divided by its average daily motion
+  // (360°/365.25 days ≈ 0.9856°/day) — the Sun's true daily motion varies
+  // ~0.953-1.019°/day across the year (Earth's elliptical orbit), so this is
+  // accurate to within ±1 day, not exact like the Nanakshahi day-of-month
+  // above. Exact would need the real sankranti transit moment (an
+  // angle-crossing search against Swiss Ephemeris, same technique already
+  // used for tithi/nakshatra endsAt elsewhere in this codebase) computed per
+  // month per year — upgrade to that if day-level solar precision matters
+  // more than it does for a calendar-grid label.
+  const AVERAGE_DAILY_SOLAR_MOTION = 360 / 365.25;
+  const degreesIntoRashi = ((sunSiderealLong % 30) + 30) % 30;
+  const solarDayOfMonth = Math.max(
+    1,
+    Math.round(degreesIntoRashi / AVERAGE_DAILY_SOLAR_MOTION) + 1,
+  );
+
   const adhik = findAdhikMaas(isoDate);
 
   const buildLunar = (region: RegionId, monthIndex: number): RegionalMonth => {
@@ -497,6 +517,7 @@ export function calculateRegionalMonths(args: RegionalMonthArgs): Record<RegionI
       monthSystem: 'solar',
       monthIndex,
       monthName: MONTH_NAMES[region][monthIndex],
+      dayOfMonth: solarDayOfMonth,
       year,
       ...(adhik ? { isAdhikMaas: true, adhikMaasLabel: adhik.label } : {}),
     };
