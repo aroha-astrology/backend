@@ -10,7 +10,7 @@
 // =============================================================================
 
 import { env } from '../../config/env.js';
-import { type LLMRequestOptions } from '../../config/llm.js';
+import { type ChatMessage, type LLMRequestOptions } from '../../config/llm.js';
 import { logger } from '../logger.js';
 import { alertThrottled } from '../notifications/alerts.js';
 import { insertAiUsage } from '../../modules/admin/ai-usage.repo.js';
@@ -92,6 +92,34 @@ interface GeminiResponse {
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
+/**
+ * Gemini's OpenAI-compatibility layer folds `system` messages into a single
+ * `systemInstruction` and keeps only the LAST one — every earlier system
+ * message is silently discarded, with no error and no warning.
+ *
+ * That is a live-verified footgun for the ~20 callers here that split their
+ * prompt across two system messages (instructions first, grounding facts
+ * second): the ENTIRE instruction prompt vanished and only the facts reached
+ * the model, so the reply was an unguided freestyle over the data. It's how
+ * the Baby Name report silently stopped emitting its name list at all.
+ *
+ * Collapsing them into one leading system message is the fix for all of them
+ * at once, rather than reshaping each call site. Order is preserved, so the
+ * concatenation reads exactly as each caller already intended.
+ *
+ * Only merges plain-string system content — the one caller that sends
+ * structured parts (palm/observe.ts) sends a single system message anyway, so
+ * it is passed through untouched rather than being flattened lossily.
+ */
+export function mergeSystemMessages(messages: ChatMessage[]): ChatMessage[] {
+  const systems = messages.filter((m) => m.role === 'system');
+  if (systems.length < 2 || !systems.every((m) => typeof m.content === 'string')) return messages;
+  return [
+    { role: 'system', content: systems.map((m) => m.content as string).join('\n\n') },
+    ...messages.filter((m) => m.role !== 'system'),
+  ];
+}
+
 function doRequest(
   opts: LLMRequestOptions,
   stream: boolean,
@@ -101,7 +129,7 @@ function doRequest(
   const model = opts.model ?? env.GEMINI_MODEL;
   const body: Record<string, unknown> = {
     model,
-    messages: opts.messages,
+    messages: mergeSystemMessages(opts.messages),
     temperature: opts.profile.temperature,
     max_tokens: opts.profile.maxTokens,
     stream,
