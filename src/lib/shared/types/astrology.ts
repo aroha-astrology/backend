@@ -441,11 +441,22 @@ export interface PanchangData {
 }
 
 // ── Regional calendar variants ───────────────────────────────────────────────
-// India's four cultural regions disagree about lunar/solar month names and era
+// India's cultural regions disagree about lunar/solar month names and era
 // years for the same Gregorian date. RegionalMonth captures the per-region view.
 
-export type RegionId = 'north' | 'south' | 'west' | 'east';
-export type MonthSystem = 'purnimanta' | 'amanta' | 'solar';
+export type RegionId =
+  | 'north'
+  | 'south'
+  | 'west'
+  | 'east'
+  | 'gujarat'
+  | 'odisha'
+  | 'assam'
+  | 'tamil'
+  | 'malayalam'
+  | 'punjab'
+  | 'kannada';
+export type MonthSystem = 'purnimanta' | 'amanta' | 'solar' | 'fixed_solar';
 
 export interface RegionalMonth {
   region: RegionId;

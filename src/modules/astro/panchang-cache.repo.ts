@@ -12,8 +12,11 @@ import type { PanchangData } from '@aroha-astrology/shared';
  * without this bump would otherwise keep being served, looking like a
  * permanent "no moonrise today" for every cached (date, refKey) already
  * warmed before this change shipped.
+ * v3: regionalMonths gained 6 new RegionId keys (gujarat/odisha/assam/tamil/
+ * malayalam/punjab/kannada) — pre-v3 rows are missing them, which would
+ * silently make the new regions "unavailable" forever for already-cached days.
  */
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 
 /** Folds `CACHE_VERSION` into the DB key so a version bump can't collide with, or accidentally match, a row from a previous shape. */
 function versionedKey(refKey: string): string {
