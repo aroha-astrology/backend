@@ -111,6 +111,14 @@ export async function findLatestOrderForPack(
   return rows[0];
 }
 
+/** Records the gateway's own order id against ours (Razorpay orders are created after our row exists). */
+export async function setOrderGatewayOrderId(
+  orderId: string,
+  gatewayOrderId: string,
+): Promise<void> {
+  await db.update(orders).set({ gatewayOrderId }).where(eq(orders.id, orderId));
+}
+
 /**
  * Marks a pending order paid, grants its credits, bumps the coupon's
  * redemption count, and appends a credit-ledger row — all atomically. Returns

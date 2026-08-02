@@ -8,10 +8,12 @@ import {
   findDebitsForUser,
   findLatestOrderForPack,
   confirmOrderAndGrantCredits,
+  setOrderGatewayOrderId,
 } from './billing.repo.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { logger } from '../../lib/logger.js';
 import { verifyGooglePlayPurchase, consumeGooglePlayPurchase } from './google-play-verifier.js';
+import { createRazorpayOrder, getRazorpayKeyId, verifyRazorpaySignature } from './razorpay.js';
 import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
 
 /**
@@ -85,7 +87,12 @@ export async function validateCoupon(code: string, packId: string) {
   };
 }
 
-export async function checkout(userId: string, packId: string, couponCode: string | undefined) {
+async function createPendingOrder(
+  userId: string,
+  packId: string,
+  couponCode: string | undefined,
+  gatewayProvider: string,
+) {
   const amount = findTopUpAmount(packId);
   let discountPaise = 0;
   let couponId: string | null = null;
@@ -109,10 +116,90 @@ export async function checkout(userId: string, packId: string, couponCode: strin
     couponId,
     couponCode: resolvedCouponCode,
     status: 'pending',
-    gatewayProvider: 'mock',
+    gatewayProvider,
   });
 
   return order;
+}
+
+export async function checkout(userId: string, packId: string, couponCode: string | undefined) {
+  return createPendingOrder(userId, packId, couponCode, 'mock');
+}
+
+/**
+ * Creates our pending order AND its Razorpay counterpart, and hands the
+ * browser everything Razorpay's checkout.js needs to open the payment modal.
+ * The key SECRET stays here — only the publishable key id goes out.
+ */
+export async function startRazorpayCheckout(
+  userId: string,
+  packId: string,
+  couponCode: string | undefined,
+): Promise<{ order: OrderRow; razorpayOrderId: string; razorpayKeyId: string }> {
+  const razorpayKeyId = getRazorpayKeyId();
+  const order = await createPendingOrder(userId, packId, couponCode, 'razorpay');
+  const razorpayOrderId = await createRazorpayOrder({
+    amountPaise: order.finalAmountPaise,
+    currency: order.currency,
+    receipt: order.id,
+  });
+  await setOrderGatewayOrderId(order.id, razorpayOrderId);
+  return { order: { ...order, gatewayOrderId: razorpayOrderId }, razorpayOrderId, razorpayKeyId };
+}
+
+/**
+ * Confirms a Razorpay payment and grants its wallet balance. Trusts nothing
+ * from the client except the ids: the amount granted comes from OUR stored
+ * order, and the payment is only accepted if Razorpay's signature over
+ * (their order id | payment id) checks out AND their order id is the one we
+ * created for this order — otherwise a cheap payment could be replayed
+ * against an expensive order.
+ */
+export async function verifyRazorpayPayment(
+  userId: string,
+  params: {
+    orderId: string;
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+  },
+): Promise<{ order: OrderRow; walletBalancePaise: number }> {
+  const order = await findOrderByIdForUser(params.orderId, userId);
+  if (!order) throw Errors.notFound('Order not found');
+  if (order.gatewayOrderId !== params.razorpayOrderId) {
+    throw Errors.badRequest('This payment does not belong to that order');
+  }
+  if (
+    !verifyRazorpaySignature({
+      razorpayOrderId: params.razorpayOrderId,
+      razorpayPaymentId: params.razorpayPaymentId,
+      signature: params.razorpaySignature,
+    })
+  ) {
+    logger.warn({ userId, orderId: order.id }, 'Razorpay signature verification failed');
+    throw Errors.badRequest('Payment could not be verified');
+  }
+
+  // Idempotent replay (double-submit, or a retry after a dropped response).
+  if (order.status === 'paid') {
+    if (order.gatewayPaymentId === params.razorpayPaymentId) {
+      return { order, walletBalancePaise: await getUserWalletBalance(userId) };
+    }
+    throw Errors.conflict('Order already confirmed with a different payment');
+  }
+  if (order.status !== 'pending') throw Errors.conflict(`Order is ${order.status}, not payable`);
+
+  const result = await confirmOrderAndGrantCredits(order.id, userId, params.razorpayPaymentId);
+  if (!result) {
+    // Lost a race with a concurrent confirm of the same order — re-read rather
+    // than failing a payment the user genuinely made.
+    const nowPaid = await findOrderByIdForUser(order.id, userId);
+    if (!nowPaid || nowPaid.status !== 'paid') throw Errors.internal('Failed to confirm order');
+    return { order: nowPaid, walletBalancePaise: await getUserWalletBalance(userId) };
+  }
+
+  await notifyTopUp(userId, order.finalAmountPaise, result.walletBalancePaise);
+  return result;
 }
 
 /**
@@ -131,6 +218,19 @@ export async function confirmPayment(
   const order = await findOrderByIdForUser(orderId, userId);
   if (!order) throw Errors.notFound('Order not found');
   throw Errors.forbidden('Online payments are not live yet.');
+}
+
+/** Fire-and-forget admin Telegram ping for a successful top-up (never blocks the payment). */
+async function notifyTopUp(userId: string, amountPaise: number, newBalancePaise: number) {
+  const buyer = await findActiveUserById(userId);
+  notifyWalletTopUp({
+    userId,
+    contact: buyer?.phoneE164 ?? buyer?.email ?? null,
+    amountPaise,
+    newBalancePaise,
+  }).catch((err) =>
+    logger.warn({ err, userId }, 'Failed to send wallet top-up Telegram notification'),
+  );
 }
 
 async function getUserWalletBalance(userId: string): Promise<number> {
@@ -193,15 +293,7 @@ export async function confirmGooglePlayPurchase(
 
   // Fresh grant only (not the idempotent-replay/already-paid branches above) —
   // avoids sending a duplicate admin notification if this call gets retried.
-  const buyer = await findActiveUserById(userId);
-  notifyWalletTopUp({
-    userId,
-    contact: buyer?.phoneE164 ?? buyer?.email ?? null,
-    amountPaise: order.finalAmountPaise,
-    newBalancePaise: result.walletBalancePaise,
-  }).catch((err) =>
-    logger.warn({ err, userId }, 'Failed to send wallet top-up Telegram notification'),
-  );
+  await notifyTopUp(userId, order.finalAmountPaise, result.walletBalancePaise);
 
   return result;
 }
