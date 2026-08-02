@@ -144,6 +144,9 @@ const SECTIONS_SCHEMA = {
               properties: {
                 title: { type: 'string' },
                 bullets: { type: 'array', items: { type: 'string' } },
+                // Translation pass only — see `translated` in mergeItems. Never on generation.
+                note: { type: 'string' },
+                badge: { type: 'string' },
               },
               required: ['title', 'bullets'],
             },
@@ -156,30 +159,57 @@ const SECTIONS_SCHEMA = {
   required: ['sections'],
 } as const;
 
-/** Merges the LLM's bullet copy for a given item title back onto the given deterministic fact
- * (name/chaldean/score/recommended, or variant/change/chaldean) — the LLM never supplies badge,
- * score, or note itself (see narrativeSystemPrompt's explicit instruction), so a hallucinated or
- * missing title just drops that item rather than fabricating one that wasn't in `known`. */
-function mergeItems(raw: unknown, known: Map<string, ReportSectionItem>): ReportSectionItem[] {
+/**
+ * Merges the LLM's bullet copy for a given item title back onto the given deterministic fact
+ * (name/chaldean/score/recommended, or variant/change/chaldean) — the LLM never supplies badge or
+ * score itself (see narrativeSystemPrompt's explicit instruction), so a hallucinated or missing
+ * title just drops that item rather than fabricating one that wasn't in `known`.
+ *
+ * `translated` is set ONLY on the translation pass. `note` (the variant's edit description, "first
+ * name — replaced \"i\" with \"ee\"") and `badge` ("Chaldean 6") are the two item fields that
+ * carry English WORDS rather than a pure computed value, and the frontend renders both verbatim —
+ * so without this they stay English on every non-English report. Both fall back to the English
+ * original when the model omits them, and `badge` is additionally rejected unless it still carries
+ * exactly the same digits, so a translation can never restate the reader's Chaldean number.
+ */
+function mergeItems(
+  raw: unknown,
+  known: Map<string, ReportSectionItem>,
+  translated = false,
+): ReportSectionItem[] {
   if (!Array.isArray(raw)) return [];
   const out: ReportSectionItem[] = [];
   for (const entry of raw as unknown[]) {
-    const e = entry as { title?: unknown; bullets?: unknown };
+    const e = entry as { title?: unknown; bullets?: unknown; note?: unknown; badge?: unknown };
     if (typeof e.title !== 'string') continue;
     const base = known.get(e.title.trim().toLowerCase());
     if (!base) continue; // not one of the given facts — drop rather than invent
     const bullets = Array.isArray(e.bullets)
       ? e.bullets.filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
       : [];
-    out.push({ ...base, bullets });
+    const note =
+      translated && base.note && typeof e.note === 'string' && e.note.trim() ? e.note.trim() : null;
+    const badge =
+      translated && base.badge && typeof e.badge === 'string' && sameDigits(e.badge, base.badge)
+        ? e.badge.trim()
+        : null;
+    out.push({ ...base, bullets, ...(note ? { note } : {}), ...(badge ? { badge } : {}) });
   }
   return out;
+}
+
+/** True when both strings contain the same digits in the same order — the guard that stops a
+ * translated badge from restating the reader's Chaldean number as something else. */
+function sameDigits(a: string, b: string): boolean {
+  const digits = (s: string): string => (s.match(/\d/g) ?? []).join('');
+  return digits(a) === digits(b);
 }
 
 function parseSections(
   raw: string,
   nameItems: Map<string, ReportSectionItem>,
   variantItems: Map<string, ReportSectionItem>,
+  translated = false,
 ): ReportSection[] | null {
   try {
     const data = JSON.parse(cleanJsonString(raw)) as { sections?: unknown };
@@ -202,8 +232,8 @@ function parseSections(
         : undefined;
       // A section is either the name-suggestion section or the variant section, never both — try
       // name items first, then variant items, so a section with neither just has no items.
-      const byName = mergeItems(e.items, nameItems);
-      const items = byName.length > 0 ? byName : mergeItems(e.items, variantItems);
+      const byName = mergeItems(e.items, nameItems, translated);
+      const items = byName.length > 0 ? byName : mergeItems(e.items, variantItems, translated);
       if (paragraphs.length === 0 && (!bullets || bullets.length === 0) && items.length === 0)
         continue;
       sections.push({
@@ -284,14 +314,15 @@ export async function translateNameChangeNarrative(
     messages: [
       {
         role: 'user',
-        content: `Translate the following report sections into the language "${targetLanguage}". Keep the exact same JSON structure ({"sections": [{"heading": string, "paragraphs": string[], "bullets"?: string[], "items"?: [{"title": string, "bullets": string[]}]}]}) and the same number of sections, paragraphs, bullets, and items — never add or drop any. Do NOT translate the proper name/spelling variants themselves (keep "title" fields exactly as given), but DO translate "heading", "paragraphs", and every "bullets" string (both section-level and item-level).\n\nOriginal Content:\n${JSON.stringify({ sections }, null, 2)}`,
+        content: `Translate the following report sections into the language "${targetLanguage}". Keep the exact same JSON structure ({"sections": [{"heading": string, "paragraphs": string[], "bullets"?: string[], "items"?: [{"title": string, "bullets": string[], "note"?: string, "badge"?: string}]}]}) and the same number of sections, paragraphs, bullets, and items — never add or drop any. Do NOT translate the proper name/spelling variants themselves (keep "title" fields exactly as given), but DO translate "heading", "paragraphs", every "bullets" string (both section-level and item-level), every item "note", and every item "badge".\n\nAn item "badge" reads like "Chaldean 6" — translate the word, but keep the number EXACTLY as given, in the same digits. An item "note" describes a spelling edit, e.g. \`first name — replaced "i" with "ee"\`. Translate the surrounding wording, but keep every quoted letter or letter-group inside it in the original Latin script and inside its double quotes — the reader has to be able to see the exact letters that changed. Return "note" and "badge" only for items that already have them; never add either to an item that has none.\n\nOriginal Content:\n${JSON.stringify({ sections }, null, 2)}`,
       },
     ],
   });
 
-  // Translation must not be allowed to swap in a different item's facts (badge/score/highlight/
-  // note) — rebuild `known` maps straight from the ENGLISH sections being translated, keyed by
-  // title, so mergeItems can only re-attach the same facts the item already had.
+  // Translation must not be allowed to swap in a different item's computed facts (badge/score/
+  // highlight) — rebuild `known` maps straight from the ENGLISH sections being translated, keyed
+  // by title, so mergeItems can only re-attach the same facts the item already had. `note` is the
+  // one exception (prose, not a computed fact) and is taken from the translation — see mergeItems.
   const knownItems = new Map<string, ReportSectionItem>();
   for (const s of sections) {
     for (const item of s.items ?? []) {
@@ -299,7 +330,7 @@ export async function translateNameChangeNarrative(
     }
   }
 
-  const parsed = parseSections(raw, knownItems, knownItems);
+  const parsed = parseSections(raw, knownItems, knownItems, true);
   if (!parsed) {
     throw new Error(
       `name change report translation returned unparseable JSON (target=${targetLanguage})`,

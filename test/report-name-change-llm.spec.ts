@@ -385,6 +385,87 @@ describe('translateNameChangeNarrative', () => {
     });
   });
 
+  it('takes the translated note and badge — neither may render in English on a non-English report', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({
+        sections: sections.map((s) => ({
+          heading: s.heading,
+          paragraphs: s.paragraphs,
+          ...(s.items
+            ? {
+                items: s.items.map((i) => ({
+                  title: i.title,
+                  bullets: ['अनुवादित।'],
+                  ...(i.note ? { note: 'उपनाम — अंत में "a" जोड़ा' } : {}),
+                  badge: `कैल्डियन ${i.badge?.replace(/\D/g, '')}`,
+                })),
+              }
+            : {}),
+        })),
+      }),
+    );
+    const translated = await translateNameChangeNarrative(sections, 'hi');
+    const variant = translated.find((s) => s.heading === 'Suggested Spelling Adjustments');
+    expect(variant?.items?.[0]?.note).toBe('उपनाम — अंत में "a" जोड़ा');
+    expect(variant?.items?.[0]?.badge).toBe('कैल्डियन 6');
+    const named = translated.find((s) => s.heading === 'Suggested Names');
+    expect(named?.items?.[0]?.badge).toBe('कैल्डियन 3');
+    // Facts the model must never restate are still the originals.
+    expect(named?.items?.[0]).toMatchObject({ title: 'Aarav Sharma', score: 88, highlight: true });
+  });
+
+  it('rejects a translated badge that changed the number, keeping the computed one', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({
+        sections: sections.map((s) => ({
+          heading: s.heading,
+          paragraphs: s.paragraphs,
+          ...(s.items
+            ? {
+                items: s.items.map((i) => ({
+                  title: i.title,
+                  bullets: ['अनुवादित।'],
+                  badge: 'कैल्डियन 9', // wrong number — must be discarded
+                })),
+              }
+            : {}),
+        })),
+      }),
+    );
+    const translated = await translateNameChangeNarrative(sections, 'hi');
+    const variant = translated.find((s) => s.heading === 'Suggested Spelling Adjustments');
+    expect(variant?.items?.[0]?.badge).toBe('Chaldean 6');
+  });
+
+  it('falls back to the English note when the model omits it, so variant cards stay variant cards', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({
+        sections: sections.map((s) => ({
+          heading: s.heading,
+          paragraphs: s.paragraphs,
+          ...(s.items ? { items: s.items.map((i) => ({ title: i.title, bullets: ['x'] })) } : {}),
+        })),
+      }),
+    );
+    const translated = await translateNameChangeNarrative(sections, 'hi');
+    const variant = translated.find((s) => s.heading === 'Suggested Spelling Adjustments');
+    expect(variant?.items?.[0]?.note).toBe('surname — added "a" at the end');
+    // A name card never gains a note it didn't have — that's what marks it as a variant card.
+    const named = translated.find((s) => s.heading === 'Suggested Names');
+    expect(named?.items?.[0]?.note).toBeUndefined();
+  });
+
+  it('never lets the GENERATION pass supply a note or badge of its own', async () => {
+    const rogue = JSON.parse(fiveSectionResponse);
+    rogue.sections[2].items[0].note = 'model-invented note';
+    rogue.sections[2].items[0].badge = 'model-invented badge';
+    state.generate.mockResolvedValueOnce(JSON.stringify(rogue));
+    const sectionsOut = await generateNameChangeNarrative(makeScores());
+    const variant = sectionsOut.find((s) => s.heading === 'Suggested Spelling Adjustments');
+    expect(variant?.items?.[0]?.note).toBe('surname — added "a" at the end');
+    expect(variant?.items?.[0]?.badge).toBe('Chaldean 6');
+  });
+
   it('throws on an unparseable translated response', async () => {
     state.generate.mockResolvedValueOnce('garbage');
     await expect(translateNameChangeNarrative(sections, 'hi')).rejects.toThrow();
