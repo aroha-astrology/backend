@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { computeNameChangeScores } from '../src/lib/astro-engine/reports/name-change.js';
 import {
   computeNameAlignment,
-  generateDeterministicVariants,
+  variantHitsTarget,
 } from '../src/lib/astro-engine/numerology/nameCorrection.js';
+import { generateSpellingVariants } from '../src/lib/astro-engine/names/name-variants.js';
 import type { ReportScoreContext } from '../src/modules/reports/report-generator.types.js';
 
 const NAME = 'Priya Sharma';
@@ -19,11 +20,26 @@ describe('computeNameChangeScores — delegates to the real deterministic engine
     expect(scores.alignment).toEqual(computeNameAlignment(NAME, new Date(DOB)));
   });
 
-  it('generates up to 5 variants via generateDeterministicVariants, seeded from the computed alignment targets', () => {
+  it('generates up to 12 variants via generateSpellingVariants, seeded from the computed alignment targets', () => {
     const scores = computeNameChangeScores(makeCtx(), null);
-    const expectedVariants = generateDeterministicVariants(NAME, scores.alignment.targets, 5);
-    expect(scores.variants).toEqual(expectedVariants);
-    expect(scores.variants.length).toBeLessThanOrEqual(5);
+    expect(scores.variants).toEqual(generateSpellingVariants(NAME, scores.alignment.targets, 12));
+    expect(scores.variants.length).toBeLessThanOrEqual(12);
+  });
+
+  it('surfaces the reader gender the alternative-name shortlist is filtered on', () => {
+    expect(computeNameChangeScores(makeCtx({ personGender: 'female' }), null).gender).toBe(
+      'female',
+    );
+    expect(computeNameChangeScores(makeCtx({ personGender: 'male' }), null).gender).toBe('male');
+    // 'other'/missing stays null — searching the full corpus beats guessing a binary.
+    expect(computeNameChangeScores(makeCtx({ personGender: 'other' }), null).gender).toBeNull();
+    expect(computeNameChangeScores(makeCtx(), null).gender).toBeNull();
+  });
+
+  it('leaves the surname untouched on at least half the variants (this report changes the first name)', () => {
+    const scores = computeNameChangeScores(makeCtx(), null);
+    const firstNameOnly = scores.variants.filter((v) => v.variant.endsWith(' Sharma'));
+    expect(firstNameOnly.length).toBeGreaterThanOrEqual(Math.ceil(scores.variants.length / 2));
   });
 
   it('surfaces the exact name/dob actually used', () => {
@@ -36,10 +52,10 @@ describe('computeNameChangeScores — delegates to the real deterministic engine
     const scores = computeNameChangeScores(makeCtx(), null);
     for (const v of scores.variants) {
       // Recompute independently (not from the module under test) to prove the variant is real.
-      const recomputed = generateDeterministicVariants(NAME, scores.alignment.targets, 5);
-      expect(recomputed.some((r) => r.variant === v.variant && r.chaldean === v.chaldean)).toBe(
-        true,
-      );
+      expect(variantHitsTarget(v.variant, scores.alignment.targets)).toEqual({
+        chaldean: v.chaldean,
+        hits: true,
+      });
     }
   });
 });
@@ -50,9 +66,7 @@ describe('computeNameChangeScores — a name whose current spelling is already a
     const dob = '1985-11-02';
     const scores = computeNameChangeScores(makeCtx({ personName: name, personDob: dob }), null);
     expect(scores.alignment).toEqual(computeNameAlignment(name, new Date(dob)));
-    expect(scores.variants).toEqual(
-      generateDeterministicVariants(name, scores.alignment.targets, 5),
-    );
+    expect(scores.variants).toEqual(generateSpellingVariants(name, scores.alignment.targets, 12));
   });
 });
 

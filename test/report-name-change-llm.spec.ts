@@ -31,31 +31,34 @@ function makeScores(overrides: Partial<NameChangeScores> = {}): NameChangeScores
       friendly: [1, 3, 5, 9],
       enemy: [1, 2, 5, 7, 8],
     },
+    gender: 'female',
     variants: [
-      { variant: 'Priya Sharmaa', chaldean: 6, change: 'added "a" at the end' },
-      { variant: 'Preeya Sharma', chaldean: 9, change: 'replaced "i" with "ee"' },
+      { variant: 'Priya Sharmaa', chaldean: 6, change: 'surname — added "a" at the end' },
+      { variant: 'Preeya Sharma', chaldean: 9, change: 'first name — replaced "i" with "ee"' },
     ],
     ...overrides,
   };
 }
 
+/** Ranked alternatives always carry the reader's own surname — this report changes the FIRST
+ * name only, never the whole name. */
 const RANKED: ScoredName[] = [
   {
-    name: 'Aarav',
+    name: 'Aarav Sharma',
     chaldean: 3,
     score: 88,
     reasons: ['Lands exactly on your destiny number 3'],
     recommended: true,
   },
   {
-    name: 'Kavya',
+    name: 'Kavya Sharma',
     chaldean: 6,
     score: 79,
     reasons: ['Matches your psychic number 6'],
     recommended: true,
   },
   {
-    name: 'Rohan',
+    name: 'Rohan Sharma',
     chaldean: 9,
     score: 63,
     reasons: ['Reaches one of your target numbers'],
@@ -75,19 +78,23 @@ const fiveSectionResponse = JSON.stringify({
       bullets: ['Fewer stop-start months on income', 'Less friction in negotiations'],
     },
     {
-      heading: 'Suggested Names',
-      paragraphs: ['These all reach your target, ranked by match.'],
+      heading: 'Suggested Spelling Adjustments',
+      paragraphs: ['These spellings all reach your target and keep the name you already have.'],
       items: [
-        { title: 'Aarav', bullets: ['Steadier finances', 'Clearer communication'] },
-        { title: 'Kavya', bullets: ['Calmer relationships', 'Better follow-through'] },
-        { title: 'Rohan', bullets: ['Fresh start energy', 'Warmer first impressions'] },
+        { title: 'Priya Sharmaa', bullets: ['Adds a settling final vowel', 'Nudges toward 6'] },
+        {
+          title: 'Preeya Sharma',
+          bullets: ['Softens the opening', 'Leaves your family name alone'],
+        },
       ],
     },
     {
-      heading: 'Suggested Spelling Adjustments',
-      paragraphs: ['A smaller footnote to the names above.'],
+      heading: 'Suggested Names',
+      paragraphs: ['A bigger optional step — a new first name, your surname kept.'],
       items: [
-        { title: 'Priya Sharmaa', bullets: ['Adds a settling final vowel', 'Nudges toward 6'] },
+        { title: 'Aarav Sharma', bullets: ['Steadier finances', 'Clearer communication'] },
+        { title: 'Kavya Sharma', bullets: ['Calmer relationships', 'Better follow-through'] },
+        { title: 'Rohan Sharma', bullets: ['Fresh start energy', 'Warmer first impressions'] },
       ],
     },
     {
@@ -129,13 +136,13 @@ describe('generateNameChangeNarrative', () => {
     expect(sections.map((s) => s.heading)).toEqual([
       "Your Name's Numerological Signature",
       'What Changing Your Name Could Bring You',
-      'Suggested Names',
       'Suggested Spelling Adjustments',
+      'Suggested Names',
       'Practical Guidance',
     ]);
   });
 
-  it('asks for 10 ranked candidates seeded from the current name+alignment, and embeds exactly what it returns', async () => {
+  it('asks for a gender-matched ranked shortlist seeded from the current name+alignment, and embeds exactly what it returns', async () => {
     state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(
       makeScores({ alignment: { ...makeScores().alignment, targets: [3, 6, 9] } }),
@@ -144,7 +151,8 @@ describe('generateNameChangeNarrative', () => {
     expect(state.rankNamesForTargets).toHaveBeenCalledWith(
       expect.objectContaining({ targets: [3, 6, 9] }),
       'Priya Sharma',
-      10,
+      2, // derived from the 2 given variants — see suggestionCount
+      'female',
     );
     const content = narrativePrompt();
     for (const { name, chaldean, score } of RANKED) {
@@ -153,13 +161,48 @@ describe('generateNameChangeNarrative', () => {
     expect(content.toUpperCase()).toContain('GIVEN FACT');
   });
 
+  it('keeps the report 80% spelling / 20% new names by deriving the shortlist size from the variant count', async () => {
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
+    const twelve = Array.from({ length: 12 }, (_, i) => ({
+      variant: `Priyaa${i} Sharma`,
+      chaldean: 6,
+      change: 'first name — doubled the "a"',
+    }));
+    await generateNameChangeNarrative(makeScores({ variants: twelve }));
+    expect(state.rankNamesForTargets).toHaveBeenCalledWith(
+      expect.anything(),
+      'Priya Sharma',
+      3,
+      'female',
+    );
+  });
+
+  it('passes no gender filter when the reader did not give a binary one', async () => {
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
+    await generateNameChangeNarrative(makeScores({ gender: null }));
+    expect(state.rankNamesForTargets).toHaveBeenCalledWith(
+      expect.anything(),
+      'Priya Sharma',
+      expect.any(Number),
+      null,
+    );
+  });
+
+  it('tells the model this is a spelling change to the existing name, never a full-name replacement', async () => {
+    state.generate.mockResolvedValueOnce(fiveSectionResponse);
+    await generateNameChangeNarrative(makeScores());
+    const content = narrativePrompt().toLowerCase();
+    expect(content).toContain('never propose that the reader replace their whole name');
+    expect(content).toContain('first-name change only');
+  });
+
   it('renders the given suggested names as ranked/scored items, not paragraphs', async () => {
     state.generate.mockResolvedValueOnce(fiveSectionResponse);
     const sections = await generateNameChangeNarrative(makeScores());
     const suggested = sections.find((s) => s.heading === 'Suggested Names');
     expect(suggested?.items).toHaveLength(3);
     expect(suggested?.items?.[0]).toMatchObject({
-      title: 'Aarav',
+      title: 'Aarav Sharma',
       badge: 'Chaldean 3',
       score: 88,
       highlight: true,
@@ -171,11 +214,15 @@ describe('generateNameChangeNarrative', () => {
 
   it('drops an item whose title is not one of the given facts rather than inventing one', async () => {
     const withRogueItem = JSON.parse(fiveSectionResponse);
-    withRogueItem.sections[2].items.push({ title: 'Made Up Name', bullets: ['Not real'] });
+    withRogueItem.sections[3].items.push({ title: 'Made Up Name', bullets: ['Not real'] });
     state.generate.mockResolvedValueOnce(JSON.stringify(withRogueItem));
     const sections = await generateNameChangeNarrative(makeScores());
     const suggested = sections.find((s) => s.heading === 'Suggested Names');
-    expect(suggested?.items?.map((i) => i.title)).toEqual(['Aarav', 'Kavya', 'Rohan']);
+    expect(suggested?.items?.map((i) => i.title)).toEqual([
+      'Aarav Sharma',
+      'Kavya Sharma',
+      'Rohan Sharma',
+    ]);
   });
 
   it('renders spelling variants as items carrying the given note (the exact edit)', async () => {
@@ -185,7 +232,7 @@ describe('generateNameChangeNarrative', () => {
     expect(adjustments?.items?.[0]).toMatchObject({
       title: 'Priya Sharmaa',
       badge: 'Chaldean 6',
-      note: 'added "a" at the end',
+      note: 'surname — added "a" at the end',
     });
   });
 
@@ -202,7 +249,7 @@ describe('generateNameChangeNarrative', () => {
     state.rankNamesForTargets.mockReturnValue([]);
     state.generate.mockResolvedValueOnce(fiveSectionResponse);
     await generateNameChangeNarrative(makeScores());
-    expect(narrativePrompt()).toContain('Suggested names: NONE');
+    expect(narrativePrompt()).toContain('Alternative first names: NONE');
   });
 
   it('instructs the model never to invent, drop, or renumber a given suggested name', async () => {
@@ -270,21 +317,27 @@ describe('translateNameChangeNarrative', () => {
       bullets: ['Fewer stop-start months on income'],
     },
     {
-      heading: 'Suggested Names',
-      paragraphs: ['Ranked by match.'],
-      items: [
-        { title: 'Aarav', badge: 'Chaldean 3', score: 88, highlight: true, bullets: ['Steady.'] },
-      ],
-    },
-    {
       heading: 'Suggested Spelling Adjustments',
       paragraphs: ['Add an "a".'],
       items: [
         {
           title: 'Priya Sharmaa',
           badge: 'Chaldean 6',
-          note: 'added "a" at the end',
+          note: 'surname — added "a" at the end',
           bullets: ['Nudges toward 6.'],
+        },
+      ],
+    },
+    {
+      heading: 'Suggested Names',
+      paragraphs: ['Ranked by match.'],
+      items: [
+        {
+          title: 'Aarav Sharma',
+          badge: 'Chaldean 3',
+          score: 88,
+          highlight: true,
+          bullets: ['Steady.'],
         },
       ],
     },
@@ -325,7 +378,7 @@ describe('translateNameChangeNarrative', () => {
     const translated = await translateNameChangeNarrative(sections, 'hi');
     const suggested = translated.find((s) => s.heading === 'Suggested Names');
     expect(suggested?.items?.[0]).toMatchObject({
-      title: 'Aarav',
+      title: 'Aarav Sharma',
       badge: 'Chaldean 3',
       score: 88,
       highlight: true,

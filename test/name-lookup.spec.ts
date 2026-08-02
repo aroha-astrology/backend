@@ -2,9 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   namesStartingWith,
   namesHittingTarget,
+  rankNamesForTargets,
 } from '../src/lib/astro-engine/names/name-lookup.js';
-import { variantHitsTarget } from '../src/lib/astro-engine/numerology/nameCorrection.js';
-import { ALL_GIVEN_NAMES } from '../src/lib/astro-engine/names/name-corpus.js';
+import {
+  computeNameAlignment,
+  variantHitsTarget,
+} from '../src/lib/astro-engine/numerology/nameCorrection.js';
+import {
+  ALL_GIVEN_NAMES,
+  FEMALE_GIVEN_NAMES,
+  MALE_GIVEN_NAMES,
+} from '../src/lib/astro-engine/names/name-corpus.js';
 
 describe('namesStartingWith', () => {
   it('returns only real corpus names that actually start with the given syllable', () => {
@@ -68,5 +76,48 @@ describe('namesHittingTarget', () => {
     const hits = namesHittingTarget([1, 2, 3, 4, 5, 6, 7, 8, 9], 300);
     const names = hits.map((h) => h.name.toLowerCase());
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("draws only from the reader's own gender pool — a man is never handed a female-coded name", () => {
+    const all = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    for (const name of namesHittingTarget(all, 100, 'male').map((h) => h.name)) {
+      expect(MALE_GIVEN_NAMES).toContain(name);
+    }
+    for (const name of namesHittingTarget(all, 100, 'female').map((h) => h.name)) {
+      expect(FEMALE_GIVEN_NAMES).toContain(name);
+    }
+  });
+
+  it("keeps the reader's surname on and scores the FULL resulting name, not the given name alone", () => {
+    const targets = [3, 6, 9];
+    const hits = namesHittingTarget(targets, 10, null, 'Sharma');
+    expect(hits.length).toBeGreaterThan(0);
+    for (const { name, chaldean } of hits) {
+      expect(name.endsWith(' Sharma')).toBe(true);
+      expect(ALL_GIVEN_NAMES).toContain(name.replace(/ Sharma$/, ''));
+      // The number must be true of the name the reader would actually carry.
+      expect(variantHitsTarget(name, targets)).toEqual({ chaldean, hits: true });
+    }
+  });
+});
+
+describe('rankNamesForTargets', () => {
+  const alignment = computeNameAlignment('Priya Sharma', new Date('1990-05-15'));
+
+  it("suggests a new FIRST name with the reader's own surname kept, gender-matched", () => {
+    const ranked = rankNamesForTargets(alignment, 'Priya Sharma', 5, 'female');
+    expect(ranked.length).toBeGreaterThan(0);
+    for (const { name, chaldean } of ranked) {
+      expect(name.endsWith(' Sharma')).toBe(true);
+      expect(FEMALE_GIVEN_NAMES).toContain(name.replace(/ Sharma$/, ''));
+      expect(variantHitsTarget(name, alignment.targets)).toEqual({ chaldean, hits: true });
+    }
+  });
+
+  it('handles a single-word current name without leaving a stray space', () => {
+    for (const { name } of rankNamesForTargets(alignment, 'Priya', 5, 'female')) {
+      expect(name.trim()).toBe(name);
+      expect(ALL_GIVEN_NAMES).toContain(name);
+    }
   });
 });

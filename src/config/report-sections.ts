@@ -116,8 +116,11 @@ export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> =
   name_change: [
     'numerological_signature',
     'name_change_benefits',
-    'suggested_names',
+    // Spelling adjustments lead — this report is 80% spelling shifts to the reader's own name,
+    // with alternative first names as the 20% footnote. Ids zip on POSITION, so this order is
+    // what decides which i18n heading key each section gets.
     'suggested_spelling_adjustments',
+    'suggested_names',
     'practical_guidance',
   ],
   remedies: ['karmic_debts', 'planet_remedies', 'strengths_cautions', 'how_to_use_remedies'],

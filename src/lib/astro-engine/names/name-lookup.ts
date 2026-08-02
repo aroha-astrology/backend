@@ -27,13 +27,7 @@ import {
 export function namesStartingWith(syllable: string, limit: number, childGender?: string): string[] {
   const prefix = syllable.trim().toLowerCase();
   if (!prefix) return [];
-  const pool =
-    childGender === 'boy'
-      ? MALE_GIVEN_NAMES
-      : childGender === 'girl'
-        ? FEMALE_GIVEN_NAMES
-        : ALL_GIVEN_NAMES; // unisex names appear in both source lists — dedupe below
-  const shuffled = shuffled_(pool);
+  const shuffled = shuffled_(poolForGender(childGender));
   const seen = new Set<string>();
   const matches: string[] = [];
   for (const name of shuffled) {
@@ -44,6 +38,19 @@ export function namesStartingWith(syllable: string, limit: number, childGender?:
     if (matches.length >= limit) break;
   }
   return matches.sort();
+}
+
+/**
+ * The corpus slice to search for a given gender. Accepts BOTH vocabularies in play: baby_name's
+ * report-question values ("boy"/"girl", see frontend's report-questions.ts) and the account-level
+ * `users.gender`/`birth_profiles.gender` values ("male"/"female"/"other") that name_change reads
+ * off `ReportScoreContext.personGender`. Anything else — absent, null, "other" — searches the full
+ * corpus, since forcing a binary here would be a guess, not a classical requirement.
+ */
+function poolForGender(gender?: string | null): readonly string[] {
+  if (gender === 'boy' || gender === 'male') return MALE_GIVEN_NAMES;
+  if (gender === 'girl' || gender === 'female') return FEMALE_GIVEN_NAMES;
+  return ALL_GIVEN_NAMES; // unisex names appear in both source lists — callers dedupe
 }
 
 /** Fisher-Yates on a copy — cheap over a few thousand strings, run once per lookup. */
@@ -57,21 +64,36 @@ function shuffled_<T>(arr: readonly T[]): T[] {
 }
 
 export interface TargetHittingName {
+  /** The FULL name the reader would carry — the corpus given name plus `rest`, when given. */
   name: string;
   chaldean: number;
 }
 
-/** Every real given name in the corpus whose deterministically-computed Chaldean number lands on
- * one of `targets` — up to `limit`. Shuffled before truncation so a repeat run (or a repeat
- * purchase) doesn't always hand back the exact same first N alphabetically. */
-export function namesHittingTarget(targets: number[], limit: number): TargetHittingName[] {
+/**
+ * Real corpus given names that land on one of `targets` — up to `limit`, shuffled before
+ * truncation so a repeat run (or a repeat purchase) doesn't hand back the same first N.
+ *
+ * `gender` narrows the pool via `poolForGender` — a man must never be handed a female-coded
+ * name. `rest` is the reader's remaining name parts (surname etc.): when present, the Chaldean
+ * check runs on `"<candidate> <rest>"` and THAT full string is what's returned, because this
+ * report suggests changing the FIRST name only — the reader keeps their surname, so the number
+ * has to be true of the name they'd actually carry, not of the given name in isolation.
+ */
+export function namesHittingTarget(
+  targets: number[],
+  limit: number,
+  gender?: string | null,
+  rest?: string,
+): TargetHittingName[] {
   if (targets.length === 0) return [];
+  const tail = rest?.trim() ? ` ${rest.trim()}` : '';
   const seen = new Set<string>(); // unisex names appear in both source lists — dedupe
   const hits: TargetHittingName[] = [];
-  for (const name of shuffled_(ALL_GIVEN_NAMES)) {
-    const key = name.toLowerCase();
+  for (const given of shuffled_(poolForGender(gender))) {
+    const key = given.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
+    const name = given + tail;
     const { chaldean, hits: isHit } = variantHitsTarget(name, targets);
     if (isHit) {
       hits.push({ name, chaldean });
@@ -88,17 +110,20 @@ const RANKING_POOL_SIZE = 120;
 
 /**
  * The name_change report's "which suggested names are the best match" list: pulls a wide pool of
- * real corpus names hitting `a.targets` (same shuffle-then-truncate as `namesHittingTarget`, so a
- * repeat purchase still varies), scores every one against the reader's own alignment via
- * `scoreCandidateName`, ranks them, and returns the top `limit` with the top 2 flagged
- * `recommended`. Deterministic, synchronous, no LLM call.
+ * gender-appropriate corpus given names that hit `a.targets` once the reader's OWN surname is
+ * kept on the end (same shuffle-then-truncate as `namesHittingTarget`, so a repeat purchase still
+ * varies), scores every one against the reader's alignment via `scoreCandidateName`, ranks them,
+ * and returns the top `limit` with the top 2 flagged `recommended`. These are first-name changes
+ * — this report never proposes replacing the reader's full name. Deterministic, no LLM call.
  */
 export function rankNamesForTargets(
   a: NameAlignmentResult,
   currentName: string,
   limit: number,
+  gender?: string | null,
 ): ScoredName[] {
-  const pool = namesHittingTarget(a.targets, RANKING_POOL_SIZE);
+  const rest = currentName.trim().split(/\s+/).slice(1).join(' ');
+  const pool = namesHittingTarget(a.targets, RANKING_POOL_SIZE, gender, rest);
   const scored = pool.map((n) => scoreCandidateName(n.name, n.chaldean, currentName, a));
   return rankScoredNames(scored).slice(0, limit);
 }
