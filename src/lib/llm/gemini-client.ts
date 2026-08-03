@@ -200,6 +200,34 @@ function usageAttribution(opts: LLMRequestOptions): { userId: string | null; age
   };
 }
 
+/**
+ * Output tokens as GOOGLE BILLS THEM, which is not what `completion_tokens` says.
+ *
+ * Live-verified against the API on 2026-08-03: with `reasoning_effort: high` the
+ * compat layer returned `prompt_tokens: 61, completion_tokens: 650,
+ * total_tokens: 2052`. The 1341-token gap is thinking, and Google bills thinking
+ * AS OUTPUT — the $1.50/1M side, 6x the input rate. So `completion_tokens` alone
+ * understated billed output by ~3x on that call.
+ *
+ * At our default settings thinking currently comes back at exactly 0 (verified on
+ * horoscope-, chat- and report-shaped prompts), so this returns the same number
+ * `completion_tokens` did — today. It stops being the same the moment anything
+ * sets a reasoning effort or Google raises flash-lite's default thinking level,
+ * and that change would otherwise be invisible: no error, just a cost report
+ * silently reading low.
+ *
+ * `Math.max` because a missing/garbled `total_tokens` must never make the billed
+ * figure SMALLER than the completion count we already know about.
+ */
+function billedOutputTokens(usage: {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens?: number;
+}): number {
+  const fromTotal = (usage.total_tokens ?? 0) - usage.prompt_tokens;
+  return Math.max(usage.completion_tokens, fromTotal);
+}
+
 /** Parses a Retry-After header (seconds) into ms, or NaN if absent/invalid. */
 function retryAfterMsFromHeader(response: Response): number {
   const header = response.headers.get('Retry-After');
@@ -435,7 +463,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
         model,
         tier: servedByTier,
         tokensIn: data.usage.prompt_tokens,
-        tokensOut: data.usage.completion_tokens,
+        tokensOut: billedOutputTokens(data.usage),
         durationMs: Date.now() - startedAt,
       }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed'));
     }
@@ -617,7 +645,9 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       // stream_options.include_usage flag set in doRequest). Captured per
       // attempt so a retried stream records what it actually consumed rather
       // than replaying a previous attempt's numbers.
-      let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
+      let usage:
+        | { prompt_tokens: number; completion_tokens: number; total_tokens?: number }
+        | undefined;
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -683,7 +713,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
             model,
             tier: streamedByTier,
             tokensIn: usage.prompt_tokens,
-            tokensOut: usage.completion_tokens,
+            tokensOut: billedOutputTokens(usage),
             durationMs: Date.now() - startedAt,
           }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed (stream)'));
         }

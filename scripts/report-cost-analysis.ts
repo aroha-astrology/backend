@@ -51,7 +51,16 @@ import { spendByReportKey, type DateRange } from '../src/modules/admin/admin.rep
 // ---------------------------------------------------------------------------
 const USD_PER_1M_INPUT_TOKENS = 0.25;
 const USD_PER_1M_OUTPUT_TOKENS = 1.5;
-const INR_PER_USD = 88;
+// Overridable because a hardcoded FX rate is wrong shortly after it is written —
+// this was 88 while the real rate was ~95, understating every figure by ~8%.
+// The admin dashboard now fetches the live rate (frontend lib/fx.ts); this
+// script is run by hand, so pass the rate in rather than trusting the default:
+//   INR_PER_USD=95.39 npx tsx scripts/report-cost-analysis.ts
+const INR_PER_USD = Number(process.env['INR_PER_USD'] ?? 95.3);
+// Google bills this account in INR and adds GST on top of the converted list
+// price, so the invoice figure is 1.18x the raw conversion. Normally recoverable
+// as input tax credit, hence reported as a separate line rather than baked in.
+const GST_RATE = 0.18;
 
 const INR_PER_INPUT_TOKEN = (USD_PER_1M_INPUT_TOKENS / 1_000_000) * INR_PER_USD;
 const INR_PER_OUTPUT_TOKEN = (USD_PER_1M_OUTPUT_TOKENS / 1_000_000) * INR_PER_USD;
@@ -151,7 +160,14 @@ async function main(): Promise<void> {
   console.log(`  Total calls:        ${totalCalls}`);
   console.log(`  Total input tokens: ${totalTokensIn}`);
   console.log(`  Total output tokens: ${totalTokensOut}`);
-  console.log(`  Total LLM cost:     ${inr(totalCostInr)}`);
+  console.log(`  FX rate used:       ₹${INR_PER_USD}/USD`);
+  console.log(`  Total LLM cost:     ${inr(totalCostInr)} (ex-GST)`);
+  console.log(
+    `  Incl. ${Math.round(GST_RATE * 100)}% GST:      ${inr(totalCostInr * (1 + GST_RATE))}`,
+  );
+  console.log(
+    '  NOTE: excludes ALL voice/Gemini Live usage — those calls never write to ai_usage.',
+  );
 
   // --- Revenue: report_unlock:* wallet_transactions debits in the same window ---
   const revenueByKey = await spendByReportKey(RANGE);
@@ -163,7 +179,9 @@ async function main(): Promise<void> {
     console.log('  No report_unlock revenue in this window.');
   }
   for (const r of revenueByKey) {
-    console.log(`  ${r.reportKey.padEnd(24)} count=${String(r.count).padEnd(6)} revenue=${inr(r.totalPaise, true)}`);
+    console.log(
+      `  ${r.reportKey.padEnd(24)} count=${String(r.count).padEnd(6)} revenue=${inr(r.totalPaise, true)}`,
+    );
   }
   console.log(
     `\n  Total report revenue: ${inr(totalRevenuePaise, true)} across ${totalRevenueCount} unlocks`,
@@ -172,7 +190,7 @@ async function main(): Promise<void> {
     '  Note: this is WALLET revenue, not necessarily CASH revenue — a purchase paid out of a',
   );
   console.log(
-    '  user\'s free ₹500 signup grant counts here too. See docs/REPORT_PRICING_AND_COST.md section 3.',
+    "  user's free ₹500 signup grant counts here too. See docs/REPORT_PRICING_AND_COST.md section 3.",
   );
 
   // --- Final line: measured revenue vs. LLM cost ratio for this window ---

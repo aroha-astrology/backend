@@ -155,6 +155,37 @@ describe('generate() ai_usage telemetry', () => {
     expect(call?.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it('bills thinking tokens as output, since completion_tokens leaves them out', async () => {
+    // Real numbers observed from the live API on 2026-08-03 with
+    // reasoning_effort: high — 61 + 650 does not reach total_tokens 2052, and
+    // the 1341-token gap is thinking, which Google bills at the OUTPUT rate.
+    // Recording completion_tokens alone understated this call's billed output
+    // by ~3x on the most expensive side of the bill.
+    mockFetchOnce({
+      choices: [{ message: { content: 'reasoned answer' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 61, completion_tokens: 650, total_tokens: 2052 },
+    });
+
+    await generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+
+    await vi.waitFor(() => expect(state.insertAiUsage).toHaveBeenCalledTimes(1));
+    expect(state.insertAiUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ tokensIn: 61, tokensOut: 1991 }),
+    );
+  });
+
+  it('never lets a missing total_tokens report LESS output than completion_tokens', async () => {
+    mockFetchOnce({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 100, completion_tokens: 250 },
+    });
+
+    await generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+
+    await vi.waitFor(() => expect(state.insertAiUsage).toHaveBeenCalledTimes(1));
+    expect(state.insertAiUsage).toHaveBeenCalledWith(expect.objectContaining({ tokensOut: 250 }));
+  });
+
   it('passes userId: null when the caller does not supply one', async () => {
     mockFetchOnce({
       choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
