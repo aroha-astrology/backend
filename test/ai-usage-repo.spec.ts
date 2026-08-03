@@ -94,8 +94,24 @@ describe('costByAgent', () => {
 
   it('groups token usage by agent within the range', async () => {
     const rows = [
-      { agent: 'chat', tokensIn: 1000, tokensOut: 2000, calls: 10 },
-      { agent: 'horoscope', tokensIn: 500, tokensOut: 800, calls: 4 },
+      {
+        agent: 'chat',
+        tokensIn: 1000,
+        tokensOut: 2000,
+        calls: 10,
+        paidTokensIn: 0,
+        paidTokensOut: 0,
+        paidCalls: 0,
+      },
+      {
+        agent: 'horoscope',
+        tokensIn: 500,
+        tokensOut: 800,
+        calls: 4,
+        paidTokensIn: 100,
+        paidTokensOut: 200,
+        paidCalls: 1,
+      },
     ];
     const { chain, calls } = makeSelectChain(rows);
     state.select.mockReturnValue(chain);
@@ -106,5 +122,36 @@ describe('costByAgent', () => {
     const whereSql = compile(calls.where).sql;
     expect(whereSql).toMatch(/created_at/);
     expect(result).toEqual(rows);
+  });
+
+  it('does not filter by user unless asked to', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await costByAgent(range);
+
+    expect(compile(calls.where).sql).not.toMatch(/user_id/);
+  });
+
+  it('narrows to a single user when one is given', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await costByAgent(range, { userId: 'user-42' });
+
+    const where = compile(calls.where);
+    expect(where.sql).toMatch(/user_id/);
+    expect(where.params).toContain('user-42');
+  });
+
+  it('coerces missing paid columns to 0 rather than NaN', async () => {
+    // A row shaped like the pre-tier world. NaN here would silently poison
+    // every rupee total on the dashboard instead of failing loudly.
+    const { chain } = makeSelectChain([{ agent: 'chat', tokensIn: 1, tokensOut: 2, calls: 1 }]);
+    state.select.mockReturnValue(chain);
+
+    const result = await costByAgent(range);
+
+    expect(result[0]).toMatchObject({ paidTokensIn: 0, paidTokensOut: 0, paidCalls: 0 });
   });
 });

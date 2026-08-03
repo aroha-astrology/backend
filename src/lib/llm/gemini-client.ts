@@ -14,7 +14,16 @@ import { type ChatMessage, type LLMRequestOptions } from '../../config/llm.js';
 import { logger } from '../logger.js';
 import { alertThrottled } from '../notifications/alerts.js';
 import { insertAiUsage } from '../../modules/admin/ai-usage.repo.js';
-import { pickKey, markRateLimited, earliestAvailableAt, poolSize } from './gemini-key-pool.js';
+import {
+  pickKey,
+  markRateLimited,
+  earliestAvailableAt,
+  poolSize,
+  type KeyTier,
+} from './gemini-key-pool.js';
+import { msUntilNextPacificMidnight } from './quota-window.js';
+import { recordPaidKeyUse } from './paid-usage.js';
+import { getRequestContext } from '../request-context.js';
 
 export class GeminiError extends Error {
   constructor(
@@ -51,6 +60,13 @@ const MAX_TOTAL_ELAPSED_MS = 90_000;
 // never sideline itself from the pool for an unbounded time.
 const DEFAULT_KEY_COOLDOWN_MS = 10_000;
 const MAX_KEY_COOLDOWN_MS = 60_000;
+// Separate, much larger ceiling for a key that has exhausted its quota for the
+// whole DAY rather than for the current minute. Capping those at
+// MAX_KEY_COOLDOWN_MS meant a day-exhausted key was re-offered real user
+// traffic every 60s for the remaining hours, burning a rotation slot every time
+// and guaranteeing another 429. The cooldown for those runs to the next Pacific
+// midnight instead; this cap only guards against a bad clock or a bogus parse.
+const MAX_DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -135,6 +151,13 @@ function doRequest(
     stream,
   };
 
+  if (stream) {
+    // Without this, a streamed response carries no usage block at all, which is
+    // why chat — the highest-volume, highest-token path in the app — was
+    // completely absent from ai_usage and AI cost could only ever be guessed at.
+    body.stream_options = { include_usage: true };
+  }
+
   if (opts.profile.jsonMode) {
     if (opts.responseSchema) {
       body.response_format = {
@@ -161,11 +184,53 @@ function doRequest(
   });
 }
 
+/**
+ * The ai_usage attribution for a call: explicit options first, then whatever
+ * the ambient request context knows.
+ *
+ * `agent` stays the profile name unless a caller has labelled a finer-grained
+ * feature — every report type shares one `report` profile, so without the label
+ * they all collapse into a single row and per-report cost cannot be recovered.
+ */
+function usageAttribution(opts: LLMRequestOptions): { userId: string | null; agent: string } {
+  const ctx = getRequestContext();
+  return {
+    userId: opts.userId ?? ctx?.userId ?? null,
+    agent: ctx?.feature ? `${opts.profile.name}:${ctx.feature}` : opts.profile.name,
+  };
+}
+
 /** Parses a Retry-After header (seconds) into ms, or NaN if absent/invalid. */
 function retryAfterMsFromHeader(response: Response): number {
   const header = response.headers.get('Retry-After');
   const sec = header ? parseInt(header, 10) : NaN;
   return Number.isNaN(sec) ? NaN : sec * 1000;
+}
+
+/**
+ * How long to sideline a key that just returned 429.
+ *
+ * Google says WHY it refused, in the response body: a `QuotaFailure` naming the
+ * violated quota (`...PerMinute...` vs `...PerDay...`) and a `RetryInfo` with a
+ * `retryDelay`. Treating a day exhaustion as a minute hiccup is what let an
+ * out-of-quota project keep receiving live traffic for hours.
+ *
+ * Matched against the raw body text rather than JSON.parse'd: the quota id
+ * tokens are unambiguous, and the OpenAI-compatibility layer is free to reshape
+ * the envelope around them, so a structural parse would be the fragile choice
+ * here. A body we cannot read at all falls back to the old default.
+ */
+function cooldownMsForRateLimit(response: Response, bodyText: string | undefined): number {
+  if (bodyText && /PerDay/i.test(bodyText)) {
+    return Math.min(msUntilNextPacificMidnight(), MAX_DAILY_COOLDOWN_MS);
+  }
+
+  const headerMs = retryAfterMsFromHeader(response);
+  const retryDelayMatch = bodyText ? /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(bodyText) : null;
+  const bodyMs = retryDelayMatch ? Math.round(Number(retryDelayMatch[1]) * 1000) : NaN;
+
+  const hintedMs = Number.isNaN(headerMs) ? bodyMs : headerMs;
+  return Number.isNaN(hintedMs) ? DEFAULT_KEY_COOLDOWN_MS : Math.min(hintedMs, MAX_KEY_COOLDOWN_MS);
 }
 
 // =============================================================================
@@ -200,6 +265,9 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
     let bodyText: string | undefined;
     let networkErr: unknown;
     let poolExhausted = false;
+    // Which tier actually served the response, recorded on the ai_usage row so
+    // cost reporting can tell ₹0 free-tier calls from billed ones.
+    let servedByTier: KeyTier = 'free';
     const keyIterations = Math.max(1, poolSize());
 
     for (let keyIter = 0; keyIter < keyIterations; keyIter++) {
@@ -209,6 +277,11 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
         poolExhausted = true;
         break;
       }
+
+      servedByTier = picked.tier;
+      // Reaching the reserve means the free pool is dry and we are now billing.
+      // Fire-and-forget: this is telemetry, it must never fail the request.
+      if (picked.tier === 'paid') void recordPaidKeyUse(opts.profile.name);
 
       try {
         response = await doRequest(opts, false, abort.signal, picked.key);
@@ -224,14 +297,11 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       }
 
       if (response.status === 429) {
-        const retryAfterMs = retryAfterMsFromHeader(response);
-        const cooldownMs = Number.isNaN(retryAfterMs)
-          ? DEFAULT_KEY_COOLDOWN_MS
-          : Math.min(retryAfterMs, MAX_KEY_COOLDOWN_MS);
+        const cooldownMs = cooldownMsForRateLimit(response, bodyText);
         await markRateLimited(picked.index, cooldownMs);
         triedThisAttempt.add(picked.index);
         logger.warn(
-          { keyIndex: picked.index, cooldownMs },
+          { keyIndex: picked.index, tier: picked.tier, cooldownMs },
           'Gemini key 429 rate limited, cooling down and failing over',
         );
         if (triedThisAttempt.size < poolSize()) {
@@ -285,6 +355,21 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
         scheduledWaitMs = rateLimitBackoff(rateLimitWaits);
       }
       const earliestAt = await earliestAvailableAt();
+      if (earliestAt > deadlineAt) {
+        // Nothing — free tier or paid reserve — frees up before this request's
+        // own deadline. That is what a pool-wide DAILY exhaustion looks like now
+        // that day-quota keys cool until the Pacific reset. Sleeping would hold
+        // the request open for the remaining budget and throw anyway, so fail
+        // immediately and let the caller surface (and refund) without the wait.
+        void alertThrottled(
+          'gemini:quota',
+          'Gemini key pool exhausted',
+          `${opts.profile.name}: every key (${poolSize()}, paid reserve included) is rate ` +
+            `limited past this request's deadline — likely daily quota exhaustion. ` +
+            `Failing fast instead of parking requests.`,
+        );
+        throw new GeminiError('Gemini key pool exhausted until quota reset', 429, bodyText);
+      }
       const waitMs = Math.min(scheduledWaitMs, Math.max(0, earliestAt - Date.now()));
       logger.warn({ waitMs, rateLimitWaits }, 'Gemini pool exhausted (all keys 429), backing off');
       await sleep(Math.min(waitMs, Math.max(0, deadlineAt - Date.now())));
@@ -346,9 +431,9 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       // caller's response, so a DB failure here is logged and swallowed,
       // never propagated.
       void insertAiUsage({
-        userId: opts.userId ?? null,
-        agent: opts.profile.name,
+        ...usageAttribution(opts),
         model,
+        tier: servedByTier,
         tokensIn: data.usage.prompt_tokens,
         tokensOut: data.usage.completion_tokens,
         durationMs: Date.now() - startedAt,
@@ -369,7 +454,9 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
   // Once we have emitted tokens to the consumer we must NOT silently retry and
   // replay a fresh completion — that produces duplicated/garbled output.
   let yieldedAny = false;
+  const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
+  const model = opts.model ?? env.GEMINI_MODEL;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineAt) {
@@ -386,6 +473,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       let networkErr: unknown;
       let poolExhausted = false;
       let rateLimitBodyText: string | undefined;
+      let streamedByTier: KeyTier = 'free';
       const keyIterations = Math.max(1, poolSize());
 
       for (let keyIter = 0; keyIter < keyIterations; keyIter++) {
@@ -394,6 +482,10 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
           poolExhausted = true;
           break;
         }
+
+        streamedByTier = picked.tier;
+        // See generate(): reaching the reserve means we have started billing.
+        if (picked.tier === 'paid') void recordPaidKeyUse(opts.profile.name);
 
         try {
           response = await doRequest(opts, true, abort.signal, picked.key);
@@ -405,14 +497,11 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
 
         if (response.status === 429) {
           rateLimitBodyText = await response.text();
-          const retryAfterMs = retryAfterMsFromHeader(response);
-          const cooldownMs = Number.isNaN(retryAfterMs)
-            ? DEFAULT_KEY_COOLDOWN_MS
-            : Math.min(retryAfterMs, MAX_KEY_COOLDOWN_MS);
+          const cooldownMs = cooldownMsForRateLimit(response, rateLimitBodyText);
           await markRateLimited(picked.index, cooldownMs);
           triedThisAttempt.add(picked.index);
           logger.warn(
-            { keyIndex: picked.index, cooldownMs },
+            { keyIndex: picked.index, tier: picked.tier, cooldownMs },
             'Gemini stream key 429 rate limited, cooling down and failing over',
           );
           if (triedThisAttempt.size < poolSize()) {
@@ -466,6 +555,22 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
           scheduledWaitMs = rateLimitBackoff(rateLimitWaits);
         }
         const earliestAt = await earliestAvailableAt();
+        if (earliestAt > deadlineAt) {
+          // See the matching guard in generate(): a pool-wide daily exhaustion
+          // means no amount of waiting inside this request's budget helps.
+          void alertThrottled(
+            'gemini:quota',
+            'Gemini key pool exhausted',
+            `${opts.profile.name} (stream): every key (${poolSize()}, paid reserve included) is ` +
+              `rate limited past this request's deadline — likely daily quota exhaustion. ` +
+              `Failing fast instead of parking requests.`,
+          );
+          throw new GeminiError(
+            'Gemini key pool exhausted until quota reset',
+            429,
+            rateLimitBodyText,
+          );
+        }
         const waitMs = Math.min(scheduledWaitMs, Math.max(0, earliestAt - Date.now()));
         logger.warn({ waitMs, rateLimitWaits }, 'Gemini stream pool exhausted (all keys 429)');
         await sleep(Math.min(waitMs, Math.max(0, deadlineAt - Date.now())));
@@ -508,6 +613,11 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      // Gemini reports token usage on the final SSE chunk (see the
+      // stream_options.include_usage flag set in doRequest). Captured per
+      // attempt so a retried stream records what it actually consumed rather
+      // than replaying a previous attempt's numbers.
+      let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -524,6 +634,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
             if (trimmed.startsWith('data: ')) {
               try {
                 const chunk = JSON.parse(trimmed.slice(6)) as GeminiResponse;
+                if (chunk.usage) usage = chunk.usage;
                 const delta = chunk.choices?.[0]?.delta?.content;
                 if (delta) {
                   yieldedAny = true;
@@ -545,6 +656,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         if (buffer.trim().startsWith('data: ') && buffer.trim() !== 'data: [DONE]') {
           try {
             const chunk = JSON.parse(buffer.trim().slice(6)) as GeminiResponse;
+            if (chunk.usage) usage = chunk.usage;
             const delta = chunk.choices?.[0]?.delta?.content;
             if (delta) {
               yieldedAny = true;
@@ -562,6 +674,19 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         }
       } finally {
         reader.releaseLock();
+        if (usage) {
+          // In the finally rather than after the return so an abandoned or
+          // aborted stream still records the tokens it actually burned — those
+          // are billed whether or not the consumer read them.
+          void insertAiUsage({
+            ...usageAttribution(opts),
+            model,
+            tier: streamedByTier,
+            tokensIn: usage.prompt_tokens,
+            tokensOut: usage.completion_tokens,
+            durationMs: Date.now() - startedAt,
+          }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed (stream)'));
+        }
       }
 
       return; // streamed to completion

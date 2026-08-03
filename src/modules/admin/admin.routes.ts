@@ -3,6 +3,7 @@ import { requireAdmin } from '../../middleware/auth.js';
 import { logger } from '../../lib/logger.js';
 import {
   DateRangeQuerySchema,
+  OverviewQuerySchema,
   OverviewResponseSchema,
   AdminFeaturesResponseSchema,
   UpdateFeatureBodySchema,
@@ -107,7 +108,7 @@ const overviewRoute = createRoute({
   summary: 'Revenue/analytics overview for a date-range preset',
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
-  request: { query: DateRangeQuerySchema },
+  request: { query: OverviewQuerySchema },
   responses: {
     200: {
       description: 'Overview metrics',
@@ -120,10 +121,10 @@ const overviewRoute = createRoute({
 });
 
 adminRouter.openapi(overviewRoute, async (c) => {
-  const { preset, from, to } = c.req.valid('query');
+  const { preset, from, to, userId } = c.req.valid('query');
   const range = resolveDateRangePreset(preset, from, to);
-  const overview = await getOverview(range, preset);
-  await auditRead(c, 'GET /v1/admin/overview', { preset, from, to });
+  const overview = await getOverview(range, preset, userId ? { llmUserId: userId } : {});
+  await auditRead(c, 'GET /v1/admin/overview', { preset, from, to, userId });
   return c.json(overview, 200);
 });
 

@@ -330,6 +330,13 @@
       "when": 1785471515909,
       "tag": "0046_gemstone_weight",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1785744772520,
+      "tag": "0047_ai_usage_tier",
+      "breakpoints": true
     }
   ]
 }

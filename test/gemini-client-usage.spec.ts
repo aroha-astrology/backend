@@ -44,6 +44,7 @@ vi.mock('../src/lib/llm/gemini-key-pool.js', () => ({
 }));
 
 const { generate, stream, GeminiError } = await import('../src/lib/llm/gemini-client.js');
+const { runWithRequestContext } = await import('../src/lib/request-context.js');
 
 const PROFILE = {
   name: 'chat',
@@ -117,7 +118,7 @@ beforeEach(() => {
   // every pre-existing test below keeps behaving exactly as it did before
   // gemini-client.ts grew a key pool at all.
   state.poolSize.mockReset().mockReturnValue(1);
-  state.pickKey.mockReset().mockResolvedValue({ index: 0, key: 'test-key' });
+  state.pickKey.mockReset().mockResolvedValue({ index: 0, key: 'test-key', tier: 'free' });
 });
 
 afterEach(() => {
@@ -352,6 +353,364 @@ describe('generate() key pool: whole-pool exhaustion', () => {
     );
     // Every one of the 4 keys was tried on each of the 7 exhaustion cycles.
     expect(fetchMock.mock.calls.length).toBe(4 * 7);
+  });
+});
+
+describe('stream() ai_usage telemetry', () => {
+  /** An SSE response whose final chunk carries the usage block, as Gemini sends it. */
+  function makeSseResponseWithUsage(
+    deltas: string[],
+    usage: { prompt_tokens: number; completion_tokens: number },
+  ) {
+    const encoder = new TextEncoder();
+    const lines = deltas.map(
+      (d) => `data: ${JSON.stringify({ choices: [{ delta: { content: d } }] })}\n\n`,
+    );
+    lines.push(
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }], usage })}\n\n`,
+    );
+    lines.push('data: [DONE]\n\n');
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const line of lines) controller.enqueue(encoder.encode(line));
+        controller.close();
+      },
+    });
+    return { status: 200, ok: true, headers: new Headers(), body, text: () => Promise.resolve('') };
+  }
+
+  it('asks for usage on streamed requests, since Gemini omits it otherwise', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      makeSseResponseWithUsage(['hi'], {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await drainStream(stream({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] }));
+
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body) as {
+      stream: boolean;
+      stream_options?: { include_usage?: boolean };
+    };
+    expect(body.stream).toBe(true);
+    expect(body.stream_options).toEqual({ include_usage: true });
+  });
+
+  it('records the streamed call in ai_usage — chat used to leave no trace at all', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        makeSseResponseWithUsage(['Hello ', 'world'], {
+          prompt_tokens: 1234,
+          completion_tokens: 567,
+        }),
+      ),
+    );
+
+    const out = await drainStream(
+      stream({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] }),
+    );
+
+    expect(out).toBe('Hello world');
+    expect(state.insertAiUsage).toHaveBeenCalledTimes(1);
+    expect(state.insertAiUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'chat',
+        model: 'gemini-3.1-flash-lite',
+        tokensIn: 1234,
+        tokensOut: 567,
+        tier: 'free',
+      }),
+    );
+  });
+
+  it('marks the row as paid when the reserve tier served the stream', async () => {
+    state.pickKey.mockResolvedValue({ index: 7, key: 'paid-key', tier: 'paid' });
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          makeSseResponseWithUsage(['x'], { prompt_tokens: 10, completion_tokens: 20 }),
+        ),
+    );
+
+    await drainStream(stream({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] }));
+
+    expect(state.insertAiUsage).toHaveBeenCalledWith(expect.objectContaining({ tier: 'paid' }));
+  });
+
+  it('abandoning a stream early records nothing rather than a bogus partial row', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        makeSseResponseWithUsage(['a', 'b', 'c'], {
+          prompt_tokens: 99,
+          completion_tokens: 3,
+        }),
+      ),
+    );
+
+    // Consume one chunk then walk away, as an aborted chat request would. The
+    // usage block only arrives on the final chunk, so a consumer that leaves
+    // before it has genuinely told us nothing about what was burned — better a
+    // missing row than an invented one. The insert lives in the reader's
+    // `finally` so it still fires whenever usage HAS been seen, abort or not.
+    const gen = stream({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+    await gen.next();
+    await expect(gen.return(undefined)).resolves.toEqual({ done: true, value: undefined });
+
+    expect(state.insertAiUsage).not.toHaveBeenCalled();
+  });
+
+  it('never lets a telemetry failure break the stream', async () => {
+    state.insertAiUsage.mockRejectedValue(new Error('db down'));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          makeSseResponseWithUsage(['ok'], { prompt_tokens: 1, completion_tokens: 1 }),
+        ),
+    );
+
+    await expect(
+      drainStream(stream({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] })),
+    ).resolves.toBe('ok');
+  });
+
+  it('stays silent when the provider sends no usage block', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse(['no usage here'])));
+
+    await drainStream(stream({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] }));
+
+    expect(state.insertAiUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe('ai_usage attribution from the ambient request context', () => {
+  it('attributes the call to the request user without the call site passing one', async () => {
+    mockFetchOnce({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 5 },
+    });
+
+    await runWithRequestContext({ userId: 'user-abc' }, () =>
+      generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] }),
+    );
+
+    expect(state.insertAiUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-abc' }),
+    );
+  });
+
+  it('lets an explicit opts.userId win over the ambient one', async () => {
+    mockFetchOnce({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 5 },
+    });
+
+    await runWithRequestContext({ userId: 'ambient' }, () =>
+      generate({
+        profile: PROFILE,
+        messages: [{ role: 'user', content: 'hi' }],
+        userId: 'explicit',
+      }),
+    );
+
+    expect(state.insertAiUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'explicit' }),
+    );
+  });
+
+  it('qualifies the agent with the feature so report types stop collapsing into one row', async () => {
+    mockFetchOnce({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 5 },
+    });
+
+    await runWithRequestContext({ userId: 'u1', feature: 'marriage' }, () =>
+      generate({
+        profile: { ...PROFILE, name: 'report' },
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    );
+
+    expect(state.insertAiUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'report:marriage' }),
+    );
+  });
+
+  it('records a null user outside any request context, e.g. in a cron job', async () => {
+    mockFetchOnce({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 5 },
+    });
+
+    await generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(state.insertAiUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: null, agent: 'chat' }),
+    );
+  });
+});
+
+describe('429 cooldown length reflects WHY Google refused', () => {
+  // Real shape of a Gemini quota refusal: a QuotaFailure naming the violated
+  // quota, plus a RetryInfo. The quota id is the only thing that distinguishes
+  // "too fast this minute" (retry in seconds) from "out until the Pacific-
+  // midnight reset" (retry in hours) — before this, both got ~10s.
+  function quotaBody(quotaId: string, retryDelay: string) {
+    return JSON.stringify({
+      error: {
+        code: 429,
+        message: 'Resource has been exhausted',
+        status: 'RESOURCE_EXHAUSTED',
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+            violations: [
+              {
+                quotaMetric:
+                  'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                quotaId,
+              },
+            ],
+          },
+          { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay },
+        ],
+      },
+    });
+  }
+
+  /** One key 429s with the given body, the next serves the request. */
+  function mock429ThenSuccess(body: string, headers = new Headers()) {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 429,
+        ok: false,
+        headers,
+        text: () => Promise.resolve(body),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: new Headers(),
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }),
+          ),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    state.poolSize.mockReturnValue(2);
+    state.pickKey.mockImplementation(roundRobinPickKey(['key-0', 'key-1']));
+    return fetchMock;
+  }
+
+  it('sidelines a DAY-exhausted key for hours, not seconds', async () => {
+    mock429ThenSuccess(quotaBody('GenerateRequestsPerDayPerProjectPerModel-FreeTier', '32s'));
+
+    await generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(state.markRateLimited).toHaveBeenCalledTimes(1);
+    const [index, cooldownMs] = state.markRateLimited.mock.calls[0] as [number, number];
+    expect(index).toBe(0);
+    // Runs to the next Pacific midnight. The exact figure moves with the clock,
+    // so assert the property that matters: it is hours away, not the old 60s
+    // ceiling that had us re-offering a dead key to users all day.
+    expect(cooldownMs).toBeGreaterThan(60 * 60 * 1000);
+    expect(cooldownMs).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+  });
+
+  it("uses the body's retryDelay for a per-MINUTE limit when no Retry-After header is sent", async () => {
+    mock429ThenSuccess(quotaBody('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '18s'));
+
+    await generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(state.markRateLimited).toHaveBeenCalledWith(0, 18_000);
+  });
+
+  it('still prefers an explicit Retry-After header over the body hint', async () => {
+    mock429ThenSuccess(
+      quotaBody('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '18s'),
+      new Headers({ 'Retry-After': '5' }),
+    );
+
+    await generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(state.markRateLimited).toHaveBeenCalledWith(0, 5000);
+  });
+
+  it('caps a per-minute cooldown at 60s however large the hint', async () => {
+    mock429ThenSuccess(quotaBody('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '900s'));
+
+    await generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(state.markRateLimited).toHaveBeenCalledWith(0, 60_000);
+  });
+
+  it('falls back to the 10s default for an unparseable body', async () => {
+    mock429ThenSuccess('<html>502 from some proxy</html>');
+
+    await generate({ profile: PROFILE, messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(state.markRateLimited).toHaveBeenCalledWith(0, 10_000);
+  });
+});
+
+describe('pool exhausted past the deadline fails fast instead of parking the request', () => {
+  it('throws immediately rather than sleeping out the 90s budget when nothing frees up in time', async () => {
+    // What a whole-pool DAILY exhaustion now looks like: every key, paid
+    // reserve included, is cooling for hours. Sleeping would hold the request
+    // (and the user's screen) for the full elapsed-time budget and then throw
+    // anyway — so this must return in milliseconds, on real timers.
+    state.poolSize.mockReturnValue(8);
+    state.pickKey.mockResolvedValue(null);
+    state.earliestAvailableAt.mockResolvedValue(Date.now() + 8 * 60 * 60 * 1000);
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const startedAt = performance.now();
+    const err = await generate({
+      profile: PROFILE,
+      messages: [{ role: 'user', content: 'hi' }],
+    }).catch((e: unknown) => e);
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(err).toBeInstanceOf(GeminiError);
+    expect((err as InstanceType<typeof GeminiError>).message).toMatch(/until quota reset/);
+    expect((err as InstanceType<typeof GeminiError>).statusCode).toBe(429);
+    expect(elapsedMs).toBeLessThan(500);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(state.alertThrottled).toHaveBeenCalledWith(
+      'gemini:quota',
+      'Gemini key pool exhausted',
+      expect.stringContaining('paid reserve included'),
+    );
+  });
+
+  it('still backs off and retries when a key frees up before the deadline', async () => {
+    // The complement of the test above: a short, ordinary per-minute cooldown
+    // must keep the existing wait-and-retry behaviour, not fail fast.
+    vi.useFakeTimers();
+    state.poolSize.mockReturnValue(2);
+    state.pickKey.mockResolvedValue(null);
+    state.earliestAvailableAt.mockImplementation(() => Promise.resolve(Date.now() + 300));
+
+    const resultPromise = generate({
+      profile: PROFILE,
+      messages: [{ role: 'user', content: 'hi' }],
+    }).catch((err: unknown) => err);
+
+    await vi.advanceTimersByTimeAsync(5000);
+
+    const err = await resultPromise;
+    expect(err).toBeInstanceOf(GeminiError);
+    expect((err as InstanceType<typeof GeminiError>).message).toMatch(/pool-exhaustion waits/);
   });
 });
 

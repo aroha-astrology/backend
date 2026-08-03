@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { env } from '../../config/env.js';
 import { getRedis } from '../../config/redis.js';
 import { pickKey } from '../../lib/llm/gemini-key-pool.js';
+import { paidRequestsToday } from '../../lib/llm/paid-usage.js';
 
 const execAsync = promisify(exec);
 
@@ -56,7 +57,9 @@ export async function checkGemini(): Promise<CheckResult> {
       // retry/failover here, unlike gemini-client.ts's request path.
       const picked = await pickKey();
       if (!picked) {
-        throw new Error('Gemini key pool exhausted (every key is cooling down)');
+        throw new Error(
+          'Gemini key pool exhausted (every key, paid reserve included, is cooling down)',
+        );
       }
       const res = await fetch(`${env.GEMINI_BASE_URL}/models`, {
         headers: { Authorization: `Bearer ${picked.key}` },
@@ -65,9 +68,18 @@ export async function checkGemini(): Promise<CheckResult> {
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
-      return res.json();
+      // Which tier answered is the useful signal here: 'paid' means the free
+      // pool is currently dry and the app is billing to stay up.
+      const paidToday = await paidRequestsToday();
+      return { tier: picked.tier, paidToday };
     },
-    () => ({ status: 'ok' }),
+    ({ tier, paidToday }) => ({
+      status: 'ok',
+      message:
+        tier === 'paid' || paidToday > 0
+          ? `serving from ${tier} tier — ${paidToday} paid request(s) this budget day`
+          : 'free tier',
+    }),
   );
 }
 

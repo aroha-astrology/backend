@@ -50,6 +50,24 @@ const LlmCostEntrySchema = z.object({
   tokensIn: z.number(),
   tokensOut: z.number(),
   calls: z.number(),
+  // The billed subset. Calls served by the free key tier cost ₹0 however many
+  // tokens they burn, so only these convert into real money.
+  paidTokensIn: z.number(),
+  paidTokensOut: z.number(),
+  paidCalls: z.number(),
+});
+
+/**
+ * Overview query. Extends the shared date-range schema rather than adding
+ * `userId` to it — the other routes using DateRangeQuerySchema have no
+ * per-user dimension, and this filter narrows only the AI-cost breakdown.
+ */
+export const OverviewQuerySchema = DateRangeQuerySchema.extend({
+  userId: z
+    .string()
+    .uuid()
+    .optional()
+    .openapi({ description: 'Narrow the LLM cost breakdown to a single user' }),
 });
 
 export const OverviewResponseSchema = z

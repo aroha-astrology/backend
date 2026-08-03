@@ -43,12 +43,16 @@ function createFakeRedis() {
 
 const state = vi.hoisted(() => ({
   keyPool: ['key-0', 'key-1', 'key-2', 'key-3'] as string[],
+  paidKeyPool: [] as string[],
 }));
 
 vi.mock('../src/config/env.js', () => ({
   env: { LOG_LEVEL: 'silent' },
   get GEMINI_KEY_POOL() {
     return state.keyPool;
+  },
+  get GEMINI_PAID_KEY_POOL() {
+    return state.paidKeyPool;
   },
   isProduction: false,
   isTest: true,
@@ -76,6 +80,7 @@ const pool = await import('../src/lib/llm/gemini-key-pool.js');
 beforeEach(() => {
   vi.useRealTimers();
   state.keyPool = ['key-0', 'key-1', 'key-2', 'key-3'];
+  state.paidKeyPool = [];
   fakeRedis = createFakeRedis();
   redisShouldFail = false;
   // Reset the module's local (in-process fallback) state between tests too,
@@ -244,7 +249,7 @@ describe('pool of size 1', () => {
 
   it('pickKey returns the sole key when not cooling', async () => {
     const picked = await pool.pickKey();
-    expect(picked).toEqual({ index: 0, key: 'solo-key' });
+    expect(picked).toEqual({ index: 0, key: 'solo-key', tier: 'free' });
   });
 
   it('pickKey returns null once the sole key is cooling', async () => {
@@ -256,5 +261,114 @@ describe('pool of size 1', () => {
   it('does not perform a cursor INCR round trip for a single-key pool', async () => {
     await pool.pickKey();
     expect(fakeRedis.incr).not.toHaveBeenCalled();
+  });
+});
+
+describe('paid reserve tier', () => {
+  // Two free keys + one paid reserve key. The paid key is flat index 2.
+  const PAID_INDEX = 2;
+
+  beforeEach(() => {
+    state.keyPool = ['free-0', 'free-1'];
+    state.paidKeyPool = ['paid-key'];
+  });
+
+  it('counts both tiers in poolSize, so the client failover budget reaches the reserve', () => {
+    expect(pool.poolSize()).toBe(3);
+  });
+
+  it('labels each index with its tier', () => {
+    expect(pool.tierAt(0)).toBe('free');
+    expect(pool.tierAt(1)).toBe('free');
+    expect(pool.tierAt(PAID_INDEX)).toBe('paid');
+  });
+
+  it('never hands out the paid key while any free key is usable', async () => {
+    for (let i = 0; i < 20; i++) {
+      const picked = await pool.pickKey();
+      expect(picked).not.toBeNull();
+      expect(picked!.tier).toBe('free');
+      expect(picked!.index).not.toBe(PAID_INDEX);
+    }
+  });
+
+  it('still withholds the paid key when only ONE free key is left cooling', async () => {
+    await pool.markRateLimited(0, 60_000);
+    const picked = await pool.pickKey();
+    expect(picked).toEqual({ index: 1, key: 'free-1', tier: 'free' });
+  });
+
+  it('hands out the paid key once every free key is cooling down', async () => {
+    await pool.markRateLimited(0, 60_000);
+    await pool.markRateLimited(1, 60_000);
+
+    const picked = await pool.pickKey();
+    expect(picked).toEqual({ index: PAID_INDEX, key: 'paid-key', tier: 'paid' });
+  });
+
+  it('hands out the paid key when every free key was already tried this attempt', async () => {
+    // The client's inner failover loop excludes keys it has already 429'd on
+    // within a single attempt — that must reach the reserve too, not give up.
+    const picked = await pool.pickKey(new Set([0, 1]));
+    expect(picked).toEqual({ index: PAID_INDEX, key: 'paid-key', tier: 'paid' });
+  });
+
+  it('goes back to the free tier as soon as one free cooldown expires', async () => {
+    await pool.markRateLimited(0, 60_000);
+    await pool.markRateLimited(1, 1000);
+    expect((await pool.pickKey())!.tier).toBe('paid');
+
+    // Age out index 1's cooldown the same way the round-robin suite does.
+    const entry = fakeRedis.store.get('gemini:pool:cooldown:1');
+    fakeRedis.store.set('gemini:pool:cooldown:1', {
+      value: entry!.value,
+      expiresAt: Date.now() - 1,
+    });
+
+    const picked = await pool.pickKey();
+    expect(picked).toEqual({ index: 1, key: 'free-1', tier: 'free' });
+  });
+
+  it('returns null only when the paid reserve is cooling too', async () => {
+    await pool.markRateLimited(0, 60_000);
+    await pool.markRateLimited(1, 60_000);
+    expect(await pool.pickKey()).not.toBeNull();
+
+    await pool.markRateLimited(PAID_INDEX, 60_000);
+    expect(await pool.pickKey()).toBeNull();
+  });
+
+  it('keeps the paid key out of the round-robin cursor', async () => {
+    // Ten picks across two free keys must split evenly. If the reserve were
+    // part of the rotation the cursor would land on it roughly a third of the
+    // time and we would be billing during normal operation.
+    const picks: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      picks.push((await pool.pickKey())!.index);
+    }
+    expect(picks.filter((p) => p === 0)).toHaveLength(5);
+    expect(picks.filter((p) => p === 1)).toHaveLength(5);
+  });
+
+  it('does not consult the cursor at all when there is a single free key plus a reserve', async () => {
+    state.keyPool = ['solo-free'];
+    await pool.pickKey();
+    expect(fakeRedis.incr).not.toHaveBeenCalled();
+  });
+
+  it('falls through to the reserve during a Redis outage via the local cooldown map', async () => {
+    redisShouldFail = true;
+    await pool.markRateLimited(0, 60_000);
+    await pool.markRateLimited(1, 60_000);
+
+    const picked = await pool.pickKey();
+    expect(picked).toEqual({ index: PAID_INDEX, key: 'paid-key', tier: 'paid' });
+  });
+
+  it('behaves exactly as before when no paid key is configured', async () => {
+    state.paidKeyPool = [];
+    await pool.markRateLimited(0, 60_000);
+    await pool.markRateLimited(1, 60_000);
+    expect(await pool.pickKey()).toBeNull();
   });
 });

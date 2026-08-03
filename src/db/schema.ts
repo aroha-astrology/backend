@@ -726,6 +726,12 @@ export const aiUsage = pgTable(
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
     agent: text('agent').notNull(),
     model: text('model').notNull(),
+    // Which key tier served this call: 'free' or 'paid'. Cost reporting needs
+    // it because free-tier calls cost ₹0 — without it, every rupee figure on
+    // the admin dashboard is a fiction that charges list price for calls that
+    // were never billed. Nullable for rows written before the paid reserve
+    // existed, which cannot be attributed retroactively.
+    tier: text('tier'),
     tokensIn: integer('tokens_in').notNull().default(0),
     tokensOut: integer('tokens_out').notNull().default(0),
     durationMs: integer('duration_ms'),
@@ -735,6 +741,9 @@ export const aiUsage = pgTable(
   },
   (table) => ({
     userIdx: index('ai_usage_user_id_idx').on(table.userId),
+    // Every cost query filters on a date range; without this the table is
+    // sequentially scanned, and it only grows.
+    createdAtIdx: index('ai_usage_created_at_idx').on(table.createdAt),
   }),
 );
 

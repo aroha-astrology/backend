@@ -11,6 +11,7 @@
 import '../reports/generators/index.js';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
+import { runWithRequestContext } from '../../lib/request-context.js';
 import { MODEL } from '../../config/llm.js';
 import {
   getReportDef,
@@ -417,7 +418,14 @@ function fireReportGeneration(
   birthProfileId: string | null,
   answers: Record<string, string> | null = null,
 ): void {
-  void runReportGeneration(row, birthProfileId, answers).catch((err: unknown) => {
+  // Every report type shares one `report` LLM profile, so without a feature
+  // label all 10+ of them land in ai_usage as one indistinguishable `report`
+  // row and per-report cost is unrecoverable. Set explicitly from the row
+  // rather than inherited, since this also runs detached from any request (the
+  // stale-report reaper, admin regeneration) where there is no ambient context.
+  void runWithRequestContext({ userId: row.userId, feature: row.reportKey }, () =>
+    runReportGeneration(row, birthProfileId, answers),
+  ).catch((err: unknown) => {
     logger.error({ err, reportId: row.id }, 'report background generation errored unexpectedly');
   });
 }

@@ -86,6 +86,21 @@ const EnvSchema = z
           .map((key) => key.trim())
           .filter(Boolean),
       ),
+    // Paid/billed reserve keys, held back until every free key above is rate
+    // limited — see GEMINI_PAID_KEY_POOL and lib/llm/gemini-key-pool.ts. This
+    // is deliberately its OWN variable rather than reusing GEMINI_API_KEY:
+    // production's GEMINI_API_KEY currently holds a duplicate of one of the
+    // free keys (it was overwritten on 2026-07-28 when the original went
+    // invalid), so inferring "paid" from it would silently bill the wrong key.
+    GEMINI_PAID_API_KEYS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((key) => key.trim())
+          .filter(Boolean),
+      ),
     // Single-key fallback, kept for back-compat with existing deployments that
     // haven't migrated to GEMINI_API_KEYS yet. Optional now — validated below
     // (superRefine) so boot only fails if BOTH this and GEMINI_API_KEYS are
@@ -293,3 +308,13 @@ export const GEMINI_KEY_POOL: readonly string[] =
     : env.GEMINI_API_KEY
       ? [env.GEMINI_API_KEY]
       : [];
+
+// Paid reserve tier. Deliberately NOT merged into GEMINI_KEY_POOL above: the
+// pool tries every free key first and only reaches for these once all of them
+// are cooling down, so the two lists have to stay distinguishable. Any key that
+// appears in both is filtered out here — a paid key sitting in the free list
+// would be spent as a primary key and defeat the whole reserve design, and that
+// is an easy .env mistake to make.
+export const GEMINI_PAID_KEY_POOL: readonly string[] = env.GEMINI_PAID_API_KEYS.filter(
+  (key) => !GEMINI_KEY_POOL.includes(key),
+);

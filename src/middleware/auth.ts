@@ -3,6 +3,7 @@ import { getFirebaseAuth } from '../config/firebase.js';
 import { env } from '../config/env.js';
 import { Errors } from '../lib/errors.js';
 import { findUserByFirebaseUid, touchUserLastActive } from '../modules/users/users.repo.js';
+import { runWithRequestContext } from '../lib/request-context.js';
 
 /** Only bump `lastActiveAt` this often per user, so a hot API path doesn't turn into a write on every request. */
 const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000;
@@ -72,7 +73,11 @@ export const requireUser: MiddlewareHandler = async (c, next) => {
     void touchUserLastActive(user.id).catch(() => {});
   }
 
-  await next();
+  // Publish the identity ambiently so LLM telemetry can attribute AI spend to a
+  // user without every one of the ~60 call sites having to thread a userId
+  // through. TELEMETRY ONLY — authorization still reads `c.var.user`, never
+  // this, so no access decision can ever inherit an ambient identity.
+  await runWithRequestContext({ userId: user.id }, () => next());
 };
 
 /**

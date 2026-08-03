@@ -12,7 +12,7 @@ import {
   deductWalletBalance,
   findActiveUserById,
 } from '../users/users.repo.js';
-import { costByAgent } from './ai-usage.repo.js';
+import { costByAgent, type AgentCostRow } from './ai-usage.repo.js';
 import {
   sumPaidOrdersBetween,
   revenueTimeSeries,
@@ -50,7 +50,7 @@ export interface OverviewDto {
   timeSeries: { bucketStart: string; totalPaise: number; count: number }[];
   spendByFeature: { reasonPrefix: string; totalPaise: number; count: number }[];
   topUpFunnel: { status: string; count: number }[];
-  llmCostByAgent: { agent: string; tokensIn: number; tokensOut: number; calls: number }[];
+  llmCostByAgent: AgentCostRow[];
 }
 
 /** `arpu` = cash collected in `range` / active users in `range`, floored at 1 user to avoid a divide-by-zero on a quiet window. Computed here (service layer), not in the repo, per the task spec. */
@@ -62,7 +62,11 @@ export async function arpu(range: DateRange): Promise<number> {
   return Math.round(totalPaise / Math.max(1, activeUsers));
 }
 
-export async function getOverview(range: DateRange, preset: string): Promise<OverviewDto> {
+export async function getOverview(
+  range: DateRange,
+  preset: string,
+  opts: { llmUserId?: string } = {},
+): Promise<OverviewDto> {
   const [
     { totalPaise: cashInPaise, count: orderCount },
     timeSeries,
@@ -82,7 +86,10 @@ export async function getOverview(range: DateRange, preset: string): Promise<Ove
     usersCreatedBetween(range),
     usersActiveBetween(range),
     sumWalletBalanceOutstanding(),
-    costByAgent(range),
+    // Only the AI-cost breakdown honours the user filter — the revenue and
+    // funnel figures beside it are business-wide by definition, so narrowing
+    // them to one user would be meaningless rather than useful.
+    costByAgent(range, opts.llmUserId ? { userId: opts.llmUserId } : {}),
   ]);
 
   const walletSpendPaise = spend.reduce((sum, entry) => sum + entry.totalPaise, 0);
