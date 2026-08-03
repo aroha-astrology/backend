@@ -7,6 +7,7 @@ import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
 import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
+import { resolveFeaturesForUser } from '../features/features.service.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
 import {
@@ -17,8 +18,11 @@ import {
 import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 import { acquire as acquireLock, release as releaseLock } from '../../lib/cache/locks.js';
 
-/** Flat cost per chat question, charged atomically before generation starts. */
-const CHAT_MESSAGE_COST_PAISE = 2000;
+/** Fallback cost per chat question if the `paid.chat` feature has no resolved
+ * price (registry/DB lookup failure) — matches FEATURE_REGISTRY's
+ * defaultPricePaise for 'paid.chat' in config/features.ts. The actual charge
+ * uses the resolved price (admin-overridable), same as reports.service.ts. */
+const CHAT_MESSAGE_COST_FALLBACK_PAISE = 2000;
 
 /** Expensive LLM/swarm routes: cap per authenticated user. */
 const llmRateLimit = rateLimiter({ windowMs: 60_000, max: 20, name: 'astro-llm' });
@@ -568,6 +572,14 @@ astroRouter.openapi(chatRoute, async (c) => {
     await releaseLock('chat:inflight', user.id, lockOwner).catch(() => {});
   };
 
+  // Resolved once and reused for both the charge and any refund below, so a
+  // mid-flight admin price change can never make the refund mismatch what was
+  // actually charged. Same resolution the frontend's cost estimate reads
+  // (ChatConversation.tsx's useFeature("paid.chat")), so the two can't drift.
+  const features = await resolveFeaturesForUser(user.id);
+  const chatMessageCostPaise =
+    features['paid.chat']?.pricePaise ?? CHAT_MESSAGE_COST_FALLBACK_PAISE;
+
   // Charge atomically before any generation starts — same balance-check-and-
   // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
   // sends can't both succeed against a balance that only covers one.
@@ -576,7 +588,7 @@ astroRouter.openapi(chatRoute, async (c) => {
   // the user shouldn't pay for a question that got no answer.
   let charged: boolean;
   try {
-    charged = await deductWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'chat_message');
+    charged = await deductWalletBalance(user.id, chatMessageCostPaise, 'chat_message');
   } catch (err) {
     // The lock is held at this point and streamSSE's `finally` (the only other
     // release path) is never reached if we throw here, so it must be released
@@ -631,7 +643,7 @@ astroRouter.openapi(chatRoute, async (c) => {
           // Generation "succeeded" with nothing to show (e.g. hit the
           // token ceiling before any content could be flushed) — don't
           // charge for a question that got no answer.
-          await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'refund:chat_message').catch(
+          await addWalletBalance(user.id, chatMessageCostPaise, 'refund:chat_message').catch(
             () => {},
           );
         }
@@ -680,9 +692,7 @@ astroRouter.openapi(chatRoute, async (c) => {
       // emit a terminal event (and never leak internals to the client).
       logger.error({ err, userId: user.id }, 'chat stream failed');
       // Don't charge for a question the LLM never actually answered.
-      await addWalletBalance(user.id, CHAT_MESSAGE_COST_PAISE, 'refund:chat_message').catch(
-        () => {},
-      );
+      await addWalletBalance(user.id, chatMessageCostPaise, 'refund:chat_message').catch(() => {});
       if (!signal.aborted && !stream.aborted) {
         await stream.writeSSE({
           event: 'error',

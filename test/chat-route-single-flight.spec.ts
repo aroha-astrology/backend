@@ -27,6 +27,7 @@ const state = vi.hoisted(() => ({
   chatStream: vi.fn(),
   acquire: vi.fn(),
   release: vi.fn(),
+  resolveFeaturesForUser: vi.fn(),
 }));
 
 vi.mock('firebase-admin/app', () => ({
@@ -59,6 +60,10 @@ vi.mock('../src/modules/astro/chat-sessions.repo.js', () => ({
 vi.mock('../src/lib/cache/locks.js', () => ({
   acquire: state.acquire,
   release: state.release,
+}));
+
+vi.mock('../src/modules/features/features.service.js', () => ({
+  resolveFeaturesForUser: state.resolveFeaturesForUser,
 }));
 
 vi.mock('../src/modules/astro/astro.service.js', async () => {
@@ -100,6 +105,41 @@ beforeEach(() => {
   });
   state.acquire.mockReset().mockResolvedValue({ ok: true, owner: 'owner-1' });
   state.release.mockReset().mockResolvedValue(true);
+  // No 'paid.chat' override — the route falls back to
+  // CHAT_MESSAGE_COST_FALLBACK_PAISE (2000), matching every existing test's
+  // expectations below.
+  state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
+});
+
+describe('POST /v1/chat — charges the resolved paid.chat price, not a hardcoded one', () => {
+  // Regression coverage: the route used to charge a bare hardcoded constant
+  // that ignored any admin-set 'paid.chat' price, so a user could be shown
+  // one price (frontend reads the same resolved feature) and charged another.
+  it('charges the admin-resolved price instead of the 2000 fallback', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'paid.chat': { enabled: true, pricePaise: 800, originalPricePaise: null },
+    });
+
+    const res = await callChat({ message: 'Q1' });
+    await res.text();
+
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 800, 'chat_message');
+  });
+
+  it('refunds the same resolved price it charged, on generation failure', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'paid.chat': { enabled: true, pricePaise: 800, originalPricePaise: null },
+    });
+    state.chatStream.mockImplementation(function* () {
+      yield { type: 'token', content: 'partial answer' };
+      throw new Error('gemini exploded');
+    });
+
+    const res = await callChat({ message: 'Q1' });
+    await res.text();
+
+    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 800, 'refund:chat_message');
+  });
 });
 
 describe('POST /v1/chat — one question at a time', () => {

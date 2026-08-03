@@ -26,6 +26,7 @@ const state = vi.hoisted(() => ({
   createChatSession: vi.fn(),
   updateChatSession: vi.fn(),
   chatStream: vi.fn(),
+  resolveFeaturesForUser: vi.fn(),
 }));
 
 vi.mock('firebase-admin/app', () => ({
@@ -62,6 +63,10 @@ vi.mock('../src/modules/astro/astro.service.js', async () => {
   return { ...actual, chatStream: state.chatStream };
 });
 
+vi.mock('../src/modules/features/features.service.js', () => ({
+  resolveFeaturesForUser: state.resolveFeaturesForUser,
+}));
+
 const { createApp } = await import('../src/app.js');
 
 async function callChat(body: Record<string, unknown>) {
@@ -84,6 +89,7 @@ beforeEach(() => {
   state.createChatSession.mockReset();
   state.updateChatSession.mockReset();
   state.chatStream.mockReset();
+  state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
 });
 
 describe('POST /v1/chat — persists the full transcript, not the client-carried buffer', () => {
