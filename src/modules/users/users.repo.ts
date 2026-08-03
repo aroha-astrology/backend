@@ -219,7 +219,8 @@ export async function applyReferralBonus(
   referrerId: string,
   refereeId: string,
 ): Promise<{ referrerBonus: boolean; refereeBonus: boolean }> {
-  const BONUS_PAISE = 5000;
+  const REFERRER_BONUS_PAISE = 10000;
+  const REFEREE_BONUS_PAISE = 5000;
   const CAP_PAISE = 200000;
 
   return db.transaction(async (tx) => {
@@ -233,13 +234,13 @@ export async function applyReferralBonus(
     if (referrerBonus) {
       await tx.execute(sql`
         UPDATE users
-        SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE},
-            referral_earnings_paise = referral_earnings_paise + ${BONUS_PAISE}
+        SET wallet_balance_paise = wallet_balance_paise + ${REFERRER_BONUS_PAISE},
+            referral_earnings_paise = referral_earnings_paise + ${REFERRER_BONUS_PAISE}
         WHERE id = ${referrerId};
       `);
       await tx.execute(sql`
         INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
-        VALUES (${referrerId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${referrerId}));
+        VALUES (${referrerId}, ${REFERRER_BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${referrerId}));
       `);
     }
 
@@ -247,12 +248,12 @@ export async function applyReferralBonus(
     // independent of the referrer's cap.
     await tx.execute(sql`
       UPDATE users
-      SET wallet_balance_paise = wallet_balance_paise + ${BONUS_PAISE}
+      SET wallet_balance_paise = wallet_balance_paise + ${REFEREE_BONUS_PAISE}
       WHERE id = ${refereeId};
     `);
     await tx.execute(sql`
       INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
-      VALUES (${refereeId}, ${BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${refereeId}));
+      VALUES (${refereeId}, ${REFEREE_BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${refereeId}));
     `);
 
     return { referrerBonus, refereeBonus: true };

@@ -442,7 +442,7 @@ export async function updateMe(
         recipients.push({
           userId: referrer.id,
           title: 'Referral Bonus!',
-          body: 'A friend signed up using your code. You earned ₹50!',
+          body: 'A friend signed up using your code. You earned ₹100!',
         });
       }
       if (refereeBonus) {
