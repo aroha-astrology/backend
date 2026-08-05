@@ -3,8 +3,8 @@
 # Nudges users below the ₹100 wallet-balance threshold to share the app,
 # once per dip (rearmed on recovery) — see low-balance-alert.service.ts.
 #
-# Wired into the EC2 crontab to run once a day, 09:30 IST:
-#   0 4 * * * /home/ec2-user/aroha-backend/scripts/cron-low-balance-alert.sh \
+# Wired into the EC2 crontab to run once a day, 06:30 IST:
+#   0 1 * * * /home/ec2-user/aroha-backend/scripts/cron-low-balance-alert.sh \
 #     >> /home/ec2-user/cron-low-balance-alert.log 2>&1
 #
 # Reads CRON_SECRET from the app's .env (never hard-coded in the crontab) and
