@@ -117,6 +117,9 @@ export function makeDecodedToken(uid = 'firebase-uid-1', phone = '+919999999999'
 export function makeGoogleDecodedToken(
   uid = 'firebase-uid-google-1',
   email = 'user@example.com',
+  // Real Google tokens always carry this, so it defaults on. Pass false to
+  // exercise the untrusted-email path in establishSession.
+  emailVerified: boolean | string = true,
 ): DecodedIdToken {
   const token: DecodedIdToken = {
     uid,
@@ -128,6 +131,7 @@ export function makeGoogleDecodedToken(
     sub: uid,
     firebase: { identities: {}, sign_in_provider: 'google.com' },
     email,
+    email_verified: emailVerified as boolean,
   };
   return token;
 }

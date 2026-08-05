@@ -3,6 +3,7 @@ import type { UserRow } from '../../db/schema.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import {
   ensureReferralCode,
+  findUserByEmail,
   findUserByFirebaseUid,
   findUserByPhoneE164,
   insertUser,
@@ -82,10 +83,33 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
         return finish(reclaimed ?? byPhone, false);
       }
     }
-    // A different account already holds this email. Rather than 500 on a
-    // brand-new Google identity, drop the email and create an email-less
-    // account — a real merge is a separate account-linking flow.
+    // A row already holds this email. The common cause is the same person
+    // arriving under a new UID — Firebase reissues UIDs per project, so any
+    // change of Firebase project silently turns every returning Google user
+    // into an "unknown" UID. Mirror the phone branch above and reclaim the
+    // row, otherwise they'd land in a brand-new empty account with their
+    // history stranded.
+    //
+    // Gated on `email_verified` because, unlike a phone number (which the OTP
+    // flow always proves), an `email` claim is only as trustworthy as the
+    // provider: reclaiming on an unverified address would be an account
+    // takeover vector. Google always sets this.
     if (isUniqueViolation(err) && email) {
+      // Apple relays `email_verified` as the string "true" rather than a
+      // boolean, so accept both — a strict `=== true` would silently orphan
+      // every Sign-in-with-Apple account (see hooks/useAppleAuth.ts).
+      const verified =
+        token.email_verified === true || (token.email_verified as unknown) === 'true';
+      const byEmail = verified ? await findUserByEmail(email) : undefined;
+      if (byEmail) {
+        const reclaimed = await updateUserById(byEmail.id, {
+          firebaseUid: token.uid,
+          deletedAt: null,
+        });
+        return finish(reclaimed ?? byEmail, false);
+      }
+      // Unverified email: don't 500, just create an email-less account —
+      // a real merge is a separate account-linking flow.
       const created = await insertUser({ firebaseUid: token.uid, phoneE164, email: null });
       return finish(created, true);
     }

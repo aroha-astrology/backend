@@ -4,6 +4,7 @@ import { makeDecodedToken, makeGoogleDecodedToken, makeUserRow } from './helpers
 const state = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
   findUserByFirebaseUid: vi.fn(),
+  findUserByEmail: vi.fn(),
   insertUser: vi.fn(),
   updateUserById: vi.fn(),
   notifyNewSignup: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock('firebase-admin/auth', () => ({
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findUserByFirebaseUid: state.findUserByFirebaseUid,
   findUserByPhoneE164: vi.fn(),
+  findUserByEmail: state.findUserByEmail,
   findActiveUserByFirebaseUid: vi.fn(),
   findActiveUserById: vi.fn(),
   insertUser: state.insertUser,
@@ -60,6 +62,7 @@ describe('POST /v1/auth/session', () => {
   beforeEach(() => {
     state.verifyIdToken.mockReset();
     state.findUserByFirebaseUid.mockReset();
+    state.findUserByEmail.mockReset();
     state.insertUser.mockReset();
     state.updateUserById.mockReset();
     state.notifyNewSignup.mockReset().mockResolvedValue(true);
@@ -263,15 +266,83 @@ describe('POST /v1/auth/session', () => {
       );
     });
 
-    it('retries without email (does not 500) when the email is already taken by another account', async () => {
+    // Firebase issues UIDs per project, so changing Firebase project makes
+    // every returning Google user arrive under an unrecognised UID. Without
+    // this reclaim they'd be dropped into a brand-new empty account and their
+    // whole history (credits, charts, chats) would be stranded on the old row.
+    it('reclaims the existing row by verified email when the UID is new (project switch)', async () => {
       state.verifyIdToken.mockResolvedValueOnce(
-        makeGoogleDecodedToken('uid-google-collide', 'taken@example.com'),
+        makeGoogleDecodedToken('uid-new-project', 'returning@example.com'),
+      );
+      state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+      state.insertUser.mockRejectedValueOnce({ code: '23505' });
+      state.findUserByEmail.mockResolvedValueOnce(
+        makeUserRow({
+          id: 'id-original',
+          firebaseUid: 'uid-old-project',
+          email: 'returning@example.com',
+        }),
+      );
+      state.updateUserById.mockResolvedValueOnce(
+        makeUserRow({
+          id: 'id-original',
+          firebaseUid: 'uid-new-project',
+          email: 'returning@example.com',
+        }),
+      );
+
+      const app = createApp();
+      const res = await app.request('/v1/auth/session', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer good-token' },
+      });
+
+      // 200 + created:false — the same account, not a new signup.
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { user: { id: string }; created: boolean };
+      expect(body.created).toBe(false);
+      expect(body.user.id).toBe('id-original');
+      expect(state.updateUserById).toHaveBeenCalledWith('id-original', {
+        firebaseUid: 'uid-new-project',
+        deletedAt: null,
+      });
+      // Must NOT fall through to creating a second, email-less account.
+      expect(state.insertUser).toHaveBeenCalledTimes(1);
+      expect(state.notifyNewSignup).not.toHaveBeenCalled();
+    });
+
+    it('reclaims on Apple\'s string "true" email_verified, not just the boolean', async () => {
+      state.verifyIdToken.mockResolvedValueOnce(
+        makeGoogleDecodedToken('uid-apple', 'apple@example.com', 'true'),
+      );
+      state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+      state.insertUser.mockRejectedValueOnce({ code: '23505' });
+      state.findUserByEmail.mockResolvedValueOnce(
+        makeUserRow({ id: 'id-apple', firebaseUid: 'uid-apple-old', email: 'apple@example.com' }),
+      );
+      state.updateUserById.mockResolvedValueOnce(
+        makeUserRow({ id: 'id-apple', firebaseUid: 'uid-apple', email: 'apple@example.com' }),
+      );
+
+      const app = createApp();
+      const res = await app.request('/v1/auth/session', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer good-token' },
+      });
+
+      expect(res.status).toBe(200);
+      expect(state.findUserByEmail).toHaveBeenCalledWith('apple@example.com');
+    });
+
+    it('does NOT reclaim on an unverified email — creates an email-less account instead', async () => {
+      state.verifyIdToken.mockResolvedValueOnce(
+        makeGoogleDecodedToken('uid-unverified', 'taken@example.com', false),
       );
       state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
       state.insertUser
         .mockRejectedValueOnce({ code: '23505' })
         .mockResolvedValueOnce(
-          makeUserRow({ id: 'id-google-collide', firebaseUid: 'uid-google-collide', email: null }),
+          makeUserRow({ id: 'id-unverified', firebaseUid: 'uid-unverified', email: null }),
         );
 
       const app = createApp();
@@ -281,13 +352,11 @@ describe('POST /v1/auth/session', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(state.insertUser).toHaveBeenNthCalledWith(1, {
-        firebaseUid: 'uid-google-collide',
-        phoneE164: null,
-        email: 'taken@example.com',
-      });
+      // Never looked up the row — an unverified claim must not hand over an account.
+      expect(state.findUserByEmail).not.toHaveBeenCalled();
+      expect(state.updateUserById).not.toHaveBeenCalled();
       expect(state.insertUser).toHaveBeenNthCalledWith(2, {
-        firebaseUid: 'uid-google-collide',
+        firebaseUid: 'uid-unverified',
         phoneE164: null,
         email: null,
       });
