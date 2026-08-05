@@ -209,9 +209,9 @@ const listUsersRoute = createRoute({
 });
 
 adminRouter.openapi(listUsersRoute, async (c) => {
-  const { q, offset, limit } = c.req.valid('query');
-  const page = await searchUsers(q, limit, offset);
-  await auditRead(c, 'GET /v1/admin/users', { q, offset, limit });
+  const { q, offset, limit, sortBy, sortDir } = c.req.valid('query');
+  const page = await searchUsers(q, limit, offset, sortBy, sortDir);
+  await auditRead(c, 'GET /v1/admin/users', { q, offset, limit, sortBy, sortDir });
   return c.json(page, 200);
 });
 

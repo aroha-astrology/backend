@@ -1,4 +1,4 @@
-import { and, eq, ilike, isNull, isNotNull, count, desc, gte, lt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, isNull, isNotNull, count, desc, gte, lt, or, sql } from 'drizzle-orm';
 import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
 import { db } from '../../config/db.js';
@@ -611,8 +611,18 @@ function userSearchWhere(q?: string) {
   );
 }
 
+const USER_SORT_COLUMNS = { createdAt: users.createdAt, lastActiveAt: users.lastActiveAt } as const;
+export type UserSortBy = keyof typeof USER_SORT_COLUMNS;
+
 /** Powers both the Telegram `/users` command (no `q`) and the admin dashboard's `GET /v1/admin/users?q=` search. */
-export async function listUsersPage(limit: number, offset: number, q?: string) {
+export async function listUsersPage(
+  limit: number,
+  offset: number,
+  q?: string,
+  sortBy: UserSortBy = 'createdAt',
+  sortDir: 'asc' | 'desc' = 'desc',
+) {
+  const column = USER_SORT_COLUMNS[sortBy];
   const rows = await db
     .select({
       id: users.id,
@@ -625,7 +635,7 @@ export async function listUsersPage(limit: number, offset: number, q?: string) {
     })
     .from(users)
     .where(userSearchWhere(q))
-    .orderBy(desc(users.createdAt))
+    .orderBy(sortDir === 'asc' ? asc(column) : desc(column))
     .limit(limit)
     .offset(offset);
   return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));

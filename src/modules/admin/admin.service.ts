@@ -11,6 +11,7 @@ import {
   addWalletBalance,
   deductWalletBalance,
   findActiveUserById,
+  type UserSortBy,
 } from '../users/users.repo.js';
 import { costByAgent, type AgentCostRow } from './ai-usage.repo.js';
 import {
@@ -207,8 +208,17 @@ export async function updateFeature(
 /* Users                                                                      */
 /* -------------------------------------------------------------------------- */
 
-export async function searchUsers(q: string | undefined, limit: number, offset: number) {
-  const [rows, total] = await Promise.all([listUsersPage(limit, offset, q), countUsersMatching(q)]);
+export async function searchUsers(
+  q: string | undefined,
+  limit: number,
+  offset: number,
+  sortBy: UserSortBy = 'createdAt',
+  sortDir: 'asc' | 'desc' = 'desc',
+) {
+  const [rows, total] = await Promise.all([
+    listUsersPage(limit, offset, q, sortBy, sortDir),
+    countUsersMatching(q),
+  ]);
   const users = rows.map((row) => ({
     ...row,
     createdAt: row.createdAt.toISOString(),
