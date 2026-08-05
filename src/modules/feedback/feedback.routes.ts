@@ -1,7 +1,8 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
-import crypto from 'node:crypto';
 import { requireUser } from '../../middleware/auth.js';
 import { FeedbackBodySchema, FeedbackResponseSchema } from './feedback.schemas.js';
+import { recordFeedback } from './feedback.repo.js';
+import { notifyUser } from '../../lib/notifications/notify-user.js';
 
 const ErrorSchema = z
   .object({
@@ -49,9 +50,38 @@ const submitFeedbackRoute = createRoute({
   },
 });
 
+/** How long after a rating the thank-you push lands. Deliberately not instant:
+ * the reward is never promised in the UI, so it should read as a surprise a
+ * moment later rather than as payment for the rating. */
+const THANK_YOU_DELAY_MS = 60_000;
+
 feedbackRouter.openapi(submitFeedbackRoute, async (c) => {
-  const _user = c.get('user');
-  const _body = c.req.valid('json');
-  // TODO: persist to feedback table
-  return c.json({ id: crypto.randomUUID(), received: true }, 201);
+  const user = c.get('user');
+  const body = c.req.valid('json');
+  const { id, rewarded } = await recordFeedback({
+    userId: user.id,
+    rating: body.rating,
+    ...(body.comment ? { comment: body.comment } : {}),
+  });
+
+  if (rewarded) {
+    // ponytail: in-process timer, so a restart inside the next minute drops the
+    // push — the ₹50 is already committed to the ledger either way, and the
+    // user still sees it in Payment History. Move to the cron module if this
+    // ever needs to survive a deploy.
+    setTimeout(() => {
+      // English, matching every other transactional push here (report ready,
+      // referral bonus) — there is no localized copy path for these yet.
+      void notifyUser(user.id, {
+        title: '🙏 Thanks for your review',
+        body: "We've added ₹50 to your wallet — use it on any reading.",
+        type: 'feedback_reward',
+        link: '/settings/history',
+      });
+    }, THANK_YOU_DELAY_MS).unref();
+  }
+
+  // `rewarded` is deliberately not returned: the reward is never advertised in
+  // the UI, it arrives as the push above and as a line in Payment History.
+  return c.json({ id, received: true }, 201);
 });

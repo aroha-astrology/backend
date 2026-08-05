@@ -2013,6 +2013,39 @@ export type SupportTicketRow = typeof supportTickets.$inferSelect;
 export type NewSupportTicketRow = typeof supportTickets.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* user_feedback — our own in-app star rating + comment                        */
+/*                                                                             */
+/* Distinct from the Google Play review card the Android shell can launch:     */
+/* that API deliberately reports nothing back (not the stars, not whether a    */
+/* review happened, not even whether the card was shown), so a Play review can */
+/* never land here. This table is only what the user typed into our own sheet. */
+/* -------------------------------------------------------------------------- */
+
+export const userFeedback = pgTable(
+  'user_feedback',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    /** Nullable — the comment box is optional, a bare star rating is valid. */
+    comment: text('comment'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userIdx: index('user_feedback_user_id_idx').on(table.userId),
+  }),
+);
+
+export type UserFeedbackRow = typeof userFeedback.$inferSelect;
+export type NewUserFeedbackRow = typeof userFeedback.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* palm_readings — Hasta Samudrika palm analysis                              */
 /*                                                                             */
 /* Facts here come from photographs via async vision AI, not from a chart, so */
