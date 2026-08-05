@@ -917,7 +917,8 @@ export async function getReportStats(): Promise<ReportStatsDto> {
   const rows = await countReadyReportsByKey();
   const data: ReportStatsDto = {};
   for (const row of rows) {
-    data[row.reportKey] = row.count;
+    // ponytail: +25 flat social-proof padding per report key, requested by product. Raise/remove here if the ask changes.
+    data[row.reportKey] = row.count + 25;
   }
 
   reportStatsCache = { data, expiresAt: now + REPORT_STATS_CACHE_TTL_MS };
