@@ -78,6 +78,49 @@ describe('extractTurnFacts', () => {
     expect(call[0].messages[0].content).toContain('Is married');
   });
 
+  // A user came back two weeks later, was given a different marriage date than
+  // the one committed to before, and when challenged the assistant invented a
+  // distinction ("October was about career, not marriage") to reconcile them.
+  // It had no way to know: user_facts is the ONLY memory that survives across
+  // sessions, and this prompt used to forbid storing astrological conclusions
+  // outright — so the one thing the user would hold it to was the one thing
+  // never kept. Dated commitments must be extractable; general readings and
+  // remedies must still not be.
+  it('asks for dated timings the assistant committed to, without opening the door to general readings', async () => {
+    state.generate.mockResolvedValue(JSON.stringify({ facts: [] }));
+
+    await extractTurnFacts('when will I marry?', 'October 2026 looks strong.', [], 'user-1');
+
+    const prompt = (state.generate.mock.calls[0] as any[])[0].messages[0].content as string;
+    expect(prompt).toContain('PREVIOUSLY TOLD THEM');
+    expect(prompt).toMatch(/SPECIFIC DATED TIMING/);
+    expect(prompt).toMatch(/never a general reading, a remedy, a planetary placement/i);
+    // The blanket ban must still be stated — the exception narrows it, not replaces it.
+    expect(prompt).toContain('Never include astrological conclusions');
+  });
+
+  it('parses a stored commitment through unchanged', async () => {
+    state.generate.mockResolvedValue(
+      JSON.stringify({
+        facts: [
+          {
+            fact: 'PREVIOUSLY TOLD THEM: their marriage window is October 2026',
+            followUpQuestion: null,
+          },
+        ],
+      }),
+    );
+
+    const result = await extractTurnFacts('when will I marry?', 'October 2026.', [], 'user-1');
+
+    expect(result).toEqual([
+      {
+        fact: 'PREVIOUSLY TOLD THEM: their marriage window is October 2026',
+        followUpQuestion: null,
+      },
+    ]);
+  });
+
   it('drops malformed fact entries (non-string fact, or a bare string instead of an object) rather than throwing', async () => {
     state.generate.mockResolvedValue(
       JSON.stringify({

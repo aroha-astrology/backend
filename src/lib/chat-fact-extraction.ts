@@ -17,6 +17,8 @@ const PROMPT_INSTRUCTIONS = `You are extracting durable, personally-significant 
 
 Extract facts worth remembering across future conversations — relationships, occupation, life events, health concerns, goals. Never include astrological conclusions, transient questions, or anything already derivable from the birth chart. Return an empty array if nothing durable was shared.
 
+ONE exception to "never include astrological conclusions": if the assistant committed to a SPECIFIC DATED TIMING for a life event — a named month, season, or date range for a marriage, job change, property purchase, childbirth, and so on — record it verbatim as a fact of the form "PREVIOUSLY TOLD THEM: their marriage window is October 2026". The user will hold the assistant to that date weeks later, in a conversation that remembers nothing else about this one, and an assistant that cannot see what it promised will contradict itself and then invent a reason why both answers were right. Record only a timing the assistant actually named; never a general reading, a remedy, a planetary placement, or a hedged "sometime around". If the same commitment is already in the known-facts list below, do not record it again.
+
 Each fact is an object {"fact": string, "followUpQuestion": string | null}. Only set followUpQuestion when the fact is naturally incomplete AND there is one obvious, non-intrusive next detail worth knowing later — for example "planning to conceive after starting a new job" naturally invites "Did the new job start yet?", and "is married" naturally invites "When did they get married?". Leave followUpQuestion null for facts that are already complete on their own or where any follow-up would feel intrusive or speculative.`;
 
 /**

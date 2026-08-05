@@ -122,8 +122,12 @@ describe('verify: childbirth chat-fix end-to-end', () => {
     expect(facts.some((f) => f.startsWith('Surya Kundali'))).toBe(true);
     expect(facts.some((f) => f.startsWith('Full Gochar'))).toBe(true);
 
-    // 6. Fact block fits comfortably under the raised MAX_CONTEXT_CHARS cap
-    // (24000) -- nothing silently truncated (Trap B from the plan).
+    // 6. Fact block fits comfortably under the MAX_CONTEXT_CHARS cap, which is
+    // now 28000. Deliberately still asserted against the OLD 24000 figure: the
+    // 4000 chars of headroom added with that raise are for the dated
+    // commitments chat-fact-extraction.ts accumulates in <user_facts> over a
+    // user's lifetime, so chart data alone must keep fitting without them
+    // (Trap B from the plan).
     const chartDataBlockChars = facts.map((f) => `- ${f}`).join('\n').length;
     console.log('=== Total CHART DATA block size (chars) ===', chartDataBlockChars);
     expect(chartDataBlockChars).toBeLessThan(24000);

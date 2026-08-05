@@ -58,6 +58,22 @@ describe('compactHistory — summary folding', () => {
     expect(result.recentHistory).toHaveLength(4);
   });
 
+  // The summary is the ONLY thing the model can see of turns older than
+  // KEEP_RECENT. It used to be told not to restate predictions, so a marriage
+  // window it had committed to ("October 2026") vanished — and when the user
+  // asked why a later turn said something else, it fabricated a distinction
+  // about what the earlier answer "meant". Dates it promised must survive.
+  it('tells the summariser to preserve committed timings with their dates', async () => {
+    state.generate.mockResolvedValue(JSON.stringify({ summary: 'ok' }));
+
+    await compactHistory(turns(10), undefined);
+
+    const prompt = state.generate.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toMatch(/exact dates/i);
+    expect(prompt).toMatch(/every specific timing the assistant committed to/i);
+    expect(prompt).not.toMatch(/Do not restate astrological reasoning or predictions/i);
+  });
+
   it('strips a markdown fence around the JSON response before parsing', async () => {
     state.generate.mockResolvedValue('```json\n' + JSON.stringify({ summary: 'fenced' }) + '\n```');
 

@@ -57,7 +57,7 @@ export async function compactHistory(
 
   const prompt = `You are compacting a conversation between a user and a Vedic astrology AI assistant into a short running summary for context in later turns.
 
-Preserve: any facts the user has stated about themselves or their question (so they are never asked again), which topics have already been answered, and any clarifying questions already asked. Do not restate astrological reasoning or predictions verbatim — just note the conclusion reached. Write it as plain prose, under 120 words.
+Preserve: any facts the user has stated about themselves or their question (so they are never asked again), which topics have already been answered, and any clarifying questions already asked. Also preserve, with their exact dates, every specific timing the assistant committed to (e.g. "said marriage window is October 2026", "said the job change favors March-April 2027") — the user will hold the assistant to these, and an assistant that cannot see what it promised will contradict itself. Do not restate the astrological reasoning behind them — just the topic, the window, and its dates. Write it as plain prose, under 150 words.
 
 ${incomingSummary ? `Existing summary:\n${incomingSummary}\n\n` : ''}New turns to fold in:
 ${transcript}
