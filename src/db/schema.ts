@@ -347,6 +347,8 @@ export const users = pgTable(
     referredByCode: text('referred_by_code'),
     referralCode: text('referral_code'),
     referralEarningsPaise: integer('referral_earnings_paise').notNull().default(0),
+    /** Set when the low-balance share-nudge push has been sent since the wallet last recovered to >= the threshold; cleared once it does. Gates one send per dip, see low-balance-alert.service.ts. */
+    lowBalanceAlertedAt: timestamp('low_balance_alerted_at', { withTimezone: true }),
 
     // --- consent (current effective state; history in user_consent_log) ----
     marketingConsentAt: timestamp('marketing_consent_at', { withTimezone: true }),

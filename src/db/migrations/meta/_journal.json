@@ -344,6 +344,13 @@
       "when": 1785915546142,
       "tag": "0048_user_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1785933640865,
+      "tag": "0049_medical_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

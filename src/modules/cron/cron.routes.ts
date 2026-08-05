@@ -32,6 +32,7 @@ import { SaturnPhaseRunBodySchema, SaturnPhaseRunResultSchema } from './saturn-p
 import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js';
 import { reapStaleReports } from '../reports/reports.service.js';
 import { reapStalePalmReadings } from '../palm/palm.service.js';
+import { runLowBalanceAlert } from './low-balance-alert.service.js';
 
 const ErrorSchema = z
   .object({
@@ -467,5 +468,39 @@ const palmReapStaleRoute = createRoute({
 
 cronRouter.openapi(palmReapStaleRoute, async (c) => {
   const result = await reapStalePalmReadings();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Low-balance share nudge — one push per dip below ₹100, rearmed once the
+// balance recovers (see low-balance-alert.service.ts). Wired to run every 30
+// minutes (see scripts/cron-low-balance-alert.sh).
+// ---------------------------------------------------------------------------
+
+const lowBalanceAlertRoute = createRoute({
+  method: 'post',
+  path: '/cron/low-balance-alert',
+  tags: ['Cron'],
+  summary: 'Nudge users below the wallet-balance threshold to share & earn',
+  description:
+    'Machine-to-machine endpoint, meant to run every 30 minutes via the OS crontab. Sends a ' +
+    '"share & earn ₹100" push (+ Bell inbox row) to every user whose wallet balance is below ' +
+    '₹100 and who has not already been nudged since their balance last recovered to ₹100 or ' +
+    'above. Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: {
+        'application/json': {
+          schema: z.object({ rearmed: z.number(), alerted: z.number() }),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(lowBalanceAlertRoute, async (c) => {
+  const result = await runLowBalanceAlert();
   return c.json(result, 200);
 });

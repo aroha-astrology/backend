@@ -209,6 +209,34 @@ export async function addWalletBalance(
   });
 }
 
+/**
+ * Rearms the low-balance alert for anyone who has recovered to >= threshold
+ * (e.g. a recharge or referral bonus) — no matter which of the several credit
+ * call sites put them there, since this reads the authoritative balance
+ * column rather than hooking each one. Returns how many were rearmed.
+ */
+export async function rearmRecoveredLowBalanceUsers(thresholdPaise: number): Promise<number> {
+  const rows = await db
+    .update(users)
+    .set({ lowBalanceAlertedAt: null })
+    .where(and(gte(users.walletBalancePaise, thresholdPaise), isNotNull(users.lowBalanceAlertedAt)))
+    .returning({ id: users.id });
+  return rows.length;
+}
+
+/** Users currently below threshold who haven't been alerted since their last recovery. */
+export async function findUnalertedLowBalanceUserIds(thresholdPaise: number): Promise<string[]> {
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(lt(users.walletBalancePaise, thresholdPaise), isNull(users.lowBalanceAlertedAt)));
+  return rows.map((r) => r.id);
+}
+
+export async function markLowBalanceAlerted(userId: string): Promise<void> {
+  await db.update(users).set({ lowBalanceAlertedAt: new Date() }).where(eq(users.id, userId));
+}
+
 /** Fail-open fallbacks only — the real amounts come from the admin-set `referral.*` features. */
 export const REFERRER_BONUS_FALLBACK_PAISE = 10000;
 export const REFEREE_BONUS_FALLBACK_PAISE = 5000;
