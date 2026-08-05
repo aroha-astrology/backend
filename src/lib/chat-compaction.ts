@@ -10,6 +10,11 @@
 // running summary via one cheap non-streaming call, so the prompt handed to
 // the chat model stays a small, bounded size no matter how long the
 // conversation runs.
+//
+// Durable personal-fact extraction used to be bundled into this same call,
+// but that tied fact capture to a threshold that exists only to bound prompt
+// size — most conversations never got long enough to trigger it. Fact
+// extraction now runs independently, every turn, in chat-fact-extraction.ts.
 // =============================================================================
 
 import { generate } from './llm/gemini-client.js';
@@ -21,12 +26,6 @@ export interface ChatTurn {
   content: string;
 }
 
-export interface ExtractedFact {
-  fact: string;
-  /** A natural, non-intrusive follow-up question worth asking again once this topic recurs (e.g. "Did the new job start yet?"), or null. */
-  followUpQuestion: string | null;
-}
-
 export interface CompactionResult {
   /** Turns to send verbatim this request. */
   recentHistory: ChatTurn[];
@@ -34,8 +33,6 @@ export interface CompactionResult {
   summary: string;
   /** Whether `summary` changed this turn (client should persist the new value). */
   changed: boolean;
-  /** Durable personal facts newly noticed in the folded turns (e.g. "wife's birthday is 17 July"). Empty unless compaction ran this turn. */
-  facts: ExtractedFact[];
 }
 
 /** Turns always kept verbatim, most recent first-in-order. */
@@ -48,7 +45,7 @@ export async function compactHistory(
   incomingSummary: string | undefined,
 ): Promise<CompactionResult> {
   if (history.length <= COMPACT_THRESHOLD) {
-    return { recentHistory: history, summary: incomingSummary ?? '', changed: false, facts: [] };
+    return { recentHistory: history, summary: incomingSummary ?? '', changed: false };
   }
 
   const toFold = history.slice(0, history.length - KEEP_RECENT);
@@ -58,26 +55,22 @@ export async function compactHistory(
     .map((t) => `${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`)
     .join('\n');
 
-  const prompt = `You are compacting a conversation between a user and a Vedic astrology AI assistant into a short running summary for context in later turns, and separately noting any durable personal facts the user shared.
+  const prompt = `You are compacting a conversation between a user and a Vedic astrology AI assistant into a short running summary for context in later turns.
 
-Preserve in the summary: any facts the user has stated about themselves or their question (so they are never asked again), which topics have already been answered, and any clarifying questions already asked. Do not restate astrological reasoning or predictions verbatim — just note the conclusion reached. Write it as plain prose, under 120 words.
-
-Separately, extract "facts": durable, personally-significant details worth remembering across future conversations — relationships (e.g. "wife's birthday is 17 July"), occupation, life events, health concerns, goals. Never include astrological conclusions, transient questions, or anything already derivable from the birth chart. Return an empty array if nothing durable was shared.
-
-Each fact is an object {"fact": string, "followUpQuestion": string | null}. Only set followUpQuestion when the fact is naturally incomplete AND there is one obvious, non-intrusive next detail worth knowing later — for example "planning to conceive after starting a new job" naturally invites "Did the new job start yet?", and "is married" naturally invites "When did they get married?". Leave followUpQuestion null for facts that are already complete on their own (e.g. "has an eldest son") or where any follow-up would feel intrusive or speculative — do not force one onto every fact.
+Preserve: any facts the user has stated about themselves or their question (so they are never asked again), which topics have already been answered, and any clarifying questions already asked. Do not restate astrological reasoning or predictions verbatim — just note the conclusion reached. Write it as plain prose, under 120 words.
 
 ${incomingSummary ? `Existing summary:\n${incomingSummary}\n\n` : ''}New turns to fold in:
 ${transcript}
 
-Respond with ONLY a JSON object of the exact shape {"summary": string, "facts": {"fact": string, "followUpQuestion": string | null}[]} — no markdown fences, no other text.`;
+Respond with ONLY a JSON object of the exact shape {"summary": string} — no markdown fences, no other text.`;
 
   try {
     const raw = await generate({
       profile: CHAT_SUMMARY_PROFILE,
       messages: [{ role: 'user', content: prompt }],
     });
-    const parsed = parseCompactionResponse(raw);
-    return { recentHistory, summary: parsed.summary, changed: true, facts: parsed.facts };
+    const summary = parseCompactionResponse(raw);
+    return { recentHistory, summary, changed: true };
   } catch (err) {
     logger.warn(
       { err },
@@ -85,41 +78,24 @@ Respond with ONLY a JSON object of the exact shape {"summary": string, "facts": 
     );
     // Best-effort: losing the user's context is worse than one slow/long
     // turn, so fall through with the untrimmed history rather than drop it.
-    return { recentHistory: history, summary: incomingSummary ?? '', changed: false, facts: [] };
+    return { recentHistory: history, summary: incomingSummary ?? '', changed: false };
   }
 }
 
 /**
- * Defensive JSON parsing: the model is asked for `{summary, facts}` but may
- * wrap it in a markdown fence or occasionally just return prose. Losing the
- * summary is worse than losing facts, so any parse failure falls back to
- * treating the raw response as the summary with no facts — never throws.
+ * Defensive JSON parsing: the model is asked for `{summary}` but may wrap it
+ * in a markdown fence or occasionally just return prose — either way, some
+ * text to use as the summary is always recoverable, so this never throws.
  */
-function parseCompactionResponse(raw: string): { summary: string; facts: ExtractedFact[] } {
+function parseCompactionResponse(raw: string): string {
   const stripped = raw
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/```\s*$/, '');
   try {
-    const obj = JSON.parse(stripped) as { summary?: unknown; facts?: unknown };
-    const summary = typeof obj.summary === 'string' ? obj.summary.trim() : raw.trim();
-    const facts = Array.isArray(obj.facts) ? obj.facts.map(parseFact).filter(isExtractedFact) : [];
-    return { summary, facts };
+    const obj = JSON.parse(stripped) as { summary?: unknown };
+    return typeof obj.summary === 'string' ? obj.summary.trim() : raw.trim();
   } catch {
-    return { summary: raw.trim(), facts: [] };
+    return raw.trim();
   }
-}
-
-function parseFact(item: unknown): ExtractedFact | null {
-  if (typeof item !== 'object' || item === null) return null;
-  const { fact, followUpQuestion } = item as { fact?: unknown; followUpQuestion?: unknown };
-  if (typeof fact !== 'string') return null;
-  return {
-    fact,
-    followUpQuestion: typeof followUpQuestion === 'string' ? followUpQuestion : null,
-  };
-}
-
-function isExtractedFact(f: ExtractedFact | null): f is ExtractedFact {
-  return f !== null;
 }

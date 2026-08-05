@@ -118,6 +118,15 @@ export const CHAT_SUMMARY_PROFILE: GenerationProfile = {
   maxTokens: 220,
 };
 
+/** Cheap, fast, non-streaming, JSON-mode — used to extract durable personal facts from a single chat turn. */
+export const FACT_EXTRACTION_PROFILE: GenerationProfile = {
+  name: 'fact-extraction',
+  temperature: 0.2,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 300,
+};
+
 /**
  * Personalized daily horoscope — called once per active user per day from the
  * CRON pipeline (never per-request), so a moderate temperature for narrative

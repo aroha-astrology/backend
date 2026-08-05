@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   checkTopicGate: vi.fn(),
   scholarStream: vi.fn(),
   compactHistory: vi.fn(),
+  extractTurnFacts: vi.fn(),
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
@@ -43,6 +44,10 @@ vi.mock('../src/modules/birth-profiles/birth-profiles.service.js', () => ({
 
 vi.mock('../src/lib/chat-compaction.js', () => ({
   compactHistory: state.compactHistory,
+}));
+
+vi.mock('../src/lib/chat-fact-extraction.js', () => ({
+  extractTurnFacts: state.extractTurnFacts,
 }));
 
 vi.mock('../src/lib/swarm/index.js', () => ({
@@ -78,7 +83,8 @@ beforeEach(() => {
   state.checkTopicGate.mockReset().mockResolvedValue({ related: true });
   state.compactHistory
     .mockReset()
-    .mockResolvedValue({ recentHistory: [], summary: '', changed: false, facts: [] });
+    .mockResolvedValue({ recentHistory: [], summary: '', changed: false });
+  state.extractTurnFacts.mockReset().mockResolvedValue([]);
   state.scholarStream.mockReset().mockImplementation(function* () {
     yield 'A short reply about your chart.';
   });
@@ -141,12 +147,9 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     });
     state.findActiveUserById.mockResolvedValue(user);
     state.getUserFacts.mockResolvedValue([{ fact: 'loves painting', followUpQuestion: null }]);
-    state.compactHistory.mockResolvedValue({
-      recentHistory: [],
-      summary: '',
-      changed: false,
-      facts: [{ fact: 'new durable fact', followUpQuestion: null }],
-    });
+    state.extractTurnFacts.mockResolvedValue([
+      { fact: 'new durable fact', followUpQuestion: null },
+    ]);
 
     const profile = makeProfileContext({
       birthProfileId: 'profile-a',
@@ -172,10 +175,14 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
 
     expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', 'profile-a');
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', 'profile-a');
-    // saveUserFacts must be tagged with the passed-in profile too, not the account.
-    expect(state.saveUserFacts).toHaveBeenCalledWith('user-1', 'profile-a', [
-      { fact: 'new durable fact', followUpQuestion: null },
-    ]);
+    // extractTurnFacts runs fire-and-forget after the reply finishes streaming,
+    // so its saveUserFacts follow-up call lands asynchronously.
+    await vi.waitFor(() => {
+      // saveUserFacts must be tagged with the passed-in profile too, not the account.
+      expect(state.saveUserFacts).toHaveBeenCalledWith('user-1', 'profile-a', [
+        { fact: 'new durable fact', followUpQuestion: null },
+      ]);
+    });
 
     const call = state.scholarStream.mock.calls[0] as any[];
     const [, , , birthTimeUnknown, , , , userFacts, extraFacts] = call;

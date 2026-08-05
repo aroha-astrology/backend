@@ -22,6 +22,7 @@ import {
 } from '../../lib/astro-engine/index.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
+import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
 import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
@@ -1205,13 +1206,9 @@ export async function* chatStream(
   // Bound the prompt size regardless of how long this conversation has run —
   // keeps generation fast (timeout risk) and keeps the model from losing
   // track of what it already knows deep in a long raw transcript.
-  const { recentHistory, summary, changed, facts } = await compactHistory(history, incomingSummary);
+  const { recentHistory, summary, changed } = await compactHistory(history, incomingSummary);
   if (changed) {
     yield { type: 'summary', summary };
-  }
-  if (facts.length > 0) {
-    // Fire-and-forget — a facts-save failure must never break the chat reply.
-    void saveUserFacts(userId, profile?.birthProfileId ?? null, facts).catch(() => {});
   }
   state.chatContext = {
     history: recentHistory,
@@ -1315,4 +1312,16 @@ export async function* chatStream(
     fullText = tentative;
     yield { type: 'token', content: token };
   }
+
+  // Fire-and-forget, every turn — no turn-count threshold, so even a user's
+  // first message can seed durable facts. Existing facts are passed in so
+  // the model doesn't re-extract near-duplicates. A failure here must never
+  // affect the reply already streamed above.
+  void extractTurnFacts(message, fullText, userFacts, userId)
+    .then((newFacts) => {
+      if (newFacts.length > 0) {
+        return saveUserFacts(userId, profile?.birthProfileId ?? null, newFacts);
+      }
+    })
+    .catch(() => {});
 }

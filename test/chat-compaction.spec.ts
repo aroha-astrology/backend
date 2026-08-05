@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Coverage for chat-compaction.ts's compactHistory(): folds old turns into a
-// running summary once history exceeds COMPACT_THRESHOLD (8), and separately
-// extracts durable "facts" the user shared. Facts are now `{fact,
-// followUpQuestion}` objects instead of bare strings — followUpQuestion is a
-// natural, non-intrusive question worth asking again once the topic recurs
-// (e.g. "Did the new job start yet?"), or null when the fact needs no
-// follow-up. Parsing is defensive throughout: a malformed LLM response must
-// never throw, only degrade to an empty facts list / raw-text summary.
+// running summary once history exceeds COMPACT_THRESHOLD (8). Fact
+// extraction used to be bundled into this same call but now lives in
+// chat-fact-extraction.ts (see that file's own spec) — this file only covers
+// summary folding. Parsing is defensive throughout: a malformed LLM response
+// must never throw, only degrade to the raw text as the summary.
 
 const state = vi.hoisted(() => ({
   generate: vi.fn(),
@@ -35,7 +33,7 @@ beforeEach(() => {
 });
 
 describe('compactHistory — below threshold', () => {
-  it('passes history through unchanged and returns no facts when at or under the threshold', async () => {
+  it('passes history through unchanged when at or under the threshold', async () => {
     const history = turns(8);
 
     const result = await compactHistory(history, 'existing summary');
@@ -45,94 +43,39 @@ describe('compactHistory — below threshold', () => {
       recentHistory: history,
       summary: 'existing summary',
       changed: false,
-      facts: [],
     });
   });
 });
 
-describe('compactHistory — fact extraction shape', () => {
-  it('returns facts as {fact, followUpQuestion} objects, defaulting followUpQuestion to null when omitted', async () => {
-    state.generate.mockResolvedValue(
-      JSON.stringify({
-        summary: 'User discussed career.',
-        facts: [
-          { fact: 'Has an eldest son' },
-          { fact: 'Is married', followUpQuestion: null },
-          {
-            fact: 'Planning to conceive 2-3 months after starting a new job',
-            followUpQuestion: 'Did the new job start yet?',
-          },
-        ],
-      }),
-    );
+describe('compactHistory — summary folding', () => {
+  it('folds older turns into a summary once past the threshold', async () => {
+    state.generate.mockResolvedValue(JSON.stringify({ summary: 'User discussed career.' }));
 
     const result = await compactHistory(turns(10), undefined);
 
     expect(result.changed).toBe(true);
     expect(result.summary).toBe('User discussed career.');
-    expect(result.facts).toEqual([
-      { fact: 'Has an eldest son', followUpQuestion: null },
-      { fact: 'Is married', followUpQuestion: null },
-      {
-        fact: 'Planning to conceive 2-3 months after starting a new job',
-        followUpQuestion: 'Did the new job start yet?',
-      },
-    ]);
-  });
-
-  it('drops malformed fact entries (non-string fact, or a bare string instead of an object) rather than throwing', async () => {
-    state.generate.mockResolvedValue(
-      JSON.stringify({
-        summary: 'ok',
-        facts: [
-          { fact: 'valid fact', followUpQuestion: null },
-          { fact: 42 },
-          'a bare string, not an object',
-          null,
-          { followUpQuestion: 'no fact field' },
-        ],
-      }),
-    );
-
-    const result = await compactHistory(turns(10), undefined);
-
-    expect(result.facts).toEqual([{ fact: 'valid fact', followUpQuestion: null }]);
-  });
-
-  it('normalizes a non-string followUpQuestion to null rather than throwing', async () => {
-    state.generate.mockResolvedValue(
-      JSON.stringify({
-        summary: 'ok',
-        facts: [{ fact: 'valid fact', followUpQuestion: 12345 }],
-      }),
-    );
-
-    const result = await compactHistory(turns(10), undefined);
-
-    expect(result.facts).toEqual([{ fact: 'valid fact', followUpQuestion: null }]);
+    expect(result.recentHistory).toHaveLength(4);
   });
 
   it('strips a markdown fence around the JSON response before parsing', async () => {
-    state.generate.mockResolvedValue(
-      '```json\n' + JSON.stringify({ summary: 'ok', facts: [{ fact: 'fenced fact' }] }) + '\n```',
-    );
+    state.generate.mockResolvedValue('```json\n' + JSON.stringify({ summary: 'fenced' }) + '\n```');
 
     const result = await compactHistory(turns(10), undefined);
 
-    expect(result.facts).toEqual([{ fact: 'fenced fact', followUpQuestion: null }]);
+    expect(result.summary).toBe('fenced');
   });
 
-  it('falls back to raw text as the summary with empty facts when the response is not valid JSON', async () => {
+  it('falls back to raw text as the summary when the response is not valid JSON', async () => {
     state.generate.mockResolvedValue('not json at all');
 
     const result = await compactHistory(turns(10), undefined);
 
     expect(result.summary).toBe('not json at all');
-    expect(result.facts).toEqual([]);
     expect(result.changed).toBe(true);
   });
 
-  it('falls back to the untrimmed history with no facts when the LLM call itself throws', async () => {
+  it('falls back to the untrimmed history when the LLM call itself throws', async () => {
     state.generate.mockRejectedValue(new Error('network down'));
     const history = turns(10);
 
@@ -142,7 +85,6 @@ describe('compactHistory — fact extraction shape', () => {
       recentHistory: history,
       summary: 'prior summary',
       changed: false,
-      facts: [],
     });
   });
 });
