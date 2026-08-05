@@ -14,6 +14,7 @@
 // =============================================================================
 
 import { logger } from '../../lib/logger.js';
+import { acquire, release } from '../../lib/cache/locks.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
 import {
   findTransitEvents,
@@ -262,34 +263,67 @@ export async function sendTransitAlerts(
     };
   }
 
-  const run = await getOrCreateBatchRun(TRANSIT_JOB_NAME, 'transit', dateStr);
-  if (!opts.force && !opts.dryRun && run.status === 'completed') {
-    logger.info({ dateStr }, 'transit-alert:send skipped — already sent today');
-    return {
-      skipped: true,
-      reason: 'already-sent',
-      events: 0,
-      recipients: 0,
-      success: 0,
-      failure: 0,
-    };
+  // The `getOrCreateBatchRun` status check below is a read-then-act check, not
+  // an atomic claim — two overlapping invocations (a retried/duplicate cron
+  // firing, an overlapping manual trigger) can both read 'running' and both
+  // push, quadruple-notifying users. A Redis lock around the whole
+  // check-send-complete section makes "duplicate firing is a no-op" (the
+  // guarantee the crontab script's own comment promises) actually hold.
+  // Unavailable Redis fails CLOSED here — a missed send just waits for the
+  // next cron tick within SEND_GRACE_HOURS, which is cheaper than a duplicate
+  // send that can never be recalled.
+  const lock = await acquire('transit-alert-send', dateStr, 300);
+  if (!lock.ok) {
+    logger.info(
+      { dateStr, reason: lock.reason },
+      'transit-alert:send skipped — send already in flight',
+    );
+    return { skipped: true, reason: 'locked', events: 0, recipients: 0, success: 0, failure: 0 };
   }
 
-  let recipients: TransitRecipient[];
   try {
-    recipients = await listTransitRecipients();
-  } catch (err) {
-    logger.error({ err }, 'transit-alert:send failed to fetch recipients');
-    await failBatchRun(run.id, err instanceof Error ? err.message : String(err));
-    return { skipped: false, events: events.length, recipients: 0, success: 0, failure: 0 };
-  }
+    const run = await getOrCreateBatchRun(TRANSIT_JOB_NAME, 'transit', dateStr);
+    if (!opts.force && !opts.dryRun && run.status === 'completed') {
+      logger.info({ dateStr }, 'transit-alert:send skipped — already sent today');
+      return {
+        skipped: true,
+        reason: 'already-sent',
+        events: 0,
+        recipients: 0,
+        success: 0,
+        failure: 0,
+      };
+    }
 
-  if (recipients.length === 0) {
-    logger.info('transit-alert:send no eligible recipients');
-    await completeBatchRun(run.id, { processed: 0, generated: 0, skipped: 0, failed: 0 });
-    return { skipped: false, events: events.length, recipients: 0, success: 0, failure: 0 };
-  }
+    let recipients: TransitRecipient[];
+    try {
+      recipients = await listTransitRecipients();
+    } catch (err) {
+      logger.error({ err }, 'transit-alert:send failed to fetch recipients');
+      await failBatchRun(run.id, err instanceof Error ? err.message : String(err));
+      return { skipped: false, events: events.length, recipients: 0, success: 0, failure: 0 };
+    }
 
+    if (recipients.length === 0) {
+      logger.info('transit-alert:send no eligible recipients');
+      await completeBatchRun(run.id, { processed: 0, generated: 0, skipped: 0, failed: 0 });
+      return { skipped: false, events: events.length, recipients: 0, success: 0, failure: 0 };
+    }
+
+    return await sendDueEvents(events, recipients, run.id, opts, dateStr);
+  } finally {
+    await release('transit-alert-send', dateStr, lock.owner);
+  }
+}
+
+/** The actual push/inbox delivery loop, run once the send lock + batch-run claim are held. */
+async function sendDueEvents(
+  events: TransitEventRow[],
+  recipients: TransitRecipient[],
+  runId: string,
+  opts: { force?: boolean; dryRun?: boolean },
+  dateStr: string,
+): Promise<SendResult> {
   let success = 0;
   let failure = 0;
 
@@ -370,7 +404,7 @@ export async function sendTransitAlerts(
   }
 
   if (!opts.dryRun) {
-    await completeBatchRun(run.id, {
+    await completeBatchRun(runId, {
       processed: recipients.length,
       generated: success,
       skipped: 0,

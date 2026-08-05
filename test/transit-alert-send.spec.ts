@@ -13,8 +13,14 @@ const state = vi.hoisted(() => ({
   completeBatchRun: vi.fn(),
   failBatchRun: vi.fn(),
   generateTransitCopy: vi.fn(),
+  acquire: vi.fn(),
+  release: vi.fn(),
 }));
 
+vi.mock('../src/lib/cache/locks.js', () => ({
+  acquire: state.acquire,
+  release: state.release,
+}));
 vi.mock('../src/modules/cron/transit-alert.repo.js', () => ({
   listEventsDueToSend: state.listEventsDueToSend,
   listEventsNeedingDraft: state.listEventsNeedingDraft,
@@ -66,12 +72,40 @@ function freshRun(status: 'running' | 'completed' | 'failed' = 'running') {
 describe('sendTransitAlerts', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    state.acquire.mockResolvedValue({ ok: true, owner: 'test-owner' });
+    state.release.mockResolvedValue(true);
     state.getOrCreateBatchRun.mockResolvedValue(freshRun());
     state.sendPushBatch.mockResolvedValue({ success: 1, failure: 0 });
     state.listCopyForEvent.mockResolvedValue([]);
     state.insertTransitNotifications.mockResolvedValue(undefined);
     state.setEventStatus.mockResolvedValue(undefined);
     state.completeBatchRun.mockResolvedValue(undefined);
+  });
+
+  it('never double-sends when a duplicate/overlapping cron firing loses the lock', async () => {
+    // Root cause of the duplicate-notification bug: getOrCreateBatchRun's
+    // status check is read-then-act, not atomic, so a concurrent second
+    // invocation could previously slip through before the first one marks
+    // the run 'completed'. The Redis lock is what actually makes a
+    // duplicate/overlapping firing a no-op.
+    state.listEventsDueToSend.mockResolvedValue([SATURN_INGRESS]);
+    state.acquire.mockResolvedValue({ ok: false, reason: 'held' });
+
+    const result = await sendTransitAlerts({ now: NOW });
+
+    expect(result).toEqual(expect.objectContaining({ skipped: true, reason: 'locked' }));
+    expect(state.getOrCreateBatchRun).not.toHaveBeenCalled();
+    expect(state.sendPushBatch).not.toHaveBeenCalled();
+  });
+
+  it('releases the lock even when the send throws', async () => {
+    state.listEventsDueToSend.mockResolvedValue([SATURN_INGRESS]);
+    state.listTransitRecipients.mockRejectedValue(new Error('boom'));
+    state.failBatchRun.mockRejectedValue(new Error('boom too'));
+
+    await expect(sendTransitAlerts({ now: NOW })).rejects.toThrow('boom too');
+
+    expect(state.release).toHaveBeenCalledWith('transit-alert-send', '2025-03-27', 'test-owner');
   });
 
   it('does nothing at all when no event is due', async () => {
