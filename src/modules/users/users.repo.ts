@@ -1,3 +1,4 @@
+import { alias } from 'drizzle-orm/pg-core';
 import { and, asc, eq, ilike, isNull, isNotNull, count, desc, gte, lt, or, sql } from 'drizzle-orm';
 import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
@@ -682,6 +683,41 @@ export async function countUsersMatching(q?: string): Promise<number> {
  * (birth-profiles.repo.ts) for the additional-profile case.
  */
 export const HOUSE_UNLOCK_FALLBACK_PAISE = 5000;
+
+/**
+ * Flat referral rows for the admin referrals panel. Self-joins `users`
+ * (referred) to `users` aliased as `referrer` on
+ * `referred.referredByCode = referrer.referralCode` (inner join, so a
+ * referrer whose row was hard-deleted simply drops their referred users from
+ * the list — acceptable edge case for an admin-only report). Only non-deleted
+ * referred users with a non-null referredByCode are included. Ordered by
+ * referred `createdAt` desc (newest sign-ups first).
+ */
+export async function listReferrals() {
+  const referrer = alias(users, 'referrer');
+  const rows = await db
+    .select({
+      referrerId: referrer.id,
+      referrerDisplayName: referrer.displayName,
+      referrerPhoneE164: referrer.phoneE164,
+      referredId: users.id,
+      referredDisplayName: users.displayName,
+      referredPhoneE164: users.phoneE164,
+      referredCreatedAt: users.createdAt,
+    })
+    .from(users)
+    .innerJoin(referrer, eq(users.referredByCode, referrer.referralCode))
+    .where(and(isNull(users.deletedAt), isNotNull(users.referredByCode)))
+    .orderBy(desc(users.createdAt));
+  return rows.map((row) => ({
+    ...row,
+    referrerPhoneE164: decryptField(row.referrerPhoneE164),
+    referredPhoneE164: decryptField(row.referredPhoneE164),
+  }));
+}
+
+/** Cost in paise to unlock one kundli house's detail view (Rs 50 = 5 credits at the old rate). Reused by `unlockHouseForOwnedProfile` (birth-profiles.repo.ts) for the additional-profile case. */
+export const HOUSE_UNLOCK_COST_PAISE = 5000;
 
 /**
  * `pricePaise` is resolved by the caller (users.service.ts `unlockHouse`) from

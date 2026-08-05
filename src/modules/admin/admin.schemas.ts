@@ -183,3 +183,28 @@ export const AdminReportsResponseSchema = z
     ),
   })
   .openapi('AdminReportsResponse');
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/referrals                                                        */
+/* -------------------------------------------------------------------------- */
+
+const AdminReferredUserSchema = z.object({
+  id: z.string(),
+  displayName: z.string().nullable(),
+  phoneE164: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+const AdminReferralRowSchema = z.object({
+  referrer: z.object({
+    id: z.string(),
+    displayName: z.string().nullable(),
+    phoneE164: z.string().nullable(),
+  }),
+  count: z.number().int(),
+  referredUsers: z.array(AdminReferredUserSchema),
+});
+
+export const AdminReferralsResponseSchema = z
+  .object({ referrals: z.array(AdminReferralRowSchema) })
+  .openapi('AdminReferralsResponse');

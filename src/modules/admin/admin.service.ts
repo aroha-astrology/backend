@@ -8,6 +8,7 @@ import {
   sumWalletBalanceOutstanding,
   listUsersPage,
   countUsersMatching,
+  listReferrals,
   addWalletBalance,
   deductWalletBalance,
   findActiveUserById,
@@ -270,4 +271,53 @@ export async function adjustWallet(
 
 export async function getReportsBreakdown(range: DateRange) {
   return spendByReportKey(range);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Referrals                                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface ReferredUserDto {
+  id: string;
+  displayName: string | null;
+  phoneE164: string | null;
+  createdAt: string;
+}
+
+export interface ReferralRowDto {
+  referrer: { id: string; displayName: string | null; phoneE164: string | null };
+  count: number;
+  referredUsers: ReferredUserDto[];
+}
+
+/**
+ * Groups the flat rows from `listReferrals()` by referrer and returns an
+ * array sorted by descending referral count (most prolific referrers first).
+ */
+export async function getReferrals(): Promise<ReferralRowDto[]> {
+  const rows = await listReferrals();
+  const byReferrer = new Map<string, ReferralRowDto>();
+  for (const row of rows) {
+    let entry = byReferrer.get(row.referrerId);
+    if (!entry) {
+      entry = {
+        referrer: {
+          id: row.referrerId,
+          displayName: row.referrerDisplayName,
+          phoneE164: row.referrerPhoneE164,
+        },
+        count: 0,
+        referredUsers: [],
+      };
+      byReferrer.set(row.referrerId, entry);
+    }
+    entry.referredUsers.push({
+      id: row.referredId,
+      displayName: row.referredDisplayName,
+      phoneE164: row.referredPhoneE164,
+      createdAt: row.referredCreatedAt.toISOString(),
+    });
+    entry.count += 1;
+  }
+  return Array.from(byReferrer.values()).sort((a, b) => b.count - a.count);
 }

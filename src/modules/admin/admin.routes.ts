@@ -14,6 +14,7 @@ import {
   AdjustWalletBodySchema,
   AdjustWalletResponseSchema,
   AdminReportsResponseSchema,
+  AdminReferralsResponseSchema,
 } from './admin.schemas.js';
 import { resolveDateRangePreset, logAdminAction } from './admin.repo.js';
 import {
@@ -23,6 +24,7 @@ import {
   searchUsers,
   adjustWallet,
   getReportsBreakdown,
+  getReferrals,
 } from './admin.service.js';
 
 const ErrorSchema = z
@@ -279,4 +281,32 @@ adminRouter.openapi(reportsRoute, async (c) => {
   const reports = await getReportsBreakdown(range);
   await auditRead(c, 'GET /v1/admin/reports', { preset, from, to });
   return c.json({ reports }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/referrals                                                        */
+/* -------------------------------------------------------------------------- */
+
+const listReferralsRoute = createRoute({
+  method: 'get',
+  path: '/admin/referrals',
+  tags: ['Admin'],
+  summary:
+    'All referral relationships — who referred whom, grouped by referrer, sorted by count desc',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: {
+      description: 'Referral groups',
+      content: { 'application/json': { schema: AdminReferralsResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(listReferralsRoute, async (c) => {
+  const referrals = await getReferrals();
+  await auditRead(c, 'GET /v1/admin/referrals', {});
+  return c.json({ referrals }, 200);
 });
