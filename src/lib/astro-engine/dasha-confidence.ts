@@ -302,10 +302,13 @@ function transitAlignment(
   }
   const daysOut = (windowStart.getTime() - now.getTime()) / 86_400_000;
   if (daysOut > TRANSIT_RELEVANCE_DAYS) {
-    return {
-      aligned: false,
-      reason: `Transit gating: window is too far out for today's transit to be a meaningful signal (not scored).`,
-    };
+    // Empty reason on purpose — the caller drops empty reasons from `reasoning`. This branch
+    // fires for most windows of most domains, and chat-grounding.ts renders ~14 domains x 3
+    // windows of reasoning into one prompt sitting right at its size ceiling
+    // (test/verify-chat-fix.spec.ts). A sentence whose whole content is "this was not scored"
+    // is the cheapest thing in that block to give up. The absence of a transit point is already
+    // visible in the window's score/confidence level.
+    return { aligned: false, reason: '' };
   }
 
   const config = DOMAIN_CONFIG[domain];
@@ -350,15 +353,6 @@ export function scoreDomainWindows(
   now: Date,
   transits: { saturnSignIndex: number | null; jupiterSignIndex: number | null },
   sharedSubPeriods?: Map<string, ReturnType<typeof buildSubPeriods>>,
-  /** Opt-in only (default off) — appends the window nearest `now` if the tier/score truncation
-   * below would otherwise exclude it entirely. Off by default so chat-grounding.ts's DIRECT
-   * callers (which score up to ~14 domains per request and label windows[0] 'STRONGEST') keep
-   * their exact existing output size/order — growing every domain's window count here compounds
-   * across domains into a real chat prompt-size regression (caught by
-   * test/verify-chat-fix.spec.ts). report-timing.ts's report-facing wrapper opts in explicitly;
-   * that's the one seam where an occasional 4th window is an acceptable, bounded cost for
-   * guaranteeing a near-term answer. */
-  opts?: { ensureNearTermAnchor?: boolean },
 ): DomainWindowResult {
   const config = DOMAIN_CONFIG[domain];
   const candidates = findFavorableWindows(dasha, significatorLords, now, 3, 8, sharedSubPeriods);
@@ -382,7 +376,7 @@ export function scoreDomainWindows(
       ascSignIndex,
       transits,
     );
-    reasoning.push(transit.reason);
+    if (transit.reason) reasoning.push(transit.reason);
     if (transit.aligned) score += 1;
 
     const level: ConfidenceLevel = score >= 3 ? 'HIGH' : score === 2 ? 'MEDIUM' : 'LOW';
@@ -412,15 +406,18 @@ export function scoreDomainWindows(
 
   const top3 = scored.slice(0, 3);
 
-  // Rescue (opt-in only, see `opts` doc comment above): the tier/score truncation above can
-  // otherwise exclude every near-term window in favor of ones years out (a "bigger" antardasha
-  // tier match beats a nearer pratyantardasha one regardless of how far away it is). Appends
-  // (never evicts a slot, never re-sorts) the window nearest `now` if it isn't already in the top
-  // 3 — from the FULL pre-slice `scored` array, so it can't have already been cut.
-  if (opts?.ensureNearTermAnchor) {
-    const anchor = nearestToNow(scored, now);
-    if (anchor && !top3.includes(anchor)) top3.push(anchor);
-  }
+  // Near-term anchor. The tier/score truncation above can otherwise leave EVERY surviving window
+  // years out — a "bigger" antardasha-tier match beats a nearer pratyantardasha one no matter how
+  // far away it is — which is exactly how "when will I get married" started answering only with
+  // dates 2-3 years off, the currently-running window nowhere in the data at all. Swap the window
+  // nearest `now` (taken from the FULL pre-slice `scored` array, so it can't already have been
+  // cut) into the LAST slot rather than appending a 4th: chat-grounding.ts scores ~14 domains into
+  // one prompt against a hard size ceiling (test/verify-chat-fix.spec.ts), so the output count
+  // must stay at 3. This deliberately costs the 3rd-ranked window, always the most distant of the
+  // three. Was previously an opt-in flag that only reports set, which is why chat and a paid
+  // report could give the same user two different answers for the same domain.
+  const anchor = nearestToNow(scored, now);
+  if (anchor && !top3.includes(anchor)) top3[top3.length - 1] = anchor;
 
   return { domain, windows: top3 };
 }

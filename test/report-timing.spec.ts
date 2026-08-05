@@ -54,25 +54,19 @@ describe('computeReportTimingWindows', () => {
     expect(window).toEqual([]);
   });
 
-  it('carries the SAME set of windows as scoreDomainWindows(..., { ensureNearTermAnchor: true }), re-sorted chronologically (soonest-first) rather than tier/score-first', () => {
+  it('carries the SAME set of windows as scoreDomainWindows, re-sorted chronologically (soonest-first) rather than tier/score-first', () => {
     const now = new Date('2026-01-01T00:00:00Z');
     const dasha = makeDasha(now);
     const chart = makeChart(3);
 
     const wrapped = computeReportTimingWindows('career', ['Venus'], dasha, chart, now);
-    // computeReportTimingWindows opts into ensureNearTermAnchor internally (see its own doc
-    // comment) — pass the SAME opts here for an apples-to-apples comparison, since scoreDomainWindows
-    // defaults that flag OFF (chat-grounding.ts's direct, unrelated use case).
-    const direct = scoreDomainWindows(
-      'career',
-      ['Venus'],
-      dasha,
-      3,
-      now,
-      { saturnSignIndex: null, jupiterSignIndex: null },
-      undefined,
-      { ensureNearTermAnchor: true },
-    );
+    // The near-term anchor is unconditional in scoreDomainWindows now (it used to be an opt-in
+    // this wrapper alone set, which is what let chat and a report disagree) — so a plain direct
+    // call is already apples-to-apples.
+    const direct = scoreDomainWindows('career', ['Venus'], dasha, 3, now, {
+      saturnSignIndex: null,
+      jupiterSignIndex: null,
+    });
 
     expect(wrapped.domain).toBe(direct.domain);
     // Same elements, deliberately possibly reordered — see computeReportTimingWindows' own doc

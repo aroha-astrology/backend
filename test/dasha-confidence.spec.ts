@@ -111,36 +111,17 @@ describe('scoreDomainWindows', () => {
     expect(result.windows[0]!.dashaLevel).toBe('antardasha');
   });
 
-  it("caps at the top 3 windows BY DEFAULT (no opts) — chat-grounding.ts's direct calls must keep this exact output size/order", () => {
+  it('caps at 3 windows — chat-grounding.ts scores ~14 domains into one prompt against a hard size ceiling (test/verify-chat-fix.spec.ts)', () => {
     const now = new Date('2026-01-01T00:00:00Z');
     const dasha = makeDasha(now);
-    // Venus recurs as a pratyantardasha within every antardasha across 3
-    // mahadashas -- comfortably more than 3 raw candidates. Without opting
-    // into ensureNearTermAnchor, the near-term-rescue below must NOT engage
-    // — chat-grounding.ts scores up to ~14 domains per request and would
-    // otherwise see its prompt grow domain-by-domain (see
-    // test/verify-chat-fix.spec.ts's prompt-size ceiling).
+    // Venus recurs as a pratyantardasha within every antardasha across 3 mahadashas --
+    // comfortably more than 3 raw candidates, so the truncation is genuinely exercised. The
+    // near-term anchor below must SWAP into the last slot, never grow the list to 4.
     const result = scoreDomainWindows('wealth', ['Venus'], dasha, null, now, NO_TRANSITS);
     expect(result.windows.length).toBeLessThanOrEqual(3);
   });
 
-  it('with ensureNearTermAnchor, caps at 3 plus at most one rescued near-term anchor', () => {
-    const now = new Date('2026-01-01T00:00:00Z');
-    const dasha = makeDasha(now);
-    const result = scoreDomainWindows(
-      'wealth',
-      ['Venus'],
-      dasha,
-      null,
-      now,
-      NO_TRANSITS,
-      undefined,
-      { ensureNearTermAnchor: true },
-    );
-    expect(result.windows.length).toBeLessThanOrEqual(4);
-  });
-
-  it('with ensureNearTermAnchor, always includes the window nearest to now, even when tier/score ranking would otherwise exclude it', () => {
+  it('always includes the window nearest to now, even when tier/score ranking would otherwise exclude it', () => {
     const now = new Date('2026-01-01T00:00:00Z');
     const dasha = makeDasha(now);
     // Independently recompute the true nearest-to-now candidate from the SAME raw
@@ -156,16 +137,7 @@ describe('scoreDomainWindows', () => {
       return d < bestD ? w : best;
     });
 
-    const result = scoreDomainWindows(
-      'wealth',
-      ['Venus'],
-      dasha,
-      null,
-      now,
-      NO_TRANSITS,
-      undefined,
-      { ensureNearTermAnchor: true },
-    );
+    const result = scoreDomainWindows('wealth', ['Venus'], dasha, null, now, NO_TRANSITS);
     expect(
       result.windows.some(
         (w) => w.startDate === nearest.startDate && w.endDate === nearest.endDate,
@@ -173,23 +145,21 @@ describe('scoreDomainWindows', () => {
     ).toBe(true);
   });
 
-  it('without ensureNearTermAnchor (default), the near-term anchor is NOT guaranteed — demonstrates the flag actually gates the behavior', () => {
+  it('keeps the tier/score winner in slot 0 while anchoring — only the LAST slot is given up to the near-term window', () => {
+    // The regression this guards: an answer to "when will I get married" that quoted only dates
+    // 2-3 years out. The anchor must not cost the STRONGEST label its own tier/score winner, and
+    // must not re-sort the list either.
     const now = new Date('2026-01-01T00:00:00Z');
     const dasha = makeDasha(now);
-    const rawCandidates = findFavorableWindows(dasha, ['Venus'], now, 3, 8);
-    const nowMs = now.getTime();
-    const nearest = rawCandidates.reduce((best, w) => {
-      const d = Math.abs(new Date(w.startDate).getTime() - nowMs);
-      const bestD = Math.abs(new Date(best.startDate).getTime() - nowMs);
-      return d < bestD ? w : best;
-    });
-
     const result = scoreDomainWindows('wealth', ['Venus'], dasha, null, now, NO_TRANSITS);
-    expect(
-      result.windows.some(
-        (w) => w.startDate === nearest.startDate && w.endDate === nearest.endDate,
-      ),
-    ).toBe(false);
+    expect(result.windows[0]!.dashaLevel).toBe('antardasha');
+
+    const nowMs = now.getTime();
+    const soonest = Math.min(
+      ...result.windows.map((w) => Math.abs(new Date(w.startDate).getTime() - nowMs)),
+    );
+    // Something in the list is within ~2 years of today, rather than every window being years out.
+    expect(soonest).toBeLessThan(2 * 365.25 * 86_400_000);
   });
 
   it('does not credit transit alignment for a window far beyond the ~13-month relevance horizon', () => {
@@ -200,9 +170,17 @@ describe('scoreDomainWindows', () => {
     // when a transit IS supplied (as opposed to the NO_TRANSITS cases above,
     // which never exercise this branch at all).
     const transits = { saturnSignIndex: 3, jupiterSignIndex: 5 };
-    const result = scoreDomainWindows('career', ['Venus'], dasha, 0, now, transits);
-    const farWindow = result.windows.find((w) => w.dashaLevel === 'antardasha');
+    const withTransits = scoreDomainWindows('career', ['Venus'], dasha, 0, now, transits);
+    const withoutTransits = scoreDomainWindows('career', ['Venus'], dasha, 0, now, NO_TRANSITS);
+
+    const farWindow = withTransits.windows.find((w) => w.dashaLevel === 'antardasha');
     expect(farWindow).toBeDefined();
-    expect(farWindow!.reasoning.some((r) => r.includes('too far out'))).toBe(true);
+    // Asserted on the score, not on reasoning text: a far window earns no transit point, so
+    // supplying live transits must not change its score at all versus supplying none.
+    const sameFarWindow = withoutTransits.windows.find((w) => w.startDate === farWindow!.startDate);
+    expect(sameFarWindow).toBeDefined();
+    expect(farWindow!.score).toBe(sameFarWindow!.score);
+    // And it says nothing about transit gating, which would be dead text in the chat prompt.
+    expect(farWindow!.reasoning.some((r) => r.includes('Transit gating'))).toBe(false);
   });
 });

@@ -83,16 +83,10 @@ export function computeReportTimingWindows(
   now: Date = new Date(),
 ): DomainWindowResult {
   const ascSignIndex = ascSignIndexFromChart(chart);
-  const result = scoreDomainWindows(
-    domain,
-    significatorLords,
-    dashaData,
-    ascSignIndex,
-    now,
-    { saturnSignIndex: null, jupiterSignIndex: null },
-    undefined,
-    { ensureNearTermAnchor: true },
-  );
+  const result = scoreDomainWindows(domain, significatorLords, dashaData, ascSignIndex, now, {
+    saturnSignIndex: null,
+    jupiterSignIndex: null,
+  });
 
   // Re-sort chronologically (soonest-first) for display — ONLY here, not inside
   // scoreDomainWindows itself. That function's own tier/score ordering must survive for its OTHER

@@ -1136,7 +1136,16 @@ export async function buildGroundingFacts(
     const rankedText = result.windows
       .map((w, i) => {
         const tag = i === 0 ? 'STRONGEST' : `#${i + 1}`;
-        return `${tag} ${w.level} (${w.reasoning.join(' ')}) approx ${w.startDate} to ${w.endDate}`;
+        // A window that is running RIGHT NOW has a start date in the past, and the model is
+        // separately (and correctly) told never to present an elapsed window as upcoming
+        // (scholar.ts PAST_IS_FOR_VERIFICATION_ONLY / TEMPORAL_ANCHOR). Without this marker it
+        // reads the past start date, discards the live window, and answers with the next one —
+        // years out. Say plainly that it is open today.
+        const dates =
+          new Date(w.startDate) <= now
+            ? `ACTIVE NOW, open since ${w.startDate} and running to ${w.endDate}`
+            : `approx ${w.startDate} to ${w.endDate}`;
+        return `${tag} ${w.level} (${w.reasoning.join(' ')}) ${dates}`;
       })
       .join(' | ');
     facts.push(`${config.label} (cross-read with ${config.varga}): ${rankedText}`);
