@@ -2,6 +2,7 @@ import type { BirthProfileRow, UserRow } from '../../db/schema.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { addWalletBalance, deductWalletBalance, updateUserById } from '../users/users.repo.js';
+import { priceOf } from '../features/features.service.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { createBirthProfile } from './birth-profiles.service.js';
 import {
@@ -20,8 +21,11 @@ import type { ProfileDto } from './profiles.schemas.js';
  * credit charge + auto-activate), listing, activation, and hard deletion.
  */
 
-/** Cost in paise to create an additional (non-primary) profile (Rs 200 = 20 credits at the old rate). */
-export const PROFILE_CREATION_COST_PAISE = 20000;
+/**
+ * Fail-open fallback only. The charged amount is the admin-set
+ * `paid.profileCreation` price resolved via `priceOf()` — never this constant.
+ */
+export const PROFILE_CREATION_FALLBACK_PAISE = 20000;
 
 function primaryProfileDto(user: UserRow): ProfileDto {
   return {
@@ -94,20 +98,23 @@ export async function createProfile(
   user: UserRow,
   body: CreateBirthProfileBody,
 ): Promise<ProfileDto> {
-  const charged = await deductWalletBalance(
+  // Admin-set price, resolved once and reused for the refund below — the
+  // onboarding screen quotes this same resolved value via
+  // useFeature('paid.profileCreation'), so the two can't drift.
+  const pricePaise = await priceOf(
     user.id,
-    PROFILE_CREATION_COST_PAISE,
-    'profile_creation',
+    'paid.profileCreation',
+    PROFILE_CREATION_FALLBACK_PAISE,
   );
+
+  const charged = await deductWalletBalance(user.id, pricePaise, 'profile_creation');
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
   let created: BirthProfileRow;
   try {
     created = await createBirthProfile(user.id, body);
   } catch (err) {
-    await addWalletBalance(user.id, PROFILE_CREATION_COST_PAISE, 'refund:profile_creation').catch(
-      () => {},
-    );
+    await addWalletBalance(user.id, pricePaise, 'refund:profile_creation').catch(() => {});
     throw err;
   }
 

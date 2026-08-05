@@ -293,6 +293,57 @@ describe('purchaseReport — pricing and row shape', () => {
     );
   });
 
+  it('a one-time report with a filled-in questionnaire persists the answers under input.answers', async () => {
+    // Previously `answers` was threaded purely in-memory into ONE generation
+    // call and then discarded — the highest-signal self-disclosed text in the
+    // product, gone the moment that one report finished. This asserts it now
+    // survives onto the row itself, where buildPurchaseFacts (chat grounding)
+    // and any future regeneration can read it back.
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'r1', status: 'generating' }));
+
+    await purchaseReport(makeUser(), {
+      reportKey: 'marriage',
+      answers: { 'Relationship status': 'Dating for 2 years' },
+    });
+
+    expect(state.claimReportRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: { answers: { 'Relationship status': 'Dating for 2 years' } },
+      }),
+    );
+  });
+
+  it('an empty questionnaire answers object is treated the same as none — input stays null', async () => {
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'r1', status: 'generating' }));
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage', answers: {} });
+
+    expect(state.claimReportRow).toHaveBeenCalledWith(expect.objectContaining({ input: null }));
+  });
+
+  it('kundli_milan: questionnaire answers are namespaced alongside partner birth fields, never overwriting them', async () => {
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'km1', reportKey: 'kundli_milan' }));
+    const partner = {
+      dateOfBirth: '1990-01-01',
+      timeOfBirth: '10:00',
+      latitude: 1,
+      longitude: 1,
+      timezone: '5.5',
+    };
+
+    await purchaseReport(makeUser(), {
+      reportKey: 'kundli_milan',
+      partner,
+      answers: { 'How did you meet?': 'Arranged introduction' },
+    });
+
+    expect(state.claimReportRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: { ...partner, answers: { 'How did you meet?': 'Arranged introduction' } },
+      }),
+    );
+  });
+
   it('monthly bundle of 3 months uses monthlyBundlePricePaise(3)=6500, split with the remainder on the first row', async () => {
     state.claimReportRow.mockImplementation(
       (c: { periodMonth: string | null; pricePaidPaise: number }) =>

@@ -6,6 +6,7 @@ import {
   translateVastuContent,
 } from '../../lib/llm/vastu.js';
 import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
+import { priceOf } from '../features/features.service.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { evaluateRoomPlacement } from './vastu.rules.js';
 import {
@@ -24,7 +25,11 @@ import type { VastuPlanRow } from '../../db/schema.js';
 import type { AnalyzeVastuBody, VastuPlanDto } from './vastu.schemas.js';
 
 const DAILY_LIMIT = 20;
-export const VASTU_COST_PAISE = 5000;
+/**
+ * Fail-open fallback only. The charged amount is the admin-set `paid.vastu`
+ * price resolved via `priceOf()` — never this constant.
+ */
+export const VASTU_FALLBACK_PAISE = 5000;
 
 /** Best-effort birth-chart summary for personalising the analysis. */
 function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>>): string {
@@ -71,9 +76,13 @@ export async function requestVastuAnalysis(
     );
   }
 
+  // Resolved once and threaded through every refund path below, so an admin
+  // reprice mid-generation can never refund a different amount than was taken.
+  const pricePaise = await priceOf(userId, 'paid.vastu', VASTU_FALLBACK_PAISE);
+
   // Charge up-front; refunded below if we can't even queue the job, or later if
   // the async generation fails.
-  const charged = await deductWalletBalance(userId, VASTU_COST_PAISE, 'vastu_report');
+  const charged = await deductWalletBalance(userId, pricePaise, 'vastu_report');
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
   try {
@@ -102,13 +111,14 @@ export async function requestVastuAnalysis(
       language: body.language,
       chartContext,
       houseShape,
+      pricePaise,
     }).catch((err) => {
       logger.error({ err, planId: row.id }, 'vastu background processing failed');
     });
 
     return { planId: row.id };
   } catch (err) {
-    await addWalletBalance(userId, VASTU_COST_PAISE, 'refund:vastu_report').catch(() => {});
+    await addWalletBalance(userId, pricePaise, 'refund:vastu_report').catch(() => {});
     throw err;
   }
 }
@@ -124,6 +134,8 @@ async function processAnalysis(
     language: string;
     chartContext: string;
     houseShape?: string;
+    /** The amount actually charged for this plan — refund exactly this, never a constant. */
+    pricePaise: number;
   },
 ): Promise<void> {
   await markProcessing(planId);
@@ -138,7 +150,7 @@ async function processAnalysis(
     logger.error({ err, planId }, 'vastu LLM analysis failed');
     await markError(planId, err instanceof Error ? err.message : 'Unknown error');
     // Don't charge for a report we couldn't produce.
-    await addWalletBalance(userId, VASTU_COST_PAISE, 'refund:vastu_report').catch(() => {});
+    await addWalletBalance(userId, input.pricePaise, 'refund:vastu_report').catch(() => {});
   }
 }
 

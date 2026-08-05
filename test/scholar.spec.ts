@@ -20,7 +20,13 @@ function astroContextContent(groundingFacts: string[] = [], birthTimeUnknown = f
 
 function allContent(userFacts: UserFact[]): string {
   const state = newState({ userId: 'u1', intent: 'chat', consent: true });
-  const messages = buildChatMessages(state, 'hello', [], false, 'direct', 'en', userFacts);
+  const messages = buildChatMessages(state, 'hello', [], false, 'en', userFacts);
+  return messages.map((m) => m.content).join('\n---\n');
+}
+
+function allContentWithName(displayName: string | null | undefined): string {
+  const state = newState({ userId: 'u1', intent: 'chat', consent: true });
+  const messages = buildChatMessages(state, 'hello', [], false, 'en', [], new Date(), displayName);
   return messages.map((m) => m.content).join('\n---\n');
 }
 
@@ -188,9 +194,38 @@ describe('scholar voice call-connected greeting', () => {
     expect(content).not.toContain('Radhe Radhe,');
   });
 
-  it('scopes the name exception to the opening line only, without loosening PERSONAL_TOUCH for the rest of the call', () => {
+  it('tells the model to use the name sparingly for the rest of the call, not repeat it in every reply', () => {
+    // PERSONAL_TOUCH now permits the name sparingly throughout (not just this
+    // opening line) — this asserts the call-connected instruction still
+    // steers AWAY from over-using it after the scripted greeting.
     const content = buildVoiceSystemInstruction({ groundingFacts: [], displayName: 'Priya' });
-    expect(content).toContain('Never address the user by name');
-    expect(content).toContain('the one and only exception');
+    expect(content).toContain("don't repeat the name in every reply");
+  });
+});
+
+describe('scholar text-chat displayName (PERSONAL_TOUCH)', () => {
+  it('tells the model the name when displayName is given', () => {
+    const content = allContentWithName('Priya');
+    expect(content).toContain('The user\'s name is "Priya"');
+  });
+
+  it('says nothing about a name when none is given', () => {
+    // The rule text itself says "If the user's name is known..." regardless —
+    // check for the specific injected fact message, not that phrase.
+    expect(allContentWithName(undefined)).not.toContain('The user\'s name is "');
+    expect(allContentWithName(null)).not.toContain('The user\'s name is "');
+  });
+
+  it('permits sparing use of the name rather than banning it outright', () => {
+    const content = systemContent();
+    expect(content.toLowerCase()).toContain('sparingly');
+    // The old absolute ban must be gone — text chat can now use the name,
+    // same as voice already could.
+    expect(content).not.toContain('Never address the user by name');
+  });
+
+  it('still forbids inventing or claiming a name when none is on file', () => {
+    const content = systemContent();
+    expect(content.toLowerCase()).toMatch(/never invent one|claim to know it/);
   });
 });

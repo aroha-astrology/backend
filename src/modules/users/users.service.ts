@@ -8,7 +8,8 @@ import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
-import type { ResolvedFeature } from '../features/features.service.js';
+import { priceOf, payoutOf, type ResolvedFeature } from '../features/features.service.js';
+import { formatPaise } from '../../lib/money.js';
 import {
   unlockGemstoneForOwnedProfile,
   unlockHouseForOwnedProfile,
@@ -24,6 +25,9 @@ import {
   updateUserWithConsentLog,
   findUserByReferralCode,
   applyReferralBonus,
+  REFERRER_BONUS_FALLBACK_PAISE,
+  REFEREE_BONUS_FALLBACK_PAISE,
+  REFERRAL_CAP_FALLBACK_PAISE,
   getNotificationsForUser,
   markNotificationsRead as markUserNotificationsRead,
 } from './users.repo.js';
@@ -436,20 +440,34 @@ export async function updateMe(
   // retried a request whose patch commit failed for an unrelated reason.
   if (referrer) {
     try {
-      const { referrerBonus, refereeBonus } = await applyReferralBonus(referrer.id, current.id);
+      // Admin-set referral economics, resolved once and used for BOTH the
+      // ledger write and the notification copy below — quoting a different
+      // number than was actually credited is the same shown-≠-actual defect
+      // that made house unlocks bill double their advertised price.
+      const [referrerPaise, refereePaise, capPaise] = await Promise.all([
+        payoutOf(referrer.id, 'referral.referrerBonus', REFERRER_BONUS_FALLBACK_PAISE),
+        payoutOf(current.id, 'referral.refereeBonus', REFEREE_BONUS_FALLBACK_PAISE),
+        priceOf(referrer.id, 'referral.earningsCap', REFERRAL_CAP_FALLBACK_PAISE),
+      ]);
+
+      const { referrerBonus, refereeBonus } = await applyReferralBonus(referrer.id, current.id, {
+        referrerPaise,
+        refereePaise,
+        capPaise,
+      });
       const recipients: { userId: string; title: string; body: string }[] = [];
       if (referrerBonus) {
         recipients.push({
           userId: referrer.id,
           title: 'Referral Bonus!',
-          body: 'A friend signed up using your code. You earned ₹100!',
+          body: `A friend signed up using your code. You earned ${formatPaise(referrerPaise)}!`,
         });
       }
       if (refereeBonus) {
         recipients.push({
           userId: current.id,
           title: 'Welcome Bonus!',
-          body: 'You earned ₹50 for signing up with a referral code!',
+          body: `You earned ${formatPaise(refereePaise)} for signing up with a referral code!`,
         });
       }
       if (recipients.length > 0) {
@@ -574,17 +592,27 @@ export async function deleteMe(userId: string): Promise<void> {
   await anonymizeUserById(userId);
 }
 
+/**
+ * Both unlock paths resolve the admin-set price HERE, once, and pass it down to
+ * whichever repo function does the debit — the repo functions charge inline in
+ * SQL and must never carry a price of their own. This is the single place the
+ * quoted price (the app reads `useFeature('paid.houseInsight').pricePaise`) and
+ * the actual debit are kept in agreement.
+ */
 export async function unlockHouse(
   userId: string,
   birthProfileId: string | null,
   houseNumber: number,
 ): Promise<void> {
+  const { HOUSE_UNLOCK_FALLBACK_PAISE } = await import('./users.repo.js');
+  const pricePaise = await priceOf(userId, 'paid.houseInsight', HOUSE_UNLOCK_FALLBACK_PAISE);
+
   let success: boolean;
   if (birthProfileId === null) {
     const { unlockHouseForUser } = await import('./users.repo.js');
-    success = await unlockHouseForUser(userId, houseNumber);
+    success = await unlockHouseForUser(userId, houseNumber, pricePaise);
   } else {
-    success = await unlockHouseForOwnedProfile(birthProfileId, userId, houseNumber);
+    success = await unlockHouseForOwnedProfile(birthProfileId, userId, houseNumber, pricePaise);
   }
   if (!success) {
     throw Errors.conflict('Insufficient credits or house already unlocked');
@@ -596,12 +624,15 @@ export async function unlockGemstone(
   birthProfileId: string | null,
   weightKg: number | null = null,
 ): Promise<void> {
+  const { GEMSTONE_UNLOCK_FALLBACK_PAISE } = await import('./users.repo.js');
+  const pricePaise = await priceOf(userId, 'paid.gemstone', GEMSTONE_UNLOCK_FALLBACK_PAISE);
+
   let success: boolean;
   if (birthProfileId === null) {
     const { unlockGemstoneForUser } = await import('./users.repo.js');
-    success = await unlockGemstoneForUser(userId, weightKg);
+    success = await unlockGemstoneForUser(userId, weightKg, pricePaise);
   } else {
-    success = await unlockGemstoneForOwnedProfile(birthProfileId, userId, weightKg);
+    success = await unlockGemstoneForOwnedProfile(birthProfileId, userId, weightKg, pricePaise);
   }
   if (!success) {
     throw Errors.conflict('Insufficient credits or gemstone report already unlocked');

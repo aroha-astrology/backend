@@ -17,8 +17,8 @@ import {
   addWalletBalance,
   unlockHouseForUser,
   unlockGemstoneForUser,
-  HOUSE_UNLOCK_COST_PAISE,
-  GEMSTONE_UNLOCK_COST_PAISE,
+  HOUSE_UNLOCK_FALLBACK_PAISE,
+  GEMSTONE_UNLOCK_FALLBACK_PAISE,
 } from '../src/modules/users/users.repo.js';
 
 const dialect = new PgDialect();
@@ -127,14 +127,14 @@ describe('unlockHouseForUser', () => {
   it('charges, appends the house, and logs a house_unlock ledger row', async () => {
     const { updateChain, insertChain } = setupTransaction([{ walletBalancePaise: 45000 }]);
 
-    const result = await unlockHouseForUser('user-1', 7);
+    const result = await unlockHouseForUser('user-1', 7, HOUSE_UNLOCK_FALLBACK_PAISE);
 
     expect(result).toBe(true);
     const query = compile(updateChain.calls.where);
-    expect(query.params).toEqual(['user-1', HOUSE_UNLOCK_COST_PAISE, 7]);
+    expect(query.params).toEqual(['user-1', HOUSE_UNLOCK_FALLBACK_PAISE, 7]);
     expect(insertChain.calls.values).toEqual({
       userId: 'user-1',
-      delta: -HOUSE_UNLOCK_COST_PAISE,
+      delta: -HOUSE_UNLOCK_FALLBACK_PAISE,
       reason: 'house_unlock:7',
       balanceAfter: 45000,
     });
@@ -143,7 +143,7 @@ describe('unlockHouseForUser', () => {
   it('returns false and writes no ledger row when the guard fails', async () => {
     const { insertMock } = setupTransaction([]);
 
-    const result = await unlockHouseForUser('user-1', 7);
+    const result = await unlockHouseForUser('user-1', 7, HOUSE_UNLOCK_FALLBACK_PAISE);
 
     expect(result).toBe(false);
     expect(insertMock).not.toHaveBeenCalled();
@@ -154,12 +154,12 @@ describe('unlockGemstoneForUser', () => {
   it('charges, flips the flag, and logs a gemstone_unlock ledger row', async () => {
     const { insertChain } = setupTransaction([{ walletBalancePaise: 90000 }]);
 
-    const result = await unlockGemstoneForUser('user-1');
+    const result = await unlockGemstoneForUser('user-1', null, GEMSTONE_UNLOCK_FALLBACK_PAISE);
 
     expect(result).toBe(true);
     expect(insertChain.calls.values).toEqual({
       userId: 'user-1',
-      delta: -GEMSTONE_UNLOCK_COST_PAISE,
+      delta: -GEMSTONE_UNLOCK_FALLBACK_PAISE,
       reason: 'gemstone_unlock',
       balanceAfter: 90000,
     });
@@ -168,7 +168,7 @@ describe('unlockGemstoneForUser', () => {
   it('does not set gemstoneWeightKg on the update patch when no weight is given', async () => {
     const { updateChain } = setupTransaction([{ walletBalancePaise: 90000 }]);
 
-    await unlockGemstoneForUser('user-1');
+    await unlockGemstoneForUser('user-1', null, GEMSTONE_UNLOCK_FALLBACK_PAISE);
 
     expect(updateChain.calls.set).not.toHaveProperty('gemstoneWeightKg');
   });

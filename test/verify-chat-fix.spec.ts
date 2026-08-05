@@ -136,7 +136,6 @@ describe('verify: childbirth chat-fix end-to-end', () => {
       'Child birth is when as per charts',
       facts,
       false,
-      'direct',
       'en',
       [],
       now,

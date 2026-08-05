@@ -30,7 +30,10 @@ vi.mock('../src/config/db.js', () => {
 });
 
 import { userFeedback, walletTransactions } from '../src/db/schema.js';
-import { recordFeedback } from '../src/modules/feedback/feedback.repo.js';
+import {
+  recordFeedback,
+  FEEDBACK_REWARD_FALLBACK_PAISE,
+} from '../src/modules/feedback/feedback.repo.js';
 
 type Values = Record<string, unknown>;
 
@@ -118,7 +121,12 @@ describe('recordFeedback', () => {
   it("credits ₹50 on a user's first ever rating", async () => {
     const spy = runWith([]);
 
-    const result = await recordFeedback({ userId: 'user-1', rating: 5, comment: 'Loved it' });
+    const result = await recordFeedback({
+      userId: 'user-1',
+      rating: 5,
+      comment: 'Loved it',
+      rewardPaise: FEEDBACK_REWARD_FALLBACK_PAISE,
+    });
 
     expect(result).toEqual({ id: 'feedback-1', rewarded: true });
     const ledger = spy.inserts.find((i) => i.table === walletTransactions);
@@ -134,7 +142,12 @@ describe('recordFeedback', () => {
   it('stores a second rating but does NOT credit again', async () => {
     const spy = runWith([{ id: 'existing-reward-row' }]);
 
-    const result = await recordFeedback({ userId: 'user-1', rating: 2, comment: 'Meh' });
+    const result = await recordFeedback({
+      userId: 'user-1',
+      rating: 2,
+      comment: 'Meh',
+      rewardPaise: FEEDBACK_REWARD_FALLBACK_PAISE,
+    });
 
     expect(result).toEqual({ id: 'feedback-1', rewarded: false });
     expect(spy.inserts.filter((i) => i.table === walletTransactions)).toHaveLength(0);
@@ -146,13 +159,22 @@ describe('recordFeedback', () => {
   it('encrypts the comment before INSERT and leaves an omitted comment null', async () => {
     const plaintext = 'The Navamsa chart reading was spot on.';
     let spy = runWith([]);
-    await recordFeedback({ userId: 'user-1', rating: 4, comment: plaintext });
+    await recordFeedback({
+      userId: 'user-1',
+      rating: 4,
+      comment: plaintext,
+      rewardPaise: FEEDBACK_REWARD_FALLBACK_PAISE,
+    });
     const withComment = spy.inserts.find((i) => i.table === userFeedback);
     expect(withComment?.values.comment).not.toBe(plaintext);
     expect(withComment?.values.comment).toMatch(/^enc:v1:/);
 
     spy = runWith([]);
-    await recordFeedback({ userId: 'user-1', rating: 4 });
+    await recordFeedback({
+      userId: 'user-1',
+      rating: 4,
+      rewardPaise: FEEDBACK_REWARD_FALLBACK_PAISE,
+    });
     expect(spy.inserts.find((i) => i.table === userFeedback)?.values.comment).toBeNull();
   });
 });

@@ -216,6 +216,30 @@ export function partnerInputToBirthRecord(input: Record<string, unknown>): Birth
 }
 
 /**
+ * Folds the pre-purchase questionnaire answers into whatever `input` this
+ * report row already carries (partner birth details for kundli_milan/
+ * match_report, or nothing at all for every other report key), under a
+ * namespaced `answers` key so it can never collide with the flat partner
+ * fields `partnerInputToBirthRecord` reads above — that function only reads
+ * its five known keys and ignores anything else on the object.
+ *
+ * Before this, `answers` was threaded purely in-memory into ONE generation
+ * call (see `runReportGeneration`'s `userAnswers` param below) and then
+ * discarded — the highest-signal, self-disclosed text in the product (users
+ * describe real situations: "trying to conceive", "considering a job change")
+ * was thrown away the moment that one report finished. Persisting it here
+ * means it survives regeneration and, via `buildPurchaseFacts`
+ * (chat-purchase-facts.ts), becomes something chat can actually reference.
+ */
+function withAnswers(
+  partnerInput: Record<string, unknown> | null,
+  answers: Record<string, string> | null,
+): Record<string, unknown> | null {
+  if (!answers) return partnerInput;
+  return { ...(partnerInput ?? {}), answers };
+}
+
+/**
  * Best-effort push notification once a purchased report finishes generating.
  * Follows the exact fire-and-forget, never-throws contract as
  * `notifyPurchasePlanReady` in purchase-plan.service.ts — a notification
@@ -478,7 +502,7 @@ export async function purchaseReport(
         birthProfileId,
         reportKey: def.key,
         periodMonth,
-        input: partnerInput,
+        input: withAnswers(partnerInput, answers),
         pricePaidPaise: rowPrice,
         isPreview: false,
       });

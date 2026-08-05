@@ -3,8 +3,8 @@ import { db } from '../../config/db.js';
 import { userFeedback, users, walletTransactions } from '../../db/schema.js';
 import { encryptField } from '../../lib/crypto/field-encryption.js';
 
-/** Silent thank-you for the first rating a user ever leaves. */
-const FEEDBACK_REWARD_PAISE = 5000;
+/** Fail-open fallback only — the paid amount is the admin-set `referral.feedbackReward`, passed in by the caller. */
+export const FEEDBACK_REWARD_FALLBACK_PAISE = 5000;
 const FEEDBACK_REWARD_REASON = 'feedback_reward';
 
 /**
@@ -23,6 +23,8 @@ export async function recordFeedback(input: {
   userId: string;
   rating: number;
   comment?: string;
+  /** Admin-resolved reward, from `referral.feedbackReward`. 0 pays nothing. */
+  rewardPaise: number;
 }): Promise<{ id: string; rewarded: boolean }> {
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -53,17 +55,18 @@ export async function recordFeedback(input: {
       )
       .limit(1);
     if (prior) return { id: row.id, rewarded: false };
+    if (input.rewardPaise <= 0) return { id: row.id, rewarded: false };
 
     const [updated] = await tx
       .update(users)
-      .set({ walletBalancePaise: sql`${users.walletBalancePaise} + ${FEEDBACK_REWARD_PAISE}` })
+      .set({ walletBalancePaise: sql`${users.walletBalancePaise} + ${input.rewardPaise}` })
       .where(eq(users.id, input.userId))
       .returning({ walletBalancePaise: users.walletBalancePaise });
     if (!updated) return { id: row.id, rewarded: false };
 
     await tx.insert(walletTransactions).values({
       userId: input.userId,
-      delta: FEEDBACK_REWARD_PAISE,
+      delta: input.rewardPaise,
       reason: FEEDBACK_REWARD_REASON,
       balanceAfter: updated.walletBalancePaise,
     });

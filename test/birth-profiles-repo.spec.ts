@@ -19,8 +19,8 @@ import {
   unlockHouseForOwnedProfile,
 } from '../src/modules/birth-profiles/birth-profiles.repo.js';
 import {
-  GEMSTONE_UNLOCK_COST_PAISE,
-  HOUSE_UNLOCK_COST_PAISE,
+  GEMSTONE_UNLOCK_FALLBACK_PAISE,
+  HOUSE_UNLOCK_FALLBACK_PAISE,
 } from '../src/modules/users/users.repo.js';
 
 const dialect = new PgDialect();
@@ -220,7 +220,12 @@ describe('unlockGemstoneForOwnedProfile', () => {
       [{ id: 'profile-1' }],
     );
 
-    const result = await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
+    const result = await unlockGemstoneForOwnedProfile(
+      'profile-1',
+      'user-1',
+      null,
+      GEMSTONE_UNLOCK_FALLBACK_PAISE,
+    );
 
     expect(result).toBe(true);
 
@@ -228,7 +233,7 @@ describe('unlockGemstoneForOwnedProfile', () => {
     // enforces with its raw-SQL WHERE, just expressed via the query builder.
     const usersQuery = compile(usersChain.calls.where);
     expect(usersQuery.sql).toBe('("users"."id" = $1 and "users"."wallet_balance_paise" >= $2)');
-    expect(usersQuery.params).toEqual(['user-1', GEMSTONE_UNLOCK_COST_PAISE]);
+    expect(usersQuery.params).toEqual(['user-1', GEMSTONE_UNLOCK_FALLBACK_PAISE]);
 
     // Guarded on owned + not soft-deleted + not already unlocked.
     const profileQuery = compile(birthProfilesChain.calls.where);
@@ -240,7 +245,7 @@ describe('unlockGemstoneForOwnedProfile', () => {
 
     expect(insertCalls.values).toEqual({
       userId: 'user-1',
-      delta: -GEMSTONE_UNLOCK_COST_PAISE,
+      delta: -GEMSTONE_UNLOCK_FALLBACK_PAISE,
       reason: 'gemstone_unlock:profile:profile-1',
       balanceAfter: 76000,
     });
@@ -252,7 +257,7 @@ describe('unlockGemstoneForOwnedProfile', () => {
       [{ id: 'profile-1' }],
     );
 
-    await unlockGemstoneForOwnedProfile('profile-1', 'user-1', 72);
+    await unlockGemstoneForOwnedProfile('profile-1', 'user-1', 72, GEMSTONE_UNLOCK_FALLBACK_PAISE);
 
     expect(birthProfilesChain.calls.set).toMatchObject({ gemstoneWeightKg: 72 });
   });
@@ -263,7 +268,12 @@ describe('unlockGemstoneForOwnedProfile', () => {
       [{ id: 'profile-1' }],
     );
 
-    await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
+    await unlockGemstoneForOwnedProfile(
+      'profile-1',
+      'user-1',
+      null,
+      GEMSTONE_UNLOCK_FALLBACK_PAISE,
+    );
 
     expect(birthProfilesChain.calls.set).not.toHaveProperty('gemstoneWeightKg');
   });
@@ -271,7 +281,12 @@ describe('unlockGemstoneForOwnedProfile', () => {
   it('returns false without touching birth_profiles when the owner has insufficient credits', async () => {
     const { updateMock } = setupTransaction([], [{ id: 'profile-1' }]);
 
-    const result = await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
+    const result = await unlockGemstoneForOwnedProfile(
+      'profile-1',
+      'user-1',
+      null,
+      GEMSTONE_UNLOCK_FALLBACK_PAISE,
+    );
 
     expect(result).toBe(false);
     expect(updateMock).toHaveBeenCalledTimes(1);
@@ -282,7 +297,12 @@ describe('unlockGemstoneForOwnedProfile', () => {
   it('returns false when the profile is already unlocked (or not owned / deleted), even though credits were charged in this attempt', async () => {
     const { updateMock } = setupTransaction([{ walletBalancePaise: 76000 }], []);
 
-    const result = await unlockGemstoneForOwnedProfile('profile-1', 'user-1');
+    const result = await unlockGemstoneForOwnedProfile(
+      'profile-1',
+      'user-1',
+      null,
+      GEMSTONE_UNLOCK_FALLBACK_PAISE,
+    );
 
     expect(result).toBe(false);
     expect(updateMock).toHaveBeenCalledWith(users);
@@ -323,7 +343,12 @@ describe('unlockHouseForOwnedProfile', () => {
       [{ id: 'profile-1' }],
     );
 
-    const result = await unlockHouseForOwnedProfile('profile-1', 'user-1', 7);
+    const result = await unlockHouseForOwnedProfile(
+      'profile-1',
+      'user-1',
+      7,
+      HOUSE_UNLOCK_FALLBACK_PAISE,
+    );
 
     expect(result).toBe(true);
 
@@ -331,7 +356,7 @@ describe('unlockHouseForOwnedProfile', () => {
     // with its raw-SQL WHERE, just expressed via the query builder.
     const usersQuery = compile(usersChain.calls.where);
     expect(usersQuery.sql).toBe('("users"."id" = $1 and "users"."wallet_balance_paise" >= $2)');
-    expect(usersQuery.params).toEqual(['user-1', HOUSE_UNLOCK_COST_PAISE]);
+    expect(usersQuery.params).toEqual(['user-1', HOUSE_UNLOCK_FALLBACK_PAISE]);
     expect(usersChain.calls.set).toEqual({ walletBalancePaise: expect.anything() });
 
     // Guarded on owned + not soft-deleted + house not already present in
@@ -355,7 +380,7 @@ describe('unlockHouseForOwnedProfile', () => {
 
     expect(insertCalls.values).toEqual({
       userId: 'user-1',
-      delta: -HOUSE_UNLOCK_COST_PAISE,
+      delta: -HOUSE_UNLOCK_FALLBACK_PAISE,
       reason: 'house_unlock:7:profile:profile-1',
       balanceAfter: 40000,
     });
@@ -364,7 +389,12 @@ describe('unlockHouseForOwnedProfile', () => {
   it('returns false without touching birth_profiles when the owner has insufficient credits', async () => {
     const { updateMock } = setupTransaction([], [{ id: 'profile-1' }]);
 
-    const result = await unlockHouseForOwnedProfile('profile-1', 'user-1', 7);
+    const result = await unlockHouseForOwnedProfile(
+      'profile-1',
+      'user-1',
+      7,
+      HOUSE_UNLOCK_FALLBACK_PAISE,
+    );
 
     expect(result).toBe(false);
     expect(updateMock).toHaveBeenCalledTimes(1);
@@ -375,7 +405,12 @@ describe('unlockHouseForOwnedProfile', () => {
   it('returns false when the house is already unlocked (or profile not owned / deleted), even though credits were charged in this attempt', async () => {
     const { updateMock } = setupTransaction([{ walletBalancePaise: 40000 }], []);
 
-    const result = await unlockHouseForOwnedProfile('profile-1', 'user-1', 7);
+    const result = await unlockHouseForOwnedProfile(
+      'profile-1',
+      'user-1',
+      7,
+      HOUSE_UNLOCK_FALLBACK_PAISE,
+    );
 
     expect(result).toBe(false);
     expect(updateMock).toHaveBeenCalledWith(users);
@@ -388,7 +423,7 @@ describe('unlockHouseForOwnedProfile', () => {
       [{ id: 'profile-1' }],
     );
 
-    await unlockHouseForOwnedProfile('profile-1', 'user-1', 3);
+    await unlockHouseForOwnedProfile('profile-1', 'user-1', 3, HOUSE_UNLOCK_FALLBACK_PAISE);
 
     const profileQuery = compile(birthProfilesChain.calls.where);
     expect(profileQuery.params).toEqual(['profile-1', 'user-1', 3]);

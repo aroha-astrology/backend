@@ -96,8 +96,15 @@ export const ChatRequestSchema = z
       description:
         "Running summary of the conversation before `history`, as returned by a prior turn's `summary` SSE event.",
     }),
+    // Details mode was removed — the long-form generation path is gone from
+    // scholarStream/chatStream entirely (see astro.routes.ts's chatStream
+    // call). This field stays accepted-and-ignored, not deleted, purely so a
+    // stale cached app build that still posts `detailLevel: "details"` gets
+    // an ordinary direct reply instead of a 400. Safe to drop once no
+    // meaningfully-old client build is still in the wild.
     detailLevel: z.enum(['direct', 'details']).default('direct').openapi({
-      description: 'Reply depth: "direct" (short, default) or "details" (long-form, structured).',
+      description:
+        'Deprecated, accepted for backward compatibility only — every reply is now "direct" depth regardless of this value.',
     }),
     compareProfileId: z
       .string()

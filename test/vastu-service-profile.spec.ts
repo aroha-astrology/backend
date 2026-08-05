@@ -50,7 +50,7 @@ vi.mock('../src/lib/llm/vastu.js', () => ({
   translateVastuContent: vi.fn(),
 }));
 
-const { requestVastuAnalysis, askVastuQuestion, VASTU_COST_PAISE } =
+const { requestVastuAnalysis, askVastuQuestion, VASTU_FALLBACK_PAISE } =
   await import('../src/modules/vastu/vastu.service.js');
 
 function makePlanRow(overrides: Partial<VastuPlanRow> = {}): VastuPlanRow {
@@ -100,7 +100,7 @@ describe('requestVastuAnalysis — birthProfileId wiring', () => {
     expect(state.findKundliByUserId).toHaveBeenCalledWith('user-1', 'profile-a');
     expect(state.deductWalletBalance).toHaveBeenCalledWith(
       expect.any(String),
-      VASTU_COST_PAISE,
+      VASTU_FALLBACK_PAISE,
       'vastu_report',
     );
   });
@@ -150,7 +150,7 @@ describe('requestVastuAnalysis — refund on failure', () => {
 
     expect(state.addWalletBalance).toHaveBeenCalledWith(
       expect.any(String),
-      VASTU_COST_PAISE,
+      VASTU_FALLBACK_PAISE,
       'refund:vastu_report',
     );
   });
@@ -169,7 +169,7 @@ describe('requestVastuAnalysis — refund on failure', () => {
     await vi.waitFor(() => {
       expect(state.addWalletBalance).toHaveBeenCalledWith(
         expect.any(String),
-        VASTU_COST_PAISE,
+        VASTU_FALLBACK_PAISE,
         'refund:vastu_report',
       );
     });

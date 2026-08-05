@@ -22,7 +22,7 @@ describe('buildChatMessages history staleness', () => {
       lastActivityAt: new Date('2024-05-22T12:00:00Z'),
     };
 
-    const messages = buildChatMessages(s, 'What about now?', [], false, 'direct', 'en', [], now);
+    const messages = buildChatMessages(s, 'What about now?', [], false, 'en', [], now);
 
     const note = messages.find((m) => m.role === 'system' && /previous session/i.test(m.content));
     expect(note).toBeDefined();
@@ -52,7 +52,7 @@ describe('buildChatMessages history staleness', () => {
       lastActivityAt: new Date('2026-07-29T09:00:00Z'),
     };
 
-    const messages = buildChatMessages(s, 'Follow-up', [], false, 'direct', 'en', [], now);
+    const messages = buildChatMessages(s, 'Follow-up', [], false, 'en', [], now);
     const note = messages.find((m) => m.role === 'system' && /previous session/i.test(m.content));
     expect(note).toBeUndefined();
   });
@@ -65,7 +65,7 @@ describe('buildChatMessages history staleness', () => {
 
   it('still carries the explicit current date via TEMPORAL_ANCHOR after removing the redundant pre-user reminder', () => {
     const now = new Date('2026-07-31T12:00:00Z');
-    const messages = buildChatMessages(state(), 'Hello', [], false, 'direct', 'en', [], now);
+    const messages = buildChatMessages(state(), 'Hello', [], false, 'en', [], now);
     const anchor = messages.find((m) => m.role === 'system' && /TEMPORAL_ANCHOR/.test(m.content));
     expect(anchor).toBeDefined();
     expect(anchor!.content).toMatch(/July 31, 2026/);

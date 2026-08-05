@@ -80,6 +80,40 @@ export function invalidateFeatureCache(): void {
   cache = null;
 }
 
+/**
+ * The admin-set price for one feature, in paise — the single way any charge
+ * site should learn what to debit.
+ *
+ * Every paid feature MUST resolve its amount through here rather than holding
+ * its own constant. Four features previously did the latter and silently
+ * ignored the admin panel for weeks: the UI reads `useFeature(key).pricePaise`
+ * while the backend debited a hardcoded number, so users were shown one price
+ * and charged another (house insight billed ₹50 against an admin price of ₹25).
+ * `fallback` is only for the fail-open case where the key has no resolved
+ * price at all — it is not a second source of truth.
+ *
+ * Resolve ONCE per request and reuse the same value for the charge and any
+ * refund (see chatRoute in astro.routes.ts), so a mid-flight admin price
+ * change can never make a refund mismatch what was actually taken.
+ */
+export async function priceOf(userId: string, key: string, fallback: number): Promise<number> {
+  const features = await resolveFeaturesForUser(userId);
+  return features[key]?.pricePaise ?? fallback;
+}
+
+/**
+ * Like `priceOf`, but honours the feature's enabled flag: a disabled key pays
+ * nothing. Used for the referral/reward amounts, where switching the toggle off
+ * in the admin panel should stop that side of the payout rather than merely
+ * hide a button.
+ */
+export async function payoutOf(userId: string, key: string, fallback: number): Promise<number> {
+  const features = await resolveFeaturesForUser(userId);
+  const resolved = features[key];
+  if (resolved && !resolved.enabled) return 0;
+  return resolved?.pricePaise ?? fallback;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Per-user (group-aware) resolution                                          */
 /* -------------------------------------------------------------------------- */

@@ -22,6 +22,16 @@ const state = vi.hoisted(() => ({
   scholarStream: vi.fn(),
   compactHistory: vi.fn(),
   extractTurnFacts: vi.fn(),
+  // buildPurchaseFacts' four lookups (chat-purchase-facts.ts) — unmocked they
+  // hit real db.select() against a Postgres connection this suite never
+  // provides, which hangs instead of erroring (the caller's .catch(() => [])
+  // only fires once the promise actually rejects). Defaulting to empty is the
+  // correct "nothing purchased" case for every test in this file, which is
+  // about profile scoping, not purchase grounding.
+  listReportsForUser: vi.fn(() => Promise.resolve([])),
+  findGemstoneRecommendation: vi.fn(() => Promise.resolve(undefined)),
+  listPlansForUser: vi.fn(() => Promise.resolve([])),
+  listPalmReadingsForUser: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
@@ -48,6 +58,22 @@ vi.mock('../src/lib/chat-compaction.js', () => ({
 
 vi.mock('../src/lib/chat-fact-extraction.js', () => ({
   extractTurnFacts: state.extractTurnFacts,
+}));
+
+vi.mock('../src/modules/reports/reports.repo.js', () => ({
+  listReportsForUser: state.listReportsForUser,
+}));
+
+vi.mock('../src/modules/gemstone/gemstone.repo.js', () => ({
+  findGemstoneRecommendation: state.findGemstoneRecommendation,
+}));
+
+vi.mock('../src/modules/vastu/vastu.repo.js', () => ({
+  listPlansForUser: state.listPlansForUser,
+}));
+
+vi.mock('../src/modules/palm/palm.repo.js', () => ({
+  listPalmReadingsForUser: state.listPalmReadingsForUser,
 }));
 
 vi.mock('../src/lib/swarm/index.js', () => ({
@@ -116,7 +142,6 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
         'What does my Jupiter transit mean for my career?',
         [],
         undefined,
-        'direct',
         undefined,
         'en',
         undefined,
@@ -130,7 +155,7 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
 
     const call = state.scholarStream.mock.calls[0] as any[];
-    const [, , , birthTimeUnknown, , , , userFacts, extraFacts] = call;
+    const [, , , birthTimeUnknown, , , userFacts, extraFacts] = call;
     expect(birthTimeUnknown).toBe(false);
     expect(userFacts).toEqual([{ fact: 'likes hiking', followUpQuestion: null }]);
     expect(extraFacts).toContain("User's gender: male");
@@ -164,7 +189,6 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
         'What does my daughter’s chart say about her creativity?',
         [],
         undefined,
-        'direct',
         undefined,
         'en',
         undefined,
@@ -185,7 +209,7 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     });
 
     const call = state.scholarStream.mock.calls[0] as any[];
-    const [, , , birthTimeUnknown, , , , userFacts, extraFacts] = call;
+    const [, , , birthTimeUnknown, , , userFacts, extraFacts] = call;
     expect(birthTimeUnknown).toBe(true); // from the profile, not the account's 'exact'
     expect(userFacts).toEqual([{ fact: 'loves painting', followUpQuestion: null }]);
     expect(extraFacts).toContain("User's gender: female");
@@ -209,7 +233,6 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
         'What does my Jupiter transit mean?',
         [],
         undefined,
-        'direct',
         undefined,
         'en',
         undefined,
@@ -241,7 +264,6 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
         'What does my Jupiter transit mean?',
         [],
         undefined,
-        'direct',
         undefined,
         'en',
         undefined,

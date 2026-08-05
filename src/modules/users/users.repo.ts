@@ -209,19 +209,29 @@ export async function addWalletBalance(
   });
 }
 
+/** Fail-open fallbacks only — the real amounts come from the admin-set `referral.*` features. */
+export const REFERRER_BONUS_FALLBACK_PAISE = 10000;
+export const REFEREE_BONUS_FALLBACK_PAISE = 5000;
+export const REFERRAL_CAP_FALLBACK_PAISE = 200000;
+
 /**
  * Atomically apply the referral bonus. The referee (whoever redeemed a code) always
- * gets their one-time ₹50 for a valid, not-self code — the ₹2000 cap only limits how
+ * gets their one-time welcome bonus for a valid, not-self code — the cap only limits how
  * much the REFERRER can earn from referring others, so a referrer hitting their cap
  * doesn't cost the new signup their welcome bonus.
+ *
+ * All three amounts are resolved from the admin-set `referral.*` features by the
+ * caller (users.service.ts) and passed in — this function must never hold its
+ * own, or the in-app copy quoting the bonus and the amount actually paid drift
+ * apart. A zero bonus (feature toggled off) is skipped entirely rather than
+ * written as a no-op ₹0 ledger row.
  */
 export async function applyReferralBonus(
   referrerId: string,
   refereeId: string,
+  amounts: { referrerPaise: number; refereePaise: number; capPaise: number },
 ): Promise<{ referrerBonus: boolean; refereeBonus: boolean }> {
-  const REFERRER_BONUS_PAISE = 10000;
-  const REFEREE_BONUS_PAISE = 5000;
-  const CAP_PAISE = 200000;
+  const { referrerPaise, refereePaise, capPaise } = amounts;
 
   return db.transaction(async (tx) => {
     // Lock and check referrer cap
@@ -229,34 +239,38 @@ export async function applyReferralBonus(
       SELECT referral_earnings_paise FROM users WHERE id = ${referrerId} FOR UPDATE;
     `);
 
-    const referrerBonus = !!referrer && referrer.referral_earnings_paise < CAP_PAISE;
+    const referrerBonus =
+      referrerPaise > 0 && !!referrer && referrer.referral_earnings_paise < capPaise;
 
     if (referrerBonus) {
       await tx.execute(sql`
         UPDATE users
-        SET wallet_balance_paise = wallet_balance_paise + ${REFERRER_BONUS_PAISE},
-            referral_earnings_paise = referral_earnings_paise + ${REFERRER_BONUS_PAISE}
+        SET wallet_balance_paise = wallet_balance_paise + ${referrerPaise},
+            referral_earnings_paise = referral_earnings_paise + ${referrerPaise}
         WHERE id = ${referrerId};
       `);
       await tx.execute(sql`
         INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
-        VALUES (${referrerId}, ${REFERRER_BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${referrerId}));
+        VALUES (${referrerId}, ${referrerPaise}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${referrerId}));
       `);
     }
 
     // Referee's one-time welcome bonus for redeeming a valid code — unconditional,
     // independent of the referrer's cap.
-    await tx.execute(sql`
-      UPDATE users
-      SET wallet_balance_paise = wallet_balance_paise + ${REFEREE_BONUS_PAISE}
-      WHERE id = ${refereeId};
-    `);
-    await tx.execute(sql`
-      INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
-      VALUES (${refereeId}, ${REFEREE_BONUS_PAISE}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${refereeId}));
-    `);
+    const refereeBonus = refereePaise > 0;
+    if (refereeBonus) {
+      await tx.execute(sql`
+        UPDATE users
+        SET wallet_balance_paise = wallet_balance_paise + ${refereePaise}
+        WHERE id = ${refereeId};
+      `);
+      await tx.execute(sql`
+        INSERT INTO wallet_transactions (user_id, delta, reason, balance_after)
+        VALUES (${refereeId}, ${refereePaise}, 'referral_bonus', (SELECT wallet_balance_paise FROM users WHERE id = ${refereeId}));
+      `);
+    }
 
-    return { referrerBonus, refereeBonus: true };
+    return { referrerBonus, refereeBonus };
   });
 }
 
@@ -623,21 +637,35 @@ export async function countUsersMatching(q?: string): Promise<number> {
   return res?.count ?? 0;
 }
 
-/** Cost in paise to unlock one kundli house's detail view (Rs 50 = 5 credits at the old rate). Reused by `unlockHouseForOwnedProfile` (birth-profiles.repo.ts) for the additional-profile case. */
-export const HOUSE_UNLOCK_COST_PAISE = 5000;
+/**
+ * Fail-open fallback only, for when `paid.houseInsight` resolves no price at
+ * all. NOT the price — that comes from the admin panel via `priceOf()` and is
+ * passed in as `pricePaise`. Reused by `unlockHouseForOwnedProfile`
+ * (birth-profiles.repo.ts) for the additional-profile case.
+ */
+export const HOUSE_UNLOCK_FALLBACK_PAISE = 5000;
 
-export async function unlockHouseForUser(userId: string, houseNumber: number): Promise<boolean> {
+/**
+ * `pricePaise` is resolved by the caller (users.service.ts `unlockHouse`) from
+ * the admin-set feature price — this function must never invent its own, or the
+ * UI's quoted price and the actual debit drift apart.
+ */
+export async function unlockHouseForUser(
+  userId: string,
+  houseNumber: number,
+  pricePaise: number,
+): Promise<boolean> {
   return db.transaction(async (tx) => {
     const [unlocked] = await tx
       .update(users)
       .set({
-        walletBalancePaise: sql`${users.walletBalancePaise} - ${HOUSE_UNLOCK_COST_PAISE}`,
+        walletBalancePaise: sql`${users.walletBalancePaise} - ${pricePaise}`,
         unlockedHouses: sql`array_append(${users.unlockedHouses}, ${houseNumber})`,
       })
       .where(
         and(
           eq(users.id, userId),
-          gte(users.walletBalancePaise, HOUSE_UNLOCK_COST_PAISE),
+          gte(users.walletBalancePaise, pricePaise),
           sql`NOT (${houseNumber} = ANY(${users.unlockedHouses}))`,
         ),
       )
@@ -646,7 +674,7 @@ export async function unlockHouseForUser(userId: string, houseNumber: number): P
 
     await tx.insert(walletTransactions).values({
       userId,
-      delta: -HOUSE_UNLOCK_COST_PAISE,
+      delta: -pricePaise,
       reason: `house_unlock:${houseNumber}`,
       balanceAfter: unlocked.walletBalancePaise,
     });
@@ -654,31 +682,35 @@ export async function unlockHouseForUser(userId: string, houseNumber: number): P
   });
 }
 
-/** Cost in paise to unlock the full gemstone report (whole report, one-time). Rs 100 = 10 credits at the old rate. */
-export const GEMSTONE_UNLOCK_COST_PAISE = 10000;
+/** Fail-open fallback only for `paid.gemstone` — see HOUSE_UNLOCK_FALLBACK_PAISE. */
+export const GEMSTONE_UNLOCK_FALLBACK_PAISE = 10000;
 
 /**
  * Atomically spend wallet balance to unlock the gemstone report — same
  * combined deduct-and-guard primitive as `unlockHouseForUser`. Returns false
  * if the user has too little balance OR the report is already unlocked, so a
  * second click can never double-charge.
+ *
+ * `pricePaise` is the admin-resolved price, passed in by the caller — the
+ * relock/refund path below must be given the SAME value that was charged.
  */
 export async function unlockGemstoneForUser(
   userId: string,
-  weightKg: number | null = null,
+  weightKg: number | null,
+  pricePaise: number,
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     const [unlocked] = await tx
       .update(users)
       .set({
-        walletBalancePaise: sql`${users.walletBalancePaise} - ${GEMSTONE_UNLOCK_COST_PAISE}`,
+        walletBalancePaise: sql`${users.walletBalancePaise} - ${pricePaise}`,
         gemstoneUnlockedAt: new Date(),
         ...(weightKg !== null ? { gemstoneWeightKg: weightKg } : {}),
       })
       .where(
         and(
           eq(users.id, userId),
-          gte(users.walletBalancePaise, GEMSTONE_UNLOCK_COST_PAISE),
+          gte(users.walletBalancePaise, pricePaise),
           isNull(users.gemstoneUnlockedAt),
         ),
       )
@@ -687,7 +719,7 @@ export async function unlockGemstoneForUser(
 
     await tx.insert(walletTransactions).values({
       userId,
-      delta: -GEMSTONE_UNLOCK_COST_PAISE,
+      delta: -pricePaise,
       reason: 'gemstone_unlock',
       balanceAfter: unlocked.walletBalancePaise,
     });
@@ -698,13 +730,35 @@ export async function unlockGemstoneForUser(
 /**
  * Reverts an unlock when background generation fails.
  * Refunds the balance and sets gemstoneUnlockedAt back to null.
+ *
+ * The refund amount is read back from the user's own `gemstone_unlock` ledger
+ * row rather than recomputed, so it always returns exactly what was taken —
+ * even if an admin repriced `paid.gemstone` between the charge and the failure.
+ * Falls back to the resolved-at-call-time price only when no ledger row exists
+ * (a charge that predates the ledger).
  */
-export async function relockGemstoneForUser(userId: string): Promise<boolean> {
+export async function relockGemstoneForUser(
+  userId: string,
+  fallbackPaise: number = GEMSTONE_UNLOCK_FALLBACK_PAISE,
+): Promise<boolean> {
   return db.transaction(async (tx) => {
+    const [charge] = await tx
+      .select({ delta: walletTransactions.delta })
+      .from(walletTransactions)
+      .where(
+        and(
+          eq(walletTransactions.userId, userId),
+          eq(walletTransactions.reason, 'gemstone_unlock'),
+        ),
+      )
+      .orderBy(desc(walletTransactions.createdAt))
+      .limit(1);
+    const refundPaise = charge ? Math.abs(charge.delta) : fallbackPaise;
+
     const [relocked] = await tx
       .update(users)
       .set({
-        walletBalancePaise: sql`${users.walletBalancePaise} + ${GEMSTONE_UNLOCK_COST_PAISE}`,
+        walletBalancePaise: sql`${users.walletBalancePaise} + ${refundPaise}`,
         gemstoneUnlockedAt: null,
       })
       .where(and(eq(users.id, userId), isNotNull(users.gemstoneUnlockedAt)))
@@ -713,7 +767,7 @@ export async function relockGemstoneForUser(userId: string): Promise<boolean> {
 
     await tx.insert(walletTransactions).values({
       userId,
-      delta: GEMSTONE_UNLOCK_COST_PAISE,
+      delta: refundPaise,
       reason: 'refund:gemstone_report',
       balanceAfter: relocked.walletBalancePaise,
     });

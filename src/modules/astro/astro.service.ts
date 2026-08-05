@@ -11,7 +11,6 @@ import {
   moonSignPeriodicPrediction,
   sunSignPrediction,
   type PeriodicPeriod,
-  type ChatDetailLevel,
 } from '../../lib/swarm/index.js';
 import {
   dateToJulianDay,
@@ -22,6 +21,7 @@ import {
 } from '../../lib/astro-engine/index.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
+import { buildPurchaseFacts } from '../../lib/chat-purchase-facts.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
 import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
@@ -1126,7 +1126,6 @@ export async function* chatStream(
   message: string,
   history: ChatTurn[],
   incomingSummary: string | undefined,
-  detailLevel: ChatDetailLevel = 'direct',
   signal?: AbortSignal,
   locale: string = 'en',
   compareProfileId?: string,
@@ -1273,12 +1272,23 @@ export async function* chatStream(
         }).catch(() => [])
       : [];
 
+  // What the user has already paid for and read — reports, gemstone
+  // recommendation, unlocked houses, vastu, palm — so chat can't contradict a
+  // report the user already trusts. Read fresh every turn from the source
+  // tables themselves (not cached), so it's never stale.
+  const purchaseFacts = await buildPurchaseFacts(
+    userId,
+    profile?.birthProfileId ?? null,
+    profile,
+  ).catch(() => []);
+
   const extraFacts = [
     ...profileFacts,
     ...panchangFacts,
     ...secondChartFacts,
     ...matchReportFacts,
     ...relocationFacts,
+    ...purchaseFacts,
   ];
 
   const tokenStream = scholarStream(
@@ -1286,11 +1296,14 @@ export async function* chatStream(
     message,
     groundingSource,
     birthTimeUnknown,
-    detailLevel,
     signal,
     locale,
     userFacts,
     extraFacts,
+    // Same field voice already has and uses for its call-connected opener
+    // (buildCallSystemPrompt) — profile.displayName covers both the primary
+    // account and an additional saved profile correctly (see profile-context.ts).
+    profile?.displayName,
   );
 
   // Output-side backstop for the death/self-harm policy: the input filter

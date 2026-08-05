@@ -6,13 +6,7 @@ import {
   ProfileIdParamSchema,
   ProfileSchema,
 } from './profiles.schemas.js';
-import {
-  PROFILE_CREATION_COST_PAISE,
-  activateProfile,
-  createProfile,
-  deleteProfile,
-  listProfiles,
-} from './profiles.service.js';
+import { activateProfile, createProfile, deleteProfile, listProfiles } from './profiles.service.js';
 
 const ErrorSchema = z
   .object({
@@ -58,7 +52,11 @@ const createProfileRoute = createRoute({
   tags: ['Profiles'],
   summary: 'Create a new additional profile and make it active',
   description:
-    `Charges Rs ${PROFILE_CREATION_COST_PAISE / 100}. The new profile becomes the ` +
+    // Deliberately not a literal amount: the price is admin-settable at runtime
+    // (feature_flags `paid.profileCreation`), so any number baked in here would
+    // go stale the first time it is changed. Clients read the live price from
+    // /v1/me's resolved features.
+    'Charges the current `paid.profileCreation` price. The new profile becomes the ' +
     'active profile immediately and kundli generation starts in the ' +
     'background — poll GET /v1/kundli for status.',
   security: [{ bearerAuth: [] }],

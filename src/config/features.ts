@@ -12,8 +12,16 @@
 export interface FeatureDef {
   key: string;
   label: string;
-  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang';
+  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral';
   defaultEnabled: boolean;
+  /**
+   * For `paid`/`reports` keys this is a PRICE the user is charged. For
+   * `referral` keys it is a PAYOUT the user receives (or, for the cap, a
+   * ceiling). Both are plain paise amounts resolved the same way — see
+   * `priceOf()`/`payoutOf()` in features.service.ts. Any money amount in the
+   * app belongs here rather than in a module-level constant: four features
+   * previously kept their own and silently ignored the admin panel.
+   */
   defaultPricePaise?: number;
 }
 
@@ -245,6 +253,46 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Planning to Buy card',
     group: 'panchang',
     defaultEnabled: true,
+  },
+  // referral — payouts OUT to users, not prices charged to them. Registered
+  // here (rather than as constants in users.repo.ts, where they used to live)
+  // so the admin can tune the referral economics without a deploy, and so the
+  // in-app copy can quote the live amount instead of a baked-in number.
+  //
+  // `enabled: false` on either bonus key pays 0 for that side, which is how the
+  // referral programme is switched off — see `payoutOf()` in features.service.
+  {
+    key: 'referral.referrerBonus',
+    label: 'Referral bonus — referrer',
+    group: 'referral',
+    defaultEnabled: true,
+    defaultPricePaise: 10000,
+  },
+  {
+    key: 'referral.refereeBonus',
+    label: 'Referral bonus — new user',
+    group: 'referral',
+    defaultEnabled: true,
+    defaultPricePaise: 5000,
+  },
+  // A ceiling, not a payout: total referral earnings one user may accumulate.
+  // `enabled` is ignored for this key.
+  {
+    key: 'referral.earningsCap',
+    label: 'Referral earnings cap (per user)',
+    group: 'referral',
+    defaultEnabled: true,
+    defaultPricePaise: 200000,
+  },
+  // One-time thank-you credited the first time a user submits an in-app
+  // rating. Same reasoning as the referral keys above — an admin-tunable
+  // payout, not a hardcoded reward.
+  {
+    key: 'referral.feedbackReward',
+    label: 'Feedback thank-you credit (one-time)',
+    group: 'referral',
+    defaultEnabled: true,
+    defaultPricePaise: 5000,
   },
 ] as const;
 

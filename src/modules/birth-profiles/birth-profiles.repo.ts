@@ -14,7 +14,7 @@ import {
   encryptJson,
   decryptJson,
 } from '../../lib/crypto/field-encryption.js';
-import { GEMSTONE_UNLOCK_COST_PAISE, HOUSE_UNLOCK_COST_PAISE } from '../users/users.repo.js';
+import { GEMSTONE_UNLOCK_FALLBACK_PAISE } from '../users/users.repo.js';
 
 /**
  * dateOfBirth/timeOfBirth/placeOfBirth/gotra are encrypted at rest (third-
@@ -184,18 +184,17 @@ class UnlockGuardFailed extends Error {}
 export async function unlockGemstoneForOwnedProfile(
   id: string,
   ownerUserId: string,
-  weightKg: number | null = null,
+  weightKg: number | null,
+  pricePaise: number,
 ): Promise<boolean> {
   try {
     return await db.transaction(async (tx) => {
       const [charged] = await tx
         .update(users)
         .set({
-          walletBalancePaise: sql`${users.walletBalancePaise} - ${GEMSTONE_UNLOCK_COST_PAISE}`,
+          walletBalancePaise: sql`${users.walletBalancePaise} - ${pricePaise}`,
         })
-        .where(
-          and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, GEMSTONE_UNLOCK_COST_PAISE)),
-        )
+        .where(and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, pricePaise)))
         .returning({ walletBalancePaise: users.walletBalancePaise });
       if (!charged) throw new UnlockGuardFailed();
 
@@ -219,7 +218,7 @@ export async function unlockGemstoneForOwnedProfile(
 
       await tx.insert(walletTransactions).values({
         userId: ownerUserId,
-        delta: -GEMSTONE_UNLOCK_COST_PAISE,
+        delta: -pricePaise,
         reason: `gemstone_unlock:profile:${id}`,
         balanceAfter: charged.walletBalancePaise,
       });
@@ -235,10 +234,16 @@ export async function unlockGemstoneForOwnedProfile(
 /**
  * Reverts an unlock for an owned profile when background generation fails.
  * Refunds the balance and sets gemstoneUnlockedAt back to null.
+ *
+ * Refunds exactly what was charged by reading this profile's own
+ * `gemstone_unlock:profile:<id>` ledger row, so an admin reprice between the
+ * charge and the failure can never over- or under-refund. Mirrors
+ * `relockGemstoneForUser` in users.repo.ts.
  */
 export async function relockGemstoneForOwnedProfile(
   id: string,
   ownerUserId: string,
+  fallbackPaise: number = GEMSTONE_UNLOCK_FALLBACK_PAISE,
 ): Promise<boolean> {
   try {
     return await db.transaction(async (tx) => {
@@ -256,10 +261,23 @@ export async function relockGemstoneForOwnedProfile(
         .returning({ id: birthProfiles.id });
       if (!relocked) throw new UnlockGuardFailed();
 
+      const [charge] = await tx
+        .select({ delta: walletTransactions.delta })
+        .from(walletTransactions)
+        .where(
+          and(
+            eq(walletTransactions.userId, ownerUserId),
+            eq(walletTransactions.reason, `gemstone_unlock:profile:${id}`),
+          ),
+        )
+        .orderBy(desc(walletTransactions.createdAt))
+        .limit(1);
+      const refundPaise = charge ? Math.abs(charge.delta) : fallbackPaise;
+
       const [refunded] = await tx
         .update(users)
         .set({
-          walletBalancePaise: sql`${users.walletBalancePaise} + ${GEMSTONE_UNLOCK_COST_PAISE}`,
+          walletBalancePaise: sql`${users.walletBalancePaise} + ${refundPaise}`,
         })
         .where(eq(users.id, ownerUserId))
         .returning({ walletBalancePaise: users.walletBalancePaise });
@@ -267,7 +285,7 @@ export async function relockGemstoneForOwnedProfile(
 
       await tx.insert(walletTransactions).values({
         userId: ownerUserId,
-        delta: GEMSTONE_UNLOCK_COST_PAISE,
+        delta: refundPaise,
         reason: `refund:gemstone_report:profile:${id}`,
         balanceAfter: refunded.walletBalancePaise,
       });
@@ -313,15 +331,14 @@ export async function unlockHouseForOwnedProfile(
   id: string,
   ownerUserId: string,
   houseNumber: number,
+  pricePaise: number,
 ): Promise<boolean> {
   try {
     return await db.transaction(async (tx) => {
       const [charged] = await tx
         .update(users)
-        .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${HOUSE_UNLOCK_COST_PAISE}` })
-        .where(
-          and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, HOUSE_UNLOCK_COST_PAISE)),
-        )
+        .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${pricePaise}` })
+        .where(and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, pricePaise)))
         .returning({ walletBalancePaise: users.walletBalancePaise });
       if (!charged) throw new UnlockGuardFailed();
 
@@ -344,7 +361,7 @@ export async function unlockHouseForOwnedProfile(
 
       await tx.insert(walletTransactions).values({
         userId: ownerUserId,
-        delta: -HOUSE_UNLOCK_COST_PAISE,
+        delta: -pricePaise,
         reason: `house_unlock:${houseNumber}:profile:${id}`,
         balanceAfter: charged.walletBalancePaise,
       });

@@ -17,6 +17,7 @@ import {
 } from './feedback.repo.js';
 import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 import { acquire as acquireLock, release as releaseLock } from '../../lib/cache/locks.js';
+import { isFreeFollowUp } from '../../lib/chat-follow-up.js';
 
 /** Fallback cost per chat question if the `paid.chat` feature has no resolved
  * price (registry/DB lookup failure) — matches FEATURE_REGISTRY's
@@ -580,21 +581,35 @@ astroRouter.openapi(chatRoute, async (c) => {
   const chatMessageCostPaise =
     features['paid.chat']?.pricePaise ?? CHAT_MESSAGE_COST_FALLBACK_PAISE;
 
+  // The model's own suggested "Ask next:" follow-up is free, ONE tap, verified
+  // against the SERVER'S stored transcript — never a client-supplied flag,
+  // which would be trivially spoofable into free chat. See chat-follow-up.ts
+  // for why this exists: the chip was built to keep a conversation going and
+  // then charged full price for using it, which defeated its own purpose.
+  const isFollowUpTap = isFreeFollowUp(body.message, storedHistory);
+  const amountToChargePaise = isFollowUpTap ? 0 : chatMessageCostPaise;
+
   // Charge atomically before any generation starts — same balance-check-and-
   // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
   // sends can't both succeed against a balance that only covers one.
   // Refunded below (same fire-and-forget addCredits pattern as
   // vastu.service.ts) if generation throws or comes back with no content —
-  // the user shouldn't pay for a question that got no answer.
+  // the user shouldn't pay for a question that got no answer. Skipped
+  // entirely for a free follow-up: there's nothing to charge or refund, and a
+  // zero-delta 'refund:chat_message' row would misleadingly suggest one.
   let charged: boolean;
-  try {
-    charged = await deductWalletBalance(user.id, chatMessageCostPaise, 'chat_message');
-  } catch (err) {
-    // The lock is held at this point and streamSSE's `finally` (the only other
-    // release path) is never reached if we throw here, so it must be released
-    // explicitly or this user is locked out of chat until the TTL expires.
-    await releaseInflightLock();
-    throw err;
+  if (amountToChargePaise === 0) {
+    charged = true;
+  } else {
+    try {
+      charged = await deductWalletBalance(user.id, amountToChargePaise, 'chat_message');
+    } catch (err) {
+      // The lock is held at this point and streamSSE's `finally` (the only other
+      // release path) is never reached if we throw here, so it must be released
+      // explicitly or this user is locked out of chat until the TTL expires.
+      await releaseInflightLock();
+      throw err;
+    }
   }
   if (!charged) {
     await releaseInflightLock();
@@ -608,7 +623,12 @@ astroRouter.openapi(chatRoute, async (c) => {
         body.message,
         storedHistory,
         storedSummary,
-        body.detailLevel,
+        // body.detailLevel is intentionally NOT forwarded — Details mode was
+        // removed (the UI toggle that drove it was deleted long before this;
+        // the backend kept generating an unreachable long-form reply nobody
+        // could ask for). `detailLevel` stays in ChatRequestSchema, accepted
+        // and ignored, only so an old cached app build that still posts it
+        // doesn't get a 400 — see astro.schemas.ts.
         signal,
         body.locale,
         body.compareProfileId,
@@ -639,11 +659,11 @@ astroRouter.openapi(chatRoute, async (c) => {
         }
       }
       if (!signal.aborted && !stream.aborted) {
-        if (!fullContent.trim()) {
+        if (!fullContent.trim() && amountToChargePaise > 0) {
           // Generation "succeeded" with nothing to show (e.g. hit the
           // token ceiling before any content could be flushed) — don't
           // charge for a question that got no answer.
-          await addWalletBalance(user.id, chatMessageCostPaise, 'refund:chat_message').catch(
+          await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(
             () => {},
           );
         }
@@ -692,7 +712,9 @@ astroRouter.openapi(chatRoute, async (c) => {
       // emit a terminal event (and never leak internals to the client).
       logger.error({ err, userId: user.id }, 'chat stream failed');
       // Don't charge for a question the LLM never actually answered.
-      await addWalletBalance(user.id, chatMessageCostPaise, 'refund:chat_message').catch(() => {});
+      if (amountToChargePaise > 0) {
+        await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
+      }
       if (!signal.aborted && !stream.aborted) {
         await stream.writeSSE({
           event: 'error',
