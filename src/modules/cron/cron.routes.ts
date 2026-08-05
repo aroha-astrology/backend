@@ -473,8 +473,8 @@ cronRouter.openapi(palmReapStaleRoute, async (c) => {
 
 // ---------------------------------------------------------------------------
 // Low-balance share nudge — one push per dip below ₹100, rearmed once the
-// balance recovers (see low-balance-alert.service.ts). Wired to run every 30
-// minutes (see scripts/cron-low-balance-alert.sh).
+// balance recovers (see low-balance-alert.service.ts). Wired to run once a
+// day (see scripts/cron-low-balance-alert.sh).
 // ---------------------------------------------------------------------------
 
 const lowBalanceAlertRoute = createRoute({
@@ -483,7 +483,7 @@ const lowBalanceAlertRoute = createRoute({
   tags: ['Cron'],
   summary: 'Nudge users below the wallet-balance threshold to share & earn',
   description:
-    'Machine-to-machine endpoint, meant to run every 30 minutes via the OS crontab. Sends a ' +
+    'Machine-to-machine endpoint, meant to run once a day via the OS crontab. Sends a ' +
     '"share & earn ₹100" push (+ Bell inbox row) to every user whose wallet balance is below ' +
     '₹100 and who has not already been nudged since their balance last recovered to ₹100 or ' +
     'above. Authenticated via the X-Cron-Secret header.',
