@@ -640,7 +640,11 @@ function userSearchWhere(q?: string) {
   );
 }
 
-const USER_SORT_COLUMNS = { createdAt: users.createdAt, lastActiveAt: users.lastActiveAt } as const;
+const USER_SORT_COLUMNS = {
+  createdAt: users.createdAt,
+  lastActiveAt: users.lastActiveAt,
+  walletBalancePaise: users.walletBalancePaise,
+} as const;
 export type UserSortBy = keyof typeof USER_SORT_COLUMNS;
 
 /** Powers both the Telegram `/users` command (no `q`) and the admin dashboard's `GET /v1/admin/users?q=` search. */

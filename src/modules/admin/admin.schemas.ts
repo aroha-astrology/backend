@@ -124,7 +124,7 @@ export const AdminUsersQuerySchema = z.object({
   q: z.string().optional(),
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  sortBy: z.enum(['createdAt', 'lastActiveAt']).default('createdAt'),
+  sortBy: z.enum(['createdAt', 'lastActiveAt', 'walletBalancePaise']).default('createdAt'),
   sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
 
