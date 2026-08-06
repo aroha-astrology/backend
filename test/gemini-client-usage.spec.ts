@@ -77,6 +77,29 @@ function roundRobinPickKey(keys: string[]) {
   };
 }
 
+/**
+ * Two-tier stand-in honouring pickKey()'s real contract: free keys occupy the
+ * low indices, the paid reserve the last one, and `preferPaid` flips the scan
+ * order. Mirrors the behaviour proven against the real Redis-backed pool in
+ * test/gemini-key-pool.spec.ts.
+ */
+function tieredPickKey(freeKeys: string[], paidKey: string) {
+  const paidIndex = freeKeys.length;
+  return (exclude?: Set<number>, preferPaid = false) => {
+    const excluded = exclude ?? new Set<number>();
+    if (preferPaid && !excluded.has(paidIndex)) {
+      return Promise.resolve({ index: paidIndex, key: paidKey, tier: 'paid' as const });
+    }
+    for (let i = 0; i < freeKeys.length; i++) {
+      if (!excluded.has(i)) return Promise.resolve({ index: i, key: freeKeys[i], tier: 'free' });
+    }
+    if (!excluded.has(paidIndex)) {
+      return Promise.resolve({ index: paidIndex, key: paidKey, tier: 'paid' as const });
+    }
+    return Promise.resolve(null);
+  };
+}
+
 /** A successful SSE response carrying the given delta chunks, for stream() tests. */
 function makeSseResponse(deltas: string[]) {
   const encoder = new TextEncoder();
@@ -805,5 +828,127 @@ describe("stream() key pool wiring (mirrors generate()'s failover logic)", () =>
     expect(authHeaders).toEqual(['Bearer key-0', 'Bearer key-1']);
     expect(elapsedMs).toBeLessThan(500);
     expect(state.markRateLimited).toHaveBeenCalledWith(0, 5000);
+  });
+});
+
+describe('paid reserve escalation on the last attempt', () => {
+  // A 503 never calls markRateLimited(), so every free key still looks healthy
+  // and pickKey() would keep handing out free keys forever. Before this, all
+  // four attempts were spent on the free tier and the reserve stayed idle while
+  // the user got nothing.
+  const TRANSLATION_PROFILE = {
+    name: 'kundli-content-translation',
+    temperature: 0.5,
+    jsonMode: true,
+    stream: false,
+    maxTokens: 2048,
+  };
+
+  function overloaded() {
+    return {
+      status: 503,
+      ok: false,
+      headers: new Headers(),
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({ error: { code: 503, message: 'high demand', status: 'UNAVAILABLE' } }),
+        ),
+    };
+  }
+
+  beforeEach(() => {
+    state.poolSize.mockReturnValue(4);
+    state.pickKey.mockImplementation(tieredPickKey(['free-0', 'free-1', 'free-2'], 'paid-key'));
+  });
+
+  it('generate() reaches the paid key on attempt 4 when 503s exhaust the free tier', async () => {
+    // This is the translation path (translateYogaDoshaContent -> generate).
+    // Fake timers so the 1s + 2s + 4s inter-attempt backoff doesn't make this
+    // a 7-second test.
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(overloaded())
+      .mockResolvedValueOnce(overloaded())
+      .mockResolvedValueOnce(overloaded())
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: new Headers(),
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({
+              choices: [{ message: { content: '{"yogas":[]}' }, finish_reason: 'stop' }],
+            }),
+          ),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const resultPromise = generate({
+      profile: TRANSLATION_PROFILE,
+      messages: [{ role: 'user', content: 'translate' }],
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    const result = await resultPromise;
+
+    expect(result).toBe('{"yogas":[]}');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    const authHeaders = fetchMock.mock.calls.map(
+      (call) => (call[1] as { headers: Record<string, string> }).headers.Authorization,
+    );
+    // First three on the free tier, the last-ditch attempt on the reserve.
+    expect(authHeaders.slice(0, 3).every((h) => h.startsWith('Bearer free-'))).toBe(true);
+    expect(authHeaders[3]).toBe('Bearer paid-key');
+  });
+
+  it('does not touch the reserve when a free key answers on an earlier attempt', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(overloaded())
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: new Headers(),
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }),
+          ),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await generate({
+      profile: TRANSLATION_PROFILE,
+      messages: [{ role: 'user', content: 'translate' }],
+    });
+
+    const authHeaders = fetchMock.mock.calls.map(
+      (call) => (call[1] as { headers: Record<string, string> }).headers.Authorization,
+    );
+    expect(authHeaders).not.toContain('Bearer paid-key');
+  });
+
+  it('never spends a billed key regenerating a reply the caller already abandoned', async () => {
+    const ac = new AbortController();
+    const fetchMock = vi.fn().mockImplementation(() => {
+      ac.abort();
+      return Promise.reject(
+        Object.assign(new Error('This operation was aborted'), {
+          name: 'AbortError',
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      generate({
+        profile: TRANSLATION_PROFILE,
+        messages: [{ role: 'user', content: 'translate' }],
+        signal: ac.signal,
+      }),
+    ).rejects.toThrow(GeminiError);
+
+    // One attempt, no retries, no paid key, and no "Gemini unreachable" page.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(state.alertThrottled).not.toHaveBeenCalled();
   });
 });
