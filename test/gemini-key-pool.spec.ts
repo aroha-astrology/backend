@@ -313,6 +313,31 @@ describe('paid reserve tier', () => {
     expect(picked).toEqual({ index: PAID_INDEX, key: 'paid-key', tier: 'paid' });
   });
 
+  it('preferPaid reaches the reserve even with every free key healthy', async () => {
+    // The last-attempt escalation in gemini-client.ts: three attempts have
+    // already failed on the free tier for a reason that never sets a cooldown
+    // (a 503, a timeout), so free keys still look perfectly usable. Without
+    // this the reserve stayed idle while the request failed the user.
+    const picked = await pool.pickKey(new Set(), true);
+    expect(picked).toEqual({ index: PAID_INDEX, key: 'paid-key', tier: 'paid' });
+  });
+
+  it('preferPaid falls back to a free key when the reserve is cooling', async () => {
+    await pool.markRateLimited(PAID_INDEX, 60_000);
+    const picked = await pool.pickKey(new Set(), true);
+    expect(picked!.tier).toBe('free');
+  });
+
+  it('preferPaid falls back to the free tier when no reserve is configured', async () => {
+    // A deployment with GEMINI_PAID_KEY_POOL unset must not turn its last
+    // attempt into "no key at all" — that would fail requests the free pool
+    // could still serve.
+    state.paidKeyPool = [];
+    const picked = await pool.pickKey(new Set(), true);
+    expect(picked).not.toBeNull();
+    expect(picked!.tier).toBe('free');
+  });
+
   it('goes back to the free tier as soon as one free cooldown expires', async () => {
     await pool.markRateLimited(0, 60_000);
     await pool.markRateLimited(1, 1000);

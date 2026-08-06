@@ -299,7 +299,14 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
     const keyIterations = Math.max(1, poolSize());
 
     for (let keyIter = 0; keyIter < keyIterations; keyIter++) {
-      const picked = await pickKey(triedThisAttempt);
+      // Last attempt before this request fails the user: reach for the paid
+      // reserve FIRST rather than spending a fourth try on the same free tier
+      // that already failed three times. Without this the reserve was only ever
+      // reachable via a 429 cooldown, so a Gemini 503 ("model experiencing high
+      // demand") or a string of timeouts — the failures most likely to be
+      // capacity-related, and so most likely to be fixed by the paid tier —
+      // exhausted every attempt on free keys and gave up with the reserve idle.
+      const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS);
       if (!picked) {
         // Every key is either already tried this attempt or cooling down.
         poolExhausted = true;
@@ -345,6 +352,15 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
     abort.clear();
 
     if (networkErr !== undefined) {
+      // The CALLER's signal aborted, so this "network error" is just the client
+      // hanging up (see makeAbort — opts.signal is chained into the per-attempt
+      // controller). Retrying regenerates a reply nobody is listening to, the
+      // last attempt would spend a BILLED key doing it, and the alert below
+      // would page for a user who merely closed the app. Bail on all three.
+      if (opts.signal?.aborted) {
+        logger.info({ profile: opts.profile.name, attempt }, 'Gemini request abandoned by caller');
+        throw new GeminiError('Request aborted by caller');
+      }
       logger.warn({ err: networkErr, attempt }, 'Gemini request network error/timeout');
       if (attempt < MAX_ATTEMPTS) {
         await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
@@ -505,7 +521,9 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       const keyIterations = Math.max(1, poolSize());
 
       for (let keyIter = 0; keyIter < keyIterations; keyIter++) {
-        const picked = await pickKey(triedThisAttempt);
+        // See generate(): last attempt escalates to the paid reserve rather
+        // than failing the user on a free tier that has already failed.
+        const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS);
         if (!picked) {
           poolExhausted = true;
           break;
@@ -543,6 +561,14 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       }
 
       if (networkErr !== undefined) {
+        // See generate(): the caller hung up, so this is not a Gemini fault.
+        // This is the common one — a user closing the app mid-reply is exactly
+        // what produced the "chat (stream): gave up after 4 attempts —
+        // AbortError" alert, indistinguishable from a real outage.
+        if (opts.signal?.aborted) {
+          logger.info({ profile: opts.profile.name, attempt }, 'Gemini stream abandoned by caller');
+          throw new GeminiError('Request aborted by caller');
+        }
         logger.warn({ err: networkErr, attempt }, 'Gemini stream request network error/timeout');
         if (attempt < MAX_ATTEMPTS) {
           await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));

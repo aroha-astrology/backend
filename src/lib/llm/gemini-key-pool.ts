@@ -167,17 +167,30 @@ async function scanRange(
  * every free key is excluded or cooling down, so a normal day never touches it
  * and never bills anything.
  *
+ * `preferPaid` inverts that order for one call: the caller has already burned
+ * its free-tier attempts and this is the last try before the request fails the
+ * user, so a bill beats an error. It only REORDERS — with no paid key
+ * configured (or one that is cooling down) it falls through to the normal
+ * free-first scan, so a deployment without a reserve behaves exactly as before
+ * rather than failing a request the free pool could still have served.
+ *
  * Returns `null` only when every index in BOTH tiers is excluded or cooling
  * down — i.e. the whole pool, reserve included, is currently exhausted.
  */
 export async function pickKey(
   exclude?: Set<number>,
+  preferPaid = false,
 ): Promise<{ index: number; key: string; tier: KeyTier } | null> {
   const total = poolSize();
   if (total === 0) return null;
 
   const excluded = exclude ?? new Set<number>();
   const free = freeCount();
+
+  if (preferPaid) {
+    const reserve = await scanRange(free, total, excluded, false);
+    if (reserve) return reserve;
+  }
 
   const fromFree = await scanRange(0, free, excluded, true);
   if (fromFree) return fromFree;
