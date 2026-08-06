@@ -43,6 +43,11 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // Kitab remedy list) has been checked end-to-end. Not a bottom-tab slot
   // (those five are fixed); this gates a ListRow in the profile drawer menu.
   { key: 'nav.remedies', label: 'Remedies menu entry', group: 'nav', defaultEnabled: false },
+  // Gates the /shlokas library page (list + per-shloka detail). Split from
+  // home.shlokas below the same way nav.vastu is split from home.vastuCard:
+  // one key hides the entry point, the other closes the page itself. Ships
+  // dark per the standing rule.
+  { key: 'nav.shlokas', label: 'Shlokas & Japs page', group: 'nav', defaultEnabled: false },
   // home
   { key: 'home.todayReading', label: 'Today Reading card', group: 'home', defaultEnabled: true },
   { key: 'home.kundliCard', label: 'Kundli card', group: 'home', defaultEnabled: true },
@@ -68,6 +73,16 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   {
     key: 'home.palmReading',
     label: 'Palm Reading card (home)',
+    group: 'home',
+    defaultEnabled: false,
+  },
+  // Home entry point for the Shlokas & Japs library. Free — deliberately has
+  // no `paid.*` counterpart, unlike every other content feature here. Ships
+  // dark per the standing rule; turn on from Admin -> Features once the
+  // artwork and chant audio have been checked on a real device.
+  {
+    key: 'home.shlokas',
+    label: 'Shlokas & Japs card (home)',
     group: 'home',
     defaultEnabled: false,
   },
