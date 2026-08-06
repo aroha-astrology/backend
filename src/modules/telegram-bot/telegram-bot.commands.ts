@@ -10,7 +10,9 @@ import {
   findActiveUserById,
   addWalletBalance,
   deductWalletBalance,
+  listRefundsBetween,
 } from '../users/users.repo.js';
+import { resolveDateRangePreset } from '../admin/admin.repo.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
 import { getFeedbackVoteCountsByUser } from '../astro/feedback.repo.js';
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
@@ -166,6 +168,77 @@ export async function cmdJobs(): Promise<string> {
   }
 
   return `*Job Alerts* ⚠️\n\nFailed Kundlis: ${failedKundlis}\n\nCheck server logs for more details.`;
+}
+
+/**
+ * "Did anything go wrong for a user today?" — answered from the refund ledger.
+ *
+ * Every user-facing failure that cost somebody money writes a `refund:*` row
+ * before the error is surfaced (see the chat handler's catch in
+ * astro.routes.ts, and the same pattern in vastu/reports/gemstone). Reading
+ * those back is both cheaper and more honest than grepping the pm2 log: it
+ * lists exactly the users who paid for something and didn't get it, with no
+ * false positives from a client that merely hung up.
+ */
+export async function cmdIncidents(dayArg: string | undefined): Promise<string> {
+  const preset = (dayArg || 'today').toLowerCase();
+  if (preset !== 'today' && preset !== 'yesterday') {
+    return escapeMarkdown('Usage: /incidents [today|yesterday]');
+  }
+
+  const refunds = await listRefundsBetween(resolveDateRangePreset(preset));
+
+  if (refunds.length === 0) {
+    return escapeMarkdown(`No user-affecting failures ${preset}. ✅`);
+  }
+
+  const affectedUsers = new Set(refunds.map((r) => r.userId));
+  const totalPaise = refunds.reduce((sum, r) => sum + r.delta, 0);
+
+  // Group by what broke, so a systemic outage reads as one big bucket rather
+  // than as N unrelated-looking lines.
+  const byReason = new Map<string, typeof refunds>();
+  for (const r of refunds) {
+    const key = r.reason.replace(/^refund:/, '');
+    byReason.set(key, [...(byReason.get(key) ?? []), r]);
+  }
+
+  // Telegram hard-caps a message at 4096 chars; keep the newest detail and
+  // summarise the rest rather than having the whole reply rejected.
+  const MAX_ROWS = 25;
+  let rowsShown = 0;
+  const sections: string[] = [];
+
+  for (const [reason, rows] of [...byReason.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    const lines: string[] = [];
+    for (const r of rows) {
+      if (rowsShown >= MAX_ROWS) break;
+      const name = escapeMarkdown(r.displayName || 'No Name');
+      const contact = escapeMarkdown(r.phoneE164 || '—');
+      const amount = escapeMarkdown(formatRupees(r.delta));
+      const time = escapeMarkdown(
+        r.createdAt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }),
+      );
+      lines.push(`• *${name}* \\| ${contact} \\| ${amount} \\| ${time} IST`);
+      rowsShown++;
+    }
+    sections.push(`*${escapeMarkdown(reason)}* \\(${rows.length}\\)\n${lines.join('\n')}`);
+    if (rowsShown >= MAX_ROWS) break;
+  }
+
+  const omitted = refunds.length - rowsShown;
+  const header =
+    `*Incidents \\— ${escapeMarkdown(preset)} \\(IST\\)* ⚠️\n\n` +
+    `${refunds.length} failure${refunds.length === 1 ? '' : 's'} \\| ` +
+    `${affectedUsers.size} user${affectedUsers.size === 1 ? '' : 's'} affected \\| ` +
+    `${escapeMarkdown(formatRupees(totalPaise))} refunded\n\n`;
+
+  let reply = header + sections.join('\n\n');
+  if (omitted > 0) {
+    reply += escapeMarkdown(`\n\n…and ${omitted} more.`);
+  }
+  reply += escapeMarkdown('\n\nAll amounts above were auto-refunded at the time of failure.');
+  return reply;
 }
 
 export async function cmdCoupons(): Promise<string> {

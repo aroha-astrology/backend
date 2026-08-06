@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({
   addWalletBalance: vi.fn().mockResolvedValue(undefined),
   deductWalletBalance: vi.fn().mockResolvedValue(true),
   getFeedbackVoteCountsByUser: vi.fn(),
+  listRefundsBetween: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../src/modules/astro/feedback.repo.js', () => ({
@@ -33,6 +34,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   findActiveUserById: state.findActiveUserById,
   addWalletBalance: state.addWalletBalance,
   deductWalletBalance: state.deductWalletBalance,
+  listRefundsBetween: state.listRefundsBetween,
 }));
 
 vi.mock('../src/modules/telegram-bot/telegram-bot.repo.js', () => ({
@@ -549,5 +551,119 @@ describe('POST /internal/telegram/webhook', () => {
     });
     expect(res.status).toBe(200);
     expect(state.getFeedbackVoteCountsByUser).toHaveBeenCalled();
+  });
+});
+
+describe('/incidents', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state.listRefundsBetween.mockResolvedValue([]);
+  });
+
+  async function runIncidents(text: string) {
+    const app = createApp();
+    const res = await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 12345 }, text } }),
+    });
+    expect(res.status).toBe(200);
+    // Assert against the human-readable text, not the MarkdownV2 escaping —
+    // otherwise every assertion here is really testing escapeMarkdown(), which
+    // has its own coverage.
+    return (state.sendMessage.mock.calls[0]![0] as string).replace(/\\/g, '');
+  }
+
+  it('reports a clean day when no user was refunded', async () => {
+    const reply = await runIncidents('/incidents');
+    expect(reply).toContain('No user-affecting failures today');
+  });
+
+  it('groups failures by cause and counts DISTINCT affected users', async () => {
+    // Two failures for the same person must read as "1 user affected", not 2 —
+    // one user retrying a broken feature is not an outage across the userbase.
+    state.listRefundsBetween.mockResolvedValue([
+      {
+        createdAt: new Date('2026-08-06T14:01:28Z'),
+        delta: 800,
+        reason: 'refund:chat_message',
+        userId: 'u1',
+        displayName: 'Asha',
+        phoneE164: '+919999999999',
+      },
+      {
+        createdAt: new Date('2026-08-06T13:20:00Z'),
+        delta: 800,
+        reason: 'refund:chat_message',
+        userId: 'u1',
+        displayName: 'Asha',
+        phoneE164: '+919999999999',
+      },
+      {
+        createdAt: new Date('2026-08-06T12:00:00Z'),
+        delta: 2500,
+        reason: 'refund:gemstone_unlock',
+        userId: 'u2',
+        displayName: 'Bhavin',
+        phoneE164: '+918888888888',
+      },
+    ]);
+
+    const reply = await runIncidents('/incidents');
+
+    expect(reply).toContain('3 failures');
+    expect(reply).toContain('2 users affected');
+    expect(reply).toContain('₹41'); // 800 + 800 + 2500 paise
+    expect(reply).toContain('chat_message');
+    expect(reply).toContain('gemstone_unlock');
+    expect(reply).toContain('Asha');
+    expect(reply).toContain('Bhavin');
+  });
+
+  it('uses the singular for a lone failure', async () => {
+    state.listRefundsBetween.mockResolvedValue([
+      {
+        createdAt: new Date('2026-08-06T14:01:28Z'),
+        delta: 800,
+        reason: 'refund:chat_message',
+        userId: 'u1',
+        displayName: 'Asha',
+        phoneE164: '+919999999999',
+      },
+    ]);
+    const reply = await runIncidents('/incidents');
+    expect(reply).toContain('1 failure |');
+    expect(reply).toContain('1 user affected');
+  });
+
+  it('accepts yesterday and passes a DIFFERENT window than today', async () => {
+    await runIncidents('/incidents yesterday');
+    const yesterdayRange = state.listRefundsBetween.mock.calls[0]![0] as { from: Date; to: Date };
+
+    state.sendMessage.mockClear();
+    state.listRefundsBetween.mockClear();
+    await runIncidents('/incidents');
+    const todayRange = state.listRefundsBetween.mock.calls[0]![0] as { from: Date; to: Date };
+
+    expect(yesterdayRange.to.getTime()).toBe(todayRange.from.getTime());
+    expect(yesterdayRange.from.getTime()).toBeLessThan(todayRange.from.getTime());
+  });
+
+  it('rejects an unknown window instead of silently reporting today', async () => {
+    const reply = await runIncidents('/incidents lastweek');
+    expect(reply).toContain('Usage');
+    expect(state.listRefundsBetween).not.toHaveBeenCalled();
+  });
+
+  it('is available to the read-only tier, being a read-only command', async () => {
+    const app = createApp();
+    await app.request('/internal/telegram/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+      body: JSON.stringify({ message: { chat: { id: 11111 }, text: '/incidents' } }),
+    });
+    const reply = state.sendMessage.mock.calls[0]![0] as string;
+    expect(reply).not.toContain('requires admin access');
+    expect(state.listRefundsBetween).toHaveBeenCalled();
   });
 });

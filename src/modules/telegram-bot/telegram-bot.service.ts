@@ -13,6 +13,7 @@ import {
   cmdNewCoupon,
   cmdMoney,
   cmdFeedback,
+  cmdIncidents,
 } from './telegram-bot.commands.js';
 
 type Tier = 'admin' | 'readonly';
@@ -63,7 +64,7 @@ export async function handleUpdate(update: unknown): Promise<void> {
     case '/start':
     case '/help':
       reply = escapeMarkdown(
-        `Available commands:\n/stats - App health\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user (admin only)\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification (admin only)\n/coupons - List active coupons\n/newcoupon [code] [percent] [value] [maxUses] [expireDays] - Create a coupon (admin only)\n/money [phone] [amount] - Add/deduct wallet balance, e.g. /money +919999999999 250 (admin only)\n/feedback [offset] - AI chat thumbs up/down counts per user`,
+        `Available commands:\n/stats - App health\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user (admin only)\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification (admin only)\n/coupons - List active coupons\n/newcoupon [code] [percent] [value] [maxUses] [expireDays] - Create a coupon (admin only)\n/money [phone] [amount] - Add/deduct wallet balance, e.g. /money +919999999999 250 (admin only)\n/feedback [offset] - AI chat thumbs up/down counts per user\n/incidents [today|yesterday] - Users hit by a failure, from the refund ledger`,
       );
       break;
     case '/users':
@@ -98,6 +99,9 @@ export async function handleUpdate(update: unknown): Promise<void> {
       break;
     case '/feedback':
       reply = await cmdFeedback(args[0]);
+      break;
+    case '/incidents':
+      reply = await cmdIncidents(args[0]);
       break;
     default:
       reply = escapeMarkdown(`Unknown command: ${command}`);

@@ -670,6 +670,43 @@ export async function listUsersPage(
   return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
 }
 
+/**
+ * Every wallet refund in a window, newest first, with the affected user.
+ *
+ * A `refund:*` ledger row is the app's OWN record that a user paid for
+ * something and got nothing back — chat, vastu, reports and gemstone all write
+ * one on their failure path before surfacing the error. That makes this table,
+ * rather than a multi-hundred-MB pm2 log, the cheapest reliable answer to "did
+ * anything go wrong for a user today": it is per-user, already indexed, and
+ * only records failures that actually cost somebody something.
+ *
+ * Note what it therefore does NOT cover, by design: failures that cost the user
+ * nothing to retry (a degraded translation falling back to English) never write
+ * a row and never appear here.
+ */
+export async function listRefundsBetween(range: DateRange) {
+  const rows = await db
+    .select({
+      createdAt: walletTransactions.createdAt,
+      delta: walletTransactions.delta,
+      reason: walletTransactions.reason,
+      userId: users.id,
+      displayName: users.displayName,
+      phoneE164: users.phoneE164,
+    })
+    .from(walletTransactions)
+    .innerJoin(users, eq(walletTransactions.userId, users.id))
+    .where(
+      and(
+        gte(walletTransactions.createdAt, range.from),
+        lt(walletTransactions.createdAt, range.to),
+        ilike(walletTransactions.reason, 'refund:%'),
+      ),
+    )
+    .orderBy(desc(walletTransactions.createdAt));
+  return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
+}
+
 /** Total matching `listUsersPage`'s own search predicate — powers the admin dashboard's pagination total. */
 export async function countUsersMatching(q?: string): Promise<number> {
   const [res] = await db.select({ count: count() }).from(users).where(userSearchWhere(q));
