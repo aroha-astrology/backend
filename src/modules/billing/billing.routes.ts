@@ -265,6 +265,7 @@ const confirmGooglePlayRoute = createRoute({
     },
     401: errorResponse('Unauthorized'),
     400: errorResponse('Purchase is not in a completed state'),
+    403: errorResponse('Google Play billing is not configured on this server'),
     404: errorResponse('No matching order found'),
     409: errorResponse('Order already processed in a conflicting state'),
   },
