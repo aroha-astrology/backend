@@ -1,5 +1,6 @@
 import pLimit from 'p-limit';
 import { logger } from '../../lib/logger.js';
+import { runWithRequestContext } from '../../lib/request-context.js';
 import { generateHoroscopeSummary, type HoroscopeContext } from '../../lib/llm/horoscope.js';
 import { buildDashaReading } from '../../lib/astro-tools/dasha-reading.js';
 import type {
@@ -423,10 +424,17 @@ export async function runHoroscopeBatch(
               // lazily on view instead, kept out of the nightly batch to
               // avoid N×profiles cron cost.
               const profile = await resolveActiveProfileContext(user);
-              return await requestHoroscopeGeneration(user, profile, period, {
-                forDate,
-                force,
-              });
+              // Cron has no ambient request context, so without this every
+              // batch-generated horoscope's ai_usage row carries userId: null
+              // — the admin cost dashboard's per-user filter silently drops
+              // this entire agent. See reports.service.ts's fireReportGeneration
+              // for the same pattern applied to the same problem.
+              return await runWithRequestContext({ userId: user.id }, () =>
+                requestHoroscopeGeneration(user, profile, period, {
+                  forDate,
+                  force,
+                }),
+              );
             } catch (err) {
               logger.error(
                 { err, userId: user.id, period, forDate },
