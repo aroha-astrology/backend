@@ -216,7 +216,14 @@ cronRouter.openapi(healthReportRoute, async (c) => {
 // shouldBroadcast() in broadcast.service.ts is the actual source of truth
 // for "does today count" — a mis-scheduled crontab line is a harmless no-op
 // against it rather than a duplicate/wrong-day send.
+//
+// Disabled at user request 2026-08-07 — no horoscope broadcast notification
+// should fire (daily/weekly/monthly/yearly all off). The EC2 crontab lines
+// were removed too; BROADCAST_READING_DISABLED is the code-level backstop in
+// case a crontab line survives or is re-added. Flip it back to send again.
 // ---------------------------------------------------------------------------
+
+const BROADCAST_READING_DISABLED = true;
 
 const broadcastReadingRoute = createRoute({
   method: 'post',
@@ -246,9 +253,14 @@ const broadcastReadingRoute = createRoute({
 
 cronRouter.openapi(broadcastReadingRoute, async (c) => {
   const body = c.req.valid('json') ?? {};
-  const result = await broadcastPeriodReading(body.period ?? 'daily', {
-    force: body.force ?? false,
-  });
+  const period = body.period ?? 'daily';
+  if (BROADCAST_READING_DISABLED) {
+    return c.json(
+      { period, skipped: true, reason: 'disabled', tokensFound: 0, success: 0, failure: 0 },
+      200,
+    );
+  }
+  const result = await broadcastPeriodReading(period, { force: body.force ?? false });
   return c.json(result, 200);
 });
 
@@ -273,6 +285,19 @@ const broadcastDailyReadingRoute = createRoute({
 });
 
 cronRouter.openapi(broadcastDailyReadingRoute, async (c) => {
+  if (BROADCAST_READING_DISABLED) {
+    return c.json(
+      {
+        period: 'daily' as const,
+        skipped: true,
+        reason: 'disabled',
+        tokensFound: 0,
+        success: 0,
+        failure: 0,
+      },
+      200,
+    );
+  }
   const result = await broadcastPeriodReading('daily');
   return c.json(result, 200);
 });

@@ -423,16 +423,8 @@ describe('GET /v1/horoscope — additional (non-primary) profile', () => {
 });
 
 describe('POST /internal/cron/broadcast-reading', () => {
-  const SUCCESS_RESULT = {
-    period: 'daily',
-    skipped: false,
-    tokensFound: 10,
-    success: 10,
-    failure: 0,
-  };
-
   beforeEach(() => {
-    state.broadcastPeriodReading.mockReset().mockResolvedValue(SUCCESS_RESULT);
+    state.broadcastPeriodReading.mockReset();
   });
 
   it('rejects with 403 when the cron secret is missing', async () => {
@@ -441,65 +433,51 @@ describe('POST /internal/cron/broadcast-reading', () => {
     expect(state.broadcastPeriodReading).not.toHaveBeenCalled();
   });
 
-  it('defaults to period "daily" and force false when the body is omitted', async () => {
+  // BROADCAST_READING_DISABLED (cron.routes.ts) — no horoscope broadcast
+  // notification fires, per 2026-08-07 user request. Route short-circuits
+  // before ever calling broadcastPeriodReading.
+  it('is disabled: never calls broadcastPeriodReading, returns skipped/disabled', async () => {
+    const res = await createApp().request('/internal/cron/broadcast-reading', {
+      method: 'POST',
+      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ period: 'weekly', force: true }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { period: string; skipped: boolean; reason: string };
+    expect(body).toEqual(
+      expect.objectContaining({ period: 'weekly', skipped: true, reason: 'disabled' }),
+    );
+    expect(state.broadcastPeriodReading).not.toHaveBeenCalled();
+  });
+
+  it('defaults the disabled response period to "daily" when the body is omitted', async () => {
     const res = await createApp().request('/internal/cron/broadcast-reading', {
       method: 'POST',
       headers: { 'X-Cron-Secret': SECRET },
     });
     expect(res.status).toBe(200);
-    expect(state.broadcastPeriodReading).toHaveBeenCalledWith('daily', { force: false });
-  });
-
-  it('passes through an explicit period and force', async () => {
-    await createApp().request('/internal/cron/broadcast-reading', {
-      method: 'POST',
-      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ period: 'weekly', force: true }),
-    });
-    expect(state.broadcastPeriodReading).toHaveBeenCalledWith('weekly', { force: true });
-  });
-
-  it('returns the service result as-is (including skipped runs)', async () => {
-    state.broadcastPeriodReading.mockResolvedValueOnce({
-      period: 'weekly',
-      skipped: true,
-      reason: 'not-scheduled-today',
-      tokensFound: 0,
-      success: 0,
-      failure: 0,
-    });
-
-    const res = await createApp().request('/internal/cron/broadcast-reading', {
-      method: 'POST',
-      headers: { 'X-Cron-Secret': SECRET, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ period: 'weekly' }),
-    });
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { skipped: boolean; reason: string };
-    expect(body.skipped).toBe(true);
-    expect(body.reason).toBe('not-scheduled-today');
+    const body = (await res.json()) as { period: string };
+    expect(body.period).toBe('daily');
+    expect(state.broadcastPeriodReading).not.toHaveBeenCalled();
   });
 });
 
 describe('POST /internal/cron/broadcast-daily-reading (deprecated alias)', () => {
   beforeEach(() => {
-    state.broadcastPeriodReading.mockReset().mockResolvedValue({
-      period: 'daily',
-      skipped: false,
-      tokensFound: 5,
-      success: 5,
-      failure: 0,
-    });
+    state.broadcastPeriodReading.mockReset();
   });
 
-  it('delegates to broadcastPeriodReading("daily")', async () => {
+  it('is disabled: never calls broadcastPeriodReading, returns skipped/disabled', async () => {
     const res = await createApp().request('/internal/cron/broadcast-daily-reading', {
       method: 'POST',
       headers: { 'X-Cron-Secret': SECRET },
     });
     expect(res.status).toBe(200);
-    expect(state.broadcastPeriodReading).toHaveBeenCalledWith('daily');
+    const body = (await res.json()) as { period: string; skipped: boolean; reason: string };
+    expect(body).toEqual(
+      expect.objectContaining({ period: 'daily', skipped: true, reason: 'disabled' }),
+    );
+    expect(state.broadcastPeriodReading).not.toHaveBeenCalled();
   });
 });
 
