@@ -267,6 +267,14 @@ function cooldownMsForRateLimit(response: Response, bodyText: string | undefined
 
 export async function generate(opts: LLMRequestOptions): Promise<string> {
   let rateLimitWaits = 0;
+  // Set once any free-tier attempt comes back 5xx (in practice a 503 "this
+  // model is currently experiencing high demand"). From then on every
+  // remaining attempt reaches for the paid reserve FIRST instead of waiting
+  // for attempt MAX_ATTEMPTS. A 5xx is a capacity signal — precisely what the
+  // reserve exists for — and waiting for the last attempt meant a slow string
+  // of failures could blow MAX_TOTAL_ELAPSED_MS and fail the user with the
+  // reserve never touched at all.
+  let sawServerError = false;
   const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
   // Mirrors doRequest()'s own model resolution — duplicated rather than
@@ -306,7 +314,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       // demand") or a string of timeouts — the failures most likely to be
       // capacity-related, and so most likely to be fixed by the paid tier —
       // exhausted every attempt on free keys and gave up with the reserve idle.
-      const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS);
+      const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawServerError);
       if (!picked) {
         // Every key is either already tried this attempt or cooling down.
         poolExhausted = true;
@@ -431,6 +439,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
     }
 
     if (!response.ok) {
+      if (response.status >= 500) sawServerError = true;
       logger.warn({ status: response.status, body: bodyText.slice(0, 500) }, 'Gemini API error');
       void alertThrottled(
         `gemini:http-${response.status}`,
@@ -498,6 +507,8 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
   // Once we have emitted tokens to the consumer we must NOT silently retry and
   // replay a fresh completion — that produces duplicated/garbled output.
   let yieldedAny = false;
+  // See generate(): any 5xx escalates every later attempt to the paid reserve.
+  let sawServerError = false;
   const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
   const model = opts.model ?? env.GEMINI_MODEL;
@@ -522,8 +533,9 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
 
       for (let keyIter = 0; keyIter < keyIterations; keyIter++) {
         // See generate(): last attempt escalates to the paid reserve rather
-        // than failing the user on a free tier that has already failed.
-        const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS);
+        // than failing the user on a free tier that has already failed, and any
+        // 5xx escalates immediately rather than waiting for that last attempt.
+        const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawServerError);
         if (!picked) {
           poolExhausted = true;
           break;
@@ -640,6 +652,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       if (!response.ok) {
         const bodyText = await response.text();
 
+        if (response.status >= 500) sawServerError = true;
         logger.warn(
           { status: response.status, body: bodyText.slice(0, 500) },
           'Gemini stream API error',

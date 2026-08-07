@@ -861,15 +861,15 @@ describe('paid reserve escalation on the last attempt', () => {
     state.pickKey.mockImplementation(tieredPickKey(['free-0', 'free-1', 'free-2'], 'paid-key'));
   });
 
-  it('generate() reaches the paid key on attempt 4 when 503s exhaust the free tier', async () => {
-    // This is the translation path (translateYogaDoshaContent -> generate).
-    // Fake timers so the 1s + 2s + 4s inter-attempt backoff doesn't make this
-    // a 7-second test.
+  it('generate() escalates to the paid key on the very next attempt after a 503', async () => {
+    // This is the translation path (translateYogaDoshaContent -> generate), and
+    // the same generate() path every monthly report narrative takes. A 503 is a
+    // capacity signal, so the retry must not be spent on the free tier that
+    // just reported it being out of capacity.
+    // Fake timers so the 1s inter-attempt backoff doesn't make this a slow test.
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(overloaded())
-      .mockResolvedValueOnce(overloaded())
       .mockResolvedValueOnce(overloaded())
       .mockResolvedValueOnce({
         status: 200,
@@ -892,28 +892,43 @@ describe('paid reserve escalation on the last attempt', () => {
     const result = await resultPromise;
 
     expect(result).toBe('{"yogas":[]}');
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const authHeaders = fetchMock.mock.calls.map(
       (call) => (call[1] as { headers: Record<string, string> }).headers.Authorization,
     );
-    // First three on the free tier, the last-ditch attempt on the reserve.
-    expect(authHeaders.slice(0, 3).every((h) => h.startsWith('Bearer free-'))).toBe(true);
-    expect(authHeaders[3]).toBe('Bearer paid-key');
+    expect(authHeaders[0]).toMatch(/^Bearer free-/);
+    expect(authHeaders[1]).toBe('Bearer paid-key');
   });
 
-  it('does not touch the reserve when a free key answers on an earlier attempt', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(overloaded())
-      .mockResolvedValueOnce({
-        status: 200,
-        ok: true,
-        headers: new Headers(),
-        text: () =>
-          Promise.resolve(
-            JSON.stringify({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }),
-          ),
-      });
+  it('stays on the free tier for a run of 503s once the reserve is also failing', async () => {
+    // The reserve is not a magic bullet: if it 503s too, the remaining attempts
+    // must still be spent (on whatever pickKey hands back) and the request must
+    // surface the provider status rather than hanging or masking it.
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(overloaded());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const resultPromise = generate({
+      profile: TRANSLATION_PROFILE,
+      messages: [{ role: 'user', content: 'translate' }],
+    });
+    const assertion = expect(resultPromise).rejects.toThrow(/503/);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not touch the reserve when the free tier answers without a 503', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      headers: new Headers(),
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }),
+        ),
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     await generate({
