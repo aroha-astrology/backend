@@ -11,7 +11,10 @@ import {
   addWalletBalance,
   deductWalletBalance,
   listRefundsBetween,
+  clearDeletionRequest,
+  listPendingDeletionRequestsBefore,
 } from '../users/users.repo.js';
+import { deleteMe } from '../users/users.service.js';
 import { resolveDateRangePreset } from '../admin/admin.repo.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
 import { getFeedbackVoteCountsByUser } from '../astro/feedback.repo.js';
@@ -74,6 +77,65 @@ export async function cmdDeleteUser(idArg: string | undefined): Promise<string> 
     const msg = error instanceof Error ? error.message : String(error);
     return escapeMarkdown(`Failed to delete user: ${msg}`);
   }
+}
+
+/**
+ * Approve a pending deletion request — this is where the erasure actually
+ * happens, and it is irreversible. Deliberately routed through the same
+ * `deleteMe` the app used to call directly, so the request/review layer sits
+ * on top of the existing, audited anonymisation rather than beside it.
+ *
+ * Guarded on there being a live request: nobody should be able to erase an
+ * account that never asked for it by fat-fingering an id here (that's what
+ * `/delete` is for, and it is separately admin-gated).
+ */
+export async function cmdApproveDelete(idArg: string | undefined): Promise<string> {
+  if (!idArg) return escapeMarkdown('Please provide a user ID: /approvedelete <id>');
+
+  const user = await findActiveUserById(idArg);
+  if (!user) return escapeMarkdown(`No active user with ID ${idArg}.`);
+  if (!user.deletionRequestedAt) {
+    return escapeMarkdown(
+      `User ${idArg} has no pending deletion request. Use /delete to hard-delete instead.`,
+    );
+  }
+
+  try {
+    await deleteMe(idArg);
+    return escapeMarkdown(
+      `Approved. User ${idArg} has been anonymised — profile, chats, palm images and saved memory are gone. ` +
+        `Phone number and account shell are retained on purpose (prevents a repeat sign-up bonus).`,
+    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return escapeMarkdown(`Failed to delete user: ${msg}`);
+  }
+}
+
+/** Withdraw a pending request. Push and horoscope generation resume by themselves. */
+export async function cmdRejectDelete(idArg: string | undefined): Promise<string> {
+  if (!idArg) return escapeMarkdown('Please provide a user ID: /rejectdelete <id>');
+
+  const cleared = await clearDeletionRequest(idArg);
+  return escapeMarkdown(
+    cleared
+      ? `Rejected. User ${idArg} keeps their account; notifications and horoscopes resume.`
+      : `User ${idArg} has no pending deletion request.`,
+  );
+}
+
+/** Everyone currently awaiting a decision, oldest first. */
+export async function cmdPendingDeletes(): Promise<string> {
+  const pending = await listPendingDeletionRequestsBefore(new Date());
+  if (pending.length === 0) return escapeMarkdown('No pending deletion requests.');
+
+  const lines = pending.map((u) => {
+    const days = Math.floor(
+      (Date.now() - (u.deletionRequestedAt as Date).getTime()) / (24 * 60 * 60 * 1000),
+    );
+    return `\`${escapeMarkdown(u.id)}\` — ${escapeMarkdown(u.phoneE164 ?? u.email ?? 'no contact')} — ${days}d`;
+  });
+  return `*Pending Deletion Requests \\(${pending.length}\\)*\n\n${lines.join('\n')}`;
 }
 
 export async function cmdStats(): Promise<string> {

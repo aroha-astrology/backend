@@ -6,7 +6,7 @@ import { ensureReferralCode, collectUserExport } from './users.repo.js';
 import { Errors } from '../../lib/errors.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
 import {
-  deleteMe,
+  requestAccountDeletion,
   toUserDto,
   updateMe,
   unlockHouse,
@@ -135,11 +135,18 @@ const deleteMeRoute = createRoute({
   method: 'delete',
   path: '/me',
   tags: ['Users'],
-  summary: 'Soft-delete the current user account',
+  summary: 'Request deletion of the current user account',
+  description:
+    'Files a deletion request for admin review — it does NOT erase anything. ' +
+    'The request is announced to the admin Telegram chat and re-announced daily ' +
+    'from day 6 until someone runs /approvedelete (which performs the actual, ' +
+    'irreversible anonymisation) or /rejectdelete. The account keeps working ' +
+    'while pending, but push notifications and horoscope generation are ' +
+    'suppressed for it. Idempotent: a repeat call keeps the original timestamp.',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
   responses: {
-    204: { description: 'Deleted' },
+    204: { description: 'Deletion request recorded' },
     401: errorResponse('Unauthorized'),
   },
 });
@@ -232,7 +239,7 @@ usersRouter.openapi(patchMeRoute, async (c) => {
 
 usersRouter.openapi(deleteMeRoute, async (c) => {
   const user = c.get('user');
-  await deleteMe(user.id);
+  await requestAccountDeletion(user.id);
   return c.body(null, 204);
 });
 

@@ -237,6 +237,20 @@ export const UserSchema = z
     onboardingCompletedAt: z.string().nullable(),
     profileCompletedAt: z.string().nullable().describe('ISO 8601 timestamp'),
 
+    previouslyDeleted: z
+      .boolean()
+      .describe(
+        'This account was erased once and the same person signed back in. The app greets them ' +
+          'with "welcome back, please fill in your details again" rather than as a new user.',
+      ),
+    deletionRequestedAt: z
+      .string()
+      .nullable()
+      .describe(
+        'ISO 8601 timestamp of a deletion request awaiting admin review. Non-null means the ' +
+          'account still works but receives no push notifications or generated horoscopes.',
+      ),
+
     lastActiveAt: z.string().nullable(),
     streakCount: z.number().int().nullable(),
     streakLastDay: z.string().nullable(),

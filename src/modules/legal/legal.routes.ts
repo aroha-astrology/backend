@@ -36,7 +36,7 @@ const errorResponse = (description: string) => ({
  * rendered documents said '1.1.0' — which meant the version this API reported
  * named a document nobody had ever been shown. One constant, no literals.
  */
-export const LEGAL_VERSION = '1.2.0';
+export const LEGAL_VERSION = '1.3.0';
 
 /** Public, unauthenticated home of the legal documents (landing repo). */
 const LEGAL_BASE_URL = 'https://arohaastrology.in/legal';

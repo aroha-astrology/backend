@@ -376,6 +376,14 @@ export const users = pgTable(
     voiceConsentRevokedAt: timestamp('voice_consent_revoked_at', { withTimezone: true }),
 
     // --- lifecycle ---------------------------------------------------------
+    // Set when the user taps Delete Account. Deletion is no longer immediate:
+    // this files a request, Telegram tells an admin, and the erasure only runs
+    // when the admin approves it in the bot. While it is non-null the account
+    // still works, but we stop spending on it — no push (device-tokens.repo.ts)
+    // and no horoscope generation (horoscope.repo.ts). Cleared on approve
+    // (erasure done) or reject (request withdrawn); `anonymizedAt` below is the
+    // permanent record that an erasure actually happened.
+    deletionRequestedAt: timestamp('deletion_requested_at', { withTimezone: true }),
     anonymizedAt: timestamp('anonymized_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -395,6 +403,9 @@ export const users = pgTable(
       .on(table.referralCode)
       .where(sql`${table.referralCode} is not null`),
     referredByCodeIdx: index('users_referred_by_code_idx').on(table.referredByCode),
+    deletionRequestedAtIdx: index('users_deletion_requested_at_idx')
+      .on(table.deletionRequestedAt)
+      .where(sql`${table.deletionRequestedAt} is not null`),
   }),
 );
 

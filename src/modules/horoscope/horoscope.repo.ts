@@ -26,9 +26,10 @@ function profileFilter(birthProfileId: string | null) {
 /**
  * Keyset page of active users (deletedAt IS NULL), ordered by id for stable
  * paging. By default also excludes users with no activity in the last
- * `HOROSCOPE_ACTIVE_WINDOW_DAYS` — the nightly batch shouldn't spend an LLM
- * call generating for someone who hasn't opened the app in a week; their
- * reading is instead generated on the fly the next time they do (see
+ * `HOROSCOPE_ACTIVE_WINDOW_DAYS` (default 2) — the nightly batch shouldn't
+ * spend an LLM call generating for someone who hasn't opened the app in the
+ * last couple of days; their reading is instead generated on the fly the next
+ * time they do, with no visible difference to them (see
  * requestHoroscopeGeneration's cache-miss path in horoscope.service.ts).
  *
  * `COALESCE(lastActiveAt, createdAt)` is essential: `lastActiveAt` is only
@@ -45,7 +46,11 @@ export async function listRecentlyActiveUsersAfter(
   limit: number,
   opts: { includeDormant?: boolean } = {},
 ): Promise<UserRow[]> {
-  const conditions = [isNull(users.deletedAt)];
+  // A pending deletion request excludes a user even from `includeDormant`
+  // backfills — they've asked to leave, so we stop spending LLM calls on them
+  // the moment they ask, not only once an admin approves it. Rejecting the
+  // request clears the flag and they rejoin the batch on the next run.
+  const conditions = [isNull(users.deletedAt), isNull(users.deletionRequestedAt)];
   if (afterId) conditions.push(gt(users.id, afterId));
   if (!opts.includeDormant) {
     conditions.push(

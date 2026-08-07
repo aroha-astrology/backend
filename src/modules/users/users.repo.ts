@@ -124,6 +124,62 @@ export async function findActiveUserById(id: string): Promise<UserRow | undefine
   return rows[0] ? decryptUserRow(rows[0]) : undefined;
 }
 
+/**
+ * File a deletion request, or return the existing one untouched. Idempotent by
+ * design: tapping Delete Account a second time must not push the review clock
+ * forward, so the `is null` guard is in the WHERE rather than a read-then-write
+ * (which would race two taps into two different timestamps).
+ *
+ * Returns the timestamp now in force, or undefined if there is no such active
+ * user. Cleared by `clearDeletionRequest` (reject) or by `anonymizeUserById`
+ * (approve — the request is fulfilled at that point).
+ */
+export async function requestUserDeletion(id: string): Promise<Date | undefined> {
+  const [claimed] = await db
+    .update(users)
+    .set({ deletionRequestedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(eq(users.id, id), isNull(users.deletedAt), isNull(users.deletionRequestedAt)))
+    .returning({ deletionRequestedAt: users.deletionRequestedAt });
+  if (claimed?.deletionRequestedAt) return claimed.deletionRequestedAt;
+
+  const [existing] = await db
+    .select({ deletionRequestedAt: users.deletionRequestedAt })
+    .from(users)
+    .where(and(eq(users.id, id), isNull(users.deletedAt)))
+    .limit(1);
+  return existing?.deletionRequestedAt ?? undefined;
+}
+
+/** Withdraw a pending request. Push and horoscope generation resume by themselves. */
+export async function clearDeletionRequest(id: string): Promise<boolean> {
+  const rows = await db
+    .update(users)
+    .set({ deletionRequestedAt: null, updatedAt: sql`now()` })
+    .where(and(eq(users.id, id), isNotNull(users.deletionRequestedAt)))
+    .returning({ id: users.id });
+  return rows.length > 0;
+}
+
+/**
+ * Requests still awaiting an admin decision past `cutoff`. Drives the daily
+ * reminder cron — it re-fires for the same request every day until acted on,
+ * because nothing here erases anything on a timer.
+ */
+export async function listPendingDeletionRequestsBefore(cutoff: Date): Promise<UserRow[]> {
+  const rows = await db
+    .select()
+    .from(users)
+    .where(
+      and(
+        isNotNull(users.deletionRequestedAt),
+        lt(users.deletionRequestedAt, cutoff),
+        isNull(users.anonymizedAt),
+      ),
+    )
+    .orderBy(users.deletionRequestedAt);
+  return rows.map(decryptUserRow);
+}
+
 export async function insertUser(values: NewUserRow): Promise<UserRow> {
   if (!values.referralCode) {
     values.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -424,6 +480,10 @@ export async function anonymizeUserById(id: string): Promise<void> {
         partnerSeekingIntent: null,
         referralSource: null,
         referredByCode: null,
+        // The request that led here is now fulfilled — clear it so the daily
+        // reminder cron stops nagging about it. `anonymizedAt` is the record
+        // that it happened.
+        deletionRequestedAt: null,
         anonymizedAt: now,
         deletedAt: now,
         updatedAt: now,

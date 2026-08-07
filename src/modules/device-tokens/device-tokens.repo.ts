@@ -1,10 +1,22 @@
-import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray, isNull, ne, or } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   devicePushTokens,
+  users,
   type DevicePushTokenRow,
   type NewDevicePushTokenRow,
 } from '../../db/schema.js';
+
+/**
+ * Every push in the product — per-user (`notifyUser`) and broadcast alike —
+ * resolves its tokens through the two functions below, so this is the one
+ * place that has to know about accounts on their way out. A user with a
+ * pending deletion request gets no notifications of any kind: no transit
+ * pre-alerts, no broadcasts, no low-balance nudges. Rejecting the request
+ * clears the flag and everything resumes, with no token re-registration
+ * needed — which is why this is a join rather than revoking their tokens.
+ */
+const notAwaitingDeletion = isNull(users.deletionRequestedAt);
 
 export async function findActiveTokenRow(token: string): Promise<DevicePushTokenRow | undefined> {
   const rows = await db
@@ -23,25 +35,29 @@ export async function findActiveTokenRow(token: string): Promise<DevicePushToken
  */
 export async function findActiveTokensForUser(userId: string): Promise<DevicePushTokenRow[]> {
   return db
-    .select()
+    .select(getTableColumns(devicePushTokens))
     .from(devicePushTokens)
+    .innerJoin(users, eq(users.id, devicePushTokens.userId))
     .where(
       and(
         eq(devicePushTokens.userId, userId),
         isNull(devicePushTokens.revokedAt),
         or(isNull(devicePushTokens.pushEnabled), eq(devicePushTokens.pushEnabled, true)),
+        notAwaitingDeletion,
       ),
     );
 }
 
 export async function getAllActiveTokens(): Promise<DevicePushTokenRow[]> {
   return db
-    .select()
+    .select(getTableColumns(devicePushTokens))
     .from(devicePushTokens)
+    .innerJoin(users, eq(users.id, devicePushTokens.userId))
     .where(
       and(
         isNull(devicePushTokens.revokedAt),
         or(isNull(devicePushTokens.pushEnabled), eq(devicePushTokens.pushEnabled, true)),
+        notAwaitingDeletion,
       ),
     );
 }

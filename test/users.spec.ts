@@ -8,6 +8,8 @@ const state = vi.hoisted(() => ({
   updateUserById: vi.fn(),
   updateUserWithConsentLog: vi.fn(),
   anonymizeUserById: vi.fn(),
+  requestUserDeletion: vi.fn(),
+  notifyAccountDeletionRequest: vi.fn().mockResolvedValue(true),
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -40,10 +42,15 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   updateUserById: state.updateUserById,
   updateUserWithConsentLog: state.updateUserWithConsentLog,
   anonymizeUserById: state.anonymizeUserById,
+  requestUserDeletion: state.requestUserDeletion,
   softDeleteBirthProfilesByOwner: vi.fn().mockResolvedValue(undefined),
   revokeDeviceTokensByUser: vi.fn().mockResolvedValue(undefined),
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
   ensureReferralCode: vi.fn((user) => Promise.resolve(user)),
+}));
+
+vi.mock('../src/lib/notifications/telegram.js', () => ({
+  notifyAccountDeletionRequest: state.notifyAccountDeletionRequest,
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -262,23 +269,53 @@ describe('PATCH /v1/me', () => {
 });
 
 describe('DELETE /v1/me', () => {
+  const REQUESTED_AT = new Date('2026-08-01T00:00:00Z');
+
   beforeEach(() => {
     state.verifyIdToken.mockReset();
     state.findUserByFirebaseUid.mockReset();
     state.findActiveUserById.mockReset();
     state.anonymizeUserById.mockReset();
+    state.requestUserDeletion.mockReset();
+    state.notifyAccountDeletionRequest.mockClear();
   });
 
-  it('erases the user (anonymize, not just soft-delete)', async () => {
-    const user = makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' });
+  const del = async (user: ReturnType<typeof makeUserRow>) => {
     state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-1'));
     state.findUserByFirebaseUid.mockResolvedValueOnce(user);
     state.findActiveUserById.mockResolvedValueOnce(user);
-    state.anonymizeUserById.mockResolvedValueOnce(undefined);
+    state.requestUserDeletion.mockResolvedValueOnce(REQUESTED_AT);
+    return createApp().request('/v1/me', { method: 'DELETE', headers: AUTH });
+  };
 
-    const app = createApp();
-    const res = await app.request('/v1/me', { method: 'DELETE', headers: AUTH });
+  it('files a deletion request and erases NOTHING — an admin approves it later', async () => {
+    const res = await del(makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' }));
+
     expect(res.status).toBe(204);
-    expect(state.anonymizeUserById).toHaveBeenCalledWith('id-1');
+    expect(state.requestUserDeletion).toHaveBeenCalledWith('id-1');
+    // The whole point of the review window: the data is still there.
+    expect(state.anonymizeUserById).not.toHaveBeenCalled();
+  });
+
+  it('announces the request to the admin Telegram chat', async () => {
+    await del(makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', phoneE164: '+919999999999' }));
+
+    // Fire-and-forget inside the handler, so let the microtask queue drain.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(state.notifyAccountDeletionRequest).toHaveBeenCalledWith({
+      userId: 'id-1',
+      contact: '+919999999999',
+      requestedAt: REQUESTED_AT,
+    });
+  });
+
+  it('does not re-announce a request that is already pending', async () => {
+    const res = await del(
+      makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', deletionRequestedAt: REQUESTED_AT }),
+    );
+
+    expect(res.status).toBe(204);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(state.notifyAccountDeletionRequest).not.toHaveBeenCalled();
   });
 });

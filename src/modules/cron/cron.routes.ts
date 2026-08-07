@@ -33,6 +33,10 @@ import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js
 import { reapStaleReports } from '../reports/reports.service.js';
 import { reapStalePalmReadings } from '../palm/palm.service.js';
 import { runLowBalanceAlert } from './low-balance-alert.service.js';
+import {
+  DELETION_REMINDER_AFTER_DAYS,
+  runDeletionRequestReminder,
+} from './deletion-reminder.service.js';
 
 const ErrorSchema = z
   .object({
@@ -502,5 +506,36 @@ const lowBalanceAlertRoute = createRoute({
 
 cronRouter.openapi(lowBalanceAlertRoute, async (c) => {
   const result = await runLowBalanceAlert();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+
+const deletionRemindersRoute = createRoute({
+  method: 'post',
+  path: '/cron/deletion-reminders',
+  tags: ['Cron'],
+  summary: 'Re-alert the admin chat about unanswered account-deletion requests',
+  description:
+    'Machine-to-machine endpoint, meant to run once a day via the OS crontab. Sends one ' +
+    'Telegram message per account-deletion request that has been pending for more than ' +
+    `${DELETION_REMINDER_AFTER_DAYS} days without an admin decision, and keeps re-sending ` +
+    'daily until the request is approved or rejected — nothing is ever erased on a timer. ' +
+    'Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: {
+        'application/json': {
+          schema: z.object({ pending: z.number(), reminded: z.number() }),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(deletionRemindersRoute, async (c) => {
+  const result = await runDeletionRequestReminder();
   return c.json(result, 200);
 });

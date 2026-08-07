@@ -21,6 +21,7 @@ import {
   revokeDeviceTokensByUser,
   softDeleteBirthProfilesByOwner,
   anonymizeUserById,
+  requestUserDeletion,
   updateUserById,
   updateUserWithConsentLog,
   findUserByReferralCode,
@@ -34,6 +35,7 @@ import {
 import { db } from '../../config/db.js';
 import { notifications, devicePushTokens } from '../../db/schema.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
+import { notifyAccountDeletionRequest } from '../../lib/notifications/telegram.js';
 import { eq, isNull, and } from 'drizzle-orm';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -109,6 +111,15 @@ export function toUserDto(
     onboardingStep: row.onboardingStep,
     onboardingCompletedAt: iso(row.onboardingCompletedAt),
     profileCompletedAt: iso(row.profileCompletedAt),
+
+    // This row was erased once and the same person has signed back in — the
+    // phone number is deliberately kept on the shell (see anonymizeUserById),
+    // so they land on the SAME account with every detail blank rather than a
+    // fresh one. `anonymizedAt` is never cleared, so this stays true forever;
+    // the app uses it only to say "welcome back, we'll need your details
+    // again" instead of greeting them as a brand-new user.
+    previouslyDeleted: row.anonymizedAt !== null,
+    deletionRequestedAt: iso(row.deletionRequestedAt),
 
     lastActiveAt: iso(row.lastActiveAt),
     streakCount: row.streakCount,
@@ -579,6 +590,37 @@ export async function updateMe(
   }
 
   return next;
+}
+
+/**
+ * What `DELETE /v1/me` now does. Deletion is a reviewed request, not an
+ * immediate erasure: this only stamps `deletionRequestedAt` and pings the
+ * admin Telegram chat. Nothing is destroyed until someone runs
+ * `/approvedelete` in the bot, which calls {@link deleteMe} below.
+ *
+ * The account keeps working meanwhile, but stops costing us anything — the
+ * timestamp is what suppresses push (`device-tokens.repo.ts`) and horoscope
+ * generation (`horoscope.repo.ts`) for this user.
+ */
+export async function requestAccountDeletion(userId: string): Promise<Date> {
+  const current = await findActiveUserById(userId);
+  if (!current) throw Errors.notFound('User not found');
+
+  const requestedAt = await requestUserDeletion(userId);
+  if (!requestedAt) throw Errors.notFound('User not found');
+
+  // Only announce the first time. A repeat tap returns the original timestamp
+  // unchanged (see requestUserDeletion) and must not re-ping the admin chat.
+  if (current.deletionRequestedAt === null) {
+    // Fire-and-forget — a Telegram outage must never fail the user's request.
+    void notifyAccountDeletionRequest({
+      userId,
+      contact: current.phoneE164 ?? current.email,
+      requestedAt,
+    }).catch(() => {});
+  }
+
+  return requestedAt;
 }
 
 export async function deleteMe(userId: string): Promise<void> {

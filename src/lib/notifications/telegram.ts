@@ -120,6 +120,40 @@ export async function notifySupportTicket(fields: {
   return results.some(Boolean);
 }
 
+/**
+ * A user asked us to delete their account. Nothing has been erased at this
+ * point — this message IS the review queue, and the account survives until
+ * someone runs `/approvedelete`. Sent once on request, then re-sent daily by
+ * the reminder cron (`pendingDays` set) for as long as it goes unanswered.
+ *
+ * Reuses the support-ticket recipient list rather than adding another env var:
+ * same audience, same "a human must act on this" character.
+ */
+export async function notifyAccountDeletionRequest(fields: {
+  userId: string;
+  contact?: string | null;
+  requestedAt: Date;
+  pendingDays?: number;
+}): Promise<boolean> {
+  const heading =
+    fields.pendingDays === undefined
+      ? '🗑️ *Account Deletion Requested*'
+      : `⏰ *Deletion Still Pending \\(${fields.pendingDays}d\\)*`;
+  const text =
+    `${heading}\n\n` +
+    `User: \`${escapeMarkdown(fields.userId)}\`\n` +
+    (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
+    `Requested: ${escapeMarkdown(fields.requestedAt.toISOString())}\n` +
+    `\nNothing has been erased yet\\. Approve or reject:\n` +
+    `\`/approvedelete ${escapeMarkdown(fields.userId)}\`\n` +
+    `\`/rejectdelete ${escapeMarkdown(fields.userId)}\``;
+
+  const recipients = supportTicketRecipients();
+  if (recipients.length === 0) return sendMessage(text);
+  const results = await Promise.all(recipients.map((chatId) => sendMessage(text, chatId)));
+  return results.some(Boolean);
+}
+
 export async function sendMessage(text: string, chatId?: string | number): Promise<boolean> {
   try {
     const targetChatId = chatId || env.TELEGRAM_ALERT_CHAT_ID;

@@ -66,6 +66,7 @@ export function makeUserRow(overrides: Partial<UserRow> = {}): UserRow {
     termsVersion: null,
     privacyPolicyAcceptedAt: null,
     privacyPolicyVersion: null,
+    deletionRequestedAt: null,
     anonymizedAt: null,
     createdAt: now,
     updatedAt: now,
