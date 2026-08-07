@@ -89,7 +89,7 @@ export const PLANET_WEIGHT: Record<string, number> = {
   Mercury: 20,
 };
 
-const APP_TZ = 'Asia/Kolkata';
+export const APP_TZ = 'Asia/Kolkata';
 
 /** Unix epoch (1970-01-01T00:00:00Z) as a Julian Day number. */
 const JD_UNIX_EPOCH = 2440587.5;

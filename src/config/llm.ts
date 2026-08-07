@@ -310,6 +310,21 @@ export const TRANSIT_ALERT_PROFILE: GenerationProfile = {
 };
 
 /**
+ * Fact-based re-engagement nudge (title+body from one saved `user_facts`
+ * row). Same non-Latin-script token-inflation reasoning as
+ * TRANSIT_ALERT_PROFILE above — the output is a lock-screen notification
+ * with no human review, so the ceiling is set well clear of the ~120
+ * character body limit rather than sized to the English case.
+ */
+export const FACT_NUDGE_PROFILE: GenerationProfile = {
+  name: 'fact-nudge',
+  temperature: 0.8,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 512,
+};
+
+/**
  * Purchased report narrative (marriage, kundli milan, wealth, monthly
  * reports, etc.) — one or more structured JSON section arrays generated
  * lazily the first time a paid report is generated. Same "large schema" tier

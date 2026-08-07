@@ -24,6 +24,8 @@ import {
   sendTransitAlerts,
 } from './transit-alert.service.js';
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
+import { runFactNudge } from './fact-nudge.service.js';
+import { FactNudgeBodySchema, FactNudgeResultSchema } from './fact-nudge.schemas.js';
 import {
   detectSaturnPhaseTransitions,
   sendSaturnPhaseAlerts,
@@ -335,6 +337,45 @@ cronRouter.openapi(transitAlertsRoute, async (c) => {
   // the boolean is folded into `reason` rather than overloading the field.
   const { skipped: _skipped, reason, ...rest } = r;
   return c.json({ action: 'send' as const, ...rest, ...(reason ? { reason } : {}) }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Fact-based re-engagement nudge — twice a month (1st/3rd Sunday, 11:30 IST
+// per the crontab), reminds a user of a dated window or an unanswered
+// follow-up drawn from their own saved user_facts row, or sends nothing that
+// cycle. Gated dark by FACT_NUDGE_ENABLED until verified via dryRun.
+// ---------------------------------------------------------------------------
+
+const factNudgeRoute = createRoute({
+  method: 'post',
+  path: '/cron/fact-nudge',
+  tags: ['Cron'],
+  summary: 'Send the twice-monthly fact-based re-engagement nudge',
+  description:
+    'Machine-to-machine endpoint for the fact-nudge job. Only runs on the 1st/3rd Sunday of the ' +
+    'month (IST) unless `force` is set. For every user with a saved user_facts row and no recent ' +
+    'fact-nudge, picks a dated window or an unanswered follow-up, drafts Gemini copy through a ' +
+    'suppression denylist + validator, and delivers via notifyUser (Bell inbox always, push only ' +
+    'to live device tokens). No-op unless FACT_NUDGE_ENABLED. Authenticated via X-Cron-Secret.',
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: FactNudgeBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Run completed (or deliberately skipped — see `reason`)',
+      content: { 'application/json': { schema: FactNudgeResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(factNudgeRoute, async (c) => {
+  const body = c.req.valid('json');
+  const r = await runFactNudge({ force: body.force ?? false, dryRun: body.dryRun ?? false });
+  return c.json(r, 200);
 });
 
 // ---------------------------------------------------------------------------

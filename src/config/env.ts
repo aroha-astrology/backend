@@ -133,6 +133,13 @@ const EnvSchema = z
       .default('false')
       .transform((value) => value === 'true'),
 
+    // New feature, ships dark: verify via POST /v1/cron/fact-nudge {dryRun:true}
+    // before flipping this on. See fact-nudge.service.ts.
+    FACT_NUDGE_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+
     // --- Redis -------------------------------------------------------------
     REDIS_URL: z.string().default('redis://localhost:6379/0'),
 
