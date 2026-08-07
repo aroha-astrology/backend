@@ -19,6 +19,7 @@ import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { buildReportGemstones } from './report-gemstones.js';
+import { computeReportVargas, type ReportVarga } from './report-vargas.js';
 import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -118,6 +119,12 @@ export interface KundliMilanScores extends Record<string, unknown>, ReportShared
    * timing right, or should we wait" — none of which the Guna/Dashakoota koota breakdowns
    * actually speak to directly. Reused here rather than reinvented. */
   riskFactors: MatchRiskFactor[];
+  /** Person2's (the partner's) own Navamsa (D9) — kept separate from the shared `vargas` field
+   * (which is person1's/the purchasing user's own, same convention every other report type uses),
+   * since a synastry report needs BOTH people's D9, not just the primary person's. `[]` when
+   * `ctx.partnerChart` has no usable planet longitudes/ascendant (same degrade-gracefully contract
+   * as `vargas` itself). */
+  partnerVargas?: ReportVarga[];
 }
 
 /**
@@ -218,6 +225,9 @@ export function computeKundliMilanScores(
   const lifeContext = computeLifeContext(chart1, analyses1, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart1, ctx.personName, ctx.personDob, lifeContext);
   const gemstones = buildReportGemstones('kundli_milan', chart1);
+  // Navamsa (D9) for BOTH people — the classical marriage chart, read jointly for synastry.
+  const vargas = computeReportVargas(chart1, ['D9']);
+  const partnerVargas = computeReportVargas(chart2, ['D9']);
 
-  return { ...baseScores, riskFactors, header, lifeContext, gemstones };
+  return { ...baseScores, riskFactors, header, lifeContext, gemstones, vargas, partnerVargas };
 }

@@ -21,6 +21,7 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE, HOUSE_SIGNIFICATIONS } from '../house-insight.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { RelationshipMonthlyScores } from '../../astro-engine/reports/relationship-monthly.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
@@ -34,7 +35,7 @@ const RELATIONSHIP_STATUS_RULE =
   "The reader's current relationship status is given below — if it is single/not provided, do not assume an existing partner; frame guidance around dating/romance readiness instead of an existing relationship. If it names an existing partner (in a relationship/engaged/married/etc.), frame guidance around that existing partnership.";
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Relationship Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, and a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 7th house (${HOUSE_SIGNIFICATIONS[7]}) and 5th house (${HOUSE_SIGNIFICATIONS[5]}). Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Relationship Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, and a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 7th house (${HOUSE_SIGNIFICATIONS[7]}) and 5th house (${HOUSE_SIGNIFICATIONS[5]}), plus the Navamsa (D9) chart — the classical marriage/inner-strength varga, a corroborating layer alongside those houses. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -46,7 +47,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 4 sections, in this order:
-1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of partnership harmony and romance/connection themes.
+1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of partnership harmony and romance/connection themes, briefly weaving in the given Navamsa placement as supporting classical color (not a separate topic).
 2. Heading close to "Practical Guidance" — 1-2 paragraphs of general, practical relationship-behavior framing tied to the tone, including one concrete pointer for strengthening emotional closeness this month.
 3. Heading close to "Blessings & Cautions" — 1 paragraph on the dosha/yoga facts given: mention the Mangal Dosha caution calmly if present. If not present, note briefly that no standing caution was flagged in this chart.
 4. Heading close to "Friction, Reconciliation, Dating & Timing" — 2-3 paragraphs covering: (a) name what could realistically cause friction this month for someone with a partner, tying it to the given active dasha lord and any given dosha caution; (b) state plainly, based on the given tone, whether this reads as a supportive month to attempt reconciliation after a recent conflict, or whether more patience is needed first; (c) for readers who are single and dating, note briefly that the same monthly tone/score applies to romance and dating themes generally (not only existing partnerships), and give one pointer for what to watch for this month; (d) the given within-month sub-periods per SUB_PERIOD_RULE.
@@ -63,6 +64,13 @@ function buildFacts(scores: RelationshipMonthlyScores): string {
     `Tone: ${scores.tone}.`,
     `Reader's current relationship status: ${scores.relationshipStatus ?? 'not provided'}.`,
   ];
+
+  const navamsa = scores.vargas?.[0];
+  lines.push(
+    navamsa
+      ? `Navamsa (D9 — marriage/inner-strength chart): ${formatReportVarga(navamsa)}.`
+      : 'Navamsa (D9): unavailable on this chart.',
+  );
 
   if (scores.userAnswers?.concern) {
     lines.push(

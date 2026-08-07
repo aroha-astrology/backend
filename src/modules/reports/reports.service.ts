@@ -64,7 +64,7 @@ import {
   type ReportSection,
   type ReportScoreContext,
 } from './report-generator.types.js';
-import type { UserRow, ReportRow } from '../../db/schema.js';
+import type { UserRow, ReportRow, KundliRow } from '../../db/schema.js';
 import type {
   PreviewReportBody,
   PreviewReportResponseDto,
@@ -79,16 +79,17 @@ import { notifyUser } from '../../lib/notifications/notify-user.js';
 
 /**
  * Bumped whenever the persisted `content` shape changes meaningfully (new section-skeleton /
- * life-context / gemstones / verdict rebuild = version 2). Stamped onto `content.contentVersion`
- * by both write paths (`runReportGeneration`, `regenerateReportContent`). A `ready` row whose
- * stamp doesn't match the current version was generated before this shape existed — `getReportForUser`
- * detects this on read and fires a background regeneration (see `triggerLazyRegenerationIfStale`)
- * so an already-purchased report catches up to the new structure the next time its owner actually
- * opens it, rather than a single expensive bulk sweep regenerating reports nobody may ever look at
- * again. No refund, no re-purchase — same no-cost-to-the-user contract `regenerateReportContent`
- * already documents.
+ * life-context / gemstones / verdict rebuild = version 2; divisional-chart (varga) + Ashtakavarga
+ * facts added to the narrative of all 11 chart-based report types = version 3). Stamped onto
+ * `content.contentVersion` by both write paths (`runReportGeneration`, `regenerateReportContent`).
+ * A `ready` row whose stamp doesn't match the current version was generated before this shape
+ * existed — `getReportForUser` detects this on read and fires a background regeneration (see
+ * `triggerLazyRegenerationIfStale`) so an already-purchased report catches up to the new structure
+ * the next time its owner actually opens it, rather than a single expensive bulk sweep
+ * regenerating reports nobody may ever look at again. No refund, no re-purchase — same
+ * no-cost-to-the-user contract `regenerateReportContent` already documents.
  */
-const CONTENT_VERSION = 2;
+const CONTENT_VERSION = 3;
 
 // ponytail: process-local dedup only, not a distributed/DB-backed claim — with pm2's cluster
 // workers, two near-simultaneous requests landing on DIFFERENT worker processes could each fire
@@ -252,6 +253,23 @@ export function partnerInputToBirthRecord(input: Record<string, unknown>): Birth
  * means it survives regeneration and, via `buildPurchaseFacts`
  * (chat-purchase-facts.ts), becomes something chat can actually reference.
  */
+/**
+ * Reads the pre-purchase questionnaire answers back off a row's persisted `input.answers` (see
+ * `withAnswers` below) — the read-side counterpart that was missing entirely: `runReportGeneration`
+ * received `answers` as an in-memory parameter at purchase time, but `recomputeScoresForRead`
+ * (fires on every page view) and `regenerateReportContent` rebuilt `ReportScoreContext` from
+ * scratch with no `userAnswers` at all, even though `withAnswers` had already persisted them to
+ * the same row they were reading. Concretely: baby_name's candidate list is gender-narrowed by
+ * `userAnswers.childGender` (see astro-engine/reports/baby-name.ts) — the narrowed list from
+ * generation and the un-narrowed list recomputed on every subsequent read disagreed.
+ */
+export function answersFromInput(
+  input: Record<string, unknown> | null,
+): Record<string, string> | null {
+  const answers = input?.answers;
+  return answers && typeof answers === 'object' ? (answers as Record<string, string>) : null;
+}
+
 function withAnswers(
   partnerInput: Record<string, unknown> | null,
   answers: Record<string, string> | null,
@@ -331,6 +349,43 @@ async function fetchPersonContext(
 }
 
 /**
+ * Builds the full `ReportScoreContext` for a report row — the single place every kundli blob,
+ * person-identity field, and persisted questionnaire answer is assembled for `computeScores`.
+ *
+ * Previously this object literal was hand-built separately at four call sites
+ * (`runReportGeneration`, `recomputeScoresForRead`, `regenerateReportContent`, and
+ * astro.service.ts's `buildMatchReportFacts` for chat grounding on an already-purchased
+ * match_report) and had already drifted twice: `userAnswers` was only ever set at the first site
+ * (see `answersFromInput` above), and the chat-grounding site omitted every field except `chart`/
+ * `partnerChart` entirely — so a match_report's chat answer could contradict the purchased report
+ * itself (a different Guna score/risk read from a request built with no dasha/dosha/yoga data).
+ * New `ReportScoreContext` fields belong here once, not copy-pasted at each call site again.
+ *
+ * `partnerChart` stays a caller-supplied parameter rather than being computed inside this helper:
+ * the four call sites intentionally differ on how a partner-chart computation failure is handled
+ * (a hard throw during generation/regeneration vs. a logged-and-degraded null on every-page-view
+ * reads vs. the best-effort/never-throws contract chat grounding needs), and folding that in here
+ * would force one of those contracts onto the others.
+ */
+export async function buildReportScoreContext(
+  row: Pick<ReportRow, 'userId' | 'birthProfileId' | 'input'>,
+  kundli: KundliRow | null | undefined,
+  partnerChart: Record<string, unknown> | null,
+): Promise<ReportScoreContext> {
+  const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
+  return {
+    chart: kundli?.chartData ?? null,
+    partnerChart,
+    doshaData: kundli?.doshaData ?? null,
+    yogaData: kundli?.yogaData ?? null,
+    ashtakavargaData: kundli?.ashtakavargaData ?? null,
+    dashaData: kundli?.dashaData ?? null,
+    ...personContext,
+    userAnswers: answersFromInput(row.input),
+  };
+}
+
+/**
  * Background generation for one already-claimed row. Fire-and-forget from
  * the purchase route — never awaited in the request/response cycle. Any
  * failure along this path (no chart yet, no registered generator for this
@@ -385,11 +440,7 @@ async function computeReportVerdict(
   }
 }
 
-async function runReportGeneration(
-  row: ReportRow,
-  birthProfileId: string | null,
-  answers: Record<string, string> | null = null,
-): Promise<void> {
+async function runReportGeneration(row: ReportRow, birthProfileId: string | null): Promise<void> {
   const claimedAt = row.startedAt;
   if (!claimedAt) return; // claimReportRow always sets this when it returns a row — defensive only.
 
@@ -410,21 +461,8 @@ async function runReportGeneration(
       partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
     }
 
-    const personContext = await fetchPersonContext(row.userId, birthProfileId);
-
-    const scores = generator.computeScores(
-      {
-        chart: kundli.chartData,
-        partnerChart,
-        doshaData: kundli.doshaData ?? null,
-        yogaData: kundli.yogaData ?? null,
-        ashtakavargaData: kundli.ashtakavargaData ?? null,
-        dashaData: kundli.dashaData ?? null,
-        ...personContext,
-        userAnswers: answers,
-      },
-      row.periodMonth,
-    );
+    const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
+    const scores = generator.computeScores(scoreContext, row.periodMonth);
     const sections = await generator.generateNarrative(scores, 'en');
     const windowSummaries = await computeWindowSummaries(scores);
     const verdict = await computeReportVerdict(scores);
@@ -458,18 +496,14 @@ async function runReportGeneration(
 }
 
 /** Kick off background generation without blocking the caller. */
-function fireReportGeneration(
-  row: ReportRow,
-  birthProfileId: string | null,
-  answers: Record<string, string> | null = null,
-): void {
+function fireReportGeneration(row: ReportRow, birthProfileId: string | null): void {
   // Every report type shares one `report` LLM profile, so without a feature
   // label all 10+ of them land in ai_usage as one indistinguishable `report`
   // row and per-report cost is unrecoverable. Set explicitly from the row
   // rather than inherited, since this also runs detached from any request (the
   // stale-report reaper, admin regeneration) where there is no ambient context.
   void runWithRequestContext({ userId: row.userId, feature: row.reportKey }, () =>
-    runReportGeneration(row, birthProfileId, answers),
+    runReportGeneration(row, birthProfileId),
   ).catch((err: unknown) => {
     logger.error({ err, reportId: row.id }, 'report background generation errored unexpectedly');
   });
@@ -535,7 +569,7 @@ export async function purchaseReport(
           periodMonth: claimed.periodMonth,
           status: claimed.status,
         });
-        fireReportGeneration(claimed, birthProfileId, answers);
+        fireReportGeneration(claimed, birthProfileId);
       } else {
         // A row already exists at this exact identity that claimReportRow's own claimability
         // guard couldn't reclaim — the DB layer guaranteed no duplicate row was ever inserted
@@ -702,7 +736,6 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
   if (!generator) return {};
 
   const kundli = await findKundliByUserId(row.userId, row.birthProfileId);
-  const chart = kundli?.chartData ?? null;
 
   let partnerChart: Record<string, unknown> | null = null;
   if (hasPartnerBirthInput(row.input)) {
@@ -714,20 +747,8 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
     }
   }
 
-  const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
-
-  return generator.computeScores(
-    {
-      chart,
-      partnerChart,
-      doshaData: kundli?.doshaData ?? null,
-      yogaData: kundli?.yogaData ?? null,
-      ashtakavargaData: kundli?.ashtakavargaData ?? null,
-      dashaData: kundli?.dashaData ?? null,
-      ...personContext,
-    },
-    row.periodMonth,
-  );
+  const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
+  return generator.computeScores(scoreContext, row.periodMonth);
 }
 
 /**
@@ -975,19 +996,8 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
     partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
   }
 
-  const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
-  const scores = generator.computeScores(
-    {
-      chart: kundli.chartData,
-      partnerChart,
-      doshaData: kundli.doshaData ?? null,
-      yogaData: kundli.yogaData ?? null,
-      ashtakavargaData: kundli.ashtakavargaData ?? null,
-      dashaData: kundli.dashaData ?? null,
-      ...personContext,
-    },
-    row.periodMonth,
-  );
+  const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
+  const scores = generator.computeScores(scoreContext, row.periodMonth);
   const sections = await generator.generateNarrative(scores, 'en');
   const windowSummaries = await computeWindowSummaries(scores);
   const verdict = await computeReportVerdict(scores);

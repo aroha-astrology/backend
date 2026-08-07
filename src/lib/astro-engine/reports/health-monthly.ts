@@ -19,6 +19,9 @@ import {
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext, HEALTH_KEY_HOUSES } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
+import { computeReportVargas } from './report-vargas.js';
+import { getAscendantSignIndex } from './chart-facts.js';
+import { ashtakavargaFacts } from '../../chat-grounding.js';
 import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -80,10 +83,19 @@ export function computeHealthMonthlyScores(
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+  // D6 (health crises/litigation/visible enemies) + D30 (hardships/health vulnerabilities) — the
+  // two classical health-domain vargas, same VARGA_LABELS pairing chat-grounding.ts documents.
+  const vargas = computeReportVargas(chart, ['D6', 'D30']);
+  const ashtakavargaSummary = ashtakavargaFacts(
+    ctx.ashtakavargaData ?? null,
+    getAscendantSignIndex(chart),
+  );
 
   return {
     header,
     lifeContext,
+    vargas,
+    ashtakavargaSummary,
     userAnswers: ctx.userAnswers ?? null,
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',

@@ -18,6 +18,9 @@ import {
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext, FINANCE_KEY_HOUSES } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
+import { computeReportVargas } from './report-vargas.js';
+import { getAscendantSignIndex } from './chart-facts.js';
+import { ashtakavargaFacts } from '../../chat-grounding.js';
 import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -69,10 +72,18 @@ export function computeFinanceMonthlyScores(
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+  // Hora (D2) — same wealth-domain varga as wealth.ts.
+  const vargas = computeReportVargas(chart, ['D2']);
+  const ashtakavargaSummary = ashtakavargaFacts(
+    ctx.ashtakavargaData ?? null,
+    getAscendantSignIndex(chart),
+  );
 
   return {
     header,
     lifeContext,
+    vargas,
+    ashtakavargaSummary,
     userAnswers: ctx.userAnswers ?? null,
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',

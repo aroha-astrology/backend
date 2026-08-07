@@ -25,6 +25,7 @@ import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
 import type { PastLifeScores } from '../../astro-engine/reports/past-life.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
 const GROUNDING_RULE =
@@ -33,6 +34,8 @@ const SAFETY_RULE =
   'This is reflective, classical Rahu/Ketu axis interpretation for entertainment and self-reflection — never a literal claim about a verifiable past life, never a guarantee. Use tendency language ("classically associated with", "suggests a theme of").';
 const ARCHETYPE_RULE =
   'The karmic archetype label/description below is a GIVEN FACT — a deterministic house-axis theme, not something you invent. Weave it in as the overarching frame for the axis, but keep it as generic/classical tendency language, never a specific prediction about identifying details of a past life.';
+const SHASHTIAMSHA_RULE =
+  'The Shashtiamsha (D60) chart below — the most fine-grained classical varga, traditionally read for overall karmic destiny — is a GIVEN FACT. Weave it in as ONE brief sentence of extra classical color alongside the karmic archetype theme (per ARCHETYPE_RULE), never as a separate topic.';
 const KAAL_SARP_RULE =
   'The Kaal Sarp Dosha note below (present or not) is a GIVEN FACT. If present, mention it calmly and matter-of-factly as a classical condition where all planets fall between the Rahu/Ketu axis, intensifying the karmic-release theme AND any fears/blocks theme already raised for Rahu — never alarming language, no specific remedies or purchases recommended. If not present, you may skip the mention entirely.';
 const YOGA_RULE =
@@ -47,6 +50,7 @@ ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
 ${ARCHETYPE_RULE}
+${SHASHTIAMSHA_RULE}
 ${KAAL_SARP_RULE}
 ${YOGA_RULE}
 ${SOUL_LESSON_RULE}
@@ -58,7 +62,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 3 sections, in this order:
 1. Heading close to "Your Karmic Pattern", with 3-5 paragraphs: (a) what Rahu's specific house/sign suggests you're being pulled toward, and how that same unfamiliar pull can also be the root of your deepest fears or blocks in this life (an unfamiliar direction often surfaces as anxiety before it matures into growth), (b) what Ketu's specific house/sign suggests you've already mastered/are releasing, including why certain people, places, or skills tied to that house/sign theme can feel instantly, inexplicably familiar, AND a brief, light narrative sketch (one clause, not a separate claim) of what kind of life or role your soul most likely lived before in classical terms (e.g. a caretaker, a builder, a seeker) matching that same house/sign theme — this directly answers "what kind of life did my soul most likely live before this one," so don't skip it, (c) how the 12th-lord's strength colors this (12th house = past-life/release themes), (d) if there are any conjunct planets, one paragraph on how they amplify or complicate this axis — including any extra weight they add to the fears/blocks theme from (a) — omit this paragraph entirely if the conjunct list is empty, (e) a paragraph naming a specific past-life talent or skill classically carried forward into this birth, per YOGA_RULE (favorable yoga if present, otherwise the Ketu-placement fallback — never omit this paragraph). Each paragraph 2-4 sentences.
-2. Heading close to "Your Karmic Axis Theme" — 1-2 short paragraphs: the given karmic archetype label/description as the overarching theme for this axis (per ARCHETYPE_RULE), and the Kaal Sarp Dosha note if present (per KAAL_SARP_RULE). If Kaal Sarp is not present, this section can be just the archetype theme alone.
+2. Heading close to "Your Karmic Axis Theme" — 1-2 short paragraphs: the given karmic archetype label/description as the overarching theme for this axis (per ARCHETYPE_RULE) plus the Shashtiamsha (D60) color (per SHASHTIAMSHA_RULE), and the Kaal Sarp Dosha note if present (per KAAL_SARP_RULE). If Kaal Sarp is not present, this section can be just the archetype theme alone.
 3. Heading close to "Your Unfinished Business & Soul Lesson" — 2 paragraphs per SOUL_LESSON_RULE: first, Rahu's placement framed explicitly as unfinished karmic business carried into this life; second, the single, memorable core soul lesson synthesized from Rahu, Ketu, and the karmic archetype together.
 
 Second person ("you") throughout.`;
@@ -76,6 +80,12 @@ function buildFacts(scores: PastLifeScores): string {
   );
   lines.push(
     `Karmic archetype (house-axis theme): "${scores.karmicArchetype.label}" — ${scores.karmicArchetype.description}`,
+  );
+  const shashtiamsha = scores.vargas?.[0];
+  lines.push(
+    shashtiamsha
+      ? `Shashtiamsha (D60 — overall karmic destiny chart): ${formatReportVarga(shashtiamsha)}.`
+      : 'Shashtiamsha (D60): unavailable on this chart.',
   );
   lines.push(
     scores.doshaYoga.cautions.length > 0

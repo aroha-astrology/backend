@@ -18,6 +18,7 @@ import {
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext, RELATIONSHIP_KEY_HOUSES } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
+import { computeReportVargas } from './report-vargas.js';
 import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -79,10 +80,13 @@ export function computeRelationshipMonthlyScores(
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+  // Navamsa (D9) — same marriage/relationship-domain varga as marriage.ts/true-love.ts.
+  const vargas = computeReportVargas(chart, ['D9']);
 
   return {
     header,
     lifeContext,
+    vargas,
     userAnswers: ctx.userAnswers ?? null,
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',

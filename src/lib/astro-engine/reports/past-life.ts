@@ -11,6 +11,7 @@ import { getHouseLord, getPlanetPosition, strengthOfPlanet } from './chart-facts
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
+import { computeReportVargas } from './report-vargas.js';
 import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -138,10 +139,14 @@ export function computePastLifeScores(
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+  // D60 (Shashtiamsha) — the most fine-grained varga, classically read for karmic
+  // destiny/past-life patterns, the exact theme this report narrates.
+  const vargas = computeReportVargas(chart, ['D60']);
 
   return {
     header,
     lifeContext,
+    vargas,
     rahuHouse,
     rahuSign: rahu?.sign ?? null,
     ketuHouse,

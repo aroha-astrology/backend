@@ -9,6 +9,7 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE, HOUSE_SIGNIFICATIONS } from '../house-insight.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { HealthMonthlyScores } from '../../astro-engine/reports/health-monthly.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
@@ -24,7 +25,7 @@ const CONCERN_RULE =
   "If the reader gave an optional current health concern below, acknowledge it briefly and empathetically in the 'Practical Guidance' section and connect it to the given month score/tone/dosha framing where it genuinely fits — but the DISCLAIMER_RULE still applies in full: never diagnose it, never name it as a specific disease, never recommend a treatment. If no concern was given, skip this entirely rather than asking for one.";
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Health Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 6th house (${HOUSE_SIGNIFICATIONS[6]}), 1st house (${HOUSE_SIGNIFICATIONS[1]}), and 8th house (${HOUSE_SIGNIFICATIONS[8]}); whether any of three resilience-themed doshas (Kemdruma, Sade Sati, Grahan) are currently present; and whether any supportive/protective (benefic or mahapurusha) yoga is currently present. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Health Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 6th house (${HOUSE_SIGNIFICATIONS[6]}), 1st house (${HOUSE_SIGNIFICATIONS[1]}), and 8th house (${HOUSE_SIGNIFICATIONS[8]}); the D6 and D30 divisional charts — the classical health-crisis and hardship/vulnerability vargas, a corroborating layer alongside those houses; whether any of three resilience-themed doshas (Kemdruma, Sade Sati, Grahan) are currently present; and whether any supportive/protective (benefic or mahapurusha) yoga is currently present. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -38,7 +39,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 3 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of vitality/energy/obstacles themes (never specific ailments or diagnoses), and naming the given connected house theme as the area needing the most attention this month (per CONNECTED_HOUSES_RULE).
-2. Heading close to "Your Health Balance This Month" — 2-3 paragraphs: BOTH the given supportive/protective factor(s) (if present, explain briefly what they classically support for vitality/resilience; if none, say so briefly rather than inventing one) AND the given dosha caution(s) — including how your stress and mental well-being (Kemdruma, if present, is specifically an emotional/mental resilience signal) is trending this month — (in plain language, framed as general energy/resilience themes to stay aware of — NEVER as a medical warning or diagnosis; if none, say so briefly and reassuringly rather than dwelling on it), THEN the given within-month sub-periods per SUB_PERIOD_RULE — together giving a full, balanced picture of energy and stress/resilience trends this month, not cautions alone.
+2. Heading close to "Your Health Balance This Month" — 2-3 paragraphs: BOTH the given supportive/protective factor(s) (if present, explain briefly what they classically support for vitality/resilience; if none, say so briefly rather than inventing one) AND the given dosha caution(s) — including how your stress and mental well-being (Kemdruma, if present, is specifically an emotional/mental resilience signal) is trending this month — (in plain language, framed as general energy/resilience themes to stay aware of — NEVER as a medical warning or diagnosis; if none, say so briefly and reassuringly rather than dwelling on it), briefly weaving in the given D6/D30 placements and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 1st/6th/8th house as supporting classical color (not a separate topic, never phrased as a diagnosis), THEN the given within-month sub-periods per SUB_PERIOD_RULE — together giving a full, balanced picture of energy and stress/resilience trends this month, not cautions alone.
 3. Heading close to "Practical Guidance" — 1-2 paragraphs of GENERAL wellness-mindset framing tied to the tone (e.g. rest, pacing, routine), explicitly stating whether this is a favorable month to start a new health routine given the tone — explicitly NOT medical advice.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -52,6 +53,23 @@ function buildFacts(scores: HealthMonthlyScores): string {
     `Month score: ${scores.monthScore} out of 100.`,
     `Tone: ${scores.tone}.`,
   ];
+  const [d6, d30] = scores.vargas ?? [];
+  lines.push(
+    d6
+      ? `D6 (health crises/litigation/visible enemies chart): ${formatReportVarga(d6)}.`
+      : 'D6 (health crises chart): unavailable on this chart.',
+  );
+  lines.push(
+    d30
+      ? `D30 (hardships/health vulnerabilities chart): ${formatReportVarga(d30)}.`
+      : 'D30 (hardships/vulnerabilities chart): unavailable on this chart.',
+  );
+  if (scores.ashtakavargaSummary && scores.ashtakavargaSummary.length > 0) {
+    lines.push(
+      'Ashtakavarga house-strength summary (GIVEN — mention the 1st/6th/8th house readings only if one stands out as notably strong or weak, otherwise skip):',
+    );
+    lines.push(...scores.ashtakavargaSummary);
+  }
   if (scores.doshaYoga.positives.length > 0) {
     lines.push(
       `Supportive/protective factors present: ${scores.doshaYoga.positives.map((p) => `${p.label}: ${p.detail}`).join('; ')}.`,

@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { analyzePlanetStrengths } from '../gemstones.js';
-import { getHouseLord, getHouseSign } from './chart-facts.js';
+import { getAscendantSignIndex, getHouseLord, getHouseSign } from './chart-facts.js';
 import {
   computeMonthlyReportScore,
   findMonthSubPeriods,
@@ -20,6 +20,8 @@ import { computeArchetype, type Archetype } from './report-archetype.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext, CAREER_KEY_HOUSES } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
+import { computeReportVargas } from './report-vargas.js';
+import { ashtakavargaFacts } from '../../chat-grounding.js';
 import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -142,10 +144,18 @@ export function computeCareerMonthlyScores(
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+  // Dashamsha (D10) — the classical career/profession/public-status chart.
+  const vargas = computeReportVargas(chart, ['D10']);
+  const ashtakavargaSummary = ashtakavargaFacts(
+    ctx.ashtakavargaData ?? null,
+    getAscendantSignIndex(chart),
+  );
 
   return {
     header,
     lifeContext,
+    vargas,
+    ashtakavargaSummary,
     userAnswers: ctx.userAnswers ?? null,
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',

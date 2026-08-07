@@ -18,6 +18,7 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { GROUNDING_RULE as HOUSE_GROUNDING_RULE, PLAIN_LANGUAGE_RULE } from '../house-insight.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { MarriageScores } from '../../astro-engine/reports/marriage.js';
 import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import type { AgeBand } from '../../astro-engine/reports/report-age-bands.js';
@@ -75,7 +76,7 @@ Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
 
 function narrativeSystemPromptCall2(): string {
-  return `You are writing the second section of a Marriage Report for a mobile Vedic astrology app. The app already computed the 7th house sign (partnership house) and its classical temperament association, a partner archetype with 5 trait-tilt scores, why the 7th-lord/Venus/Jupiter are strong or weak, and the 4th-lord strength (family/home significator) plus an in-laws note. Your job is ONLY to write the narrative explanation.
+  return `You are writing the second section of a Marriage Report for a mobile Vedic astrology app. The app already computed the 7th house sign (partnership house) and its classical temperament association, the Navamsa (D9) chart — the classical marriage/spouse/inner-strength varga, read ALONGSIDE the D1 7th house, never in place of it — a partner archetype with 5 trait-tilt scores, why the 7th-lord/Venus/Jupiter are strong or weak, and the 4th-lord strength (family/home significator) plus an in-laws note. Your job is ONLY to write the narrative explanation.
 
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -85,7 +86,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Who You Will Marry" — 1-3 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts (weave in the specific reasons given for the 7th-lord/Venus/Jupiter strengths for texture, plus the given house placements of Venus and Jupiter as extra classical color on the life-domain your partner connection tends to touch — e.g. a career-house placement suggesting a partner drawn to public/professional life, a home-house placement suggesting a more domestic/family-oriented connection). Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual — never invent identifying details (name, appearance, a specific job title, nationality).
+1. Heading close to "Who You Will Marry" — 1-3 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts (weave in the specific reasons given for the 7th-lord/Venus/Jupiter strengths for texture, the given Navamsa Lagna and its planetary placements as a second, corroborating layer on the same theme, plus the given house placements of Venus and Jupiter as extra classical color on the life-domain your partner connection tends to touch — e.g. a career-house placement suggesting a partner drawn to public/professional life, a home-house placement suggesting a more domestic/family-oriented connection). If the given Ashtakavarga summary flags the 7th house as notably strong or weak, weave that in as one more corroborating or contrasting note. Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual — never invent identifying details (name, appearance, a specific job title, nationality).
 2. Heading close to "Family & In-Laws" — 1-2 paragraphs on family/in-law harmony grounded in the 4th-lord strength and in-laws note given.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -155,6 +156,12 @@ function buildFactsCall2(scores: MarriageScores): string {
   const lines: string[] = [];
   lines.push(`7th house sign: ${scores.seventhHouseSign ?? 'unavailable'}.`);
   lines.push(`Classical temperament association for this sign: ${scores.seventhHouseTemperament}.`);
+  const navamsa = scores.vargas?.[0];
+  lines.push(
+    navamsa
+      ? `Navamsa (D9 — marriage/spouse/inner-strength chart): ${formatReportVarga(navamsa)}.`
+      : 'Navamsa (D9): unavailable on this chart.',
+  );
   lines.push(
     `7th-lord (${scores.seventhLord ?? 'unavailable'}) strength: ${scores.seventhLordStrength} — ${scores.seventhLordReason}`,
   );
@@ -175,6 +182,12 @@ function buildFactsCall2(scores: MarriageScores): string {
   lines.push(
     `In-laws note (4th house sign: ${scores.inLaws.fourthHouseSign ?? 'unavailable'}): ${scores.inLaws.note}`,
   );
+  if (scores.ashtakavargaSummary && scores.ashtakavargaSummary.length > 0) {
+    lines.push(
+      "Ashtakavarga house-strength summary (GIVEN — mention the 7th house's own reading only if it stands out as notably strong or weak, otherwise skip):",
+    );
+    lines.push(...scores.ashtakavargaSummary);
+  }
   return lines.join('\n');
 }
 

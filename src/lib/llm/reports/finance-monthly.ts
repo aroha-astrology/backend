@@ -8,6 +8,7 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE, HOUSE_SIGNIFICATIONS } from '../house-insight.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { FinanceMonthlyScores } from '../../astro-engine/reports/finance-monthly.js';
 import type { DoshaYogaSummary } from '../../astro-engine/reports/report-dosha-yoga-summary.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
@@ -22,7 +23,7 @@ const CONCERN_RULE =
   'If the reader gave an optional current financial concern or plan below, weave a direct, practical response to it into "Practical Guidance", tied to the given month score/tone/dosha-yoga facts — the DISCLAIMER_RULE still applies in full: never name a specific investment/product. If no concern was given, skip this entirely rather than asking for one.';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Finance Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 2nd house (${HOUSE_SIGNIFICATIONS[2]}) and 11th house (${HOUSE_SIGNIFICATIONS[11]}), and a dosha/yoga check for any classical wealth-yoga or wealth-related dosha caution currently relevant. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Finance Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 2nd house (${HOUSE_SIGNIFICATIONS[2]}) and 11th house (${HOUSE_SIGNIFICATIONS[11]}), the Hora (D2) chart — the classical wealth/financial-stability varga, a corroborating layer alongside those houses, and a dosha/yoga check for any classical wealth-yoga or wealth-related dosha caution currently relevant. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -34,7 +35,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 3 sections, in this order:
-1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of money-flow themes (savings, incoming gains, spending pressure) — explicitly state whether income looks more likely to grow or dip this month given the tone.
+1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of money-flow themes (savings, incoming gains, spending pressure), briefly weaving in the given Hora (D2) placement and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 2nd/11th house as supporting classical color — explicitly state whether income looks more likely to grow or dip this month given the tone.
 2. Heading close to "Dosha & Yoga Check" — 1-2 paragraphs covering BOTH the given wealth-yoga finding(s) (if present, explain what they classically support for money flow this month; if none is present, say plainly that no major classical wealth-yoga stands out this month rather than inventing one) AND the given dosha caution finding(s) (frame plainly as a heads-up about possible unexpected expenses or money stress this month; if none is present, say so plainly and reassuringly). Then cover the given within-month sub-periods per SUB_PERIOD_RULE.
 3. Heading close to "Practical Guidance" — 1-2 paragraphs of GENERAL, non-prescriptive behavioral framing tied to the tone — explicitly NOT financial advice, no specific investment/product recommendations — and explicitly touch on whether this looks like a favorable month to lend, borrow, or sign financial agreements given the tone.
 
@@ -64,6 +65,21 @@ function formatSubPeriods(subPeriods: FinanceMonthlyScores['subPeriods']): strin
   return lines.join('\n');
 }
 
+function formatHora(vargas: FinanceMonthlyScores['vargas']): string {
+  const hora = vargas?.[0];
+  return hora
+    ? `Hora (D2 — wealth/financial-stability chart): ${formatReportVarga(hora)}.`
+    : 'Hora (D2): unavailable on this chart.';
+}
+
+function formatAshtakavarga(summary: FinanceMonthlyScores['ashtakavargaSummary']): string | null {
+  if (!summary || summary.length === 0) return null;
+  return [
+    'Ashtakavarga house-strength summary (GIVEN — mention the 2nd/11th house readings only if either stands out as notably strong or weak, otherwise skip):',
+    ...summary,
+  ].join('\n');
+}
+
 function buildFacts(scores: FinanceMonthlyScores): string {
   const lines = [
     `Period: ${scores.periodMonth}.`,
@@ -71,6 +87,8 @@ function buildFacts(scores: FinanceMonthlyScores): string {
     `Active Antardasha lord: ${scores.activeAntardashaLord}.`,
     `Month score: ${scores.monthScore} out of 100.`,
     `Tone: ${scores.tone}.`,
+    formatHora(scores.vargas),
+    formatAshtakavarga(scores.ashtakavargaSummary),
     formatDoshaYoga(scores.doshaYoga),
     formatSubPeriods(scores.subPeriods),
   ];
@@ -79,7 +97,7 @@ function buildFacts(scores: FinanceMonthlyScores): string {
       `Reader-provided context — an optional current financial concern or plan to directly respond to: ${scores.userAnswers.concern}`,
     );
   }
-  return lines.join('\n');
+  return lines.filter((l): l is string => l !== null).join('\n');
 }
 
 const SECTIONS_SCHEMA = {

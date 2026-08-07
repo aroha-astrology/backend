@@ -19,6 +19,7 @@ import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
+import { computeReportVargas } from './report-vargas.js';
 import { namesStartingWith } from '../names/name-lookup.js';
 import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
@@ -127,9 +128,15 @@ export function computeBabyNameScores(
     ? namesStartingWith(startingSyllables[0], CANDIDATE_NAME_COUNT, ctx.userAnswers?.childGender)
     : [];
 
+  // Saptamsha (D7) — the classical children/progeny/creative-output chart, the natural varga for
+  // a naming report (this report reads the BABY's own chart — see this module's top-of-file scope
+  // note — so this is the baby's own D7, not a progeny-house derivation from a parent's chart).
+  const vargas = computeReportVargas(chart, ['D7']);
+
   return {
     header,
     lifeContext,
+    vargas,
     userAnswers: ctx.userAnswers ?? null,
     moonNakshatra: nakshatraData.name,
     moonPada: nakshatraData.pada,

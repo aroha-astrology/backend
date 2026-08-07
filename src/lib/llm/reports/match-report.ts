@@ -24,6 +24,7 @@ import {
 } from '../../astro-engine/matching/match-risks.js';
 import type { MatchReportScores } from '../../astro-engine/reports/match-report.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 
 const GROUNDING_RULE =
   'The overall Guna Milan/Dashakoot scores, the Manglik Dosha status, the single biggest-risk life area, and the severity and evidence for each life area below are GIVEN FACTS, already computed by a deterministic classical Vedic analysis. Never invent, escalate, or soften any risk, score, or status beyond what is given, and never contradict the given severity — your job is ONLY to turn these given facts into readable prose.';
@@ -177,6 +178,20 @@ function formatManglikStatus(scores: MatchReportScores): string {
   return `Manglik Dosha: present for only one person (${cancelled ? 'classically cancelled' : 'NOT cancelled — a real classical caution'}).`;
 }
 
+/** Both people's Navamsa (D9) — computed by computeKundliMilanScores (via
+ * computeMatchReportScores, same spread as gunaMilanScore/manglikStatus above) but not yet
+ * referenced anywhere in this module. Folded into the 'harmony' card's facts/instructions, same
+ * positional-layout reasoning as formatOverallCompatibility/formatManglikStatus above — this
+ * report's 8 cards + 3 closing sections are indexed positionally by the frontend, so a 12th
+ * section is not an option here. */
+function formatNavamsaCompatibility(scores: MatchReportScores): string {
+  const navamsa1 = scores.vargas?.[0];
+  const navamsa2 = scores.partnerVargas?.[0];
+  return `Navamsa (D9 — marriage/inner-strength chart): person1 — ${
+    navamsa1 ? formatReportVarga(navamsa1) : 'unavailable'
+  }; person2 (partner) — ${navamsa2 ? formatReportVarga(navamsa2) : 'unavailable'}.`;
+}
+
 /** Lower rank = more severe. Used only to rank ALREADY-computed severities against each other —
  * no new astro-engine computation, just synthesizing existing per-area facts into one headline. */
 const SEVERITY_RANK: Record<RiskSeverity, number> = {
@@ -210,6 +225,7 @@ function buildCardsFacts(scores: MatchReportScores): string {
     'Overall compatibility summary (GIVEN, not specific to any one area):',
     formatOverallCompatibility(scores),
     formatManglikStatus(scores),
+    formatNavamsaCompatibility(scores),
     formatBiggestRisk(scores.riskFactors),
     'Per-life-area findings (GIVEN):',
     areaFacts,
@@ -234,7 +250,7 @@ For each section:
 - "paragraphs": an array with EXACTLY ONE string, 200-500 characters, plain language, explaining the finding and its practical implication.
 - For "caution" or "serious" areas — especially health — be honest and direct about what could classically go wrong (health/accident risk, financial volatility, family friction, etc.) without being alarmist, then add one constructive note.
 - For "benefit" areas, celebrate the finding concretely.
-- For the "harmony" card specifically: it is the reader's headline answer to "how compatible are we overall" and "do our Manglik doshas cancel out" — explicitly state the given overall Guna Milan (Ashtakoota) score out of its max and the given compatibility band, the given Dashakoot score out of its max, AND the given Manglik Dosha status for both people (present or not, and whether it classically cancels), alongside the Nadi/Bhakoot/Gana evidence.`;
+- For the "harmony" card specifically: it is the reader's headline answer to "how compatible are we overall" and "do our Manglik doshas cancel out" — explicitly state the given overall Guna Milan (Ashtakoota) score out of its max and the given compatibility band, the given Dashakoot score out of its max, the given Manglik Dosha status for both people (present or not, and whether it classically cancels), and briefly both people's given Navamsa (D9) as a corroborating classical layer, alongside the Nadi/Bhakoot/Gana evidence.`;
 }
 
 function dosAndDontsSystemPrompt(): string {

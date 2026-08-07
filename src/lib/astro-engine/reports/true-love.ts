@@ -20,6 +20,7 @@ import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-y
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { buildReportGemstones } from './report-gemstones.js';
+import { computeReportVargas } from './report-vargas.js';
 import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -212,11 +213,14 @@ export function computeTrueLoveScores(
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
   const gemstones = buildReportGemstones('true_love', chart);
+  // Navamsa (D9) — same marriage/relationship-domain varga as marriage.ts/kundli-milan.ts.
+  const vargas = computeReportVargas(chart, ['D9']);
 
   return {
     header,
     lifeContext,
     gemstones,
+    vargas,
     romanceScore,
     partnershipScore,
     venusInKeyHouse,

@@ -51,17 +51,33 @@ export function getHouseFact(
 }
 
 /** The lord (ruling planet) of a given house number, or undefined if the chart has no house data. */
-export function getHouseLord(houseNumber: number, chart: Record<string, unknown> | null): string | undefined {
+export function getHouseLord(
+  houseNumber: number,
+  chart: Record<string, unknown> | null,
+): string | undefined {
   return getHouseFact(houseNumber, chart)?.lord;
 }
 
 /** The zodiac sign occupying a given house number (whole-sign houses), or undefined. */
-export function getHouseSign(houseNumber: number, chart: Record<string, unknown> | null): string | undefined {
+export function getHouseSign(
+  houseNumber: number,
+  chart: Record<string, unknown> | null,
+): string | undefined {
   return getHouseFact(houseNumber, chart)?.sign;
 }
 
+/** The Ascendant's sign index (0=Aries..11=Pisces) on the given chart, or null if unavailable —
+ * same field chat-grounding.ts reads for its own Ashtakavarga/varga facts. */
+export function getAscendantSignIndex(chart: Record<string, unknown> | null): number | null {
+  const asc = chart?.ascendant as Record<string, unknown> | undefined;
+  return asc?.signIndex != null ? Number(asc.signIndex) : null;
+}
+
 /** Every house number (1-12) whose lord is the given planet — a planet can rule 0, 1, or 2 houses. */
-export function getHousesRuledBy(planetName: string, chart: Record<string, unknown> | null): number[] {
+export function getHousesRuledBy(
+  planetName: string,
+  chart: Record<string, unknown> | null,
+): number[] {
   const houses = ((chart?.houses ?? []) as NatalHouseFact[]) || [];
   return houses.filter((h) => h.lord === planetName).map((h) => h.house);
 }
@@ -155,7 +171,9 @@ export function julianDayToDate(jd: number): Date {
  * throws) if either fact is missing, so callers can fail their own report generation cleanly
  * (the orchestration layer's fail-and-refund path, same as any other generation error).
  */
-export function getVimshottariDashaFromChart(chart: Record<string, unknown> | null): VimshottariDasha | null {
+export function getVimshottariDashaFromChart(
+  chart: Record<string, unknown> | null,
+): VimshottariDasha | null {
   const julianDay = chart?.julianDay;
   if (typeof julianDay !== 'number') return null;
 

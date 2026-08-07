@@ -13,6 +13,7 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import type { BabyNameScores } from '../../astro-engine/reports/baby-name.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
 const GROUNDING_RULE =
@@ -25,6 +26,8 @@ const SCOPE_RULE =
   "The very first line of your response MUST explicitly state: this guidance is grounded in the READER'S OWN Moon nakshatra (a simplification, since the app does not yet collect a separate unborn child's birth details) rather than the child's own birth chart, which is the more traditional approach — say this plainly, not apologetically. Also state that regional naming traditions vary slightly on some nakshatra-to-syllable mappings, so this is a standard reference table, not the only valid one.";
 const THEME_RULE =
   "The nakshatra's ruling planet (lord) and presiding deity below are GIVEN FACTS. Use them for TWO things: (1) gentle naming-theme flavor for name meanings/feel, and (2) 2-3 classical personality traits or qualities this birth star (nakshatra) is traditionally associated with — directly answering \"what personality traits does my baby's birth star suggest\" — framed as classical tendency ('often associated with'), never as a literal claim about the baby's actual personality, destiny, or future.";
+const SAPTAMSHA_RULE =
+  "The baby's own Saptamsha (D7) chart below — the classical children/progeny/creative-output varga — is a GIVEN FACT. Weave it in as ONE brief, gentle sentence of extra classical color alongside the birth-star personality traits (per THEME_RULE), never as a separate topic or a literal prediction.";
 const PADA_RULE =
   "Explicitly explain, in one sentence, that the nakshatra's own classical meaning already narrows to a specific starting sound via its pada (quarter) — the given pada number is what picks the exact syllable out of the nakshatra's full set — directly answering \"how does the nakshatra's pada further refine the ideal starting sound.\"";
 const AVOID_SOUNDS_RULE =
@@ -45,6 +48,7 @@ ${NAMES_RULE}
 ${EMPTY_NAMES_RULE}
 ${STYLE_RULE}
 ${THEME_RULE}
+${SAPTAMSHA_RULE}
 ${PADA_RULE}
 ${AVOID_SOUNDS_RULE}
 ${GENTLE_DOSHA_RULE}
@@ -55,7 +59,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "Suggested Names". The FIRST paragraph must contain the required scope-limitation disclaimer (see above). Then write ONE paragraph per given suggested name (see NAMES_RULE — if 25 names are given, write 25 name paragraphs, no more, no fewer), each giving its one-line real meaning AND the one-line "what it brings to the child" note (e.g. "Chudamani — one who wears the crest jewel of virtue. Classically linked with quiet self-respect and a child who holds their own without needing to prove it.") and naming which flavor it leans toward per STYLE_RULE.
-2. Heading close to "Naming Themes & Blessings" — 2-3 short paragraphs: the nakshatra lord/deity naming-theme flavor AND birth-star personality traits (per THEME_RULE), the pada explanation (per PADA_RULE), whether there are sounds/letters to avoid (per AVOID_SOUNDS_RULE), and a brief, gentle dosha/yoga note (per GENTLE_DOSHA_RULE).
+2. Heading close to "Naming Themes & Blessings" — 2-3 short paragraphs: the nakshatra lord/deity naming-theme flavor AND birth-star personality traits (per THEME_RULE) plus the Saptamsha color (per SAPTAMSHA_RULE), the pada explanation (per PADA_RULE), whether there are sounds/letters to avoid (per AVOID_SOUNDS_RULE), and a brief, gentle dosha/yoga note (per GENTLE_DOSHA_RULE).
 
 Each paragraph in section 2 should be 2-3 sentences.`;
 }
@@ -68,6 +72,12 @@ function buildFacts(scores: BabyNameScores): string {
   );
   lines.push(`Nakshatra ruling planet (lord): ${scores.nakshatraLord ?? 'unavailable'}.`);
   lines.push(`Nakshatra presiding deity: ${scores.nakshatraDeity ?? 'unavailable'}.`);
+  const saptamsha = scores.vargas?.[0];
+  lines.push(
+    saptamsha
+      ? `Baby's own Saptamsha (D7 — children/progeny/creative-output chart): ${formatReportVarga(saptamsha)}.`
+      : "Baby's own Saptamsha (D7): unavailable on this chart.",
+  );
   lines.push(
     scores.candidateNames.length > 0
       ? `Suggested names (each ALREADY verified by this app as real and starting with the required syllable — write one paragraph for every one of these ${scores.candidateNames.length}): ${scores.candidateNames.join(', ')}.`

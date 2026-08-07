@@ -6,6 +6,7 @@
 
 import { analyzePlanetStrengths, type PlanetStrength } from '../gemstones.js';
 import {
+  getAscendantSignIndex,
   getHouseLord,
   getHouseSign,
   getPlanetPosition,
@@ -21,6 +22,8 @@ import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-y
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { buildReportGemstones } from './report-gemstones.js';
+import { computeReportVargas } from './report-vargas.js';
+import { ashtakavargaFacts } from '../../chat-grounding.js';
 import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -288,11 +291,19 @@ export function computeWealthScores(
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
   const gemstones = buildReportGemstones('wealth', chart);
+  // Hora (D2) — the classical wealth/financial-stability/liquid-assets chart.
+  const vargas = computeReportVargas(chart, ['D2']);
+  const ashtakavargaSummary = ashtakavargaFacts(
+    ctx.ashtakavargaData ?? null,
+    getAscendantSignIndex(chart),
+  );
 
   return {
     header,
     lifeContext,
     gemstones,
+    vargas,
+    ashtakavargaSummary,
     wealthScore,
     secondLordStrength,
     eleventhLordStrength,

@@ -31,7 +31,11 @@ import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import '../reports/generators/index.js';
 import { findReportById } from '../reports/reports.repo.js';
-import { partnerInputToBirthRecord } from '../reports/reports.service.js';
+import {
+  partnerInputToBirthRecord,
+  hasPartnerBirthInput,
+  buildReportScoreContext,
+} from '../reports/reports.service.js';
 import { REPORT_GENERATORS } from '../reports/report-generator.types.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import type { MatchReportScores } from '../../lib/astro-engine/reports/match-report.js';
@@ -1070,6 +1074,10 @@ export async function buildSecondChartFacts(
   ];
 }
 
+/** Per-section character cap when quoting a purchased report's narrative into chat grounding
+ * (see buildMatchReportFacts below) — enough to ground a follow-up, not a full re-quote. */
+const MAX_SECTION_FACT_CHARS = 240;
+
 /**
  * Loads an already-purchased match_report row (see POST /v1/reports/purchase, key='match_report')
  * and builds labeled facts for chat grounding: the real Guna Milan score, all 8 life-area risk
@@ -1090,18 +1098,21 @@ export async function buildMatchReportFacts(userId: string, reportId: string): P
   if (!generator) return [];
 
   const kundli = await findKundliByUserId(row.userId, row.birthProfileId);
-  const chart = kundli?.chartData ?? null;
 
   let partnerChart: Record<string, unknown> | null = null;
-  if (row.input) {
+  if (hasPartnerBirthInput(row.input)) {
     const metrology = await computeMetrology(partnerInputToBirthRecord(row.input));
     partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
   }
 
-  const scores = generator.computeScores(
-    { chart, partnerChart },
-    row.periodMonth,
-  ) as MatchReportScores;
+  // Same context every other path (generation/read/regenerate, see reports.service.ts's
+  // buildReportScoreContext) builds for this exact row — previously this passed only
+  // { chart, partnerChart }, so a chat question about an already-purchased match report could
+  // score a different Guna/risk read than the report page itself (computeKundliMilanScores reads
+  // doshaData/yogaData/dashaData; computeMatchRiskFactors reads dashaData — none of which reached
+  // this call before).
+  const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
+  const scores = generator.computeScores(scoreContext, row.periodMonth) as MatchReportScores;
   const content = row.content as {
     sections?: Array<{ heading: string; paragraphs: string[] }>;
   } | null;
@@ -1115,8 +1126,21 @@ export async function buildMatchReportFacts(userId: string, reportId: string): P
   for (const f of scores.riskFactors) {
     lines.push(`Life area "${f.key}" — severity ${f.severity}. ${f.evidence.join(' ')}`);
   }
+  // Only the opening paragraph per section, not the full purchased narrative — chat needs enough
+  // to ground a follow-up question, not a second copy of everything already shown on the report
+  // page. Unbounded here previously let a single match-report chat turn push the whole
+  // <astro_context> block past scholar.ts's MAX_CONTEXT_CHARS clip, silently truncating whatever
+  // extraFacts (relocation/purchase facts) were appended after it.
+  // ponytail: flat per-line character clip, not token-aware — revisit if an opening paragraph
+  // itself ever grows long enough to matter.
   for (const s of sections) {
-    lines.push(`${s.heading}: ${s.paragraphs.join(' ')}`);
+    const firstParagraph = s.paragraphs[0];
+    if (!firstParagraph) continue;
+    const clipped =
+      firstParagraph.length > MAX_SECTION_FACT_CHARS
+        ? `${firstParagraph.slice(0, MAX_SECTION_FACT_CHARS)}…`
+        : firstParagraph;
+    lines.push(`${s.heading}: ${clipped}`);
   }
   return lines;
 }

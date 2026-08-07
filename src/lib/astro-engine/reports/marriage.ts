@@ -23,6 +23,7 @@
 import { analyzePlanetStrengths, type PlanetAnalysis, type PlanetStrength } from '../gemstones.js';
 import { detectMangalDosha } from '../doshas/mangalDosha.js';
 import {
+  getAscendantSignIndex,
   getHouseLord,
   getHouseSign,
   getPlanetPosition,
@@ -38,6 +39,8 @@ import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-y
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { buildReportGemstones } from './report-gemstones.js';
+import { computeReportVargas } from './report-vargas.js';
+import { ashtakavargaFacts } from '../../chat-grounding.js';
 import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -353,11 +356,23 @@ export function computeMarriageScores(
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
   const gemstones = buildReportGemstones('marriage', chart);
+  // Navamsa (D9) — the classical marriage/spouse/dharma chart, the same varga chat-grounding.ts
+  // surfaces to the AI chat feature for this exact chart (see VARGA_LABELS.D9 there).
+  const vargas = computeReportVargas(chart, ['D9']);
+  // Ashtakavarga house-strength summary — same function chat-grounding.ts already uses for this
+  // exact chart, never previously read by any report generator despite ctx.ashtakavargaData being
+  // passed into every ReportScoreContext already.
+  const ashtakavargaSummary = ashtakavargaFacts(
+    ctx.ashtakavargaData ?? null,
+    getAscendantSignIndex(chart),
+  );
 
   return {
     header,
     lifeContext,
     gemstones,
+    vargas,
+    ashtakavargaSummary,
     marriageScore,
     band,
     manglik,

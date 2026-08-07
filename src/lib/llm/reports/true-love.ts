@@ -33,6 +33,7 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import type { DecadeBand } from '../../astro-engine/reports/report-decade-arc.js';
 import type { TrueLoveScores } from '../../astro-engine/reports/true-love.js';
@@ -77,7 +78,7 @@ function buildFacts(scores: TrueLoveScores): string {
 }
 
 function narrativeSystemPromptCall2(): string {
-  return `You are writing the second part of a True Love Report for a mobile Vedic astrology app. The app already computed timing windows for love/partnership, an age-relative confidence table, a romantic archetype with 5 named trait tilts (0-10), a decade-by-decade romance arc (a 0-100 score plus tone for each of the next 3 decades), and a dosha/yoga summary (a Mangal Dosha caution if present, a wealth-yoga positive if present) using classical rules. Your job is ONLY to write the narrative explanation.
+  return `You are writing the second part of a True Love Report for a mobile Vedic astrology app. The app already computed timing windows for love/partnership, an age-relative confidence table, a romantic archetype with 5 named trait tilts (0-10), the Navamsa (D9) chart — the classical marriage/inner-strength varga, a corroborating layer alongside the D1 facts, not a replacement — a decade-by-decade romance arc (a 0-100 score plus tone for each of the next 3 decades), and a dosha/yoga summary (a Mangal Dosha caution if present, a wealth-yoga positive if present) using classical rules. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE_2}
 ${PLAIN_LANGUAGE_RULE}
@@ -88,7 +89,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 4 sections, in this order:
 1. Heading close to "Your Timing Windows" — 1-2 paragraphs summarizing the timing windows given (their date ranges and confidence levels) and what the age-band table implies about near-term versus later favorable periods. If no windows are listed, say so plainly rather than inventing one.
-2. Heading close to "Your Romantic Archetype" — 1-2 paragraphs naming the archetype given, describing the temperament sketch given, and weaving in the 5 trait tilts as relative strengths (state the numbers given, never recompute them).
+2. Heading close to "Your Romantic Archetype" — 1-2 paragraphs naming the archetype given, describing the temperament sketch given, weaving in the 5 trait tilts as relative strengths (state the numbers given, never recompute them), and the given Navamsa Lagna/placements as a second, corroborating classical layer on the same romantic temperament (not a separate topic).
 3. Heading close to "Blessings & Cautions" — 1 paragraph on the dosha/yoga facts given: mention the Mangal Dosha caution calmly if present, and the wealth-yoga positive if present. If neither is present, note briefly that no strong caution or featured yoga was flagged in this chart.
 4. Heading close to "How Your Romantic Life Unfolds Decade By Decade" — 1-2 paragraphs walking through the given 3 decade bands and their scores/tones in order, framed as a long-arc pattern (not a fixed fate) — directly answer "how does my romantic life unfold decade by decade."
 
@@ -179,6 +180,13 @@ function buildFactsCall2(scores: TrueLoveScores): string {
   for (const t of scores.archetype.traits) {
     lines.push(`- ${t.label}: ${t.score}`);
   }
+
+  const navamsa = scores.vargas?.[0];
+  lines.push(
+    navamsa
+      ? `Navamsa (D9 — marriage/inner-strength chart): ${formatReportVarga(navamsa)}.`
+      : 'Navamsa (D9): unavailable on this chart.',
+  );
 
   if (scores.doshaYoga.cautions.length > 0) {
     lines.push('Cautions to hold carefully (given):');

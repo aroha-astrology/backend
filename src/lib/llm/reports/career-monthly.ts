@@ -11,6 +11,7 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE, HOUSE_SIGNIFICATIONS } from '../house-insight.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { CareerMonthlyScores } from '../../astro-engine/reports/career-monthly.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 
@@ -24,7 +25,7 @@ const CONCERN_RULE =
   'If the reader gave an optional current career concern below (e.g. facing difficulty at work, or job-hunting), weave a direct, practical response to it into "Support & Obstacles This Month" and "Industries That Fit", tied to the given month score/tone/dosha-yoga facts — do not ignore it. If no concern was given, skip this entirely rather than asking for one.';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Career Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 10th house (${HOUSE_SIGNIFICATIONS[10]}) and 6th house (${HOUSE_SIGNIFICATIONS[6]}); a "work style" archetype with 5 named trait tilts (0-10 each); whether a Raja Yoga (status/career-elevating combination) is present; whether either of two obstacle-themed doshas (Sade Sati, Kaal Sarp) is currently present; and a short list of classically-associated industries for the 10th-house lord's planet. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Career Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 10th house (${HOUSE_SIGNIFICATIONS[10]}) and 6th house (${HOUSE_SIGNIFICATIONS[6]}); the Dashamsha (D10) chart — the classical career/profession/public-status varga, a corroborating layer alongside the 10th house; a "work style" archetype with 5 named trait tilts (0-10 each); whether a Raja Yoga (status/career-elevating combination) is present; whether either of two obstacle-themed doshas (Sade Sati, Kaal Sarp) is currently present; and a short list of classically-associated industries for the 10th-house lord's planet. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -37,7 +38,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 4 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of career momentum, workplace dynamics, and public standing themes. Explicitly state whether this looks like a good month to ask for a raise, switch jobs, or take a career risk, given the tone.
-2. Heading close to "Your Work Style" — 1-2 paragraphs weaving together the archetype label, its description, and its 5 trait tilts given as an enduring personality tendency, THEN explicitly connect it to how you'll handle this month specifically given the tone and dosha/yoga findings — directly answering "what does my work archetype say about how I'll handle this month," not just describing the trait in the abstract. Also touch on how colleagues and superiors are likely to experience working with you this month, grounded in the given Collaboration trait tilt and the month's tone.
+2. Heading close to "Your Work Style" — 1-2 paragraphs weaving together the archetype label, its description, its 5 trait tilts given as an enduring personality tendency, the given Dashamsha (D10) Lagna/placements as a corroborating classical layer on the same career-identity theme, and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 10th house, THEN explicitly connect it to how you'll handle this month specifically given the tone and dosha/yoga findings — directly answering "what does my work archetype say about how I'll handle this month," not just describing the trait in the abstract. Also touch on how colleagues and superiors are likely to experience working with you this month, grounded in the given Collaboration trait tilt and the month's tone.
 3. Heading close to "Support & Obstacles This Month" — 1-2 paragraphs covering BOTH the given supportive yoga finding (if a Raja Yoga is present, explain what it classically means for status/career in plain language; if none is present, say so briefly and positively — absence of a specific yoga is not a bad sign) AND the given dosha caution finding (if a Sade Sati or Kaal Sarp caution is present, frame it plainly as an obstacle to be prepared for at work this month; if none is present, say so briefly) — together, directly answer whether this is a month to expect recognition or better to keep a lower profile. Then cover the given within-month sub-periods per SUB_PERIOD_RULE.
 4. Heading close to "Industries That Fit" — 1 paragraph naming ONLY the exact industries given in the industry-fit facts (if the list is empty, write a short general paragraph about following your own strengths instead of naming any industry) and a closing line of practical guidance tied to the month's tone (e.g. when to push forward vs. consolidate).
 
@@ -55,6 +56,18 @@ function buildFacts(scores: CareerMonthlyScores): string {
     `Archetype description: ${scores.workArchetype.description}`,
     `Trait tilts (0-10): ${scores.workArchetype.traits.map((t) => `${t.label} ${t.score}`).join(', ')}.`,
   ];
+  const dashamsha = scores.vargas?.[0];
+  lines.push(
+    dashamsha
+      ? `Dashamsha (D10 — career/profession/public-status chart): ${formatReportVarga(dashamsha)}.`
+      : 'Dashamsha (D10): unavailable on this chart.',
+  );
+  if (scores.ashtakavargaSummary && scores.ashtakavargaSummary.length > 0) {
+    lines.push(
+      "Ashtakavarga house-strength summary (GIVEN — mention the 10th house's own reading only if it stands out as notably strong or weak, otherwise skip):",
+    );
+    lines.push(...scores.ashtakavargaSummary);
+  }
   if (scores.doshaYoga.positives.length > 0) {
     lines.push(
       `Supportive yogas present: ${scores.doshaYoga.positives.map((p) => `${p.label} (${p.detail})`).join('; ')}.`,

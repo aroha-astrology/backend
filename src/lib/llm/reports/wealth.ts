@@ -22,6 +22,7 @@ import { generate } from '../gemini-client.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
+import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { WealthScores } from '../../astro-engine/reports/wealth.js';
 import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import type { AgeBand } from '../../astro-engine/reports/report-age-bands.js';
@@ -38,7 +39,7 @@ const DISCLAIMER_RULE =
   'This is NOT financial advice. Frame everything as traditional astrological guidance about tendencies and themes only — never recommend specific investments, products, or financial decisions. If discussing "practical guidance", keep it to general behavioral framing (e.g. "a pattern like this often benefits from consistent habits"), never specific financial instructions.';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing a Wealth Report for a mobile Vedic astrology app. The app already computed a wealth score, the 2nd-house lord and 11th-house lord strengths, Jupiter's placement, and a wealth pattern classification (steady_accumulation / volatile_gains / late_blooming) using classical rules. Your job is ONLY to write the narrative explanation.
+  return `You are writing a Wealth Report for a mobile Vedic astrology app. The app already computed a wealth score, the 2nd-house lord and 11th-house lord strengths, Jupiter's placement, the Hora (D2) chart — the classical wealth/financial-stability/liquid-assets varga, a corroborating layer alongside the 2nd/11th houses, and a wealth pattern classification (steady_accumulation / volatile_gains / late_blooming) using classical rules. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -48,7 +49,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Wealth Pattern" — 2 paragraphs explaining the wealth score and the wealth pattern given in plain language: steady_accumulation means wealth builds gradually through saving/holding; volatile_gains means income arrives in bursts rather than steadily; late_blooming means no strong early pattern either way, with momentum more likely to build later. Reference Jupiter's placement as the classical significator of abundance/wisdom around money.
+1. Heading close to "Wealth Pattern" — 2 paragraphs explaining the wealth score and the wealth pattern given in plain language: steady_accumulation means wealth builds gradually through saving/holding; volatile_gains means income arrives in bursts rather than steadily; late_blooming means no strong early pattern either way, with momentum more likely to build later. Reference Jupiter's placement as the classical significator of abundance/wisdom around money, briefly the given Hora (D2) as a second, corroborating classical layer on the same wealth theme, and the given Ashtakavarga summary if it flags the 2nd or 11th house as notably strong or weak.
 2. Heading close to "Practical Guidance" — 1-2 paragraphs of GENERAL, non-prescriptive behavioral framing tied to the pattern (e.g. what mindset or habit tends to suit this pattern) — explicitly NOT financial advice, no specific investment/product recommendations.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -83,6 +84,18 @@ function buildFacts(scores: WealthScores): string {
     `Jupiter strength: ${scores.jupiterStrength}, house: ${scores.jupiterHouse ?? 'unknown'}.`,
   );
   lines.push(`Wealth pattern: ${scores.wealthPattern}.`);
+  const hora = scores.vargas?.[0];
+  lines.push(
+    hora
+      ? `Hora (D2 — wealth/financial-stability chart): ${formatReportVarga(hora)}.`
+      : 'Hora (D2): unavailable on this chart.',
+  );
+  if (scores.ashtakavargaSummary && scores.ashtakavargaSummary.length > 0) {
+    lines.push(
+      'Ashtakavarga house-strength summary (GIVEN — mention the 2nd/11th house readings only if either stands out as notably strong or weak, otherwise skip):',
+    );
+    lines.push(...scores.ashtakavargaSummary);
+  }
   return lines.join('\n');
 }
 
