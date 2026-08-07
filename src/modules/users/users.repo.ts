@@ -678,26 +678,29 @@ export async function sumWalletBalanceOutstanding(): Promise<number> {
   return Number(res?.total ?? 0);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * `q`'s search behavior is asymmetric across columns because phoneE164 is
  * encrypted at rest (non-deterministic ciphertext — see decryptUserRow's
  * doc comment): displayName/email are plaintext columns and can be ILIKE'd
  * for a partial match, but phone can only be matched EXACTLY via its
  * deterministic lookup hash (the same primitive findUserByPhoneE164 uses),
- * never partially.
+ * never partially. `id` is matched EXACTLY too, and only attempted when `q`
+ * is UUID-shaped — `users.id` is a uuid column, so feeding it a non-uuid
+ * string throws at the DB level instead of just not matching.
  */
 function userSearchWhere(q?: string) {
   const notDeleted = isNull(users.deletedAt);
   if (!q) return notDeleted;
   const like = `%${q}%`;
-  return and(
-    notDeleted,
-    or(
-      ilike(users.displayName, like),
-      ilike(users.email, like),
-      eq(users.phoneE164Hash, hashForLookup(q)),
-    ),
-  );
+  const conditions = [
+    ilike(users.displayName, like),
+    ilike(users.email, like),
+    eq(users.phoneE164Hash, hashForLookup(q)),
+  ];
+  if (UUID_RE.test(q)) conditions.push(eq(users.id, q));
+  return and(notDeleted, or(...conditions));
 }
 
 const USER_SORT_COLUMNS = {

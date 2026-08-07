@@ -88,6 +88,27 @@ describe('listUsersPage with a search term', () => {
     expect(result[0]!.phoneE164).toBe('+919999999999');
   });
 
+  it('exact-matches id when q is UUID-shaped', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await listUsersPage(20, 0, 'a3bb189e-8bf9-3888-9912-ace4e6543002');
+
+    const compiled = compile(calls.where);
+    expect(compiled.sql).toMatch(/"id" =/);
+    expect(compiled.params).toContain('a3bb189e-8bf9-3888-9912-ace4e6543002');
+  });
+
+  it('skips the id condition when q is not UUID-shaped (would 500 against a uuid column)', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await listUsersPage(20, 0, 'asha');
+
+    const compiled = compile(calls.where);
+    expect(compiled.sql).not.toMatch(/"id" =/);
+  });
+
   it('falls back to plain (non-deleted) pagination when q is omitted', async () => {
     const { chain, calls } = makeSelectChain([]);
     state.select.mockReturnValue(chain);
