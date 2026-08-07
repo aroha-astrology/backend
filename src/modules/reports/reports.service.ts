@@ -205,6 +205,27 @@ function computeRowPrices(def: ReportDef, perUnitPricePaise: number, rowCount: n
   return splitPriceAcrossRows(totalPaise, rowCount);
 }
 
+/**
+ * Does this `input` actually carry partner birth details?
+ *
+ * `input` used to be null for every non-partner report, so a bare `if (row.input)`
+ * was a correct stand-in for "this is a partner report". `withAnswers` below broke
+ * that: it now persists the questionnaire under `input.answers` for EVERY report
+ * key, so `{"answers":{"concern":"Looking for job"}}` makes `input` truthy on a
+ * career/health report with no partner anywhere in it. The old guard then fed
+ * `partnerInputToBirthRecord`'s five undefined fields into computeMetrology and
+ * died on `undefined.split('-')`, failing the whole report.
+ *
+ * `withAnswers` namespaced `answers` to avoid a KEY collision, which it did — the
+ * collision was in the truthiness test, not the keys. Test the field the birth
+ * record cannot be built without instead.
+ */
+export function hasPartnerBirthInput(
+  input: Record<string, unknown> | null,
+): input is Record<string, unknown> {
+  return typeof input?.dateOfBirth === 'string';
+}
+
 export function partnerInputToBirthRecord(input: Record<string, unknown>): BirthRecord {
   return {
     date: input.dateOfBirth as string,
@@ -384,7 +405,7 @@ async function runReportGeneration(
     }
 
     let partnerChart: Record<string, unknown> | null = null;
-    if (row.input) {
+    if (hasPartnerBirthInput(row.input)) {
       const metrology = await computeMetrology(partnerInputToBirthRecord(row.input));
       partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
     }
@@ -684,7 +705,7 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
   const chart = kundli?.chartData ?? null;
 
   let partnerChart: Record<string, unknown> | null = null;
-  if (row.input) {
+  if (hasPartnerBirthInput(row.input)) {
     try {
       const metrology = await computeMetrology(partnerInputToBirthRecord(row.input));
       partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
@@ -949,7 +970,7 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
   if (!kundli || kundli.status !== 'ready' || !kundli.chartData) return 'skipped';
 
   let partnerChart: Record<string, unknown> | null = null;
-  if (row.input) {
+  if (hasPartnerBirthInput(row.input)) {
     const metrology = await computeMetrology(partnerInputToBirthRecord(row.input));
     partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
   }

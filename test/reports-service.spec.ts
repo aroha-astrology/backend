@@ -676,6 +676,44 @@ describe('purchaseReport — background generation safety net', () => {
     expect(generateNarrative).toHaveBeenCalledWith({ gunaMilanScore: 30 }, 'en');
   });
 
+  it('does not attempt a partner chart when input holds only questionnaire answers', async () => {
+    // Regression: persisting the questionnaire under input.answers made `input`
+    // truthy on every non-partner report, so the old `if (row.input)` guard fed
+    // five undefined fields to computeMetrology and killed the whole report with
+    // "Cannot read properties of undefined (reading 'split')".
+    const generateNarrative = vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]);
+    state.REPORT_GENERATORS.career_monthly = {
+      key: 'career_monthly',
+      computeScores: vi.fn().mockReturnValue({ monthScore: 55 }),
+      generateNarrative,
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'cm1',
+        reportKey: 'career_monthly',
+        input: { answers: { concern: 'Looking for job' } },
+      }),
+    );
+
+    await purchaseReport(makeUser(), {
+      reportKey: 'career_monthly',
+      months: ['2026-08'],
+      answers: { concern: 'Looking for job' },
+    });
+
+    await vi.waitFor(() => {
+      expect(state.markReportReady).toHaveBeenCalledWith(
+        'cm1',
+        expect.any(Date),
+        expect.objectContaining({ model: expect.any(String) }),
+      );
+    });
+    expect(state.computeMetrology).not.toHaveBeenCalled();
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+  });
+
   it('summarizes timing windows once and persists them alongside sections when scores has a RankedWindow[] field', async () => {
     const window = {
       startDate: '2026-10-22T00:00:00.000Z',
