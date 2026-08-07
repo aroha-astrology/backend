@@ -27,7 +27,7 @@ curl -fsS --max-time 3600 -X POST \
   -H "X-Cron-Secret: $SECRET" \
   -H 'Content-Type: application/json' \
   -d '{}' \
-  "http://127.0.0.1:${PORT}/internal/cron/daily-horoscopes" || CURL_EXIT=$?
+  "http://127.0.0.1:${PORT}/internal/cron/horoscopes" || CURL_EXIT=$?
 echo
 
 if [ "$CURL_EXIT" -ne 0 ]; then

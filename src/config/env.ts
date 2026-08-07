@@ -232,7 +232,7 @@ const EnvSchema = z
     // instead generated on the fly the next time they actually open the app
     // (GET /v1/horoscope's existing cache-miss path). See horoscope.repo.ts
     // listRecentlyActiveUsersAfter.
-    HOROSCOPE_ACTIVE_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
+    HOROSCOPE_ACTIVE_WINDOW_DAYS: z.coerce.number().int().positive().default(2),
   })
   .superRefine((value, ctx) => {
     const hasPath = Boolean(value.FIREBASE_SERVICE_ACCOUNT_PATH);

@@ -321,6 +321,11 @@ export async function requestHoroscopeGeneration(
   const forDate = opts.forDate ?? currentPeriodStart(period);
   const periodKey = periodKeyFor(period, forDate);
 
+  // No birth date = nothing to read a chart from. Guarded here rather than in
+  // the cron's user query so every caller (nightly batch, cache-miss GET,
+  // onboarding hook) stops burning an LLM call on a half-onboarded profile.
+  if (!profile.dateOfBirth) return 'skipped';
+
   // Optimization: for daily, try to reuse yesterday's tomorrow first
   if (period === 'daily' && !opts.force) {
     const reused = await tryReuseYesterdaysTomorrow(user.id, profile.birthProfileId, forDate);
