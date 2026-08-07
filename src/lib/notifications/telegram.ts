@@ -18,8 +18,10 @@ export type HealthReportData = Record<
 export async function sendHealthReport(report: HealthReportData): Promise<boolean> {
   const lines = Object.entries(report).map(([name, res]) => {
     const icon = res.status === 'ok' ? '✅' : '❌';
-    const msg = res.message ? ` - ${escapeMarkdown(res.message)}` : '';
-    return `${icon} *${escapeMarkdown(name)}* (${res.latencyMs}ms)${msg}`;
+    // `-`, `(` and `)` are MarkdownV2-reserved: unescaped, Telegram rejects the
+    // whole message with 400 and the health report silently never arrives.
+    const msg = res.message ? ` \\- ${escapeMarkdown(res.message)}` : '';
+    return `${icon} *${escapeMarkdown(name)}* \\(${res.latencyMs}ms\\)${msg}`;
   });
   const text = `*Health Report*\n\n${lines.join('\n')}`;
   return sendMessage(text);
