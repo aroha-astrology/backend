@@ -352,8 +352,8 @@ describe('searchUsers', () => {
 
     const result = await searchUsers('asha', 20, 0);
 
-    expect(state.listUsersPage).toHaveBeenCalledWith(20, 0, 'asha');
-    expect(state.countUsersMatching).toHaveBeenCalledWith('asha');
+    expect(state.listUsersPage).toHaveBeenCalledWith(20, 0, 'asha', 'createdAt', 'desc', 'all');
+    expect(state.countUsersMatching).toHaveBeenCalledWith('asha', 'all');
     expect(result).toEqual({
       users: [
         {

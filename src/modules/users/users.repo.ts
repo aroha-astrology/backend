@@ -690,9 +690,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * is UUID-shaped — `users.id` is a uuid column, so feeding it a non-uuid
  * string throws at the DB level instead of just not matching.
  */
-function userSearchWhere(q?: string) {
+export type ContactTypeFilter = 'all' | 'phone' | 'email';
+
+function userSearchWhere(q?: string, contactType: ContactTypeFilter = 'all') {
   const notDeleted = isNull(users.deletedAt);
-  if (!q) return notDeleted;
+  const contactClause =
+    contactType === 'phone'
+      ? isNotNull(users.phoneE164)
+      : contactType === 'email'
+        ? isNotNull(users.email)
+        : undefined;
+  if (!q) return contactClause ? and(notDeleted, contactClause) : notDeleted;
   const like = `%${q}%`;
   const conditions = [
     ilike(users.displayName, like),
@@ -700,7 +708,10 @@ function userSearchWhere(q?: string) {
     eq(users.phoneE164Hash, hashForLookup(q)),
   ];
   if (UUID_RE.test(q)) conditions.push(eq(users.id, q));
-  return and(notDeleted, or(...conditions));
+  const searchClause = or(...conditions);
+  return contactClause
+    ? and(notDeleted, contactClause, searchClause)
+    : and(notDeleted, searchClause);
 }
 
 const USER_SORT_COLUMNS = {
@@ -717,6 +728,7 @@ export async function listUsersPage(
   q?: string,
   sortBy: UserSortBy = 'createdAt',
   sortDir: 'asc' | 'desc' = 'desc',
+  contactType: ContactTypeFilter = 'all',
 ) {
   const column = USER_SORT_COLUMNS[sortBy];
   const rows = await db
@@ -730,7 +742,7 @@ export async function listUsersPage(
       lastActiveAt: users.lastActiveAt,
     })
     .from(users)
-    .where(userSearchWhere(q))
+    .where(userSearchWhere(q, contactType))
     .orderBy(sortDir === 'asc' ? asc(column) : desc(column))
     .limit(limit)
     .offset(offset);
@@ -775,8 +787,14 @@ export async function listRefundsBetween(range: DateRange) {
 }
 
 /** Total matching `listUsersPage`'s own search predicate — powers the admin dashboard's pagination total. */
-export async function countUsersMatching(q?: string): Promise<number> {
-  const [res] = await db.select({ count: count() }).from(users).where(userSearchWhere(q));
+export async function countUsersMatching(
+  q?: string,
+  contactType: ContactTypeFilter = 'all',
+): Promise<number> {
+  const [res] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(userSearchWhere(q, contactType));
   return res?.count ?? 0;
 }
 

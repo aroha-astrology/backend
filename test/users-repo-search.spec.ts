@@ -121,6 +121,39 @@ describe('listUsersPage with a search term', () => {
   });
 });
 
+describe('listUsersPage with contactType', () => {
+  it('adds an IS NOT NULL phone condition when contactType is "phone"', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await listUsersPage(20, 0, undefined, 'createdAt', 'desc', 'phone');
+
+    const compiled = compile(calls.where);
+    expect(compiled.sql).toMatch(/phone_e164" is not null/i);
+  });
+
+  it('adds an IS NOT NULL email condition when contactType is "email"', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await listUsersPage(20, 0, undefined, 'createdAt', 'desc', 'email');
+
+    const compiled = compile(calls.where);
+    expect(compiled.sql).toMatch(/"email" is not null/i);
+  });
+
+  it('combines the contact filter with a search term', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+
+    await listUsersPage(20, 0, 'asha', 'createdAt', 'desc', 'phone');
+
+    const compiled = compile(calls.where);
+    expect(compiled.sql).toMatch(/phone_e164" is not null/i);
+    expect(compiled.sql).toMatch(/ilike/i);
+  });
+});
+
 describe('countUsersMatching', () => {
   it('counts using the same search predicate as listUsersPage', async () => {
     const { chain, calls } = makeSelectChain([{ count: 4 }]);

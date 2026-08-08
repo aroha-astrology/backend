@@ -13,6 +13,7 @@ import {
   deductWalletBalance,
   findActiveUserById,
   type UserSortBy,
+  type ContactTypeFilter,
 } from '../users/users.repo.js';
 import { costByAgent, type AgentCostRow } from './ai-usage.repo.js';
 import {
@@ -215,10 +216,11 @@ export async function searchUsers(
   offset: number,
   sortBy: UserSortBy = 'createdAt',
   sortDir: 'asc' | 'desc' = 'desc',
+  contactType: ContactTypeFilter = 'all',
 ) {
   const [rows, total] = await Promise.all([
-    listUsersPage(limit, offset, q, sortBy, sortDir),
-    countUsersMatching(q),
+    listUsersPage(limit, offset, q, sortBy, sortDir, contactType),
+    countUsersMatching(q, contactType),
   ]);
   const users = rows.map((row) => ({
     ...row,

@@ -196,7 +196,8 @@ const listUsersRoute = createRoute({
   method: 'get',
   path: '/admin/users',
   tags: ['Admin'],
-  summary: 'Paginated user search — ILIKE on displayName/email, exact match on phone',
+  summary:
+    'Paginated user search — ILIKE on displayName/email, exact match on phone; optional contactType filters to phone-only or email-only users',
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   request: { query: AdminUsersQuerySchema },
@@ -211,9 +212,9 @@ const listUsersRoute = createRoute({
 });
 
 adminRouter.openapi(listUsersRoute, async (c) => {
-  const { q, offset, limit, sortBy, sortDir } = c.req.valid('query');
-  const page = await searchUsers(q, limit, offset, sortBy, sortDir);
-  await auditRead(c, 'GET /v1/admin/users', { q, offset, limit, sortBy, sortDir });
+  const { q, contactType, offset, limit, sortBy, sortDir } = c.req.valid('query');
+  const page = await searchUsers(q, limit, offset, sortBy, sortDir, contactType);
+  await auditRead(c, 'GET /v1/admin/users', { q, contactType, offset, limit, sortBy, sortDir });
   return c.json(page, 200);
 });
 
