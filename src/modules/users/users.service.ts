@@ -187,20 +187,6 @@ export function isProfileComplete(row: UserRow): boolean {
   return coreFilled && timeSatisfied;
 }
 
-/**
- * True if someone born on `dateOfBirth` ("YYYY-MM-DD") has already had their
- * 18th birthday. Compared date-only in UTC — a birthday is a calendar fact,
- * not an instant, so no timezone offset should decide it.
- */
-export function isAtLeast18(dateOfBirth: string): boolean {
-  const [y, m, d] = dateOfBirth.split('-').map(Number);
-  if (!y || !m || !d) return false;
-  const eighteenth = Date.UTC(y + 18, m - 1, d);
-  const today = new Date();
-  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  return eighteenth <= todayUtc;
-}
-
 /** Fields that map 1:1 from the request body onto a user row column. */
 const DIRECT_FIELDS = [
   'displayName',
@@ -382,26 +368,6 @@ export async function updateMe(
     body.timeOfBirth !== undefined ||
     body.placeOfBirth !== undefined;
   const isPostOnboardingBirthEdit = touchedBirthEvent && current.profileCompletedAt !== null;
-
-  // 18+ gate, enforced ONLY while onboarding (profile not yet complete).
-  //
-  // Terms §1 and Privacy §8 both state the Service is 18-and-over: the DPDP
-  // Act requires verifiable parental consent below that and we don't support
-  // it, so an account must not come into existence for a minor in the first
-  // place. Gating on the `profileCompletedAt` latch is what confines this to
-  // new signups — an existing user correcting their DOB routes through this
-  // same function with the latch already set, and silently bricking live
-  // accounts (where a typo is indistinguishable from a real minor) would do
-  // more harm than the rule prevents.
-  //
-  // Deliberately NOT applied to birth PROFILES: a profile the user creates
-  // for someone else (compatibility matching) may legitimately be a child,
-  // and Terms §6 governs that with a guardian-consent clause instead.
-  if (body.dateOfBirth !== undefined && current.profileCompletedAt === null) {
-    if (!isAtLeast18(body.dateOfBirth)) {
-      throw Errors.badRequest('You must be 18 or older to create an account');
-    }
-  }
 
   if (isPostOnboardingBirthEdit) {
     const claimed = await claimBirthDetailsEdit(userId);
