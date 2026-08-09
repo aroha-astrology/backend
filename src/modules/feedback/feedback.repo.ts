@@ -8,6 +8,22 @@ export const FEEDBACK_REWARD_FALLBACK_PAISE = 5000;
 const FEEDBACK_REWARD_REASON = 'feedback_reward';
 
 /**
+ * Whether this user has ever rated us, from any device. Surfaced on the user
+ * DTO so the app's automatic rating prompt can stay quiet for someone who
+ * already answered it — localStorage alone forgets on reinstall or a new
+ * phone, and re-asking a user who already rated is exactly what the prompt is
+ * supposed to avoid. Covered by `user_feedback_user_id_idx`.
+ */
+export async function hasGivenFeedback(userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: userFeedback.id })
+    .from(userFeedback)
+    .where(eq(userFeedback.userId, userId))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * Store a rating (+ optional comment, encrypted at rest like support tickets'
  * message) and, the first time only, credit the reward.
  *

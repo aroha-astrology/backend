@@ -3,6 +3,7 @@ import { requireFirebaseToken } from '../../middleware/auth.js';
 import { toUserDto } from '../users/users.service.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
+import { hasGivenFeedback } from '../feedback/feedback.repo.js';
 import { establishSession } from './auth.service.js';
 import { SessionResponseSchema } from './auth.schemas.js';
 import { notifyNewSignup } from '../../lib/notifications/telegram.js';
@@ -64,6 +65,8 @@ authRouter.openapi(sessionRoute, async (c) => {
 
   const profile = await resolveActiveProfileContext(user);
   const features = await resolveFeaturesForUser(user.id);
-  const body = { user: toUserDto(user, profile, features), created };
+  // A brand-new user can't have rated yet; skip the lookup on the signup path.
+  const feedbackGiven = created ? false : await hasGivenFeedback(user.id);
+  const body = { user: toUserDto(user, profile, features, feedbackGiven), created };
   return c.json(body, created ? 201 : 200);
 });

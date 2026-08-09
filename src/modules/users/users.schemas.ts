@@ -261,6 +261,14 @@ export const UserSchema = z
     gemstoneUnlocked: z
       .boolean()
       .describe('True once the user has spent wallet balance to unlock the gemstone report'),
+    feedbackGiven: z
+      .boolean()
+      .describe(
+        'True once the user has submitted a rating through our own feedback sheet. The app ' +
+          'uses it to suppress the automatic rating prompt, which otherwise re-asks on a ' +
+          'reinstall or a second device. Unrelated to the Google Play review card, which ' +
+          'reports no outcome back and so can never set this.',
+      ),
 
     features: z
       .record(

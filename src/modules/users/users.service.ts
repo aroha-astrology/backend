@@ -54,11 +54,14 @@ const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean 
  * (see `resolveFeaturesForUser()` in `features.service.ts`) — passed in
  * rather than resolved here so this stays a pure, synchronous mapper; every
  * call site resolves it once per request.
+ *
+ * `feedbackGiven` is passed in for the same reason, via `hasGivenFeedback()`.
  */
 export function toUserDto(
   row: UserRow,
   profile: ProfileContext,
   features: Record<string, ResolvedFeature>,
+  feedbackGiven: boolean,
 ): UserDto {
   return {
     id: row.id,
@@ -131,6 +134,7 @@ export function toUserDto(
     // resolveProfileContext — no separate null-fallback needed here.
     unlockedHouses: profile.unlockedHouses,
     gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
+    feedbackGiven,
 
     features,
 

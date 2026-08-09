@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
+import { hasGivenFeedback } from '../feedback/feedback.repo.js';
 import { ensureReferralCode, collectUserExport } from './users.repo.js';
 import { Errors } from '../../lib/errors.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
@@ -222,7 +223,8 @@ usersRouter.openapi(getMeRoute, async (c) => {
   const user = await ensureReferralCode(c.get('user'));
   const profile = await resolveActiveProfileContext(user);
   const features = await resolveFeaturesForUser(user.id);
-  return c.json(toUserDto(user, profile, features), 200);
+  const feedbackGiven = await hasGivenFeedback(user.id);
+  return c.json(toUserDto(user, profile, features, feedbackGiven), 200);
 });
 
 usersRouter.openapi(patchMeRoute, async (c) => {
@@ -234,7 +236,8 @@ usersRouter.openapi(patchMeRoute, async (c) => {
   const next = await updateMe(user.id, body, { sourceIp, userAgent });
   const profile = await resolveActiveProfileContext(next);
   const features = await resolveFeaturesForUser(next.id);
-  return c.json(toUserDto(next, profile, features), 200);
+  const feedbackGiven = await hasGivenFeedback(next.id);
+  return c.json(toUserDto(next, profile, features, feedbackGiven), 200);
 });
 
 usersRouter.openapi(deleteMeRoute, async (c) => {
