@@ -28,6 +28,7 @@ import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
 import { chartConditionFacts } from '../../lib/chat-grounding.js';
 import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
+import { verifyReportClaims } from '../../lib/llm/reports/verify-claims.js';
 import type { BirthRecord } from '../../lib/swarm/state.js';
 import {
   claimReportRow,
@@ -551,7 +552,13 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
 
     const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
     const scores = computeScoresWithCondition(generator, scoreContext, row.periodMonth);
-    const sections = await generator.generateNarrative(scores, 'en');
+    const generated = await generator.generateNarrative(scores, 'en');
+    // Second pass: drop any sentence that contradicts this report's own facts.
+    // Fails open — see verifyReportClaims.
+    const { sections } = await verifyReportClaims(
+      generated,
+      (scores as { planetCondition?: string[] }).planetCondition ?? [],
+    ).catch(() => ({ sections: generated, dropped: 0 }));
     const windowSummaries = await computeWindowSummaries(scores);
     const verdict = await computeReportVerdict(scores);
 
@@ -1093,7 +1100,13 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
 
   const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
   const scores = computeScoresWithCondition(generator, scoreContext, row.periodMonth);
-  const sections = await generator.generateNarrative(scores, 'en');
+  const generated = await generator.generateNarrative(scores, 'en');
+  // Same fact-check second pass as the initial generation path above, so a
+  // regenerated report is never held to a weaker standard than a fresh one.
+  const { sections } = await verifyReportClaims(
+    generated,
+    (scores as { planetCondition?: string[] }).planetCondition ?? [],
+  ).catch(() => ({ sections: generated, dropped: 0 }));
   const windowSummaries = await computeWindowSummaries(scores);
   const verdict = await computeReportVerdict(scores);
 

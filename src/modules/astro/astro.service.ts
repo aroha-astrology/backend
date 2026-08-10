@@ -21,6 +21,7 @@ import {
 } from '../../lib/astro-engine/index.js';
 import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
 import { SIGNS } from '../../lib/astro-tools/index.js';
+import { findPredictionsDueForReview } from './prediction-outcomes.repo.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { buildPurchaseFacts } from '../../lib/chat-purchase-facts.js';
@@ -981,6 +982,30 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+/**
+ * Closed, unrated predictions surfaced into chat so the astrologer can ask
+ * whether they actually happened.
+ *
+ * This is the half of the accuracy loop that cannot be automated: the engine
+ * can record what it predicted and when, but only the user knows whether it
+ * came true. Asking inside the conversation costs nothing and is far more
+ * likely to be answered than a survey — and an unanswered claim just stays in
+ * the queue rather than being scored wrongly.
+ *
+ * Deliberately capped at ONE claim per turn: a reply that opens with three
+ * "did this happen?" questions reads as an interrogation, not a reading.
+ */
+async function buildDuePredictionFacts(userId: string): Promise<string[]> {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const due = await findPredictionsDueForReview(userId, today, 1);
+  const claim = due[0];
+  if (!claim) return [];
+
+  return [
+    `UNVERIFIED PAST PREDICTION: on ${claim.windowStart ?? 'an earlier date'} this app told the user "${claim.claim}" for the window ending ${claim.windowEnd}. That window has now closed and the user has never told us whether it played out. If — and ONLY if — the conversation reaches a natural pause, ask them once, briefly and warmly, whether that period actually turned out that way. Never open with it, never repeat it if they deflect, and never assume the answer. Their reply is how this app learns whether its timing is any good.`,
+  ];
+}
+
 /** Unix epoch ms for a Julian Day (UT). */
 function dateFromJulianDay(jd: number): Date {
   return new Date((jd - 2440587.5) * 86_400_000);
@@ -1402,10 +1427,18 @@ export async function* chatStream(
     profile,
   ).catch(() => []);
 
+  // Predictions whose window has already closed and that nobody has scored.
+  // Surfaced so the astrologer ASKS — an accuracy table nobody writes a verdict
+  // into measures nothing, and the natural place to ask "last month I said X,
+  // did that happen?" is the conversation itself, not a survey. Best-effort:
+  // never blocks a reply.
+  const duePredictionFacts = await buildDuePredictionFacts(userId).catch(() => []);
+
   const extraFacts = [
     ...profileFacts,
     ...panchangFacts,
     ...varshphalFacts,
+    ...duePredictionFacts,
     ...secondChartFacts,
     ...matchReportFacts,
     ...relocationFacts,

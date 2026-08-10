@@ -46,6 +46,12 @@ export * from './doshas/index';
 // Divisional Charts
 export * from './charts/divisionalCharts';
 
+// KP (Krishnamurti Paddhati) star/sub/sub-sub lords
+export * from './calculations/kp-sublord';
+
+// Avastha, Graha Yuddha, Vimsopaka Bala
+export * from './calculations/avastha';
+
 // Bhava Chalit (house chart, as opposed to the sign chart)
 export * from './charts/bhavaChalit';
 

@@ -10,6 +10,7 @@ import { resolveActiveProfileContext } from '../birth-profiles/profile-context.j
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
+import { findPredictionsDueForReview, ratePrediction } from './prediction-outcomes.repo.js';
 import {
   incrementFeedbackCounter,
   saveChatFeedbackReport,
@@ -892,4 +893,105 @@ astroRouter.openapi(remediesRoute, async (c) => {
 
   const remedies = await astroService.getRemedies(birthData);
   return c.json({ remedies }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Prediction accuracy — the loop that makes predictions falsifiable          */
+/*                                                                            */
+/* `prediction_outcomes` records every dated claim, but a table nobody writes  */
+/* a verdict into measures nothing. These two endpoints are that verdict path: */
+/* GET returns the claims whose window has already closed (so the user can     */
+/* actually know whether it happened), POST records what they say.            */
+/* -------------------------------------------------------------------------- */
+
+const PredictionDueSchema = z
+  .object({
+    id: z.string().uuid(),
+    surface: z.string(),
+    domain: z.string().nullable(),
+    claim: z.string(),
+    windowStart: z.string().nullable(),
+    windowEnd: z.string().nullable(),
+    confidence: z.string().nullable(),
+  })
+  .openapi('PredictionDue');
+
+const predictionsDueRoute = createRoute({
+  method: 'get',
+  path: '/predictions/due',
+  tags: ['Astro'],
+  summary: 'Predictions whose window has closed and which the user has not yet rated',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Closed, unrated predictions, oldest first',
+      content: {
+        'application/json': { schema: z.object({ predictions: z.array(PredictionDueSchema) }) },
+      },
+    },
+  },
+});
+
+astroRouter.openapi(predictionsDueRoute, async (c) => {
+  const user = c.get('user');
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const rows = await findPredictionsDueForReview(user.id, today);
+  return c.json(
+    {
+      predictions: rows.map((r) => ({
+        id: r.id,
+        surface: r.surface,
+        domain: r.domain,
+        claim: r.claim,
+        windowStart: r.windowStart,
+        windowEnd: r.windowEnd,
+        confidence: r.confidence,
+      })),
+    },
+    200,
+  );
+});
+
+const ratePredictionRoute = createRoute({
+  method: 'post',
+  path: '/predictions/{id}/rate',
+  tags: ['Astro'],
+  summary: 'Record whether a prediction turned out to be right',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({
+            // -1 wrong, 0 unclear, 1 right.
+            rating: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
+            happened: z.boolean().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Rating recorded',
+      content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
+    },
+    404: errorResponse('No such prediction for this user'),
+  },
+});
+
+astroRouter.openapi(ratePredictionRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const { rating, happened } = c.req.valid('json');
+  // Owner-scoped inside the repo, so one user can never rate another's claim.
+  const ok = await ratePrediction(id, user.id, rating, happened ?? null);
+  if (!ok) {
+    return c.json({ error: { code: 'not_found', message: 'Prediction not found' } }, 404);
+  }
+  return c.json({ ok: true }, 200);
 });

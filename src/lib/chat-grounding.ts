@@ -21,6 +21,7 @@ import {
   computeBhavaChalit,
 } from './astro-engine/index.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
+import { kpLordsForPlanets } from './astro-engine/calculations/kp-sublord.js';
 import {
   baladiAvastha,
   detectGrahaYuddha,
@@ -1052,6 +1053,37 @@ export function planetStrengthFacts(
 }
 
 /**
+ * KP star/sub lords for the two points that decide the most: the Moon (which
+ * KP treats as the mind and the primary significator) and the Sun.
+ *
+ * KP's whole claim is that the SUB LORD, not the sign or the house, decides
+ * whether a promise actually fructifies — two charts identical down to the
+ * nakshatra can differ here and behave completely differently. Nothing in this
+ * engine computed it before.
+ *
+ * Deliberately limited to Moon and Sun rather than all nine: a full KP table is
+ * nine lines of jargon the astrologer would have to suppress anyway, and the
+ * Moon's sub lord is the one KP itself leans on hardest. Cuspal sub lords are
+ * NOT emitted — those need real Placidus cusps, which the whole-sign default
+ * discards (see bhavaChalit.ts), and inventing them would be confident nonsense.
+ */
+export function kpSubLordFacts(planets: PlanetFact[]): string[] {
+  const wanted = planets.filter((p) => p.planet === 'Moon' || p.planet === 'Sun');
+  if (wanted.length === 0) return [];
+
+  const lords = kpLordsForPlanets(wanted);
+  if (lords.length === 0) return [];
+
+  const detail = lords
+    .map((l) => `${l.planet}: star lord ${l.starLord}, sub lord ${l.subLord}`)
+    .join('; ');
+
+  return [
+    `KP sub lords (Krishnamurti Paddhati — the sub lord is what decides whether a promise actually fructifies, and is a sharper timing signal than the Mahadasha alone): ${detail}. Where the sub lord is a planet you have already described as weak, combust or defeated, treat the timing as slipping rather than firm. Never say "KP" or "sub lord" to the user.`,
+  ];
+}
+
+/**
  * Bhava Chalit — where each planet actually falls by HOUSE, as opposed to by
  * sign. Only the planets that disagree between the two reckonings are emitted:
  * on a chart with an early-degree Lagna nothing moves and this is silent, which
@@ -1107,6 +1139,7 @@ export function chartConditionFacts(chart: Record<string, unknown> | null): stri
   return [
     ...planetStrengthFacts(chart, planets),
     ...avasthaAndWarFacts(chart, planets),
+    ...kpSubLordFacts(planets),
     ...bhavaChalitFacts(chart, planets),
   ];
 }
