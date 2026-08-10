@@ -41,6 +41,7 @@ import type { HouseInsightRow } from '../../db/schema.js';
 
 type EngineAyanamsa = 'lahiri' | 'raman' | 'krishnamurti' | 'true_chitra';
 type EngineHouseSystem = 'W' | 'P' | 'K' | 'E';
+type EngineLunarNode = 'mean' | 'true';
 
 /* -------------------------------------------------------------------------- */
 /* Strict required parameters                                                  */
@@ -109,6 +110,17 @@ function resolveAyanamsa(pref: string | null): EngineAyanamsa {
   if (pref === 'krishnamurti') return 'krishnamurti';
   if (pref === 'true_chitrapaksha') return 'true_chitra';
   return 'lahiri'; // default + fallback for ayanamsas the engine doesn't support
+}
+
+/**
+ * Map the user's lunar-node preference onto the engine.
+ *
+ * `undefined` (not 'mean') when unset, so the engine falls through to the
+ * process default from LUNAR_NODE_TYPE rather than this function silently
+ * overriding a server-wide setting with a hardcoded guess.
+ */
+function resolveLunarNode(pref: string | null | undefined): EngineLunarNode | undefined {
+  return pref === 'true' || pref === 'mean' ? pref : undefined;
 }
 
 function resolveHouseSystem(pref: string | null): EngineHouseSystem {
@@ -187,6 +199,8 @@ type BirthInputs = {
   lng: number;
   ayanamsa: EngineAyanamsa;
   houseSystem: EngineHouseSystem;
+  /** undefined = use the server default (LUNAR_NODE_TYPE). */
+  lunarNode: EngineLunarNode | undefined;
   birthHash: string;
 };
 
@@ -213,6 +227,7 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
   const tzOffset = tzOffsetHours(place.tz, refDate);
   const ayanamsa = resolveAyanamsa(user.preferredAyanamsa);
   const houseSystem = resolveHouseSystem(user.preferredHouseSystem);
+  const lunarNode = resolveLunarNode(user.preferredLunarNode);
 
   const birthHash = crypto
     .createHash('sha256')
@@ -226,6 +241,12 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
         tz: place.tz,
         ayanamsa,
         houseSystem,
+        // Included so switching the node preference actually regenerates the
+        // chart. Safe to add: it is `undefined` for every existing user (the
+        // column defaults to NULL) and JSON.stringify omits undefined keys, so
+        // every stored hash is byte-identical to before this line existed — no
+        // mass regeneration.
+        lunarNode,
       }),
     )
     .digest('hex')
@@ -242,6 +263,7 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
     lng: place.lon,
     ayanamsa,
     houseSystem,
+    lunarNode,
     birthHash,
   };
 }
@@ -273,6 +295,7 @@ async function runGeneration(
       inputs.lng,
       inputs.ayanamsa,
       inputs.houseSystem,
+      inputs.lunarNode,
     );
 
     const moon = chart.planets.find((p) => p.planet === 'Moon');

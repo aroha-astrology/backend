@@ -18,6 +18,7 @@ import {
   getSwe,
   AYANAMSA_MAP,
   getLunarNodeType,
+  type LunarNodeType,
   dateToJulianDay,
   calculatePlanetPositions as calculatePlanetPositionsCore,
   calculateHouses as calculateHousesCore,
@@ -49,18 +50,21 @@ const ascendantCache = new EphemerisCache<AscendantData>(MAX_CACHE_ENTRIES);
 export async function calculatePlanetPositions(
   jd: number,
   ayanamsa: Ayanamsa = 'lahiri',
+  /** Per-user node override; omitted = the process default. */
+  node?: LunarNodeType,
 ): Promise<PlanetPosition[]> {
   const pool = getEphemerisPool();
+  const resolvedNode = node ?? getLunarNodeType();
   // ponytail: the worker pool is not told the node type — each worker thread
   // keeps its own module state and would silently use the 'mean' default. Safe
   // today because the pool ships disabled (EPHEMERIS_POOL env flag) and the
   // node type ships as 'mean', so the two can only disagree if BOTH are changed.
   // Thread nodeType through ephemeris-pool/worker before enabling the pool
   // alongside LUNAR_NODE_TYPE=true.
-  return planetPositionsCache.get(`${jd}|${ayanamsa}|${getLunarNodeType()}`, () =>
-    pool.isEnabled()
+  return planetPositionsCache.get(`${jd}|${ayanamsa}|${resolvedNode}`, () =>
+    pool.isEnabled() && resolvedNode === 'mean'
       ? (pool.runPlanetPositions(jd, ayanamsa) as Promise<PlanetPosition[]>)
-      : calculatePlanetPositionsCore(jd, ayanamsa),
+      : calculatePlanetPositionsCore(jd, ayanamsa, resolvedNode),
   );
 }
 
@@ -113,10 +117,12 @@ export async function calculateChart(
   lng: number,
   ayanamsa: Ayanamsa = 'lahiri',
   houseSystem: HouseSystem = 'W',
+  /** Per-user node override; omitted = the process default. */
+  node?: LunarNodeType,
 ): Promise<ChartData> {
   const jd = await dateToJulianDay(year, month, day, hour, min, timezone);
   const [planets, houses, ascendant] = await Promise.all([
-    calculatePlanetPositions(jd, ayanamsa),
+    calculatePlanetPositions(jd, ayanamsa, node),
     calculateHouses(jd, lat, lng, houseSystem, ayanamsa),
     calculateAscendant(jd, lat, lng, ayanamsa),
   ]);

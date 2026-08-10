@@ -17,7 +17,13 @@ import {
   HOROSCOPE_YEARLY_PROFILE,
   MODEL,
 } from '../../config/llm.js';
-import { buildGroundingFacts, periodEventFacts, type GroundingSource } from '../chat-grounding.js';
+import {
+  buildGroundingFacts,
+  periodEventFacts,
+  type GroundingSource,
+  type DomainWindowSink,
+} from '../chat-grounding.js';
+import { recordPrediction } from '../../modules/astro/prediction-outcomes.repo.js';
 import { getDailyLuckyElements } from '../astro-engine/lucky-elements.js';
 import { synthesizeDailyForecastFromKundli } from '../astro-tools/daily-synthesis.js';
 import { findTransitEvents } from '../astro-tools/transit-events.js';
@@ -393,10 +399,35 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
     }
   }
 
+  // Collects the dated windows this horoscope is grounded on so they can be
+  // recorded as falsifiable claims — the same loop chat uses. Horoscopes run in
+  // a nightly batch, so this must never slow or fail generation: capture is
+  // fire-and-forget below and the unique index makes a repeat a no-op.
+  const windowSink: DomainWindowSink = { windows: [] };
+
   const facts = [
-    ...(await buildGroundingFacts(source, ctx.forDate, undefined, synthesis)),
+    ...(await buildGroundingFacts(source, ctx.forDate, undefined, synthesis, windowSink)),
     ...periodEvents,
   ];
+
+  void (async () => {
+    for (const w of windowSink.windows) {
+      if (w.level !== 'HIGH' && w.level !== 'MEDIUM') continue;
+      await recordPrediction({
+        userId: ctx.userId,
+        surface: 'horoscope',
+        domain: w.domain,
+        claim: `${w.domain}: favourable ${w.dashaLevel} window, rated ${w.level}`,
+        windowStart: w.startDate,
+        windowEnd: w.endDate,
+        confidence: w.level,
+        model: MODEL,
+        techniques: ['vimshottari', 'dasha_confidence', 'shadbala', 'avastha', 'kp_sublord'],
+      });
+    }
+  })().catch(() => {
+    // Silent: a capture miss must never affect a batch horoscope.
+  });
   const factsBlock =
     facts.length > 0
       ? `CHART DATA:\n${facts.map((f) => `- ${f}`).join('\n')}`

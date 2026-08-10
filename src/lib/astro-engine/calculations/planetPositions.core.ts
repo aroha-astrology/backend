@@ -118,14 +118,14 @@ export function getLunarNodeType(): LunarNodeType {
   return nodeType;
 }
 
-function rahuSeId(): number {
-  return nodeType === 'true' ? SE_TRUE_NODE : SE_MEAN_NODE;
+function rahuSeId(override?: LunarNodeType): number {
+  return (override ?? nodeType) === 'true' ? SE_TRUE_NODE : SE_MEAN_NODE;
 }
 
 // Planet list for calculation (Ketu is derived from Rahu).
 // A function, not a module-level constant: the Rahu body id depends on the
 // mean/true node selection, which a constant would freeze at import time.
-function planetSeIds(): { planet: Planet; seId: number }[] {
+function planetSeIds(node?: LunarNodeType): { planet: Planet; seId: number }[] {
   return [
     { planet: 'Sun', seId: SE_SUN },
     { planet: 'Moon', seId: SE_MOON },
@@ -134,7 +134,7 @@ function planetSeIds(): { planet: Planet; seId: number }[] {
     { planet: 'Jupiter', seId: SE_JUPITER },
     { planet: 'Venus', seId: SE_VENUS },
     { planet: 'Saturn', seId: SE_SATURN },
-    { planet: 'Rahu', seId: rahuSeId() },
+    { planet: 'Rahu', seId: rahuSeId(node) },
   ];
 }
 
@@ -203,6 +203,8 @@ export async function dateToJulianDay(
 export async function calculatePlanetPositions(
   jd: number,
   ayanamsa: Ayanamsa = 'lahiri',
+  /** Per-request node override. Omitted = the process default (LUNAR_NODE_TYPE). */
+  node?: LunarNodeType,
 ): Promise<PlanetPosition[]> {
   const swe = await getSwe();
 
@@ -217,7 +219,7 @@ export async function calculatePlanetPositions(
   let rahuLatitude = 0;
   let rahuSpeed = 0;
 
-  for (const { planet, seId } of planetSeIds()) {
+  for (const { planet, seId } of planetSeIds(node)) {
     // Use calc() which returns an object with named fields
     const result = swe.calc(jd, seId, calcFlags);
 
