@@ -108,6 +108,11 @@ const EnvSchema = z
     GEMINI_API_KEY: z.string().min(1).optional(),
     GEMINI_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta/openai'),
     GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
+    // Reasoning tier for paid report generation only (see config/llm.ts's
+    // REASONING_MODEL + REPORT_PROFILE). Still Gemini — this is a bigger model
+    // on the same provider, not a second provider. Empty means "use
+    // GEMINI_MODEL", so leaving it unset changes nothing.
+    GEMINI_REASONING_MODEL: z.string().default(''),
 
     // --- Gemini Live (realtime voice) --------------------------------------
     // A SEPARATE model from GEMINI_MODEL above, not a variant of it.

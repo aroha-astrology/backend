@@ -6,12 +6,32 @@ import { env } from './env.js';
  * vision-tier model needed). */
 export const MODEL = env.GEMINI_MODEL;
 
+/**
+ * The reasoning tier — still Gemini, just a larger model than the flash-lite
+ * default. Every profile below used to resolve to the single cheapest model,
+ * so a paid multi-section report got exactly the same reasoning capacity as a
+ * one-line daily horoscope or a translation pass.
+ *
+ * Defaults to `GEMINI_MODEL`, i.e. NOTHING changes until `GEMINI_REASONING_MODEL`
+ * is actually set in the environment. That is deliberate: the key pool's
+ * per-model quotas differ, so the bigger model has to be confirmed against the
+ * live keys before paid report traffic is pointed at it. Set the env var to
+ * flip it; unset it to fall straight back.
+ */
+export const REASONING_MODEL = env.GEMINI_REASONING_MODEL || env.GEMINI_MODEL;
+
 export interface GenerationProfile {
   name: string;
   temperature: number;
   jsonMode: boolean;
   stream: boolean;
   maxTokens: number;
+  /**
+   * Per-profile model override. Resolution order in `gemini-client.ts` is
+   * `opts.model ?? profile.model ?? env.GEMINI_MODEL`, so a profile that
+   * leaves this unset keeps the default model exactly as before.
+   */
+  model?: string;
 }
 
 /**
@@ -345,6 +365,11 @@ export const REPORT_PROFILE: GenerationProfile = {
   jsonMode: true,
   stream: false,
   maxTokens: 8192,
+  // The one profile behind every PAID report — the most reasoning-heavy
+  // generation this app does, and the one where the flash-lite ceiling showed
+  // most. Translation profiles deliberately stay on the default model: they
+  // re-emit content that has already been reasoned about.
+  model: REASONING_MODEL,
 };
 
 /**

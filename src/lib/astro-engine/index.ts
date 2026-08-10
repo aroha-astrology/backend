@@ -15,6 +15,16 @@ export {
 // Shadbala (Six-fold Strength)
 export { calculateShadbala } from './calculations/shadbala';
 
+// Planet State (retrogression + combustion)
+export {
+  isCombust,
+  angularSeparation,
+  computePlanetStates,
+  planetStatesFromChart,
+  COMBUSTION_ORB,
+} from './calculations/planet-state';
+export type { PlanetState } from './calculations/planet-state';
+
 // Ashtakavarga System
 export {
   calculateBhinnaAshtakavarga,
@@ -35,6 +45,9 @@ export * from './doshas/index';
 
 // Divisional Charts
 export * from './charts/divisionalCharts';
+
+// Bhava Chalit (house chart, as opposed to the sign chart)
+export * from './charts/bhavaChalit';
 
 // Yoga Detection
 export { detectAllYogas } from './yogas/index';

@@ -142,7 +142,7 @@ function doRequest(
   signal: AbortSignal,
   apiKey: string,
 ): Promise<Response> {
-  const model = opts.model ?? env.GEMINI_MODEL;
+  const model = opts.model ?? opts.profile.model ?? env.GEMINI_MODEL;
   const body: Record<string, unknown> = {
     model,
     messages: mergeSystemMessages(opts.messages),
@@ -280,7 +280,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
   // Mirrors doRequest()'s own model resolution — duplicated rather than
   // returned from doRequest() to avoid changing its signature for every
   // caller, just for this one telemetry field.
-  const model = opts.model ?? env.GEMINI_MODEL;
+  const model = opts.model ?? opts.profile.model ?? env.GEMINI_MODEL;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineAt) {
@@ -511,7 +511,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
   let sawServerError = false;
   const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
-  const model = opts.model ?? env.GEMINI_MODEL;
+  const model = opts.model ?? opts.profile.model ?? env.GEMINI_MODEL;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineAt) {

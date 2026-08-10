@@ -6,6 +6,8 @@ import {
   detectAllYogas,
   analyzeAllDoshas,
   calculateAshtakavarga,
+  calculateShadbala,
+  calculateAllDivisionalChartsWithLagna,
   getCurrentSaturnLongitude,
   detectCurrentSadeSati,
 } from '../../lib/astro-engine/index.js';
@@ -293,12 +295,29 @@ async function runGeneration(
       ? tryCompute('reducedAshtakavarga', () => computeReducedAshtakavarga(ashtakavarga, chart))
       : null;
 
+    // Shadbala (six-fold planetary strength). Implemented and unit-tested since
+    // the engine's first version but wired to NOTHING on the live path, so every
+    // yoga narrated identically whether its karaka was strong or collapsing.
+    // Persisted here (not recomputed per chat turn) because it is a pure
+    // function of the natal chart — it can never change for a given birth.
+    const shadbala = tryCompute('shadbala', () => calculateShadbala(chart));
+
+    // Divisional charts. The engine always computed these on demand but never
+    // stored them, so `chartData.divisionalCharts` arrived undefined and the
+    // frontend kept its own 292-line re-implementation of the varga math to
+    // fill the gap (two sources of truth for D1-D60). `WithLagna` is the shape
+    // the frontend's existing `backendVargas` branch already expects, so
+    // storing it switches the UI onto engine truth with no frontend change.
+    const divisionalCharts = tryCompute('divisionalCharts', () =>
+      calculateAllDivisionalChartsWithLagna(chart),
+    );
+
     await markKundliReady(user.id, profile.birthProfileId, claimedAt, {
       ayanamsa: inputs.ayanamsa,
       houseSystem: inputs.houseSystem,
       timeKnown: true,
       birthHash: inputs.birthHash,
-      chartData: { ...chart },
+      chartData: { ...chart, shadbala, divisionalCharts },
       dashaData: { vimshottari: dasha, yogini },
       yogaData: yogas ? { yogas } : null,
       doshaData: doshas ? (doshas as unknown as Record<string, unknown>) : null,

@@ -8,6 +8,8 @@ import type {
   PlanetPosition,
 } from '@aroha-astrology/shared';
 
+import { isCombust } from '../calculations/planet-state.js';
+
 import {
   ZODIAC_SIGNS,
   SIGN_LORDS,
@@ -97,7 +99,7 @@ function arePlanetsConjunct(p1: Planet, p2: Planet, chartData: ChartData): boole
 
 /** Get the house distance from one house to another (1-12 counting forward). */
 function houseDistance(fromHouse: number, toHouse: number): number {
-  const diff = ((toHouse - fromHouse) % 12 + 12) % 12;
+  const diff = (((toHouse - fromHouse) % 12) + 12) % 12;
   return diff === 0 ? 12 : diff;
 }
 
@@ -180,28 +182,22 @@ function computePlanetStrength(planet: Planet, chartData: ChartData): number {
     strength = Math.min(100, strength + 10);
   }
 
-  // Combustion penalty: planet within a threshold of the Sun
-  if (planet !== 'Sun' && planet !== 'Rahu' && planet !== 'Ketu') {
-    const sunPos = getPlanetPosition('Sun', chartData);
-    if (sunPos) {
-      const diff = Math.abs(pos.longitude - sunPos.longitude);
-      const angularDist = diff > 180 ? 360 - diff : diff;
-      // Combustion thresholds vary by planet; use a general 8.5 degrees
-      const combustThreshold: Record<string, number> = {
-        Moon: 12, Mars: 17, Mercury: 14, Jupiter: 11, Venus: 10, Saturn: 15,
-      };
-      const threshold = combustThreshold[planet] || 8.5;
-      if (angularDist < threshold) {
-        strength = Math.max(0, strength - 20);
-      }
-    }
+  // Combustion penalty: planet within its orb of the Sun. The orb table used
+  // to be inline here; it now lives in calculations/planet-state.ts so the
+  // narration layers classify combustion identically (same orbs, same result).
+  if (isCombust(planet, pos.longitude, getPlanetPosition('Sun', chartData)?.longitude)) {
+    strength = Math.max(0, strength - 20);
   }
 
   return Math.max(0, Math.min(100, strength));
 }
 
 /** Get the house number of a planet relative to another reference planet. */
-function houseFromPlanet(referencePlanet: Planet, targetPlanet: Planet, chartData: ChartData): number {
+function houseFromPlanet(
+  referencePlanet: Planet,
+  targetPlanet: Planet,
+  chartData: ChartData,
+): number {
   const refHouse = getPlanetHouse(referencePlanet, chartData);
   const targetHouse = getPlanetHouse(targetPlanet, chartData);
   if (refHouse === 0 || targetHouse === 0) return 0;
@@ -326,8 +322,7 @@ function detectDharmaKarmadhipati(chartData: ChartData): Yoga {
 
   // Mutual aspect
   const mutualAspect =
-    doesPlanetAspect(lord9, house10, chartData) &&
-    doesPlanetAspect(lord10, house9, chartData);
+    doesPlanetAspect(lord9, house10, chartData) && doesPlanetAspect(lord10, house9, chartData);
 
   const present = conjunct || exchange || mutualAspect;
 
@@ -384,9 +379,18 @@ function detectViparitaRaja(chartData: ChartData): Yoga {
   const involvedHouses: number[] = [];
 
   if (present) {
-    if (lord6InDusthana) { involvedPlanets.push(lord6); involvedHouses.push(house6Lord); }
-    if (lord8InDusthana) { involvedPlanets.push(lord8); involvedHouses.push(house8Lord); }
-    if (lord12InDusthana) { involvedPlanets.push(lord12); involvedHouses.push(house12Lord); }
+    if (lord6InDusthana) {
+      involvedPlanets.push(lord6);
+      involvedHouses.push(house6Lord);
+    }
+    if (lord8InDusthana) {
+      involvedPlanets.push(lord8);
+      involvedHouses.push(house8Lord);
+    }
+    if (lord12InDusthana) {
+      involvedPlanets.push(lord12);
+      involvedHouses.push(house12Lord);
+    }
     // Deduplicate
     const uniquePlanets = [...new Set(involvedPlanets)];
     const uniqueHouses = [...new Set(involvedHouses)];
@@ -395,7 +399,9 @@ function detectViparitaRaja(chartData: ChartData): Yoga {
     involvedHouses.length = 0;
     involvedHouses.push(...uniqueHouses);
 
-    const avgStrength = involvedPlanets.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / involvedPlanets.length;
+    const avgStrength =
+      involvedPlanets.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) /
+      involvedPlanets.length;
     strength = Math.round(avgStrength);
     if (count === 3) strength = Math.min(100, strength + 15);
   }
@@ -406,10 +412,13 @@ function detectViparitaRaja(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      'Lords of 6th, 8th, and 12th houses placed in dusthana houses (6, 8, 12). Turns adversity into advantage; gains through unexpected events, enemies\' losses, or insurance.',
+      "Lords of 6th, 8th, and 12th houses placed in dusthana houses (6, 8, 12). Turns adversity into advantage; gains through unexpected events, enemies' losses, or insurance.",
     planets: involvedPlanets,
     houses: involvedHouses,
-    activationPeriod: involvedPlanets.length > 0 ? `${involvedPlanets[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      involvedPlanets.length > 0
+        ? `${involvedPlanets[0]} Mahadasha/Antardasha`
+        : (undefined ?? undefined),
   };
 }
 
@@ -488,7 +497,10 @@ function detectNeechBhangaRaja(chartData: ChartData): Yoga {
       'A debilitated planet whose debilitation is cancelled by specific conditions. Transforms weakness into extraordinary strength, often giving rise after initial struggles.',
     planets: involvedPlanets,
     houses: involvedHouses,
-    activationPeriod: involvedPlanets.length > 0 ? `${involvedPlanets[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      involvedPlanets.length > 0
+        ? `${involvedPlanets[0]} Mahadasha/Antardasha`
+        : (undefined ?? undefined),
   };
 }
 
@@ -518,7 +530,9 @@ function detectMahaBhagya(chartData: ChartData): Yoga {
   const femaleCondition = !isDaytime && allEven;
   const present = maleCondition || femaleCondition;
 
-  const variant = maleCondition ? 'Male (day birth, odd signs)' : 'Female (night birth, even signs)';
+  const variant = maleCondition
+    ? 'Male (day birth, odd signs)'
+    : 'Female (night birth, even signs)';
 
   let strength = 0;
   if (present) {
@@ -546,13 +560,18 @@ function detectLakshmi(chartData: ChartData): Yoga {
   const lord9 = getHouseLord(9, chartData);
   const lord9House = getPlanetHouse(lord9, chartData);
   const lord9Sign = getPlanetSign(lord9, chartData);
-  const lord9Strong = isInKendraOrTrikona(lord9House) &&
-    (isPlanetExalted(lord9, lord9Sign) || isPlanetInOwnSign(lord9, lord9Sign) || computePlanetStrength(lord9, chartData) >= 55);
+  const lord9Strong =
+    isInKendraOrTrikona(lord9House) &&
+    (isPlanetExalted(lord9, lord9Sign) ||
+      isPlanetInOwnSign(lord9, lord9Sign) ||
+      computePlanetStrength(lord9, chartData) >= 55);
 
   const venusHouse = getPlanetHouse('Venus', chartData);
   const venusSign = getPlanetSign('Venus', chartData);
   const venusInKendraTrikona = isInKendraOrTrikona(venusHouse);
-  const venusStrong = venusInKendraTrikona && (isPlanetExalted('Venus', venusSign) || isPlanetInOwnSign('Venus', venusSign));
+  const venusStrong =
+    venusInKendraTrikona &&
+    (isPlanetExalted('Venus', venusSign) || isPlanetInOwnSign('Venus', venusSign));
 
   const present = lord9Strong && venusStrong;
 
@@ -581,7 +600,15 @@ function detectLakshmi(chartData: ChartData): Yoga {
 function detectVasumathi(chartData: ChartData): Yoga {
   const moonHouse = getPlanetHouse('Moon', chartData);
   if (moonHouse === 0) {
-    return { name: 'Vasumathi Yoga', type: 'dhana', present: false, strength: 0, description: 'Benefics in 3, 6, 10, 11 from Moon. Bestows wealth and prosperity.', planets: [], houses: [] };
+    return {
+      name: 'Vasumathi Yoga',
+      type: 'dhana',
+      present: false,
+      strength: 0,
+      description: 'Benefics in 3, 6, 10, 11 from Moon. Bestows wealth and prosperity.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const targetPositions = [3, 6, 10, 11];
@@ -608,7 +635,8 @@ function detectVasumathi(chartData: ChartData): Yoga {
   let strength = 0;
   if (present) {
     strength = Math.round(
-      beneficsFound.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / beneficsFound.length,
+      beneficsFound.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) /
+        beneficsFound.length,
     );
     if (fullPositionsCovered === 4) strength = Math.min(100, strength + 10);
   }
@@ -619,10 +647,13 @@ function detectVasumathi(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      'Natural benefics occupy the 3rd, 6th, 10th, and 11th houses from Moon. Bestows great wealth accumulated through one\'s own efforts.',
+      "Natural benefics occupy the 3rd, 6th, 10th, and 11th houses from Moon. Bestows great wealth accumulated through one's own efforts.",
     planets: beneficsFound,
     houses: housesFound,
-    activationPeriod: beneficsFound.length > 0 ? `${beneficsFound[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      beneficsFound.length > 0
+        ? `${beneficsFound[0]} Mahadasha/Antardasha`
+        : (undefined ?? undefined),
   };
 }
 
@@ -636,7 +667,8 @@ function detectKalanidhi(chartData: ChartData): Yoga {
       type: 'dhana',
       present: false,
       strength: 0,
-      description: 'Jupiter in 2nd or 5th house conjunct or aspected by Mercury and Venus. Grants artistic talent and wealth.',
+      description:
+        'Jupiter in 2nd or 5th house conjunct or aspected by Mercury and Venus. Grants artistic talent and wealth.',
       planets: [],
       houses: [],
     };
@@ -678,7 +710,15 @@ function detectGajakesari(chartData: ChartData): Yoga {
   const moonHouse = getPlanetHouse('Moon', chartData);
   const jupiterHouse = getPlanetHouse('Jupiter', chartData);
   if (moonHouse === 0 || jupiterHouse === 0) {
-    return { name: 'Gajakesari Yoga', type: 'lunar', present: false, strength: 0, description: 'Jupiter in Kendra from Moon. Bestows wisdom, fame, and prosperity.', planets: [], houses: [] };
+    return {
+      name: 'Gajakesari Yoga',
+      type: 'lunar',
+      present: false,
+      strength: 0,
+      description: 'Jupiter in Kendra from Moon. Bestows wisdom, fame, and prosperity.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const dist = houseDistance(moonHouse, jupiterHouse);
@@ -714,7 +754,15 @@ function detectGajakesari(chartData: ChartData): Yoga {
 function detectSunapha(chartData: ChartData): Yoga {
   const moonHouse = getPlanetHouse('Moon', chartData);
   if (moonHouse === 0) {
-    return { name: 'Sunapha Yoga', type: 'lunar', present: false, strength: 0, description: 'Planets (excl. Sun, Rahu, Ketu) in 2nd from Moon.', planets: [], houses: [] };
+    return {
+      name: 'Sunapha Yoga',
+      type: 'lunar',
+      present: false,
+      strength: 0,
+      description: 'Planets (excl. Sun, Rahu, Ketu) in 2nd from Moon.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const secondFromMoon = (moonHouse % 12) + 1;
@@ -745,14 +793,23 @@ function detectSunapha(chartData: ChartData): Yoga {
       'Planet(s) other than Sun, Rahu, Ketu in the 2nd house from Moon. Grants self-acquired wealth, intellect, and royal status.',
     planets: ['Moon', ...found],
     houses: present ? [moonHouse, secondFromMoon] : [],
-    activationPeriod: found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
 function detectAnapha(chartData: ChartData): Yoga {
   const moonHouse = getPlanetHouse('Moon', chartData);
   if (moonHouse === 0) {
-    return { name: 'Anapha Yoga', type: 'lunar', present: false, strength: 0, description: 'Planets (excl. Sun, Rahu, Ketu) in 12th from Moon.', planets: [], houses: [] };
+    return {
+      name: 'Anapha Yoga',
+      type: 'lunar',
+      present: false,
+      strength: 0,
+      description: 'Planets (excl. Sun, Rahu, Ketu) in 12th from Moon.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const twelfthFromMoon = ((moonHouse - 2 + 12) % 12) + 1;
@@ -781,14 +838,23 @@ function detectAnapha(chartData: ChartData): Yoga {
       'Planet(s) other than Sun, Rahu, Ketu in the 12th house from Moon. Grants good health, noble character, and fame.',
     planets: ['Moon', ...found],
     houses: present ? [moonHouse, twelfthFromMoon] : [],
-    activationPeriod: found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
 function detectDurudhara(chartData: ChartData): Yoga {
   const moonHouse = getPlanetHouse('Moon', chartData);
   if (moonHouse === 0) {
-    return { name: 'Durudhara Yoga', type: 'lunar', present: false, strength: 0, description: 'Planets in both 2nd and 12th from Moon.', planets: [], houses: [] };
+    return {
+      name: 'Durudhara Yoga',
+      type: 'lunar',
+      present: false,
+      strength: 0,
+      description: 'Planets in both 2nd and 12th from Moon.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const secondFromMoon = (moonHouse % 12) + 1;
@@ -822,7 +888,8 @@ function detectDurudhara(chartData: ChartData): Yoga {
       'Planets in both 2nd and 12th from Moon (flanking the Moon). Grants wealth, vehicles, property, generous nature, and fame.',
     planets: ['Moon', ...allFound],
     houses: present ? [moonHouse, secondFromMoon, twelfthFromMoon] : [],
-    activationPeriod: allFound.length > 0 ? `${allFound[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      allFound.length > 0 ? `${allFound[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
@@ -853,7 +920,15 @@ function detectChandraMangal(chartData: ChartData): Yoga {
 function detectAdhi(chartData: ChartData): Yoga {
   const moonHouse = getPlanetHouse('Moon', chartData);
   if (moonHouse === 0) {
-    return { name: 'Adhi Yoga', type: 'lunar', present: false, strength: 0, description: 'Benefics in 6, 7, 8 from Moon.', planets: [], houses: [] };
+    return {
+      name: 'Adhi Yoga',
+      type: 'lunar',
+      present: false,
+      strength: 0,
+      description: 'Benefics in 6, 7, 8 from Moon.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const positions = [6, 7, 8];
@@ -894,7 +969,8 @@ function detectAdhi(chartData: ChartData): Yoga {
       'Natural benefics in 6th, 7th, and 8th from Moon. Grants leadership, ministerial position, affluence, and ability to overcome enemies.',
     planets: ['Moon', ...found],
     houses: [moonHouse, ...housesFound],
-    activationPeriod: found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
@@ -937,7 +1013,15 @@ function detectBudhaditya(chartData: ChartData): Yoga {
 function detectVeshi(chartData: ChartData): Yoga {
   const sunHouse = getPlanetHouse('Sun', chartData);
   if (sunHouse === 0) {
-    return { name: 'Veshi Yoga', type: 'solar', present: false, strength: 0, description: 'Planet (excl. Moon, Rahu, Ketu) in 2nd from Sun.', planets: [], houses: [] };
+    return {
+      name: 'Veshi Yoga',
+      type: 'solar',
+      present: false,
+      strength: 0,
+      description: 'Planet (excl. Moon, Rahu, Ketu) in 2nd from Sun.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const secondFromSun = (sunHouse % 12) + 1;
@@ -966,14 +1050,23 @@ function detectVeshi(chartData: ChartData): Yoga {
       'Planet(s) other than Moon, Rahu, Ketu in the 2nd house from Sun. Grants eloquence, wealth, and a respectable position.',
     planets: ['Sun', ...found],
     houses: present ? [sunHouse, secondFromSun] : [],
-    activationPeriod: found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
 function detectVoshi(chartData: ChartData): Yoga {
   const sunHouse = getPlanetHouse('Sun', chartData);
   if (sunHouse === 0) {
-    return { name: 'Voshi Yoga', type: 'solar', present: false, strength: 0, description: 'Planet (excl. Moon, Rahu, Ketu) in 12th from Sun.', planets: [], houses: [] };
+    return {
+      name: 'Voshi Yoga',
+      type: 'solar',
+      present: false,
+      strength: 0,
+      description: 'Planet (excl. Moon, Rahu, Ketu) in 12th from Sun.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const twelfthFromSun = ((sunHouse - 2 + 12) % 12) + 1;
@@ -1002,14 +1095,23 @@ function detectVoshi(chartData: ChartData): Yoga {
       'Planet(s) other than Moon, Rahu, Ketu in the 12th house from Sun. Grants charitable nature, learning, and a good reputation.',
     planets: ['Sun', ...found],
     houses: present ? [sunHouse, twelfthFromSun] : [],
-    activationPeriod: found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
 function detectUbhayachari(chartData: ChartData): Yoga {
   const sunHouse = getPlanetHouse('Sun', chartData);
   if (sunHouse === 0) {
-    return { name: 'Ubhayachari Yoga', type: 'solar', present: false, strength: 0, description: 'Planets in both 2nd and 12th from Sun.', planets: [], houses: [] };
+    return {
+      name: 'Ubhayachari Yoga',
+      type: 'solar',
+      present: false,
+      strength: 0,
+      description: 'Planets in both 2nd and 12th from Sun.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const secondFromSun = (sunHouse % 12) + 1;
@@ -1043,7 +1145,8 @@ function detectUbhayachari(chartData: ChartData): Yoga {
       'Planets in both 2nd and 12th from Sun (flanking the Sun). Grants royalty, fame, balanced temperament, and all-round prosperity.',
     planets: ['Sun', ...allFound],
     houses: present ? [sunHouse, secondFromSun, twelfthFromSun] : [],
-    activationPeriod: allFound.length > 0 ? `${allFound[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      allFound.length > 0 ? `${allFound[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
@@ -1055,7 +1158,8 @@ function detectSaraswati(chartData: ChartData): Yoga {
   const merHouse = getPlanetHouse('Mercury', chartData);
 
   const jupSign = getPlanetSign('Jupiter', chartData);
-  const jupInOwnOrExalted = isPlanetExalted('Jupiter', jupSign) || isPlanetInOwnSign('Jupiter', jupSign);
+  const jupInOwnOrExalted =
+    isPlanetExalted('Jupiter', jupSign) || isPlanetInOwnSign('Jupiter', jupSign);
 
   const validHouses = [1, 2, 4, 5, 7, 9, 10]; // kendra + trikona + 2nd
   const jupOk = validHouses.includes(jupHouse);
@@ -1121,7 +1225,8 @@ function detectAmala(chartData: ChartData): Yoga {
       'Natural benefic in the 10th house from Lagna or Moon. Grants a spotless reputation, fame through virtuous deeds, and a charitable nature.',
     planets: found,
     houses: housesFound,
-    activationPeriod: found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
@@ -1224,7 +1329,15 @@ function detectChandraAdhi(chartData: ChartData): Yoga {
   // This is similar to Adhi Yoga but specifically named Chandra Adhi
   const moonHouse = getPlanetHouse('Moon', chartData);
   if (moonHouse === 0) {
-    return { name: 'Chandra Adhi Yoga', type: 'lunar', present: false, strength: 0, description: 'Benefics in 6, 7, 8 from Moon.', planets: [], houses: [] };
+    return {
+      name: 'Chandra Adhi Yoga',
+      type: 'lunar',
+      present: false,
+      strength: 0,
+      description: 'Benefics in 6, 7, 8 from Moon.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const offsets = [6, 7, 8];
@@ -1263,7 +1376,8 @@ function detectChandraAdhi(chartData: ChartData): Yoga {
       'Natural benefics in all of 6th, 7th, and 8th houses from Moon. Full Chandra Adhi Yoga grants commander/king-like status and immense prosperity.',
     planets: ['Moon', ...found],
     houses: [moonHouse, ...housesFound],
-    activationPeriod: found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
@@ -1274,7 +1388,15 @@ function detectKemadrumaCanellation(chartData: ChartData): Yoga {
   //   2. Moon is aspected by Jupiter
   const moonHouse = getPlanetHouse('Moon', chartData);
   if (moonHouse === 0) {
-    return { name: 'Kemadruma Cancellation', type: 'benefic', present: false, strength: 0, description: 'Moon in Kendra or aspected by Jupiter cancels Kemadruma dosha.', planets: [], houses: [] };
+    return {
+      name: 'Kemadruma Cancellation',
+      type: 'benefic',
+      present: false,
+      strength: 0,
+      description: 'Moon in Kendra or aspected by Jupiter cancels Kemadruma dosha.',
+      planets: [],
+      houses: [],
+    };
   }
 
   // First check if Kemadruma dosha exists (no planets in 2nd/12th from Moon)
@@ -1318,7 +1440,7 @@ function detectKemadrumaCanellation(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      'Kemadruma dosha is cancelled because Moon is in a Kendra or aspected by Jupiter. Restores the native\'s fortune, status, and mental peace.',
+      "Kemadruma dosha is cancelled because Moon is in a Kendra or aspected by Jupiter. Restores the native's fortune, status, and mental peace.",
     planets,
     houses: present ? [moonHouse] : [],
     activationPeriod: 'Moon Mahadasha/Antardasha' ?? undefined,
@@ -1395,7 +1517,8 @@ function detectParivartana(chartData: ChartData): Yoga[] {
       type: 'benefic',
       present: false,
       strength: 0,
-      description: 'Mutual exchange of signs between two house lords. No Parivartana Yoga detected in this chart.',
+      description:
+        'Mutual exchange of signs between two house lords. No Parivartana Yoga detected in this chart.',
       planets: [],
       houses: [],
     });
@@ -1639,7 +1762,8 @@ function detectKhadrga(chartData: ChartData): Yoga {
     strength = Math.round(
       (computePlanetStrength(lord9, chartData) +
         computePlanetStrength(lord1, chartData) +
-        computePlanetStrength(lord2, chartData)) / 3,
+        computePlanetStrength(lord2, chartData)) /
+        3,
     );
   }
 
@@ -1667,7 +1791,8 @@ function detectKedarNath(chartData: ChartData): Yoga {
 
   let strength = 0;
   if (present) {
-    const avgStr = SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
+    const avgStr =
+      SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
     strength = Math.round(avgStr);
   }
 
@@ -1690,7 +1815,8 @@ function detectMusala(chartData: ChartData): Yoga {
 
   let strength = 0;
   if (allInFixed) {
-    const avgStr = SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
+    const avgStr =
+      SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
     strength = Math.round(avgStr);
   }
 
@@ -1709,11 +1835,14 @@ function detectMusala(chartData: ChartData): Yoga {
 function detectNala(chartData: ChartData): Yoga {
   // Nala Yoga: All planets in movable signs (Aries, Cancer, Libra, Capricorn)
   const movableSigns: ZodiacSign[] = ['Aries', 'Cancer', 'Libra', 'Capricorn'];
-  const allInMovable = SEVEN_PLANETS.every((p) => movableSigns.includes(getPlanetSign(p, chartData)));
+  const allInMovable = SEVEN_PLANETS.every((p) =>
+    movableSigns.includes(getPlanetSign(p, chartData)),
+  );
 
   let strength = 0;
   if (allInMovable) {
-    const avgStr = SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
+    const avgStr =
+      SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
     strength = Math.round(avgStr);
   }
 
@@ -1736,7 +1865,8 @@ function detectRajju(chartData: ChartData): Yoga {
 
   let strength = 0;
   if (allInDual) {
-    const avgStr = SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
+    const avgStr =
+      SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
     strength = Math.round(avgStr);
   }
 
@@ -1792,9 +1922,7 @@ function detectChandraMangalDhana(chartData: ChartData): Yoga {
   const lord1Sign = getPlanetSign(lord1, chartData);
   const lord2Sign = getPlanetSign(lord2, chartData);
   const exchange =
-    lord1 !== lord2 &&
-    SIGN_LORDS[lord1Sign] === lord2 &&
-    SIGN_LORDS[lord2Sign] === lord1;
+    lord1 !== lord2 && SIGN_LORDS[lord1Sign] === lord2 && SIGN_LORDS[lord2Sign] === lord1;
 
   const present = (conjunct || exchange) && lord1 !== lord2;
   const lord1House = getPlanetHouse(lord1, chartData);
@@ -1914,7 +2042,8 @@ function detectKendradhipatiDosha(chartData: ChartData): Yoga {
   if (present) {
     // Strength here means severity of the dosha
     strength = Math.round(
-      uniquePlanets.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / uniquePlanets.length,
+      uniquePlanets.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) /
+        uniquePlanets.length,
     );
     // Weaker benefic in kendra = stronger dosha effect
     strength = Math.max(10, 100 - strength);
@@ -2006,7 +2135,7 @@ function detectGuruChandal(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      'Jupiter conjunct Rahu or Ketu. Corrupts Jupiter\'s wisdom, causing unorthodox beliefs, broken promises, and challenges with gurus/teachers. Can give unconventional success.',
+      "Jupiter conjunct Rahu or Ketu. Corrupts Jupiter's wisdom, causing unorthodox beliefs, broken promises, and challenges with gurus/teachers. Can give unconventional success.",
     planets: ['Jupiter', shadowPlanet],
     houses: present ? [jupHouse] : [],
     activationPeriod: `Jupiter or ${shadowPlanet} Mahadasha/Antardasha` ?? undefined,
@@ -2059,7 +2188,15 @@ function detectShakat(chartData: ChartData): Yoga {
   const moonHouse = getPlanetHouse('Moon', chartData);
   const jupHouse = getPlanetHouse('Jupiter', chartData);
   if (moonHouse === 0 || jupHouse === 0) {
-    return { name: 'Shakata Yoga', type: 'dosha', present: false, strength: 0, description: 'Moon in 6, 8, or 12 from Jupiter.', planets: [], houses: [] };
+    return {
+      name: 'Shakata Yoga',
+      type: 'dosha',
+      present: false,
+      strength: 0,
+      description: 'Moon in 6, 8, or 12 from Jupiter.',
+      planets: [],
+      houses: [],
+    };
   }
 
   const dist = houseDistance(jupHouse, moonHouse);
@@ -2163,7 +2300,8 @@ function detectRajaLakshmana(chartData: ChartData): Yoga {
         type: 'raja',
         present: false,
         strength: 0,
-        description: 'Kendra lord conjunct or in mutual aspect with Trikona lord. Not found in this chart.',
+        description:
+          'Kendra lord conjunct or in mutual aspect with Trikona lord. Not found in this chart.',
         planets: [],
         houses: [],
       };
@@ -2217,9 +2355,7 @@ function detectAllRajaYogas(chartData: ChartData): Yoga[] {
 function detectChaturSagara(chartData: ChartData): Yoga {
   // Chatur Sagara Yoga: All Kendras (1,4,7,10) occupied by planets
   const kendras = [1, 4, 7, 10];
-  const allOccupied = kendras.every((k) =>
-    chartData.planets.some((p) => p.house === k),
-  );
+  const allOccupied = kendras.every((k) => chartData.planets.some((p) => p.house === k));
 
   const planetsInKendras: Planet[] = [];
   for (const k of kendras) {
@@ -2377,7 +2513,8 @@ function detectAdhiYogaFromLagna(chartData: ChartData): Yoga {
       'Natural benefics in 6th, 7th, 8th from Lagna. Grants ministerial position, leadership, and authority.',
     planets: found,
     houses: housesFound,
-    activationPeriod: found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : undefined ?? undefined,
+    activationPeriod:
+      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
@@ -2416,7 +2553,8 @@ export function detectAllYogas(chartData: ChartData): Yoga[] {
       type: 'raja',
       present: false,
       strength: 0,
-      description: 'Kendra lord conjunct or in mutual aspect with Trikona lord. Not found in this chart.',
+      description:
+        'Kendra lord conjunct or in mutual aspect with Trikona lord. Not found in this chart.',
       planets: [],
       houses: [],
     });
@@ -2489,5 +2627,3 @@ export function detectAllYogas(chartData: ChartData): Yoga[] {
 
   return yogas;
 }
-
-

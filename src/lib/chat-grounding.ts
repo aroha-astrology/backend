@@ -16,6 +16,9 @@ import {
   dateToJulianDay,
   calculatePlanetPositions,
   getLalKitabRemedies,
+  calculateShadbala,
+  computePlanetStates,
+  computeBhavaChalit,
 } from './astro-engine/index.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
 import { scoreDomainWindows, DOMAIN_CONFIG, type Domain } from './astro-engine/dasha-confidence.js';
@@ -74,6 +77,13 @@ export interface PlanetFact {
   nakshatraPada: number;
   nakshatraLord: string;
   longitude: number;
+  /**
+   * Optional rather than required: `getPlanets` always populates it from the
+   * stored chart, but several existing fixtures/callers build `PlanetFact`
+   * literals by hand, and `computePlanetStates` reads it as `Boolean(...)` —
+   * so an absent flag degrades to "direct motion", never to a wrong claim.
+   */
+  isRetrograde?: boolean;
 }
 
 function getHouses(chart: Record<string, unknown> | null): HouseFact[] {
@@ -96,6 +106,7 @@ function getPlanets(chart: Record<string, unknown> | null): PlanetFact[] {
       nakshatraPada: Number(p.nakshatraPada ?? 0),
       nakshatraLord: String(p.nakshatraLord ?? ''),
       longitude: Number(p.longitude ?? 0),
+      isRetrograde: Boolean(p.isRetrograde),
     }));
 }
 
@@ -477,11 +488,26 @@ export function bhinnashtakavargaFacts(
  * from the account-level `user` row regardless of which profile is active.
  */
 export function buildProfileFacts(
-  profile: { gender?: string | null },
+  profile: { gender?: string | null; birthTimeAccuracy?: string | null },
   user: { relationshipStatus?: string | null; interestAreas?: string[] | null },
 ): string[] {
   const facts: string[] = [];
   if (profile.gender) facts.push(`User's gender: ${profile.gender}`);
+
+  // Birth-time confidence. `birthTimeAccuracy` has been collected since
+  // onboarding but was only ever read as a binary `=== 'unknown'` gate (no
+  // chart at all). The 'approximate' case — a chart that EXISTS but rests on a
+  // remembered time — was indistinguishable from a birth-certificate time, so
+  // the ascendant, the varga charts and every dasha date were narrated with
+  // identical confidence. A ±30 min error moves the Lagna a whole sign and the
+  // first Mahadasha by months, so the model is told to hedge exactly the
+  // time-sensitive claims and nothing else.
+  if (profile.birthTimeAccuracy === 'approximate') {
+    facts.push(
+      'BIRTH TIME CONFIDENCE: approximate (remembered, not from a record). Sign placements, dashas and yogas stay reliable, but the Ascendant, the house numbers, the divisional charts and exact dasha dates all depend on the precise minute. When the answer turns on any of THOSE, add a brief natural caveat once (e.g. "if your birth time is accurate to the minute") and prefer month/season-level timing over exact dates. Do not caveat every sentence, and never say the chart is unreliable.',
+    );
+  }
+
   if (user.relationshipStatus) {
     facts.push(
       `User's relationship status: ${user.relationshipStatus}. If single, do not assume a spouse/partner exists; if partnered, framing can reference the relationship.`,
@@ -923,6 +949,142 @@ export function buildNatalDebilitationRemedyFact(planets: PlanetFact[]): string 
   return null;
 }
 
+/**
+ * Planetary condition facts: retrogression, combustion, and Shadbala strength.
+ *
+ * All three were already computed by this engine and none of them reached the
+ * astrologer. Retrogression was persisted on every planet and simply never
+ * read; combustion was buried inside the yoga detector's private strength
+ * score; Shadbala was fully implemented, unit-tested, and called by nothing on
+ * the live path. The result was narration that could not distinguish a
+ * dignified Jupiter from a combust one — the single loudest "this reading is
+ * generic" tell in classical practice.
+ *
+ * The closing STRENGTH RULE is the part that actually changes predictions:
+ * classical Jyotish is strength-gated (a yoga delivers in proportion to its
+ * ruling planet's bala), so the model is told to qualify promises rather than
+ * announce every detected yoga as if it fires cleanly.
+ *
+ * `shadbala` is read off the stored chart when present and recomputed when it
+ * isn't — kundlis generated before this became persisted (i.e. every existing
+ * user) have no stored copy, and a pure function of the natal chart is safe to
+ * derive on read.
+ */
+export function planetStrengthFacts(
+  chart: Record<string, unknown> | null,
+  planets: PlanetFact[],
+): string[] {
+  if (planets.length === 0) return [];
+  const facts: string[] = [];
+
+  // --- Retrogression + combustion -------------------------------------------
+  const states = computePlanetStates(planets);
+
+  const retrograde = states.filter((s) => s.isRetrograde).map((s) => s.planet);
+  facts.push(
+    retrograde.length > 0
+      ? `Retrograde at birth: ${retrograde.join(', ')}. A retrograde planet gives its results internally and on its own timing — delayed, revisited, or turned inward rather than expressed outwardly.`
+      : 'Retrograde at birth: none — every planet was in direct motion.',
+  );
+
+  const combust = states.filter((s) => s.isCombust);
+  if (combust.length > 0) {
+    const detail = combust.map((s) => `${s.planet} (${s.degreesFromSun}° from the Sun)`).join(', ');
+    facts.push(
+      `Combust (astangata — too close to the Sun to act freely): ${detail}. A combust planet's significations are weakened and absorbed by the Sun's agenda; treat any promise it rules as muted or obstructed, never as fully delivered.`,
+    );
+  } else {
+    facts.push('Combust planets: none — no planet is burnt by the Sun in this chart.');
+  }
+
+  // --- Shadbala -------------------------------------------------------------
+  const stored = chart?.shadbala;
+  let shadbala: Array<Record<string, unknown>> | null = Array.isArray(stored)
+    ? (stored as Array<Record<string, unknown>>)
+    : null;
+
+  if (!shadbala && chart) {
+    try {
+      shadbala = calculateShadbala(chart as never) as unknown as Array<Record<string, unknown>>;
+    } catch {
+      shadbala = null; // degraded/partial chart — strength facts are skipped, never faked
+    }
+  }
+
+  if (!shadbala || shadbala.length === 0) return facts;
+
+  const ranked = shadbala
+    .map((s) => {
+      const total = Number(s.totalVirupas ?? 0);
+      const required = Number(s.requiredVirupas ?? 0);
+      return {
+        planet: String(s.planet ?? ''),
+        pct: required > 0 ? Math.round((total / required) * 100) : null,
+        isStrong: Boolean(s.isStrong),
+      };
+    })
+    .filter((s) => s.planet && s.pct != null)
+    .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
+
+  if (ranked.length === 0) return facts;
+
+  const summary = ranked
+    .map((s) => `${s.planet} ${s.pct}% (${s.isStrong ? 'strong' : 'below par'})`)
+    .join(', ');
+
+  facts.push(
+    `Planetary Strength (Shadbala — 100% is the classical minimum a planet needs to deliver what it promises): ${summary}.`,
+  );
+
+  const weak = ranked.filter((s) => !s.isStrong).map((s) => s.planet);
+  if (weak.length > 0) {
+    facts.push(
+      `STRENGTH RULE: A yoga, house promise, or dasha result only delivers in proportion to the strength of the planet that rules it. These planets are below the classical minimum: ${weak.join(', ')}. When a combination listed anywhere above is ruled by one of them — or by a combust or debilitated planet — describe the promise as present but partial, delayed, or requiring effort. Never describe it as if it fires cleanly. Do NOT quote these percentages or the word "Shadbala" to the user; let them shape how confidently you phrase the result.`,
+    );
+  }
+
+  return facts;
+}
+
+/**
+ * Bhava Chalit — where each planet actually falls by HOUSE, as opposed to by
+ * sign. Only the planets that disagree between the two reckonings are emitted:
+ * on a chart with an early-degree Lagna nothing moves and this is silent, which
+ * is correct — there is nothing to reconcile.
+ *
+ * Standard practice reads dignity and aspect from the Rasi chart but
+ * house-level events from the Chalit chart. Nothing in this engine computed a
+ * chalit chart at all before, so a planet at the far end of its sign was always
+ * narrated in the house its SIGN implied, even when by bhava it had already
+ * moved into the next (or previous) one.
+ */
+export function bhavaChalitFacts(
+  chart: Record<string, unknown> | null,
+  planets: PlanetFact[],
+): string[] {
+  const asc = chart?.ascendant as Record<string, unknown> | undefined;
+  const ascSignIndex = Number(asc?.signIndex ?? NaN);
+  const ascDegree = Number(asc?.degree ?? NaN);
+  if (!Number.isFinite(ascSignIndex) || !Number.isFinite(ascDegree)) return [];
+
+  const ascendantLongitude = ascSignIndex * 30 + ascDegree;
+  const placements = computeBhavaChalit(planets, ascendantLongitude, ascSignIndex);
+  const moved = placements.filter((p) => p.moved);
+  if (moved.length === 0) return [];
+
+  const detail = moved
+    .map(
+      (p) => `${p.planet} sits in house ${p.rasiHouse} by sign but house ${p.chalitHouse} by bhava`,
+    )
+    .join('; ')
+    .concat('.');
+
+  return [
+    `Bhava Chalit (house chart — the Ascendant is at ${ascDegree.toFixed(1)}° of its sign, so the house boundaries do not line up with the sign boundaries): ${detail}`,
+    'CHALIT RULE: read character, dignity and aspects from the sign placements above, but when the question is about an EVENT in a specific area of life (career, marriage, children, property, money), weight the bhava house for the planets just listed. Where the two disagree, say the theme is split or transitional rather than picking one and stating it flatly. Never mention "Bhava Chalit" or house numbers as jargon to the user.',
+  ];
+}
+
 export async function buildGroundingFacts(
   src: GroundingSource,
   asOfDate?: string,
@@ -1150,6 +1312,14 @@ export async function buildGroundingFacts(
       .join(' | ');
     facts.push(`${config.label} (cross-read with ${config.varga}): ${rankedText}`);
   }
+
+  // --- Planetary condition: retrograde, combust, Shadbala strength ----------
+  // Placed BEFORE the doshas/yogas detail so the model reads how strong each
+  // planet is before it reads what each planet promises.
+  facts.push(...planetStrengthFacts(src.chart, planets));
+
+  // --- Bhava Chalit (house chart vs sign chart) ------------------------------
+  facts.push(...bhavaChalitFacts(src.chart, planets));
 
   // --- All 7 traditional doshas ---------------------------------------------
   facts.push(...doshaFacts(src.doshas));

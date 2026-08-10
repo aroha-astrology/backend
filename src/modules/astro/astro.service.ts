@@ -19,6 +19,8 @@ import {
   detectMangalDosha,
   getLalKitabRemedies,
 } from '../../lib/astro-engine/index.js';
+import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
+import { SIGNS } from '../../lib/astro-tools/index.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { buildPurchaseFacts } from '../../lib/chat-purchase-facts.js';
@@ -979,6 +981,88 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+/** Unix epoch ms for a Julian Day (UT). */
+function dateFromJulianDay(jd: number): Date {
+  return new Date((jd - 2440587.5) * 86_400_000);
+}
+
+/**
+ * Tajik Varshphal (annual solar-return chart) facts for chat grounding.
+ *
+ * `astro-engine/varshphal/` — solar return, Muntha, Varsheshwara and the
+ * Sahams — was fully implemented and tested but had ZERO callers anywhere in
+ * the codebase, so "what does this year hold for me" had no annual chart to
+ * reason from and fell back to the natal chart plus generic transits. Its own
+ * header called a paid report route a follow-up; grounding chat on it is the
+ * cheap half of that, and needs no pricing, storage or migration.
+ *
+ * The Varsha year runs birthday-to-birthday, so the ACTIVE annual chart is
+ * last year's solar return whenever this year's birthday hasn't happened yet
+ * — computing for the calendar year alone would hand the user a chart that
+ * has not started. Best-effort throughout: an ephemeris failure or a missing
+ * birth place degrades to no annual facts, never to a broken reply.
+ */
+async function buildChatVarshphalFacts(
+  chart: Record<string, unknown> | null,
+  lat: number,
+  lon: number,
+  now: Date,
+): Promise<string[]> {
+  const planets = (chart?.planets ?? []) as Array<Record<string, unknown>>;
+  const natalSunLongitude = Number(planets.find((p) => p.planet === 'Sun')?.longitude ?? NaN);
+  const ascendant = chart?.ascendant as Record<string, unknown> | undefined;
+  const natalAscSignIndex = Number(ascendant?.signIndex ?? NaN);
+  const julianDay = Number(chart?.julianDay ?? NaN);
+
+  if (!Number.isFinite(natalSunLongitude)) return [];
+  if (!Number.isFinite(natalAscSignIndex)) return [];
+  if (!Number.isFinite(julianDay)) return [];
+
+  // The birth instant straight off the chart's own Julian Day (already UT), so
+  // this never re-parses the DOB/time-of-birth strings or re-derives the
+  // timezone — one source of truth for the birth moment.
+  const birthDate = dateFromJulianDay(julianDay);
+
+  const inputs = {
+    natalSunLongitude,
+    natalAscSignIndex,
+    birthDate,
+    latitude: lat,
+    longitude: lon,
+  };
+
+  let varshphal = await computeVarshphal({ ...inputs, targetYear: now.getUTCFullYear() });
+  if (varshphal.solarReturn.exactAt.getTime() > now.getTime()) {
+    // This year's birthday is still ahead — the year currently running began
+    // at last year's solar return.
+    varshphal = await computeVarshphal({ ...inputs, targetYear: now.getUTCFullYear() - 1 });
+  }
+
+  const { solarReturn, muntha, varsheshwara, sahams } = varshphal;
+  const yearStart = solarReturn.exactAt.toISOString().slice(0, 10);
+  const munthaSign = SIGNS[muntha.signIndex] ?? `sign ${muntha.signIndex}`;
+
+  const facts = [
+    `Annual chart (Tajik Varshphal) for the year that began ${yearStart} and runs to the next birthday: Varsha Lagna ${solarReturn.chart.ascendant.sign}.`,
+    `Lord of the Year (Varsheshwara): ${varsheshwara.varsheshwara} — this planet sets the dominant theme of THIS year specifically, above and beyond the running Mahadasha.`,
+    `Muntha (the year's progressed point) is in ${munthaSign}, house ${muntha.houseFromVarshaAsc} of the annual chart — ${muntha.isAuspicious ? 'a supportive placement, the year favours growth in that area' : 'a difficult placement, the year asks for patience in that area'}.`,
+  ];
+
+  // Only the Sahams that classical Tajik treats as likely to actually
+  // manifest this year (benefic-supported) are worth naming — the full list of
+  // ~16 sensitive points would bury the signal.
+  const supported = sahams.filter((s) => s.beneficSupported);
+  if (supported.length > 0) {
+    facts.push(
+      `Sahams (annual sensitive points) that are benefic-supported this year and therefore likeliest to actually manifest: ${supported
+        .map((s) => `${s.name} in ${s.sign} (house ${s.houseFromVarshaAsc})`)
+        .join(', ')}.`,
+    );
+  }
+
+  return facts;
+}
+
 /**
  * Loads a saved birth_profiles row (partner/child/etc., see the
  * `birth_profiles` table) and builds labeled facts for chat grounding: a real
@@ -1262,6 +1346,18 @@ export async function* chatStream(
       ? await buildChatPanchangFacts(place.lat, place.lon).catch(() => [])
       : [];
 
+  // The annual (Varshphal) chart for the year currently running, cast at the
+  // birth location — same best-effort contract as the Panchang facts above.
+  const varshphalFacts =
+    groundingSource.chart && place?.lat != null && place?.lon != null
+      ? await buildChatVarshphalFacts(
+          groundingSource.chart,
+          place.lat,
+          place.lon,
+          new Date(),
+        ).catch(() => [])
+      : [];
+
   // Second chart (partner/child/etc.) — only when the client explicitly asks
   // for one via compareProfileId (see ChatRequestSchema). Unrelated to
   // `profile`/the active profile above — always a SECOND, additional chart
@@ -1309,6 +1405,7 @@ export async function* chatStream(
   const extraFacts = [
     ...profileFacts,
     ...panchangFacts,
+    ...varshphalFacts,
     ...secondChartFacts,
     ...matchReportFacts,
     ...relocationFacts,
