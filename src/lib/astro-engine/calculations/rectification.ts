@@ -34,7 +34,26 @@ export interface LifeEvent {
   /** 'YYYY-MM-DD'. */
   date: string;
   /** Which life area it belongs to — maps to the houses below. */
-  domain: 'career' | 'marriage' | 'childbirth' | 'health' | 'property' | 'education' | 'loss';
+  domain:
+    | 'job_started'
+    | 'promotion'
+    | 'job_loss'
+    | 'business_started'
+    | 'retirement'
+    | 'engagement'
+    | 'marriage'
+    | 'divorce'
+    | 'childbirth'
+    | 'bereavement'
+    | 'property_bought'
+    | 'vehicle_bought'
+    | 'big_financial_gain'
+    | 'relocation'
+    | 'health_crisis'
+    | 'accident_injury'
+    | 'legal_case'
+    | 'foreign_travel'
+    | 'education_milestone';
 }
 
 /**
@@ -43,13 +62,38 @@ export interface LifeEvent {
  * candidate birth time.
  */
 const DOMAIN_HOUSES: Record<LifeEvent['domain'], number[]> = {
-  career: [10, 6, 11],
+  // --- Career. Split up because "career" alone is ambiguous: a job STARTING and
+  // a job ENDING implicate almost opposite houses, so one label let
+  // contradictory events score the same candidate and blunted the signal.
+  job_started: [10, 6, 11], // 10th karma, 6th service/employment, 11th gains
+  promotion: [10, 11, 6],
+  job_loss: [10, 8, 12], // 8th upheaval, 12th loss — NOT the 11th
+  business_started: [10, 7, 11], // 7th trade/partnership
+  retirement: [10, 12, 8], // the 10th closing out
+
+  // --- Relationships
+  engagement: [7, 11, 2], // usually remembered as precisely as the wedding
   marriage: [7, 2, 11],
+  divorce: [7, 8, 12], // the 8th ends the 7th; 12th separation
+
+  // --- Family
   childbirth: [5, 9, 2],
-  health: [6, 8, 12],
-  property: [4, 12, 11],
-  education: [4, 5, 9],
-  loss: [8, 12, 6],
+  bereavement: [8, 12, 2], // 2nd is the classical maraka
+
+  // --- Home and money
+  property_bought: [4, 12, 11], // 4th home, 12th outlay, 11th means
+  vehicle_bought: [4, 11, 12], // 4th is the vahana house
+  big_financial_gain: [11, 2, 8], // 8th covers inheritance and windfalls
+  relocation: [4, 3, 12],
+
+  // --- Health and law
+  health_crisis: [6, 8, 12], // serious illness, surgery, hospitalisation
+  accident_injury: [8, 6, 12], // 8th sudden, 6th injury
+  legal_case: [6, 8, 12], // 6th is litigation and adversaries
+
+  // --- Travel and study
+  foreign_travel: [12, 9, 3], // 12th foreign lands, 9th long journeys
+  education_milestone: [4, 5, 9], // graduation, a decisive exam
 };
 
 export interface RectificationCandidate {

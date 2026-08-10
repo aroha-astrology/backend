@@ -57,6 +57,15 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // existing, already-shipped feature being relocated, not a new one under
   // review, so this defaults ON like matchmaking/kundliCard above.
   { key: 'home.vastuCard', label: 'Vastu card (home)', group: 'home', defaultEnabled: true },
+  // New card: defaults OFF per standing rule — turned on deliberately from
+  // Admin -> Features once checked end-to-end. Suggests a corrected birth
+  // time from dated life events; never applies anything itself.
+  {
+    key: 'home.birthTimeRectify',
+    label: 'Birth-time rectification card (settings)',
+    group: 'home',
+    defaultEnabled: false,
+  },
   // New card: defaults OFF per standing rule — every new card ships dark and
   // is turned on deliberately from the admin panel once ready (see memory
   // feedback-new-cards-default-off-in-admin).

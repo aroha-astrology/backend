@@ -18,9 +18,9 @@ const BASE = {
 
 const EVENTS: LifeEvent[] = [
   { date: '2015-03-10', domain: 'marriage' },
-  { date: '2018-07-22', domain: 'career' },
+  { date: '2018-07-22', domain: 'job_started' },
   { date: '2020-01-05', domain: 'childbirth' },
-  { date: '2012-06-01', domain: 'education' },
+  { date: '2012-06-01', domain: 'education_milestone' },
 ];
 
 describe('rectifyBirthTime: refusing to guess', () => {
@@ -33,8 +33,8 @@ describe('rectifyBirthTime: refusing to guess', () => {
     const out = await rectifyBirthTime({
       ...BASE,
       events: [
-        { date: 'last summer', domain: 'career' },
-        { date: '2018-07-22', domain: 'career' },
+        { date: 'last summer', domain: 'job_started' },
+        { date: '2018-07-22', domain: 'job_started' },
         { date: '2020-01-05', domain: 'childbirth' },
       ],
     });
