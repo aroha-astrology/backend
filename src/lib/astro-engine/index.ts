@@ -46,6 +46,9 @@ export * from './doshas/index';
 // Divisional Charts
 export * from './charts/divisionalCharts';
 
+// Birth-time rectification
+export * from './calculations/rectification';
+
 // KP (Krishnamurti Paddhati) star/sub/sub-sub lords
 export * from './calculations/kp-sublord';
 

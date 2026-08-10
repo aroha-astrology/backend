@@ -11,6 +11,7 @@ import { resolveFeaturesForUser } from '../features/features.service.js';
 import * as astroService from './astro.service.js';
 import * as chatSessionsRepo from './chat-sessions.repo.js';
 import { findPredictionsDueForReview, ratePrediction } from './prediction-outcomes.repo.js';
+import { MIN_EVENTS_FOR_RECTIFICATION } from '../../lib/astro-engine/calculations/rectification.js';
 import {
   incrementFeedbackCounter,
   saveChatFeedbackReport,
@@ -994,4 +995,107 @@ astroRouter.openapi(ratePredictionRoute, async (c) => {
     return c.json({ error: { code: 'not_found', message: 'Prediction not found' } }, 404);
   }
   return c.json({ ok: true }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /rectify — birth-time rectification from dated life events            */
+/*                                                                            */
+/* Highest-leverage accuracy fix available: the Ascendant, every house, every  */
+/* varga and every dasha date hang off the exact minute. Deliberately          */
+/* COMPUTE-ONLY — it returns a suggestion and never rewrites the stored birth  */
+/* time, because doing that silently would invalidate the user's whole kundli  */
+/* and every report built on it. Applying is the user's decision.              */
+/* -------------------------------------------------------------------------- */
+
+const rectifyRoute = createRoute({
+  method: 'post',
+  path: '/rectify',
+  tags: ['Astro'],
+  summary: 'Suggest a corrected birth time from dated life events',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireConsent] as const,
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({
+            events: z
+              .array(
+                z.object({
+                  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+                  domain: z.enum([
+                    'career',
+                    'marriage',
+                    'childbirth',
+                    'health',
+                    'property',
+                    'education',
+                    'loss',
+                  ]),
+                }),
+              )
+              .min(MIN_EVENTS_FOR_RECTIFICATION),
+            windowMinutes: z.number().int().min(5).max(180).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'A suggested time, or null when the evidence cannot support one',
+      content: {
+        'application/json': {
+          schema: z.object({
+            suggestion: z
+              .object({
+                time: z.string(),
+                offsetMinutes: z.number(),
+                ascendantSign: z.string(),
+                matched: z.number(),
+                confidence: z.enum(['low', 'medium', 'high']),
+                reasoning: z.string(),
+              })
+              .nullable(),
+          }),
+        },
+      },
+    },
+    400: errorResponse('Birth details are incomplete'),
+  },
+});
+
+astroRouter.openapi(rectifyRoute, async (c) => {
+  const user = c.get('user');
+  const { events, windowMinutes } = c.req.valid('json');
+
+  const result = await astroService.rectifyForUser(user.id, events, windowMinutes);
+  if (result === 'missing_birth_data') {
+    return c.json(
+      {
+        error: {
+          code: 'bad_request',
+          message: 'A full date, time and place of birth are needed before rectification.',
+        },
+      },
+      400,
+    );
+  }
+
+  return c.json(
+    {
+      suggestion: result
+        ? {
+            time: result.best.time,
+            offsetMinutes: result.best.offsetMinutes,
+            ascendantSign: result.best.ascendantSign,
+            matched: result.best.matched,
+            confidence: result.confidence,
+            reasoning: result.reasoning,
+          }
+        : null,
+    },
+    200,
+  );
 });

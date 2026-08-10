@@ -22,12 +22,22 @@ import {
 import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
 import { SIGNS } from '../../lib/astro-tools/index.js';
 import { findPredictionsDueForReview } from './prediction-outcomes.repo.js';
+import {
+  rectifyBirthTime,
+  type LifeEvent,
+  type RectificationResult,
+} from '../../lib/astro-engine/calculations/rectification.js';
+import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { buildPurchaseFacts } from '../../lib/chat-purchase-facts.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
 import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
-import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
+import {
+  getKundliForUser,
+  withLiveSadeSati,
+  tzOffsetHours as tzOffsetHoursForProfile,
+} from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
@@ -1491,4 +1501,59 @@ export async function* chatStream(
       }
     })
     .catch(() => {});
+}
+
+/* -------------------------------------------------------------------------- */
+/* Birth-time rectification                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Suggests a corrected birth time for the user's ACTIVE profile from dated life
+ * events they supply.
+ *
+ * Compute-only by design. It never writes `timeOfBirth`, never touches
+ * `birth_time_rectified`, and never invalidates the kundli — silently changing
+ * someone's birth time would rewrite every chart, report and dasha date they
+ * have already read, which is not a side effect an accuracy tool gets to have.
+ * Applying the suggestion is a separate, explicit user action.
+ *
+ * Returns 'missing_birth_data' when the profile has no usable date/time/place,
+ * and `null` when the events simply cannot single out a time (see
+ * rectifyBirthTime's evidence floor).
+ */
+export async function rectifyForUser(
+  userId: string,
+  events: LifeEvent[],
+  windowMinutes?: number,
+): Promise<RectificationResult | null | 'missing_birth_data'> {
+  const user = await findActiveUserById(userId);
+  if (!user) return 'missing_birth_data';
+  const profile = await resolveActiveProfileContext(user);
+  const place = profile?.placeOfBirth;
+
+  if (!profile?.dateOfBirth || !profile?.timeOfBirth || place?.lat == null || place?.lon == null) {
+    return 'missing_birth_data';
+  }
+
+  const [y, m, d] = profile.dateOfBirth.split('-').map(Number);
+  const [hh, mm] = profile.timeOfBirth.split(':').map(Number);
+  if (!y || !m || !d || hh == null || mm == null) return 'missing_birth_data';
+
+  // Same civil-offset resolution the kundli pipeline uses, so a rectification
+  // suggestion can never be computed against a different timezone than the
+  // chart it is meant to correct.
+  const tzOffset = tzOffsetHoursForProfile(place.tz, new Date(Date.UTC(y, m - 1, d)));
+
+  return rectifyBirthTime({
+    year: y,
+    month: m,
+    day: d,
+    hour: hh,
+    minute: mm,
+    tzOffset,
+    lat: place.lat,
+    lng: place.lon,
+    events,
+    ...(windowMinutes ? { windowMinutes } : {}),
+  });
 }

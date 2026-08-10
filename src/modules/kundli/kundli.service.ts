@@ -115,7 +115,7 @@ function resolveHouseSystem(pref: string | null): EngineHouseSystem {
  * IANA zones use current DST rules applied to the birth date (best-effort;
  * exact for zones without historical DST changes, e.g. Asia/Kolkata).
  */
-function tzOffsetHours(tz: string, refDate: Date): number {
+export function tzOffsetHours(tz: string, refDate: Date): number {
   const trimmed = tz.trim();
 
   // Signed offsets FIRST — otherwise "+0530" parses as the number 530.
