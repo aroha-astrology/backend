@@ -70,7 +70,7 @@ export type Rashi =
   | 'Kumbha'
   | 'Meena';
 
-export type Ayanamsa = 'lahiri' | 'krishnamurti' | 'raman';
+export type Ayanamsa = 'lahiri' | 'krishnamurti' | 'raman' | 'true_chitra';
 
 export type HouseSystem = 'W' | 'P' | 'K' | 'E'; // Whole sign, Placidus, Koch, Equal
 

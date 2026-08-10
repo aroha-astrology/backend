@@ -107,6 +107,16 @@ const EnvSchema = z
     // unset, not because this alone is missing.
     GEMINI_API_KEY: z.string().min(1).optional(),
     GEMINI_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta/openai'),
+    // --- Astrology engine -----------------------------------------------------
+    // Which lunar node Rahu/Ketu are computed from. 'mean' is the classical
+    // Parashari choice (always retrograde) and the default; 'true' is the
+    // instantaneous node, which is what Jagannatha Hora shows and can differ by
+    // up to 1.29 deg — enough to change Rahu's sign on a borderline chart.
+    // Process-wide, applied at boot. Changing it changes EVERY chart generated
+    // afterwards, so existing kundlis keep whatever they were built with until
+    // they are regenerated.
+    LUNAR_NODE_TYPE: z.enum(['mean', 'true']).default('mean'),
+
     GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
     // Reasoning tier for paid report generation only (see config/llm.ts's
     // REASONING_MODEL + REPORT_PROFILE). Still Gemini — this is a bigger model

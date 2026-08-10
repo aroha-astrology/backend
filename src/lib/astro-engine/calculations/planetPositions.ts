@@ -17,6 +17,7 @@ import type {
 import {
   getSwe,
   AYANAMSA_MAP,
+  getLunarNodeType,
   dateToJulianDay,
   calculatePlanetPositions as calculatePlanetPositionsCore,
   calculateHouses as calculateHousesCore,
@@ -36,16 +37,27 @@ const ascendantCache = new EphemerisCache<AscendantData>(MAX_CACHE_ENTRIES);
 
 /**
  * Calculate sidereal positions of all 9 Vedic planets.
- * Cached by (jd, ayanamsa) — the same instant is requested by many
+ * Cached by (jd, ayanamsa, node type) — the same instant is requested by many
  * concurrent users (e.g. daily transits), so this is a shared, high-hit-rate
  * cache regardless of the caller's own location.
+ *
+ * The node type belongs in the key even though it is process-wide and set once
+ * at boot: without it, flipping the setting serves back charts computed with the
+ * OTHER node from cache, which is both a latent correctness trap and impossible
+ * to test (it silently defeated the mean-vs-true test that found this).
  */
 export async function calculatePlanetPositions(
   jd: number,
   ayanamsa: Ayanamsa = 'lahiri',
 ): Promise<PlanetPosition[]> {
   const pool = getEphemerisPool();
-  return planetPositionsCache.get(`${jd}|${ayanamsa}`, () =>
+  // ponytail: the worker pool is not told the node type — each worker thread
+  // keeps its own module state and would silently use the 'mean' default. Safe
+  // today because the pool ships disabled (EPHEMERIS_POOL env flag) and the
+  // node type ships as 'mean', so the two can only disagree if BOTH are changed.
+  // Thread nodeType through ephemeris-pool/worker before enabling the pool
+  // alongside LUNAR_NODE_TYPE=true.
+  return planetPositionsCache.get(`${jd}|${ayanamsa}|${getLunarNodeType()}`, () =>
     pool.isEnabled()
       ? (pool.runPlanetPositions(jd, ayanamsa) as Promise<PlanetPosition[]>)
       : calculatePlanetPositionsCore(jd, ayanamsa),

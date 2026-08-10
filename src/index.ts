@@ -5,6 +5,11 @@ import { logger } from './lib/logger.js';
 import { sqlClient } from './config/db.js';
 import { getFirebaseApp } from './config/firebase.js';
 import { closeRedis } from './config/redis.js';
+import { setLunarNodeType } from './lib/astro-engine/calculations/planetPositions.core.js';
+
+// Applied before any chart is computed: the node selection is process-wide, so
+// it must be set once at boot rather than per request (see planetPositions.core).
+setLunarNodeType(env.LUNAR_NODE_TYPE);
 
 const app = createApp();
 

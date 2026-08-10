@@ -62,7 +62,8 @@ const SE_VENUS = 3;
 const SE_MARS = 4;
 const SE_JUPITER = 5;
 const SE_SATURN = 6;
-const SE_MEAN_NODE = 10; // Rahu (Mean Node)
+const SE_MEAN_NODE = 10; // Rahu (Mean Node) — always retrograde, the classical Parashari choice
+const SE_TRUE_NODE = 11; // Rahu (True/oscillating Node) — what Jagannatha Hora uses
 
 const SEFLG_SWIEPH = 2;
 const SEFLG_SIDEREAL = 65536;
@@ -71,28 +72,71 @@ const SEFLG_SPEED = 256;
 const SE_SIDM_LAHIRI = 1;
 const SE_SIDM_KRISHNAMURTI = 5;
 const SE_SIDM_B_V_RAMAN = 3;
+const SE_SIDM_TRUE_CITRA = 27;
 
 // =============================================================================
 // Ayanamsa Mapping
 // =============================================================================
 
+/**
+ * `true_chitra` places Spica (Chitra) at exactly 180 deg, which is what the
+ * classical definition actually asks for; the official Lahiri value adopted by
+ * the 1955 Calendar Reform Committee is an approximation of the same intent and
+ * sits 30-60 arcsec away (verified against this WASM build: 23.7227 vs 23.7118
+ * for 1990). That gap is small in degrees but the Moon covers it in 1-2 minutes,
+ * which is enough to shift a Vimshottari dasha start date by up to ~12 days.
+ * Offered as an option, NOT a default — Lahiri stays the default because it is
+ * what every other Indian app shows, and parity matters more than the argument.
+ */
 export const AYANAMSA_MAP: Record<Ayanamsa, number> = {
   lahiri: SE_SIDM_LAHIRI,
   krishnamurti: SE_SIDM_KRISHNAMURTI,
   raman: SE_SIDM_B_V_RAMAN,
+  true_chitra: SE_SIDM_TRUE_CITRA,
 };
 
-// Planet list for calculation (Ketu is derived from Rahu)
-const PLANET_SE_IDS: { planet: Planet; seId: number }[] = [
-  { planet: 'Sun', seId: SE_SUN },
-  { planet: 'Moon', seId: SE_MOON },
-  { planet: 'Mars', seId: SE_MARS },
-  { planet: 'Mercury', seId: SE_MERCURY },
-  { planet: 'Jupiter', seId: SE_JUPITER },
-  { planet: 'Venus', seId: SE_VENUS },
-  { planet: 'Saturn', seId: SE_SATURN },
-  { planet: 'Rahu', seId: SE_MEAN_NODE },
-];
+/**
+ * Which lunar node to compute Rahu/Ketu from.
+ *
+ * Mean is the classical Parashari choice (always retrograde, matches the texts)
+ * and stays the default. True is the instantaneous node — it oscillates +/-1.29
+ * deg around the mean, which is enough to put Rahu in a different sign or
+ * nakshatra pada on a borderline chart. Jagannatha Hora uses True, so a user
+ * cross-checking us there on such a chart sees a mismatch and concludes we are
+ * broken; this exists so that is answerable rather than hardcoded.
+ */
+export type LunarNodeType = 'mean' | 'true';
+
+let nodeType: LunarNodeType = 'mean';
+
+/** Process-wide node selection. Set once at boot from env; not per-request. */
+export function setLunarNodeType(type: LunarNodeType): void {
+  nodeType = type;
+}
+
+export function getLunarNodeType(): LunarNodeType {
+  return nodeType;
+}
+
+function rahuSeId(): number {
+  return nodeType === 'true' ? SE_TRUE_NODE : SE_MEAN_NODE;
+}
+
+// Planet list for calculation (Ketu is derived from Rahu).
+// A function, not a module-level constant: the Rahu body id depends on the
+// mean/true node selection, which a constant would freeze at import time.
+function planetSeIds(): { planet: Planet; seId: number }[] {
+  return [
+    { planet: 'Sun', seId: SE_SUN },
+    { planet: 'Moon', seId: SE_MOON },
+    { planet: 'Mars', seId: SE_MARS },
+    { planet: 'Mercury', seId: SE_MERCURY },
+    { planet: 'Jupiter', seId: SE_JUPITER },
+    { planet: 'Venus', seId: SE_VENUS },
+    { planet: 'Saturn', seId: SE_SATURN },
+    { planet: 'Rahu', seId: rahuSeId() },
+  ];
+}
 
 // =============================================================================
 // Helper Functions
@@ -173,7 +217,7 @@ export async function calculatePlanetPositions(
   let rahuLatitude = 0;
   let rahuSpeed = 0;
 
-  for (const { planet, seId } of PLANET_SE_IDS) {
+  for (const { planet, seId } of planetSeIds()) {
     // Use calc() which returns an object with named fields
     const result = swe.calc(jd, seId, calcFlags);
 
@@ -227,7 +271,12 @@ export async function calculatePlanetPositions(
     nakshatraIndex: ketuNakshatraInfo.index,
     nakshatraPada: ketuNakshatraInfo.pada,
     nakshatraLord: ketuNakshatraInfo.lord,
-    isRetrograde: true,
+    // Derived from Rahu's actual speed rather than hardcoded `true`. The MEAN
+    // node's speed is always negative, so this is identical to the old constant
+    // for the default configuration — but the TRUE node briefly turns direct
+    // several times a year, and a hardcoded flag would have reported Ketu as
+    // retrograde while Rahu (computed from `speed < 0` above) said otherwise.
+    isRetrograde: rahuSpeed < 0,
     house: 0,
   });
 
