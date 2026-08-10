@@ -21,6 +21,11 @@ import {
   computeBhavaChalit,
 } from './astro-engine/index.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
+import {
+  baladiAvastha,
+  detectGrahaYuddha,
+  calculateVimsopakaBala,
+} from './astro-engine/calculations/avastha.js';
 import { scoreDomainWindows, DOMAIN_CONFIG, type Domain } from './astro-engine/dasha-confidence.js';
 import { buildSharedDashaTree } from './dasha-window.js';
 import { calculateAllDivisionalChartsWithLagna } from './astro-engine/charts/divisionalCharts.js';
@@ -1099,7 +1104,74 @@ export function bhavaChalitFacts(
 export function chartConditionFacts(chart: Record<string, unknown> | null): string[] {
   const planets = getPlanets(chart);
   if (planets.length === 0) return [];
-  return [...planetStrengthFacts(chart, planets), ...bhavaChalitFacts(chart, planets)];
+  return [
+    ...planetStrengthFacts(chart, planets),
+    ...avasthaAndWarFacts(chart, planets),
+    ...bhavaChalitFacts(chart, planets),
+  ];
+}
+
+/**
+ * Baladi Avastha, Graha Yuddha and Vimsopaka Bala — the "is this planet in any
+ * condition to use its strength" layer that sits on top of Shadbala's "how much
+ * strength does it have".
+ *
+ * Only the states that actually change a reading are emitted: a planet in Yuva
+ * (full potency) is the unremarkable case and is left out, as is a chart with
+ * no planetary war. Vimsopaka is reported only for its extremes, because the
+ * middle of the range says nothing a reader can act on.
+ */
+export function avasthaAndWarFacts(
+  chart: Record<string, unknown> | null,
+  planets: PlanetFact[],
+): string[] {
+  const facts: string[] = [];
+  const raw = (chart?.planets ?? []) as Array<Record<string, unknown>>;
+
+  // --- Baladi Avastha -------------------------------------------------------
+  const weakStates: string[] = [];
+  for (const p of raw) {
+    const signDegree = Number(p.signDegree ?? NaN);
+    const signIndex = Number(p.signIndex ?? NaN);
+    if (!Number.isFinite(signDegree) || !Number.isFinite(signIndex)) continue;
+    const state = baladiAvastha(signDegree, signIndex);
+    if (state === 'Yuva') continue; // full potency — nothing to qualify
+    weakStates.push(`${String(p.planet)} is ${state}`);
+  }
+  if (weakStates.length > 0) {
+    facts.push(
+      `Baladi Avastha (a planet's "age", which caps how much of its promise it can actually deliver — Bala/infant and Vriddha/old give about a quarter, Kumara about half, Mrita none): ${weakStates.join(', ')}. Treat these planets' results as reduced in proportion, even where their strength is otherwise fine.`,
+    );
+  }
+
+  // --- Graha Yuddha ---------------------------------------------------------
+  const wars = detectGrahaYuddha(raw as never);
+  if (wars.length > 0) {
+    facts.push(
+      `Graha Yuddha (planetary war — two planets within 1° fight, and the loser is badly damaged whatever its other strengths say): ${wars
+        .map((w) => `${w.winner} defeats ${w.loser} (${w.separation}° apart)`)
+        .join(
+          '; ',
+        )}. Anything the defeated planet rules should be described as compromised or hard-won.`,
+    );
+  }
+
+  // --- Vimsopaka Bala -------------------------------------------------------
+  const vimsopaka = calculateVimsopakaBala(chart);
+  if (vimsopaka.length > 0) {
+    const strong = vimsopaka.filter((v) => v.score >= 15).map((v) => v.planet);
+    const weak = vimsopaka.filter((v) => v.score < 5).map((v) => v.planet);
+    if (strong.length > 0 || weak.length > 0) {
+      const parts: string[] = [];
+      if (strong.length > 0) parts.push(`consistently dignified: ${strong.join(', ')}`);
+      if (weak.length > 0) parts.push(`consistently undignified: ${weak.join(', ')}`);
+      facts.push(
+        `Vimsopaka Bala (dignity held across the divisional charts, not just the main one — this is what separates a planet that only LOOKS well placed from one that holds up everywhere): ${parts.join('; ')}. A planet strong here delivers reliably across life areas; one weak here disappoints even when the main chart looks fine.`,
+      );
+    }
+  }
+
+  return facts;
 }
 
 export async function buildGroundingFacts(
