@@ -5,7 +5,11 @@
 import { stream as llmStream, generate as llmGenerate } from '../../llm/gemini-client.js';
 import { CHAT_PROFILE, ROUTING_PROFILE } from '../../../config/llm.js';
 import { logger } from '../../logger.js';
-import { buildGroundingFacts, type GroundingSource } from '../../chat-grounding.js';
+import {
+  buildGroundingFacts,
+  type GroundingSource,
+  type DomainWindowSink,
+} from '../../chat-grounding.js';
 import { POLICY_SYSTEM_DIRECTIVE } from '../../content-policy.js';
 import type { SwarmState } from '../state.js';
 
@@ -1136,12 +1140,16 @@ export async function* scholarStream(
   userFacts: UserFact[] = [],
   extraFacts: string[] = [],
   displayName?: string | null,
+  /** Collects the dated windows this reply is grounded on, so the caller can
+   * record them as falsifiable predictions. Optional — omitting it is the old
+   * behaviour exactly. */
+  windowSink?: DomainWindowSink,
 ): AsyncGenerator<string, void, unknown> {
   logger.debug({ requestId: state.requestId }, 'scholar: starting stream');
 
   const now = new Date();
   const groundingFacts = [
-    ...(await buildGroundingFacts(groundingSource, undefined, now)),
+    ...(await buildGroundingFacts(groundingSource, undefined, now, null, windowSink)),
     ...extraFacts,
   ];
   const messages = buildChatMessages(

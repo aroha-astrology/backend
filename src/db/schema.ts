@@ -38,6 +38,9 @@ export const preferredAyanamsaEnum = pgEnum('preferred_ayanamsa', [
   'fagan_bradley',
 ]);
 
+/** Which lunar node Rahu/Ketu are computed from. NULL = use the server default. */
+export const preferredLunarNodeEnum = pgEnum('preferred_lunar_node', ['mean', 'true']);
+
 /** Bhava/house cusp convention — union of Vedic + Western schools. */
 export const houseSystemEnum = pgEnum('house_system', [
   'whole_sign',
@@ -286,6 +289,8 @@ export const users = pgTable(
     // --- astrology calculation preferences (read-time defaults; nullable) --
     preferredSystem: preferredSystemEnum('preferred_system'),
     preferredAyanamsa: preferredAyanamsaEnum('preferred_ayanamsa'),
+    /** Per-user lunar node override; NULL falls back to LUNAR_NODE_TYPE. */
+    preferredLunarNode: preferredLunarNodeEnum('preferred_lunar_node'),
     preferredHouseSystem: houseSystemEnum('preferred_house_system'),
     preferredChartStyle: preferredChartStyleEnum('preferred_chart_style'),
     preferredDashaSystem: preferredDashaSystemEnum('preferred_dasha_system'),

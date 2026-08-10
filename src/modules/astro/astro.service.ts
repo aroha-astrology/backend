@@ -21,14 +21,19 @@ import {
 } from '../../lib/astro-engine/index.js';
 import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
 import { SIGNS } from '../../lib/astro-tools/index.js';
-import { findPredictionsDueForReview } from './prediction-outcomes.repo.js';
+import { findPredictionsDueForReview, recordPrediction } from './prediction-outcomes.repo.js';
+import { MODEL as MODEL_NAME } from '../../config/llm.js';
 import {
   rectifyBirthTime,
   type LifeEvent,
   type RectificationResult,
 } from '../../lib/astro-engine/calculations/rectification.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
-import { buildProfileFacts, type GroundingSource } from '../../lib/chat-grounding.js';
+import {
+  buildProfileFacts,
+  type GroundingSource,
+  type DomainWindowSink,
+} from '../../lib/chat-grounding.js';
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { buildPurchaseFacts } from '../../lib/chat-purchase-facts.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
@@ -1455,6 +1460,10 @@ export async function* chatStream(
     ...purchaseFacts,
   ];
 
+  // Collects the dated windows this reply is grounded on so they can be recorded
+  // as falsifiable claims once the stream completes (below).
+  const windowSink: DomainWindowSink = { windows: [] };
+
   const tokenStream = scholarStream(
     state,
     message,
@@ -1468,6 +1477,7 @@ export async function* chatStream(
     // (buildCallSystemPrompt) — profile.displayName covers both the primary
     // account and an additional saved profile correctly (see profile-context.ts).
     profile?.displayName,
+    windowSink,
   );
 
   // Output-side backstop for the death/self-harm policy: the input filter
@@ -1501,6 +1511,32 @@ export async function* chatStream(
       }
     })
     .catch(() => {});
+
+  // Record the dated windows this reply was grounded on. Fire-and-forget and
+  // AFTER the stream, so capture can never delay or break a reply. Only
+  // HIGH/MEDIUM windows are kept: a LOW-confidence window is one the engine
+  // already doubts, and scoring it would mostly measure its own hedging. The
+  // unique index from migration 0052 makes a repeat turn a no-op rather than a
+  // duplicate row.
+  void (async () => {
+    for (const w of windowSink.windows) {
+      if (w.level !== 'HIGH' && w.level !== 'MEDIUM') continue;
+      await recordPrediction({
+        userId,
+        birthProfileId: profile?.birthProfileId ?? null,
+        surface: 'chat',
+        domain: w.domain,
+        claim: `${w.domain}: favourable ${w.dashaLevel} window, rated ${w.level}`,
+        windowStart: w.startDate,
+        windowEnd: w.endDate,
+        confidence: w.level,
+        model: MODEL_NAME,
+        techniques: ['vimshottari', 'dasha_confidence', 'shadbala', 'avastha', 'kp_sublord'],
+      });
+    }
+  })().catch((err: unknown) => {
+    logger.warn({ err, userId }, 'chat prediction capture failed, reply unaffected');
+  });
 }
 
 /* -------------------------------------------------------------------------- */

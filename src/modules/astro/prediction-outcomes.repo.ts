@@ -60,6 +60,10 @@ export async function recordPrediction(
       model: input.model ?? null,
       techniques: input.techniques ?? [],
     })
+    // Chat re-captures the same window on every turn; the unique index added in
+    // migration 0052 turns the repeat into a no-op instead of inflating the
+    // denominator of the accuracy number this table exists to produce.
+    .onConflictDoNothing()
     .returning({ id: predictionOutcomes.id });
 
   return rows[0] ?? null;

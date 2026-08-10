@@ -1207,11 +1207,30 @@ export function avasthaAndWarFacts(
   return facts;
 }
 
+/**
+ * A dated window this grounding pass produced, handed back so the caller can
+ * record it as a falsifiable prediction (see prediction_outcomes).
+ *
+ * Collected through an optional sink rather than a changed return type: this
+ * function has four callers and only the ones that can attribute a window to a
+ * user care. Passing nothing keeps the old behaviour exactly.
+ */
+export interface DomainWindowSink {
+  windows: Array<{
+    domain: string;
+    level: string;
+    startDate: string;
+    endDate: string;
+    dashaLevel: string;
+  }>;
+}
+
 export async function buildGroundingFacts(
   src: GroundingSource,
   asOfDate?: string,
   now: Date = new Date(),
   synthesis?: DailySynthesisResult | null,
+  sink?: DomainWindowSink,
 ): Promise<string[]> {
   const houses = getHouses(src.chart);
   const planets = getPlanets(src.chart);
@@ -1409,6 +1428,20 @@ export async function buildGroundingFacts(
       transits,
       sharedDashaTree,
     );
+
+    // Only the STRONGEST window per domain is recorded. Capturing every ranked
+    // window would multiply rows by 15 domains on every single chat turn, and
+    // the top-ranked one is the claim the narration actually leans on.
+    const strongest = result.windows[0];
+    if (sink && strongest) {
+      sink.windows.push({
+        domain,
+        level: strongest.level,
+        startDate: strongest.startDate,
+        endDate: strongest.endDate,
+        dashaLevel: strongest.dashaLevel,
+      });
+    }
 
     if (result.windows.length === 0) {
       facts.push(

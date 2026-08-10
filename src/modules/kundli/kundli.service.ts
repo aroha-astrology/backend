@@ -39,7 +39,7 @@ import {
 } from './house-insight.repo.js';
 import type { HouseInsightRow } from '../../db/schema.js';
 
-type EngineAyanamsa = 'lahiri' | 'raman' | 'krishnamurti';
+type EngineAyanamsa = 'lahiri' | 'raman' | 'krishnamurti' | 'true_chitra';
 type EngineHouseSystem = 'W' | 'P' | 'K' | 'E';
 
 /* -------------------------------------------------------------------------- */
@@ -89,10 +89,25 @@ export function missingKundliParams(profile: ProfileContext): KundliRequiredFiel
 /* Preference / timezone resolution                                            */
 /* -------------------------------------------------------------------------- */
 
-/** Map the user's ayanamsa preference onto an engine-supported one. */
+/**
+ * Map the user's ayanamsa preference onto an engine-supported one.
+ *
+ * `preferred_ayanamsa` has offered six values since the schema was written, but
+ * only three were ever honoured — `true_chitrapaksha`, `yukteshwar` and
+ * `fagan_bradley` all fell silently back to Lahiri, so a user who picked one
+ * got a chart that quietly ignored them. `true_chitrapaksha` now maps to the
+ * engine's `true_chitra` (Swiss sid mode 27), which is the same ayanamsa under
+ * its other name.
+ *
+ * `yukteshwar` and `fagan_bradley` still fall back, deliberately: neither is in
+ * AYANAMSA_MAP, and inventing a mapping to a mode this engine has not verified
+ * against the WASM build would be worse than the documented fallback. Add them
+ * to AYANAMSA_MAP first, then remove them from this comment.
+ */
 function resolveAyanamsa(pref: string | null): EngineAyanamsa {
   if (pref === 'raman') return 'raman';
   if (pref === 'krishnamurti') return 'krishnamurti';
+  if (pref === 'true_chitrapaksha') return 'true_chitra';
   return 'lahiri'; // default + fallback for ayanamsas the engine doesn't support
 }
 
