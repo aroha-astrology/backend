@@ -1085,6 +1085,23 @@ export function bhavaChalitFacts(
   ];
 }
 
+/**
+ * Planetary condition for a chart: strength (Shadbala), retrogression,
+ * combustion, and the Rasi-vs-Chalit house split — the whole "how strong and
+ * how placed is each planet" block, in one call.
+ *
+ * Exists so chat/voice/horoscope (via `buildGroundingFacts` below) and the PAID
+ * REPORTS (via reports.service.ts, which has `scores`/a chart but never touches
+ * `buildGroundingFacts`) share one definition. When this first shipped only the
+ * grounding path got it, which left the most expensive thing users buy as the
+ * one surface still narrating every yoga as if it fires cleanly.
+ */
+export function chartConditionFacts(chart: Record<string, unknown> | null): string[] {
+  const planets = getPlanets(chart);
+  if (planets.length === 0) return [];
+  return [...planetStrengthFacts(chart, planets), ...bhavaChalitFacts(chart, planets)];
+}
+
 export async function buildGroundingFacts(
   src: GroundingSource,
   asOfDate?: string,
@@ -1313,13 +1330,11 @@ export async function buildGroundingFacts(
     facts.push(`${config.label} (cross-read with ${config.varga}): ${rankedText}`);
   }
 
-  // --- Planetary condition: retrograde, combust, Shadbala strength ----------
+  // --- Planetary condition: strength, retrograde, combust, Bhava Chalit -----
   // Placed BEFORE the doshas/yogas detail so the model reads how strong each
-  // planet is before it reads what each planet promises.
-  facts.push(...planetStrengthFacts(src.chart, planets));
-
-  // --- Bhava Chalit (house chart vs sign chart) ------------------------------
-  facts.push(...bhavaChalitFacts(src.chart, planets));
+  // planet is before it reads what each planet promises. Same function the
+  // paid reports call, so the two can never diverge.
+  facts.push(...chartConditionFacts(src.chart));
 
   // --- All 7 traditional doshas ---------------------------------------------
   facts.push(...doshaFacts(src.doshas));

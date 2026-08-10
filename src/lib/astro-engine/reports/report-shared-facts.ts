@@ -32,6 +32,17 @@ export interface ReportSharedFacts {
    * now. Optional: only the report types whose focus houses it speaks to (marriage/wealth/
    * career_monthly/finance_monthly/health_monthly) set this. */
   ashtakavargaSummary?: string[];
+  /**
+   * Shadbala strength + retrogression + combustion + Bhava Chalit lines for this report's chart —
+   * chat-grounding.ts's `chartConditionFacts`, the SAME function that grounds chat, voice and
+   * horoscopes, so a report can never disagree with what the astrologer says in chat.
+   *
+   * Unlike every other field here it is NOT set by the report generators: reports.service.ts
+   * attaches it to `scores` right after `computeScores` returns, for every report type at once
+   * (see `withChartCondition` there). Reports were the one surface still narrating a yoga as if
+   * it fires cleanly regardless of whether its ruling planet had the strength to deliver it.
+   */
+  planetCondition?: string[];
 }
 
 export interface ReportSharedFactsWithGemstones extends ReportSharedFacts {

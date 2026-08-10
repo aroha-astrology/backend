@@ -26,6 +26,7 @@ import { deductWalletBalance, addWalletBalance, findActiveUserById } from '../us
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
+import { chartConditionFacts } from '../../lib/chat-grounding.js';
 import type { BirthRecord } from '../../lib/swarm/state.js';
 import {
   claimReportRow,
@@ -63,6 +64,7 @@ import {
   REPORT_GENERATORS,
   type ReportSection,
   type ReportScoreContext,
+  type ReportScores,
 } from './report-generator.types.js';
 import type { UserRow, ReportRow, KundliRow } from '../../db/schema.js';
 import type {
@@ -367,6 +369,38 @@ async function fetchPersonContext(
  * reads vs. the best-effort/never-throws contract chat grounding needs), and folding that in here
  * would force one of those contracts onto the others.
  */
+/**
+ * Runs a report type's own `computeScores`, then attaches the chart-condition
+ * block (Shadbala strength, retrogression, combustion, Bhava Chalit) that every
+ * report should carry regardless of type.
+ *
+ * Lives here rather than in each generator because it is identical for all 14
+ * report types and depends only on the chart already in `ctx`. When planetary
+ * strength was first wired in it only reached chat/voice/horoscopes via
+ * `buildGroundingFacts`; reports never touch that path, which left the paid
+ * reports as the one surface still describing a yoga as if it fires cleanly
+ * even when the planet ruling it lacks the strength to deliver.
+ *
+ * Best-effort: a degraded chart yields no condition lines rather than throwing,
+ * exactly like the report's own optional fact blocks.
+ */
+function computeScoresWithCondition(
+  generator: {
+    computeScores: (ctx: ReportScoreContext, periodMonth: string | null) => ReportScores;
+  },
+  ctx: ReportScoreContext,
+  periodMonth: string | null,
+): ReportScores {
+  const scores = generator.computeScores(ctx, periodMonth);
+  let planetCondition: string[] = [];
+  try {
+    planetCondition = chartConditionFacts(ctx.chart);
+  } catch (err) {
+    logger.warn({ err }, 'chart-condition facts failed for report; continuing without them');
+  }
+  return planetCondition.length > 0 ? { ...scores, planetCondition } : scores;
+}
+
 export async function buildReportScoreContext(
   row: Pick<ReportRow, 'userId' | 'birthProfileId' | 'input'>,
   kundli: KundliRow | null | undefined,
@@ -462,7 +496,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     }
 
     const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
-    const scores = generator.computeScores(scoreContext, row.periodMonth);
+    const scores = computeScoresWithCondition(generator, scoreContext, row.periodMonth);
     const sections = await generator.generateNarrative(scores, 'en');
     const windowSummaries = await computeWindowSummaries(scores);
     const verdict = await computeReportVerdict(scores);
@@ -748,7 +782,7 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
   }
 
   const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
-  return generator.computeScores(scoreContext, row.periodMonth);
+  return computeScoresWithCondition(generator, scoreContext, row.periodMonth);
 }
 
 /**
@@ -997,7 +1031,7 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
   }
 
   const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
-  const scores = generator.computeScores(scoreContext, row.periodMonth);
+  const scores = computeScoresWithCondition(generator, scoreContext, row.periodMonth);
   const sections = await generator.generateNarrative(scores, 'en');
   const windowSummaries = await computeWindowSummaries(scores);
   const verdict = await computeReportVerdict(scores);
