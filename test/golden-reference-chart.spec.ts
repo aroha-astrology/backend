@@ -177,3 +177,35 @@ describe('selectable node type and ayanamsa', () => {
     expect(arcsec).toBeLessThan(90);
   }, 30_000);
 });
+
+describe('every stored ayanamsa preference actually changes the chart', () => {
+  // `preferred_ayanamsa` offered six values while resolveAyanamsa honoured
+  // three; the other three silently produced a Lahiri chart. This locks all six
+  // to distinct, verified Swiss sidereal modes so that cannot regress.
+  const BIRTH = [1990, 5, 20, 6, 30, 5.5, 19.076, 72.8777] as const;
+
+  it('gives each of the six a distinct ayanamsa value', async () => {
+    const modes = [
+      'lahiri',
+      'raman',
+      'krishnamurti',
+      'true_chitra',
+      'fagan_bradley',
+      'yukteshwar',
+    ] as const;
+
+    const values = new Map<string, number>();
+    for (const m of modes) {
+      const chart = await calculateChart(...BIRTH, m, 'W');
+      values.set(m, chart.ayanamsaValue);
+    }
+
+    // Every mode must be distinct — a silent fallback shows up as a duplicate.
+    expect(new Set([...values.values()].map((v) => v.toFixed(4))).size).toBe(modes.length);
+
+    // Spot-check the two that used to fall back, against measured 1990 values.
+    expect(values.get('fagan_bradley')!).toBeCloseTo(24.6059, 3);
+    expect(values.get('yukteshwar')!).toBeCloseTo(22.3444, 3);
+    expect(values.get('lahiri')!).toBeCloseTo(23.7227, 3);
+  }, 60_000);
+});

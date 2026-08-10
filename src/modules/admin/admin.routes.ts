@@ -1,5 +1,6 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireAdmin } from '../../middleware/auth.js';
+import { accuracyBySurfaceAndConfidence } from '../astro/prediction-outcomes.repo.js';
 import { logger } from '../../lib/logger.js';
 import {
   DateRangeQuerySchema,
@@ -310,4 +311,50 @@ adminRouter.openapi(listReferralsRoute, async (c) => {
   const referrals = await getReferrals();
   await auditRead(c, 'GET /v1/admin/referrals', {});
   return c.json({ referrals }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/prediction-accuracy                                             */
+/*                                                                            */
+/* The number the whole prediction_outcomes table exists to produce: hit rate  */
+/* broken down by surface and by the confidence band the engine committed to   */
+/* in ADVANCE. A calibrated system has HIGH scoring materially better than     */
+/* LOW; if they come out level, dasha-confidence.ts's banding is decorative    */
+/* and needs retuning — a finding that was impossible to make before this      */
+/* table existed. Admin-only: it is an engineering metric, not user content.   */
+/* -------------------------------------------------------------------------- */
+
+const AdminAccuracyRowSchema = z
+  .object({
+    surface: z.string(),
+    confidence: z.string().nullable(),
+    rated: z.number(),
+    correct: z.number(),
+    accuracy: z.number(),
+  })
+  .openapi('AdminAccuracyRow');
+
+const predictionAccuracyRoute = createRoute({
+  method: 'get',
+  path: '/prediction-accuracy',
+  tags: ['Admin'],
+  summary: 'Prediction hit rate by surface and claimed confidence band',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: {
+      description: 'Accuracy rollup. Empty until users have rated closed windows.',
+      content: {
+        'application/json': { schema: z.object({ rows: z.array(AdminAccuracyRowSchema) }) },
+      },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(predictionAccuracyRoute, async (c) => {
+  const rows = await accuracyBySurfaceAndConfidence();
+  await auditRead(c, 'GET /v1/admin/prediction-accuracy', {});
+  return c.json({ rows }, 200);
 });

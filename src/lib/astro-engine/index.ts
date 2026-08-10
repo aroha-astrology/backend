@@ -20,7 +20,6 @@ export {
   isCombust,
   angularSeparation,
   computePlanetStates,
-  planetStatesFromChart,
   COMBUSTION_ORB,
 } from './calculations/planet-state';
 export type { PlanetState } from './calculations/planet-state';

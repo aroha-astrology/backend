@@ -39,7 +39,13 @@ import {
 } from './house-insight.repo.js';
 import type { HouseInsightRow } from '../../db/schema.js';
 
-type EngineAyanamsa = 'lahiri' | 'raman' | 'krishnamurti' | 'true_chitra';
+type EngineAyanamsa =
+  | 'lahiri'
+  | 'raman'
+  | 'krishnamurti'
+  | 'true_chitra'
+  | 'fagan_bradley'
+  | 'yukteshwar';
 type EngineHouseSystem = 'W' | 'P' | 'K' | 'E';
 type EngineLunarNode = 'mean' | 'true';
 
@@ -100,16 +106,17 @@ export function missingKundliParams(profile: ProfileContext): KundliRequiredFiel
  * engine's `true_chitra` (Swiss sid mode 27), which is the same ayanamsa under
  * its other name.
  *
- * `yukteshwar` and `fagan_bradley` still fall back, deliberately: neither is in
- * AYANAMSA_MAP, and inventing a mapping to a mode this engine has not verified
- * against the WASM build would be worse than the documented fallback. Add them
- * to AYANAMSA_MAP first, then remove them from this comment.
+ * All six stored values are now honoured. Each mode id was verified against
+ * this WASM build before being mapped (see AYANAMSA_MAP's own comment for the
+ * measured 1990 values) rather than trusted from documentation.
  */
 function resolveAyanamsa(pref: string | null): EngineAyanamsa {
   if (pref === 'raman') return 'raman';
   if (pref === 'krishnamurti') return 'krishnamurti';
   if (pref === 'true_chitrapaksha') return 'true_chitra';
-  return 'lahiri'; // default + fallback for ayanamsas the engine doesn't support
+  if (pref === 'fagan_bradley') return 'fagan_bradley';
+  if (pref === 'yukteshwar') return 'yukteshwar';
+  return 'lahiri'; // default, and the fallback for an unrecognised stored value
 }
 
 /**

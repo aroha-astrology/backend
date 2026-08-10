@@ -11,8 +11,6 @@
 // narration layers read, so the orb table can never drift between them.
 // =============================================================================
 
-import type { ChartData, Planet, PlanetPosition } from '@aroha-astrology/shared';
-
 /**
  * Combustion orbs in degrees from the Sun, carried over UNCHANGED from the
  * table that was inline in `yogas/index.ts` so extracting this helper does not
@@ -94,9 +92,4 @@ export function computePlanetStates(
           : null,
     };
   });
-}
-
-/** `computePlanetStates` for a fully typed chart. */
-export function planetStatesFromChart(chartData: ChartData): PlanetState[] {
-  return computePlanetStates(chartData.planets ?? []);
 }

@@ -73,6 +73,8 @@ const SE_SIDM_LAHIRI = 1;
 const SE_SIDM_KRISHNAMURTI = 5;
 const SE_SIDM_B_V_RAMAN = 3;
 const SE_SIDM_TRUE_CITRA = 27;
+const SE_SIDM_FAGAN_BRADLEY = 0;
+const SE_SIDM_YUKTESHWAR = 7;
 
 // =============================================================================
 // Ayanamsa Mapping
@@ -93,6 +95,12 @@ export const AYANAMSA_MAP: Record<Ayanamsa, number> = {
   krishnamurti: SE_SIDM_KRISHNAMURTI,
   raman: SE_SIDM_B_V_RAMAN,
   true_chitra: SE_SIDM_TRUE_CITRA,
+  // Verified against this WASM build for 1990: Fagan-Bradley 24.6059 (0.88 deg
+  // ahead of Lahiri, as expected for the Western sidereal standard) and
+  // Yukteshwar 22.3444 (1.38 deg behind). Both were offered in the DB enum and
+  // silently fell back to Lahiri before this.
+  fagan_bradley: SE_SIDM_FAGAN_BRADLEY,
+  yukteshwar: SE_SIDM_YUKTESHWAR,
 };
 
 /**
