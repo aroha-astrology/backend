@@ -27,6 +27,7 @@ import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
 import { chartConditionFacts } from '../../lib/chat-grounding.js';
+import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
 import type { BirthRecord } from '../../lib/swarm/state.js';
 import {
   claimReportRow,
@@ -441,6 +442,59 @@ export async function buildReportScoreContext(
  * failing the whole report — a missing one-line explanation is a much smaller loss than losing
  * the report's narrative and refunding the purchase over a non-essential enrichment call.
  */
+/**
+ * Records this report's dated timing windows as falsifiable predictions.
+ *
+ * Only windows go in — a report's character description ("you are drawn to
+ * detail work") is not scoreable, so recording it would just dilute the hit
+ * rate with claims nobody can mark right or wrong. A window has a start date, an
+ * end date and a confidence band the engine committed to in advance, which is
+ * exactly what is needed to ask "did that happen?" later and to find out whether
+ * HIGH really does beat LOW.
+ *
+ * `techniques` names the systems that fed the claim so accuracy can eventually
+ * be attributed — the point of the exercise is being able to say WHICH parts of
+ * the engine are earning their place.
+ */
+async function recordReportPredictions(
+  row: ReportRow,
+  scores: ReportScores,
+  ctx: ReportScoreContext,
+): Promise<void> {
+  const found = findRankedWindowsField(scores);
+  if (!found || found.windows.length === 0) return;
+
+  const techniques = ['vimshottari', 'dasha_confidence'];
+  if (Array.isArray((scores as { planetCondition?: unknown }).planetCondition)) {
+    techniques.push('shadbala', 'avastha', 'bhava_chalit');
+  }
+
+  const facts = (scores as { planetCondition?: string[] }).planetCondition ?? null;
+
+  for (const w of found.windows) {
+    await recordPrediction({
+      userId: row.userId,
+      birthProfileId: row.birthProfileId,
+      surface: 'report',
+      sourceId: row.id,
+      domain: row.reportKey,
+      claim: `${row.reportKey}: ${found.field} window (${w.dashaLevel}) rated ${w.level}`,
+      windowStart: w.startDate,
+      windowEnd: w.endDate,
+      confidence: w.level,
+      facts,
+      model: MODEL,
+      techniques,
+    });
+  }
+
+  logger.info(
+    { reportId: row.id, captured: found.windows.length },
+    'prediction capture: report windows recorded',
+  );
+  void ctx; // reserved: chart-level attribution once per-chart accuracy is wanted
+}
+
 async function computeWindowSummaries(
   scores: Record<string, unknown>,
 ): Promise<{ field: string; summaries: string[] } | null> {
@@ -500,6 +554,13 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     const sections = await generator.generateNarrative(scores, 'en');
     const windowSummaries = await computeWindowSummaries(scores);
     const verdict = await computeReportVerdict(scores);
+
+    // Every dated timing window this report just promised, recorded so it can
+    // later be scored against what actually happened. Best-effort: capture must
+    // never fail a report the user has already paid for.
+    await recordReportPredictions(row, scores, scoreContext).catch((err: unknown) => {
+      logger.warn({ err, reportId: row.id }, 'prediction capture failed, report unaffected');
+    });
 
     await markReportReady(row.id, claimedAt, {
       content: {

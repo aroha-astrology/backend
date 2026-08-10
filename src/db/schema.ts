@@ -9,6 +9,7 @@ import {
   jsonb,
   boolean,
   integer,
+  smallint,
   doublePrecision,
   index,
   uniqueIndex,
@@ -2222,3 +2223,64 @@ export const voiceSessions = pgTable(
 
 export type VoiceSessionRow = typeof voiceSessions.$inferSelect;
 export type NewVoiceSessionRow = typeof voiceSessions.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* prediction_outcomes — the falsifiability layer                             */
+/*                                                                            */
+/* Nothing in this system could answer "was that prediction right?".          */
+/* `feedbackCounters` is global; the per-user vote log attributes a vote to a  */
+/* USER, never to the specific claim. So every accuracy improvement shipped    */
+/* unmeasurable. One row per DATED claim — undated character readings are      */
+/* deliberately not recorded, because there is nothing to score them against.  */
+/* -------------------------------------------------------------------------- */
+
+export const predictionOutcomes = pgTable(
+  'prediction_outcomes',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile, same convention as reports/kundlis. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /** 'chat' | 'horoscope' | 'report' | 'transit_alert'. */
+    surface: text('surface').notNull(),
+    /** Originating row id where one exists (report/horoscope/session). */
+    sourceId: text('source_id'),
+    /** Life area, see dasha-confidence.ts's Domain. */
+    domain: text('domain'),
+    /** The claim itself, in the words it was made. */
+    claim: text('claim').notNull(),
+    windowStart: date('window_start'),
+    windowEnd: date('window_end'),
+    /** HIGH | MEDIUM | LOW, as scored at prediction time. */
+    confidence: text('confidence'),
+    /** Hash of the grounding facts — NOT the facts, so this never becomes a
+     * second copy of personal chart data. Enough to tell "same inputs" apart. */
+    factsHash: text('facts_hash'),
+    model: text('model'),
+    /** Which systems contributed, e.g. {shadbala,double_transit,varshphal}. */
+    techniques: text('techniques')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    /** -1 wrong, 0 unclear, 1 right. NULL = not yet rated. */
+    rating: smallint('rating'),
+    /** Whether the predicted event actually occurred, asked after the window closes. */
+    happened: boolean('happened'),
+    ratedAt: timestamp('rated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => ({
+    userIdx: index('prediction_outcomes_user_idx').on(t.userId, t.createdAt),
+    surfaceIdx: index('prediction_outcomes_surface_idx').on(t.surface, t.createdAt),
+  }),
+);
+
+export type PredictionOutcomeRow = typeof predictionOutcomes.$inferSelect;

@@ -358,6 +358,13 @@
       "when": 1786464000000,
       "tag": "0050_deletion_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1786550400000,
+      "tag": "0051_prediction_outcomes",
+      "breakpoints": true
     }
   ]
 }
