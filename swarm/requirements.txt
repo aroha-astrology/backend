@@ -3,6 +3,12 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic>=2.7
 pydantic-settings>=2.3
+# Required, not optional, on this box: prod runs Python 3.9 but the route
+# signatures use PEP 604 unions (`str | None`). Without this, pydantic cannot
+# evaluate those annotations and `app.main` fails to import at startup — the
+# venv installs fine and only dies when uvicorn boots. Drop it only when prod
+# moves to Python >= 3.10.
+eval_type_backport>=0.2
 pyswisseph>=2.10.3.2
 firebase-admin>=6.5
 orjson>=3.10

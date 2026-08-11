@@ -26,9 +26,18 @@ echo "▶ Deploying ${REV}  →  ${HOST}:${REMOTE_DIR}"
 
 # 1) Sync code (never ships .env, secrets, node_modules, dist, or .git).
 #    --itemize-changes lets us see exactly what moved and branch on it.
+#    --delete removes anything on the server that isn't in the local tree, so
+#    every server-only path MUST be excluded or it gets destroyed:
+#      swarm/.venv   the Python venv for the aroha-swarm service. Built on the
+#                    box, never in git. Deleting it does not stop the running
+#                    process (Linux keeps deleted-but-open files alive), so the
+#                    breakage stays invisible until the next restart.
+#      .deployed-rev written by this script on the server; absent locally.
+#      .claude       local agent worktrees; large and irrelevant to the server.
 CHANGES="$(rsync -az --delete --itemize-changes \
   --exclude '.git' --exclude 'node_modules' --exclude 'dist' \
   --exclude 'secrets' --exclude '.env' \
+  --exclude 'swarm/.venv' --exclude '.deployed-rev' --exclude '.claude' \
   -e "ssh -i \"$PEM\" -o StrictHostKeyChecking=accept-new" \
   "$LOCAL_DIR/" "$HOST:$REMOTE_DIR/")"
 

@@ -7,7 +7,10 @@
 -- diffs against a stale baseline and reinvents already-applied objects. Not
 -- fixed here; out of scope for this change. Follow 0052's pattern (defensive
 -- IF NOT EXISTS / duplicate_object guards, one transaction, no
--- --> statement-breakpoint markers) rather than trusting the generator.
+-- statement-breakpoint markers) rather than trusting the generator.
+-- NB: never write drizzle's literal breakpoint delimiter in a comment here —
+-- the runner splits the file on it textually and would cut this comment in
+-- half, leaving the tail as a bare (invalid) SQL statement.
 --
 -- 1. orders: `reference` (short support-facing id) + `verified_at` (distinct
 --    from `paid_at` — set when the gateway signature check passes). Existing
