@@ -683,7 +683,10 @@ export async function purchaseReport(
 
   validatePurchaseShape(def, body);
 
-  const profile = await resolveProfileContext(user, body.birthProfileId ?? null);
+  // strict: body.birthProfileId is client-supplied for THIS request — a
+  // non-owned/deleted id must 404, not silently substitute the caller's
+  // primary profile (see resolveProfileContext's doc comment).
+  const profile = await resolveProfileContext(user, body.birthProfileId ?? null, { strict: true });
   const birthProfileId = profile.birthProfileId;
 
   const perUnitPricePaise = features[def.featureFlagKey]?.pricePaise ?? def.basePricePaise;
@@ -818,7 +821,8 @@ export async function previewReport(
     throw Errors.badRequest(`${def.key} does not support preview — no partner data exists yet`);
   }
 
-  const profile = await resolveProfileContext(user, body.birthProfileId ?? null);
+  // strict — see the matching comment in purchaseReport above.
+  const profile = await resolveProfileContext(user, body.birthProfileId ?? null, { strict: true });
   const birthProfileId = profile.birthProfileId;
 
   const claimed = await claimReportRow({
