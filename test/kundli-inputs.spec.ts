@@ -49,6 +49,14 @@ describe('missingKundliParams (strict required set)', () => {
     const missing = missingKundliParams(completeProfile({ displayName: null, gender: null }));
     expect(missing).toEqual([]);
   });
+
+  it('reports placeOfBirth missing when coordinates/timezone are incomplete', () => {
+    expect(
+      missingKundliParams(
+        completeProfile({ placeOfBirth: { name: 'X', lat: 19, lon: 72, tz: '' } }),
+      ),
+    ).toEqual(['placeOfBirth']);
+  });
 });
 
 describe('birthTimeQuality / chartWarning — the accuracy funnel', () => {
@@ -72,14 +80,6 @@ describe('birthTimeQuality / chartWarning — the accuracy funnel', () => {
 
   it("'unknown' when there is simply no time value at all", () => {
     expect(birthTimeQuality(completeProfile({ timeOfBirth: null }))).toBe('unknown');
-  });
-
-  it('reports placeOfBirth missing when coordinates/timezone are incomplete', () => {
-    expect(
-      missingKundliParams(
-        completeProfile({ placeOfBirth: { name: 'X', lat: 19, lon: 72, tz: '' } }),
-      ),
-    ).toEqual(['placeOfBirth']);
   });
 });
 
