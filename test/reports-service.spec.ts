@@ -123,6 +123,7 @@ const {
   notifyReportReady,
   reapStaleReports,
   regenerateReportContent,
+  hashSections,
 } = await import('../src/modules/reports/reports.service.js');
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
@@ -1257,8 +1258,44 @@ describe('getReportForUser', () => {
     expect(dto).toMatchObject({ status: 'ready', isPreview: false });
   });
 
-  it('uses a cached translation without calling translateNarrative again', async () => {
+  it('uses a cached translation without calling translateNarrative again, when its hash matches the current English content', async () => {
     const translateNarrative = vi.fn();
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn(),
+      translateNarrative,
+    };
+    const englishSections = [{ heading: 'H', paragraphs: ['p'] }];
+    state.findKundliByUserId.mockResolvedValue({ chartData: {} });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        content: { sections: englishSections },
+        translations: {
+          hi: {
+            sections: {
+              hash: hashSections(englishSections),
+              values: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }],
+            },
+          },
+        },
+      }),
+    );
+
+    const dto = await getReportForUser('report-1', 'user-1', 'hi');
+    expect(dto).toMatchObject({ sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }] });
+    expect(translateNarrative).not.toHaveBeenCalled();
+  });
+
+  it('ignores a cached translation whose hash no longer matches the English content, and re-translates', async () => {
+    // Regression coverage: `sections` translations used to be keyed on language alone, so ANY
+    // write path that changed content.sections without also clearing `translations` (which
+    // markReportReady/its sibling patch both do today, but a future partial-regeneration path
+    // might not) would serve this stale cached translation forever.
+    const translateNarrative = vi
+      .fn()
+      .mockResolvedValue([{ heading: 'नया', paragraphs: ['नया पैरा'] }]);
     state.REPORT_GENERATORS.marriage = {
       key: 'marriage',
       computeScores: vi.fn().mockReturnValue({}),
@@ -1269,14 +1306,24 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
-        translations: { hi: { sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }] } },
+        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }] },
+        translations: {
+          hi: {
+            sections: {
+              hash: hashSections([{ heading: 'H (old)', paragraphs: ['p'] }]),
+              values: [{ heading: 'पुराना', paragraphs: ['पुराना पैरा'] }],
+            },
+          },
+        },
       }),
     );
 
     const dto = await getReportForUser('report-1', 'user-1', 'hi');
-    expect(dto).toMatchObject({ sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }] });
-    expect(translateNarrative).not.toHaveBeenCalled();
+    expect(translateNarrative).toHaveBeenCalledWith(
+      [{ heading: 'H (changed)', paragraphs: ['p'] }],
+      'hi',
+    );
+    expect(dto).toMatchObject({ sections: [{ heading: 'नया', paragraphs: ['नया पैरा'] }] });
   });
 
   it('translates and persists on first request for a new language', async () => {
@@ -1289,18 +1336,22 @@ describe('getReportForUser', () => {
       generateNarrative: vi.fn(),
       translateNarrative,
     };
+    const englishSections = [{ heading: 'H', paragraphs: ['p'] }];
     state.findKundliByUserId.mockResolvedValue({ chartData: {} });
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+        content: { sections: englishSections },
       }),
     );
 
     const dto = await getReportForUser('report-1', 'user-1', 'hi');
     expect(translateNarrative).toHaveBeenCalledWith([{ heading: 'H', paragraphs: ['p'] }], 'hi');
     expect(state.saveReportTranslation).toHaveBeenCalledWith('report-1', 'hi', {
-      sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }],
+      sections: {
+        hash: hashSections(englishSections),
+        values: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }],
+      },
     });
     expect(dto).toMatchObject({ sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }] });
   });

@@ -9,6 +9,7 @@
 // =============================================================================
 
 import '../reports/generators/index.js';
+import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
 import { runWithRequestContext } from '../../lib/request-context.js';
@@ -66,6 +67,7 @@ import {
 } from '../../lib/llm/reports/verdict.js';
 import {
   REPORT_GENERATORS,
+  type ReportGenerator,
   type ReportSection,
   type ReportScoreContext,
   type ReportScores,
@@ -893,6 +895,14 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
   return computeScoresWithCondition(generator, scoreContext, row.periodMonth);
 }
 
+/** Same JSON.stringify+sha256 idiom as hashLeafValues (report-scores.ts) and
+ * reports.repo.ts's hashReportInput, applied to the English narrative — see
+ * withTranslatedSections' cache-key comment for why this exists. Exported
+ * only so tests can compute a matching hash for cache fixtures. */
+export function hashSections(sections: ReportSection[]): string {
+  return crypto.createHash('sha256').update(JSON.stringify(sections)).digest('hex');
+}
+
 /**
  * Overlays translated prose onto `scores` for the small, explicit allowlist
  * of dot-paths this report type carries (see SCORES_PROSE_ALLOWLIST) — every
@@ -1024,18 +1034,42 @@ export async function getReportForUser(
     isPreview: row.isPreview,
   };
 
-  const cached = row.translations?.[language] as { sections?: ReportSection[] } | undefined;
-  if (cached?.sections) {
-    return { ...readyBase, sections: assignSectionIds(row.reportKey, cached.sections) };
+  const sections = await withTranslatedSections(row, englishSections, generator, language);
+  return { ...readyBase, sections };
+}
+
+/**
+ * Translated narrative sections, cached by content hash rather than just
+ * language — `translations[language].sections` used to be keyed on language
+ * alone, so any write path that updates `content.sections` without also
+ * clearing `translations` (see markReportReady's reset, reports.repo.ts)
+ * would serve a stale translation forever. Same `{hash, values}` shape and
+ * cache-check-by-hash pattern withTranslatedScoresProse already uses for
+ * `scoresProse`, generalized to the narrative — a hash mismatch (content
+ * changed) is treated exactly like a cache miss: pay one translation call,
+ * re-cache under the new hash.
+ */
+async function withTranslatedSections(
+  row: ReportRow,
+  englishSections: ReportSection[],
+  generator: ReportGenerator,
+  language: string,
+): Promise<ReportSection[]> {
+  const hash = hashSections(englishSections);
+  const cached = row.translations?.[language] as
+    | { sections?: { hash?: string; values?: ReportSection[] } }
+    | undefined;
+  if (cached?.sections?.hash === hash && cached.sections.values) {
+    return assignSectionIds(row.reportKey, cached.sections.values);
   }
 
   try {
     const translated = await generator.translateNarrative(englishSections, language);
-    await saveReportTranslation(row.id, language, { sections: translated });
-    return { ...readyBase, sections: assignSectionIds(row.reportKey, translated) };
+    await saveReportTranslation(row.id, language, { sections: { hash, values: translated } });
+    return assignSectionIds(row.reportKey, translated);
   } catch (err) {
     logger.warn({ err, reportId: row.id, language }, 'failed to translate report');
-    return { ...readyBase, sections: englishSections };
+    return englishSections;
   }
 }
 
