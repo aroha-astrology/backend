@@ -108,8 +108,10 @@ const baseOrder = {
   gatewayProvider: 'mock',
   gatewayOrderId: null,
   gatewayPaymentId: null,
+  reference: 'AR-DEADBEEF',
   createdAt: new Date('2026-07-10T00:00:00Z'),
   paidAt: new Date('2026-07-10T00:00:01Z'),
+  verifiedAt: new Date('2026-07-10T00:00:01Z'),
 };
 
 const baseLedgerRow = {
