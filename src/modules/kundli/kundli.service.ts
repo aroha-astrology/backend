@@ -58,14 +58,13 @@ type EngineLunarNode = 'mean' | 'true';
  * mandatory — without it the ascendant, houses, and dasha cannot be computed,
  * so we report it as missing rather than producing a degraded/guessed chart.
  * These are all collected during onboarding.
+ *
+ * `gender`/`displayName` are deliberately NOT here — they're profile metadata
+ * (used by naming/matchmaking features, and nowhere in src/lib/astro-engine's
+ * chart math), not chart inputs. Gating chart generation on them used to mean
+ * a user who hadn't picked a gender yet couldn't see their own kundli.
  */
-export const KUNDLI_REQUIRED_FIELDS = [
-  'displayName',
-  'gender',
-  'dateOfBirth',
-  'timeOfBirth',
-  'placeOfBirth',
-] as const;
+export const KUNDLI_REQUIRED_FIELDS = ['dateOfBirth', 'timeOfBirth', 'placeOfBirth'] as const;
 
 export type KundliRequiredField = (typeof KUNDLI_REQUIRED_FIELDS)[number];
 
@@ -82,14 +81,36 @@ function placeIsComplete(place: UserRow['placeOfBirth']): boolean {
 /** Required kundli fields that are absent on the resolved profile (empty = ready to compute). */
 export function missingKundliParams(profile: ProfileContext): KundliRequiredField[] {
   const missing: KundliRequiredField[] = [];
-  if (!profile.displayName) missing.push('displayName');
-  if (!profile.gender) missing.push('gender');
   if (!profile.dateOfBirth) missing.push('dateOfBirth');
-  // An EXACT time is required: a null time OR an explicitly 'unknown' accuracy
-  // both count as missing (a disclaimed time can't yield lagna/houses/dasha).
+  // An EXACT time is required for a full chart: a null time OR an explicitly 'unknown'
+  // accuracy both count as missing. 'approximate' is deliberately treated as present here —
+  // see birthTimeQuality below for the caveat that accompanies an approximate chart.
   if (!profile.timeOfBirth || profile.birthTimeAccuracy === 'unknown') missing.push('timeOfBirth');
   if (!placeIsComplete(profile.placeOfBirth)) missing.push('placeOfBirth');
   return missing;
+}
+
+export type BirthTimeQuality = 'exact' | 'approximate' | 'unknown';
+
+/**
+ * The funnel decision for a resolved profile: `'exact'` → a normal, fully-trustworthy chart;
+ * `'approximate'` → a full chart, but ascendant/houses/dasha timing should be shown with a
+ * caveat (see chartWarning below); `'unknown'` → missingKundliParams already reports
+ * `timeOfBirth` as missing, and the funnel's next step is birth-time rectification (see
+ * rectification.ts) rather than "please enter a birth time".
+ */
+export function birthTimeQuality(profile: ProfileContext): BirthTimeQuality {
+  if (!profile.timeOfBirth || profile.birthTimeAccuracy === 'unknown') return 'unknown';
+  return profile.birthTimeAccuracy === 'approximate' ? 'approximate' : 'exact';
+}
+
+/** User-facing caveat for an `'approximate'`-accuracy chart — null for 'exact'/'unknown' (the
+ * latter has no chart to caveat; missingKundliParams already blocks it). Ascendant, house
+ * cusps, and dasha timing are the results sensitive to a few minutes of birth-time error;
+ * planet SIGN placements are not. */
+export function chartWarning(quality: BirthTimeQuality): string | null {
+  if (quality !== 'approximate') return null;
+  return 'Your birth time is approximate. Ascendant, house placements, and dasha timing may shift with a more exact time — planet positions by sign are still accurate.';
 }
 
 /* -------------------------------------------------------------------------- */

@@ -18,6 +18,17 @@ export const KundliSchema = z
     yogas: JsonObject.nullable(),
     doshas: JsonObject.nullable(),
     generatedAt: z.string().nullable(),
+    /** The profile's declared confidence in the birth time this chart was computed from —
+     * 'exact'/'approximate' only (a 'ready' chart can never come from an 'unknown' time, see
+     * missingKundliParams). Drives the frontend's accuracy caveat, see `warning`. Optional on
+     * the base type only because toKundliDto (kundli.service.ts) builds it from the row alone
+     * before the route layer's withAccuracy attaches this from the resolved profile — every
+     * actual HTTP response includes it. */
+    birthTimeAccuracy: z.enum(['exact', 'approximate']).nullable().optional(),
+    /** Non-null only for `birthTimeAccuracy: 'approximate'` — user-facing caveat that
+     * ascendant/houses/dasha timing may shift with a more exact time. Same optionality
+     * rationale as birthTimeAccuracy above. */
+    warning: z.string().nullable().optional(),
   })
   .openapi('Kundli');
 
@@ -53,6 +64,11 @@ export const KundliMissingParamsSchema = z
       .array(z.string())
       .describe('Required fields that are absent, e.g. ["timeOfBirth","placeOfBirth"]'),
     message: z.string(),
+    /** Only meaningful when `timeOfBirth` is in `missing` — distinguishes "never entered a
+     * birth time" (show the normal entry field) from "declared it unknown" (route straight
+     * to the birth-time rectification flow instead of asking again for a time the user has
+     * already said they don't have). Undefined when `timeOfBirth` isn't the blocker. */
+    nextStep: z.enum(['enter_birth_time', 'rectify_birth_time']).optional(),
   })
   .openapi('KundliMissingParameters');
 

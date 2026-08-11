@@ -9,6 +9,8 @@ const state = vi.hoisted(() => ({
   getKundliForUser: vi.fn(),
   missingKundliParams: vi.fn(),
   birthInputsForProfile: vi.fn(),
+  birthTimeQuality: vi.fn(),
+  chartWarning: vi.fn(),
   requestKundliGeneration: vi.fn(),
   regenerateKundli: vi.fn(),
   isStaleGenerating: vi.fn(),
@@ -58,6 +60,8 @@ vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   getKundliForUser: state.getKundliForUser,
   missingKundliParams: state.missingKundliParams,
   birthInputsForProfile: state.birthInputsForProfile,
+  birthTimeQuality: state.birthTimeQuality,
+  chartWarning: state.chartWarning,
   requestKundliGeneration: state.requestKundliGeneration,
   regenerateKundli: state.regenerateKundli,
   isStaleGenerating: state.isStaleGenerating,
@@ -108,6 +112,8 @@ beforeEach(() => {
   state.getKundliForUser.mockReset();
   state.missingKundliParams.mockReset().mockReturnValue([]); // complete by default
   state.birthInputsForProfile.mockReset().mockReturnValue({ birthHash: 'h-current' });
+  state.birthTimeQuality.mockReset().mockReturnValue('exact');
+  state.chartWarning.mockReset().mockReturnValue(null);
   state.requestKundliGeneration.mockReset().mockResolvedValue(undefined);
   state.regenerateKundli.mockReset();
   state.isStaleGenerating.mockReset().mockReturnValue(false);
@@ -188,6 +194,67 @@ describe('GET /v1/kundli', () => {
     const res = await createApp().request('/v1/kundli', { headers: AUTH });
     expect(res.status).toBe(202);
     expect(state.requestKundliGeneration).not.toHaveBeenCalled();
+  });
+
+  it('attaches birthTimeAccuracy + a warning onto a ready response for an approximate-time chart', async () => {
+    state.getKundliForUser.mockResolvedValueOnce({
+      status: 'ready',
+      id: 'k1',
+      birthHash: 'h-current',
+    });
+    state.toKundliDtoForLanguage.mockResolvedValueOnce({ status: 'ready', id: 'k1' });
+    state.birthTimeQuality.mockReturnValueOnce('approximate');
+    state.chartWarning.mockReturnValueOnce('Ascendant/timing may shift with a more exact time.');
+
+    const res = await createApp().request('/v1/kundli', { headers: AUTH });
+    const body = (await res.json()) as { birthTimeAccuracy: string; warning: string | null };
+    expect(body.birthTimeAccuracy).toBe('approximate');
+    expect(body.warning).toBe('Ascendant/timing may shift with a more exact time.');
+  });
+
+  it('warning is null on a ready response for an exact-time chart', async () => {
+    state.getKundliForUser.mockResolvedValueOnce({
+      status: 'ready',
+      id: 'k1',
+      birthHash: 'h-current',
+    });
+    state.toKundliDtoForLanguage.mockResolvedValueOnce({ status: 'ready', id: 'k1' });
+    // birthTimeQuality/chartWarning default to 'exact'/null in beforeEach.
+
+    const res = await createApp().request('/v1/kundli', { headers: AUTH });
+    const body = (await res.json()) as { birthTimeAccuracy: string; warning: string | null };
+    expect(body.birthTimeAccuracy).toBe('exact');
+    expect(body.warning).toBeNull();
+  });
+
+  it('the 422 response routes to rectification, not re-entry, when the profile already declared the time unknown', async () => {
+    state.missingKundliParams.mockReturnValueOnce(['timeOfBirth']);
+    state.findUserByFirebaseUid.mockResolvedValue(
+      makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', birthTimeAccuracy: 'unknown' }),
+    );
+
+    const res = await createApp().request('/v1/kundli', { headers: AUTH });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { nextStep?: string };
+    expect(body.nextStep).toBe('rectify_birth_time');
+  });
+
+  it('the 422 response asks for entry (not rectification) when the time was simply never entered', async () => {
+    state.missingKundliParams.mockReturnValueOnce(['timeOfBirth']);
+    // Default mock user has birthTimeAccuracy: null (never set) — see helpers/mocks.ts.
+
+    const res = await createApp().request('/v1/kundli', { headers: AUTH });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { nextStep?: string };
+    expect(body.nextStep).toBe('enter_birth_time');
+  });
+
+  it('the 422 response omits nextStep when timeOfBirth is not the blocker', async () => {
+    state.missingKundliParams.mockReturnValueOnce(['placeOfBirth']);
+
+    const res = await createApp().request('/v1/kundli', { headers: AUTH });
+    const body = (await res.json()) as { nextStep?: string };
+    expect(body.nextStep).toBeUndefined();
   });
 });
 
