@@ -348,4 +348,19 @@ describe('POST /v1/chat — one question at a time', () => {
 
     expect(state.release).not.toHaveBeenCalled();
   });
+
+  it('releases the lock and refunds when persisting the question (before generation) throws', async () => {
+    // Same "throws before streamSSE" hazard as the wallet-debit failure cases
+    // above, but for the new pre-generation session write: the wallet was
+    // already charged, so a DB failure here must not leave the user both
+    // charged and locked out.
+    state.createChatSession.mockRejectedValue(new Error('db down'));
+
+    const res = await callChat({ message: 'Q1' });
+
+    expect(state.release).toHaveBeenCalledWith('chat:inflight', 'user-1', 'owner-1');
+    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 2000, 'refund:chat_message');
+    expect(state.chatStream).not.toHaveBeenCalled();
+    expect(res.status).toBe(500);
+  });
 });
