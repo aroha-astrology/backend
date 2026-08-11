@@ -494,15 +494,19 @@ const reportsReapStaleRoute = createRoute({
   tags: ['Cron'],
   summary: "Reap purchased-report rows stuck at 'generating' past the stale threshold",
   description:
-    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. Marks any ' +
-    "report row whose generation claim is older than REPORT_STALE_GENERATING_MS as 'failed' " +
-    '(reason: generation timed out) and refunds its price share — the same self-heal a repeat ' +
-    'purchase against the same identity already gets via claimReportRow, but without requiring ' +
-    'one. Authenticated via the X-Cron-Secret header.',
+    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. A stale ' +
+    'row is reclaimed and generation re-fired (`retried`) up to MAX_REPORT_GENERATION_ATTEMPTS ' +
+    'times — a resumable generator (marriage/numerology/true_love) picks up from its last ' +
+    "checkpoint rather than paying for the whole report again. Past that ceiling it's marked " +
+    "'failed' (reason: generation timed out) and refunded (`reaped`) — the same self-heal a " +
+    'repeat purchase against the same identity already gets via claimReportRow, but without ' +
+    'requiring one. Authenticated via the X-Cron-Secret header.',
   responses: {
     200: {
       description: 'Sweep completed',
-      content: { 'application/json': { schema: z.object({ reaped: z.number() }) } },
+      content: {
+        'application/json': { schema: z.object({ reaped: z.number(), retried: z.number() }) },
+      },
     },
     403: errorResponse('Invalid or missing cron secret'),
   },

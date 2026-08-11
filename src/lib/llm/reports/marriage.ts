@@ -22,7 +22,10 @@ import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { MarriageScores } from '../../astro-engine/reports/marriage.js';
 import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import type { AgeBand } from '../../astro-engine/reports/report-age-bands.js';
-import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
+import type {
+  ReportSection,
+  SectionGenerationProgress,
+} from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
 
 const GROUNDING_RULE =
@@ -292,30 +295,54 @@ async function callAndParse(
   return parsed;
 }
 
-/** 4 bounded calls — see module doc comment for the split rationale. */
-export async function generateMarriageNarrative(scores: MarriageScores): Promise<ReportSection[]> {
-  const part1 = await callAndParse(
+/**
+ * 4 bounded calls — see module doc comment for the split rationale. Each call is independent
+ * (built only from `scores`, never from an earlier call's output), so each is independently
+ * resumable: `progress.existingGroups[i]`, if present, is reused as-is instead of re-calling
+ * Gemini for that part, and a freshly-made part is checkpointed via `progress.onGroupComplete`
+ * the instant it succeeds — so a failure on, say, call 3 doesn't discard calls 1 and 2 on retry.
+ */
+export async function generateMarriageNarrative(
+  scores: MarriageScores,
+  progress?: SectionGenerationProgress,
+): Promise<ReportSection[]> {
+  const existing = progress?.existingGroups ?? [];
+
+  async function callOrResume(
+    index: number,
+    systemPrompt: string,
+    facts: string,
+    label: string,
+  ): Promise<ReportSection[]> {
+    const cached = existing[index];
+    if (cached) return cached;
+    const group = await callAndParse(systemPrompt, facts, scores.planetCondition, label);
+    await progress?.onGroupComplete(group);
+    return group;
+  }
+
+  const part1 = await callOrResume(
+    0,
     narrativeSystemPromptCall1(),
     buildFactsCall1(scores),
-    scores.planetCondition,
     'call1',
   );
-  const part2 = await callAndParse(
+  const part2 = await callOrResume(
+    1,
     narrativeSystemPromptCall2(),
     buildFactsCall2(scores),
-    scores.planetCondition,
     'call2',
   );
-  const part3 = await callAndParse(
+  const part3 = await callOrResume(
+    2,
     narrativeSystemPromptCall3(),
     buildFactsCall3(scores),
-    scores.planetCondition,
     'call3',
   );
-  const part4 = await callAndParse(
+  const part4 = await callOrResume(
+    3,
     narrativeSystemPromptCall4(),
     buildFactsCall4(scores),
-    scores.planetCondition,
     'call4',
   );
   return [...part1, ...part2, ...part3, ...part4];

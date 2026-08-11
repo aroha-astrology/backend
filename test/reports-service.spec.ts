@@ -21,6 +21,8 @@ const state = vi.hoisted(() => {
     markReportReady: vi.fn(),
     markReportFailed: vi.fn(),
     overwriteReadyReportContent: vi.fn(),
+    reclaimStaleReportForRetry: vi.fn(),
+    saveReportProgress: vi.fn(),
     saveReportTranslation: vi.fn(),
     upgradePreviewToPurchased: vi.fn(),
     countReadyReportsByKey: vi.fn(),
@@ -48,6 +50,8 @@ vi.mock('../src/modules/reports/reports.repo.js', () => ({
   markReportReady: state.markReportReady,
   markReportFailed: state.markReportFailed,
   overwriteReadyReportContent: state.overwriteReadyReportContent,
+  reclaimStaleReportForRetry: state.reclaimStaleReportForRetry,
+  saveReportProgress: state.saveReportProgress,
   saveReportTranslation: state.saveReportTranslation,
   upgradePreviewToPurchased: state.upgradePreviewToPurchased,
   countReadyReportsByKey: state.countReadyReportsByKey,
@@ -124,6 +128,7 @@ const {
   reapStaleReports,
   regenerateReportContent,
   hashSections,
+  MAX_REPORT_GENERATION_ATTEMPTS,
 } = await import('../src/modules/reports/reports.service.js');
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
@@ -147,6 +152,7 @@ function makeReportRow(overrides: Partial<ReportRow> = {}): ReportRow {
     isPreview: false,
     startedAt: now,
     error: null,
+    generationAttempts: 0,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -162,6 +168,8 @@ beforeEach(() => {
   state.listReportsForUser.mockReset().mockResolvedValue([]);
   state.markReportReady.mockReset().mockResolvedValue(undefined);
   state.markReportFailed.mockReset().mockResolvedValue(undefined);
+  state.reclaimStaleReportForRetry.mockReset();
+  state.saveReportProgress.mockReset().mockResolvedValue(undefined);
   state.saveReportTranslation.mockReset().mockResolvedValue(undefined);
   state.upgradePreviewToPurchased.mockReset().mockResolvedValue(undefined);
   state.countReadyReportsByKey.mockReset().mockResolvedValue([]);
@@ -674,7 +682,11 @@ describe('purchaseReport — background generation safety net', () => {
     expect(state.computeMetrology).toHaveBeenCalledWith(
       expect.objectContaining({ date: '1990-01-01', time: '10:00' }),
     );
-    expect(generateNarrative).toHaveBeenCalledWith({ gunaMilanScore: 30 }, 'en');
+    expect(generateNarrative).toHaveBeenCalledWith(
+      { gunaMilanScore: 30 },
+      'en',
+      expect.objectContaining({ existingGroups: [], onGroupComplete: expect.any(Function) }),
+    );
   });
 
   it('freezes a provenance snapshot (chart data + calculation/ephemeris/ayanamsa/house/node versions) from the kundli row used, onto the ready report', async () => {
@@ -878,6 +890,69 @@ describe('purchaseReport — background generation safety net', () => {
     });
     expect(state.markReportReady).toHaveBeenCalled();
   });
+
+  it('checkpoints each group the generator reports via saveReportProgress, accumulating across calls', async () => {
+    const claimedAt = new Date('2026-07-01T00:00:00Z');
+    let progressArg: { onGroupComplete: (g: unknown) => Promise<void> } | undefined;
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockImplementation(async (_scores, _lang, progress) => {
+        progressArg = progress;
+        await progress.onGroupComplete([{ heading: 'Part 1', paragraphs: ['p1'] }]);
+        await progress.onGroupComplete([{ heading: 'Part 2', paragraphs: ['p2'] }]);
+        return [
+          { heading: 'Part 1', paragraphs: ['p1'] },
+          { heading: 'Part 2', paragraphs: ['p2'] },
+        ];
+      }),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({ id: 'ckpt1', reportKey: 'marriage', startedAt: claimedAt, content: null }),
+    );
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    await vi.waitFor(() => expect(state.markReportReady).toHaveBeenCalled());
+    expect(progressArg).toBeDefined();
+    expect(state.saveReportProgress).toHaveBeenNthCalledWith(1, 'ckpt1', claimedAt, [
+      [{ heading: 'Part 1', paragraphs: ['p1'] }],
+    ]);
+    expect(state.saveReportProgress).toHaveBeenNthCalledWith(2, 'ckpt1', claimedAt, [
+      [{ heading: 'Part 1', paragraphs: ['p1'] }],
+      [{ heading: 'Part 2', paragraphs: ['p2'] }],
+    ]);
+  });
+
+  it('passes a previously-checkpointed sectionGroups back in as existingGroups on a reclaimed row', async () => {
+    const generateNarrative = vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]);
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative,
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    const priorGroups = [[{ heading: 'Part 1', paragraphs: ['p1'] }]];
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'resume1',
+        reportKey: 'marriage',
+        content: { sectionGroups: priorGroups },
+      }),
+    );
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    await vi.waitFor(() => expect(generateNarrative).toHaveBeenCalled());
+    expect(generateNarrative).toHaveBeenCalledWith(
+      {},
+      'en',
+      expect.objectContaining({ existingGroups: priorGroups }),
+    );
+  });
 });
 
 describe('notifyReportReady', () => {
@@ -915,7 +990,7 @@ describe('notifyReportReady', () => {
 });
 
 describe('reapStaleReports', () => {
-  it('marks each stale row failed (timed-out reason) and refunds its price share, returning the reaped count', async () => {
+  it('marks each stale row failed (timed-out reason) and refunds its price share, once its retry budget is exhausted', async () => {
     const staleAt = new Date('2026-07-01T00:00:00Z');
     state.findStaleGeneratingReports.mockResolvedValue([
       makeReportRow({
@@ -924,6 +999,7 @@ describe('reapStaleReports', () => {
         periodMonth: null,
         pricePaidPaise: 9900,
         startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
       }),
       makeReportRow({
         id: 's2',
@@ -931,21 +1007,23 @@ describe('reapStaleReports', () => {
         periodMonth: '2026-07-01',
         pricePaidPaise: 2500,
         startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
       }),
     ]);
 
     const result = await reapStaleReports();
 
-    expect(result).toEqual({ reaped: 2 });
+    expect(result).toEqual({ reaped: 2, retried: 0 });
+    expect(state.reclaimStaleReportForRetry).not.toHaveBeenCalled();
     expect(state.markReportFailed).toHaveBeenCalledWith(
       's1',
       staleAt,
-      'Generation timed out (stale)',
+      expect.stringContaining('Generation timed out (stale)'),
     );
     expect(state.markReportFailed).toHaveBeenCalledWith(
       's2',
       staleAt,
-      'Generation timed out (stale)',
+      expect.stringContaining('Generation timed out (stale)'),
     );
     expect(state.addWalletBalance).toHaveBeenCalledWith(
       'user-1',
@@ -959,10 +1037,58 @@ describe('reapStaleReports', () => {
     );
   });
 
-  it('returns { reaped: 0 } and touches nothing when there are no stale rows', async () => {
+  it('reclaims and retries a stale row under the retry budget, WITHOUT failing or refunding it', async () => {
+    const staleAt = new Date('2026-07-01T00:00:00Z');
+    const staleRow = makeReportRow({
+      id: 's1',
+      reportKey: 'marriage',
+      startedAt: staleAt,
+      generationAttempts: 1,
+    });
+    state.findStaleGeneratingReports.mockResolvedValue([staleRow]);
+    const reclaimedAt = new Date('2026-07-01T00:10:00Z');
+    state.reclaimStaleReportForRetry.mockResolvedValue({
+      ...staleRow,
+      startedAt: reclaimedAt,
+      generationAttempts: 2,
+    });
+    // Registered purely so the fire-and-forget retry has somewhere to land — its outcome
+    // isn't what this test is about (see the dedicated resumption tests below for that).
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockResolvedValue([]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+
+    const result = await reapStaleReports();
+
+    expect(result).toEqual({ reaped: 0, retried: 1 });
+    expect(state.reclaimStaleReportForRetry).toHaveBeenCalledWith('s1', staleAt);
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(state.markReportReady).toHaveBeenCalled());
+  });
+
+  it('does nothing when reclaiming loses the race (already reclaimed/finished elsewhere)', async () => {
+    const staleAt = new Date('2026-07-01T00:00:00Z');
+    state.findStaleGeneratingReports.mockResolvedValue([
+      makeReportRow({ id: 's1', reportKey: 'marriage', startedAt: staleAt, generationAttempts: 0 }),
+    ]);
+    state.reclaimStaleReportForRetry.mockResolvedValue(undefined);
+
+    const result = await reapStaleReports();
+
+    expect(result).toEqual({ reaped: 0, retried: 0 });
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('returns { reaped: 0, retried: 0 } and touches nothing when there are no stale rows', async () => {
     state.findStaleGeneratingReports.mockResolvedValue([]);
     const result = await reapStaleReports();
-    expect(result).toEqual({ reaped: 0 });
+    expect(result).toEqual({ reaped: 0, retried: 0 });
     expect(state.markReportFailed).not.toHaveBeenCalled();
     expect(state.addWalletBalance).not.toHaveBeenCalled();
   });
@@ -970,24 +1096,39 @@ describe('reapStaleReports', () => {
   it('never throws — logs and continues past a per-row failure, still reaping the rest', async () => {
     const staleAt = new Date('2026-07-01T00:00:00Z');
     state.findStaleGeneratingReports.mockResolvedValue([
-      makeReportRow({ id: 'bad', reportKey: 'marriage', startedAt: staleAt }),
-      makeReportRow({ id: 'good', reportKey: 'marriage', startedAt: staleAt }),
+      makeReportRow({
+        id: 'bad',
+        reportKey: 'marriage',
+        startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
+      }),
+      makeReportRow({
+        id: 'good',
+        reportKey: 'marriage',
+        startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
+      }),
     ]);
     state.markReportFailed
       .mockRejectedValueOnce(new Error('db blip'))
       .mockResolvedValueOnce(undefined);
 
-    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1 });
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1, retried: 0 });
   });
 
   it('still counts a row as reaped when markReportFailed succeeds but the refund itself fails', async () => {
     const staleAt = new Date('2026-07-01T00:00:00Z');
     state.findStaleGeneratingReports.mockResolvedValue([
-      makeReportRow({ id: 's1', reportKey: 'marriage', startedAt: staleAt }),
+      makeReportRow({
+        id: 's1',
+        reportKey: 'marriage',
+        startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
+      }),
     ]);
     state.addWalletBalance.mockRejectedValue(new Error('wallet down'));
 
-    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1 });
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1, retried: 0 });
   });
 
   it('skips a stale row with no startedAt rather than crashing (defensive only — should not occur in practice)', async () => {
@@ -995,7 +1136,7 @@ describe('reapStaleReports', () => {
       makeReportRow({ id: 'no-claim', reportKey: 'marriage', startedAt: null }),
     ]);
 
-    await expect(reapStaleReports()).resolves.toEqual({ reaped: 0 });
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 0, retried: 0 });
     expect(state.markReportFailed).not.toHaveBeenCalled();
   });
 });
