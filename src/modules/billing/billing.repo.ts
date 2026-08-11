@@ -132,9 +132,10 @@ export async function confirmOrderAndGrantCredits(
   gatewayPaymentId: string,
 ): Promise<{ order: OrderRow; walletBalancePaise: number } | undefined> {
   return db.transaction(async (tx) => {
+    const now = new Date();
     const [order] = await tx
       .update(orders)
-      .set({ status: 'paid', paidAt: new Date(), gatewayPaymentId })
+      .set({ status: 'paid', paidAt: now, verifiedAt: now, gatewayPaymentId })
       .where(and(eq(orders.id, orderId), eq(orders.userId, userId), eq(orders.status, 'pending')))
       .returning();
 
@@ -162,6 +163,57 @@ export async function confirmOrderAndGrantCredits(
       userId,
       delta: order.finalAmountPaise,
       reason: `purchase:${order.packId}`,
+      balanceAfter: userRow.walletBalancePaise,
+    });
+
+    return { order, walletBalancePaise: userRow.walletBalancePaise };
+  });
+}
+
+/**
+ * Refunds a paid top-up order — same guarded-transition shape as
+ * confirmOrderAndGrantCredits, just running the wallet credit in reverse.
+ * Returns undefined if the order wasn't found, didn't belong to the user, or
+ * wasn't `paid` (already refunded, still pending, etc.) — same
+ * safe-to-call-more-than-once contract as above.
+ *
+ * `'refund_pending'` exists in the status enum but is deliberately unused
+ * here: there is no gateway-side refund call in this codebase yet (every
+ * refund anywhere is a wallet credit), so there is no async step for an
+ * intermediate state to usefully represent. It's reserved for when a real
+ * Razorpay refund call exists to occupy it — until then `paid` transitions
+ * straight to the terminal `refunded`, atomically, exactly like `paid` itself
+ * already skips a separate `PAYMENT_PENDING` row today.
+ */
+export async function refundOrder(
+  orderId: string,
+  userId: string,
+  reason: string,
+): Promise<{ order: OrderRow; walletBalancePaise: number } | undefined> {
+  return db.transaction(async (tx) => {
+    const [order] = await tx
+      .update(orders)
+      .set({ status: 'refunded' })
+      .where(and(eq(orders.id, orderId), eq(orders.userId, userId), eq(orders.status, 'paid')))
+      .returning();
+
+    if (!order) return undefined;
+
+    const [userRow] = await tx
+      .update(users)
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} + ${order.finalAmountPaise}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+
+    if (!userRow) throw new Error('User not found while refunding order');
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: order.finalAmountPaise,
+      reason: `refund:${reason}`,
       balanceAfter: userRow.walletBalancePaise,
     });
 
