@@ -25,6 +25,7 @@ const state = vi.hoisted(() => ({
   buildGroundingFacts: vi.fn(),
   buildProfileFacts: vi.fn(),
   buildVoiceSystemInstruction: vi.fn(),
+  insertAiUsage: vi.fn(),
 }));
 
 const fakeEnv = {
@@ -80,6 +81,10 @@ vi.mock('../src/lib/swarm/agents/scholar.js', () => ({
   buildVoiceSystemInstruction: state.buildVoiceSystemInstruction,
 }));
 
+vi.mock('../src/modules/admin/ai-usage.repo.js', () => ({
+  insertAiUsage: state.insertAiUsage,
+}));
+
 const { startVoiceSession, extendVoiceSession, endVoiceSessionForUser, VOICE_MAX_MINUTES } =
   await import('../src/modules/voice/voice.service.js');
 
@@ -120,6 +125,7 @@ beforeEach(() => {
   state.buildGroundingFacts.mockReset().mockResolvedValue(['Ascendant: Leo']);
   state.buildProfileFacts.mockReset().mockReturnValue([]);
   state.buildVoiceSystemInstruction.mockReset().mockReturnValue('SYSTEM PROMPT');
+  state.insertAiUsage.mockReset().mockResolvedValue(undefined);
 });
 
 describe('startVoiceSession', () => {
@@ -131,6 +137,34 @@ describe('startVoiceSession', () => {
     expect(grant.token).toBe('tok-abc');
     expect(grant.minutesUsed).toBe(1);
     expect(grant.minutesRemaining).toBe(VOICE_MAX_MINUTES - 1);
+  });
+
+  it('records the minute in ai_usage — the only point this server can observe voice usage at all', async () => {
+    // Regression: realtime voice was previously invisible everywhere in ai_usage-based cost
+    // reporting, since the conversation itself never touches this server (see the module doc
+    // comment). tokensIn/tokensOut are deliberately 0, not omitted — there is no verified
+    // token-equivalent for Gemini Live's audio pricing in this codebase, so this only makes
+    // call volume/duration visible, not $ cost, until that conversion exists.
+    await startVoiceSession(USER, profile, 'en');
+
+    await vi.waitFor(() => {
+      expect(state.insertAiUsage).toHaveBeenCalledWith({
+        userId: USER,
+        agent: 'voice',
+        model: 'live-model',
+        tokensIn: 0,
+        tokensOut: 0,
+        durationMs: 60_000,
+      });
+    });
+  });
+
+  it('never blocks the session grant on an ai_usage write failure', async () => {
+    state.insertAiUsage.mockRejectedValue(new Error('db down'));
+
+    const grant = await startVoiceSession(USER, profile, 'en');
+
+    expect(grant.token).toBe('tok-abc');
   });
 
   it('claims the minute before touching the wallet', async () => {
