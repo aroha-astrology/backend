@@ -1,6 +1,7 @@
 import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { reports, type ReportRow } from '../../db/schema.js';
+import type { ReportSection } from './report-generator.types.js';
 
 /** Consider a 'generating' row abandoned (crashed mid-run) after this long — same policy/value as gemstone. */
 export const REPORT_STALE_GENERATING_MS = 5 * 60_000;
@@ -213,8 +214,16 @@ export async function markReportReady(
     .update(reports)
     // Reset cached translations whenever the underlying English content changes — otherwise a
     // regenerated report would keep serving a translation of the PREVIOUS content forever, same
-    // staleness bug markGemstoneReady's reset guards against.
-    .set({ ...patch, translations: {}, status: 'ready', error: null, updatedAt: new Date() })
+    // staleness bug markGemstoneReady's reset guards against. generationAttempts also resets —
+    // it only bounds the REAPER's automatic retry budget for the CURRENT failure streak.
+    .set({
+      ...patch,
+      translations: {},
+      status: 'ready',
+      error: null,
+      generationAttempts: 0,
+      updatedAt: new Date(),
+    })
     .where(
       and(eq(reports.id, id), eq(reports.status, 'generating'), eq(reports.startedAt, claimedAt)),
     );
@@ -271,6 +280,63 @@ export async function markReportFailed(id: string, claimedAt: Date, error: strin
     .where(
       and(eq(reports.id, id), eq(reports.status, 'generating'), eq(reports.startedAt, claimedAt)),
     );
+}
+
+/**
+ * Persists incrementally-generated section groups WHILE generation is still in progress
+ * (`status` stays 'generating') — the checkpoint a later retry resumes from if this attempt
+ * fails or the process crashes before finishing. Claim-fenced like markReportReady/
+ * markReportFailed, so a checkpoint write from an attempt that has since been superseded
+ * (reclaimed by a newer attempt) can never land after the fact. Deliberately a wholesale
+ * `content` replace, not a merge — nothing else is ever written to `content` mid-generation,
+ * only the final markReportReady call writes the real shape ({sections, contentVersion, ...}),
+ * which naturally drops this scratch data on success.
+ */
+export async function saveReportProgress(
+  id: string,
+  claimedAt: Date,
+  sectionGroups: ReportSection[][],
+): Promise<void> {
+  await db
+    .update(reports)
+    .set({ content: { sectionGroups }, updatedAt: new Date() })
+    .where(
+      and(eq(reports.id, id), eq(reports.status, 'generating'), eq(reports.startedAt, claimedAt)),
+    );
+}
+
+/**
+ * Reclaims a row the stale-reaper found abandoned (crashed mid-run) for an automatic retry —
+ * same claim-fencing shape as claimReportRow's reclaim path (id + status='generating' + the
+ * PREVIOUS startedAt token), but reached directly by id since the reaper already has the row
+ * rather than re-deriving its purchase identity. Bumps `generationAttempts` (the reaper's
+ * retry budget) and stamps a fresh `startedAt` claim token; `content` (and any checkpointed
+ * sectionGroups in it) is left untouched, so a resumable generator picks up where it left off.
+ * Returns undefined if someone else already reclaimed or finished this row (lost the race) —
+ * same "empty RETURNING means lost the race" convention as every other guarded transition in
+ * this codebase.
+ */
+export async function reclaimStaleReportForRetry(
+  id: string,
+  previousStartedAt: Date,
+): Promise<ReportRow | undefined> {
+  const now = new Date();
+  const [row] = await db
+    .update(reports)
+    .set({
+      startedAt: now,
+      generationAttempts: sql`${reports.generationAttempts} + 1`,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(reports.id, id),
+        eq(reports.status, 'generating'),
+        eq(reports.startedAt, previousStartedAt),
+      ),
+    )
+    .returning();
+  return row;
 }
 
 /**

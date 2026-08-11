@@ -18,6 +18,7 @@ import {
   type ReportScoreContext,
   type ReportScores,
   type ReportSection,
+  type SectionGenerationProgress,
 } from '../report-generator.types.js';
 import type { MarriageScores } from '../../../lib/astro-engine/reports/marriage.js';
 
@@ -26,8 +27,12 @@ const marriageGenerator: ReportGenerator = {
   computeScores(ctx: ReportScoreContext, periodMonth: string | null): ReportScores {
     return computeMarriageScores(ctx, periodMonth);
   },
-  async generateNarrative(scores: ReportScores, _language: 'en'): Promise<ReportSection[]> {
-    return generateMarriageNarrative(scores as unknown as MarriageScores);
+  async generateNarrative(
+    scores: ReportScores,
+    _language: 'en',
+    progress?: SectionGenerationProgress,
+  ): Promise<ReportSection[]> {
+    return generateMarriageNarrative(scores as unknown as MarriageScores, progress);
   },
   async translateNarrative(sections: ReportSection[], language: string): Promise<ReportSection[]> {
     return translateMarriageNarrative(sections, language);

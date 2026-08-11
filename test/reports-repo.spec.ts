@@ -36,6 +36,8 @@ import {
   markReportFailed,
   markReportReady,
   overwriteReadyReportContent,
+  reclaimStaleReportForRetry,
+  saveReportProgress,
   upgradePreviewToPurchased,
 } from '../src/modules/reports/reports.repo.js';
 
@@ -105,6 +107,25 @@ function makeUpdateChain() {
       calls.where = cond;
       return Promise.resolve(undefined);
     }),
+  };
+  return { chain, calls };
+}
+
+/** Same shape as makeUpdateChain, but `.where()` returns a chain link supporting `.returning()`
+ * — for the guarded-transition repo functions (e.g. reclaimStaleReportForRetry) that need the
+ * updated row back, mirroring makeInsertChain's `.returning()` support on the insert side. */
+function makeUpdateReturningChain(returningResult: unknown[]) {
+  const calls: { set?: unknown; where?: unknown } = {};
+  const chain = {
+    set: vi.fn((v: unknown) => {
+      calls.set = v;
+      return chain;
+    }),
+    where: vi.fn((cond: unknown) => {
+      calls.where = cond;
+      return chain;
+    }),
+    returning: vi.fn(() => Promise.resolve(returningResult)),
   };
   return { chain, calls };
 }
@@ -347,6 +368,47 @@ describe('markReportReady / markReportFailed — claim-fenced updates', () => {
 
     const query = compile(calls.where);
     expect(query.params).toEqual(['report-1', 'generating', claimedAt.toISOString()]);
+  });
+});
+
+describe('saveReportProgress — mid-generation checkpoint', () => {
+  it('writes { sectionGroups } to content, claim-fenced by id + generating status + claim token', async () => {
+    const { chain, calls } = makeUpdateChain();
+    state.update.mockReturnValue(chain);
+    const claimedAt = new Date('2026-01-01T00:00:00Z');
+    const groups = [[{ heading: 'H1', paragraphs: ['p1'] }]];
+
+    await saveReportProgress('report-1', claimedAt, groups);
+
+    expect(calls.set).toMatchObject({ content: { sectionGroups: groups } });
+    const query = compile(calls.where);
+    expect(query.params).toEqual(['report-1', 'generating', claimedAt.toISOString()]);
+  });
+});
+
+describe("reclaimStaleReportForRetry — the reaper's retry path", () => {
+  it('bumps generationAttempts and stamps a fresh startedAt, fenced by id + generating status + the PREVIOUS claim token', async () => {
+    const previousStartedAt = new Date('2026-01-01T00:00:00Z');
+    const { chain, calls } = makeUpdateReturningChain([
+      { id: 'report-1', status: 'generating', generationAttempts: 2 },
+    ]);
+    state.update.mockReturnValue(chain);
+
+    const row = await reclaimStaleReportForRetry('report-1', previousStartedAt);
+
+    expect(row).toEqual({ id: 'report-1', status: 'generating', generationAttempts: 2 });
+    expect(calls.set).toMatchObject({ generationAttempts: expect.anything() });
+    const query = compile(calls.where);
+    expect(query.params).toEqual(['report-1', 'generating', previousStartedAt.toISOString()]);
+  });
+
+  it('returns undefined when it loses the race (already reclaimed/finished by something else)', async () => {
+    const { chain } = makeUpdateReturningChain([]);
+    state.update.mockReturnValue(chain);
+
+    const row = await reclaimStaleReportForRetry('report-1', new Date('2026-01-01T00:00:00Z'));
+
+    expect(row).toBeUndefined();
   });
 });
 

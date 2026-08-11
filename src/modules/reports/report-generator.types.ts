@@ -134,6 +134,18 @@ export interface ReportSection {
 }
 
 /**
+ * Checkpoint hooks for a multi-call `generateNarrative` — see that method's
+ * own doc comment for the contract. `existingGroups[i]` is what the i-th
+ * previous `onGroupComplete(group)` call persisted; a resumable generator
+ * making the same N calls in the same order can simply skip call i whenever
+ * `existingGroups[i]` already exists and splice it back in unchanged.
+ */
+export interface SectionGenerationProgress {
+  existingGroups: ReportSection[][];
+  onGroupComplete(group: ReportSection[]): Promise<void>;
+}
+
+/**
  * What a report-type module must export, registered into REPORT_GENERATORS
  * below. This is the seam between the generic orchestration in
  * reports.service.ts (purchase, payment, claim-fencing, translate-on-read
@@ -159,8 +171,23 @@ export interface ReportGenerator {
    * config/llm.ts) — return the concatenated section list either way. Must
    * NOT invent any number that `scores` already computed; it writes prose
    * only, referencing the given numbers as facts.
+   *
+   * `progress` is optional and purely a cost/resilience optimization — a
+   * generator that only ever makes one LLM call (most of them) has nothing
+   * meaningful to checkpoint and can ignore the parameter entirely; the
+   * default (regenerate everything, on every attempt) is still correct. A
+   * generator that makes several independent bounded calls (marriage,
+   * numerology, true_love — see their own generateNarrative) SHOULD call
+   * `progress.onGroupComplete` after each one succeeds, and skip regenerating
+   * whatever `progress.existingGroups` already contains — otherwise a
+   * transient failure on, say, the 4th of 4 calls discards the first 3
+   * (already paid-for) calls' output on every retry.
    */
-  generateNarrative(scores: ReportScores, language: 'en'): Promise<ReportSection[]>;
+  generateNarrative(
+    scores: ReportScores,
+    language: 'en',
+    progress?: SectionGenerationProgress,
+  ): Promise<ReportSection[]>;
   /**
    * Translate an already-generated English `ReportSection[]` — one LLM call,
    * reusing the gemstone/house-insight translate-on-read idiom's prompt shape

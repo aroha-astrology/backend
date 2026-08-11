@@ -1391,6 +1391,12 @@ export const reports = pgTable(
     /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
     startedAt: timestamp('started_at', { withTimezone: true }),
     error: text('error'),
+    /** How many times the stale-row reaper (reapStaleReports) has reclaimed and re-fired
+     * generation for this row. Bounds automatic retry — a permanently-broken generation
+     * (bad chart data, a prompt that always fails) must eventually fail+refund rather than
+     * loop forever. NOT incremented by a normal purchase-claim reclaim (only the reaper's
+     * automatic retry counts), and reset to 0 by markReportReady on success. */
+    generationAttempts: integer('generation_attempts').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

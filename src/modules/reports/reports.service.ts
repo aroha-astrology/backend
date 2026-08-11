@@ -41,6 +41,8 @@ import {
   markReportFailed,
   markReportReady,
   overwriteReadyReportContent,
+  reclaimStaleReportForRetry,
+  saveReportProgress,
   saveReportScoresTranslation,
   saveReportTranslation,
   upgradePreviewToPurchased,
@@ -69,6 +71,7 @@ import {
   type ReportSection,
   type ReportScoreContext,
   type ReportScores,
+  type SectionGenerationProgress,
 } from './report-generator.types.js';
 import type { UserRow, ReportRow, KundliRow } from '../../db/schema.js';
 import type {
@@ -554,7 +557,27 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
 
     const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
     const scores = computeScoresWithCondition(generator, scoreContext, row.periodMonth);
-    const generated = await generator.generateNarrative(scores, 'en');
+
+    // Resume hint for a reclaimed row (a previous attempt's checkpoint — see
+    // saveReportProgress) — empty on a brand-new claim, since `content` is null until the
+    // first successful write. A generator that doesn't support checkpointed retry (most of
+    // them — see generateNarrative's own doc comment) simply ignores this and regenerates
+    // everything, which is still correct, just not cost-optimized.
+    const existingGroups =
+      (row.content as { sectionGroups?: ReportSection[][] } | null)?.sectionGroups ?? [];
+    let persistedGroups: ReportSection[][] = [...existingGroups];
+    const progress: SectionGenerationProgress = {
+      existingGroups,
+      onGroupComplete: async (group) => {
+        // A fresh array each call, not a push onto a shared reference — saveReportProgress's
+        // real (DB) implementation serializes synchronously so this wouldn't be reachable in
+        // production either way, but reassigning keeps each call's argument independently
+        // correct and observable rather than relying on that ordering.
+        persistedGroups = [...persistedGroups, group];
+        await saveReportProgress(row.id, claimedAt, persistedGroups);
+      },
+    };
+    const generated = await generator.generateNarrative(scores, 'en', progress);
     // Second pass: drop any sentence that contradicts this report's own facts.
     // Fails open — see verifyReportClaims.
     const { sections } = await verifyReportClaims(
@@ -1033,6 +1056,14 @@ async function withTranslatedSections(
   }
 }
 
+/** How many times reapStaleReports will reclaim-and-retry the SAME row before giving up and
+ * refunding it — bounds automatic retry so a permanently-broken generation (bad chart data, a
+ * prompt that always fails) eventually stops rather than looping forever. Deliberately small:
+ * a resumable generator (marriage/numerology/true_love) only re-pays for whichever call
+ * failed last time, so a low ceiling is cheap; a non-resumable one re-pays for the whole
+ * report each attempt, so it shouldn't be high either. */
+export const MAX_REPORT_GENERATION_ATTEMPTS = 3;
+
 /**
  * Periodic sweep for rows abandoned mid-generation (the Node process crashed
  * or was killed after `claimReportRow` but before `markReportReady`/
@@ -1042,15 +1073,38 @@ async function withTranslatedSections(
  * (see cron.routes.ts) rather than an in-process timer, matching every other
  * periodic job in this codebase. Never throws — a failure reaping one row is
  * logged and the sweep continues with the rest.
+ *
+ * Under MAX_REPORT_GENERATION_ATTEMPTS, a stale row is reclaimed and generation
+ * is re-fired (fire-and-forget, same as a fresh purchase) rather than immediately
+ * failed+refunded — a resumable generator (see generateNarrative's `progress`
+ * parameter) picks up from whatever it already checkpointed rather than paying
+ * for the whole report again. At or past the ceiling, falls back to the
+ * original behavior: mark failed and refund.
  */
-export async function reapStaleReports(): Promise<{ reaped: number }> {
+export async function reapStaleReports(): Promise<{ reaped: number; retried: number }> {
   const staleRows = await findStaleGeneratingReports();
   let reaped = 0;
+  let retried = 0;
 
   for (const row of staleRows) {
     if (!row.startedAt) continue; // claimReportRow always stamps 'generating' rows with startedAt — defensive only.
     try {
-      await markReportFailed(row.id, row.startedAt, 'Generation timed out (stale)');
+      if (row.generationAttempts < MAX_REPORT_GENERATION_ATTEMPTS) {
+        const reclaimed = await reclaimStaleReportForRetry(row.id, row.startedAt);
+        if (reclaimed) {
+          fireReportGeneration(reclaimed, row.birthProfileId);
+          retried++;
+        }
+        // Lost the race (already reclaimed/finished by something else, e.g. a repeat
+        // purchase) — nothing to do, it's no longer this sweep's problem either way.
+        continue;
+      }
+
+      await markReportFailed(
+        row.id,
+        row.startedAt,
+        `Generation timed out (stale) after ${MAX_REPORT_GENERATION_ATTEMPTS} retries`,
+      );
       await addWalletBalance(
         row.userId,
         row.pricePaidPaise,
@@ -1064,7 +1118,7 @@ export async function reapStaleReports(): Promise<{ reaped: number }> {
     }
   }
 
-  return { reaped };
+  return { reaped, retried };
 }
 
 /**
