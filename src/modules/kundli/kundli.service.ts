@@ -27,7 +27,7 @@ import {
   saveKundliContentTranslation,
 } from './kundli.repo.js';
 import { translateYogaDoshaContent, type KundliContent } from '../../lib/llm/kundli-content.js';
-import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
+import { deleteHoroscopesForProfile } from '../horoscope/horoscope.repo.js';
 import { generateHouseInsight, translateHouseInsightContent } from '../../lib/llm/house-insight.js';
 import {
   STALE_GENERATING_MS as HOUSE_INSIGHT_STALE_GENERATING_MS,
@@ -369,21 +369,16 @@ async function runGeneration(
       ashtakavargaData: ashtakavarga ? { ...ashtakavarga, reduced: reducedAshtakavarga } : null,
     });
 
-    // The horoscope LLM context is only grounded once the kundli is actually
-    // ready (see buildHoroscopeContext) — firing this in parallel with kundli
-    // generation instead of after would risk baking in an ungrounded reading
-    // that then sits cached until the period rolls over. `force: true` is a
-    // no-op for a brand-new onboarding (no row yet) and correctly overwrites
-    // a stale reading if this run was a birth-data correction, not first-time
-    // onboarding. `retryForever` because nothing else is blocked on this.
-    for (const period of HOROSCOPE_PERIODS) {
-      void requestHoroscopeGeneration(user, profile, period, {
-        force: true,
-        retryForever: true,
-      }).catch((err: unknown) => {
-        logger.error({ err, userId: user.id, period }, 'post-kundli horoscope trigger failed');
-      });
-    }
+    // Invalidate rather than pre-generate. Horoscopes are produced on the fly
+    // on first view of each period and then reused for the rest of that period,
+    // so nothing should burn an LLM call for a page the user may never open.
+    // But a `ready` row computed from the PRE-correction chart would otherwise
+    // outlive this regeneration all the way to its next period rollover — up to
+    // a year for `yearly`. Dropping the rows makes the next view a cache miss,
+    // which regenerates against the chart we just wrote.
+    void deleteHoroscopesForProfile(user.id, profile.birthProfileId).catch((err: unknown) => {
+      logger.error({ err, userId: user.id }, 'post-kundli horoscope invalidation failed');
+    });
 
     const readyKundli = await findKundliByUserId(user.id, profile.birthProfileId);
     if (readyKundli) {

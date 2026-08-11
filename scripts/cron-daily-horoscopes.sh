@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 #
-# Triggers the daily personalized-horoscope generation for all users.
+# Bulk-generates personalized horoscopes for all recently-active users.
 #
-# Wired into the EC2 crontab to run at 00:01 IST (= 18:31 UTC, the box is UTC):
-#   31 18 * * * /home/ec2-user/aroha-backend/scripts/cron-daily-horoscopes.sh \
-#     >> /home/ec2-user/cron-horoscopes.log 2>&1
+# NO LONGER ON THE CRONTAB (removed 2026-08-11). Horoscopes are generated on
+# the fly on first view of each period via GET /v1/horoscope and then reused for
+# the rest of that period, so pre-generating for every user every night was
+# spending LLM calls on pages most users never opened. Kept as a manual backfill
+# tool — run it by hand on the box when you actually want a bulk regeneration.
+# Do not re-add a crontab line for it without a reason.
 #
 # Reads CRON_SECRET from the app's .env (never hard-coded in the crontab) and
 # calls the internal, secret-protected endpoint on localhost.

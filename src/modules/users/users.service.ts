@@ -6,8 +6,8 @@ import { logger } from '../../lib/logger.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
-import { HOROSCOPE_PERIODS, requestHoroscopeGeneration } from '../horoscope/horoscope.service.js';
-import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
+import { deleteHoroscopesForProfile } from '../horoscope/horoscope.repo.js';
+import { type ProfileContext } from '../birth-profiles/profile-context.js';
 import { priceOf, payoutOf, type ResolvedFeature } from '../features/features.service.js';
 import { formatPaise } from '../../lib/money.js';
 import {
@@ -532,31 +532,22 @@ export async function updateMe(
     });
   }
 
-  // Users who onboard with an admittedly-unknown birth time never get a
-  // kundli (missingKundliParams always flags timeOfBirth for them), so the
-  // usual post-kundli-ready horoscope trigger (kundli.service.ts#runGeneration)
-  // never fires for this cohort. Fire directly here instead — the horoscope
-  // context tolerates a missing kundli (generic reading) rather than blocking
-  // on one. If they later add an exact time, touchedBirth's kundli trigger
-  // above takes over and its own post-ready hook naturally overwrites this
-  // with a grounded reading (force: true).
+  // Users who onboard with an admittedly-unknown birth time never get a kundli
+  // (missingKundliParams always flags timeOfBirth for them), so the post-kundli
+  // horoscope invalidation in kundli.service.ts#runGeneration never fires for
+  // this cohort — their birth-data edits would leave stale `ready` rows behind
+  // with nothing to clear them. Invalidate directly here instead. Generation
+  // itself is on the fly, on first view (see GET /v1/horoscope); the horoscope
+  // context tolerates a missing kundli and falls back to a generic reading.
   if (
     next.profileCompletedAt !== null &&
     (becameComplete || touchedBirth) &&
     next.birthTimeAccuracy === 'unknown'
   ) {
     // Primary profile only — see the birthProfileId: null comment above.
-    const primaryProfile = await resolveProfileContext(next, null);
-    for (const period of HOROSCOPE_PERIODS) {
-      void requestHoroscopeGeneration(next, primaryProfile, period, { retryForever: true }).catch(
-        (err: unknown) => {
-          logger.error(
-            { err, userId, period },
-            'horoscope generation trigger (unknown birth time) failed',
-          );
-        },
-      );
-    }
+    void deleteHoroscopesForProfile(next.id, null).catch((err: unknown) => {
+      logger.error({ err, userId }, 'horoscope invalidation (unknown birth time) failed');
+    });
   }
 
   return next;

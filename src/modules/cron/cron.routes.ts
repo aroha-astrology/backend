@@ -64,13 +64,15 @@ const horoscopesRoute = createRoute({
   method: 'post',
   path: '/cron/horoscopes',
   tags: ['Cron'],
-  summary: 'Generate personalized horoscopes for all active users',
+  summary: 'Bulk-generate personalized horoscopes (manual backfill only)',
   description:
-    'Machine-to-machine endpoint, triggered by the OS crontab at 00:01 IST. ' +
-    'Omit `period` to sweep all 4 periods (daily/weekly/monthly/yearly) in one call — ' +
-    'each is a near-instant no-op except on its own rollover day, and the sweep doubles ' +
-    'as a nightly self-heal for any stuck/failed row. Pass `period` to run just one (e.g. ' +
-    'for a targeted backfill). Authenticated via the X-Cron-Secret header.',
+    'NOT on any schedule as of 2026-08-11 — the nightly crontab line was removed. Horoscopes ' +
+    'are now generated on the fly on first view of each period (GET /v1/horoscope) and reused ' +
+    'for the rest of that period, so nothing spends an LLM call on a page the user may never ' +
+    'open. This endpoint remains as the manual backfill/admin tool (see ' +
+    'scripts/regenerate-all-horoscopes.sh); do not re-wire it to cron without a reason. ' +
+    'Omit `period` to sweep all 5 periods in one call, or pass `period` to run just one. ' +
+    'Authenticated via the X-Cron-Secret header.',
   request: {
     body: {
       required: false,

@@ -24,13 +24,36 @@ function profileFilter(birthProfileId: string | null) {
 }
 
 /**
+ * Drop every cached horoscope row for one profile, across all periods.
+ *
+ * Called after a kundli (re)generates. Nothing pre-generates horoscopes any
+ * more — they're produced on the fly on first view of each period and then
+ * reused for the whole period — so a `ready` row would otherwise survive a
+ * birth-data correction until its period rolled over (up to a year, for
+ * `yearly`), still reading from the pre-correction chart. Deleting is enough:
+ * GET /v1/horoscope treats a missing row as a cache miss and regenerates.
+ */
+export async function deleteHoroscopesForProfile(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<number> {
+  const rows = await db
+    .delete(dailyHoroscopes)
+    .where(and(eq(dailyHoroscopes.userId, userId), profileFilter(birthProfileId)))
+    .returning({ id: dailyHoroscopes.id });
+  return rows.length;
+}
+
+/**
  * Keyset page of active users (deletedAt IS NULL), ordered by id for stable
  * paging. By default also excludes users with no activity in the last
- * `HOROSCOPE_ACTIVE_WINDOW_DAYS` (default 2) — the nightly batch shouldn't
- * spend an LLM call generating for someone who hasn't opened the app in the
- * last couple of days; their reading is instead generated on the fly the next
- * time they do, with no visible difference to them (see
- * requestHoroscopeGeneration's cache-miss path in horoscope.service.ts).
+ * `HOROSCOPE_ACTIVE_WINDOW_DAYS` (default 2) — a bulk backfill shouldn't spend
+ * an LLM call generating for someone who hasn't opened the app in the last
+ * couple of days; their reading is generated on the fly the next time they do
+ * (see requestHoroscopeGeneration's cache-miss path in horoscope.service.ts).
+ *
+ * Only the manual backfill path reaches this now — the nightly batch was
+ * unscheduled 2026-08-11 in favour of pure on-view generation.
  *
  * `COALESCE(lastActiveAt, createdAt)` is essential: `lastActiveAt` is only
  * populated once a heartbeat has landed (requireUser / establishSession), so

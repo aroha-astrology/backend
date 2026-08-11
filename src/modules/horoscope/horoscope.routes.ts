@@ -72,10 +72,13 @@ const getHoroscopeRoute = createRoute({
   summary: "Get the current user's personalized horoscope",
   description:
     'Returns 200 with the horoscope when ready, or 202 while it is still being generated ' +
-    '(poll again) — mirrors GET /kundli. Generation is triggered proactively once onboarding ' +
-    'completes; this endpoint is the automatic on-demand fallback for any gaps, and a ' +
-    'lightweight selfheal sweep (POST /cron/horoscopes-selfheal) runs every 15 min to ' +
-    'recover any persistently-failed rows.',
+    '(poll again) — mirrors GET /kundli. As of 2026-08-11 this is the ONLY thing that ' +
+    'generates a horoscope: nothing pre-generates on a schedule any more. A cache miss ' +
+    "fires generation for that period, and the resulting row is reused for the whole period's " +
+    'life (today / this week / this month / this year), so at most one LLM call per user per ' +
+    'period. Also self-healing: it re-fires on a `failed` row past its cooldown and on a ' +
+    '`generating` row abandoned past the stale threshold, so a user reopening the page is the ' +
+    'recovery path.',
   security: [{ bearerAuth: [] }],
   middleware: [horoscopeGetRateLimit] as const,
   request: { query: GetHoroscopeQuerySchema },
