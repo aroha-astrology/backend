@@ -83,23 +83,11 @@ describe('birthInputsForProfile', () => {
     expect(a?.birthHash).not.toBe(b?.birthHash);
   });
 
-  it('stamps the current CALCULATION_VERSION/EPHEMERIS_VERSION onto the result', () => {
-    const inputs = birthInputsForProfile(completeProfile(), makeUserRow());
-    expect(inputs?.calculationVersion).toBe(CALCULATION_VERSION);
-    expect(inputs?.ephemerisVersion).toBe(EPHEMERIS_VERSION);
-  });
-
-  it('folds calculationVersion/ephemerisVersion into birthHash — a version bump changes the hash for IDENTICAL birth data, so a cached kundli auto-regenerates on next access with no backfill needed', () => {
-    // Same technique test/kundli-repo-profile.spec.ts and friends use for hash-sensitivity:
-    // birthInputsForProfile itself always stamps the CURRENT version, so to prove the version is
-    // actually part of the hash input (not just carried alongside it unused), recompute the hash
-    // the same way with a DIFFERENT version string and confirm it diverges.
+  /** The exact hash input shape, so the tests below can vary ONE thing each. */
+  function hashWith(overrides: Record<string, unknown>): string {
     const profile = completeProfile();
-    const user = makeUserRow();
-    const withCurrentVersion = birthInputsForProfile(profile, user);
-    expect(withCurrentVersion).not.toBeNull();
-
-    const hashWithOtherVersion = crypto
+    const inputs = birthInputsForProfile(profile, makeUserRow())!;
+    return crypto
       .createHash('sha256')
       .update(
         JSON.stringify({
@@ -109,16 +97,41 @@ describe('birthInputsForProfile', () => {
           lat: profile.placeOfBirth!.lat,
           lon: profile.placeOfBirth!.lon,
           tz: profile.placeOfBirth!.tz,
-          ayanamsa: withCurrentVersion!.ayanamsa,
-          houseSystem: withCurrentVersion!.houseSystem,
-          lunarNode: withCurrentVersion!.lunarNode,
-          calculationVersion: 'some-other-version',
-          ephemerisVersion: withCurrentVersion!.ephemerisVersion,
+          ayanamsa: inputs.ayanamsa,
+          houseSystem: inputs.houseSystem,
+          lunarNode: inputs.lunarNode,
+          ...overrides,
         }),
       )
       .digest('hex')
       .slice(0, 16);
+  }
 
-    expect(hashWithOtherVersion).not.toBe(withCurrentVersion!.birthHash);
+  it('does NOT change any already-stored birthHash while at the pre-versioning baseline', () => {
+    // The load-bearing one. Introducing versioning must not itself invalidate the cache:
+    // a changed hash triggers a full regeneration, which ALSO deletes that profile's
+    // horoscopes and re-fires its house insights (both LLM-backed), so a hash change on
+    // every row at once would stampede every user through the engine and the shared Gemini
+    // quota — to produce byte-identical charts, since the engine hasn't changed. The hash
+    // here must equal one computed with no version keys at all (the pre-versioning shape).
+    const preVersioningHash = hashWith({});
+    expect(birthInputsForProfile(completeProfile(), makeUserRow())!.birthHash).toBe(
+      preVersioningHash,
+    );
+  });
+
+  it('DOES change the hash once a version moves off the baseline — the intended invalidation', () => {
+    // The other half of the contract: the omission above must be conditional on still being
+    // at the baseline, not a permanent no-op that quietly disables invalidation forever.
+    expect(hashWith({ calculationVersion: '2027.01.1' })).not.toBe(hashWith({}));
+    expect(hashWith({ ephemerisVersion: 'swisseph-wasm@0.1.0' })).not.toBe(hashWith({}));
+  });
+
+  it('still stamps the REAL current version onto the row, even though the hash omits it', () => {
+    // Provenance (what actually computed this chart) is a separate concern from cache
+    // invalidation — the stored columns must carry the true version regardless.
+    const inputs = birthInputsForProfile(completeProfile(), makeUserRow());
+    expect(inputs?.calculationVersion).toBe(CALCULATION_VERSION);
+    expect(inputs?.ephemerisVersion).toBe(EPHEMERIS_VERSION);
   });
 });

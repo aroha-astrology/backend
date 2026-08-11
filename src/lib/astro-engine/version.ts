@@ -16,3 +16,27 @@
  */
 export const CALCULATION_VERSION = '2026.08.1';
 export const EPHEMERIS_VERSION = 'swisseph-wasm@0.0.5';
+
+/**
+ * The versions in effect when versioning was INTRODUCED — i.e. the ones every kundli
+ * already sitting in the database was computed with, before any version was recorded.
+ *
+ * These exist purely so introducing versioning did not itself invalidate the entire
+ * cache. Every stored `birth_hash` was computed without a version key at all; naively
+ * adding one would have changed every hash at once, and since a stale hash triggers a
+ * full regeneration (which also deletes that profile's horoscopes and re-fires its
+ * house insights, both LLM-backed), the deploy would have stampeded every user's chart
+ * through the engine and the shared Gemini quota — to produce byte-identical charts,
+ * because the engine had not actually changed.
+ *
+ * So `birthInputsForProfile` omits the version from the hash while it still equals the
+ * baseline (JSON.stringify drops undefined keys — the same trick `lunarNode` already
+ * relies on there), leaving existing hashes byte-identical. The FIRST real bump makes
+ * the key appear and invalidates everything, which is exactly the intended behaviour.
+ *
+ * Do NOT move these forward when bumping the constants above — that would silently
+ * cancel the invalidation the bump exists to cause. They are a permanent record of the
+ * pre-versioning baseline, not a mirror of the current version.
+ */
+export const HASH_BASELINE_CALCULATION_VERSION = '2026.08.1';
+export const HASH_BASELINE_EPHEMERIS_VERSION = 'swisseph-wasm@0.0.5';
