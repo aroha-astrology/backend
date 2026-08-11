@@ -27,6 +27,7 @@ import { getUserFacts } from '../astro/user-facts.repo.js';
 import { findActiveUserById, deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
+import { insertAiUsage } from '../admin/ai-usage.repo.js';
 import * as voiceRepo from './voice.repo.js';
 
 /**
@@ -185,6 +186,24 @@ async function chargeAndMint(
 
   try {
     const minted = await mintLiveToken({ systemInstruction, resumptionHandle });
+    // Best-effort, matching gemini-client.ts's own usage-write discipline (never fail the
+    // call over a telemetry write). This is the ONLY place voice usage can be captured at
+    // all — the conversation itself streams client-to-Google and never touches this server
+    // (see the module doc comment) — so tokensIn/tokensOut are deliberately 0, not omitted:
+    // Gemini Live's audio pricing has no verified token-equivalent conversion in this
+    // codebase yet, and a guessed rate would be confidently wrong in a cost dashboard. This
+    // at least makes voice call volume and duration visible; ai_usage's $ rollups (which key
+    // off tokens) will undercount voice cost until that conversion is added.
+    void insertAiUsage({
+      userId,
+      agent: 'voice',
+      model: minted.model,
+      tokensIn: 0,
+      tokensOut: 0,
+      durationMs: 60_000,
+    }).catch((err: unknown) => {
+      logger.warn({ err, userId, voiceSessionId }, 'voice: ai_usage write failed');
+    });
     return {
       voiceSessionId,
       token: minted.token,
