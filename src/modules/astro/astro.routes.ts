@@ -755,6 +755,7 @@ const chatFeedbackRoute = createRoute({
       content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
     },
     401: errorResponse('Unauthorized'),
+    404: errorResponse('Chat session not found'),
     422: errorResponse('Validation failed'),
   },
 });
@@ -762,6 +763,21 @@ const chatFeedbackRoute = createRoute({
 astroRouter.openapi(chatFeedbackRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
+
+  // `sessionId` used to be inserted as-is with no ownership check at all — a
+  // client could attach a vote/report to ANY session id, including one
+  // belonging to a different user, poisoning that session's feedback record.
+  // Same ownership resolution and 404-on-mismatch convention as POST /chat's
+  // own sessionId handling (chatRoute, above).
+  if (body.sessionId) {
+    const profile = await resolveActiveProfileContext(user);
+    const session = await chatSessionsRepo.getChatSession(
+      body.sessionId,
+      user.id,
+      profile.birthProfileId,
+    );
+    if (!session) throw Errors.notFound('Chat session not found');
+  }
 
   await incrementFeedbackCounter(body.vote === 'up' ? 'chat_thumbs_up' : 'chat_thumbs_down');
   await recordChatFeedbackVote({ userId: user.id, vote: body.vote, sessionId: body.sessionId });

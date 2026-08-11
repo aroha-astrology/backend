@@ -1,5 +1,6 @@
 import type { UserRow } from '../../db/schema.js';
 import { logger } from '../../lib/logger.js';
+import { Errors } from '../../lib/errors.js';
 import { findOwnedBirthProfile } from './birth-profiles.repo.js';
 
 /**
@@ -61,16 +62,31 @@ function primaryProfileContext(user: UserRow): ProfileContext {
  *   `user`'s own columns. No DB call.
  * - `activeProfileId` set → looks up that `birth_profiles` row (owner-scoped,
  *   excludes soft-deleted, via `findOwnedBirthProfile`). If it's missing —
- *   deleted, or simply doesn't belong to this user — falls back to the
- *   primary profile rather than throwing, since a dangling/stale pointer
- *   shouldn't break every request; a warning is logged when this happens.
+ *   deleted, or simply doesn't belong to this user — the default (lenient)
+ *   behavior falls back to the primary profile rather than throwing, since
+ *   this is normally the user's own dangling/stale `activeProfileId`
+ *   pointer, and a stale pointer shouldn't break every request; a warning is
+ *   logged when this happens.
+ *
+ * Pass `{ strict: true }` when `activeProfileId` is a value from the CURRENT
+ * request (a client-supplied `body.birthProfileId`/`query.birthProfileId`),
+ * as opposed to `user.activeProfileId` or an id re-threaded from a row this
+ * server already resolved earlier. In strict mode a non-owned/deleted id
+ * throws 404 instead of silently substituting the primary profile — a client
+ * passing another user's id should see an error, not their own data back
+ * with no explanation. Audited at introduction: only `purchaseReport` and
+ * `previewReport` (reports.service.ts) pass a fresh per-request id here;
+ * every other caller re-threads an already-resolved or DB-internal id and
+ * correctly keeps the lenient default.
  *
  * Most callers want {@link resolveActiveProfileContext} instead, which reads
- * `activeProfileId` off `user` itself.
+ * `activeProfileId` off `user` itself (always lenient — never client-supplied
+ * per-request).
  */
 export async function resolveProfileContext(
   user: UserRow,
   activeProfileId: string | null,
+  options?: { strict?: boolean },
 ): Promise<ProfileContext> {
   if (activeProfileId === null) {
     return primaryProfileContext(user);
@@ -78,6 +94,9 @@ export async function resolveProfileContext(
 
   const profile = await findOwnedBirthProfile(activeProfileId, user.id);
   if (!profile) {
+    if (options?.strict) {
+      throw Errors.notFound('Profile not found');
+    }
     logger.warn(
       { userId: user.id, activeProfileId },
       'resolveProfileContext: active profile not found (deleted or not owned) — falling back to primary profile',

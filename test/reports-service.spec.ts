@@ -240,6 +240,23 @@ describe('purchaseReport — validation', () => {
     });
     expect(state.claimReportRow).not.toHaveBeenCalled();
   });
+
+  it('propagates the 404 from resolveProfileContext for a birthProfileId the caller does not own, and never charges the wallet', async () => {
+    // resolveProfileContext is called with { strict: true } here — a client-supplied
+    // birthProfileId that isn't the caller's own throws instead of silently falling
+    // back to their primary profile (see profile-context.ts).
+    state.resolveProfileContext.mockRejectedValue(
+      Object.assign(new Error('Profile not found'), { code: 'NOT_FOUND' }),
+    );
+    await expect(
+      purchaseReport(makeUser(), {
+        reportKey: 'marriage',
+        birthProfileId: 'someone-elses-profile',
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
 });
 
 describe('purchaseReport — pricing and row shape', () => {
@@ -1345,6 +1362,16 @@ describe('previewReport', () => {
     expect(state.addWalletBalance).not.toHaveBeenCalled();
   });
 
+  it('propagates the 404 from resolveProfileContext for a birthProfileId the caller does not own', async () => {
+    state.resolveProfileContext.mockRejectedValue(
+      Object.assign(new Error('Profile not found'), { code: 'NOT_FOUND' }),
+    );
+    await expect(
+      previewReport(makeUser(), { reportKey: 'marriage', birthProfileId: 'someone-elses-profile' }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
   it('resolves the profile via resolveProfileContext for a non-primary birthProfileId, same as purchaseReport', async () => {
     state.resolveProfileContext.mockResolvedValue({ birthProfileId: 'profile-a' });
     state.claimReportRow.mockResolvedValue(
@@ -1361,6 +1388,7 @@ describe('previewReport', () => {
     expect(state.resolveProfileContext).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'user-1' }),
       'profile-a',
+      { strict: true },
     );
     expect(state.claimReportRow).toHaveBeenCalledWith(
       expect.objectContaining({ birthProfileId: 'profile-a' }),

@@ -128,6 +128,25 @@ describe('resolveProfileContext', () => {
     expect(meta).toMatchObject({ userId: 'user-1', activeProfileId: 'stale-profile' });
   });
 
+  it('{ strict: true } throws instead of falling back when the profile is not found (deleted/not owned)', async () => {
+    const user = makeUserRow({ id: 'user-1', activeProfileId: null });
+    vi.mocked(findOwnedBirthProfile).mockResolvedValueOnce(undefined);
+
+    await expect(
+      resolveProfileContext(user, 'someone-elses-profile', { strict: true }),
+    ).rejects.toThrow('Profile not found');
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('{ strict: true } resolves normally when the profile IS owned — strict only changes the not-found path', async () => {
+    const user = makeUserRow({ id: 'user-1' });
+    vi.mocked(findOwnedBirthProfile).mockResolvedValueOnce(makeBirthProfileRow());
+
+    const ctx = await resolveProfileContext(user, 'profile-1', { strict: true });
+
+    expect(ctx.birthProfileId).toBe('profile-1');
+  });
+
   it('normalizes a null unlockedHouses on the primary profile (users row) to []', async () => {
     const user = makeUserRow({
       id: 'user-1',
