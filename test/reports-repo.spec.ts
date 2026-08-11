@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core/dialect';
 
-// Coverage for the reports feature's four-way partial-unique-index targeting
+// Coverage for the reports feature's six-way partial-unique-index targeting
 // (see the `reports` table's doc comment in src/db/schema.ts): every claim
 // must target the correct one of reports_uniq_primary_onetime /
 // reports_uniq_primary_monthly / reports_uniq_profile_onetime /
-// reports_uniq_profile_monthly depending on (birthProfileId, periodMonth)
-// null-ness, or skip onConflict entirely for kundli_milan (partner `input`
-// rows have no uniqueness constraint at all). Same compiled-SQL-fragment
-// assertion technique as test/gemstone-repo-profile.spec.ts, since this repo
-// has no live-Postgres integration tests.
+// reports_uniq_profile_monthly (input IS NULL) or reports_uniq_input_hash_primary /
+// reports_uniq_input_hash_profile (input IS NOT NULL — kundli_milan/partner/
+// answer-bearing reports, keyed on sha256(input) since they have no
+// periodMonth dimension) depending on (birthProfileId, periodMonth, input)
+// null-ness. Same compiled-SQL-fragment assertion technique as
+// test/gemstone-repo-profile.spec.ts, since this repo has no live-Postgres
+// integration tests.
 
 const state = vi.hoisted(() => ({
   insert: vi.fn(),
@@ -32,7 +34,9 @@ import {
   countReadyReportsByKey,
   findReadyReportRows,
   findReportRow,
+  findReportRowByInputHash,
   findStaleGeneratingReports,
+  hashReportInput,
   markReportFailed,
   markReportReady,
   overwriteReadyReportContent,
@@ -201,21 +205,62 @@ describe('claimReportRow — partial-index targeting', () => {
     );
   });
 
-  it('(a) uses NO conflict target at all when partner `input` is set (kundli_milan) — repeat purchases against different partners never collide', async () => {
-    const { chain, calls } = makeInsertChain([{ id: 'km1', status: 'generating' }], false);
+  it("(a) targets reports_uniq_input_hash_primary (userId, reportKey, inputHash) for partner `input` on the primary profile — repeat purchases against the SAME partner details collide, different partners still don't", async () => {
+    const { chain, calls } = makeInsertChain([{ id: 'km1', status: 'generating' }]);
     state.insert.mockReturnValue(chain);
+    const input = { dateOfBirth: '1990-01-01' };
 
     const row = await claimReportRow({
       ...baseClaim,
       reportKey: 'kundli_milan',
       birthProfileId: null,
       periodMonth: null,
-      input: { dateOfBirth: '1990-01-01' },
+      input,
     });
 
     expect(row).toEqual({ id: 'km1', status: 'generating' });
-    expect(calls.onConflictCalled).toBe(false);
-    expect(calls.values).toMatchObject({ input: { dateOfBirth: '1990-01-01' } });
+    expect(calls.onConflictCalled).toBe(true);
+    expect(calls.onConflictDoUpdate.target).toEqual([
+      reports.userId,
+      reports.reportKey,
+      reports.inputHash,
+    ]);
+    const targetWhere = compile(calls.onConflictDoUpdate.targetWhere);
+    expect(targetWhere.sql).toBe(
+      '"reports"."birth_profile_id" is null and "reports"."input" is not null',
+    );
+    expect(calls.values).toMatchObject({ input, inputHash: hashReportInput(input) });
+  });
+
+  it('targets reports_uniq_input_hash_profile (userId, birthProfileId, reportKey, inputHash) for partner `input` on an additional profile', async () => {
+    const { chain, calls } = makeInsertChain([{ id: 'km2', status: 'generating' }]);
+    state.insert.mockReturnValue(chain);
+    const input = { dateOfBirth: '1990-01-01' };
+
+    await claimReportRow({
+      ...baseClaim,
+      reportKey: 'kundli_milan',
+      birthProfileId: 'profile-a',
+      periodMonth: null,
+      input,
+    });
+
+    expect(calls.onConflictDoUpdate.target).toEqual([
+      reports.userId,
+      reports.birthProfileId,
+      reports.reportKey,
+      reports.inputHash,
+    ]);
+    const targetWhere = compile(calls.onConflictDoUpdate.targetWhere);
+    expect(targetWhere.sql).toBe(
+      '"reports"."birth_profile_id" is not null and "reports"."input" is not null',
+    );
+  });
+
+  it('a DIFFERENT partner (different input) never collides — different inputHash, so it never conflicts against the earlier row', () => {
+    expect(hashReportInput({ dateOfBirth: '1990-01-01' })).not.toBe(
+      hashReportInput({ dateOfBirth: '1991-02-02' }),
+    );
   });
 
   it('(b)/(c) returns undefined (no row) when the claimable guard fails — an existing ready/live row is left untouched, never duplicated', async () => {
@@ -297,6 +342,21 @@ describe('findReportRow — scoped lookup excluding partner-input rows', () => {
 
     const query = compile(calls.where);
     expect(query.params).toEqual(['user-1', 'profile-a', 'health_monthly', '2026-07-01']);
+  });
+});
+
+describe('findReportRowByInputHash — the partner-report counterpart to findReportRow', () => {
+  it('filters on userId, birthProfileId, reportKey, and inputHash — no periodMonth or input-is-null filter', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+    const hash = hashReportInput({ dateOfBirth: '1990-01-01' });
+
+    await findReportRowByInputHash('user-1', null, 'kundli_milan', hash);
+
+    const query = compile(calls.where);
+    expect(query.sql).toContain('"reports"."birth_profile_id" is null');
+    expect(query.sql).not.toContain('"reports"."input" is null');
+    expect(query.params).toEqual(['user-1', 'kundli_milan', hash]);
   });
 });
 

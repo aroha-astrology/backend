@@ -35,7 +35,9 @@ import {
   countReadyReportsByKey,
   findReportById,
   findReportRow,
+  findReportRowByInputHash,
   findStaleGeneratingReports,
+  hashReportInput,
   listReportsForUser,
   markReportFailed,
   markReportReady,
@@ -653,13 +655,14 @@ export async function purchaseReport(
     for (let i = 0; i < periodMonths.length; i++) {
       const periodMonth = periodMonths[i] ?? null;
       const rowPrice = rowPrices[i] ?? 0;
+      const input = withAnswers(partnerInput, answers);
 
       const claimed = await claimReportRow({
         userId: user.id,
         birthProfileId,
         reportKey: def.key,
         periodMonth,
-        input: withAnswers(partnerInput, answers),
+        input,
         pricePaidPaise: rowPrice,
         isPreview: false,
       });
@@ -675,8 +678,18 @@ export async function purchaseReport(
       } else {
         // A row already exists at this exact identity that claimReportRow's own claimability
         // guard couldn't reclaim — the DB layer guaranteed no duplicate row was ever inserted
-        // (see claimReportRow's doc comment). Two distinct cases land here:
-        const existing = await findReportRow(user.id, birthProfileId, def.key, periodMonth);
+        // (see claimReportRow's doc comment). Two distinct cases land here. Partner/compatibility
+        // reports (input !== null) have no periodMonth dimension and dedupe on input hash instead
+        // of (birthProfileId, periodMonth) — see findReportRowByInputHash.
+        const existing =
+          input !== null
+            ? await findReportRowByInputHash(
+                user.id,
+                birthProfileId,
+                def.key,
+                hashReportInput(input),
+              )
+            : await findReportRow(user.id, birthProfileId, def.key, periodMonth);
         if (existing?.isPreview) {
           // Preview-to-purchase upgrade: this row started life as a free preview (see
           // previewReport) — do NOT refund, the user is genuinely paying for it right now.

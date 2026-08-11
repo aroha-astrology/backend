@@ -17,6 +17,7 @@ vi.mock('../src/modules/billing/billing.repo.js', () => ({
   findDebitsForUser: vi.fn(),
   findLatestOrderForPack: vi.fn(),
   setOrderGatewayOrderId: vi.fn(),
+  refundOrder: vi.fn(),
 }));
 vi.mock('../src/modules/users/users.repo.js', () => ({ findActiveUserById: vi.fn() }));
 vi.mock('../src/lib/notifications/telegram.js', () => ({ notifyWalletTopUp: vi.fn() }));
@@ -24,10 +25,11 @@ vi.mock('../src/lib/notifications/telegram.js', () => ({ notifyWalletTopUp: vi.f
 import {
   findOrderByIdForUser,
   confirmOrderAndGrantCredits,
+  refundOrder as refundOrderRepo,
 } from '../src/modules/billing/billing.repo.js';
 import { findActiveUserById } from '../src/modules/users/users.repo.js';
 import { notifyWalletTopUp } from '../src/modules/../lib/notifications/telegram.js';
-import { verifyRazorpayPayment } from '../src/modules/billing/billing.service.js';
+import { verifyRazorpayPayment, refundOrder } from '../src/modules/billing/billing.service.js';
 
 const RZP_ORDER = 'order_rzp1';
 const RZP_PAYMENT = 'pay_rzp1';
@@ -48,8 +50,10 @@ const baseOrder = {
   gatewayProvider: 'razorpay',
   gatewayOrderId: RZP_ORDER,
   gatewayPaymentId: null,
+  reference: 'AR-DEADBEEF',
   createdAt: new Date('2026-08-02T00:00:00Z'),
   paidAt: null,
+  verifiedAt: null,
 };
 
 const goodParams = {
@@ -116,5 +120,28 @@ describe('verifyRazorpayPayment', () => {
 
     expect(result.walletBalancePaise).toBe(25000);
     expect(confirmOrderAndGrantCredits).not.toHaveBeenCalled();
+  });
+});
+
+describe('refundOrder', () => {
+  it('credits the wallet and returns the refunded order', async () => {
+    vi.mocked(refundOrderRepo).mockResolvedValue({
+      order: { ...baseOrder, status: 'refunded' },
+      walletBalancePaise: 25000,
+    });
+
+    const result = await refundOrder(baseOrder.id, 'user-1', 'support_request');
+
+    expect(refundOrderRepo).toHaveBeenCalledWith(baseOrder.id, 'user-1', 'support_request');
+    expect(result.walletBalancePaise).toBe(25000);
+    expect(result.order.status).toBe('refunded');
+  });
+
+  it('rejects an order that is not currently paid (not found, or already refunded)', async () => {
+    vi.mocked(refundOrderRepo).mockResolvedValue(undefined);
+
+    await expect(refundOrder(baseOrder.id, 'user-1', 'support_request')).rejects.toThrow(
+      'not refundable',
+    );
   });
 });
