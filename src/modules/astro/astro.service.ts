@@ -45,6 +45,7 @@ import {
 } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
+import { listBirthProfilesByOwner } from '../birth-profiles/birth-profiles.repo.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import '../reports/generators/index.js';
@@ -1198,6 +1199,53 @@ export async function buildSecondChartFacts(
   ];
 }
 
+/**
+ * Lists the account's saved `birth_profiles` (name + relationship) as one grounding fact, every
+ * turn, regardless of whether `compareProfileId` was passed — this is what makes the "is this
+ * your son?" behavior possible at all: without it, the model has no idea a child/spouse/etc.
+ * profile even exists on the account (see the 2026-08-11 audit that found `relationship` was
+ * stored but never surfaced to chat). Deliberately name + relationship ONLY, never birth data —
+ * a real second chart is only pulled in by `matchSavedProfileByName` below, once the user
+ * actually confirms which saved profile they mean. Best-effort: a lookup failure just means no
+ * saved-profiles fact this turn, same degrade-gracefully contract as every other fact builder
+ * in this function.
+ */
+function buildSavedProfilesFacts(
+  profiles: Array<{ displayName: string | null; relationship: string | null }>,
+): string[] {
+  const named = profiles.filter((p) => p.displayName);
+  if (named.length === 0) return [];
+  const list = named
+    .map((p) => `${p.displayName} (${p.relationship ?? 'saved profile'})`)
+    .join(', ');
+  return [
+    `Saved profiles on this account, with their real charts on file: ${list}. If a question is ` +
+      `about a family member/partner and it's not already clear which saved profile they mean, ` +
+      `name the likely candidate(s) by name and ask before assuming — e.g. "Do you mean Arjun? ` +
+      `I can read his own chart for this." Once they confirm by name, that saved profile's real ` +
+      `chart becomes available. Never guess a name that isn't in this list.`,
+  ];
+}
+
+/**
+ * If the CURRENT message names a saved profile by its `displayName` (case-insensitive substring
+ * match), resolves that profile — this is the "next turn" half of the ask-first flow
+ * `buildSavedProfilesFacts` sets up: turn 1 lists names and the model asks; turn 2, once the user
+ * replies with (or repeating) the name, this matches it and `buildSecondChartFacts` below actually
+ * loads that person's real chart. Deliberately name-based rather than an i18n'd affirmative-word
+ * list ("yes"/"haan"/...) — matching a proper name works identically across all 7 app languages
+ * with no translation table to maintain, at the cost of requiring the user to say the name (a
+ * bare "yes" with no name falls back to no chart this turn, same as not matching at all — never a
+ * crash, just one turn of generic-only guidance).
+ */
+function matchSavedProfileByName<T extends { displayName: string | null }>(
+  profiles: T[],
+  message: string,
+): T | undefined {
+  const lower = message.toLowerCase();
+  return profiles.find((p) => p.displayName && lower.includes(p.displayName.toLowerCase()));
+}
+
 /** Per-section character cap when quoting a purchased report's narrative into chat grounding
  * (see buildMatchReportFacts below) — enough to ground a follow-up, not a full re-quote. */
 const MAX_SECTION_FACT_CHARS = 240;
@@ -1398,13 +1446,24 @@ export async function* chatStream(
         ).catch(() => [])
       : [];
 
-  // Second chart (partner/child/etc.) — only when the client explicitly asks
-  // for one via compareProfileId (see ChatRequestSchema). Unrelated to
-  // `profile`/the active profile above — always a SECOND, additional chart
-  // layered on top of whichever profile is active. Best-effort: a bad id or
-  // an owner mismatch must never break the chat reply.
-  const secondChartFacts = compareProfileId
-    ? await buildSecondChartFacts(userId, groundingSource, compareProfileId).catch(() => [])
+  // Every saved profile on the account (name + relationship only, no birth data) — always
+  // listed when any exist, so the model can offer "is this your son?" instead of staying silent
+  // about profiles it has no idea exist. Best-effort, same degrade-gracefully contract as every
+  // other fact builder here.
+  const savedProfiles = await listBirthProfilesByOwner(userId).catch(() => []);
+  const savedProfilesFacts = buildSavedProfilesFacts(savedProfiles);
+
+  // Second chart (partner/child/etc.) — either the client explicitly asked for one via
+  // compareProfileId (see ChatRequestSchema, e.g. the compatibility-page hand-off), OR this
+  // message itself names one of the saved profiles listed above (the "next turn" half of the
+  // ask-first flow: turn 1 the model asks "do you mean Arjun?", turn 2 the user says his name and
+  // this matches it). compareProfileId wins if both are somehow present. Unrelated to
+  // `profile`/the active profile above — always a SECOND, additional chart layered on top of
+  // whichever profile is active. Best-effort: a bad id, an owner mismatch, or no match must never
+  // break the chat reply.
+  const matchedProfileId = compareProfileId ?? matchSavedProfileByName(savedProfiles, message)?.id;
+  const secondChartFacts = matchedProfileId
+    ? await buildSecondChartFacts(userId, groundingSource, matchedProfileId).catch(() => [])
     : [];
 
   // A purchased Compatibility Match Report — only when the client explicitly asks for one via
@@ -1451,6 +1510,7 @@ export async function* chatStream(
 
   const extraFacts = [
     ...profileFacts,
+    ...savedProfilesFacts,
     ...panchangFacts,
     ...varshphalFacts,
     ...duePredictionFacts,
