@@ -657,6 +657,10 @@ astroRouter.openapi(chatRoute, async (c) => {
   }
 
   return streamSSE(c, async (stream) => {
+    /** Guards against crediting the same charge on both the empty-content and the catch
+     * path. Declared out here, not inside the `try`, so the `catch` can actually see it. */
+    let refunded = false;
+
     try {
       const events = astroService.chatStream(
         user.id,
@@ -715,6 +719,7 @@ astroRouter.openapi(chatRoute, async (c) => {
         // Generation "succeeded" with nothing to show (e.g. hit the
         // token ceiling before any content could be flushed) — don't
         // charge for a question that got no answer.
+        refunded = true;
         await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
       }
 
@@ -740,8 +745,13 @@ astroRouter.openapi(chatRoute, async (c) => {
       // started, above), so a thrown error here only ever loses the reply,
       // never the question.
       logger.error({ err, userId: user.id }, 'chat stream failed');
-      // Don't charge for a question the LLM never actually answered.
-      if (amountToChargePaise > 0) {
+      // Don't charge for a question the LLM never actually answered. Guarded by
+      // `refunded` because the empty-content branch above can fire and THEN the
+      // persist below can throw, which would otherwise credit the same charge
+      // twice for one question (pre-existing, but reachable more often now that
+      // the persist runs unconditionally rather than only for connected clients).
+      if (amountToChargePaise > 0 && !refunded) {
+        refunded = true;
         await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
       }
       await stream.writeSSE({
