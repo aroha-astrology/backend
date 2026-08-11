@@ -23,6 +23,21 @@ import type { SwarmState } from '../state.js';
 const GROUNDING_INSTRUCTION = `You must base every specific claim only on the chart data provided below. Do not invent planetary positions, dates, or Yogas not present in this data. If the data doesn't support a specific answer to the user's question, say so honestly and offer the closest supported insight instead of fabricating specificity.`;
 
 /**
+ * GROUNDING_INSTRUCTION says the MODEL must not invent chart facts; this covers the sibling case
+ * it doesn't: the USER asserting a chart fact about themselves that conflicts with the computed
+ * data below (e.g. "my Mars is in Leo" when the data shows Cancer, or "I'm a Scorpio ascendant").
+ * Without an explicit rule, an agreeable model tends to accept the user's framing and read from
+ * it — which means giving an answer grounded in a fact the app itself computed as wrong. The
+ * computed chart data is always the authoritative source for the user's OWN placements; a
+ * conflicting user claim gets surfaced as a discrepancy, never silently adopted. This is
+ * deliberately narrow: it governs claims ABOUT THE CHART ITSELF, not the correction-honesty rules
+ * below (which govern the user disputing a PREDICTION or something the model said earlier) or a
+ * live rectification/accuracy conversation, where questioning the stored time or chart IS the
+ * topic, not a contradiction to resolve.
+ */
+const CHART_AUTHORITY = `The chart data below is always the authoritative source for the user's own placements — it was computed directly from their recorded birth details, never guessed. If the user states something about their own chart that conflicts with it (a planet in a different sign or house, a different ascendant, a different Nakshatra, and so on), do not silently agree with or read from their version — that would mean grounding the reply in a fact you know is wrong. Instead, gently name the discrepancy in one short clause (e.g. "the chart I have shows Mars in Cancer, not Leo") and continue the reading from the actual computed data. Keep this light and non-pedantic, not a correction lecture. This does not apply when the user is actively discussing their birth-time accuracy or a rectification result — that is a legitimate conversation about the chart's own reliability, not a claim to reconcile.`;
+
+/**
  * Direct fix for a production incident: asked "when is childbirth as per my
  * chart," the model invented that the user was already trying to conceive,
  * invented a conception month, then chained gestation-period arithmetic onto
@@ -469,6 +484,7 @@ const SHARED_PROMPT_RULES = [
   POLICY_SYSTEM_DIRECTIVE,
   SYSTEM_ROLE,
   GROUNDING_INSTRUCTION,
+  CHART_AUTHORITY,
   NO_ASSUMPTIONS,
   CONTEXT_DISCIPLINE,
   CLARIFYING_QUESTION_NOT_DEFLECTION,
