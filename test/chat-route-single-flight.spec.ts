@@ -140,6 +140,29 @@ describe('POST /v1/chat — charges the resolved paid.chat price, not a hardcode
 
     expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 800, 'refund:chat_message');
   });
+
+  it('refunds ONCE when generation returns nothing and the persist then also fails', async () => {
+    // Two refund paths can both fire for one charge: the empty-content branch, and the
+    // catch. Persisting now runs unconditionally (it used to be skipped for a disconnected
+    // client), so a DB failure right after an empty generation reaches both — which would
+    // credit the user twice for a single debit.
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'paid.chat': { enabled: true, pricePaise: 800, originalPricePaise: null },
+    });
+    state.chatStream.mockImplementation(function* () {
+      // Generator completes normally, but produced no content at all.
+    });
+    // No sessionId, so the pre-generation write goes through createChatSession (which
+    // succeeds) and only the post-generation reply write uses updateChatSession — failing
+    // it therefore exercises the persist-after-generation path, not the one before it.
+    state.updateChatSession.mockRejectedValue(new Error('db down'));
+
+    const res = await callChat({ message: 'Q1' });
+    await res.text();
+
+    const refunds = state.addWalletBalance.mock.calls.filter((c) => c[2] === 'refund:chat_message');
+    expect(refunds).toHaveLength(1);
+  });
 });
 
 describe("POST /v1/chat — the model's own suggested follow-up is free", () => {
@@ -347,5 +370,20 @@ describe('POST /v1/chat — one question at a time', () => {
     await res.text();
 
     expect(state.release).not.toHaveBeenCalled();
+  });
+
+  it('releases the lock and refunds when persisting the question (before generation) throws', async () => {
+    // Same "throws before streamSSE" hazard as the wallet-debit failure cases
+    // above, but for the new pre-generation session write: the wallet was
+    // already charged, so a DB failure here must not leave the user both
+    // charged and locked out.
+    state.createChatSession.mockRejectedValue(new Error('db down'));
+
+    const res = await callChat({ message: 'Q1' });
+
+    expect(state.release).toHaveBeenCalledWith('chat:inflight', 'user-1', 'owner-1');
+    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 2000, 'refund:chat_message');
+    expect(state.chatStream).not.toHaveBeenCalled();
+    expect(res.status).toBe(500);
   });
 });
