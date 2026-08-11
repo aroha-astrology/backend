@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
   checkNewUserBurst: vi.fn().mockResolvedValue(undefined),
   checkTotalUserMilestone: vi.fn().mockResolvedValue(undefined),
+  resolveFeaturesForUser: vi.fn(),
+  hasGivenFeedback: vi.fn(),
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', () => ({
@@ -56,6 +58,14 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   touchUserLastActive: state.touchUserLastActive,
 }));
 
+vi.mock('../src/modules/features/features.service.js', () => ({
+  resolveFeaturesForUser: state.resolveFeaturesForUser,
+}));
+
+vi.mock('../src/modules/feedback/feedback.repo.js', () => ({
+  hasGivenFeedback: state.hasGivenFeedback,
+}));
+
 const { createApp } = await import('../src/app.js');
 
 describe('POST /v1/auth/session', () => {
@@ -72,6 +82,8 @@ describe('POST /v1/auth/session', () => {
     state.touchUserLastActive.mockReset().mockResolvedValue(undefined);
     state.checkNewUserBurst.mockReset().mockResolvedValue(undefined);
     state.checkTotalUserMilestone.mockReset().mockResolvedValue(undefined);
+    state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
+    state.hasGivenFeedback.mockReset().mockResolvedValue(false);
   });
 
   it('returns 401 when the Authorization header is missing', async () => {
