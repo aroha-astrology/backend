@@ -97,6 +97,17 @@ import { notifyUser } from '../../lib/notifications/notify-user.js';
  */
 const CONTENT_VERSION = 3;
 
+/**
+ * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
+ * meaningfully — a different axis from CONTENT_VERSION above (that tracks the persisted JSON
+ * *shape*; this tracks what was actually asked of the model). Deliberately NOT folded into any
+ * cache-invalidation hash and does not trigger regeneration — a prompt tweak should not
+ * retroactively invalidate reports users already paid for. Stamped onto `reports.promptVersion`
+ * purely for provenance: answering "why does my report read differently than my friend's" or
+ * "was this generated before or after the wording fix" without guessing from `createdAt`.
+ */
+const REPORT_PROMPT_VERSION = '2026.08.1';
+
 // ponytail: process-local dedup only, not a distributed/DB-backed claim — with pm2's cluster
 // workers, two near-simultaneous requests landing on DIFFERENT worker processes could each fire
 // their own regeneration of the same row (one extra Gemini call, not a correctness bug: the last
@@ -579,6 +590,22 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
         ...(verdict ? { verdict } : {}),
       },
       model: MODEL,
+      // Provenance snapshot, frozen at generation time — see the `chartSnapshot` doc comment
+      // in schema.ts for why this must never be re-derived from the (possibly since-changed)
+      // live kundli. `kundli` here is the exact row this report's facts were computed from.
+      chartSnapshot: {
+        chartData: kundli.chartData,
+        dashaData: kundli.dashaData,
+        yogaData: kundli.yogaData,
+        doshaData: kundli.doshaData,
+      },
+      calculationVersion: kundli.calculationVersion,
+      ephemerisVersion: kundli.ephemerisVersion,
+      ayanamsa: kundli.ayanamsa,
+      houseSystem: kundli.houseSystem,
+      nodeType: kundli.nodeType,
+      promptVersion: REPORT_PROMPT_VERSION,
+      language: 'en',
     });
     void notifyReportReady(row.userId, row.reportKey, row.id).catch(() => {
       /* already logged */

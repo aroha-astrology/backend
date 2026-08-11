@@ -379,6 +379,13 @@
       "when": 1786723200000,
       "tag": "0053_order_reference_and_report_input_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1786809600000,
+      "tag": "0054_calculation_versioning_and_provenance",
+      "breakpoints": true
     }
   ]
 }
