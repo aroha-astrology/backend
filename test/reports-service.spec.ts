@@ -676,6 +676,55 @@ describe('purchaseReport — background generation safety net', () => {
     expect(generateNarrative).toHaveBeenCalledWith({ gunaMilanScore: 30 }, 'en');
   });
 
+  it('freezes a provenance snapshot (chart data + calculation/ephemeris/ayanamsa/house/node versions) from the kundli row used, onto the ready report', async () => {
+    // A purchased report must not silently change if the engine or the user's ayanamsa
+    // preference changes later — this is what makes an old report reproducible.
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    const kundli = {
+      status: 'ready',
+      chartData: { planets: ['sun'] },
+      dashaData: { vimshottari: 'mars' },
+      yogaData: { yogas: [] },
+      doshaData: { manglik: false },
+      calculationVersion: '2026.08.1',
+      ephemerisVersion: 'swisseph-wasm@0.0.5',
+      ayanamsa: 'lahiri',
+      houseSystem: 'W',
+      nodeType: 'true',
+    };
+    state.findKundliByUserId.mockResolvedValue(kundli);
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'prov1', reportKey: 'marriage' }));
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    await vi.waitFor(() => {
+      expect(state.markReportReady).toHaveBeenCalledWith(
+        'prov1',
+        expect.any(Date),
+        expect.objectContaining({
+          chartSnapshot: {
+            chartData: kundli.chartData,
+            dashaData: kundli.dashaData,
+            yogaData: kundli.yogaData,
+            doshaData: kundli.doshaData,
+          },
+          calculationVersion: '2026.08.1',
+          ephemerisVersion: 'swisseph-wasm@0.0.5',
+          ayanamsa: 'lahiri',
+          houseSystem: 'W',
+          nodeType: 'true',
+          promptVersion: expect.any(String),
+          language: 'en',
+        }),
+      );
+    });
+  });
+
   it('does not attempt a partner chart when input holds only questionnaire answers', async () => {
     // Regression: persisting the questionnaire under input.answers made `input`
     // truthy on every non-partner report, so the old `if (row.input)` guard fed

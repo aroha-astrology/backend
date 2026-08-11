@@ -1,7 +1,7 @@
 import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import { db } from '../../config/db.js';
-import { reports, type ReportRow } from '../../db/schema.js';
+import { reports, type ReportRow, type NewReportRow } from '../../db/schema.js';
 
 /** Deterministic identity for partner/compatibility input — same JSON.stringify-based
  * approach as kundli.service.ts's birthHash (not a canonicalized/sorted-keys hash): input is
@@ -269,7 +269,19 @@ export async function findStaleGeneratingReports(): Promise<ReportRow[]> {
 export async function markReportReady(
   id: string,
   claimedAt: Date,
-  patch: { content: Record<string, unknown>; model: string },
+  patch: Pick<
+    NewReportRow,
+    | 'content'
+    | 'model'
+    | 'chartSnapshot'
+    | 'calculationVersion'
+    | 'ephemerisVersion'
+    | 'ayanamsa'
+    | 'houseSystem'
+    | 'nodeType'
+    | 'promptVersion'
+    | 'language'
+  >,
 ): Promise<void> {
   await db
     .update(reports)

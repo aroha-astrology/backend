@@ -12,6 +12,7 @@ import {
   detectCurrentSadeSati,
 } from '../../lib/astro-engine/index.js';
 import { computeReducedAshtakavarga } from '../../lib/astro-engine/calculations/ashtakavarga-shodhana.js';
+import { CALCULATION_VERSION, EPHEMERIS_VERSION } from '../../lib/astro-engine/version.js';
 import type { ZodiacSign, Yoga } from '@aroha-astrology/shared';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
@@ -209,6 +210,8 @@ type BirthInputs = {
   /** undefined = use the server default (LUNAR_NODE_TYPE). */
   lunarNode: EngineLunarNode | undefined;
   birthHash: string;
+  calculationVersion: string;
+  ephemerisVersion: string;
 };
 
 /**
@@ -254,6 +257,15 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
         // every stored hash is byte-identical to before this line existed — no
         // mass regeneration.
         lunarNode,
+        // Birth-input drift (date/time/place/preferences) isn't the only thing
+        // that can make a cached chart wrong — the ENGINE that computed it can
+        // change too (a fixed bug in house/dasha/yoga math, a swapped
+        // ephemeris). Folding both version tags in here means a version bump
+        // makes every existing birthHash stop matching, so the next access
+        // regenerates automatically — no backfill script, no cache purge. See
+        // version.ts for when to bump CALCULATION_VERSION.
+        calculationVersion: CALCULATION_VERSION,
+        ephemerisVersion: EPHEMERIS_VERSION,
       }),
     )
     .digest('hex')
@@ -272,6 +284,8 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
     houseSystem,
     lunarNode,
     birthHash,
+    calculationVersion: CALCULATION_VERSION,
+    ephemerisVersion: EPHEMERIS_VERSION,
   };
 }
 
@@ -360,6 +374,9 @@ async function runGeneration(
     await markKundliReady(user.id, profile.birthProfileId, claimedAt, {
       ayanamsa: inputs.ayanamsa,
       houseSystem: inputs.houseSystem,
+      nodeType: inputs.lunarNode ?? null,
+      calculationVersion: inputs.calculationVersion,
+      ephemerisVersion: inputs.ephemerisVersion,
       timeKnown: true,
       birthHash: inputs.birthHash,
       chartData: { ...chart, shadbala, divisionalCharts },
