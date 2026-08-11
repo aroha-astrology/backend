@@ -13,6 +13,8 @@ import {
 } from './kundli.schemas.js';
 import {
   birthInputsForProfile,
+  birthTimeQuality,
+  chartWarning,
   findHouseInsight,
   getKundliForUser,
   isHouseInsightStale,
@@ -49,19 +51,49 @@ const errorResponse = (description: string) => ({
 
 /** Human-readable labels for the required fields, for the FE-facing message. */
 const FIELD_LABELS: Record<KundliRequiredField, string> = {
-  displayName: 'name',
-  gender: 'gender',
   dateOfBirth: 'birth date',
   timeOfBirth: 'exact birth time',
   placeOfBirth: 'birth place (with coordinates and timezone)',
 };
 
-function missingResponseBody(missing: KundliRequiredField[]) {
+/** Attaches the accuracy caveat onto a ready kundli DTO — computed from the PROFILE
+ * (birthTimeAccuracy lives there, not on the kundli row itself), so this must run in the
+ * route handler where `profile` is already resolved, not inside kundli.service.ts's DTO
+ * builders. A 'ready' chart is never from an 'unknown' time (missingKundliParams blocks
+ * that), so the quality here is always 'exact' or 'approximate'. */
+function withAccuracy<T extends object>(
+  dto: T,
+  profile: Parameters<typeof birthTimeQuality>[0],
+): T & { birthTimeAccuracy: 'exact' | 'approximate'; warning: string | null } {
+  const quality = birthTimeQuality(profile);
+  return {
+    ...dto,
+    birthTimeAccuracy: quality === 'unknown' ? 'exact' : quality,
+    warning: chartWarning(quality),
+  };
+}
+
+function missingResponseBody(
+  missing: KundliRequiredField[],
+  profile: Parameters<typeof birthTimeQuality>[0],
+) {
   const labels = missing.map((f) => FIELD_LABELS[f]).join(', ');
   return {
     status: 'missing_parameters' as const,
     missing,
     message: `Cannot generate a kundli yet — missing required birth details: ${labels}.`,
+    // The funnel decision: a user who explicitly said they don't know their birth time has
+    // already answered "do you have a time?" — sending them back to the same entry field asks
+    // the same question again. Route straight to rectification instead. Anyone else missing
+    // timeOfBirth simply hasn't entered one yet.
+    ...(missing.includes('timeOfBirth')
+      ? {
+          nextStep:
+            profile.birthTimeAccuracy === 'unknown'
+              ? ('rectify_birth_time' as const)
+              : ('enter_birth_time' as const),
+        }
+      : {}),
   };
 }
 
@@ -116,7 +148,7 @@ kundliRouter.openapi(getKundliRoute, async (c) => {
   // Strict: refuse and tell the FE exactly what's missing.
   const missing = missingKundliParams(profile);
   if (missing.length > 0) {
-    return c.json(missingResponseBody(missing), 422);
+    return c.json(missingResponseBody(missing, profile), 422);
   }
 
   const existing = await getKundliForUser(user.id, profile.birthProfileId);
@@ -135,7 +167,10 @@ kundliRouter.openapi(getKundliRoute, async (c) => {
       fireGeneration(user.id, profile.birthProfileId);
       return c.json({ status: 'generating' as const }, 202);
     }
-    return c.json(await toKundliDtoForLanguage(existing, language || 'en'), 200);
+    return c.json(
+      withAccuracy(await toKundliDtoForLanguage(existing, language || 'en'), profile),
+      200,
+    );
   }
 
   // pending / generating / failed → ensure a run is (re)started (with a cooldown
@@ -188,10 +223,10 @@ kundliRouter.openapi(regenerateRoute, async (c) => {
   const result = await regenerateKundli(user.id, profile.birthProfileId);
 
   if (!result.ok) {
-    return c.json(missingResponseBody(result.missing), 422);
+    return c.json(missingResponseBody(result.missing, profile), 422);
   }
   if (result.row.status === 'ready') {
-    return c.json(await toKundliDto(result.row), 200);
+    return c.json(withAccuracy(await toKundliDto(result.row), profile), 200);
   }
   // 'failed' or still 'generating' (a concurrent run owns it).
   return c.json(
