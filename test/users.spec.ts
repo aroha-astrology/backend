@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   requestUserDeletion: vi.fn(),
   notifyAccountDeletionRequest: vi.fn().mockResolvedValue(true),
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
+  resolveFeaturesForUser: vi.fn(),
+  hasGivenFeedback: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -53,6 +55,14 @@ vi.mock('../src/lib/notifications/telegram.js', () => ({
   notifyAccountDeletionRequest: state.notifyAccountDeletionRequest,
 }));
 
+vi.mock('../src/modules/features/features.service.js', () => ({
+  resolveFeaturesForUser: state.resolveFeaturesForUser,
+}));
+
+vi.mock('../src/modules/feedback/feedback.repo.js', () => ({
+  hasGivenFeedback: state.hasGivenFeedback,
+}));
+
 const { createApp } = await import('../src/app.js');
 
 const AUTH = { Authorization: 'Bearer token', 'Content-Type': 'application/json' } as const;
@@ -64,6 +74,8 @@ describe('GET /v1/me', () => {
     state.findActiveUserById.mockReset();
     state.updateUserById.mockReset();
     state.anonymizeUserById.mockReset();
+    state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
+    state.hasGivenFeedback.mockReset().mockResolvedValue(false);
   });
 
   it('returns the current user profile', async () => {
@@ -108,6 +120,8 @@ describe('PATCH /v1/me', () => {
     state.findActiveUserById.mockReset();
     state.updateUserById.mockReset();
     state.updateUserWithConsentLog.mockReset();
+    state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
+    state.hasGivenFeedback.mockReset().mockResolvedValue(false);
   });
 
   it('updates the profile and stamps profileCompletedAt when all fields are present', async () => {

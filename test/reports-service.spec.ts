@@ -21,6 +21,8 @@ const state = vi.hoisted(() => {
     markReportReady: vi.fn(),
     markReportFailed: vi.fn(),
     overwriteReadyReportContent: vi.fn(),
+    reclaimStaleReportForRetry: vi.fn(),
+    saveReportProgress: vi.fn(),
     saveReportTranslation: vi.fn(),
     upgradePreviewToPurchased: vi.fn(),
     countReadyReportsByKey: vi.fn(),
@@ -48,6 +50,8 @@ vi.mock('../src/modules/reports/reports.repo.js', () => ({
   markReportReady: state.markReportReady,
   markReportFailed: state.markReportFailed,
   overwriteReadyReportContent: state.overwriteReadyReportContent,
+  reclaimStaleReportForRetry: state.reclaimStaleReportForRetry,
+  saveReportProgress: state.saveReportProgress,
   saveReportTranslation: state.saveReportTranslation,
   upgradePreviewToPurchased: state.upgradePreviewToPurchased,
   countReadyReportsByKey: state.countReadyReportsByKey,
@@ -123,6 +127,8 @@ const {
   notifyReportReady,
   reapStaleReports,
   regenerateReportContent,
+  hashSections,
+  MAX_REPORT_GENERATION_ATTEMPTS,
 } = await import('../src/modules/reports/reports.service.js');
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
@@ -146,6 +152,7 @@ function makeReportRow(overrides: Partial<ReportRow> = {}): ReportRow {
     isPreview: false,
     startedAt: now,
     error: null,
+    generationAttempts: 0,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -161,6 +168,8 @@ beforeEach(() => {
   state.listReportsForUser.mockReset().mockResolvedValue([]);
   state.markReportReady.mockReset().mockResolvedValue(undefined);
   state.markReportFailed.mockReset().mockResolvedValue(undefined);
+  state.reclaimStaleReportForRetry.mockReset();
+  state.saveReportProgress.mockReset().mockResolvedValue(undefined);
   state.saveReportTranslation.mockReset().mockResolvedValue(undefined);
   state.upgradePreviewToPurchased.mockReset().mockResolvedValue(undefined);
   state.countReadyReportsByKey.mockReset().mockResolvedValue([]);
@@ -238,6 +247,23 @@ describe('purchaseReport — validation', () => {
       code: 'CONFLICT',
       message: 'INSUFFICIENT_CREDITS',
     });
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
+  it('propagates the 404 from resolveProfileContext for a birthProfileId the caller does not own, and never charges the wallet', async () => {
+    // resolveProfileContext is called with { strict: true } here — a client-supplied
+    // birthProfileId that isn't the caller's own throws instead of silently falling
+    // back to their primary profile (see profile-context.ts).
+    state.resolveProfileContext.mockRejectedValue(
+      Object.assign(new Error('Profile not found'), { code: 'NOT_FOUND' }),
+    );
+    await expect(
+      purchaseReport(makeUser(), {
+        reportKey: 'marriage',
+        birthProfileId: 'someone-elses-profile',
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
     expect(state.claimReportRow).not.toHaveBeenCalled();
   });
 });
@@ -673,7 +699,60 @@ describe('purchaseReport — background generation safety net', () => {
     expect(state.computeMetrology).toHaveBeenCalledWith(
       expect.objectContaining({ date: '1990-01-01', time: '10:00' }),
     );
-    expect(generateNarrative).toHaveBeenCalledWith({ gunaMilanScore: 30 }, 'en');
+    expect(generateNarrative).toHaveBeenCalledWith(
+      { gunaMilanScore: 30 },
+      'en',
+      expect.objectContaining({ existingGroups: [], onGroupComplete: expect.any(Function) }),
+    );
+  });
+
+  it('freezes a provenance snapshot (chart data + calculation/ephemeris/ayanamsa/house/node versions) from the kundli row used, onto the ready report', async () => {
+    // A purchased report must not silently change if the engine or the user's ayanamsa
+    // preference changes later — this is what makes an old report reproducible.
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
+      translateNarrative: vi.fn(),
+    };
+    const kundli = {
+      status: 'ready',
+      chartData: { planets: ['sun'] },
+      dashaData: { vimshottari: 'mars' },
+      yogaData: { yogas: [] },
+      doshaData: { manglik: false },
+      calculationVersion: '2026.08.1',
+      ephemerisVersion: 'swisseph-wasm@0.0.5',
+      ayanamsa: 'lahiri',
+      houseSystem: 'W',
+      nodeType: 'true',
+    };
+    state.findKundliByUserId.mockResolvedValue(kundli);
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'prov1', reportKey: 'marriage' }));
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    await vi.waitFor(() => {
+      expect(state.markReportReady).toHaveBeenCalledWith(
+        'prov1',
+        expect.any(Date),
+        expect.objectContaining({
+          chartSnapshot: {
+            chartData: kundli.chartData,
+            dashaData: kundli.dashaData,
+            yogaData: kundli.yogaData,
+            doshaData: kundli.doshaData,
+          },
+          calculationVersion: '2026.08.1',
+          ephemerisVersion: 'swisseph-wasm@0.0.5',
+          ayanamsa: 'lahiri',
+          houseSystem: 'W',
+          nodeType: 'true',
+          promptVersion: expect.any(String),
+          language: 'en',
+        }),
+      );
+    });
   });
 
   it('does not attempt a partner chart when input holds only questionnaire answers', async () => {
@@ -828,6 +907,69 @@ describe('purchaseReport — background generation safety net', () => {
     });
     expect(state.markReportReady).toHaveBeenCalled();
   });
+
+  it('checkpoints each group the generator reports via saveReportProgress, accumulating across calls', async () => {
+    const claimedAt = new Date('2026-07-01T00:00:00Z');
+    let progressArg: { onGroupComplete: (g: unknown) => Promise<void> } | undefined;
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockImplementation(async (_scores, _lang, progress) => {
+        progressArg = progress;
+        await progress.onGroupComplete([{ heading: 'Part 1', paragraphs: ['p1'] }]);
+        await progress.onGroupComplete([{ heading: 'Part 2', paragraphs: ['p2'] }]);
+        return [
+          { heading: 'Part 1', paragraphs: ['p1'] },
+          { heading: 'Part 2', paragraphs: ['p2'] },
+        ];
+      }),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({ id: 'ckpt1', reportKey: 'marriage', startedAt: claimedAt, content: null }),
+    );
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    await vi.waitFor(() => expect(state.markReportReady).toHaveBeenCalled());
+    expect(progressArg).toBeDefined();
+    expect(state.saveReportProgress).toHaveBeenNthCalledWith(1, 'ckpt1', claimedAt, [
+      [{ heading: 'Part 1', paragraphs: ['p1'] }],
+    ]);
+    expect(state.saveReportProgress).toHaveBeenNthCalledWith(2, 'ckpt1', claimedAt, [
+      [{ heading: 'Part 1', paragraphs: ['p1'] }],
+      [{ heading: 'Part 2', paragraphs: ['p2'] }],
+    ]);
+  });
+
+  it('passes a previously-checkpointed sectionGroups back in as existingGroups on a reclaimed row', async () => {
+    const generateNarrative = vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]);
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative,
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    const priorGroups = [[{ heading: 'Part 1', paragraphs: ['p1'] }]];
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'resume1',
+        reportKey: 'marriage',
+        content: { sectionGroups: priorGroups },
+      }),
+    );
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    await vi.waitFor(() => expect(generateNarrative).toHaveBeenCalled());
+    expect(generateNarrative).toHaveBeenCalledWith(
+      {},
+      'en',
+      expect.objectContaining({ existingGroups: priorGroups }),
+    );
+  });
 });
 
 describe('notifyReportReady', () => {
@@ -865,7 +1007,7 @@ describe('notifyReportReady', () => {
 });
 
 describe('reapStaleReports', () => {
-  it('marks each stale row failed (timed-out reason) and refunds its price share, returning the reaped count', async () => {
+  it('marks each stale row failed (timed-out reason) and refunds its price share, once its retry budget is exhausted', async () => {
     const staleAt = new Date('2026-07-01T00:00:00Z');
     state.findStaleGeneratingReports.mockResolvedValue([
       makeReportRow({
@@ -874,6 +1016,7 @@ describe('reapStaleReports', () => {
         periodMonth: null,
         pricePaidPaise: 9900,
         startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
       }),
       makeReportRow({
         id: 's2',
@@ -881,21 +1024,23 @@ describe('reapStaleReports', () => {
         periodMonth: '2026-07-01',
         pricePaidPaise: 2500,
         startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
       }),
     ]);
 
     const result = await reapStaleReports();
 
-    expect(result).toEqual({ reaped: 2 });
+    expect(result).toEqual({ reaped: 2, retried: 0 });
+    expect(state.reclaimStaleReportForRetry).not.toHaveBeenCalled();
     expect(state.markReportFailed).toHaveBeenCalledWith(
       's1',
       staleAt,
-      'Generation timed out (stale)',
+      expect.stringContaining('Generation timed out (stale)'),
     );
     expect(state.markReportFailed).toHaveBeenCalledWith(
       's2',
       staleAt,
-      'Generation timed out (stale)',
+      expect.stringContaining('Generation timed out (stale)'),
     );
     expect(state.addWalletBalance).toHaveBeenCalledWith(
       'user-1',
@@ -909,10 +1054,58 @@ describe('reapStaleReports', () => {
     );
   });
 
-  it('returns { reaped: 0 } and touches nothing when there are no stale rows', async () => {
+  it('reclaims and retries a stale row under the retry budget, WITHOUT failing or refunding it', async () => {
+    const staleAt = new Date('2026-07-01T00:00:00Z');
+    const staleRow = makeReportRow({
+      id: 's1',
+      reportKey: 'marriage',
+      startedAt: staleAt,
+      generationAttempts: 1,
+    });
+    state.findStaleGeneratingReports.mockResolvedValue([staleRow]);
+    const reclaimedAt = new Date('2026-07-01T00:10:00Z');
+    state.reclaimStaleReportForRetry.mockResolvedValue({
+      ...staleRow,
+      startedAt: reclaimedAt,
+      generationAttempts: 2,
+    });
+    // Registered purely so the fire-and-forget retry has somewhere to land — its outcome
+    // isn't what this test is about (see the dedicated resumption tests below for that).
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn().mockResolvedValue([]),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+
+    const result = await reapStaleReports();
+
+    expect(result).toEqual({ reaped: 0, retried: 1 });
+    expect(state.reclaimStaleReportForRetry).toHaveBeenCalledWith('s1', staleAt);
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(state.markReportReady).toHaveBeenCalled());
+  });
+
+  it('does nothing when reclaiming loses the race (already reclaimed/finished elsewhere)', async () => {
+    const staleAt = new Date('2026-07-01T00:00:00Z');
+    state.findStaleGeneratingReports.mockResolvedValue([
+      makeReportRow({ id: 's1', reportKey: 'marriage', startedAt: staleAt, generationAttempts: 0 }),
+    ]);
+    state.reclaimStaleReportForRetry.mockResolvedValue(undefined);
+
+    const result = await reapStaleReports();
+
+    expect(result).toEqual({ reaped: 0, retried: 0 });
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('returns { reaped: 0, retried: 0 } and touches nothing when there are no stale rows', async () => {
     state.findStaleGeneratingReports.mockResolvedValue([]);
     const result = await reapStaleReports();
-    expect(result).toEqual({ reaped: 0 });
+    expect(result).toEqual({ reaped: 0, retried: 0 });
     expect(state.markReportFailed).not.toHaveBeenCalled();
     expect(state.addWalletBalance).not.toHaveBeenCalled();
   });
@@ -920,24 +1113,39 @@ describe('reapStaleReports', () => {
   it('never throws — logs and continues past a per-row failure, still reaping the rest', async () => {
     const staleAt = new Date('2026-07-01T00:00:00Z');
     state.findStaleGeneratingReports.mockResolvedValue([
-      makeReportRow({ id: 'bad', reportKey: 'marriage', startedAt: staleAt }),
-      makeReportRow({ id: 'good', reportKey: 'marriage', startedAt: staleAt }),
+      makeReportRow({
+        id: 'bad',
+        reportKey: 'marriage',
+        startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
+      }),
+      makeReportRow({
+        id: 'good',
+        reportKey: 'marriage',
+        startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
+      }),
     ]);
     state.markReportFailed
       .mockRejectedValueOnce(new Error('db blip'))
       .mockResolvedValueOnce(undefined);
 
-    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1 });
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1, retried: 0 });
   });
 
   it('still counts a row as reaped when markReportFailed succeeds but the refund itself fails', async () => {
     const staleAt = new Date('2026-07-01T00:00:00Z');
     state.findStaleGeneratingReports.mockResolvedValue([
-      makeReportRow({ id: 's1', reportKey: 'marriage', startedAt: staleAt }),
+      makeReportRow({
+        id: 's1',
+        reportKey: 'marriage',
+        startedAt: staleAt,
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
+      }),
     ]);
     state.addWalletBalance.mockRejectedValue(new Error('wallet down'));
 
-    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1 });
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 1, retried: 0 });
   });
 
   it('skips a stale row with no startedAt rather than crashing (defensive only — should not occur in practice)', async () => {
@@ -945,7 +1153,7 @@ describe('reapStaleReports', () => {
       makeReportRow({ id: 'no-claim', reportKey: 'marriage', startedAt: null }),
     ]);
 
-    await expect(reapStaleReports()).resolves.toEqual({ reaped: 0 });
+    await expect(reapStaleReports()).resolves.toEqual({ reaped: 0, retried: 0 });
     expect(state.markReportFailed).not.toHaveBeenCalled();
   });
 });
@@ -1208,8 +1416,44 @@ describe('getReportForUser', () => {
     expect(dto).toMatchObject({ status: 'ready', isPreview: false });
   });
 
-  it('uses a cached translation without calling translateNarrative again', async () => {
+  it('uses a cached translation without calling translateNarrative again, when its hash matches the current English content', async () => {
     const translateNarrative = vi.fn();
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn(),
+      translateNarrative,
+    };
+    const englishSections = [{ heading: 'H', paragraphs: ['p'] }];
+    state.findKundliByUserId.mockResolvedValue({ chartData: {} });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        content: { sections: englishSections },
+        translations: {
+          hi: {
+            sections: {
+              hash: hashSections(englishSections),
+              values: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }],
+            },
+          },
+        },
+      }),
+    );
+
+    const dto = await getReportForUser('report-1', 'user-1', 'hi');
+    expect(dto).toMatchObject({ sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }] });
+    expect(translateNarrative).not.toHaveBeenCalled();
+  });
+
+  it('ignores a cached translation whose hash no longer matches the English content, and re-translates', async () => {
+    // Regression coverage: `sections` translations used to be keyed on language alone, so ANY
+    // write path that changed content.sections without also clearing `translations` (which
+    // markReportReady/its sibling patch both do today, but a future partial-regeneration path
+    // might not) would serve this stale cached translation forever.
+    const translateNarrative = vi
+      .fn()
+      .mockResolvedValue([{ heading: 'नया', paragraphs: ['नया पैरा'] }]);
     state.REPORT_GENERATORS.marriage = {
       key: 'marriage',
       computeScores: vi.fn().mockReturnValue({}),
@@ -1220,14 +1464,24 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
-        translations: { hi: { sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }] } },
+        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }] },
+        translations: {
+          hi: {
+            sections: {
+              hash: hashSections([{ heading: 'H (old)', paragraphs: ['p'] }]),
+              values: [{ heading: 'पुराना', paragraphs: ['पुराना पैरा'] }],
+            },
+          },
+        },
       }),
     );
 
     const dto = await getReportForUser('report-1', 'user-1', 'hi');
-    expect(dto).toMatchObject({ sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }] });
-    expect(translateNarrative).not.toHaveBeenCalled();
+    expect(translateNarrative).toHaveBeenCalledWith(
+      [{ heading: 'H (changed)', paragraphs: ['p'] }],
+      'hi',
+    );
+    expect(dto).toMatchObject({ sections: [{ heading: 'नया', paragraphs: ['नया पैरा'] }] });
   });
 
   it('translates and persists on first request for a new language', async () => {
@@ -1240,18 +1494,22 @@ describe('getReportForUser', () => {
       generateNarrative: vi.fn(),
       translateNarrative,
     };
+    const englishSections = [{ heading: 'H', paragraphs: ['p'] }];
     state.findKundliByUserId.mockResolvedValue({ chartData: {} });
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+        content: { sections: englishSections },
       }),
     );
 
     const dto = await getReportForUser('report-1', 'user-1', 'hi');
     expect(translateNarrative).toHaveBeenCalledWith([{ heading: 'H', paragraphs: ['p'] }], 'hi');
     expect(state.saveReportTranslation).toHaveBeenCalledWith('report-1', 'hi', {
-      sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }],
+      sections: {
+        hash: hashSections(englishSections),
+        values: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }],
+      },
     });
     expect(dto).toMatchObject({ sections: [{ heading: 'हिंदी', paragraphs: ['पैरा'] }] });
   });
@@ -1345,6 +1603,16 @@ describe('previewReport', () => {
     expect(state.addWalletBalance).not.toHaveBeenCalled();
   });
 
+  it('propagates the 404 from resolveProfileContext for a birthProfileId the caller does not own', async () => {
+    state.resolveProfileContext.mockRejectedValue(
+      Object.assign(new Error('Profile not found'), { code: 'NOT_FOUND' }),
+    );
+    await expect(
+      previewReport(makeUser(), { reportKey: 'marriage', birthProfileId: 'someone-elses-profile' }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
   it('resolves the profile via resolveProfileContext for a non-primary birthProfileId, same as purchaseReport', async () => {
     state.resolveProfileContext.mockResolvedValue({ birthProfileId: 'profile-a' });
     state.claimReportRow.mockResolvedValue(
@@ -1361,6 +1629,7 @@ describe('previewReport', () => {
     expect(state.resolveProfileContext).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'user-1' }),
       'profile-a',
+      { strict: true },
     );
     expect(state.claimReportRow).toHaveBeenCalledWith(
       expect.objectContaining({ birthProfileId: 'profile-a' }),

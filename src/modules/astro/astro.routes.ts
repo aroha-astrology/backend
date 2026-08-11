@@ -508,9 +508,6 @@ astroRouter.openapi(chatRoute, async (c) => {
   // Resolves which profile (primary or an additional saved one) is currently
   // active for this account — chat sessions and grounding are scoped to it.
   const profile = await resolveActiveProfileContext(user);
-  // Aborts when the client disconnects — propagated to the LLM so generation
-  // (and its NIM inflight slot) stops instead of running on detached.
-  const signal = c.req.raw.signal;
 
   // The server — not the client — is the source of truth for the durable
   // transcript. `body.history`/`body.summary` are accepted for backward
@@ -618,7 +615,52 @@ astroRouter.openapi(chatRoute, async (c) => {
     throw Errors.conflict('Not enough credits to ask a question');
   }
 
+  // Appended onto the STORED full transcript (not body.history), so a
+  // compacted model-context window never leaks into what's persisted. See
+  // the comment above where storedHistory is loaded.
+  const userTurn = { role: 'user' as const, content: body.message };
+  const historyWithQuestion = [...storedHistory, userTurn];
+
+  // Written BEFORE generation starts, so the question survives no matter how
+  // the turn ends — a disconnect, a server crash mid-reply, a Gemini failure.
+  // Previously the question and the reply were written together in a single
+  // post-generation update, which a disconnect skipped entirely (see the
+  // comment on `undefined` in the chatStream call below) — the paid wallet
+  // debit above would stand for a turn that left no trace at all.
+  let sessionId = body.sessionId;
+  try {
+    if (sessionId) {
+      await chatSessionsRepo.updateChatSession(
+        sessionId,
+        user.id,
+        profile.birthProfileId,
+        historyWithQuestion,
+        storedSummary,
+      );
+    } else {
+      const title = body.message.length > 50 ? body.message.substring(0, 47) + '...' : body.message;
+      const session = await chatSessionsRepo.createChatSession(
+        user.id,
+        profile.birthProfileId,
+        title,
+        historyWithQuestion,
+        storedSummary,
+      );
+      sessionId = session?.id ?? sessionId;
+    }
+  } catch (err) {
+    await releaseInflightLock();
+    if (amountToChargePaise > 0) {
+      await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
+    }
+    throw err;
+  }
+
   return streamSSE(c, async (stream) => {
+    /** Guards against crediting the same charge on both the empty-content and the catch
+     * path. Declared out here, not inside the `try`, so the `catch` can actually see it. */
+    let refunded = false;
+
     try {
       const events = astroService.chatStream(
         user.id,
@@ -631,7 +673,17 @@ astroRouter.openapi(chatRoute, async (c) => {
         // could ask for). `detailLevel` stays in ChatRequestSchema, accepted
         // and ignored, only so an old cached app build that still posts it
         // doesn't get a 400 — see astro.schemas.ts.
-        signal,
+        //
+        // Deliberately NOT c.req.raw.signal. Generation used to abort the
+        // instant the client disconnected (dropped mobile connection,
+        // backgrounded tab), discarding both the question and whatever the
+        // model had produced so far, while the wallet debit above stood —
+        // "I paid but the answer disappeared". Generation is now decoupled
+        // from the client connection and bounded only by gemini-client's own
+        // internal deadline (MAX_TOTAL_ELAPSED_MS); the reply gets persisted
+        // below regardless of whether anyone is still listening, and shows up
+        // next time the user reopens the session.
+        undefined,
         body.locale,
         body.compareProfileId,
         body.matchReportId,
@@ -644,8 +696,10 @@ astroRouter.openapi(chatRoute, async (c) => {
       let fullContent = '';
       let currentSummary = storedSummary;
 
+      // No disconnect check here — `stream.writeSSE` swallows write errors on
+      // a dead connection on its own (Hono's StreamingApi.write), so this
+      // just runs the generator to completion either way.
       for await (const event of events) {
-        if (signal.aborted || stream.aborted) break;
         if (event.type === 'token') {
           fullContent += event.content;
           await stream.writeSSE({
@@ -660,73 +714,54 @@ astroRouter.openapi(chatRoute, async (c) => {
           });
         }
       }
-      if (!signal.aborted && !stream.aborted) {
-        if (!fullContent.trim() && amountToChargePaise > 0) {
-          // Generation "succeeded" with nothing to show (e.g. hit the
-          // token ceiling before any content could be flushed) — don't
-          // charge for a question that got no answer.
-          await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(
-            () => {},
-          );
-        }
 
-        // Save history — appended onto the STORED full transcript (not
-        // body.history), so a compacted model-context window never leaks
-        // into what's persisted. See the comment above where storedHistory
-        // is loaded.
-        let sessionId = body.sessionId;
-        const newHistory = [
-          ...storedHistory,
-          { role: 'user', content: body.message },
-          { role: 'assistant', content: fullContent },
-        ] as { role: 'user' | 'assistant'; content: string }[]; // cast to avoid exact typing mismatch if any
-
-        if (sessionId) {
-          await chatSessionsRepo.updateChatSession(
-            sessionId,
-            user.id,
-            profile.birthProfileId,
-            newHistory,
-            currentSummary,
-          );
-        } else {
-          // generate a new session title based on the message
-          const title =
-            body.message.length > 50 ? body.message.substring(0, 47) + '...' : body.message;
-          const session = await chatSessionsRepo.createChatSession(
-            user.id,
-            profile.birthProfileId,
-            title,
-            newHistory,
-            currentSummary,
-          );
-          // `.returning()` is typed as possibly-empty, so guard rather than
-          // assert — an insert that somehow returned no row must not crash the
-          // stream after the reply has already been delivered.
-          sessionId = session?.id ?? sessionId;
-        }
-
-        await stream.writeSSE({ event: 'session_id', data: JSON.stringify({ sessionId }) });
-        await stream.writeSSE({ event: 'done', data: JSON.stringify({ status: 'complete' }) });
-      }
-    } catch (err) {
-      // A failed stream MUST be distinguishable from a completed one — always
-      // emit a terminal event (and never leak internals to the client).
-      logger.error({ err, userId: user.id }, 'chat stream failed');
-      // Don't charge for a question the LLM never actually answered.
-      if (amountToChargePaise > 0) {
+      if (!fullContent.trim() && amountToChargePaise > 0) {
+        // Generation "succeeded" with nothing to show (e.g. hit the
+        // token ceiling before any content could be flushed) — don't
+        // charge for a question that got no answer.
+        refunded = true;
         await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
       }
-      if (!signal.aborted && !stream.aborted) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ message: 'Generation failed. Please try again.' }),
-        });
+
+      // Persisted unconditionally now — no longer gated on the client still
+      // being connected. `sessionId` is always set at this point: either
+      // passed in, or created by the pre-generation write above.
+      if (sessionId) {
+        await chatSessionsRepo.updateChatSession(
+          sessionId,
+          user.id,
+          profile.birthProfileId,
+          [...historyWithQuestion, { role: 'assistant', content: fullContent }],
+          currentSummary,
+        );
       }
+
+      await stream.writeSSE({ event: 'session_id', data: JSON.stringify({ sessionId }) });
+      await stream.writeSSE({ event: 'done', data: JSON.stringify({ status: 'complete' }) });
+    } catch (err) {
+      // A failed stream MUST be distinguishable from a completed one — always
+      // emit a terminal event (and never leak internals to the client). The
+      // question itself is already persisted (written before generation
+      // started, above), so a thrown error here only ever loses the reply,
+      // never the question.
+      logger.error({ err, userId: user.id }, 'chat stream failed');
+      // Don't charge for a question the LLM never actually answered. Guarded by
+      // `refunded` because the empty-content branch above can fire and THEN the
+      // persist below can throw, which would otherwise credit the same charge
+      // twice for one question (pre-existing, but reachable more often now that
+      // the persist runs unconditionally rather than only for connected clients).
+      if (amountToChargePaise > 0 && !refunded) {
+        refunded = true;
+        await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
+      }
+      await stream.writeSSE({
+        event: 'error',
+        data: JSON.stringify({ message: 'Generation failed. Please try again.' }),
+      });
     } finally {
       // Runs on every exit path — completion, generation failure, and client
-      // disconnect (where the loop above breaks on signal.aborted) — so the
-      // next question is never blocked by a stream that has already stopped.
+      // disconnect — so the next question is never blocked by a stream that
+      // has already stopped.
       await releaseInflightLock();
     }
   });
@@ -755,6 +790,7 @@ const chatFeedbackRoute = createRoute({
       content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
     },
     401: errorResponse('Unauthorized'),
+    404: errorResponse('Chat session not found'),
     422: errorResponse('Validation failed'),
   },
 });
@@ -762,6 +798,21 @@ const chatFeedbackRoute = createRoute({
 astroRouter.openapi(chatFeedbackRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
+
+  // `sessionId` used to be inserted as-is with no ownership check at all — a
+  // client could attach a vote/report to ANY session id, including one
+  // belonging to a different user, poisoning that session's feedback record.
+  // Same ownership resolution and 404-on-mismatch convention as POST /chat's
+  // own sessionId handling (chatRoute, above).
+  if (body.sessionId) {
+    const profile = await resolveActiveProfileContext(user);
+    const session = await chatSessionsRepo.getChatSession(
+      body.sessionId,
+      user.id,
+      profile.birthProfileId,
+    );
+    if (!session) throw Errors.notFound('Chat session not found');
+  }
 
   await incrementFeedbackCounter(body.vote === 'up' ? 'chat_thumbs_up' : 'chat_thumbs_down');
   await recordChatFeedbackVote({ userId: user.id, vote: body.vote, sessionId: body.sessionId });

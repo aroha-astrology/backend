@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core/dialect';
 
-// Coverage for the reports feature's four-way partial-unique-index targeting
+// Coverage for the reports feature's six-way partial-unique-index targeting
 // (see the `reports` table's doc comment in src/db/schema.ts): every claim
 // must target the correct one of reports_uniq_primary_onetime /
 // reports_uniq_primary_monthly / reports_uniq_profile_onetime /
-// reports_uniq_profile_monthly depending on (birthProfileId, periodMonth)
-// null-ness, or skip onConflict entirely for kundli_milan (partner `input`
-// rows have no uniqueness constraint at all). Same compiled-SQL-fragment
-// assertion technique as test/gemstone-repo-profile.spec.ts, since this repo
-// has no live-Postgres integration tests.
+// reports_uniq_profile_monthly (input IS NULL) or reports_uniq_input_hash_primary /
+// reports_uniq_input_hash_profile (input IS NOT NULL — kundli_milan/partner/
+// answer-bearing reports, keyed on sha256(input) since they have no
+// periodMonth dimension) depending on (birthProfileId, periodMonth, input)
+// null-ness. Same compiled-SQL-fragment assertion technique as
+// test/gemstone-repo-profile.spec.ts, since this repo has no live-Postgres
+// integration tests.
 
 const state = vi.hoisted(() => ({
   insert: vi.fn(),
@@ -32,10 +34,14 @@ import {
   countReadyReportsByKey,
   findReadyReportRows,
   findReportRow,
+  findReportRowByInputHash,
   findStaleGeneratingReports,
+  hashReportInput,
   markReportFailed,
   markReportReady,
   overwriteReadyReportContent,
+  reclaimStaleReportForRetry,
+  saveReportProgress,
   upgradePreviewToPurchased,
 } from '../src/modules/reports/reports.repo.js';
 
@@ -105,6 +111,25 @@ function makeUpdateChain() {
       calls.where = cond;
       return Promise.resolve(undefined);
     }),
+  };
+  return { chain, calls };
+}
+
+/** Same shape as makeUpdateChain, but `.where()` returns a chain link supporting `.returning()`
+ * — for the guarded-transition repo functions (e.g. reclaimStaleReportForRetry) that need the
+ * updated row back, mirroring makeInsertChain's `.returning()` support on the insert side. */
+function makeUpdateReturningChain(returningResult: unknown[]) {
+  const calls: { set?: unknown; where?: unknown } = {};
+  const chain = {
+    set: vi.fn((v: unknown) => {
+      calls.set = v;
+      return chain;
+    }),
+    where: vi.fn((cond: unknown) => {
+      calls.where = cond;
+      return chain;
+    }),
+    returning: vi.fn(() => Promise.resolve(returningResult)),
   };
   return { chain, calls };
 }
@@ -201,21 +226,62 @@ describe('claimReportRow — partial-index targeting', () => {
     );
   });
 
-  it('(a) uses NO conflict target at all when partner `input` is set (kundli_milan) — repeat purchases against different partners never collide', async () => {
-    const { chain, calls } = makeInsertChain([{ id: 'km1', status: 'generating' }], false);
+  it("(a) targets reports_uniq_input_hash_primary (userId, reportKey, inputHash) for partner `input` on the primary profile — repeat purchases against the SAME partner details collide, different partners still don't", async () => {
+    const { chain, calls } = makeInsertChain([{ id: 'km1', status: 'generating' }]);
     state.insert.mockReturnValue(chain);
+    const input = { dateOfBirth: '1990-01-01' };
 
     const row = await claimReportRow({
       ...baseClaim,
       reportKey: 'kundli_milan',
       birthProfileId: null,
       periodMonth: null,
-      input: { dateOfBirth: '1990-01-01' },
+      input,
     });
 
     expect(row).toEqual({ id: 'km1', status: 'generating' });
-    expect(calls.onConflictCalled).toBe(false);
-    expect(calls.values).toMatchObject({ input: { dateOfBirth: '1990-01-01' } });
+    expect(calls.onConflictCalled).toBe(true);
+    expect(calls.onConflictDoUpdate.target).toEqual([
+      reports.userId,
+      reports.reportKey,
+      reports.inputHash,
+    ]);
+    const targetWhere = compile(calls.onConflictDoUpdate.targetWhere);
+    expect(targetWhere.sql).toBe(
+      '"reports"."birth_profile_id" is null and "reports"."input" is not null',
+    );
+    expect(calls.values).toMatchObject({ input, inputHash: hashReportInput(input) });
+  });
+
+  it('targets reports_uniq_input_hash_profile (userId, birthProfileId, reportKey, inputHash) for partner `input` on an additional profile', async () => {
+    const { chain, calls } = makeInsertChain([{ id: 'km2', status: 'generating' }]);
+    state.insert.mockReturnValue(chain);
+    const input = { dateOfBirth: '1990-01-01' };
+
+    await claimReportRow({
+      ...baseClaim,
+      reportKey: 'kundli_milan',
+      birthProfileId: 'profile-a',
+      periodMonth: null,
+      input,
+    });
+
+    expect(calls.onConflictDoUpdate.target).toEqual([
+      reports.userId,
+      reports.birthProfileId,
+      reports.reportKey,
+      reports.inputHash,
+    ]);
+    const targetWhere = compile(calls.onConflictDoUpdate.targetWhere);
+    expect(targetWhere.sql).toBe(
+      '"reports"."birth_profile_id" is not null and "reports"."input" is not null',
+    );
+  });
+
+  it('a DIFFERENT partner (different input) never collides — different inputHash, so it never conflicts against the earlier row', () => {
+    expect(hashReportInput({ dateOfBirth: '1990-01-01' })).not.toBe(
+      hashReportInput({ dateOfBirth: '1991-02-02' }),
+    );
   });
 
   it('(b)/(c) returns undefined (no row) when the claimable guard fails — an existing ready/live row is left untouched, never duplicated', async () => {
@@ -300,6 +366,21 @@ describe('findReportRow — scoped lookup excluding partner-input rows', () => {
   });
 });
 
+describe('findReportRowByInputHash — the partner-report counterpart to findReportRow', () => {
+  it('filters on userId, birthProfileId, reportKey, and inputHash — no periodMonth or input-is-null filter', async () => {
+    const { chain, calls } = makeSelectChain([]);
+    state.select.mockReturnValue(chain);
+    const hash = hashReportInput({ dateOfBirth: '1990-01-01' });
+
+    await findReportRowByInputHash('user-1', null, 'kundli_milan', hash);
+
+    const query = compile(calls.where);
+    expect(query.sql).toContain('"reports"."birth_profile_id" is null');
+    expect(query.sql).not.toContain('"reports"."input" is null');
+    expect(query.params).toEqual(['user-1', 'kundli_milan', hash]);
+  });
+});
+
 describe('findStaleGeneratingReports — active sweep for abandoned generating rows', () => {
   it('filters on status = generating and startedAt older than REPORT_STALE_GENERATING_MS', async () => {
     const staleRow = { id: 'stale-1', status: 'generating' };
@@ -347,6 +428,47 @@ describe('markReportReady / markReportFailed — claim-fenced updates', () => {
 
     const query = compile(calls.where);
     expect(query.params).toEqual(['report-1', 'generating', claimedAt.toISOString()]);
+  });
+});
+
+describe('saveReportProgress — mid-generation checkpoint', () => {
+  it('writes { sectionGroups } to content, claim-fenced by id + generating status + claim token', async () => {
+    const { chain, calls } = makeUpdateChain();
+    state.update.mockReturnValue(chain);
+    const claimedAt = new Date('2026-01-01T00:00:00Z');
+    const groups = [[{ heading: 'H1', paragraphs: ['p1'] }]];
+
+    await saveReportProgress('report-1', claimedAt, groups);
+
+    expect(calls.set).toMatchObject({ content: { sectionGroups: groups } });
+    const query = compile(calls.where);
+    expect(query.params).toEqual(['report-1', 'generating', claimedAt.toISOString()]);
+  });
+});
+
+describe("reclaimStaleReportForRetry — the reaper's retry path", () => {
+  it('bumps generationAttempts and stamps a fresh startedAt, fenced by id + generating status + the PREVIOUS claim token', async () => {
+    const previousStartedAt = new Date('2026-01-01T00:00:00Z');
+    const { chain, calls } = makeUpdateReturningChain([
+      { id: 'report-1', status: 'generating', generationAttempts: 2 },
+    ]);
+    state.update.mockReturnValue(chain);
+
+    const row = await reclaimStaleReportForRetry('report-1', previousStartedAt);
+
+    expect(row).toEqual({ id: 'report-1', status: 'generating', generationAttempts: 2 });
+    expect(calls.set).toMatchObject({ generationAttempts: expect.anything() });
+    const query = compile(calls.where);
+    expect(query.params).toEqual(['report-1', 'generating', previousStartedAt.toISOString()]);
+  });
+
+  it('returns undefined when it loses the race (already reclaimed/finished by something else)', async () => {
+    const { chain } = makeUpdateReturningChain([]);
+    state.update.mockReturnValue(chain);
+
+    const row = await reclaimStaleReportForRetry('report-1', new Date('2026-01-01T00:00:00Z'));
+
+    expect(row).toBeUndefined();
   });
 });
 

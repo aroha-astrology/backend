@@ -18,6 +18,7 @@ import {
   type ReportScoreContext,
   type ReportScores,
   type ReportSection,
+  type SectionGenerationProgress,
 } from '../report-generator.types.js';
 import type { NumerologyScores } from '../../../lib/astro-engine/reports/numerology.js';
 
@@ -26,8 +27,12 @@ const numerologyGenerator: ReportGenerator = {
   computeScores(ctx: ReportScoreContext, periodMonth: string | null): ReportScores {
     return computeNumerologyScores(ctx, periodMonth);
   },
-  async generateNarrative(scores: ReportScores, _language: 'en'): Promise<ReportSection[]> {
-    return generateNumerologyNarrative(scores as unknown as NumerologyScores);
+  async generateNarrative(
+    scores: ReportScores,
+    _language: 'en',
+    progress?: SectionGenerationProgress,
+  ): Promise<ReportSection[]> {
+    return generateNumerologyNarrative(scores as unknown as NumerologyScores, progress);
   },
   async translateNarrative(sections: ReportSection[], language: string): Promise<ReportSection[]> {
     return translateNumerologyNarrative(sections, language);

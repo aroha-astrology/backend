@@ -17,11 +17,18 @@ import {
   pgEnum,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
+import crypto from 'node:crypto';
 import type { Category, CategoryReading, PanchangData } from '@aroha-astrology/shared';
 
 /* -------------------------------------------------------------------------- */
 /* Enums                                                                       */
 /* -------------------------------------------------------------------------- */
+
+/** "AR-" + 8 hex chars — short enough to read over chat/email, collision-safe enough (16^8
+ * space) for a support-facing identifier that only needs to be unique, not secret. */
+function generateOrderReference(): string {
+  return `AR-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+}
 
 export const genderEnum = pgEnum('gender', ['male', 'female', 'other']);
 
@@ -666,7 +673,20 @@ export type NewCouponRow = typeof coupons.$inferInsert;
 /* orders — credit-pack purchases (gateway integration pending, see billing)   */
 /* -------------------------------------------------------------------------- */
 
-export const orderStatusEnum = pgEnum('order_status', ['pending', 'paid', 'failed', 'cancelled']);
+// 'refund_pending'/'refunded' are new: previously there was no refund path for a top-up order at
+// all (every refund anywhere else in the codebase is a wallet-credit side effect with no queryable
+// state of its own — see refundOrder in billing.repo.ts). 'pending'/'paid'/'failed'/'cancelled' are
+// unchanged; 'paid' already doubles as "completed" since confirmOrderAndGrantCredits grants credits
+// in the same atomic transition as marking paid, so there is no separate PAID-vs-COMPLETED gap to
+// close here the way there is for report generation.
+export const orderStatusEnum = pgEnum('order_status', [
+  'pending',
+  'paid',
+  'failed',
+  'cancelled',
+  'refund_pending',
+  'refunded',
+]);
 
 export const orders = pgTable(
   'orders',
@@ -690,13 +710,25 @@ export const orders = pgTable(
     gatewayProvider: text('gateway_provider').notNull().default('mock'),
     gatewayOrderId: text('gateway_order_id'),
     gatewayPaymentId: text('gateway_payment_id'),
+    /** Short opaque support-facing id (e.g. "AR-7F3K9Q2M"), generated on insert — the uuid PK
+     * is not something a support agent or a user can read back over chat/email. */
+    reference: text('reference')
+      .notNull()
+      .$defaultFn(() => generateOrderReference()),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
+    /** Set together with `status: 'paid'` — the moment credits were granted. */
     paidAt: timestamp('paid_at', { withTimezone: true }),
+    /** Set the moment the gateway signature check passes, inside the same transaction as
+     * `paidAt`/`status`. Kept distinct from `paidAt` so "we cryptographically verified this
+     * payment" is separately auditable from "we marked it paid" even though today they always
+     * happen together — see confirmOrderAndGrantCredits. */
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
   },
   (table) => ({
     userIdx: index('orders_user_id_idx').on(table.userId),
+    referenceIdx: uniqueIndex('orders_reference_idx').on(table.reference),
   }),
 );
 
@@ -888,6 +920,17 @@ export const kundlis = pgTable(
     ayanamsa: text('ayanamsa'),
     /** Resolved house system actually used ('W' | 'P' | 'K' | 'E'). */
     houseSystem: text('house_system'),
+    /** CALCULATION_VERSION (astro-engine/version.ts) at generation time — already folded into
+     * birthHash below (a version bump invalidates every cached row automatically), stored here
+     * too so it's directly queryable without decoding the hash. */
+    calculationVersion: text('calculation_version'),
+    /** EPHEMERIS_VERSION (astro-engine/version.ts) at generation time — same rationale as
+     * calculationVersion above. */
+    ephemerisVersion: text('ephemeris_version'),
+    /** Resolved lunar node type actually used ('mean' | 'true') — same "record what was
+     * actually resolved, not just the raw preference" reasoning as ayanamsa/houseSystem above.
+     * Null means the server default was used (see resolveLunarNode). */
+    nodeType: text('node_type'),
     /**
      * false when birth time was unknown → a degraded sign-level kundli with no
      * ascendant/houses/dasha. Distinguishes a valid degraded chart from a bug.
@@ -1380,7 +1423,45 @@ export const reports = pgTable(
       .$type<Record<string, Record<string, unknown>>>(),
     /** Partner birth details — kundli_milan only, null for every other report key. */
     input: jsonb('input').$type<Record<string, unknown>>(),
+    /** sha256 of `input` (see hashReportInput in reports.repo.ts), null iff `input` is null.
+     * Lets partner/compatibility reports dedupe on identical input the same way every other
+     * report key dedupes on (birthProfileId, reportKey, periodMonth) — see the two
+     * uniqInputHash* indexes below. Without this, a repeated purchase against the same
+     * partner details always inserted a fresh row and charged twice. */
+    inputHash: text('input_hash'),
     model: text('model'),
+    /**
+     * Provenance snapshot — frozen at generation time, never re-derived. A purchased report
+     * must not silently change if the calculation engine, ayanamsa default, or prompts are
+     * updated later: the buyer paid for what the chart said AT THAT TIME. Generation reads
+     * chart/dasha/yoga/dosha facts from `chartSnapshot`, not from the live (possibly since-
+     * regenerated) `kundlis` row, so a 2026 report renders identically in 2027 after an engine
+     * upgrade — and a support question ("why was Mars in the 7th before and the 6th now?") is
+     * answerable by diffing this against the CURRENT kundli/version.ts constants.
+     */
+    chartSnapshot: jsonb('chart_snapshot').$type<Record<string, unknown>>(),
+    /** CALCULATION_VERSION (astro-engine/version.ts) at generation time — see chartSnapshot. */
+    calculationVersion: text('calculation_version'),
+    /** EPHEMERIS_VERSION (astro-engine/version.ts) at generation time — see chartSnapshot. */
+    ephemerisVersion: text('ephemeris_version'),
+    /** Resolved ayanamsa/house-system/node actually used — same fields kundlis stores, copied
+     * here because the user's PREFERENCE (users.preferredAyanamsa etc.) can change after
+     * purchase while this report's content must not. */
+    ayanamsa: text('ayanamsa'),
+    houseSystem: text('house_system'),
+    nodeType: text('node_type'),
+    /** Bumped whenever the report-generation PROMPT text changes meaningfully for this report
+     * key — independent of CALCULATION_VERSION (prompt wording vs. chart math are different
+     * axes of "why does this report read differently now"). Unlike calculationVersion this is
+     * NOT folded into any cache-invalidation hash — a prompt change should not retroactively
+     * invalidate reports users already paid for, only be recorded for provenance/debugging. */
+    promptVersion: text('prompt_version'),
+    /** Language the report was generated/purchased in — 'en' for the canonical content row;
+     * translations of it are cached separately (see `translations` below), this just records
+     * what `content.sections` itself was written in, which is always 'en' today but is stored
+     * explicitly rather than assumed, since generatorVersion/promptVersion make the row a
+     * standalone provenance record. */
+    language: text('language'),
     pricePaidPaise: integer('price_paid_paise').notNull(),
     /** True for a free "generate the real report and blur it" preview row (see
      * previewReport in reports.service.ts) — same generator pipeline as a real
@@ -1391,6 +1472,12 @@ export const reports = pgTable(
     /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
     startedAt: timestamp('started_at', { withTimezone: true }),
     error: text('error'),
+    /** How many times the stale-row reaper (reapStaleReports) has reclaimed and re-fired
+     * generation for this row. Bounds automatic retry — a permanently-broken generation
+     * (bad chart data, a prompt that always fails) must eventually fail+refund rather than
+     * loop forever. NOT incremented by a normal purchase-claim reclaim (only the reaper's
+     * automatic retry counts), and reset to 0 by markReportReady on success. */
+    generationAttempts: integer('generation_attempts').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -1425,6 +1512,19 @@ export const reports = pgTable(
       .where(
         sql`${table.birthProfileId} is not null and ${table.periodMonth} is not null and ${table.input} is null`,
       ),
+    // Partner/compatibility reports (input IS NOT NULL) previously had no uniqueness at all —
+    // every purchase inserted a fresh row, so a repeated purchase against the same partner
+    // details could double-charge and double-generate. Same birthProfileId null/not-null split
+    // as the four indexes above, and same reasoning: a NULL birthProfileId can't be INCLUDED in
+    // a unique index (NULL never equals NULL), so it's omitted here too, with the WHERE clause
+    // carrying the null-ness instead. No periodMonth split — no report key is both
+    // partner-requiring and monthly today.
+    uniqInputHashPrimary: uniqueIndex('reports_uniq_input_hash_primary')
+      .on(table.userId, table.reportKey, table.inputHash)
+      .where(sql`${table.birthProfileId} is null and ${table.input} is not null`),
+    uniqInputHashProfile: uniqueIndex('reports_uniq_input_hash_profile')
+      .on(table.userId, table.birthProfileId, table.reportKey, table.inputHash)
+      .where(sql`${table.birthProfileId} is not null and ${table.input} is not null`),
   }),
 );
 

@@ -106,6 +106,15 @@ describe('scholar single-astrologer system prompt', () => {
     const withoutFacts = systemContent([]);
     expect(withFacts).toBe(withoutFacts);
   });
+
+  it('makes computed chart data authoritative over a conflicting user claim about their own placements', () => {
+    // Part of the 2026-08-11 architecture-hardening pass: GROUNDING_INSTRUCTION already banned
+    // the MODEL inventing chart facts, but nothing said what to do when the USER states one that
+    // conflicts with the computed data (e.g. "my Mars is in Leo" against a chart showing Cancer).
+    const content = systemContent().toLowerCase();
+    expect(content).toMatch(/authoritative source for the user'?s own placements/);
+    expect(content).toMatch(/do not silently agree|never silently adopt/);
+  });
 });
 
 describe('scholar chart-data fallback copy', () => {

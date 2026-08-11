@@ -119,6 +119,9 @@ export async function markKundliReady(
     NewKundliRow,
     | 'ayanamsa'
     | 'houseSystem'
+    | 'nodeType'
+    | 'calculationVersion'
+    | 'ephemerisVersion'
     | 'timeKnown'
     | 'birthHash'
     | 'chartData'

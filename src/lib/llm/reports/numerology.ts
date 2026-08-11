@@ -30,7 +30,10 @@ import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
 import type { NumerologyScores } from '../../astro-engine/reports/numerology.js';
-import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
+import type {
+  ReportSection,
+  SectionGenerationProgress,
+} from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
 
 const GROUNDING_RULE =
@@ -215,26 +218,47 @@ async function callAndParse(
   return parsed;
 }
 
-/** 3 bounded calls — see module doc comment for the split rationale. */
+/**
+ * 3 bounded calls — see module doc comment for the split rationale. Independently resumable,
+ * same pattern as generateMarriageNarrative: each call is built only from `scores`, so a
+ * failure partway through doesn't need to redo the calls that already succeeded — see
+ * that function's doc comment for the full rationale.
+ */
 export async function generateNumerologyNarrative(
   scores: NumerologyScores,
+  progress?: SectionGenerationProgress,
 ): Promise<ReportSection[]> {
-  const part1 = await callAndParse(
+  const existing = progress?.existingGroups ?? [];
+
+  async function callOrResume(
+    index: number,
+    systemPrompt: string,
+    facts: string,
+    label: string,
+  ): Promise<ReportSection[]> {
+    const cached = existing[index];
+    if (cached) return cached;
+    const group = await callAndParse(systemPrompt, facts, scores.planetCondition, label);
+    await progress?.onGroupComplete(group);
+    return group;
+  }
+
+  const part1 = await callOrResume(
+    0,
     narrativeSystemPromptCall1(),
     buildFactsCall1(scores),
-    scores.planetCondition,
     'call1',
   );
-  const part2 = await callAndParse(
+  const part2 = await callOrResume(
+    1,
     narrativeSystemPromptCall2(),
     buildFactsCall2(scores),
-    scores.planetCondition,
     'call2',
   );
-  const part3 = await callAndParse(
+  const part3 = await callOrResume(
+    2,
     narrativeSystemPromptCall3(),
     buildFactsCall3(scores),
-    scores.planetCondition,
     'call3',
   );
   return [...part1, ...part2, ...part3];

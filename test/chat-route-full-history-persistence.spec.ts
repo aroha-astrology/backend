@@ -112,11 +112,27 @@ describe('POST /v1/chat — persists the full transcript, not the client-carried
     expect(state.chatStream).toHaveBeenCalled();
     const chatStreamArgs = state.chatStream.mock.calls[0] as unknown[];
     expect(chatStreamArgs[2]).toEqual([]); // history arg — nothing stored yet for a new session
+    // Generation must not be tied to the client's request signal — a client
+    // disconnect used to abort generation itself, discarding the reply even
+    // though the wallet was already charged. See astro.routes.ts's comment on
+    // this argument in the chatStream call.
+    expect(chatStreamArgs[4]).toBeUndefined();
 
+    // The question is written BEFORE generation starts (see the SSE-disconnect
+    // fix: a session must exist with at least the question the instant it's
+    // asked, not only once a reply has been produced).
     expect(state.createChatSession).toHaveBeenCalledWith(
       'user-1',
       null,
       expect.any(String),
+      [{ role: 'user', content: 'What is my rising sign?' }],
+      undefined,
+    );
+    // The reply is then appended via a second, separate write.
+    expect(state.updateChatSession).toHaveBeenCalledWith(
+      'new-session-1',
+      'user-1',
+      null,
       [
         { role: 'user', content: 'What is my rising sign?' },
         { role: 'assistant', content: 'Hello, seeker.' },

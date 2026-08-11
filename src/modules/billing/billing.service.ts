@@ -9,6 +9,7 @@ import {
   findLatestOrderForPack,
   confirmOrderAndGrantCredits,
   setOrderGatewayOrderId,
+  refundOrder as refundOrderRepo,
 } from './billing.repo.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { logger } from '../../lib/logger.js';
@@ -295,6 +296,24 @@ export async function confirmGooglePlayPurchase(
   // avoids sending a duplicate admin notification if this call gets retried.
   await notifyTopUp(userId, order.finalAmountPaise, result.walletBalancePaise);
 
+  return result;
+}
+
+/**
+ * Refunds a paid top-up order back to the user's wallet. Thin wrapper over
+ * the repo's atomic guarded transition (billing.repo.ts's refundOrder) — the
+ * service-layer primitive for the admin refund tooling and Phase 8's
+ * refund-rate metric this codebase doesn't have yet.
+ */
+export async function refundOrder(
+  orderId: string,
+  userId: string,
+  reason: string,
+): Promise<{ order: OrderRow; walletBalancePaise: number }> {
+  const result = await refundOrderRepo(orderId, userId, reason);
+  if (!result) {
+    throw Errors.conflict('Order is not refundable (not found, or not currently paid)');
+  }
   return result;
 }
 

@@ -12,6 +12,7 @@ import {
   type ReportScoreContext,
   type ReportScores,
   type ReportSection,
+  type SectionGenerationProgress,
 } from '../report-generator.types.js';
 import type { TrueLoveScores } from '../../../lib/astro-engine/reports/true-love.js';
 
@@ -20,8 +21,12 @@ const trueLoveGenerator: ReportGenerator = {
   computeScores(ctx: ReportScoreContext, periodMonth: string | null): ReportScores {
     return computeTrueLoveScores(ctx, periodMonth);
   },
-  async generateNarrative(scores: ReportScores, _language: 'en'): Promise<ReportSection[]> {
-    return generateTrueLoveNarrative(scores as unknown as TrueLoveScores);
+  async generateNarrative(
+    scores: ReportScores,
+    _language: 'en',
+    progress?: SectionGenerationProgress,
+  ): Promise<ReportSection[]> {
+    return generateTrueLoveNarrative(scores as unknown as TrueLoveScores, progress);
   },
   async translateNarrative(sections: ReportSection[], language: string): Promise<ReportSection[]> {
     return translateTrueLoveNarrative(sections, language);

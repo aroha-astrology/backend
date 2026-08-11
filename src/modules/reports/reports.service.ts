@@ -9,6 +9,7 @@
 // =============================================================================
 
 import '../reports/generators/index.js';
+import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
 import { runWithRequestContext } from '../../lib/request-context.js';
@@ -35,11 +36,15 @@ import {
   countReadyReportsByKey,
   findReportById,
   findReportRow,
+  findReportRowByInputHash,
   findStaleGeneratingReports,
+  hashReportInput,
   listReportsForUser,
   markReportFailed,
   markReportReady,
   overwriteReadyReportContent,
+  reclaimStaleReportForRetry,
+  saveReportProgress,
   saveReportScoresTranslation,
   saveReportTranslation,
   upgradePreviewToPurchased,
@@ -64,9 +69,11 @@ import {
 } from '../../lib/llm/reports/verdict.js';
 import {
   REPORT_GENERATORS,
+  type ReportGenerator,
   type ReportSection,
   type ReportScoreContext,
   type ReportScores,
+  type SectionGenerationProgress,
 } from './report-generator.types.js';
 import type { UserRow, ReportRow, KundliRow } from '../../db/schema.js';
 import type {
@@ -94,6 +101,17 @@ import { notifyUser } from '../../lib/notifications/notify-user.js';
  * no-cost-to-the-user contract `regenerateReportContent` already documents.
  */
 const CONTENT_VERSION = 3;
+
+/**
+ * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
+ * meaningfully — a different axis from CONTENT_VERSION above (that tracks the persisted JSON
+ * *shape*; this tracks what was actually asked of the model). Deliberately NOT folded into any
+ * cache-invalidation hash and does not trigger regeneration — a prompt tweak should not
+ * retroactively invalidate reports users already paid for. Stamped onto `reports.promptVersion`
+ * purely for provenance: answering "why does my report read differently than my friend's" or
+ * "was this generated before or after the wording fix" without guessing from `createdAt`.
+ */
+const REPORT_PROMPT_VERSION = '2026.08.1';
 
 // ponytail: process-local dedup only, not a distributed/DB-backed claim — with pm2's cluster
 // workers, two near-simultaneous requests landing on DIFFERENT worker processes could each fire
@@ -552,7 +570,27 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
 
     const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
     const scores = computeScoresWithCondition(generator, scoreContext, row.periodMonth);
-    const generated = await generator.generateNarrative(scores, 'en');
+
+    // Resume hint for a reclaimed row (a previous attempt's checkpoint — see
+    // saveReportProgress) — empty on a brand-new claim, since `content` is null until the
+    // first successful write. A generator that doesn't support checkpointed retry (most of
+    // them — see generateNarrative's own doc comment) simply ignores this and regenerates
+    // everything, which is still correct, just not cost-optimized.
+    const existingGroups =
+      (row.content as { sectionGroups?: ReportSection[][] } | null)?.sectionGroups ?? [];
+    let persistedGroups: ReportSection[][] = [...existingGroups];
+    const progress: SectionGenerationProgress = {
+      existingGroups,
+      onGroupComplete: async (group) => {
+        // A fresh array each call, not a push onto a shared reference — saveReportProgress's
+        // real (DB) implementation serializes synchronously so this wouldn't be reachable in
+        // production either way, but reassigning keeps each call's argument independently
+        // correct and observable rather than relying on that ordering.
+        persistedGroups = [...persistedGroups, group];
+        await saveReportProgress(row.id, claimedAt, persistedGroups);
+      },
+    };
+    const generated = await generator.generateNarrative(scores, 'en', progress);
     // Second pass: drop any sentence that contradicts this report's own facts.
     // Fails open — see verifyReportClaims.
     const { sections } = await verifyReportClaims(
@@ -577,6 +615,22 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
         ...(verdict ? { verdict } : {}),
       },
       model: MODEL,
+      // Provenance snapshot, frozen at generation time — see the `chartSnapshot` doc comment
+      // in schema.ts for why this must never be re-derived from the (possibly since-changed)
+      // live kundli. `kundli` here is the exact row this report's facts were computed from.
+      chartSnapshot: {
+        chartData: kundli.chartData,
+        dashaData: kundli.dashaData,
+        yogaData: kundli.yogaData,
+        doshaData: kundli.doshaData,
+      },
+      calculationVersion: kundli.calculationVersion,
+      ephemerisVersion: kundli.ephemerisVersion,
+      ayanamsa: kundli.ayanamsa,
+      houseSystem: kundli.houseSystem,
+      nodeType: kundli.nodeType,
+      promptVersion: REPORT_PROMPT_VERSION,
+      language: 'en',
     });
     void notifyReportReady(row.userId, row.reportKey, row.id).catch(() => {
       /* already logged */
@@ -629,7 +683,10 @@ export async function purchaseReport(
 
   validatePurchaseShape(def, body);
 
-  const profile = await resolveProfileContext(user, body.birthProfileId ?? null);
+  // strict: body.birthProfileId is client-supplied for THIS request — a
+  // non-owned/deleted id must 404, not silently substitute the caller's
+  // primary profile (see resolveProfileContext's doc comment).
+  const profile = await resolveProfileContext(user, body.birthProfileId ?? null, { strict: true });
   const birthProfileId = profile.birthProfileId;
 
   const perUnitPricePaise = features[def.featureFlagKey]?.pricePaise ?? def.basePricePaise;
@@ -653,13 +710,14 @@ export async function purchaseReport(
     for (let i = 0; i < periodMonths.length; i++) {
       const periodMonth = periodMonths[i] ?? null;
       const rowPrice = rowPrices[i] ?? 0;
+      const input = withAnswers(partnerInput, answers);
 
       const claimed = await claimReportRow({
         userId: user.id,
         birthProfileId,
         reportKey: def.key,
         periodMonth,
-        input: withAnswers(partnerInput, answers),
+        input,
         pricePaidPaise: rowPrice,
         isPreview: false,
       });
@@ -675,8 +733,18 @@ export async function purchaseReport(
       } else {
         // A row already exists at this exact identity that claimReportRow's own claimability
         // guard couldn't reclaim — the DB layer guaranteed no duplicate row was ever inserted
-        // (see claimReportRow's doc comment). Two distinct cases land here:
-        const existing = await findReportRow(user.id, birthProfileId, def.key, periodMonth);
+        // (see claimReportRow's doc comment). Two distinct cases land here. Partner/compatibility
+        // reports (input !== null) have no periodMonth dimension and dedupe on input hash instead
+        // of (birthProfileId, periodMonth) — see findReportRowByInputHash.
+        const existing =
+          input !== null
+            ? await findReportRowByInputHash(
+                user.id,
+                birthProfileId,
+                def.key,
+                hashReportInput(input),
+              )
+            : await findReportRow(user.id, birthProfileId, def.key, periodMonth);
         if (existing?.isPreview) {
           // Preview-to-purchase upgrade: this row started life as a free preview (see
           // previewReport) — do NOT refund, the user is genuinely paying for it right now.
@@ -753,7 +821,8 @@ export async function previewReport(
     throw Errors.badRequest(`${def.key} does not support preview — no partner data exists yet`);
   }
 
-  const profile = await resolveProfileContext(user, body.birthProfileId ?? null);
+  // strict — see the matching comment in purchaseReport above.
+  const profile = await resolveProfileContext(user, body.birthProfileId ?? null, { strict: true });
   const birthProfileId = profile.birthProfileId;
 
   const claimed = await claimReportRow({
@@ -851,6 +920,14 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
 
   const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
   return computeScoresWithCondition(generator, scoreContext, row.periodMonth);
+}
+
+/** Same JSON.stringify+sha256 idiom as hashLeafValues (report-scores.ts) and
+ * reports.repo.ts's hashReportInput, applied to the English narrative — see
+ * withTranslatedSections' cache-key comment for why this exists. Exported
+ * only so tests can compute a matching hash for cache fixtures. */
+export function hashSections(sections: ReportSection[]): string {
+  return crypto.createHash('sha256').update(JSON.stringify(sections)).digest('hex');
 }
 
 /**
@@ -984,20 +1061,52 @@ export async function getReportForUser(
     isPreview: row.isPreview,
   };
 
-  const cached = row.translations?.[language] as { sections?: ReportSection[] } | undefined;
-  if (cached?.sections) {
-    return { ...readyBase, sections: assignSectionIds(row.reportKey, cached.sections) };
+  const sections = await withTranslatedSections(row, englishSections, generator, language);
+  return { ...readyBase, sections };
+}
+
+/**
+ * Translated narrative sections, cached by content hash rather than just
+ * language — `translations[language].sections` used to be keyed on language
+ * alone, so any write path that updates `content.sections` without also
+ * clearing `translations` (see markReportReady's reset, reports.repo.ts)
+ * would serve a stale translation forever. Same `{hash, values}` shape and
+ * cache-check-by-hash pattern withTranslatedScoresProse already uses for
+ * `scoresProse`, generalized to the narrative — a hash mismatch (content
+ * changed) is treated exactly like a cache miss: pay one translation call,
+ * re-cache under the new hash.
+ */
+async function withTranslatedSections(
+  row: ReportRow,
+  englishSections: ReportSection[],
+  generator: ReportGenerator,
+  language: string,
+): Promise<ReportSection[]> {
+  const hash = hashSections(englishSections);
+  const cached = row.translations?.[language] as
+    | { sections?: { hash?: string; values?: ReportSection[] } }
+    | undefined;
+  if (cached?.sections?.hash === hash && cached.sections.values) {
+    return assignSectionIds(row.reportKey, cached.sections.values);
   }
 
   try {
     const translated = await generator.translateNarrative(englishSections, language);
-    await saveReportTranslation(row.id, language, { sections: translated });
-    return { ...readyBase, sections: assignSectionIds(row.reportKey, translated) };
+    await saveReportTranslation(row.id, language, { sections: { hash, values: translated } });
+    return assignSectionIds(row.reportKey, translated);
   } catch (err) {
     logger.warn({ err, reportId: row.id, language }, 'failed to translate report');
-    return { ...readyBase, sections: englishSections };
+    return englishSections;
   }
 }
+
+/** How many times reapStaleReports will reclaim-and-retry the SAME row before giving up and
+ * refunding it — bounds automatic retry so a permanently-broken generation (bad chart data, a
+ * prompt that always fails) eventually stops rather than looping forever. Deliberately small:
+ * a resumable generator (marriage/numerology/true_love) only re-pays for whichever call
+ * failed last time, so a low ceiling is cheap; a non-resumable one re-pays for the whole
+ * report each attempt, so it shouldn't be high either. */
+export const MAX_REPORT_GENERATION_ATTEMPTS = 3;
 
 /**
  * Periodic sweep for rows abandoned mid-generation (the Node process crashed
@@ -1008,15 +1117,38 @@ export async function getReportForUser(
  * (see cron.routes.ts) rather than an in-process timer, matching every other
  * periodic job in this codebase. Never throws — a failure reaping one row is
  * logged and the sweep continues with the rest.
+ *
+ * Under MAX_REPORT_GENERATION_ATTEMPTS, a stale row is reclaimed and generation
+ * is re-fired (fire-and-forget, same as a fresh purchase) rather than immediately
+ * failed+refunded — a resumable generator (see generateNarrative's `progress`
+ * parameter) picks up from whatever it already checkpointed rather than paying
+ * for the whole report again. At or past the ceiling, falls back to the
+ * original behavior: mark failed and refund.
  */
-export async function reapStaleReports(): Promise<{ reaped: number }> {
+export async function reapStaleReports(): Promise<{ reaped: number; retried: number }> {
   const staleRows = await findStaleGeneratingReports();
   let reaped = 0;
+  let retried = 0;
 
   for (const row of staleRows) {
     if (!row.startedAt) continue; // claimReportRow always stamps 'generating' rows with startedAt — defensive only.
     try {
-      await markReportFailed(row.id, row.startedAt, 'Generation timed out (stale)');
+      if (row.generationAttempts < MAX_REPORT_GENERATION_ATTEMPTS) {
+        const reclaimed = await reclaimStaleReportForRetry(row.id, row.startedAt);
+        if (reclaimed) {
+          fireReportGeneration(reclaimed, row.birthProfileId);
+          retried++;
+        }
+        // Lost the race (already reclaimed/finished by something else, e.g. a repeat
+        // purchase) — nothing to do, it's no longer this sweep's problem either way.
+        continue;
+      }
+
+      await markReportFailed(
+        row.id,
+        row.startedAt,
+        `Generation timed out (stale) after ${MAX_REPORT_GENERATION_ATTEMPTS} retries`,
+      );
       await addWalletBalance(
         row.userId,
         row.pricePaidPaise,
@@ -1030,7 +1162,7 @@ export async function reapStaleReports(): Promise<{ reaped: number }> {
     }
   }
 
-  return { reaped };
+  return { reaped, retried };
 }
 
 /**

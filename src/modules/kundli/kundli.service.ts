@@ -12,6 +12,12 @@ import {
   detectCurrentSadeSati,
 } from '../../lib/astro-engine/index.js';
 import { computeReducedAshtakavarga } from '../../lib/astro-engine/calculations/ashtakavarga-shodhana.js';
+import {
+  CALCULATION_VERSION,
+  EPHEMERIS_VERSION,
+  HASH_BASELINE_CALCULATION_VERSION,
+  HASH_BASELINE_EPHEMERIS_VERSION,
+} from '../../lib/astro-engine/version.js';
 import type { ZodiacSign, Yoga } from '@aroha-astrology/shared';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
@@ -58,14 +64,13 @@ type EngineLunarNode = 'mean' | 'true';
  * mandatory — without it the ascendant, houses, and dasha cannot be computed,
  * so we report it as missing rather than producing a degraded/guessed chart.
  * These are all collected during onboarding.
+ *
+ * `gender`/`displayName` are deliberately NOT here — they're profile metadata
+ * (used by naming/matchmaking features, and nowhere in src/lib/astro-engine's
+ * chart math), not chart inputs. Gating chart generation on them used to mean
+ * a user who hadn't picked a gender yet couldn't see their own kundli.
  */
-export const KUNDLI_REQUIRED_FIELDS = [
-  'displayName',
-  'gender',
-  'dateOfBirth',
-  'timeOfBirth',
-  'placeOfBirth',
-] as const;
+export const KUNDLI_REQUIRED_FIELDS = ['dateOfBirth', 'timeOfBirth', 'placeOfBirth'] as const;
 
 export type KundliRequiredField = (typeof KUNDLI_REQUIRED_FIELDS)[number];
 
@@ -82,14 +87,36 @@ function placeIsComplete(place: UserRow['placeOfBirth']): boolean {
 /** Required kundli fields that are absent on the resolved profile (empty = ready to compute). */
 export function missingKundliParams(profile: ProfileContext): KundliRequiredField[] {
   const missing: KundliRequiredField[] = [];
-  if (!profile.displayName) missing.push('displayName');
-  if (!profile.gender) missing.push('gender');
   if (!profile.dateOfBirth) missing.push('dateOfBirth');
-  // An EXACT time is required: a null time OR an explicitly 'unknown' accuracy
-  // both count as missing (a disclaimed time can't yield lagna/houses/dasha).
+  // An EXACT time is required for a full chart: a null time OR an explicitly 'unknown'
+  // accuracy both count as missing. 'approximate' is deliberately treated as present here —
+  // see birthTimeQuality below for the caveat that accompanies an approximate chart.
   if (!profile.timeOfBirth || profile.birthTimeAccuracy === 'unknown') missing.push('timeOfBirth');
   if (!placeIsComplete(profile.placeOfBirth)) missing.push('placeOfBirth');
   return missing;
+}
+
+export type BirthTimeQuality = 'exact' | 'approximate' | 'unknown';
+
+/**
+ * The funnel decision for a resolved profile: `'exact'` → a normal, fully-trustworthy chart;
+ * `'approximate'` → a full chart, but ascendant/houses/dasha timing should be shown with a
+ * caveat (see chartWarning below); `'unknown'` → missingKundliParams already reports
+ * `timeOfBirth` as missing, and the funnel's next step is birth-time rectification (see
+ * rectification.ts) rather than "please enter a birth time".
+ */
+export function birthTimeQuality(profile: ProfileContext): BirthTimeQuality {
+  if (!profile.timeOfBirth || profile.birthTimeAccuracy === 'unknown') return 'unknown';
+  return profile.birthTimeAccuracy === 'approximate' ? 'approximate' : 'exact';
+}
+
+/** User-facing caveat for an `'approximate'`-accuracy chart — null for 'exact'/'unknown' (the
+ * latter has no chart to caveat; missingKundliParams already blocks it). Ascendant, house
+ * cusps, and dasha timing are the results sensitive to a few minutes of birth-time error;
+ * planet SIGN placements are not. */
+export function chartWarning(quality: BirthTimeQuality): string | null {
+  if (quality !== 'approximate') return null;
+  return 'Your birth time is approximate. Ascendant, house placements, and dasha timing may shift with a more exact time — planet positions by sign are still accurate.';
 }
 
 /* -------------------------------------------------------------------------- */
@@ -209,6 +236,8 @@ type BirthInputs = {
   /** undefined = use the server default (LUNAR_NODE_TYPE). */
   lunarNode: EngineLunarNode | undefined;
   birthHash: string;
+  calculationVersion: string;
+  ephemerisVersion: string;
 };
 
 /**
@@ -254,6 +283,26 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
         // every stored hash is byte-identical to before this line existed — no
         // mass regeneration.
         lunarNode,
+        // Birth-input drift (date/time/place/preferences) isn't the only thing
+        // that can make a cached chart wrong — the ENGINE that computed it can
+        // change too (a fixed bug in house/dasha/yoga math, a swapped
+        // ephemeris). Folding both version tags in here means a version bump
+        // makes every existing birthHash stop matching, so the next access
+        // regenerates automatically — no backfill script, no cache purge. See
+        // version.ts for when to bump CALCULATION_VERSION.
+        //
+        // `undefined` (not the version string) while still at the pre-versioning
+        // baseline, so JSON.stringify omits the key entirely and every hash
+        // already in the database stays byte-identical — exactly the same trick
+        // `lunarNode` above relies on, and for the same reason: introducing this
+        // field must not itself invalidate the whole cache. See the
+        // HASH_BASELINE_* doc comment in version.ts for the full rationale.
+        calculationVersion:
+          CALCULATION_VERSION === HASH_BASELINE_CALCULATION_VERSION
+            ? undefined
+            : CALCULATION_VERSION,
+        ephemerisVersion:
+          EPHEMERIS_VERSION === HASH_BASELINE_EPHEMERIS_VERSION ? undefined : EPHEMERIS_VERSION,
       }),
     )
     .digest('hex')
@@ -272,6 +321,8 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
     houseSystem,
     lunarNode,
     birthHash,
+    calculationVersion: CALCULATION_VERSION,
+    ephemerisVersion: EPHEMERIS_VERSION,
   };
 }
 
@@ -360,6 +411,9 @@ async function runGeneration(
     await markKundliReady(user.id, profile.birthProfileId, claimedAt, {
       ayanamsa: inputs.ayanamsa,
       houseSystem: inputs.houseSystem,
+      nodeType: inputs.lunarNode ?? null,
+      calculationVersion: inputs.calculationVersion,
+      ephemerisVersion: inputs.ephemerisVersion,
       timeKnown: true,
       birthHash: inputs.birthHash,
       chartData: { ...chart, shadbala, divisionalCharts },
