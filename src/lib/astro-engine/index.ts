@@ -122,3 +122,4 @@ export * from './lalkitab/pakkaghar';
 export * from './lalkitab/blindPlanets';
 export * from './lalkitab/debts';
 export { getLalKitabRemedies } from './lalkitab/remedies';
+export { extractActions } from './lalkitab/actionTags';

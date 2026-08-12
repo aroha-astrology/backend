@@ -18,6 +18,7 @@ import {
   calculateFullPanchangAsync,
   detectMangalDosha,
   getLalKitabRemedies,
+  extractActions,
 } from '../../lib/astro-engine/index.js';
 import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
 import { nextEclipses } from '../../lib/astro-engine/panchang/eclipse.js';
@@ -810,6 +811,17 @@ export interface RemedyItem {
   title: string;
   icon: string;
   remedy: string;
+  /** Slugs extracted from `remedy` (see extractActions) for the frontend's
+   * shared image-per-slug asset library — added uniformly in withActions()
+   * below rather than duplicated across GENERAL_REMEDIES / PLANET_REMEDIES /
+   * the Lal Kitab branch, so every RemedyItem this function returns gets one. */
+  actions?: string[];
+}
+
+/** Tag every remedy's prose with action slugs in one place — see the
+ * `actions` field doc on RemedyItem for why this isn't done per-table. */
+function withActions(items: RemedyItem[]): RemedyItem[] {
+  return items.map((item) => ({ ...item, actions: extractActions(item.remedy) }));
 }
 
 /**
@@ -832,7 +844,7 @@ export async function getRemedies(birthData?: {
   timezone: string;
 }): Promise<RemedyItem[]> {
   if (!birthData) {
-    return GENERAL_REMEDIES;
+    return withActions(GENERAL_REMEDIES);
   }
 
   try {
@@ -865,7 +877,7 @@ export async function getRemedies(birthData?: {
 
     if (weakPlanets.length === 0) {
       // No weak planets found — return general remedies
-      return GENERAL_REMEDIES;
+      return withActions(GENERAL_REMEDIES);
     }
 
     // Lal Kitab remedy per weak planet's actual natal house, falling back to
@@ -891,10 +903,10 @@ export async function getRemedies(birthData?: {
       remedies.push(...remaining);
     }
 
-    return remedies;
+    return withActions(remedies);
   } catch {
     // If chart computation fails, fall back to general remedies
-    return GENERAL_REMEDIES;
+    return withActions(GENERAL_REMEDIES);
   }
 }
 

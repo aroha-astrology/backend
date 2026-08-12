@@ -236,6 +236,16 @@ export const RemedyItemSchema = z
     remedy: z.string().openapi({
       example: 'Donate black sesame seeds, mustard oil, or iron items on Saturdays.',
     }),
+    // Slugs extracted from `remedy` (see lalkitab/actionTags.ts) so the
+    // frontend can render an illustrative image per remedy from a shared
+    // asset library instead of one bespoke illustration per remedy. Optional
+    // and possibly empty — a remedy string with no recognized concept, or
+    // one of the pre-Lal-Kitab GENERAL_REMEDIES/PLANET_REMEDIES fallback
+    // entries computed before this field existed, still renders fine without it.
+    actions: z
+      .array(z.string())
+      .optional()
+      .openapi({ example: ['dog', 'sweet_chapati', 'honey'] }),
   })
   .openapi('RemedyItem');
 

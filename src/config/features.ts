@@ -95,6 +95,18 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'home',
     defaultEnabled: false,
   },
+  // Home entry point for Remedies, replacing its old spot as a ListRow in the
+  // profile drawer. Split from nav.remedies the same way home.vastuCard is
+  // split from nav.vastu: this key hides the card, nav.remedies still gates
+  // the /remedies page itself. Ships dark per the standing rule — turn on
+  // from Admin -> Features once the restyled page (image-per-remedy via the
+  // shared asset library) has been checked end-to-end.
+  {
+    key: 'home.remedies',
+    label: 'Remedies card (home)',
+    group: 'home',
+    defaultEnabled: false,
+  },
   // paid
   {
     key: 'paid.chat',
