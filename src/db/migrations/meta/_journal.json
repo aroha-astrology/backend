@@ -393,6 +393,13 @@
       "when": 1786896000000,
       "tag": "0055_report_generation_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1786982400000,
+      "tag": "0056_remedy_insights",
+      "breakpoints": true
     }
   ]
 }
