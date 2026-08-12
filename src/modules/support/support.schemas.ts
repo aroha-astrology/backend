@@ -23,7 +23,7 @@ export const CreateTicketBodySchema = z
 
 export type CreateTicketBody = z.infer<typeof CreateTicketBodySchema>;
 
-/** Caller-facing shape — deliberately omits `userId` (implicit: it's always the caller's own) and `adminNote` (admin-internal). */
+/** Caller-facing shape — deliberately omits `userId` (implicit: it's always the caller's own). `adminNote` IS included: it's the support team's reply, shown to the user on their ticket. */
 export const SupportTicketSchema = z
   .object({
     id: z.string().uuid(),
@@ -32,6 +32,7 @@ export const SupportTicketSchema = z
     locale: z.string().nullable(),
     appVersion: z.string().nullable(),
     status: z.string(),
+    adminNote: z.string().nullable(),
     createdAt: z.string(),
     resolvedAt: z.string().nullable(),
   })
@@ -91,11 +92,12 @@ export const AdminTicketIdParamSchema = z.object({
 export const UpdateTicketBodySchema = z
   .object({
     status: z.string().min(1).max(40).optional().openapi({ example: 'resolved' }),
+    // Shown to the user on their ticket (not internal) — write it as a reply to them.
     adminNote: z
       .string()
       .max(5000)
       .optional()
-      .openapi({ example: 'Refunded via Razorpay dashboard.' }),
+      .openapi({ example: 'Refunded to your wallet — should reflect within a few minutes.' }),
   })
   .refine((body) => body.status !== undefined || body.adminNote !== undefined, {
     message: 'At least one of "status" or "adminNote" is required',

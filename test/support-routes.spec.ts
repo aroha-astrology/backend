@@ -120,7 +120,7 @@ beforeEach(() => {
 });
 
 describe('POST /v1/support/tickets', () => {
-  it('creates a ticket and returns 201 with the caller-facing shape (no userId/adminNote)', async () => {
+  it('creates a ticket and returns 201 with the caller-facing shape (no userId, but WITH adminNote — it is the support reply shown to the user)', async () => {
     signInAs(NON_ADMIN_PHONE);
     state.createSupportTicket.mockResolvedValue(makeTicketRow());
     const app = createApp();
@@ -147,11 +147,11 @@ describe('POST /v1/support/tickets', () => {
       locale: 'hi',
       appVersion: '1.4.2',
       status: 'open',
+      adminNote: null,
       createdAt: '2026-07-25T00:00:00.000Z',
       resolvedAt: null,
     });
     expect(body.userId).toBeUndefined();
-    expect(body.adminNote).toBeUndefined();
   });
 
   it('fires the Telegram notification without the response awaiting it (fire-and-forget)', async () => {

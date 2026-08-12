@@ -29,7 +29,7 @@ interface DecryptedTicketRow {
   resolvedAt: Date | null;
 }
 
-/** Caller-facing shape — no `userId` (implicit: always the caller's own) and no `adminNote` (admin-internal). */
+/** Caller-facing shape — no `userId` (implicit: always the caller's own). `adminNote` IS included: it's the support team's reply, shown to the user on their ticket. */
 function toPublicDto(row: DecryptedTicketRow): SupportTicketDto {
   return {
     id: row.id,
@@ -38,6 +38,7 @@ function toPublicDto(row: DecryptedTicketRow): SupportTicketDto {
     locale: row.locale,
     appVersion: row.appVersion,
     status: row.status,
+    adminNote: row.adminNote,
     createdAt: row.createdAt.toISOString(),
     resolvedAt: row.resolvedAt ? row.resolvedAt.toISOString() : null,
   };
