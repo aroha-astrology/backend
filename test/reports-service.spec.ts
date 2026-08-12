@@ -1371,7 +1371,7 @@ describe('getReportForUser', () => {
     const dto = await getReportForUser('report-1', 'user-1', 'en');
 
     expect(
-      (dto as unknown as { scores: { windows: Array<{ summary?: string }> } }).scores.windows[0]
+      (dto as unknown as { scores: { windows: Array<{ summary?: string }> } }).scores.windows[0]!
         .summary,
     ).toBeUndefined();
   });

@@ -1,5 +1,13 @@
 import { z } from '@hono/zod-openapi';
 
+import { orderStatusEnum } from '../../db/schema.js';
+
+// Read the order statuses off the pgEnum rather than re-listing them: migration
+// 0053 added refund_pending/refunded to the DB enum and these hand-written
+// copies silently fell behind, so every billing route returning an order
+// stopped typechecking against its own OpenAPI response schema.
+const OrderStatusSchema = z.enum(orderStatusEnum.enumValues);
+
 export const BillingPlanResponseSchema = z
   .object({
     plan: z.string().openapi({ example: 'free' }),
@@ -80,7 +88,7 @@ export const OrderSchema = z
     finalAmountPaise: z.number(),
     currency: z.string(),
     couponCode: z.string().nullable(),
-    status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
+    status: OrderStatusSchema,
     gatewayProvider: z.string(),
     createdAt: z.string(),
     paidAt: z.string().nullable(),
@@ -112,7 +120,7 @@ export const TransactionSchema = z
       kind: z.literal('recharge'),
       createdAt: z.string(),
       amountPaise: z.number(),
-      status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
+      status: OrderStatusSchema,
     }),
     z.object({
       id: z.string(),
