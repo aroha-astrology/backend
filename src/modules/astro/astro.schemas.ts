@@ -303,6 +303,18 @@ export const RemediesResponseSchema = z
     debts: z.array(LalKitabDebtSchema),
     /** Null when there is no chart to rotate. */
     annual: AnnualRotationSchema.nullable(),
+    /** The cached plain-language layer, keyed by planet name and debt type.
+     * Null until generation finishes — the rest of the response is complete
+     * and renderable on its own, so the page never waits on this. */
+    simple: z
+      .object({
+        intro: z.string(),
+        planets: z.record(z.string()),
+        debts: z.record(z.string()),
+      })
+      .nullable(),
+    /** 'generating' tells the client it is worth polling again shortly. */
+    simpleStatus: z.enum(['ready', 'generating', 'unavailable']),
   })
   .openapi('RemediesResponse');
 

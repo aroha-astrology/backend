@@ -19,6 +19,12 @@ import {
 } from './feedback.repo.js';
 import { notifyChatDownvote } from '../../lib/notifications/telegram.js';
 import { acquire as acquireLock, release as releaseLock } from '../../lib/cache/locks.js';
+import {
+  findRemedyInsight,
+  isRemedyInsightStale,
+  remedyInsightForLanguage,
+  requestRemedyInsightGeneration,
+} from './remedy-insight.service.js';
 import { isFreeFollowUp } from '../../lib/chat-follow-up.js';
 
 /** Fallback cost per chat question if the `paid.chat` feature has no resolved
@@ -912,9 +918,14 @@ const remediesRoute = createRoute({
   method: 'get',
   path: '/remedies',
   tags: ['Astro'],
-  summary: 'Get planet-specific (or general) remedies for the active profile — free',
+  summary: 'Get the full Lal Kitab remedy reading for the active profile — free',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
+  request: {
+    query: z.object({
+      language: z.string().optional().openapi({ example: 'hi' }),
+    }),
+  },
   responses: {
     200: {
       description: 'Remedies list',
@@ -926,6 +937,7 @@ const remediesRoute = createRoute({
 
 astroRouter.openapi(remediesRoute, async (c) => {
   const user = c.get('user');
+  const { language } = c.req.valid('query');
   const profile = await resolveActiveProfileContext(user);
 
   const birthData =
@@ -944,7 +956,48 @@ astroRouter.openapi(remediesRoute, async (c) => {
       : undefined;
 
   const { remedies, debts, annual } = await astroService.getRemedies(birthData);
-  return c.json({ remedies, debts, annual }, 200);
+
+  // The deterministic half is complete at this point and is ALWAYS returned.
+  // The plain-language half is cached per profile and generated on first view,
+  // so a first-time reader gets a fully usable page immediately and the prose
+  // fills in on a later poll rather than blocking this response on an LLM call.
+  const planetsWithChart = remedies.filter((r) => r.natalHouse !== undefined);
+  let simple = null;
+  let simpleStatus: 'ready' | 'generating' | 'unavailable' = 'unavailable';
+
+  if (planetsWithChart.length > 0) {
+    const existing = await findRemedyInsight(user.id, profile.birthProfileId);
+    const lang = language || user.contentLanguage || 'en';
+
+    if (existing?.status === 'ready') {
+      simple = await remedyInsightForLanguage(existing, lang);
+      simpleStatus = simple ? 'ready' : 'unavailable';
+    } else if (!existing || existing.status === 'failed' || isRemedyInsightStale(existing)) {
+      simpleStatus = 'generating';
+      const facts = {
+        planets: planetsWithChart.map((r) => ({
+          planet: r.planet,
+          natalHouse: r.natalHouse as number,
+          remedies: r.remedies ?? [],
+          ...(r.isInPakkaGhar !== undefined && { isInPakkaGhar: r.isInPakkaGhar }),
+          ...(r.displacement !== undefined && { displacement: r.displacement }),
+          ...(r.blindness !== undefined && { blindness: r.blindness }),
+        })),
+        debts: debts.map((d) => ({ type: d.type, indicators: d.indicators })),
+      };
+      // Fire-and-forget: never make the reader wait on it, and never let a
+      // generation failure take down a page that renders fine without it.
+      void requestRemedyInsightGeneration(user.id, profile.birthProfileId, facts).catch(
+        (err: unknown) => {
+          logger.error({ err, userId: user.id }, 'remedy insight generation could not start');
+        },
+      );
+    } else {
+      simpleStatus = 'generating';
+    }
+  }
+
+  return c.json({ remedies, debts, annual, simple, simpleStatus }, 200);
 });
 
 /* -------------------------------------------------------------------------- */

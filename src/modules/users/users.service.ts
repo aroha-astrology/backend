@@ -6,6 +6,7 @@ import { logger } from '../../lib/logger.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
+import { deleteRemedyInsightForUser } from '../astro/remedy-insight.repo.js';
 import { deleteHoroscopesForProfile } from '../horoscope/horoscope.repo.js';
 import { type ProfileContext } from '../birth-profiles/profile-context.js';
 import { priceOf, payoutOf, type ResolvedFeature } from '../features/features.service.js';
@@ -501,6 +502,11 @@ export async function updateMe(
     // it regenerates against the new chart. The unlock flag stays set (no re-charge).
     await deleteGemstoneForUser(userId, null).catch((err: unknown) => {
       logger.error({ err, userId }, 'gemstone invalidation after birth-detail edit failed');
+    });
+    // Same reasoning for the remedies page's plain-language layer: its prose
+    // names houses and placements from the OLD chart, so it must not survive.
+    await deleteRemedyInsightForUser(userId, null).catch((err: unknown) => {
+      logger.error({ err, userId }, 'remedy insight invalidation after birth-detail edit failed');
     });
   }
 

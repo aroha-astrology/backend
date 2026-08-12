@@ -1220,6 +1220,70 @@ export const gemstoneRecommendations = pgTable(
 export type GemstoneRecommendationRow = typeof gemstoneRecommendations.$inferSelect;
 export type NewGemstoneRecommendationRow = typeof gemstoneRecommendations.$inferInsert;
 
+export const remedyInsightStatusEnum = pgEnum('remedy_insight_status', [
+  'generating',
+  'ready',
+  'failed',
+]);
+
+/**
+ * The plain-language half of the Lal Kitab remedies page — one row per
+ * (user, birth profile), same lifecycle as gemstone_recommendations and
+ * house_insights: generated lazily the first time the page is opened and
+ * cached forever after, because the natal chart it explains never changes.
+ *
+ * Only the model-written prose lives here. Every deterministic fact the page
+ * shows (the 108-combination remedy/totka lists, Pakka Ghar, blind planets,
+ * karmic debts, and the whole annual rotation) is recomputed on each request
+ * in astro.service.ts, so a correction to the engine or the remedy database
+ * reaches already-cached users with no backfill.
+ *
+ * The annual rotation is deliberately NOT explained here: it changes on the
+ * reader's birthday, and caching prose about it would need invalidation this
+ * table otherwise never requires.
+ */
+export const remedyInsights = pgTable(
+  'remedy_insights',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /** { intro, planets: { [planet]: prose }, debts: { [debtType]: prose } }. Null while 'generating'. */
+    analysis: jsonb('analysis').$type<Record<string, unknown>>(),
+    /** Cached translations of the AI-authored fields by language code — same shape as gemstone_recommendations.translations. */
+    translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
+    model: text('model'),
+    status: remedyInsightStatusEnum('status').notNull(),
+    /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userPrimaryUnique: uniqueIndex('remedy_insights_user_primary_unique')
+      .on(table.userId)
+      .where(sql`${table.birthProfileId} is null`),
+    userProfileUnique: uniqueIndex('remedy_insights_user_profile_unique')
+      .on(table.userId, table.birthProfileId)
+      .where(sql`${table.birthProfileId} is not null`),
+  }),
+);
+
+export type RemedyInsightRow = typeof remedyInsights.$inferSelect;
+export type NewRemedyInsightRow = typeof remedyInsights.$inferInsert;
+
 /* -------------------------------------------------------------------------- */
 /* panchang_cache — one row per (date, reference point), shared by all users   */
 /* -------------------------------------------------------------------------- */

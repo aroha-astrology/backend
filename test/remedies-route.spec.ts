@@ -16,6 +16,9 @@ const state = vi.hoisted(() => ({
   findUserByFirebaseUid: vi.fn(),
   resolveActiveProfileContext: vi.fn(),
   getRemedies: vi.fn(),
+  findRemedyInsight: vi.fn(),
+  remedyInsightForLanguage: vi.fn(),
+  requestRemedyInsightGeneration: vi.fn(),
 }));
 
 vi.mock('firebase-admin/app', () => ({
@@ -43,6 +46,16 @@ vi.mock('../src/modules/astro/astro.service.js', async () => {
   );
   return { ...actual, getRemedies: state.getRemedies };
 });
+
+// The plain-language layer is DB- and LLM-backed; this spec covers the route's
+// birthData wiring, so it is stubbed out. Its own behaviour lives in
+// remedy-insight.spec.ts.
+vi.mock('../src/modules/astro/remedy-insight.service.js', () => ({
+  findRemedyInsight: state.findRemedyInsight,
+  remedyInsightForLanguage: state.remedyInsightForLanguage,
+  requestRemedyInsightGeneration: state.requestRemedyInsightGeneration,
+  isRemedyInsightStale: () => false,
+}));
 
 const { createApp } = await import('../src/app.js');
 
@@ -96,6 +109,9 @@ beforeEach(() => {
   state.findUserByFirebaseUid.mockReset();
   state.resolveActiveProfileContext.mockReset();
   state.getRemedies.mockReset();
+  state.findRemedyInsight.mockReset().mockResolvedValue(undefined);
+  state.remedyInsightForLanguage.mockReset();
+  state.requestRemedyInsightGeneration.mockReset().mockResolvedValue('generated');
 });
 
 describe('GET /v1/remedies', () => {
@@ -132,8 +148,19 @@ describe('GET /v1/remedies', () => {
     const res = await callRemedies();
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { remedies: unknown[]; debts: unknown[] };
-    expect(body).toEqual(PLANET_SPECIFIC_RESULT);
+    const body = (await res.json()) as {
+      remedies: unknown[];
+      debts: unknown[];
+      simple: unknown;
+      simpleStatus: string;
+    };
+    expect(body.remedies).toEqual(PLANET_SPECIFIC_RESULT.remedies);
+    expect(body.debts).toEqual(PLANET_SPECIFIC_RESULT.debts);
+    // No cached insight yet, so the page ships its deterministic half now and
+    // kicks off generation in the background.
+    expect(body.simple).toBeNull();
+    expect(body.simpleStatus).toBe('generating');
+    expect(state.requestRemedyInsightGeneration).toHaveBeenCalled();
     expect(state.getRemedies).toHaveBeenCalledWith({
       date: '1990-05-15',
       time: '14:30',
@@ -159,9 +186,49 @@ describe('GET /v1/remedies', () => {
     const res = await callRemedies();
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { remedies: unknown[]; debts: unknown[] };
-    expect(body).toEqual(GENERAL_RESULT);
+    const body = (await res.json()) as {
+      remedies: unknown[];
+      debts: unknown[];
+      simple: unknown;
+      simpleStatus: string;
+    };
+    expect(body.remedies).toEqual(GENERAL_RESULT.remedies);
+    expect(body.debts).toEqual(GENERAL_RESULT.debts);
+    // Chartless general remedies have nothing to explain, so generation must
+    // not be started — that would burn an LLM call per signed-out-ish profile.
+    expect(body.simple).toBeNull();
+    expect(body.simpleStatus).toBe('unavailable');
+    expect(state.requestRemedyInsightGeneration).not.toHaveBeenCalled();
     expect(state.getRemedies).toHaveBeenCalledWith(undefined);
+  });
+
+  it('serves the cached plain-language layer when one is ready, without regenerating', async () => {
+    const user = makeUserRow({ id: 'user-1', activeProfileId: null });
+    state.findUserByFirebaseUid.mockResolvedValue(user);
+    state.resolveActiveProfileContext.mockResolvedValue(
+      makeProfileContext({
+        birthProfileId: null,
+        dateOfBirth: '1990-05-15',
+        timeOfBirth: '14:30',
+        placeOfBirth: { name: 'Delhi, India', lat: 28.6139, lon: 77.209, tz: 'Asia/Kolkata' },
+      }),
+    );
+    state.getRemedies.mockResolvedValue(PLANET_SPECIFIC_RESULT);
+    state.findRemedyInsight.mockResolvedValue({ status: 'ready' });
+    const narrative = {
+      intro: 'Small steady habits.',
+      planets: { Saturn: 'Saturn sits deep.' },
+      debts: {},
+    };
+    state.remedyInsightForLanguage.mockResolvedValue(narrative);
+
+    const res = await callRemedies();
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { simple: unknown; simpleStatus: string };
+    expect(body.simple).toEqual(narrative);
+    expect(body.simpleStatus).toBe('ready');
+    expect(state.requestRemedyInsightGeneration).not.toHaveBeenCalled();
   });
 
   it('passes undefined when the active profile has a date/time but no place of birth', async () => {
