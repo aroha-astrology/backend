@@ -30,7 +30,7 @@ import {
   type AnnualRotation,
 } from '../../lib/astro-engine/lalkitab/annualRotation.js';
 import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
-import { nextEclipses } from '../../lib/astro-engine/panchang/eclipse.js';
+import { nextEclipses, localEclipses } from '../../lib/astro-engine/panchang/eclipse.js';
 import { SIGNS } from '../../lib/astro-tools/index.js';
 import { findPredictionsDueForReview, recordPrediction } from './prediction-outcomes.repo.js';
 import { MODEL as MODEL_NAME } from '../../config/llm.js';
@@ -1110,18 +1110,33 @@ async function buildChatPanchangFacts(lat: number, lon: number): Promise<string[
 }
 
 /**
- * Next solar/lunar eclipse (grahan) dates for chat grounding. Global sky
- * events, not location-specific — unlike `buildChatPanchangFacts` above this
- * is NOT gated on the profile having a birth place, so users without one
- * still get an answer to "when is the next eclipse". Best-effort: swisseph
- * failing must never break the chat reply.
+ * Next solar/lunar eclipse (grahan) dates for chat grounding. NOT gated on
+ * the profile having a birth place — users without one still get the global
+ * dates. When a birth place IS on file, also resolves whether that specific
+ * eclipse is actually visible from there (swisseph's location-aware search,
+ * not just "an eclipse is happening somewhere on Earth"), so chat can answer
+ * "will it affect me" directly instead of hedging every time. Best-effort:
+ * swisseph failing must never break the chat reply.
  */
-async function buildChatEclipseFacts(): Promise<string[]> {
+async function buildChatEclipseFacts(lat?: number, lon?: number): Promise<string[]> {
   const { solar, lunar } = await nextEclipses();
   const fmt = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+  const local = lat != null && lon != null ? await localEclipses(lat, lon).catch(() => null) : null;
+
+  const describe = (label: string, globalDate: Date, localDate: Date | undefined): string => {
+    if (!localDate) {
+      return `Next ${label}: ${fmt(globalDate)} — a global sky event, not necessarily visible from every location.`;
+    }
+    if (fmt(localDate) === fmt(globalDate)) {
+      return `Next ${label}: ${fmt(globalDate)} — this one IS visible from the user's location, so it does affect them.`;
+    }
+    return `Next ${label} anywhere is ${fmt(globalDate)}, but it is NOT visible from the user's location so it does not affect them there; the next one visible from their location is ${fmt(localDate)}.`;
+  };
+
   return [
-    `Next solar eclipse (Surya Grahan): ${fmt(solar)} — a global sky event, not necessarily visible from every location.`,
-    `Next lunar eclipse (Chandra Grahan): ${fmt(lunar)} — a global sky event, not necessarily visible from every location.`,
+    describe('solar eclipse (Surya Grahan)', solar, local?.solar),
+    describe('lunar eclipse (Chandra Grahan)', lunar, local?.lunar),
   ];
 }
 
@@ -1568,9 +1583,10 @@ export async function* chatStream(
       ? await buildChatPanchangFacts(place.lat, place.lon).catch(() => [])
       : [];
 
-  // Next eclipse dates — a global sky event, so unlike panchangFacts above
-  // this is NOT gated on a birth place being on file.
-  const eclipseFacts = await buildChatEclipseFacts().catch(() => []);
+  // Next eclipse dates — NOT gated on a birth place being on file (unlike
+  // panchangFacts above), but uses one when present to resolve local
+  // visibility too.
+  const eclipseFacts = await buildChatEclipseFacts(place?.lat, place?.lon).catch(() => []);
 
   // The annual (Varshphal) chart for the year currently running, cast at the
   // birth location — same best-effort contract as the Panchang facts above.

@@ -73,6 +73,112 @@ async function eclipseMaxJd(cFunctionName: string, tjdStart: number): Promise<nu
   }
 }
 
+/**
+ * Same malloc/ccall/free shape as `eclipseMaxJd` above, but for the
+ * location-aware `swe_sol_eclipse_when_loc` / `swe_lun_eclipse_when_loc` —
+ * the next eclipse of that kind actually visible from (latitude, longitude),
+ * not just anywhere on Earth. Their JS wrapper
+ * (node_modules/swisseph-wasm/src/swisseph.js) has the same bug class
+ * documented in this file's header: the real C signature is
+ *   swe_sol/lun_eclipse_when_loc(tjd_start, ifl, geopos[3], tret[10],
+ *                                 attr[20], backward, serr)
+ * — 7 params, 4 of them pointers (geopos, tret, attr, serr) — but the
+ * wrapper passes longitude/latitude/altitude as three bare numbers instead
+ * of a geopos array and provides only one output pointer, so every
+ * downstream pointer arg lands misaligned. Bypassing it the same way.
+ */
+async function eclipseMaxJdLoc(
+  cFunctionName: string,
+  tjdStart: number,
+  latitude: number,
+  longitude: number,
+): Promise<number | null> {
+  const swe = await getSwe();
+  const M = swe.SweModule;
+
+  const geoposPtr = M._malloc(3 * 8);
+  const tretPtr = M._malloc(10 * 8);
+  const attrPtr = M._malloc(20 * 8);
+  const serrPtr = M._malloc(256);
+  try {
+    M.HEAPF64[(geoposPtr >> 3) + 0] = longitude;
+    M.HEAPF64[(geoposPtr >> 3) + 1] = latitude;
+    M.HEAPF64[(geoposPtr >> 3) + 2] = 0; // altitude — sea level is close enough for "is it visible at all"
+
+    const retFlag = M.ccall(
+      cFunctionName,
+      'number',
+      ['number', 'number', 'pointer', 'pointer', 'pointer', 'number', 'pointer'],
+      [tjdStart, SEFLG_SWIEPH, geoposPtr, tretPtr, attrPtr, SEARCH_FORWARD, serrPtr],
+    );
+    if (retFlag < 0) return null;
+    return M.HEAPF64[tretPtr >> 3];
+  } finally {
+    M._free(geoposPtr);
+    M._free(tretPtr);
+    M._free(attrPtr);
+    M._free(serrPtr);
+  }
+}
+
+export interface LocalEclipses {
+  /** UTC instant of the next solar eclipse actually visible from this location. */
+  solar: Date;
+  /** UTC instant of the next lunar eclipse actually visible from this location. */
+  lunar: Date;
+}
+
+async function computeLocalEclipses(latitude: number, longitude: number): Promise<LocalEclipses> {
+  const now = new Date();
+  const startJd = await dateToJulianDay(
+    now.getUTCFullYear(),
+    now.getUTCMonth() + 1,
+    now.getUTCDate(),
+    now.getUTCHours(),
+    now.getUTCMinutes(),
+    0,
+  );
+
+  const [solarJd, lunarJd] = await Promise.all([
+    eclipseMaxJdLoc('swe_sol_eclipse_when_loc', startJd, latitude, longitude),
+    eclipseMaxJdLoc('swe_lun_eclipse_when_loc', startJd, latitude, longitude),
+  ]);
+
+  if (solarJd == null || lunarJd == null) {
+    throw new Error('swisseph local eclipse search returned no result');
+  }
+
+  return { solar: jdToDate(solarJd), lunar: jdToDate(lunarJd) };
+}
+
+/**
+ * One entry per rounded location (~11km — eclipse visibility bands are
+ * hundreds of km wide, so this loses no meaningful precision while letting
+ * every user in the same city share a cache entry), refreshed once per IST
+ * day. Bounded by the number of distinct cities in use, not by call volume.
+ */
+const localCache = new Map<string, { day: string; value: Promise<LocalEclipses> }>();
+
+/**
+ * The next solar and next lunar eclipse actually visible from
+ * (latitude, longitude) — unlike `nextEclipses` above, which is the next
+ * eclipse anywhere on Earth. Same not-cached-on-failure contract: a
+ * transient swisseph error doesn't poison the cache for the rest of the day.
+ */
+export function localEclipses(latitude: number, longitude: number): Promise<LocalEclipses> {
+  const day = todayIstKey();
+  const key = `${latitude.toFixed(1)},${longitude.toFixed(1)}`;
+  const cached = localCache.get(key);
+  if (cached && cached.day === day) return cached.value;
+
+  const value = computeLocalEclipses(latitude, longitude).catch((err) => {
+    if (localCache.get(key)?.value === value) localCache.delete(key);
+    throw err;
+  });
+  localCache.set(key, { day, value });
+  return value;
+}
+
 async function computeNextEclipses(): Promise<NextEclipses> {
   const now = new Date();
   const startJd = await dateToJulianDay(
