@@ -943,8 +943,8 @@ astroRouter.openapi(remediesRoute, async (c) => {
         }
       : undefined;
 
-  const remedies = await astroService.getRemedies(birthData);
-  return c.json({ remedies }, 200);
+  const { remedies, debts, annual } = await astroService.getRemedies(birthData);
+  return c.json({ remedies, debts, annual }, 200);
 });
 
 /* -------------------------------------------------------------------------- */

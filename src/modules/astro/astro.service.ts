@@ -20,6 +20,15 @@ import {
   getLalKitabRemedies,
   extractActions,
 } from '../../lib/astro-engine/index.js';
+import {
+  buildKarmicProfile,
+  type KarmicProfile,
+} from '../../lib/astro-engine/lalkitab/karmicProfile.js';
+import {
+  computeAnnualRotation,
+  completedYearsOfAge,
+  type AnnualRotation,
+} from '../../lib/astro-engine/lalkitab/annualRotation.js';
 import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
 import { nextEclipses } from '../../lib/astro-engine/panchang/eclipse.js';
 import { SIGNS } from '../../lib/astro-tools/index.js';
@@ -697,17 +706,6 @@ async function getCachedForecastTranslation<T>(
 /* Remedies                                                                    */
 /* -------------------------------------------------------------------------- */
 
-/** Planets considered weak when debilitated or in enemy signs. */
-const DEBILITATION_SIGNS: Record<string, string> = {
-  Sun: 'Libra',
-  Moon: 'Scorpio',
-  Mars: 'Cancer',
-  Mercury: 'Pisces',
-  Jupiter: 'Capricorn',
-  Venus: 'Virgo',
-  Saturn: 'Aries',
-};
-
 /** General remedies served when no chart data is available. */
 const GENERAL_REMEDIES = [
   {
@@ -816,6 +814,45 @@ export interface RemedyItem {
    * below rather than duplicated across GENERAL_REMEDIES / PLANET_REMEDIES /
    * the Lal Kitab branch, so every RemedyItem this function returns gets one. */
   actions?: string[];
+
+  /* ---- Detailed Lal Kitab fields, present only on the per-planet entries ----
+   * The free /remedies page renders a full report (every placement explained
+   * in both technical and plain terms), not a 3-card summary, so the whole
+   * lookup result is returned rather than the first two strings of it. These
+   * stay optional because GENERAL_REMEDIES / PLANET_REMEDIES fallback entries
+   * have no chart behind them. */
+
+  /** The full Lal Kitab remedy list for this placement — `remedy` above is
+   * just these joined, kept for older clients and as the actions source. */
+  remedies?: string[];
+  /** Totke: the folk/practical rituals paired with the remedies. Previously
+   * computed and then discarded entirely. */
+  totke?: string[];
+  /** Ascendant-based natal house — what the remedy lookup is keyed on. */
+  natalHouse?: number;
+  /** Lal Kitab's own fixed-house number for this planet (Aries is always the
+   * 1st house, per createLalKitabChart). Deliberately reported alongside
+   * natalHouse rather than instead of it: the two systems genuinely disagree,
+   * and the page shows both rather than silently picking one. */
+  lalKitabHouse?: number;
+  /** This planet's permanent house in Lal Kitab. */
+  pakkaGhar?: number;
+  isInPakkaGhar?: boolean;
+  /** Engine prose for the displacement from Pakka Ghar (kendra/trikona/dusthana). */
+  displacement?: string;
+  blindness?: 'blind' | 'half-blind';
+  /** Engine prose explaining the blindness. */
+  blindReason?: string;
+}
+
+export interface RemediesResult {
+  remedies: RemedyItem[];
+  /** Ancestral/karmic debts actually present in this chart (never the full 8). */
+  debts: KarmicProfile['presentDebts'];
+  /** This year of life under Lal Kitab's deterministic house rotation. Null
+   * when there is no chart to rotate. Recomputed on every request rather than
+   * cached — it changes on the reader's birthday. */
+  annual: AnnualRotation | null;
 }
 
 /** Tag every remedy's prose with action slugs in one place — see the
@@ -824,17 +861,57 @@ function withActions(items: RemedyItem[]): RemedyItem[] {
   return items.map((item) => ({ ...item, actions: extractActions(item.remedy) }));
 }
 
+const CLASSICAL_NINE: Planet[] = [
+  'Sun',
+  'Moon',
+  'Mars',
+  'Mercury',
+  'Jupiter',
+  'Venus',
+  'Saturn',
+  'Rahu',
+  'Ketu',
+];
+
+const EMPTY_KARMIC_PROFILE: KarmicProfile = {
+  presentDebts: [],
+  pakkaGharPlacements: [],
+  blindPlanets: [],
+};
+
 /**
- * Get remedies. If birth data is provided, compute the natal chart, identify
- * debilitated / weak planets, and return Lal Kitab remedies specific to each
- * weak planet's ACTUAL natal house (getLalKitabRemedies, planet x house — a
- * 1,494-line, 108-combination database that existed with no caller anywhere
- * in the codebase until this wiring). Falls back to the older single-remedy-
- * per-planet PLANET_REMEDIES table only if the Lal Kitab lookup comes back
- * empty (should not happen for any real 1-12 house, but the natal chart's
- * house-assignment step is best-effort elsewhere in this codebase, so this
- * stays defensive rather than assuming it always succeeds).
- * Otherwise return general remedies.
+ * Karmic profile (debts + Pakka Ghar + blind planets) that degrades to empty
+ * instead of throwing, matching safeKarmicProfile in astro-engine/reports/
+ * remedies.ts — an older or malformed chart shape must not take down a page
+ * whose remaining sections render fine without it.
+ */
+function safeKarmicProfile(chart: Record<string, unknown> | undefined): KarmicProfile {
+  if (!chart || !Array.isArray(chart.planets) || !Array.isArray(chart.houses)) {
+    return EMPTY_KARMIC_PROFILE;
+  }
+  try {
+    return buildKarmicProfile(chart as never);
+  } catch {
+    return EMPTY_KARMIC_PROFILE;
+  }
+}
+
+/**
+ * Get remedies. Without birth data, the general list. With it, a full Lal
+ * Kitab reading of the chart: every one of the nine classical planets in its
+ * natal house, plus the karmic debts (Rin), Pakka Ghar placements and blind
+ * planets that give each placement its technical explanation.
+ *
+ * This deliberately covers ALL nine planets, not only debilitated/retrograde
+ * ones. Lal Kitab prescribes a remedy per placement rather than only for
+ * afflicted planets, and the old weak-planets-only filter is what limited the
+ * page to three or four cards. The whole lookup result is returned too — the
+ * previous `.slice(0, 2).join(' Also: ')` dropped a third remedy and four
+ * totke per planet, and produced the stray "Also:" that showed up in the UI.
+ *
+ * PLANET_REMEDIES remains the fallback for a planet whose Lal Kitab lookup
+ * comes back empty; house assignment is best-effort elsewhere in this
+ * codebase, so that stays defensive rather than assuming it always succeeds.
  */
 export async function getRemedies(birthData?: {
   date: string;
@@ -842,9 +919,9 @@ export async function getRemedies(birthData?: {
   latitude: number;
   longitude: number;
   timezone: string;
-}): Promise<RemedyItem[]> {
+}): Promise<RemediesResult> {
   if (!birthData) {
-    return withActions(GENERAL_REMEDIES);
+    return { remedies: withActions(GENERAL_REMEDIES), debts: [], annual: null };
   }
 
   try {
@@ -853,60 +930,88 @@ export async function getRemedies(birthData?: {
     // assignment — that only happens inside calculateChart's
     // assignPlanetsToHouses step, so house-specific remedies must read
     // met.chart.planets, not met.planets.
-    const chartPlanets =
-      ((met.chart as Record<string, unknown> | undefined)?.planets as
-        | Array<Record<string, unknown>>
-        | undefined) ?? [];
+    const chart = met.chart as Record<string, unknown> | undefined;
+    const chartPlanets = (chart?.planets as Array<Record<string, unknown>> | undefined) ?? [];
 
-    // Identify weak planets: debilitated or retrograde
-    const weakPlanets: Array<{ name: string; house: number }> = [];
+    // Keyed in CLASSICAL_NINE order so the annual rotation's dignity ties
+    // resolve deterministically (see computeAnnualRotation's doc comment).
+    const natalHouseOf = new Map<Planet, number>();
+    const houseByName = new Map<string, number>();
     for (const p of chartPlanets) {
-      const name = p.planet as string;
-      const sign = p.sign as string;
       const house = p.house as number | undefined;
-      const isRetrograde = p.isRetrograde as boolean | undefined;
+      if (typeof house === 'number') houseByName.set(p.planet as string, house);
+    }
+    for (const name of CLASSICAL_NINE) {
+      const house = houseByName.get(name);
+      if (house !== undefined) natalHouseOf.set(name, house);
+    }
+
+    if (natalHouseOf.size === 0) {
+      return { remedies: withActions(GENERAL_REMEDIES), debts: [], annual: null };
+    }
+
+    // Pakka Ghar / blindness are computed on Lal Kitab's OWN fixed-house
+    // chart (Aries is always the 1st house), while the remedy lookup above is
+    // keyed on the ascendant-based natal house. Both numbers are surfaced per
+    // planet rather than reconciled here — see RemedyItem.lalKitabHouse.
+    const profile = safeKarmicProfile(chart);
+    const pakkaGharOf = new Map(profile.pakkaGharPlacements.map((p) => [p.planet as string, p]));
+    const blindOf = new Map(profile.blindPlanets.map((p) => [p.planet as string, p]));
+
+    const remedies: RemedyItem[] = [];
+    for (const name of CLASSICAL_NINE) {
+      const house = natalHouseOf.get(name);
       if (house === undefined) continue;
 
-      if (DEBILITATION_SIGNS[name] && sign === DEBILITATION_SIGNS[name]) {
-        weakPlanets.push({ name, house });
-      } else if (isRetrograde && name !== 'Rahu' && name !== 'Ketu') {
-        // Retrograde planets (excluding always-retrograde nodes) need attention
-        weakPlanets.push({ name, house });
+      const lalKitab = getLalKitabRemedies(name, house);
+      if (lalKitab.remedies.length === 0) {
+        remedies.push(
+          PLANET_REMEDIES[name]
+            ? { planet: name, ...PLANET_REMEDIES[name] }
+            : { planet: name, title: `Strengthen ${name}`, icon: 'sparkles', remedy: '' },
+        );
+        continue;
       }
+
+      const pakka = pakkaGharOf.get(name);
+      const blind = blindOf.get(name);
+
+      remedies.push({
+        planet: name,
+        title: `${name} in your ${house}${houseOrdinalSuffix(house)} house`,
+        icon: PLANET_REMEDIES[name]?.icon ?? 'sparkles',
+        // Every remedy string, so extractActions below tags all of them for
+        // the image library instead of only the first two.
+        remedy: lalKitab.remedies.join(' '),
+        remedies: lalKitab.remedies,
+        totke: lalKitab.totke,
+        natalHouse: house,
+        ...(pakka && {
+          lalKitabHouse: pakka.currentHouse,
+          pakkaGhar: pakka.pakkaGhar,
+          isInPakkaGhar: pakka.isInPakkaGhar,
+          displacement: pakka.effect,
+        }),
+        ...(blind && {
+          blindness: blind.isBlind ? ('blind' as const) : ('half-blind' as const),
+          blindReason: blind.reason,
+        }),
+      });
     }
 
-    if (weakPlanets.length === 0) {
-      // No weak planets found — return general remedies
-      return withActions(GENERAL_REMEDIES);
+    if (remedies.length === 0) {
+      return { remedies: withActions(GENERAL_REMEDIES), debts: [], annual: null };
     }
 
-    // Lal Kitab remedy per weak planet's actual natal house, falling back to
-    // the generic per-planet remedy only if the lookup is unexpectedly empty.
-    const remedies: RemedyItem[] = weakPlanets.map(({ name, house }) => {
-      const lalKitab = getLalKitabRemedies(name as Planet, house);
-      if (lalKitab.remedies.length > 0) {
-        return {
-          planet: name,
-          title: `${name} in your ${house}${houseOrdinalSuffix(house)} house`,
-          icon: PLANET_REMEDIES[name]?.icon ?? 'sparkles',
-          remedy: lalKitab.remedies.slice(0, 2).join(' Also: '),
-        };
-      }
-      return PLANET_REMEDIES[name]
-        ? { planet: name, ...PLANET_REMEDIES[name] }
-        : { planet: name, title: `Strengthen ${name}`, icon: 'sparkles', remedy: '' };
-    });
+    const annual = computeAnnualRotation(
+      natalHouseOf,
+      completedYearsOfAge(birthData.date, new Date()),
+    );
 
-    // Pad with general remedies if we have fewer than 3 planet-specific ones
-    if (remedies.length < 3) {
-      const remaining = GENERAL_REMEDIES.slice(0, 3 - remedies.length);
-      remedies.push(...remaining);
-    }
-
-    return withActions(remedies);
+    return { remedies: withActions(remedies), debts: profile.presentDebts, annual };
   } catch {
     // If chart computation fails, fall back to general remedies
-    return withActions(GENERAL_REMEDIES);
+    return { remedies: withActions(GENERAL_REMEDIES), debts: [], annual: null };
   }
 }
 

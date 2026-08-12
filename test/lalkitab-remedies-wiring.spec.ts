@@ -43,7 +43,7 @@ describe('getLalKitabRemedies: exhaustive coverage (Phase 4 wiring)', () => {
 
 describe('getRemedies: end-to-end wiring into the natal chart (Phase 4)', () => {
   it('returns a well-formed remedy list for a real birth date', async () => {
-    const remedies = await getRemedies({
+    const { remedies } = await getRemedies({
       date: '1985-03-12',
       time: '04:32',
       latitude: 19.076,
@@ -60,17 +60,50 @@ describe('getRemedies: end-to-end wiring into the natal chart (Phase 4)', () => 
     }
   }, 20_000);
 
+  it('covers all nine classical planets, not only the debilitated/retrograde ones', async () => {
+    // The old weak-planets-only filter returned 2-4 cards for a typical
+    // chart. Lal Kitab prescribes per placement, so every planet must appear.
+    const { remedies } = await getRemedies({
+      date: '1985-03-12',
+      time: '04:32',
+      latitude: 19.076,
+      longitude: 72.8777,
+      timezone: '5.5',
+    });
+
+    expect(remedies.map((r) => r.planet).sort()).toEqual([...NINE_PLANETS].sort());
+  }, 20_000);
+
+  it('returns the FULL remedy and totka lists, never a two-item "Also:" summary', async () => {
+    const { remedies } = await getRemedies({
+      date: '1985-03-12',
+      time: '04:32',
+      latitude: 19.076,
+      longitude: 72.8777,
+      timezone: '5.5',
+    });
+
+    for (const r of remedies) {
+      if (r.natalHouse === undefined) continue; // general/fallback entry
+      const expected = getLalKitabRemedies(r.planet as Planet, r.natalHouse);
+      expect(r.remedies).toEqual(expected.remedies);
+      expect(r.totke).toEqual(expected.totke);
+      expect(r.totke?.length).toBeGreaterThan(0);
+    }
+
+    // The stray "Also:" the old join produced must not survive anywhere.
+    expect(JSON.stringify(remedies)).not.toContain(' Also: ');
+  }, 20_000);
+
   it('falls back to general remedies when no birth data is provided', async () => {
-    const remedies = await getRemedies(undefined);
+    const { remedies, debts } = await getRemedies(undefined);
     expect(remedies.length).toBeGreaterThan(0);
     expect(remedies.every((r) => r.planet === 'General')).toBe(true);
+    expect(debts).toEqual([]);
   });
 
-  it('a planet-specific remedy (title mentions "house") actually matches getLalKitabRemedies for that planet+house', async () => {
-    // A birth date chosen for a chart likely to have at least one
-    // debilitated/retrograde planet -- if this particular date doesn't, the
-    // test still passes vacuously (see the loop below), so it isn't flaky.
-    const remedies = await getRemedies({
+  it('returns only karmic debts that are actually present', async () => {
+    const { debts } = await getRemedies({
       date: '1990-06-15',
       time: '10:00',
       latitude: 28.6139,
@@ -78,13 +111,11 @@ describe('getRemedies: end-to-end wiring into the natal chart (Phase 4)', () => 
       timezone: '5.5',
     });
 
-    for (const r of remedies) {
-      const match = /^(\w+) in your (\d+)(st|nd|rd|th) house$/.exec(r.title);
-      if (!match) continue; // general/fallback remedy, not a Lal Kitab one
-      const planet = match[1] as Planet;
-      const house = Number(match[2]);
-      const expected = getLalKitabRemedies(planet, house);
-      expect(r.remedy).toBe(expected.remedies.slice(0, 2).join(' Also: '));
+    expect(Array.isArray(debts)).toBe(true);
+    expect(debts.length).toBeLessThanOrEqual(8);
+    for (const d of debts) {
+      expect(d.present).toBe(true);
+      expect(d.remedies.length).toBeGreaterThan(0);
     }
   }, 20_000);
 });

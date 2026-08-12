@@ -246,11 +246,64 @@ export const RemedyItemSchema = z
       .array(z.string())
       .optional()
       .openapi({ example: ['dog', 'sweet_chapati', 'honey'] }),
+
+    // Detailed Lal Kitab fields — present on the per-planet entries, absent on
+    // the general/fallback ones (which have no chart behind them). See
+    // RemedyItem in astro.service.ts for what each means.
+    remedies: z.array(z.string()).optional(),
+    totke: z.array(z.string()).optional(),
+    natalHouse: z.number().int().min(1).max(12).optional(),
+    /** Lal Kitab's fixed-house number (Aries = 1st), which legitimately
+     * differs from the ascendant-based natalHouse. Both are returned. */
+    lalKitabHouse: z.number().int().min(1).max(12).optional(),
+    pakkaGhar: z.number().int().min(1).max(12).optional(),
+    isInPakkaGhar: z.boolean().optional(),
+    displacement: z.string().optional(),
+    blindness: z.enum(['blind', 'half-blind']).optional(),
+    blindReason: z.string().optional(),
   })
   .openapi('RemedyItem');
 
+export const LalKitabDebtSchema = z
+  .object({
+    type: z.string().openapi({ example: 'Pitra Rin' }),
+    indicators: z.array(z.string()),
+    remedies: z.array(z.string()),
+  })
+  .openapi('LalKitabDebt');
+
+/** Lal Kitab's annual house rotation — see lalkitab/annualRotation.ts. This
+ * is the arithmetic year chart (immune to birth-time error), not the Tajika
+ * solar return in astro-engine/varshphal/. */
+export const AnnualRotationSchema = z
+  .object({
+    age: z.number().int().min(0),
+    muntha: z.number().int().min(1).max(12),
+    planets: z.array(
+      z.object({
+        planet: z.string(),
+        natalHouse: z.number().int().min(1).max(12),
+        annualHouse: z.number().int().min(1).max(12),
+        dignityDelta: z.number().int(),
+        remedies: z.array(z.string()),
+        totke: z.array(z.string()),
+      }),
+    ),
+    /** The year's benefactor; null when no planet gains dignity. */
+    kismatKaGrah: z.string().nullable(),
+    /** Where the year's turbulence comes from; null when no planet loses any. */
+    dhokheKaGrah: z.string().nullable(),
+  })
+  .openapi('AnnualRotation');
+
 export const RemediesResponseSchema = z
-  .object({ remedies: z.array(RemedyItemSchema) })
+  .object({
+    remedies: z.array(RemedyItemSchema),
+    /** Only the debts actually present in this chart — never all eight. */
+    debts: z.array(LalKitabDebtSchema),
+    /** Null when there is no chart to rotate. */
+    annual: AnnualRotationSchema.nullable(),
+  })
   .openapi('RemediesResponse');
 
 export type RemediesResponse = z.infer<typeof RemediesResponseSchema>;

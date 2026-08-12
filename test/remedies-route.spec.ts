@@ -46,17 +46,42 @@ vi.mock('../src/modules/astro/astro.service.js', async () => {
 
 const { createApp } = await import('../src/app.js');
 
-const PLANET_SPECIFIC_REMEDIES = [
-  { planet: 'Saturn', title: 'Pacify Saturn', icon: 'shield', remedy: 'Donate black sesame.' },
-];
-const GENERAL_REMEDIES = [
-  {
-    planet: 'General',
-    title: 'General Wellbeing',
-    icon: 'sparkles',
-    remedy: 'Practice gratitude.',
-  },
-];
+// getRemedies returns { remedies, debts } — the karmic debts (Rin) travel
+// alongside the per-planet list so the page can render them as their own
+// section. Debts are only ever present ones, so the general/chartless path
+// carries an empty array.
+const PLANET_SPECIFIC_RESULT = {
+  remedies: [
+    {
+      planet: 'Saturn',
+      title: 'Saturn in your 8th house',
+      icon: 'shield',
+      remedy: 'Donate black sesame.',
+      remedies: ['Donate black sesame.'],
+      totke: ['Float a coconut in a river on Saturdays'],
+      natalHouse: 8,
+    },
+  ],
+  debts: [
+    {
+      type: 'Pitra Rin',
+      present: true,
+      indicators: ['Sun afflicted'],
+      remedies: ['Feed 100 cows'],
+    },
+  ],
+};
+const GENERAL_RESULT = {
+  remedies: [
+    {
+      planet: 'General',
+      title: 'General Wellbeing',
+      icon: 'sparkles',
+      remedy: 'Practice gratitude.',
+    },
+  ],
+  debts: [],
+};
 
 async function callRemedies() {
   const app = createApp();
@@ -102,13 +127,13 @@ describe('GET /v1/remedies', () => {
         placeOfBirth: { name: 'Delhi, India', lat: 28.6139, lon: 77.209, tz: 'Asia/Kolkata' },
       }),
     );
-    state.getRemedies.mockResolvedValue(PLANET_SPECIFIC_REMEDIES);
+    state.getRemedies.mockResolvedValue(PLANET_SPECIFIC_RESULT);
 
     const res = await callRemedies();
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { remedies: unknown[] };
-    expect(body).toEqual({ remedies: PLANET_SPECIFIC_REMEDIES });
+    const body = (await res.json()) as { remedies: unknown[]; debts: unknown[] };
+    expect(body).toEqual(PLANET_SPECIFIC_RESULT);
     expect(state.getRemedies).toHaveBeenCalledWith({
       date: '1990-05-15',
       time: '14:30',
@@ -129,13 +154,13 @@ describe('GET /v1/remedies', () => {
         placeOfBirth: null,
       }),
     );
-    state.getRemedies.mockResolvedValue(GENERAL_REMEDIES);
+    state.getRemedies.mockResolvedValue(GENERAL_RESULT);
 
     const res = await callRemedies();
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { remedies: unknown[] };
-    expect(body).toEqual({ remedies: GENERAL_REMEDIES });
+    const body = (await res.json()) as { remedies: unknown[]; debts: unknown[] };
+    expect(body).toEqual(GENERAL_RESULT);
     expect(state.getRemedies).toHaveBeenCalledWith(undefined);
   });
 
@@ -150,7 +175,7 @@ describe('GET /v1/remedies', () => {
         placeOfBirth: null,
       }),
     );
-    state.getRemedies.mockResolvedValue(GENERAL_REMEDIES);
+    state.getRemedies.mockResolvedValue(GENERAL_RESULT);
 
     const res = await callRemedies();
 
@@ -173,7 +198,7 @@ describe('GET /v1/remedies', () => {
         placeOfBirth: { name: 'Delhi, India', lat: 28.6139, lon: 77.209 } as PlaceOfBirth,
       }),
     );
-    state.getRemedies.mockResolvedValue(GENERAL_REMEDIES);
+    state.getRemedies.mockResolvedValue(GENERAL_RESULT);
 
     const res = await callRemedies();
 
@@ -196,7 +221,7 @@ describe('GET /v1/remedies', () => {
         } as PlaceOfBirth,
       }),
     );
-    state.getRemedies.mockResolvedValue(GENERAL_REMEDIES);
+    state.getRemedies.mockResolvedValue(GENERAL_RESULT);
 
     const res = await callRemedies();
 
