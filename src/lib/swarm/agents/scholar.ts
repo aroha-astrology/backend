@@ -20,7 +20,7 @@ import type { SwarmState } from '../state.js';
 // is built fresh per request from the user's stored kundli.
 // =============================================================================
 
-const GROUNDING_INSTRUCTION = `You must base every specific claim only on the chart data provided below. Do not invent planetary positions, dates, or Yogas not present in this data. If the data doesn't support a specific answer to the user's question, say so honestly and offer the closest supported insight instead of fabricating specificity.`;
+const GROUNDING_INSTRUCTION = `You must base every specific claim only on the chart data provided below. Do not invent planetary positions, dates, or Yogas not present in this data. If the data doesn't support a specific answer to the user's question, say so honestly and offer the closest supported insight instead of fabricating specificity. Dated sky events (e.g. the next solar/lunar eclipse) supplied in the context block below are computed facts, not chart data — you may cite them directly the same way.`;
 
 /**
  * GROUNDING_INSTRUCTION says the MODEL must not invent chart facts; this covers the sibling case
@@ -393,6 +393,15 @@ Pets & companion animals:
   user, not a specific breed. Keep it warm and a little playful — this is a fun question, not a heavy
   one — and be upfront that it's a temperament match, not a prediction.
 
+Sky events & Vedic lore:
+- Eclipses (Surya Grahan, Chandra Grahan), the nine grahas and luminaries, planetary deities, and
+  the mythology behind astrological concepts (why Rahu Kaal is named for Rahu, why Saturn/Shani is
+  feared, who Surya Dev or Chandra Dev is) are a normal, welcome part of what a Vedic astrologer
+  answers — do not deflect these as off-topic or "scientific" trivia. Answer from the Vedic
+  tradition (grahan snan, daan, and precautions during an eclipse; the deity behind a graha; the
+  story behind a yoga's name), in your own voice, not as an astronomy lecture. When a dated sky
+  event (e.g. the next eclipse) is supplied in the context block below, cite it directly.
+
 Off-topic questions:
 - If the user asks something with no genuine connection to astrology, their birth chart, or life
   guidance astrology can speak to — general trivia, coding/tech help, math problems, writing
@@ -400,7 +409,7 @@ Off-topic questions:
   the underlying question, even partially, and do not add disclaimers around a partial answer.
   Say in one short, warm sentence that this is outside what you can help with as their astrologer,
   and invite them to ask something about their chart or life guidance instead. Then stop — do not
-  explain the app or lecture them about scope.`;
+  explain the app or lecture them about scope. Sky events and Vedic lore (above) are NOT off-topic.`;
 
 /**
  * IST, not UTC — the production incident this responds to serves Indian
@@ -579,7 +588,7 @@ function clip(s: string, max = MAX_CONTEXT_CHARS): string {
  */
 const TOPIC_GATE_PROMPT = `You are a triage step in front of a Vedic astrology chat assistant.
 
-Decide whether the user's latest message has a genuine connection to astrology, their birth chart, planetary influences, or the kind of life guidance (career, love, marriage, health, education, family, finance, timing, remedies, friendships, relocation/moving, pets) a Vedic astrologer would address — including natural follow-ups within an ongoing astrology conversation (recent turns are provided below for that context). When in doubt, treat it as related; do not be over-eager to reject borderline questions.
+Decide whether the user's latest message has a genuine connection to astrology, their birth chart, planetary influences, or the kind of life guidance (career, love, marriage, health, education, family, finance, timing, remedies, friendships, relocation/moving, pets) a Vedic astrologer would address — including eclipses/grahan, the nine grahas and luminaries, planetary deities and their mythology, festivals, and Panchang — and including natural follow-ups within an ongoing astrology conversation (recent turns are provided below for that context). When in doubt, treat it as related; do not be over-eager to reject borderline questions.
 
 If it is NOT related — general knowledge trivia, coding/tech help, math problems, writing/content requests unrelated to astrology, or asking the assistant to act as a different kind of assistant — write one short, warm sentence, in the SAME language the user's latest message is written in, telling them this is outside what you can help with as their astrologer, and inviting them to ask about their chart or life guidance instead. Do not mention being an AI. Do not answer their actual question even partially.
 

@@ -115,6 +115,22 @@ describe('scholar single-astrologer system prompt', () => {
     expect(content).toMatch(/authoritative source for the user'?s own placements/);
     expect(content).toMatch(/do not silently agree|never silently adopt/);
   });
+
+  it('explicitly allows eclipse/grahan, graha, and deity/mythology questions instead of deflecting them as off-topic trivia', () => {
+    // Regression pin for the 2026-08-12 bug: "when is next solar eclipse" got the
+    // death-policy refusal because nothing in the prompt granted permission to
+    // answer sky-event/lore questions, so the model routed them into the "off-topic
+    // trivia" deflection. This asserts the carve-out exists and is NOT off-topic.
+    const content = systemContent().toLowerCase();
+    expect(content).toMatch(/eclipse|grahan/);
+    expect(content).toMatch(/deit(y|ies)/);
+    expect(content).toMatch(/not off-topic|are not off-topic/);
+  });
+
+  it('cites dated sky-event grounding facts (e.g. the next eclipse) the same way it cites chart data', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toMatch(/dated sky events?/);
+  });
 });
 
 describe('scholar chart-data fallback copy', () => {

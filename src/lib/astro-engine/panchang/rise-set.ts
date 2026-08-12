@@ -195,7 +195,7 @@ export interface SunTimes {
 }
 
 /** UT Julian day -> JS Date (UTC instant). 2440587.5 = the Unix epoch as a JD. */
-function jdToDate(jdUt: number): Date {
+export function jdToDate(jdUt: number): Date {
   return new Date((jdUt - 2440587.5) * 86_400_000);
 }
 

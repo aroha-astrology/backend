@@ -133,6 +133,14 @@ describe('classifyUserMessage — non-death astrology questions', () => {
     'My friend Ayush wants to know about his chart',
     'meri shaadi ki umar kya hai',
     'aaj ki tareekh kya hai',
+    // Regression pin for the 2026-08-12 bug: these got the death-policy
+    // "against the law" refusal even though none of the DEATH_PATTERNS match
+    // them — the real bug was in the LLM prompt (see scholar.spec.ts), but
+    // this pins the regex layer so a future pattern edit can't reclaim them.
+    'When is next solar eclipse',
+    'When is the next lunar eclipse',
+    'who is the god of the sun',
+    'what should I do during a grahan',
   ];
 
   for (const msg of cases) {
@@ -246,5 +254,11 @@ describe('POLICY_SYSTEM_DIRECTIVE', () => {
 
   it('includes the exact canned line', () => {
     expect(POLICY_SYSTEM_DIRECTIVE).toContain("we can't share that. It's against the law");
+  });
+
+  it('explicitly allows eclipse/grahan and graha/deity questions — regression pin for the 2026-08-12 eclipse refusal bug', () => {
+    const lower = POLICY_SYSTEM_DIRECTIVE.toLowerCase();
+    expect(lower).toMatch(/eclipse|grahan/);
+    expect(lower).toMatch(/deit(y|ies)/);
   });
 });

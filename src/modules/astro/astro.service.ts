@@ -20,6 +20,7 @@ import {
   getLalKitabRemedies,
 } from '../../lib/astro-engine/index.js';
 import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
+import { nextEclipses } from '../../lib/astro-engine/panchang/eclipse.js';
 import { SIGNS } from '../../lib/astro-tools/index.js';
 import { findPredictionsDueForReview, recordPrediction } from './prediction-outcomes.repo.js';
 import { MODEL as MODEL_NAME } from '../../config/llm.js';
@@ -991,6 +992,22 @@ async function buildChatPanchangFacts(lat: number, lon: number): Promise<string[
   return facts;
 }
 
+/**
+ * Next solar/lunar eclipse (grahan) dates for chat grounding. Global sky
+ * events, not location-specific — unlike `buildChatPanchangFacts` above this
+ * is NOT gated on the profile having a birth place, so users without one
+ * still get an answer to "when is the next eclipse". Best-effort: swisseph
+ * failing must never break the chat reply.
+ */
+async function buildChatEclipseFacts(): Promise<string[]> {
+  const { solar, lunar } = await nextEclipses();
+  const fmt = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  return [
+    `Next solar eclipse (Surya Grahan): ${fmt(solar)} — a global sky event, not necessarily visible from every location.`,
+    `Next lunar eclipse (Chandra Grahan): ${fmt(lunar)} — a global sky event, not necessarily visible from every location.`,
+  ];
+}
+
 /** Narrows an `unknown` field pulled off a loosely-typed chart object to a
  * string, without `String(unknown)`'s "[object Object]" risk if the field
  * turns out not to be a string at runtime. */
@@ -1434,6 +1451,10 @@ export async function* chatStream(
       ? await buildChatPanchangFacts(place.lat, place.lon).catch(() => [])
       : [];
 
+  // Next eclipse dates — a global sky event, so unlike panchangFacts above
+  // this is NOT gated on a birth place being on file.
+  const eclipseFacts = await buildChatEclipseFacts().catch(() => []);
+
   // The annual (Varshphal) chart for the year currently running, cast at the
   // birth location — same best-effort contract as the Panchang facts above.
   const varshphalFacts =
@@ -1512,6 +1533,7 @@ export async function* chatStream(
     ...profileFacts,
     ...savedProfilesFacts,
     ...panchangFacts,
+    ...eclipseFacts,
     ...varshphalFacts,
     ...duePredictionFacts,
     ...secondChartFacts,
