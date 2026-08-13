@@ -79,6 +79,26 @@ export function createApp(): OpenAPIHono {
   // silently 401'd every request; this is the exact bug that comment warns
   // about, encountered for real rather than avoided by reading the warning.
   app.route('/v1', gitaRouter);
+  // Gita chant audio — 701 static MP3s (~57MB), too large for the frontend's
+  // public/ bundle the way the 50-mantra Shlokas set is. Served directly off
+  // EC2 disk rather than committed to git; @hono/node-server's serveStatic
+  // gives Range/206 support for free, which a plain readFileSync route
+  // (see palm.routes.ts's whole-file c.body() pattern) does not. Deployed
+  // out-of-band via scp — see scripts/deploy.sh's exclude list, this
+  // directory must never be rsync --delete'd away by a code deploy.
+  //
+  // Mounted HERE, immediately after gitaRouter and before usersRouter, for
+  // the exact same reason gitaRouter itself moved here — mounted at its
+  // original position (after palmRouter) it 401'd, having inherited
+  // birthProfilesRouter's leaked `.use('*', requireUser)` wildcard the same
+  // way the content route did. See the comment above gitaRouter's mount.
+  app.use(
+    '/v1/gita/audio/*',
+    serveStatic({
+      root: './data/gita-audio',
+      rewriteRequestPath: (path) => path.replace(/^\/v1\/gita\/audio/, ''),
+    }),
+  );
   app.route('/v1', usersRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', profilesRouter);
@@ -98,20 +118,6 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', palmRouter);
   app.route('/v1', voiceRouter);
 
-  // Gita chant audio — 701 static MP3s (~57MB), too large for the frontend's
-  // public/ bundle the way the 50-mantra Shlokas set is. Served directly off
-  // EC2 disk rather than committed to git; @hono/node-server's serveStatic
-  // gives Range/206 support for free, which a plain readFileSync route
-  // (see palm.routes.ts's whole-file c.body() pattern) does not. Deployed
-  // out-of-band via scp — see scripts/deploy.sh's exclude list, this
-  // directory must never be rsync --delete'd away by a code deploy.
-  app.use(
-    '/v1/gita/audio/*',
-    serveStatic({
-      root: './data/gita-audio',
-      rewriteRequestPath: (path) => path.replace(/^\/v1\/gita\/audio/, ''),
-    }),
-  );
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);
