@@ -69,6 +69,16 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', astroRouter);
   app.route('/v1', publicRouter);
   app.route('/v1', legalRouter);
+  // gitaRouter has NO auth on its GET /gita/verses route (same reasoning as
+  // publicRouter/legalRouter — free content, no unlock) and MUST stay mounted
+  // here, before any router that calls `.use('*', requireUser)` on itself.
+  // See admin.routes.ts's top-of-file comment: that wildcard, once merged via
+  // app.route(), leaks onto every router mounted after it at the same base
+  // path — birthProfilesRouter below is the first of many that do this.
+  // Moving gitaRouter after them (its original position, next to palmRouter)
+  // silently 401'd every request; this is the exact bug that comment warns
+  // about, encountered for real rather than avoided by reading the warning.
+  app.route('/v1', gitaRouter);
   app.route('/v1', usersRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', profilesRouter);
@@ -86,7 +96,6 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', gemstoneRouter);
   app.route('/v1', reportsRouter);
   app.route('/v1', palmRouter);
-  app.route('/v1', gitaRouter);
   app.route('/v1', voiceRouter);
 
   // Gita chant audio — 701 static MP3s (~57MB), too large for the frontend's
