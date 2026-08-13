@@ -7,6 +7,11 @@ coverage/
 # src/lib/palm/storage.ts, PALM_UPLOAD_DIR), never committed.
 /uploads/
 
+# Gita chant audio — 701 MP3s (~57MB), served from disk (see gita.routes.ts),
+# deployed via scp, never committed. data/gita-content.json (the small text
+# payload) is NOT excluded here and stays tracked.
+/data/gita-audio/
+
 .env
 .env.*
 !.env.example

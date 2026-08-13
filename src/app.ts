@@ -1,5 +1,6 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { compress } from 'hono/compress';
 import { bodyLimit } from 'hono/body-limit';
 import { authRouter } from './modules/auth/auth.routes.js';
@@ -24,6 +25,7 @@ import { vastuRouter } from './modules/vastu/vastu.routes.js';
 import { gemstoneRouter } from './modules/gemstone/gemstone.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
 import { palmRouter } from './modules/palm/palm.routes.js';
+import { gitaRouter } from './modules/gita/gita.routes.js';
 import { voiceRouter } from './modules/voice/voice.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
@@ -84,7 +86,23 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', gemstoneRouter);
   app.route('/v1', reportsRouter);
   app.route('/v1', palmRouter);
+  app.route('/v1', gitaRouter);
   app.route('/v1', voiceRouter);
+
+  // Gita chant audio — 701 static MP3s (~57MB), too large for the frontend's
+  // public/ bundle the way the 50-mantra Shlokas set is. Served directly off
+  // EC2 disk rather than committed to git; @hono/node-server's serveStatic
+  // gives Range/206 support for free, which a plain readFileSync route
+  // (see palm.routes.ts's whole-file c.body() pattern) does not. Deployed
+  // out-of-band via scp — see scripts/deploy.sh's exclude list, this
+  // directory must never be rsync --delete'd away by a code deploy.
+  app.use(
+    '/v1/gita/audio/*',
+    serveStatic({
+      root: './data/gita-audio',
+      rewriteRequestPath: (path) => path.replace(/^\/v1\/gita\/audio/, ''),
+    }),
+  );
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);

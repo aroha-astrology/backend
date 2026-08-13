@@ -34,10 +34,16 @@ echo "▶ Deploying ${REV}  →  ${HOST}:${REMOTE_DIR}"
 #                    breakage stays invisible until the next restart.
 #      .deployed-rev written by this script on the server; absent locally.
 #      .claude       local agent worktrees; large and irrelevant to the server.
+#      data/gita-audio  701 chant MP3s (~57MB), deployed once via scp, never
+#                    committed to git — see gita.routes.ts. Not present in
+#                    every local checkout, so leaving it unexcluded would wipe
+#                    it from the server on the next deploy from a checkout
+#                    that never had it locally.
 CHANGES="$(rsync -az --delete --itemize-changes \
   --exclude '.git' --exclude 'node_modules' --exclude 'dist' \
   --exclude 'secrets' --exclude '.env' \
   --exclude 'swarm/.venv' --exclude '.deployed-rev' --exclude '.claude' \
+  --exclude 'data/gita-audio' \
   -e "ssh -i \"$PEM\" -o StrictHostKeyChecking=accept-new" \
   "$LOCAL_DIR/" "$HOST:$REMOTE_DIR/")"
 

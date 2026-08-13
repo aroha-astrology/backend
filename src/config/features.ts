@@ -48,6 +48,14 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // one key hides the entry point, the other closes the page itself. Ships
   // dark per the standing rule.
   { key: 'nav.shlokas', label: 'Shlokas & Japs page', group: 'nav', defaultEnabled: false },
+  // Gates the /gita library page (701 verses, category+need-tag browse, per-
+  // verse detail + chant audio). Deliberately a SEPARATE feature from
+  // nav.shlokas/home.shlokas above, not folded into that grid — different
+  // scale (701 vs 50 verses), Sanskrit-only content shape (no 7-language
+  // fields), and its audio streams from gita.routes.ts's own static mount
+  // rather than the frontend's public/ bundle. Ships dark per the standing
+  // rule.
+  { key: 'nav.gita', label: 'Bhagavad Gita page', group: 'nav', defaultEnabled: false },
   // home
   { key: 'home.todayReading', label: 'Today Reading card', group: 'home', defaultEnabled: true },
   { key: 'home.kundliCard', label: 'Kundli card', group: 'home', defaultEnabled: true },
@@ -92,6 +100,15 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   {
     key: 'home.shlokas',
     label: 'Shlokas & Japs card (home)',
+    group: 'home',
+    defaultEnabled: false,
+  },
+  // Home entry point for the Bhagavad Gita library. Free, no paid.* key.
+  // Ships dark per the standing rule; turn on from Admin -> Features once the
+  // 701-verse render has been spot-checked on a real device.
+  {
+    key: 'home.gita',
+    label: 'Bhagavad Gita card (home)',
     group: 'home',
     defaultEnabled: false,
   },
