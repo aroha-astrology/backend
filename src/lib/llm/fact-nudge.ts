@@ -14,7 +14,9 @@
 import { generate } from './gemini-client.js';
 import { MODEL, FACT_NUDGE_PROFILE } from '../../config/llm.js';
 import { cleanJsonString } from './horoscope.js';
-import { APP_TZ } from '../astro-tools/transit-events.js';
+import { APP_TZ, PLANET_WEIGHT } from '../astro-tools/transit-events.js';
+import { houseFromMoonSign } from './transit-alert.js';
+import { HOUSE_SIGNIFICATIONS } from './house-insight.js';
 import {
   POLICY_SYSTEM_DIRECTIVE,
   classifyAssistantOutput,
@@ -192,6 +194,78 @@ export function pickNudgeFact(facts: FactCandidate[], now: Date): NudgePick | nu
 }
 
 // ---------------------------------------------------------------------------
+// Transit tie-in
+// ---------------------------------------------------------------------------
+// The push must open on something real, not marketing flavor text — a
+// specific planet currently sitting in a house of this reader's own chart.
+// Nudges are grounded to a real transit or not sent at all; see
+// matchTransitForPick.
+
+export interface TransitContext {
+  planet: string;
+  /** 1-12, counted from the reader's natal Moon (chandra lagna). */
+  house: number;
+  /** HOUSE_SIGNIFICATIONS[house] — the plain-language theme of that house. */
+  theme: string;
+}
+
+/** Which natal houses a fact/follow-up topic plausibly belongs to, by keyword. Order doesn't matter — matchTransitForPick checks every match. */
+const FACT_HOUSE_KEYWORDS: readonly [house: number, pattern: RegExp][] = [
+  [
+    10,
+    /\bcareer\b|\bjob\b|\bwork\b|\bprofession\w*|\brole\b|\bindustry\b|\bpromotion\b|\bstartup\b|\bbusiness\b|\bshowroom\b/i,
+  ],
+  [
+    7,
+    /\bpartner\w*|\brelationship\b|\bmarri(ed|age)\w*|\btogether\b|\bromantic\w*|\bintroduction\w*/i,
+  ],
+  [2, /\bincome\b|\bmoney\b|\bfinanc\w*|\bdebt\b|\bsalary\b|\bwealth\b/i],
+  [11, /\bgains?\b|\bnetwork\w*/i],
+  [5, /\bstud(y|ies|ying)\w*|\bexam\w*|\bcourse\b|\bcertificat\w*|\bcreativ\w*/i],
+  [9, /\bcivil service\b|\bupsc\b|\bhigher (education|learning)\b/i],
+  [1, /\bconfiden\w*|\bemotional\w*|\bpersonal\w*/i],
+];
+
+/** Every natal house a fact/follow-up's topic plausibly touches, by keyword — empty when nothing matches. */
+export function classifyFactHouses(text: string): number[] {
+  const houses: number[] = [];
+  for (const [house, pattern] of FACT_HOUSE_KEYWORDS) {
+    if (pattern.test(text) && !houses.includes(house)) houses.push(house);
+  }
+  return houses;
+}
+
+/**
+ * The heaviest (most astrologically significant) currently-transiting planet
+ * whose house — from this reader's own natal Moon — matches the pick's
+ * topic. Null when nothing currently lines up: a recurring job that must
+ * always find a hook will eventually fabricate one, and this is an astrology
+ * app trading on accuracy — silence beats a made-up transit.
+ */
+export function matchTransitForPick(
+  pick: NudgePick,
+  moonSign: string | null,
+  currentSigns: readonly { planet: string; sign: string }[],
+): TransitContext | null {
+  if (!moonSign) return null;
+  const candidateHouses = classifyFactHouses(`${pick.fact} ${pick.followUpQuestion ?? ''}`);
+  if (candidateHouses.length === 0) return null;
+
+  let best: TransitContext | null = null;
+  let bestWeight = -1;
+  for (const { planet, sign } of currentSigns) {
+    const house = houseFromMoonSign(sign, moonSign);
+    if (house == null || !candidateHouses.includes(house)) continue;
+    const weight = PLANET_WEIGHT[planet] ?? 0;
+    if (weight > bestWeight) {
+      bestWeight = weight;
+      best = { planet, house, theme: HOUSE_SIGNIFICATIONS[house] ?? '' };
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
 // Copy
 // ---------------------------------------------------------------------------
 
@@ -226,24 +300,39 @@ const SCRIPT_RANGES: Record<LangCode, RegExp> = {
 const URL_PATTERN = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|in|io|co)\b)/i;
 const PLACEHOLDER_PATTERN = /\{\{?[^}]*\}?\}|\[[A-Z_]{3,}\]/;
 
-function buildPrompt(pick: NudgePick, lang: LangCode): string {
+const ORDINAL_SUFFIX: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd' };
+/** 1 -> "1st", 4 -> "4th", 11 -> "11th" (the 11-13 teens never take st/nd/rd). */
+function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (ORDINAL_SUFFIX[n % 10] ?? 'th');
+  return `${n}${suffix}`;
+}
+
+function buildPrompt(pick: NudgePick, transit: TransitContext, lang: LangCode): string {
   const task =
     pick.tier === 'window'
       ? `You previously told this reader: "${pick.fact}". Remind them the window is approaching. Reference the timing, but do NOT restate the exact date verbatim if it makes the notification feel like a form letter — a natural phrase like "this week" or "in the coming days" relative to the date is fine, but never invent a DIFFERENT date.`
-      : `This reader has an open follow-up question on file: "${pick.followUpQuestion}" (about: "${pick.fact}"). Write a notification that invites them back to answer it, without putting private family details on a lock screen.`;
+      : `This reader has an open follow-up question on file: "${pick.followUpQuestion}" (about: "${pick.fact}"). Write a notification that draws them back to talk to the astrologer about it, without putting private family details on a lock screen.`;
 
   return `You are writing a short mobile push notification for a Vedic astrology app, re-engaging a user based on something they told the assistant in a past chat.
 
+Right now, ${transit.planet} is transiting this reader's ${ordinal(transit.house)} house — the house of ${transit.theme}. This is real, computed from their own chart, not flavor text.
+
 ${task}
+
+COPYWRITING — this needs a HOOK, not a status update:
+- Open on the transit above — name the planet, keep it light, don't lecture on mechanics. Connect it to the reader's situation. Close by pointing them to the astrologer, not to a form.
+- This is not a form to fill out. Never phrase it as "we don't have X on file" or "let us know Y" — that's a database asking a question. It's: the sky just moved, here's why that matters for what you told us, come ask the astrologer about it.
+- Title is the tease (the transit, or what's at stake); body connects it to their situation and points at the astrologer, without resolving anything.
+- Speak like an astrologer who noticed something, not an automated reminder. No "Reminder:", no "Update:", no generic filler ("the stars align", "cosmic energies").
 
 HARD RULES:
 - NEVER mention a spouse, child, son, daughter, parent, or in-law by relationship or name, even if the source text does. Speak only to the reader.
 - NEVER mention health, illness, legal matters, unemployment, or conception/pregnancy, even if implied by the source text.
-- NEVER invent a date, name, or detail not present in the source text above.
+- NEVER invent a planet, house, date, name, or detail beyond what's given above.
 - Title: maximum ${MAX_TITLE_CHARS} characters.
 - Body: maximum ${MAX_BODY_CHARS} characters. Count them.
 - Write entirely in ${LANG_NAMES[lang]}, using ${LANG_NAMES[lang]} script.
-- Warm and specific, not generic horoscope filler. No links, no placeholder text, no quotation marks.
+- No links, no placeholder text, no quotation marks.
 
 Return ONLY this JSON object:
 {"title": "...", "body": "..."}`;
@@ -319,9 +408,10 @@ function parseCopy(raw: string): FactNudgeCopy | null {
  */
 export async function generateFactNudgeCopy(
   pick: NudgePick,
+  transit: TransitContext,
   lang: LangCode,
 ): Promise<FactNudgeCopy | null> {
-  const basePrompt = buildPrompt(pick, lang);
+  const basePrompt = buildPrompt(pick, transit, lang);
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     const prompt =

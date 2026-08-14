@@ -381,9 +381,11 @@ const factNudgeRoute = createRoute({
   description:
     'Machine-to-machine endpoint for the fact-nudge job. Only runs on the 1st/3rd Sunday of the ' +
     'month (IST) unless `force` is set. For every user with a saved user_facts row and no recent ' +
-    'fact-nudge, picks a dated window or an unanswered follow-up, drafts Gemini copy through a ' +
-    'suppression denylist + validator, and delivers via notifyUser (Bell inbox always, push only ' +
-    'to live device tokens). No-op unless FACT_NUDGE_ENABLED. Authenticated via X-Cron-Secret.',
+    'fact-nudge, picks a dated window or an unanswered follow-up, requires it to line up with a ' +
+    "real currently-active transit in that reader's own chart (no match = silence, never a " +
+    'fabricated tie-in), drafts Gemini copy through a suppression denylist + validator, and ' +
+    'delivers via notifyUser (Bell inbox always, push only to live device tokens). No-op unless ' +
+    'FACT_NUDGE_ENABLED. Authenticated via X-Cron-Secret.',
   request: {
     body: {
       required: true,

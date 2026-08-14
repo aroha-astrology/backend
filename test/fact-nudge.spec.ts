@@ -5,6 +5,8 @@ import {
   pickNudgeFact,
   validateFactNudgeCopy,
   getFactNudgeFallback,
+  classifyFactHouses,
+  matchTransitForPick,
   MAX_BODY_CHARS,
   MAX_TITLE_CHARS,
   WINDOW_HORIZON_DAYS,
@@ -153,6 +155,71 @@ describe('pickNudgeFact', () => {
     ];
     const pick = pickNudgeFact(facts, NOW);
     expect(pick?.fact).toBe('Ayesha has been married for 1.5 years.');
+  });
+});
+
+describe('classifyFactHouses', () => {
+  it('maps career language to the 10th house', () => {
+    expect(classifyFactHouses('Subir is targeting the IT sector for his job search.')).toEqual([
+      10,
+    ]);
+  });
+
+  it('maps relationship language to the 7th house', () => {
+    expect(classifyFactHouses('How long have you and your partner been together?')).toEqual([7]);
+  });
+
+  it('returns every house a topic plausibly touches, not just the first', () => {
+    // "career" -> 10th, "certifications" -> 5th.
+    expect(classifyFactHouses('Considering a career change via new certifications.')).toEqual([
+      10, 5,
+    ]);
+  });
+
+  it('returns empty for a topic with no mapped house', () => {
+    expect(classifyFactHouses("The user's name is Shalini.")).toEqual([]);
+  });
+});
+
+describe('matchTransitForPick', () => {
+  const careerPick: NudgePick = {
+    tier: 'followup',
+    fact: 'Subir Dutta is specifically targeting the IT sector for his job search.',
+    followUpQuestion: 'What specific roles or technical domains within the IT sector?',
+  };
+
+  it('picks the heaviest planet whose house (from the natal Moon) matches the topic', () => {
+    // Moon in Aries: Capricorn is the 10th house (career) from Aries.
+    const signs = [
+      { planet: 'Mercury', sign: 'Capricorn' },
+      { planet: 'Saturn', sign: 'Capricorn' },
+    ];
+    const result = matchTransitForPick(careerPick, 'Aries', signs);
+    expect(result?.planet).toBe('Saturn');
+    expect(result?.house).toBe(10);
+  });
+
+  it('returns null when no currently-transiting planet lands in a matching house', () => {
+    // Moon in Aries: Aries itself is the 1st house, not career-relevant.
+    const signs = [{ planet: 'Saturn', sign: 'Aries' }];
+    expect(matchTransitForPick(careerPick, 'Aries', signs)).toBeNull();
+  });
+
+  it('returns null rather than guess when the reader has no chart', () => {
+    expect(
+      matchTransitForPick(careerPick, null, [{ planet: 'Saturn', sign: 'Capricorn' }]),
+    ).toBeNull();
+  });
+
+  it('returns null when the fact topic maps to no house at all', () => {
+    const namePick: NudgePick = {
+      tier: 'followup',
+      fact: "The user's name is Shalini.",
+      followUpQuestion: 'Anything else?',
+    };
+    expect(
+      matchTransitForPick(namePick, 'Aries', [{ planet: 'Saturn', sign: 'Capricorn' }]),
+    ).toBeNull();
   });
 });
 
