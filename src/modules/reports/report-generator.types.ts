@@ -126,6 +126,12 @@ export interface ReportSection {
    * `heading` in that case. */
   id?: string;
   heading: string;
+  /** One short, striking sentence for this section, rendered as a pull-quote between the
+   * heading and the paragraphs. Optional and additive-only, exactly like `bullets`/`items`
+   * below: a report type whose prompt doesn't ask for one — currently every type except
+   * past_life — and every report generated before hooks shipped simply omits it. Translated
+   * along with the rest of the section (it is plain prose inside the same JSON shape). */
+  hook?: string;
   paragraphs: string[];
   /** Section-level bullet list, rendered under `paragraphs` — optional, additive-only. */
   bullets?: string[];

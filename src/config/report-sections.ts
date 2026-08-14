@@ -124,7 +124,14 @@ export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> =
     'practical_guidance',
   ],
   remedies: ['karmic_debts', 'planet_remedies', 'strengths_cautions', 'how_to_use_remedies'],
-  past_life: ['karmic_pattern', 'karmic_axis_theme', 'unfinished_business_soul_lesson'],
+  // `life_so_far` is APPENDED, never inserted — see assignSectionIds below for why the
+  // position of an existing id can never change once reports have been stored with it.
+  past_life: [
+    'karmic_pattern',
+    'karmic_axis_theme',
+    'unfinished_business_soul_lesson',
+    'life_so_far',
+  ],
 };
 
 export interface SectionWithId {
@@ -134,16 +141,45 @@ export interface SectionWithId {
 }
 
 /**
- * Zips canonical `id`s onto `sections` by position, for the given report key. Only assigns
- * anything when the actual section count EXACTLY matches the expected count for that report
- * type — a mismatch (a section dropped by `parseSections`'s empty-paragraphs filter, an
- * unregistered report key, a report type not yet listed above) returns `sections` completely
- * unchanged rather than risking a wrong id on a shifted position. The frontend's rendering
- * falls back to the section's own stored `heading` whenever `id` is absent — see
- * app/reports/[id]/page.tsx — so this is a pure enhancement, never a hard requirement.
+ * Report keys whose id sequence above has been APPENDED to since reports were already being
+ * stored, so the ids a shorter (older, or legitimately-shortened) section list should get are
+ * exactly the leading prefix.
+ *
+ * `past_life` is here because a 4th id (`life_so_far`) was added to a 3-id sequence. Two kinds
+ * of 3-section past_life report exist and both are correct:
+ *   - every report PURCHASED BEFORE that section shipped — stored, never regenerated, so it
+ *     keeps the 3 sections it was written with;
+ *   - a NEW report on a chart with no derivable dasha tree, where the prompt is instructed to
+ *     omit "Your Life So Far" entirely rather than invent a lived past.
+ * Under a strict length match both would silently lose every id, and with it their icons and
+ * translated headings.
+ *
+ * This is deliberately an opt-in set rather than a blanket "shorter is fine" rule. For every
+ * other report key, a section list shorter than expected means a section was DROPPED — most
+ * likely by `parseSections`'s empty-paragraph filter — and a dropped section in the MIDDLE
+ * shifts every later section onto the wrong id. Refusing to label at all is the right answer
+ * there, which is what the strict path below still does.
+ *
+ * The invariant a key in this set must hold: its id list is only ever appended to. Inserting
+ * an id in the middle would mislabel every stored report from that point on.
+ */
+const APPEND_ONLY_SECTION_IDS: ReadonlySet<string> = new Set(['past_life']);
+
+/**
+ * Zips canonical `id`s onto `sections` by position, for the given report key. Assigns only
+ * when the section count EXACTLY matches the expected sequence — or, for an append-only key
+ * (see above), when it is shorter and the leading prefix therefore still lines up. Any other
+ * mismatch (an unregistered report key, more sections than known ids, a dropped middle
+ * section on a strict key) returns `sections` completely unchanged rather than risking a wrong
+ * id on a shifted position. The frontend falls back to the section's own stored `heading`
+ * whenever `id` is absent — see app/reports/[id]/page.tsx — so this is a pure enhancement,
+ * never a hard requirement.
  */
 export function assignSectionIds<T extends SectionWithId>(reportKey: string, sections: T[]): T[] {
   const ids = REPORT_SECTION_IDS[reportKey as ReportKey];
-  if (!ids || ids.length !== sections.length) return sections;
+  if (!ids) return sections;
+  const prefixMatches =
+    APPEND_ONLY_SECTION_IDS.has(reportKey) && sections.length < ids.length && sections.length > 0;
+  if (ids.length !== sections.length && !prefixMatches) return sections;
   return sections.map((s, i) => ({ ...s, id: ids[i] }));
 }

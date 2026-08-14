@@ -976,6 +976,76 @@ export function buildNatalDebilitationRemedyFact(planets: PlanetFact[]): string 
  * user) have no stored copy, and a pure function of the natal chart is safe to
  * derive on read.
  */
+/**
+ * One planet's reader-facing condition row — the same numbers `planetStrengthFacts`
+ * below narrates, kept structured instead of joined into prose.
+ *
+ * `pct` is Shadbala's total as a percentage of the planet's own REQUIRED virupas,
+ * which is why it is not capped at 100: 100 is the classical pass mark, not the
+ * maximum. A UI rendering this must say so, or 69% reads as a defect score rather
+ * than "below the minimum this planet needs".
+ */
+export interface PlanetStrengthRow {
+  planet: string;
+  /** Percentage of the classical minimum. 100 = exactly meets it. Can exceed 100. */
+  pct: number;
+  isStrong: boolean;
+  isRetrograde: boolean;
+  isCombust: boolean;
+}
+
+/**
+ * The structured form of the Shadbala/retrogression/combustion block, for the
+ * reader-facing PlanetStrengthCard.
+ *
+ * Split out of `planetStrengthFacts` (which now builds its prose from this exact
+ * return value) so the numbers have one source. The alternative — parsing them
+ * back out of the English prose lines on the frontend — would break the moment
+ * that wording changed, and the prose is explicitly not written for the reader.
+ *
+ * Returns `[]` rather than throwing on a degraded chart, matching the prose path:
+ * a missing card is correct, invented strength numbers are not.
+ */
+export function planetStrengthTable(
+  chart: Record<string, unknown> | null,
+  planets: PlanetFact[],
+): PlanetStrengthRow[] {
+  if (planets.length === 0) return [];
+
+  const states = computePlanetStates(planets);
+  const stateFor = new Map(states.map((s) => [s.planet, s]));
+
+  const stored = chart?.shadbala;
+  let shadbala: Array<Record<string, unknown>> | null = Array.isArray(stored)
+    ? (stored as Array<Record<string, unknown>>)
+    : null;
+  if (!shadbala && chart) {
+    try {
+      shadbala = calculateShadbala(chart as never) as unknown as Array<Record<string, unknown>>;
+    } catch {
+      shadbala = null;
+    }
+  }
+  if (!shadbala || shadbala.length === 0) return [];
+
+  return shadbala
+    .map((s) => {
+      const planet = String(s.planet ?? '');
+      const total = Number(s.totalVirupas ?? 0);
+      const required = Number(s.requiredVirupas ?? 0);
+      const st = stateFor.get(planet);
+      return {
+        planet,
+        pct: required > 0 ? Math.round((total / required) * 100) : null,
+        isStrong: Boolean(s.isStrong),
+        isRetrograde: Boolean(st?.isRetrograde),
+        isCombust: Boolean(st?.isCombust),
+      };
+    })
+    .filter((s): s is PlanetStrengthRow => s.planet !== '' && s.pct != null)
+    .sort((a, b) => b.pct - a.pct);
+}
+
 export function planetStrengthFacts(
   chart: Record<string, unknown> | null,
   planets: PlanetFact[],
@@ -1004,34 +1074,10 @@ export function planetStrengthFacts(
   }
 
   // --- Shadbala -------------------------------------------------------------
-  const stored = chart?.shadbala;
-  let shadbala: Array<Record<string, unknown>> | null = Array.isArray(stored)
-    ? (stored as Array<Record<string, unknown>>)
-    : null;
-
-  if (!shadbala && chart) {
-    try {
-      shadbala = calculateShadbala(chart as never) as unknown as Array<Record<string, unknown>>;
-    } catch {
-      shadbala = null; // degraded/partial chart — strength facts are skipped, never faked
-    }
-  }
-
-  if (!shadbala || shadbala.length === 0) return facts;
-
-  const ranked = shadbala
-    .map((s) => {
-      const total = Number(s.totalVirupas ?? 0);
-      const required = Number(s.requiredVirupas ?? 0);
-      return {
-        planet: String(s.planet ?? ''),
-        pct: required > 0 ? Math.round((total / required) * 100) : null,
-        isStrong: Boolean(s.isStrong),
-      };
-    })
-    .filter((s) => s.planet && s.pct != null)
-    .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
-
+  // Shares `planetStrengthTable`'s rows rather than re-deriving them: a degraded
+  // chart yields [] there (strength facts skipped, never faked) exactly as the
+  // inline computation this replaced did.
+  const ranked = planetStrengthTable(chart, planets);
   if (ranked.length === 0) return facts;
 
   const summary = ranked
@@ -1142,6 +1188,19 @@ export function chartConditionFacts(chart: Record<string, unknown> | null): stri
     ...kpSubLordFacts(planets),
     ...bhavaChalitFacts(chart, planets),
   ];
+}
+
+/**
+ * Chart-only companion to `chartConditionFacts` — the READER-facing half of the
+ * same data. `chartConditionFacts` returns prose written at the model (and which
+ * must never be displayed, see its callers); this returns the structured rows a
+ * UI can render.
+ *
+ * Exists so callers holding only a chart (reports.service.ts) don't need
+ * `getPlanets`, which is private to this module.
+ */
+export function chartPlanetStrength(chart: Record<string, unknown> | null): PlanetStrengthRow[] {
+  return planetStrengthTable(chart, getPlanets(chart));
 }
 
 /**

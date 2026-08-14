@@ -27,7 +27,11 @@ import { deductWalletBalance, addWalletBalance, findActiveUserById } from '../us
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
-import { chartConditionFacts } from '../../lib/chat-grounding.js';
+import {
+  chartConditionFacts,
+  chartPlanetStrength,
+  type PlanetStrengthRow,
+} from '../../lib/chat-grounding.js';
 import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
 import { verifyReportClaims } from '../../lib/llm/reports/verify-claims.js';
 import type { BirthRecord } from '../../lib/swarm/state.js';
@@ -413,12 +417,23 @@ function computeScoresWithCondition(
 ): ReportScores {
   const scores = generator.computeScores(ctx, periodMonth);
   let planetCondition: string[] = [];
+  let planetStrength: PlanetStrengthRow[] = [];
   try {
     planetCondition = chartConditionFacts(ctx.chart);
+    // The same numbers, structured, for the reader-facing PlanetStrengthCard.
+    // `planetCondition` above is grounding prose written at the model and is
+    // suppressed by the frontend (SEPARATELY_RENDERED_KEYS); this is what the
+    // reader actually sees, so the two must never diverge — hence one source
+    // (planetStrengthTable) feeding both.
+    planetStrength = chartPlanetStrength(ctx.chart);
   } catch (err) {
     logger.warn({ err }, 'chart-condition facts failed for report; continuing without them');
   }
-  return planetCondition.length > 0 ? { ...scores, planetCondition } : scores;
+  return {
+    ...scores,
+    ...(planetCondition.length > 0 ? { planetCondition } : {}),
+    ...(planetStrength.length > 0 ? { planetStrength } : {}),
+  };
 }
 
 export async function buildReportScoreContext(

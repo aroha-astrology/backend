@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { computeDecadeArc } from '../src/lib/astro-engine/reports/report-decade-arc.js';
+import {
+  computeDecadeArc,
+  computeLifeSoFarArc,
+} from '../src/lib/astro-engine/reports/report-decade-arc.js';
 import { getVimshottariDashaFromChart } from '../src/lib/astro-engine/reports/chart-facts.js';
 import { analyzePlanetStrengths } from '../src/lib/astro-engine/gemstones.js';
 import {
@@ -121,5 +124,83 @@ describe('computeDecadeArc — Mahadasha-lord scoring and time-weighted blending
     // which fully contains [+20y, +30y) -- another pure, single-lord band.
     const bands = computeDecadeArc(chart, [], moon.startDate, 3);
     expect(bands[2]!.score).toBe(90); // Rahu exalted in Taurus -> strong -> 90, no blending
+  });
+});
+
+describe('computeLifeSoFarArc — the already-lived chapters', () => {
+  const BIRTH = new Date('2000-01-01T00:00:00Z');
+
+  it('covers birth..now only, and clips the running Mahadasha at now rather than its real end', () => {
+    const chart = makeChart();
+    const now = new Date('2026-01-01T00:00:00Z');
+    const bands = computeLifeSoFarArc(chart, BIRTH, [], now);
+
+    expect(bands.length).toBeGreaterThan(0);
+    for (const b of bands) {
+      expect(new Date(b.startDate).getTime()).toBeGreaterThanOrEqual(BIRTH.getTime());
+      // The whole point: nothing in this arc may extend past today.
+      expect(new Date(b.endDate).getTime()).toBeLessThanOrEqual(now.getTime());
+    }
+    // The last band is the one still running, so it ends exactly at `now`.
+    expect(new Date(bands[bands.length - 1]!.endDate).getTime()).toBe(now.getTime());
+  });
+
+  it('labels each chapter with the age range and the ruling Mahadasha lord', () => {
+    const bands = computeLifeSoFarArc(makeChart(), BIRTH, [], new Date('2026-01-01T00:00:00Z'));
+    expect(bands[0]!.label).toMatch(/^Age \d+–\d+ · [A-Z][a-z]+$/);
+    // Ages are measured from birth, so the first lived chapter starts at 0.
+    expect(bands[0]!.label).toMatch(/^Age 0–/);
+  });
+
+  it("scores a chapter by its lord's bare natal strength when keyHouses is empty", () => {
+    const chart = makeChart();
+    const now = new Date('2026-01-01T00:00:00Z');
+    const analyses = analyzePlanetStrengths(chart);
+    const bands = computeLifeSoFarArc(chart, BIRTH, [], now);
+
+    for (const b of bands) {
+      const lord = b.label.split(' · ')[1]!;
+      expect(b.score).toBe(computeMonthlyReportScore(lord, [], chart, analyses));
+      expect(b.tone).toBe(toneFromMonthScore(b.score));
+    }
+  });
+
+  it('returns [] rather than inventing a lived past when the birth date is missing or unusable', () => {
+    const chart = makeChart();
+    const now = new Date('2026-01-01T00:00:00Z');
+    expect(computeLifeSoFarArc(chart, null, [], now)).toEqual([]);
+    expect(computeLifeSoFarArc(chart, new Date('not a date'), [], now)).toEqual([]);
+    // Birth in the future -> nothing has been lived yet.
+    expect(computeLifeSoFarArc(chart, new Date('2030-01-01T00:00:00Z'), [], now)).toEqual([]);
+  });
+
+  it('returns [] for a chart with no derivable dasha tree', () => {
+    expect(computeLifeSoFarArc(null, BIRTH, [], new Date('2026-01-01T00:00:00Z'))).toEqual([]);
+  });
+
+  it('drops the sub-year sliver a truncated birth Mahadasha can leave', () => {
+    // Moon near the END of Bharani (13°20'–26°40') leaves only a few months of the Venus
+    // Mahadasha unspent at birth — the sliver this filter exists for. The base fixture puts
+    // the Moon near Bharani's START instead, which leaves a nearly-full 20-year Venus period.
+    const chart = {
+      ...makeChart(),
+      planets: [
+        { planet: 'Moon', sign: 'Gemini', longitude: 26.3 },
+        { planet: 'Mars', sign: 'Cancer' },
+        { planet: 'Rahu', sign: 'Taurus' },
+      ],
+    };
+    const bands = computeLifeSoFarArc(chart, BIRTH, [], new Date('2026-01-01T00:00:00Z'));
+    expect(bands.length).toBeGreaterThan(0);
+    expect(bands[0]!.label).not.toMatch(/Venus/);
+  });
+
+  it('keeps the still-running chapter even when it is shorter than the sliver threshold', () => {
+    // The running chapter is short because it has not FINISHED, not because it was nearly
+    // over at birth — and it is the one the reader is currently living through.
+    const chart = makeChart();
+    const bands = computeLifeSoFarArc(chart, BIRTH, [], new Date('2000-07-01T00:00:00Z'));
+    expect(bands).toHaveLength(1);
+    expect(new Date(bands[0]!.endDate).getTime()).toBe(new Date('2000-07-01T00:00:00Z').getTime());
   });
 });

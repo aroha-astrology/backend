@@ -24,6 +24,30 @@ describe('assignSectionIds', () => {
     expect(result[0]!.id).toBeUndefined();
   });
 
+  it('zips the leading prefix for an append-only key given fewer sections than ids', () => {
+    // past_life gained a 4th id (life_so_far) after 3-section reports were already stored,
+    // and a new report legitimately has 3 sections when the chart yields no dasha tree.
+    // Both must keep their first 3 ids rather than losing every id to a length mismatch.
+    const sections: SectionWithId[] = [
+      { heading: 'A', paragraphs: ['1'] },
+      { heading: 'B', paragraphs: ['2'] },
+      { heading: 'C', paragraphs: ['3'] },
+    ];
+    const result = assignSectionIds('past_life', sections);
+    expect(result.map((s) => s.id)).toEqual([
+      'karmic_pattern',
+      'karmic_axis_theme',
+      'unfinished_business_soul_lesson',
+    ]);
+  });
+
+  it('still refuses to label a short section list for a key that is NOT append-only', () => {
+    // The dropped-middle-section risk the strict path exists to avoid.
+    const sections: SectionWithId[] = [{ heading: 'Only one', paragraphs: ['1'] }];
+    const result = assignSectionIds('baby_name', sections); // expects 2, given 1
+    expect(result[0]!.id).toBeUndefined();
+  });
+
   it('returns sections unchanged for a report key with no registered id sequence', () => {
     const sections = [{ heading: 'A', paragraphs: ['1'] }];
     const result = assignSectionIds('not_a_real_report_key', sections);

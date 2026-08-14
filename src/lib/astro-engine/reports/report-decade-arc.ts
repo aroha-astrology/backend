@@ -123,3 +123,86 @@ export function computeDecadeArc(
 
   return bands;
 }
+
+/**
+ * A Mahadasha shorter than this, once clipped to [birth, now], is dropped: Vimshottari
+ * starts mid-period (the first Mahadasha runs only for whatever balance the natal Moon's
+ * nakshatra had left), so without this the arc can open with a two-month sliver that reads
+ * as a life chapter but isn't one.
+ *
+ * The STILL-RUNNING chapter is exempt — see `isRunning` below. It is short for the opposite
+ * reason (it is clipped at today because it has not finished yet, not because it was nearly
+ * over when life started), and it is the single chapter the reader is actually standing in.
+ */
+const MIN_CHAPTER_YEARS = 1;
+
+function yearsBetweenDates(a: Date, b: Date): number {
+  return (b.getTime() - a.getTime()) / MS_PER_YEAR;
+}
+
+/**
+ * The BACKWARD-looking companion to `computeDecadeArc`: the reader's life from birth to
+ * today, as the Mahadashas they have actually already lived through.
+ *
+ * Two deliberate differences from `computeDecadeArc`, both because the past is a
+ * different question from the future:
+ *
+ *  - Bands are the Mahadashas themselves, not fixed 10-year slices. A Mahadasha IS the
+ *    classical unit of a life chapter (and its lord is what the narrative can then talk
+ *    about), so cutting the lived past into arbitrary decades would blur exactly the
+ *    boundaries a reader recognises — "things changed for me around 26" is a Mahadasha
+ *    change, not a decade boundary.
+ *  - `keyHouses` is intentionally EMPTY at the call site for a whole-life arc, which makes
+ *    `computeMonthlyReportScore` return the lord's bare natal strength with no
+ *    house-affinity adjustment. A general "how did this chapter go" reading has no single
+ *    domain to bias toward, and inventing one (say, the karmic houses) would tilt every
+ *    chapter's score toward this report's own theme rather than the reader's actual life.
+ *    The trade-off is a coarse score — bare strength is 30/60/90 — which is honest: it is
+ *    exactly how much the engine actually knows here, and no interpolation would add
+ *    information.
+ *
+ * Returns `[]` (not a filled placeholder) when there is no derivable dasha tree or no
+ * birth date — an empty arc renders as nothing, whereas a NO_DATA_SCORE band would be a
+ * fabricated claim about a real person's real past. Never throws.
+ */
+export function computeLifeSoFarArc(
+  chart: Record<string, unknown> | null,
+  birthDate: Date | null,
+  keyHouses: number[] = [],
+  now: Date = new Date(),
+): DecadeBand[] {
+  if (!birthDate || Number.isNaN(birthDate.getTime())) return [];
+  if (birthDate.getTime() >= now.getTime()) return [];
+
+  const vimshottari = getVimshottariDashaFromChart(chart);
+  const mahadashas: DashaPeriod[] = vimshottari?.mahadashas ?? [];
+  if (mahadashas.length === 0) return [];
+
+  const analyses = analyzePlanetStrengths(chart);
+  const bands: DecadeBand[] = [];
+
+  for (const mahadasha of mahadashas) {
+    // Clip to the lived window: the running Mahadasha ends at `now`, not at its real
+    // end date — this arc describes what has happened, never what is still to come.
+    const start = new Date(Math.max(mahadasha.startDate.getTime(), birthDate.getTime()));
+    const end = new Date(Math.min(mahadasha.endDate.getTime(), now.getTime()));
+    if (end.getTime() <= start.getTime()) continue;
+
+    const isRunning = mahadasha.endDate.getTime() > now.getTime();
+    if (!isRunning && yearsBetweenDates(start, end) < MIN_CHAPTER_YEARS) continue;
+
+    const score = computeMonthlyReportScore(mahadasha.planet, keyHouses, chart, analyses);
+    const startAge = Math.max(0, Math.floor(yearsBetweenDates(birthDate, start)));
+    const endAge = Math.max(startAge, Math.floor(yearsBetweenDates(birthDate, end)));
+
+    bands.push({
+      label: `Age ${startAge}–${endAge} · ${mahadasha.planet}`,
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+      score,
+      tone: toneFromMonthScore(score),
+    });
+  }
+
+  return bands;
+}

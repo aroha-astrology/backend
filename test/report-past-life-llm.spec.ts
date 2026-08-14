@@ -21,6 +21,7 @@ function makeScores(overrides: Partial<PastLifeScores> = {}): PastLifeScores {
       description: 'A classical theme of karma between everyday effort and higher belief.',
     },
     doshaYoga: { positives: [], cautions: [] },
+    lifeSoFar: [],
     ...overrides,
   };
 }

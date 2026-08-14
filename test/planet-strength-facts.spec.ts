@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { planetStrengthFacts, bhavaChalitFacts } from '../src/lib/chat-grounding.js';
+import {
+  planetStrengthFacts,
+  planetStrengthTable,
+  bhavaChalitFacts,
+} from '../src/lib/chat-grounding.js';
 import type { PlanetFact } from '../src/lib/chat-grounding.js';
 import {
   chalitHouseFor,
@@ -263,5 +267,52 @@ describe('chat-grounding: bhavaChalitFacts', () => {
   it('returns nothing when the chart carries no ascendant degree', () => {
     expect(bhavaChalitFacts({ ascendant: { signIndex: 0 } }, planets)).toEqual([]);
     expect(bhavaChalitFacts(null, planets)).toEqual([]);
+  });
+});
+
+describe('planetStrengthTable — the structured, reader-facing form', () => {
+  const planets = [
+    planet({ planet: 'Sun', longitude: 100 }),
+    planet({ planet: 'Mercury', longitude: 105 }), // 5 deg from the Sun -> combust
+    planet({ planet: 'Jupiter', longitude: 200, isRetrograde: true }),
+  ];
+  const chart = {
+    shadbala: [
+      { planet: 'Saturn', totalVirupas: 200, requiredVirupas: 400, isStrong: false },
+      { planet: 'Jupiter', totalVirupas: 468, requiredVirupas: 390, isStrong: true },
+    ],
+  };
+
+  it('returns the SAME planets and percentages the prose narrates — one source, no drift', () => {
+    const rows = planetStrengthTable(chart, planets);
+    const prose = planetStrengthFacts(chart, planets).find((f) =>
+      f.startsWith('Planetary Strength'),
+    )!;
+    for (const r of rows) {
+      expect(prose).toContain(`${r.planet} ${r.pct}%`);
+    }
+  });
+
+  it('sorts strongest first, and does not clamp a pct above 100', () => {
+    const rows = planetStrengthTable(chart, planets);
+    expect(rows.map((r) => r.planet)).toEqual(['Jupiter', 'Saturn']);
+    expect(rows[0]!.pct).toBe(120); // 468/390 — above the classical minimum, kept as-is
+    expect(rows[0]!.isStrong).toBe(true);
+    expect(rows[1]!.pct).toBe(50);
+    expect(rows[1]!.isStrong).toBe(false);
+  });
+
+  it('carries the retrograde/combust flags through onto the matching planet', () => {
+    const rows = planetStrengthTable(chart, planets);
+    const jupiter = rows.find((r) => r.planet === 'Jupiter')!;
+    // Jupiter has no shadbala-independent state here beyond what computePlanetStates derives;
+    // the contract under test is that the flags are booleans carried per planet, never dropped.
+    expect(typeof jupiter.isRetrograde).toBe('boolean');
+    expect(typeof jupiter.isCombust).toBe('boolean');
+  });
+
+  it('returns [] rather than faking strength when the chart yields no Shadbala', () => {
+    expect(planetStrengthTable({ planets: [] }, planets)).toEqual([]);
+    expect(planetStrengthTable(null, [])).toEqual([]);
   });
 });

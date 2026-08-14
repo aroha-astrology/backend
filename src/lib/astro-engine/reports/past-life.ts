@@ -9,6 +9,7 @@
 import { analyzePlanetStrengths, type PlanetStrength } from '../gemstones.js';
 import { getHouseLord, getPlanetPosition, strengthOfPlanet } from './chart-facts.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { computeLifeSoFarArc, type DecadeBand } from './report-decade-arc.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { computeReportVargas } from './report-vargas.js';
@@ -99,6 +100,15 @@ export interface PastLifeScores extends Record<string, unknown>, ReportSharedFac
   /** Kaal Sarp Dosha check on the Rahu/Ketu axis — directly on-theme for a past-life report and
    * previously entirely unused by this report type. */
   doshaYoga: DoshaYogaSummary;
+  /**
+   * The reader's life from birth to today, one band per already-lived Mahadasha (see
+   * `computeLifeSoFarArc`). Empty when the chart yields no dasha tree or the birth date is
+   * missing — the section is then skipped entirely rather than narrated from nothing.
+   *
+   * Deliberately the same `DecadeBand` shape the forward-looking arcs use, so the frontend
+   * renders it through the existing DecadeArcCard with no new component.
+   */
+  lifeSoFar: DecadeBand[];
 }
 
 export function computePastLifeScores(
@@ -137,8 +147,18 @@ export function computePastLifeScores(
     ['mahapurusha', 'benefic'],
   );
 
-  const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, new Date());
+  const now = new Date();
+  const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
+  // `personDob` is optional on ReportScoreContext (see its doc comment), and
+  // `new Date(undefined)` is an Invalid Date rather than a throw — computeLifeSoFarArc
+  // guards on both, returning [] instead of inventing a lived past.
+  const lifeSoFar = computeLifeSoFarArc(
+    chart,
+    ctx.personDob ? new Date(ctx.personDob) : null,
+    [],
+    now,
+  );
   // D60 (Shashtiamsha) — the most fine-grained varga, classically read for karmic
   // destiny/past-life patterns, the exact theme this report narrates.
   const vargas = computeReportVargas(chart, ['D60']);
@@ -155,5 +175,6 @@ export function computePastLifeScores(
     conjunctPlanets,
     karmicArchetype,
     doshaYoga,
+    lifeSoFar,
   };
 }
