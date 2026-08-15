@@ -804,7 +804,19 @@ const USER_SORT_COLUMNS = {
   lastActiveAt: users.lastActiveAt,
   walletBalancePaise: users.walletBalancePaise,
 } as const;
-export type UserSortBy = keyof typeof USER_SORT_COLUMNS;
+/** `claimedIndependenceDay` isn't a real column (see below), so it can't live in USER_SORT_COLUMNS — handled as a separate branch in listUsersPage's orderBy. */
+export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedIndependenceDay';
+
+/** Independence Day 2026 claim campaign — see config/campaigns.ts. Same idea as
+ * hasClaimedIndependenceBonus's sibling `getClaimedCampaignKeys`, inlined here
+ * because this is a paginated admin list rather than a single-user lookup. A
+ * fresh call per use (rather than a shared constant) since it's referenced in
+ * both the select list and, when sorted on, the orderBy clause. */
+const claimedIndependenceDayExpr = () => sql<boolean>`exists (
+  select 1 from ${walletTransactions}
+  where ${walletTransactions.userId} = ${users.id}
+    and ${walletTransactions.reason} = 'independence_day_2026'
+)`;
 
 /** Powers both the Telegram `/users` command (no `q`) and the admin dashboard's `GET /v1/admin/users?q=` search. */
 export async function listUsersPage(
@@ -815,7 +827,8 @@ export async function listUsersPage(
   sortDir: 'asc' | 'desc' = 'desc',
   contactType: ContactTypeFilter = 'all',
 ) {
-  const column = USER_SORT_COLUMNS[sortBy];
+  const orderExpr =
+    sortBy === 'claimedIndependenceDay' ? claimedIndependenceDayExpr() : USER_SORT_COLUMNS[sortBy];
   const rows = await db
     .select({
       id: users.id,
@@ -825,19 +838,11 @@ export async function listUsersPage(
       walletBalancePaise: users.walletBalancePaise,
       createdAt: users.createdAt,
       lastActiveAt: users.lastActiveAt,
-      // Independence Day 2026 claim campaign — see config/campaigns.ts. A plain
-      // EXISTS against the ledger, same idea as hasClaimedIndependenceBonus's
-      // sibling `getClaimedCampaignKeys`, inlined here because this is a
-      // paginated admin list rather than a single-user lookup.
-      claimedIndependenceDay: sql<boolean>`exists (
-        select 1 from ${walletTransactions}
-        where ${walletTransactions.userId} = ${users.id}
-          and ${walletTransactions.reason} = 'independence_day_2026'
-      )`,
+      claimedIndependenceDay: claimedIndependenceDayExpr(),
     })
     .from(users)
     .where(userSearchWhere(q, contactType))
-    .orderBy(sortDir === 'asc' ? asc(column) : desc(column))
+    .orderBy(sortDir === 'asc' ? asc(orderExpr) : desc(orderExpr))
     .limit(limit)
     .offset(offset);
   return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
