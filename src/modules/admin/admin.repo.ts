@@ -189,6 +189,12 @@ export function recurringUserWeeks(now: Date = new Date()): DateRange[] {
 export async function recurringUsersForWeek(
   range: DateRange,
 ): Promise<{ activeCount: number; recurringCount: number }> {
+  // db.execute()'s raw-sql path (unlike gte()/lt() in the query builder) does
+  // not auto-serialize a bare Date the way postgres-js's own tagged-template
+  // form does — it must go in as an ISO string, or the driver throws trying
+  // to treat the Date as a Buffer/string.
+  const from = range.from.toISOString();
+  const to = range.to.toISOString();
   const result = await db.execute<{ activeCount: string; recurringCount: string }>(sql`
     WITH activity AS (
       SELECT user_id, created_at FROM ${aiUsage} WHERE user_id IS NOT NULL
@@ -203,11 +209,11 @@ export async function recurringUsersForWeek(
     )
     SELECT
       count(DISTINCT user_id) FILTER (
-        WHERE created_at >= ${range.from} AND created_at < ${range.to}
+        WHERE created_at >= ${from} AND created_at < ${to}
       ) AS "activeCount",
       count(DISTINCT user_id) FILTER (
-        WHERE created_at >= ${range.from} AND created_at < ${range.to}
-        AND user_id IN (SELECT user_id FROM activity WHERE created_at < ${range.from})
+        WHERE created_at >= ${from} AND created_at < ${to}
+        AND user_id IN (SELECT user_id FROM activity WHERE created_at < ${from})
       ) AS "recurringCount"
     FROM activity
   `);
