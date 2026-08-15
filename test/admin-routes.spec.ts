@@ -27,6 +27,8 @@ const state = vi.hoisted(() => ({
   payingUserCount: vi.fn(),
   logAdminAction: vi.fn().mockResolvedValue(undefined),
   costByAgent: vi.fn(),
+  recurringUsersForWeek: vi.fn(),
+  timeSpentHoursForWeek: vi.fn(),
   resolveFeatures: vi.fn(),
   invalidateFeatureCache: vi.fn(),
   upsertFeatureOverride: vi.fn(),
@@ -82,6 +84,8 @@ vi.mock('../src/modules/admin/admin.repo.js', async (importOriginal) => {
     topUpFunnel: state.topUpFunnel,
     payingUserCount: state.payingUserCount,
     logAdminAction: state.logAdminAction,
+    recurringUsersForWeek: state.recurringUsersForWeek,
+    timeSpentHoursForWeek: state.timeSpentHoursForWeek,
   };
 });
 
@@ -133,6 +137,8 @@ beforeEach(() => {
   state.usersCreatedBetween.mockResolvedValue(0);
   state.sumWalletBalanceOutstanding.mockResolvedValue(0);
   state.costByAgent.mockResolvedValue([]);
+  state.recurringUsersForWeek.mockResolvedValue({ activeCount: 0, recurringCount: 0 });
+  state.timeSpentHoursForWeek.mockResolvedValue(0);
   state.resolveFeatures.mockResolvedValue({});
 });
 
@@ -196,6 +202,54 @@ describe('GET /v1/admin/overview', () => {
     expect(state.logAdminAction).toHaveBeenCalledWith(
       ADMIN_PHONE,
       expect.stringContaining('/v1/admin/overview'),
+      expect.anything(),
+    );
+  });
+});
+
+describe('GET /v1/admin/recurring-users', () => {
+  it('returns 200 with four weeks, each carrying the mocked counts', async () => {
+    signInAs(ADMIN_PHONE);
+    state.recurringUsersForWeek.mockResolvedValue({ activeCount: 10, recurringCount: 4 });
+    state.timeSpentHoursForWeek.mockResolvedValue(12.5);
+    const app = createApp();
+
+    const res = await app.request('/v1/admin/recurring-users', { headers: authHeader() });
+    const body = (await res.json()) as { weeks: Record<string, unknown>[] };
+
+    expect(res.status).toBe(200);
+    expect(body.weeks).toHaveLength(4);
+    expect(body.weeks.map((w) => w.label)).toEqual([
+      'this_week',
+      'last_week',
+      'last_week_plus_1',
+      'last_week_plus_2',
+    ]);
+    expect(body.weeks[0]).toMatchObject({
+      activeUsers: 10,
+      recurringUsers: 4,
+      timeSpentHours: 12.5,
+    });
+  });
+
+  it('returns 403 for a non-admin phone', async () => {
+    signInAs(NON_ADMIN_PHONE);
+    const app = createApp();
+
+    const res = await app.request('/v1/admin/recurring-users', { headers: authHeader() });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('audit-logs the read', async () => {
+    signInAs(ADMIN_PHONE);
+    const app = createApp();
+
+    await app.request('/v1/admin/recurring-users', { headers: authHeader() });
+
+    expect(state.logAdminAction).toHaveBeenCalledWith(
+      ADMIN_PHONE,
+      expect.stringContaining('/v1/admin/recurring-users'),
       expect.anything(),
     );
   });

@@ -16,6 +16,7 @@ import {
   AdjustWalletResponseSchema,
   AdminReportsResponseSchema,
   AdminReferralsResponseSchema,
+  AdminRecurringUsersResponseSchema,
 } from './admin.schemas.js';
 import { resolveDateRangePreset, logAdminAction } from './admin.repo.js';
 import {
@@ -26,6 +27,7 @@ import {
   adjustWallet,
   getReportsBreakdown,
   getReferrals,
+  getRecurringUsers,
 } from './admin.service.js';
 
 const ErrorSchema = z
@@ -311,6 +313,34 @@ adminRouter.openapi(listReferralsRoute, async (c) => {
   const referrals = await getReferrals();
   await auditRead(c, 'GET /v1/admin/referrals', {});
   return c.json({ referrals }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/recurring-users                                                  */
+/* -------------------------------------------------------------------------- */
+
+const recurringUsersRoute = createRoute({
+  method: 'get',
+  path: '/admin/recurring-users',
+  tags: ['Admin'],
+  summary:
+    'Recurring-user counts and approximate time spent for this week, last week, last week+1, and last week+2, derived from existing activity history',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: {
+      description: 'Weekly recurring-user breakdown',
+      content: { 'application/json': { schema: AdminRecurringUsersResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(recurringUsersRoute, async (c) => {
+  const weeks = await getRecurringUsers();
+  await auditRead(c, 'GET /v1/admin/recurring-users', {});
+  return c.json({ weeks }, 200);
 });
 
 /* -------------------------------------------------------------------------- */

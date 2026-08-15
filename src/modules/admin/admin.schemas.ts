@@ -212,3 +212,16 @@ const AdminReferralRowSchema = z.object({
 export const AdminReferralsResponseSchema = z
   .object({ referrals: z.array(AdminReferralRowSchema) })
   .openapi('AdminReferralsResponse');
+
+const AdminRecurringUsersWeekSchema = z.object({
+  label: z.enum(['this_week', 'last_week', 'last_week_plus_1', 'last_week_plus_2']),
+  from: z.string(),
+  to: z.string(),
+  activeUsers: z.number().int(),
+  recurringUsers: z.number().int(),
+  timeSpentHours: z.number(),
+});
+
+export const AdminRecurringUsersResponseSchema = z
+  .object({ weeks: z.array(AdminRecurringUsersWeekSchema) })
+  .openapi('AdminRecurringUsersResponse');

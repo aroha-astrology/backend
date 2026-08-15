@@ -24,6 +24,9 @@ import {
   topUpFunnel,
   payingUserCount,
   logAdminAction,
+  recurringUserWeeks,
+  recurringUsersForWeek,
+  timeSpentHoursForWeek,
   type DateRange,
 } from './admin.repo.js';
 
@@ -273,6 +276,47 @@ export async function adjustWallet(
 
 export async function getReportsBreakdown(range: DateRange) {
   return spendByReportKey(range);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Recurring users                                                             */
+/* -------------------------------------------------------------------------- */
+
+const RECURRING_WEEK_LABELS = [
+  'this_week',
+  'last_week',
+  'last_week_plus_1',
+  'last_week_plus_2',
+] as const;
+
+export interface RecurringUsersWeekDto {
+  label: (typeof RECURRING_WEEK_LABELS)[number];
+  from: string;
+  to: string;
+  activeUsers: number;
+  recurringUsers: number;
+  timeSpentHours: number;
+}
+
+/** Fixed four-week breakdown for the admin "Recurring Users" card — see recurringUserWeeks()/recurringUsersForWeek() for what "recurring" means here. */
+export async function getRecurringUsers(): Promise<RecurringUsersWeekDto[]> {
+  const weeks = recurringUserWeeks();
+  return Promise.all(
+    weeks.map(async (range, i) => {
+      const [{ activeCount, recurringCount }, timeSpentHours] = await Promise.all([
+        recurringUsersForWeek(range),
+        timeSpentHoursForWeek(range),
+      ]);
+      return {
+        label: RECURRING_WEEK_LABELS[i]!,
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+        activeUsers: activeCount,
+        recurringUsers: recurringCount,
+        timeSpentHours,
+      };
+    }),
+  );
 }
 
 /* -------------------------------------------------------------------------- */

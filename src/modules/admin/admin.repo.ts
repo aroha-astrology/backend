@@ -1,7 +1,15 @@
 import { and, count, desc, eq, gte, like, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { Errors } from '../../lib/errors.js';
-import { orders, walletTransactions, adminAuditLog } from '../../db/schema.js';
+import {
+  orders,
+  walletTransactions,
+  adminAuditLog,
+  aiUsage,
+  chatSessions,
+  voiceSessions,
+  reports,
+} from '../../db/schema.js';
 
 /* -------------------------------------------------------------------------- */
 /* IST-anchored date range resolution                                          */
@@ -143,6 +151,95 @@ export function resolveDateRangePreset(
     default:
       throw Errors.badRequest(`Unknown date range preset "${preset}"`);
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Recurring users                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The four fixed weekly windows the "Recurring Users" admin card compares:
+ * the current week-to-date, and each of the three preceding full weeks.
+ * Weeks run Monday-Sunday, IST-anchored like every other boundary in this
+ * module. Index 0 = this week, 1 = last week, 2 = last week+1, 3 = last week+2.
+ */
+export function recurringUserWeeks(now: Date = new Date()): DateRange[] {
+  const { year, monthIndex0, day } = istPartsOf(now);
+  // Day-of-week is a pure calendar property of (year, monthIndex0, day), so
+  // reading it off a UTC-midnight Date for that same calendar date is safe
+  // regardless of server-local timezone — same reasoning istBoundary already
+  // relies on for date arithmetic. 0=Sun..6=Sat -> days-since-Monday.
+  const dow = new Date(Date.UTC(year, monthIndex0, day)).getUTCDay();
+  const daysSinceMonday = (dow + 6) % 7;
+  const thisWeekStartDay = day - daysSinceMonday;
+  return [0, 1, 2, 3].map((weeksAgo) => ({
+    from: istBoundary(year, monthIndex0, thisWeekStartDay - weeksAgo * 7),
+    to: istBoundary(year, monthIndex0, thisWeekStartDay - weeksAgo * 7 + 7),
+  }));
+}
+
+/**
+ * "Active"/"recurring" have no dedicated tracking table — `users.lastActiveAt`
+ * is a single field overwritten on every request, so it cannot answer "was
+ * this user active in a past week" retroactively. Instead this unions every
+ * table that already timestamps a real user action (AI calls, chat sessions,
+ * voice sessions, orders, report generations) and treats "recurring" as
+ * active in `range` AND active at least once before `range.from`.
+ */
+export async function recurringUsersForWeek(
+  range: DateRange,
+): Promise<{ activeCount: number; recurringCount: number }> {
+  const result = await db.execute<{ activeCount: string; recurringCount: string }>(sql`
+    WITH activity AS (
+      SELECT user_id, created_at FROM ${aiUsage} WHERE user_id IS NOT NULL
+      UNION ALL
+      SELECT user_id, created_at FROM ${chatSessions}
+      UNION ALL
+      SELECT user_id, created_at FROM ${voiceSessions}
+      UNION ALL
+      SELECT user_id, created_at FROM ${orders}
+      UNION ALL
+      SELECT user_id, created_at FROM ${reports}
+    )
+    SELECT
+      count(DISTINCT user_id) FILTER (
+        WHERE created_at >= ${range.from} AND created_at < ${range.to}
+      ) AS "activeCount",
+      count(DISTINCT user_id) FILTER (
+        WHERE created_at >= ${range.from} AND created_at < ${range.to}
+        AND user_id IN (SELECT user_id FROM activity WHERE created_at < ${range.from})
+      ) AS "recurringCount"
+    FROM activity
+  `);
+  const row = result[0];
+  return {
+    activeCount: Number(row?.activeCount ?? 0),
+    recurringCount: Number(row?.recurringCount ?? 0),
+  };
+}
+
+/**
+ * Approximate hours of engagement within `range`: chat session wall-clock
+ * duration (updatedAt - createdAt) plus voice minutes actually charged.
+ * Undercounts time spent reading reports/kundli/browsing, since nothing
+ * timestamps the start/end of that today — see the two source tables' own
+ * caveats (chatSessions.updatedAt drifts with any edit, not just messages;
+ * voiceSessions.minutesCharged is billed minutes, not measured wall clock).
+ */
+export async function timeSpentHoursForWeek(range: DateRange): Promise<number> {
+  const [chatRow] = await db
+    .select({
+      seconds: sql<number>`coalesce(sum(extract(epoch from (${chatSessions.updatedAt} - ${chatSessions.createdAt}))), 0)`,
+    })
+    .from(chatSessions)
+    .where(and(gte(chatSessions.createdAt, range.from), lt(chatSessions.createdAt, range.to)));
+
+  const [voiceRow] = await db
+    .select({ minutes: sql<number>`coalesce(sum(${voiceSessions.minutesCharged}), 0)` })
+    .from(voiceSessions)
+    .where(and(gte(voiceSessions.createdAt, range.from), lt(voiceSessions.createdAt, range.to)));
+
+  return Number(chatRow?.seconds ?? 0) / 3600 + Number(voiceRow?.minutes ?? 0) / 60;
 }
 
 /* -------------------------------------------------------------------------- */
