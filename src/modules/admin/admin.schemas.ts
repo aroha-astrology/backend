@@ -137,6 +137,7 @@ const AdminUserRowSchema = z.object({
   walletBalancePaise: z.number(),
   createdAt: z.string(),
   lastActiveAt: z.string().nullable(),
+  claimedIndependenceDay: z.boolean(),
 });
 
 export const AdminUsersResponseSchema = z

@@ -825,6 +825,15 @@ export async function listUsersPage(
       walletBalancePaise: users.walletBalancePaise,
       createdAt: users.createdAt,
       lastActiveAt: users.lastActiveAt,
+      // Independence Day 2026 claim campaign — see config/campaigns.ts. A plain
+      // EXISTS against the ledger, same idea as hasClaimedIndependenceBonus's
+      // sibling `getClaimedCampaignKeys`, inlined here because this is a
+      // paginated admin list rather than a single-user lookup.
+      claimedIndependenceDay: sql<boolean>`exists (
+        select 1 from ${walletTransactions}
+        where ${walletTransactions.userId} = ${users.id}
+          and ${walletTransactions.reason} = 'independence_day_2026'
+      )`,
     })
     .from(users)
     .where(userSearchWhere(q, contactType))
