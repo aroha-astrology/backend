@@ -811,11 +811,21 @@ export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedIndependenceDa
  * hasClaimedIndependenceBonus's sibling `getClaimedCampaignKeys`, inlined here
  * because this is a paginated admin list rather than a single-user lookup. A
  * fresh call per use (rather than a shared constant) since it's referenced in
- * both the select list and, when sorted on, the orderBy clause. */
+ * both the select list and, when sorted on, the orderBy clause.
+ *
+ * Deliberately hand-aliases the inner table and references the outer `users`
+ * table by its literal name, rather than interpolating `walletTransactions`/
+ * `users` Column objects — those render as BARE column names inside a raw sql
+ * fragment (no table qualifier), so `${users.id}` here would emit unqualified
+ * `"id"`, which Postgres resolves to wallet_transactions' OWN `id` primary key
+ * inside the subquery's scope, not the intended outer-row correlation. That
+ * silently made this always evaluate false. Explicit aliasing removes the
+ * ambiguity entirely.
+ */
 const claimedIndependenceDayExpr = () => sql<boolean>`exists (
-  select 1 from ${walletTransactions}
-  where ${walletTransactions.userId} = ${users.id}
-    and ${walletTransactions.reason} = 'independence_day_2026'
+  select 1 from wallet_transactions wt
+  where wt.user_id = users.id
+    and wt.reason = 'independence_day_2026'
 )`;
 
 /** Powers both the Telegram `/users` command (no `q`) and the admin dashboard's `GET /v1/admin/users?q=` search. */
