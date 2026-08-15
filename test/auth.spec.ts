@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   checkTotalUserMilestone: vi.fn().mockResolvedValue(undefined),
   resolveFeaturesForUser: vi.fn(),
   hasGivenFeedback: vi.fn(),
+  getClaimedCampaignKeys: vi.fn(),
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', () => ({
@@ -56,6 +57,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   // set explicitly, but establishSession doesn't care which branch runs).
   ensureReferralCode: state.ensureReferralCode,
   touchUserLastActive: state.touchUserLastActive,
+  getClaimedCampaignKeys: state.getClaimedCampaignKeys,
 }));
 
 vi.mock('../src/modules/features/features.service.js', () => ({
@@ -84,6 +86,7 @@ describe('POST /v1/auth/session', () => {
     state.checkTotalUserMilestone.mockReset().mockResolvedValue(undefined);
     state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
     state.hasGivenFeedback.mockReset().mockResolvedValue(false);
+    state.getClaimedCampaignKeys.mockReset().mockResolvedValue([]);
   });
 
   it('returns 401 when the Authorization header is missing', async () => {

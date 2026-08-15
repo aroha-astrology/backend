@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
   resolveFeaturesForUser: vi.fn(),
   hasGivenFeedback: vi.fn(),
+  getClaimedCampaignKeys: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -49,6 +50,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   revokeDeviceTokensByUser: vi.fn().mockResolvedValue(undefined),
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
   ensureReferralCode: vi.fn((user) => Promise.resolve(user)),
+  getClaimedCampaignKeys: state.getClaimedCampaignKeys,
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', () => ({
@@ -76,6 +78,7 @@ describe('GET /v1/me', () => {
     state.anonymizeUserById.mockReset();
     state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
     state.hasGivenFeedback.mockReset().mockResolvedValue(false);
+    state.getClaimedCampaignKeys.mockReset().mockResolvedValue([]);
   });
 
   it('returns the current user profile', async () => {
@@ -122,6 +125,7 @@ describe('PATCH /v1/me', () => {
     state.updateUserWithConsentLog.mockReset();
     state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
     state.hasGivenFeedback.mockReset().mockResolvedValue(false);
+    state.getClaimedCampaignKeys.mockReset().mockResolvedValue([]);
   });
 
   it('updates the profile and stamps profileCompletedAt when all fields are present', async () => {

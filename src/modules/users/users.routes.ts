@@ -1,9 +1,16 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
-import { resolveFeaturesForUser } from '../features/features.service.js';
+import { resolveFeaturesForUser, payoutOf } from '../features/features.service.js';
 import { hasGivenFeedback } from '../feedback/feedback.repo.js';
-import { ensureReferralCode, collectUserExport } from './users.repo.js';
+import {
+  ensureReferralCode,
+  collectUserExport,
+  getClaimedCampaignKeys,
+  claimCampaignBonus,
+} from './users.repo.js';
+import { CLAIM_CAMPAIGN_KEYS, findClaimCampaign } from '../../config/campaigns.js';
+import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { Errors } from '../../lib/errors.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
 import {
@@ -132,6 +139,34 @@ const unlockGemstoneRoute = createRoute({
   },
 });
 
+const claimCampaignBonusRoute = createRoute({
+  method: 'post',
+  path: '/me/claim-bonus/{campaignKey}',
+  tags: ['Users'],
+  summary: 'Claim a one-time wallet bonus campaign (see config/campaigns.ts)',
+  description:
+    'Generic across every claim campaign — Independence Day 2026 today, whatever comes next — ' +
+    'so a new campaign only ever needs a new CLAIM_CAMPAIGNS entry, never a new route.',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: {
+    params: z.object({ campaignKey: z.string() }),
+  },
+  responses: {
+    200: {
+      description: 'Claim result — `claimed: false` means this user already claimed it before',
+      content: {
+        'application/json': {
+          schema: z.object({ claimed: z.boolean(), walletBalancePaise: z.number().int() }),
+        },
+      },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Unknown campaign key'),
+    409: errorResponse('Conflict (claim window closed, or the offer is currently disabled)'),
+  },
+});
+
 const deleteMeRoute = createRoute({
   method: 'delete',
   path: '/me',
@@ -224,7 +259,8 @@ usersRouter.openapi(getMeRoute, async (c) => {
   const profile = await resolveActiveProfileContext(user);
   const features = await resolveFeaturesForUser(user.id);
   const feedbackGiven = await hasGivenFeedback(user.id);
-  return c.json(toUserDto(user, profile, features, feedbackGiven), 200);
+  const claimedCampaigns = await getClaimedCampaignKeys(user.id, CLAIM_CAMPAIGN_KEYS);
+  return c.json(toUserDto(user, profile, features, feedbackGiven, claimedCampaigns), 200);
 });
 
 usersRouter.openapi(patchMeRoute, async (c) => {
@@ -237,7 +273,8 @@ usersRouter.openapi(patchMeRoute, async (c) => {
   const profile = await resolveActiveProfileContext(next);
   const features = await resolveFeaturesForUser(next.id);
   const feedbackGiven = await hasGivenFeedback(next.id);
-  return c.json(toUserDto(next, profile, features, feedbackGiven), 200);
+  const claimedCampaigns = await getClaimedCampaignKeys(next.id, CLAIM_CAMPAIGN_KEYS);
+  return c.json(toUserDto(next, profile, features, feedbackGiven, claimedCampaigns), 200);
 });
 
 usersRouter.openapi(deleteMeRoute, async (c) => {
@@ -271,6 +308,30 @@ usersRouter.openapi(unlockGemstoneRoute, async (c) => {
   const profile = await resolveActiveProfileContext(user);
   await unlockGemstone(user.id, profile.birthProfileId, body.weightKg ?? null);
   return c.json({ success: true }, 200);
+});
+
+usersRouter.openapi(claimCampaignBonusRoute, async (c) => {
+  const user = c.get('user');
+  const { campaignKey } = c.req.valid('param');
+  const campaign = findClaimCampaign(campaignKey);
+  if (!campaign) throw Errors.notFound('Unknown campaign');
+  if (istDateString(new Date()) !== campaign.istDate) {
+    throw Errors.conflict('This claim window has closed.');
+  }
+  // A brand-new account already receives the standard signup wallet balance (see the
+  // `wallet_balance_paise` column default) — someone who signed up today would otherwise
+  // stack that with the campaign bonus. Applies to every campaign, not just this one.
+  if (istDateString(user.createdAt) === campaign.istDate) {
+    throw Errors.conflict(
+      'New signups already receive a starting balance and are not eligible for this claim.',
+    );
+  }
+  const amountPaise = await payoutOf(user.id, campaign.featureKey, campaign.fallbackPaise);
+  if (amountPaise <= 0) {
+    throw Errors.conflict('This offer is not currently available.');
+  }
+  const result = await claimCampaignBonus(user.id, campaign.key, amountPaise);
+  return c.json(result, 200);
 });
 
 usersRouter.openapi(getNotificationsRoute, async (c) => {

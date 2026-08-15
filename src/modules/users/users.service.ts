@@ -57,12 +57,16 @@ const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean 
  * call site resolves it once per request.
  *
  * `feedbackGiven` is passed in for the same reason, via `hasGivenFeedback()`.
+ * `claimedCampaigns` likewise, via `getClaimedCampaignKeys()` — the campaign
+ * keys (see config/campaigns.ts) this user has already claimed, of any
+ * one-time claim campaign that currently exists.
  */
 export function toUserDto(
   row: UserRow,
   profile: ProfileContext,
   features: Record<string, ResolvedFeature>,
   feedbackGiven: boolean,
+  claimedCampaigns: string[],
 ): UserDto {
   return {
     id: row.id,
@@ -136,6 +140,7 @@ export function toUserDto(
     unlockedHouses: profile.unlockedHouses,
     gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
     feedbackGiven,
+    claimedCampaigns,
 
     features,
 

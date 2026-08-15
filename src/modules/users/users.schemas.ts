@@ -269,6 +269,13 @@ export const UserSchema = z
           'reinstall or a second device. Unrelated to the Google Play review card, which ' +
           'reports no outcome back and so can never set this.',
       ),
+    claimedCampaigns: z
+      .array(z.string())
+      .describe(
+        'Keys (see config/campaigns.ts, e.g. "independence_day_2026") of every one-time claim ' +
+          'campaign this user has already redeemed via POST /v1/me/claim-bonus/{campaignKey}. ' +
+          'Server truth, so a claim modal never offers a claim a second device already redeemed.',
+      ),
 
     features: z
       .record(

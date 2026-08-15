@@ -347,6 +347,18 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: true,
     defaultPricePaise: 5000,
   },
+  // One-time Independence Day 2026 wallet top-up, claimed via a modal on
+  // 15 August only (the date window is enforced in the route, not here).
+  // `enabled: false` is the campaign kill switch — payoutOf() then returns 0
+  // and the claim route responds 410, same mechanism as the referral/feedback
+  // keys above.
+  {
+    key: 'referral.independenceBonus',
+    label: 'Independence Day 2026 bonus (one-time)',
+    group: 'referral',
+    defaultEnabled: true,
+    defaultPricePaise: 50000,
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

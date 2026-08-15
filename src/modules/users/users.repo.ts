@@ -1,5 +1,19 @@
 import { alias } from 'drizzle-orm/pg-core';
-import { and, asc, eq, ilike, isNull, isNotNull, count, desc, gte, lt, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  ilike,
+  isNull,
+  isNotNull,
+  count,
+  desc,
+  gte,
+  lt,
+  or,
+  sql,
+  inArray,
+} from 'drizzle-orm';
 import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
 import { db } from '../../config/db.js';
@@ -263,6 +277,77 @@ export async function addWalletBalance(
       reason,
       balanceAfter: updated.walletBalancePaise,
     });
+  });
+}
+
+/**
+ * Which of the given claim-campaign keys (see config/campaigns.ts) this user
+ * has already claimed — surfaced on the user DTO as `claimedCampaigns` (like
+ * `feedbackGiven`) so a claim modal never offers a claim the server would
+ * refuse. Generic across every campaign so a new event never needs a new
+ * repo function: it's just another key in CLAIM_CAMPAIGNS.
+ */
+export async function getClaimedCampaignKeys(
+  userId: string,
+  campaignKeys: readonly string[],
+): Promise<string[]> {
+  if (campaignKeys.length === 0) return [];
+  const rows = await db
+    .selectDistinct({ reason: walletTransactions.reason })
+    .from(walletTransactions)
+    .where(
+      and(
+        eq(walletTransactions.userId, userId),
+        inArray(walletTransactions.reason, [...campaignKeys]),
+      ),
+    );
+  return rows.map((r) => r.reason);
+}
+
+/**
+ * Credit a one-time claim-campaign bonus, the first time only. Copies
+ * `recordFeedback`'s pattern exactly (feedback.repo.ts): lock the user row,
+ * then probe the ledger for a prior grant with this exact reason, all in one
+ * transaction — so two concurrent claim taps cannot both see "not yet
+ * claimed" and double-credit. `campaignKey` becomes the ledger `reason`
+ * directly, so it must be one of `CLAIM_CAMPAIGNS[].key`. The date window is
+ * enforced by the route, not here.
+ */
+export async function claimCampaignBonus(
+  userId: string,
+  campaignKey: string,
+  amountPaise: number,
+): Promise<{ claimed: boolean; walletBalancePaise: number }> {
+  return db.transaction(async (tx) => {
+    const [locked] = await tx.execute<{ wallet_balance_paise: number }>(sql`
+      SELECT wallet_balance_paise FROM users WHERE id = ${userId} FOR UPDATE;
+    `);
+    if (!locked) return { claimed: false, walletBalancePaise: 0 };
+
+    const [prior] = await tx
+      .select({ id: walletTransactions.id })
+      .from(walletTransactions)
+      .where(and(eq(walletTransactions.userId, userId), eq(walletTransactions.reason, campaignKey)))
+      .limit(1);
+    if (prior) return { claimed: false, walletBalancePaise: locked.wallet_balance_paise };
+    if (amountPaise <= 0)
+      return { claimed: false, walletBalancePaise: locked.wallet_balance_paise };
+
+    const [updated] = await tx
+      .update(users)
+      .set({ walletBalancePaise: sql`${users.walletBalancePaise} + ${amountPaise}` })
+      .where(eq(users.id, userId))
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!updated) return { claimed: false, walletBalancePaise: locked.wallet_balance_paise };
+
+    await tx.insert(walletTransactions).values({
+      userId,
+      delta: amountPaise,
+      reason: campaignKey,
+      balanceAfter: updated.walletBalancePaise,
+    });
+
+    return { claimed: true, walletBalancePaise: updated.walletBalancePaise };
   });
 }
 
