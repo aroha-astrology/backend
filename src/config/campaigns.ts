@@ -15,6 +15,12 @@ export interface ClaimCampaignDef {
   fallbackPaise: number;
   /** Claimable only on this IST calendar date (YYYY-MM-DD), enforced server-side in the route. */
   istDate: string;
+  /**
+   * Optional eligibility ceiling: claimable only while the wallet is strictly
+   * below this many paise. Re-checked server-side at claim time, so a user who
+   * recharges after being notified no longer qualifies. Omit for "everyone".
+   */
+  maxBalancePaise?: number;
 }
 
 export const CLAIM_CAMPAIGNS: readonly ClaimCampaignDef[] = [
@@ -23,6 +29,15 @@ export const CLAIM_CAMPAIGNS: readonly ClaimCampaignDef[] = [
     featureKey: 'referral.independenceBonus',
     fallbackPaise: 50000,
     istDate: '2026-08-15',
+  },
+  // Running-low top-up: ₹100 for anyone whose wallet is under ₹100, announced
+  // by push and claimed from the modal the same day.
+  {
+    key: 'top_up_bonus_2026_08_16',
+    featureKey: 'referral.topUpBonus',
+    fallbackPaise: 10000,
+    istDate: '2026-08-16',
+    maxBalancePaise: 10000,
   },
   // Next event: add a new entry here + a matching referral.* key in features.ts.
 ];

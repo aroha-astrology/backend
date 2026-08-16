@@ -326,6 +326,15 @@ usersRouter.openapi(claimCampaignBonusRoute, async (c) => {
       'New signups already receive a starting balance and are not eligible for this claim.',
     );
   }
+  // Balance-gated campaigns (a "running low" top-up) re-check the wallet here
+  // rather than trusting the audience the announcement was sent to — someone
+  // who recharged in between is no longer who the offer is for.
+  if (
+    campaign.maxBalancePaise !== undefined &&
+    user.walletBalancePaise >= campaign.maxBalancePaise
+  ) {
+    throw Errors.conflict('This offer is only for wallets running low.');
+  }
   const amountPaise = await payoutOf(user.id, campaign.featureKey, campaign.fallbackPaise);
   if (amountPaise <= 0) {
     throw Errors.conflict('This offer is not currently available.');

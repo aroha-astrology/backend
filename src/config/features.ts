@@ -359,6 +359,16 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: true,
     defaultPricePaise: 50000,
   },
+  // One-time top-up for wallets under ₹100, claimed via a modal on the
+  // campaign's IST date only (window + the balance ceiling are enforced in the
+  // route). Same kill switch as the keys above: disabled ⇒ payoutOf() returns 0.
+  {
+    key: 'referral.topUpBonus',
+    label: 'Running-low top-up bonus (one-time)',
+    group: 'referral',
+    defaultEnabled: true,
+    defaultPricePaise: 10000,
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));
