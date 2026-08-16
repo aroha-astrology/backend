@@ -28,10 +28,17 @@ export const requestLogger: MiddlewareHandler = async (c, next) => {
     // responses back through this same next(), same as the status logged
     // just above), so this is the one place that sees all of them.
     if (status >= 400) {
-      const route = c.req.routePath || c.req.path;
+      // Signature groups by the matched PATTERN (e.g. /v1/forecast/moon-sign/*)
+      // so a fan-out of the same failure across many concrete paths collapses
+      // into one throttled alert. But that pattern is useless to a human —
+      // "401 on GET /v1/*" could be any of thirty endpoints, since a leaked
+      // requireUser wildcard (see app.ts's mount-order comment) reports its
+      // OWN route pattern, not the request's. The message uses the concrete
+      // path instead so the alert is actually actionable.
+      const pattern = c.req.routePath || c.req.path;
       void alertThrottled(
-        `http-error:${c.req.method}:${route}:${status}`,
-        `${status} on ${c.req.method} ${route}`,
+        `http-error:${c.req.method}:${pattern}:${status}`,
+        `${status} on ${c.req.method} ${c.req.path}`,
         `requestId ${requestId}`,
       );
     }
