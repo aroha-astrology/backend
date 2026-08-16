@@ -7,6 +7,16 @@ import { z } from '@hono/zod-openapi';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/;
 
+// A DOB carries no timezone, but the "not in the future" check below compares
+// it (as UTC midnight) against Date.now() (UTC). For any user east of UTC
+// (e.g. IST, UTC+5:30) submitting "today" before ~05:30 UTC-equivalent, UTC
+// still shows yesterday's date — today's own UTC midnight hasn't happened yet
+// — so a perfectly real same-day date reads as "in the future" and 400s.
+// Slack of a full day covers every timezone (max offset is UTC+14) without
+// meaningfully weakening the check (a birth date can't legitimately be
+// tomorrow either way).
+const FUTURE_DATE_SLACK_MS = 24 * 60 * 60 * 1000;
+
 /** True for a real calendar date (no Feb 30), year >= 1900, not in the future. */
 function isRealPastDate(s: string): boolean {
   const parts = s.split('-');
@@ -17,7 +27,7 @@ function isRealPastDate(s: string): boolean {
   if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
     return false;
   }
-  return y >= 1900 && dt.getTime() <= Date.now();
+  return y >= 1900 && dt.getTime() <= Date.now() + FUTURE_DATE_SLACK_MS;
 }
 
 /** True for an in-range wall-clock time (00:00:00–23:59:59). */
