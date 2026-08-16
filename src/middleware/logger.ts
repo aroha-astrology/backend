@@ -19,7 +19,7 @@ export const requestLogger: MiddlewareHandler = async (c, next) => {
     const status = c.res.status;
     child.info({ status, durationMs }, 'request:end');
 
-    // Single funnel for every non-2xx response, whatever produced it: a
+    // Single funnel for every alertable response, whatever produced it: a
     // thrown AppError/ZodError/500 caught by errorHandler, a rejected
     // OpenAPI request-validation hook (returns its own 400 directly,
     // without ever throwing — errorHandler never sees it), or a bare
@@ -27,7 +27,16 @@ export const requestLogger: MiddlewareHandler = async (c, next) => {
     // which path produced it (Hono's compose() resolves onError-produced
     // responses back through this same next(), same as the status logged
     // just above), so this is the one place that sees all of them.
-    if (status >= 400) {
+    //
+    // 4xx is deliberately NOT alertable (429 excepted). A 4xx means the CLIENT
+    // was told "no", and for a documented contract that is normal operation
+    // rather than an incident: GET /v1/kundli answers 422 missing_parameters
+    // for every user who opens the app before finishing onboarding, and again
+    // on every poll from anyone parked in the birth-time rectification funnel.
+    // Same for 401 on an expired token and 403 on a locked house. They are all
+    // still in the request:end log line above; they just don't page anyone.
+    // 429 stays alertable — a rate-limit storm is a real operational signal.
+    if (status >= 500 || status === 429) {
       // Signature groups by the matched PATTERN (e.g. /v1/forecast/moon-sign/*)
       // so a fan-out of the same failure across many concrete paths collapses
       // into one throttled alert. But that pattern is useless to a human —
