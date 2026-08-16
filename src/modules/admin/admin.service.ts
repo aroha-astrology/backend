@@ -12,9 +12,13 @@ import {
   addWalletBalance,
   deductWalletBalance,
   findActiveUserById,
+  listPendingDeletionRequestsBefore,
+  clearDeletionRequest,
+  hardDeleteUserById,
   type UserSortBy,
   type ContactTypeFilter,
 } from '../users/users.repo.js';
+import { requestAccountDeletion } from '../users/users.service.js';
 import { costByAgent, type AgentCostRow } from './ai-usage.repo.js';
 import {
   sumPaidOrdersBetween,
@@ -366,4 +370,85 @@ export async function getReferrals(): Promise<ReferralRowDto[]> {
     entry.count += 1;
   }
   return Array.from(byReferrer.values()).sort((a, b) => b.count - a.count);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Deletion requests                                                          */
+/* -------------------------------------------------------------------------- */
+
+export interface AdminDeletionRequestDto {
+  id: string;
+  displayName: string | null;
+  phoneE164: string | null;
+  email: string | null;
+  deletionRequestedAt: string;
+}
+
+export interface AdminDeletionActionDto {
+  id: string;
+  deletionRequestedAt: string | null;
+}
+
+/**
+ * Pending requests, oldest first — the admin-console counterpart to the
+ * Telegram bot's `/pendingdeletes`. Reuses the reminder cron's own query with
+ * `cutoff = now`, since "requested before now" is just every pending request
+ * that exists so far; deliberately no pagination, matching the Referrals
+ * tab's precedent for a queue this low-volume.
+ */
+export async function listDeletionRequests(): Promise<AdminDeletionRequestDto[]> {
+  const rows = await listPendingDeletionRequestsBefore(new Date());
+  return rows.map((row) => ({
+    id: row.id,
+    displayName: row.displayName,
+    phoneE164: row.phoneE164,
+    email: row.email,
+    // Guaranteed non-null: the query itself filters on isNotNull(deletionRequestedAt).
+    deletionRequestedAt: row.deletionRequestedAt!.toISOString(),
+  }));
+}
+
+/**
+ * Manual flag for someone who called in to ask for deletion instead of
+ * tapping Delete Account in-app. Reuses `requestAccountDeletion` (the same
+ * function `DELETE /v1/me` calls) so it's idempotent and fires the same
+ * admin Telegram ping — a phone-in request should look identical downstream
+ * to a self-service one.
+ */
+export async function flagUserForDeletion(
+  userId: string,
+  adminPhone: string,
+): Promise<AdminDeletionActionDto> {
+  const requestedAt = await requestAccountDeletion(userId);
+  await logAdminAction(adminPhone, `POST /v1/admin/deletion-requests/${userId}`, {});
+  return { id: userId, deletionRequestedAt: requestedAt.toISOString() };
+}
+
+/** Dismiss a pending request — the account stays exactly as it was, nothing erased. */
+export async function rejectDeletionRequest(
+  userId: string,
+  adminPhone: string,
+): Promise<AdminDeletionActionDto> {
+  const user = await findActiveUserById(userId);
+  if (!user) throw Errors.notFound('User not found');
+  await clearDeletionRequest(userId);
+  await logAdminAction(adminPhone, `PATCH /v1/admin/deletion-requests/${userId}/reject`, {});
+  return { id: userId, deletionRequestedAt: null };
+}
+
+/**
+ * Irreversible hard delete — the admin-console equivalent of the Telegram
+ * bot's `/delete` command. Uses `hardDeleteUserById`, NOT the self-service
+ * `anonymizeUserById` path: no shell row survives (see
+ * users.repo.ts's doc comments on the two functions for why they differ).
+ * The phone number is captured for the audit log before the row disappears.
+ */
+export async function deleteUserHard(userId: string, adminPhone: string): Promise<{ id: string }> {
+  const user = await findActiveUserById(userId);
+  if (!user) throw Errors.notFound('User not found');
+  await hardDeleteUserById(userId);
+  await logAdminAction(adminPhone, `DELETE /v1/admin/deletion-requests/${userId}`, {
+    phoneE164: user.phoneE164,
+  });
+  return { id: userId };
 }

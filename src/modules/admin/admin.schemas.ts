@@ -213,6 +213,26 @@ export const AdminReferralsResponseSchema = z
   .object({ referrals: z.array(AdminReferralRowSchema) })
   .openapi('AdminReferralsResponse');
 
+/* -------------------------------------------------------------------------- */
+/* GET/POST/PATCH/DELETE /admin/deletion-requests                            */
+/* -------------------------------------------------------------------------- */
+
+const AdminDeletionRequestRowSchema = z.object({
+  id: z.string(),
+  displayName: z.string().nullable(),
+  phoneE164: z.string().nullable(),
+  email: z.string().nullable(),
+  deletionRequestedAt: z.string(),
+});
+
+export const AdminDeletionRequestsResponseSchema = z
+  .object({ requests: z.array(AdminDeletionRequestRowSchema) })
+  .openapi('AdminDeletionRequestsResponse');
+
+export const AdminDeletionActionResponseSchema = z
+  .object({ id: z.string(), deletionRequestedAt: z.string().nullable() })
+  .openapi('AdminDeletionActionResponse');
+
 const AdminRecurringUsersWeekSchema = z.object({
   label: z.enum(['this_week', 'last_week', 'last_week_plus_1', 'last_week_plus_2']),
   from: z.string(),

@@ -17,6 +17,8 @@ import {
   AdminReportsResponseSchema,
   AdminReferralsResponseSchema,
   AdminRecurringUsersResponseSchema,
+  AdminDeletionRequestsResponseSchema,
+  AdminDeletionActionResponseSchema,
 } from './admin.schemas.js';
 import { resolveDateRangePreset, logAdminAction } from './admin.repo.js';
 import {
@@ -28,6 +30,10 @@ import {
   getReportsBreakdown,
   getReferrals,
   getRecurringUsers,
+  listDeletionRequests,
+  flagUserForDeletion,
+  rejectDeletionRequest,
+  deleteUserHard,
 } from './admin.service.js';
 
 const ErrorSchema = z
@@ -387,4 +393,120 @@ adminRouter.openapi(predictionAccuracyRoute, async (c) => {
   const rows = await accuracyBySurfaceAndConfidence();
   await auditRead(c, 'GET /v1/admin/prediction-accuracy', {});
   return c.json({ rows }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/deletion-requests                                              */
+/* -------------------------------------------------------------------------- */
+
+const listDeletionRequestsRoute = createRoute({
+  method: 'get',
+  path: '/admin/deletion-requests',
+  tags: ['Admin'],
+  summary: 'Pending account-deletion requests, oldest first',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: {
+      description: 'Pending requests',
+      content: { 'application/json': { schema: AdminDeletionRequestsResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(listDeletionRequestsRoute, async (c) => {
+  const requests = await listDeletionRequests();
+  await auditRead(c, 'GET /v1/admin/deletion-requests', {});
+  return c.json({ requests }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /admin/deletion-requests/{id}                                        */
+/* -------------------------------------------------------------------------- */
+
+const flagDeletionRoute = createRoute({
+  method: 'post',
+  path: '/admin/deletion-requests/{id}',
+  tags: ['Admin'],
+  summary:
+    'Manually flag a user for deletion (e.g. they called in rather than tapping Delete Account)',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { params: AdminUserIdParamSchema },
+  responses: {
+    200: {
+      description: 'Request now in force',
+      content: { 'application/json': { schema: AdminDeletionActionResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+    404: errorResponse('User not found'),
+  },
+});
+
+adminRouter.openapi(flagDeletionRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const result = await flagUserForDeletion(id, adminPhoneOf(c));
+  return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* PATCH /admin/deletion-requests/{id}/reject                                */
+/* -------------------------------------------------------------------------- */
+
+const rejectDeletionRoute = createRoute({
+  method: 'patch',
+  path: '/admin/deletion-requests/{id}/reject',
+  tags: ['Admin'],
+  summary: 'Dismiss a deletion request — account stays, nothing erased',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { params: AdminUserIdParamSchema },
+  responses: {
+    200: {
+      description: 'Cleared',
+      content: { 'application/json': { schema: AdminDeletionActionResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+    404: errorResponse('User not found'),
+  },
+});
+
+adminRouter.openapi(rejectDeletionRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const result = await rejectDeletionRequest(id, adminPhoneOf(c));
+  return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* DELETE /admin/deletion-requests/{id}                                      */
+/* -------------------------------------------------------------------------- */
+
+const hardDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/admin/deletion-requests/{id}',
+  tags: ['Admin'],
+  summary:
+    'Irreversible hard delete — no shell row survives (same erasure as the Telegram /delete command)',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { params: AdminUserIdParamSchema },
+  responses: {
+    200: {
+      description: 'Deleted',
+      content: { 'application/json': { schema: z.object({ id: z.string() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+    404: errorResponse('User not found'),
+  },
+});
+
+adminRouter.openapi(hardDeleteRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const result = await deleteUserHard(id, adminPhoneOf(c));
+  return c.json(result, 200);
 });
