@@ -13,7 +13,9 @@ import {
   listRefundsBetween,
   clearDeletionRequest,
   listPendingDeletionRequestsBefore,
+  usersActiveBetween,
 } from '../users/users.repo.js';
+import { CONCURRENT_ACTIVE_WINDOW_MS } from '../admin-alerts/admin-alerts.service.js';
 import { deleteMe } from '../users/users.service.js';
 import { resolveDateRangePreset } from '../admin/admin.repo.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
@@ -155,6 +157,55 @@ export async function cmdStats(): Promise<string> {
     `Revenue Today: ${escapeMarkdown(formatRupees(revenue.totalPaise))} \\(${revenue.count} order${revenue.count === 1 ? '' : 's'}\\)\n` +
     `Outstanding Wallet Balance: ${escapeMarkdown(formatRupees(outstanding))}`
   );
+}
+
+/** Distinct users active (by lastActiveAt) in each window — reuses the same `usersActiveBetween` the admin dashboard's active-users metric is built on. */
+export async function cmdActiveUsers(): Promise<string> {
+  const [today, yesterday, thisWeek, thisMonth] = await Promise.all([
+    usersActiveBetween(resolveDateRangePreset('today')),
+    usersActiveBetween(resolveDateRangePreset('yesterday')),
+    usersActiveBetween(resolveDateRangePreset('last7d')),
+    usersActiveBetween(resolveDateRangePreset('this_month')),
+  ]);
+
+  return (
+    `*Active Users*\n\n` +
+    `Today: ${today}\n` +
+    `Yesterday: ${yesterday}\n` +
+    `This Week: ${thisWeek}\n` +
+    `This Month: ${thisMonth}`
+  );
+}
+
+/**
+ * Who's online right now — same 5-minute "concurrent" window
+ * admin-alerts.service.ts pages on for its burst alert, so "online" here
+ * means the same thing it does everywhere else in this codebase.
+ *
+ * ponytail: pulls the top 50 by lastActiveAt and filters client-side rather
+ * than a dedicated `lastActiveAt >= cutoff` query — fine at current traffic,
+ * but if concurrent users ever exceed 50 the count silently undercounts.
+ * Upgrade to a proper repo query with a `count()` + capped list if that
+ * threshold is ever realistic.
+ */
+export async function cmdOnlineUsers(): Promise<string> {
+  const cutoff = new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS);
+  const recent = await listUsersPage(50, 0, undefined, 'lastActiveAt', 'desc');
+  const online = recent.filter((u) => u.lastActiveAt && u.lastActiveAt >= cutoff);
+
+  if (online.length === 0) return escapeMarkdown('No users active in the last 5 minutes.');
+
+  const lines = online.map((u) => {
+    const name = escapeMarkdown(u.displayName || 'No Name');
+    const contact = escapeMarkdown(u.email || u.phoneE164 || 'No contact');
+    const minsAgo = Math.max(
+      0,
+      Math.round((Date.now() - (u.lastActiveAt as Date).getTime()) / 60000),
+    );
+    return `• *${name}* \\| ${contact} \\| ${minsAgo}m ago`;
+  });
+
+  return `*Online Now \\(${online.length}\\)* \\— last 5 min\n\n${lines.join('\n')}`;
 }
 
 const MONEY_USAGE =

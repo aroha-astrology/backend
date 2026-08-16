@@ -5,6 +5,8 @@ import {
   cmdUsers,
   cmdDeleteUser,
   cmdStats,
+  cmdActiveUsers,
+  cmdOnlineUsers,
   cmdSearch,
   cmdUserDetails,
   cmdJobs,
@@ -74,7 +76,7 @@ export async function handleUpdate(update: unknown): Promise<void> {
     case '/start':
     case '/help':
       reply = escapeMarkdown(
-        `Available commands:\n/stats - App health\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user (admin only)\n/pendingdeletes - Accounts awaiting a deletion decision\n/approvedelete [id] - Approve a deletion request, erases the account (admin only)\n/rejectdelete [id] - Reject a deletion request, account continues (admin only)\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification (admin only)\n/coupons - List active coupons\n/newcoupon [code] [percent] [value] [maxUses] [expireDays] - Create a coupon (admin only)\n/money [phone] [amount] - Add/deduct wallet balance, e.g. /money +919999999999 250 (admin only)\n/feedback [offset] - AI chat thumbs up/down counts per user\n/incidents [today|yesterday] - Users hit by a failure, from the refund ledger`,
+        `Available commands:\n/stats - App health\n/active - Active users today/yesterday/week/month\n/online - Who's active right now (last 5 min)\n/users [offset] - List all users\n/user [phone] - User details\n/search [email|phone] - Search user ID\n/delete [id] - Hard delete a user (admin only)\n/pendingdeletes - Accounts awaiting a deletion decision\n/approvedelete [id] - Approve a deletion request, erases the account (admin only)\n/rejectdelete [id] - Reject a deletion request, account continues (admin only)\n/jobs - Check failed background jobs\n/broadcast [message] - Send push notification (admin only)\n/coupons - List active coupons\n/newcoupon [code] [percent] [value] [maxUses] [expireDays] - Create a coupon (admin only)\n/money [phone] [amount] - Add/deduct wallet balance, e.g. /money +919999999999 250 (admin only)\n/feedback [offset] - AI chat thumbs up/down counts per user\n/incidents [today|yesterday] - Users hit by a failure, from the refund ledger`,
       );
       break;
     case '/users':
@@ -94,6 +96,12 @@ export async function handleUpdate(update: unknown): Promise<void> {
       break;
     case '/stats':
       reply = await cmdStats();
+      break;
+    case '/active':
+      reply = await cmdActiveUsers();
+      break;
+    case '/online':
+      reply = await cmdOnlineUsers();
       break;
     case '/search':
       reply = await cmdSearch(args[0]);
