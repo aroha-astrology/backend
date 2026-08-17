@@ -39,6 +39,14 @@ export const CLAIM_CAMPAIGNS: readonly ClaimCampaignDef[] = [
     istDate: '2026-08-16',
     maxBalancePaise: 10000,
   },
+  // Same running-low top-up, re-run a day later for wallets still under ₹100.
+  {
+    key: 'top_up_bonus_2026_08_17',
+    featureKey: 'referral.topUpBonus',
+    fallbackPaise: 10000,
+    istDate: '2026-08-17',
+    maxBalancePaise: 10000,
+  },
   // Next event: add a new entry here + a matching referral.* key in features.ts.
 ];
 
