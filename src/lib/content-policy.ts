@@ -91,14 +91,22 @@ const DEATH_PATTERNS: RegExp[] = [
   // Longevity / maraka / mrityu yoga / akaal mrityu / 8th house + life/death
   /\b(longevity|maraka|marak\s*(dasha|yoga|graha|sthan)|mrityu\s*(yog|yoga|sthan)|akaal\s*mrityu|akal\s*mrityu|untimely\s*death|premature\s*death|early\s*death)\b/i,
   /(मारक|अकाल\s*मृत्यु|मृत्यु\s*योग|मारकेश|आयुष्य\s*दोष)/,
-  /\b8(th|st)?\s*(house|bhava).{0,40}(life|death|end|die|mrityu|zindagi|जीवन|ज़िंदगी|जिंदगी|जीना)\b/i,
-  /\b(life|death|zindagi|जीवन|ज़िंदगी|जिंदगी).{0,20}\b8(th|st)?\s*(house|bhava)\b/i,
+  // Narrowed to actual death words only — "life" (bare) matched ordinary 8th-house
+  // questions like "8th house and my life partner", a routine chart topic, not death.
+  /\b8(th|st)?\s*(house|bhava).{0,40}(death|die|mrityu|मृत्यु)\b/i,
+  /\b(death|die|mrityu|मृत्यु).{0,20}\b8(th|st)?\s*(house|bhava)\b/i,
   // Fatal / terminal / incurable illness
   /\b(fatal|terminal|incurable|life[\s-]*threatening)\s+(illness|disease|condition|sickness|bimari|cancer|tumor)\b/i,
   /\b(laailaaj|laaiilaaj|jaanleva|jaan\s*leva)\s+(bimari|rog|bimaari)?/i,
   /(लाइलाज|जानलेवा|असाध्य)\s*(बीमारी|रोग)?/,
-  // End of life / last days / near death
-  /\b(last\s*days?\s*(of\s*(my\s*)?life)?|near\s*death|dying\s*soon|on\s*my\s*deathbed|approaching\s*death|end\s*of\s*life|final\s*moments)\b/i,
+  // End of life / last days / near death. "last days"/"final moments" exclude a
+  // following dasha/period/transit/month/etc. — "last days of my Saturn Mahadasha"
+  // and "last days of this month" are routine timing questions, not death.
+  /\b((last\s*days?|final\s*moments)(?!\s*(of\s*(this|the|my)?\s*)?(\w+\s+){0,2}(dasha|mahadasha|antardasha|pratyantar\w*|transit\w*|period|month|week|year|phase|cycle))|near\s*death|dying\s*soon|on\s*my\s*deathbed|approaching\s*death|end\s*of\s*life)\b/i,
+  // Direct "when will my life end" phrasing — distinct from the die/death verb
+  // forms above. Excludes "phase/period/stage/chapter of my life ending", which
+  // is a rough-patch question ("when will this hard phase end"), not death.
+  /(?<!(phase|period|stage|chapter)\s+of\s+(my\s+)?)\blife\s+(will\s+)?(end|ends|ending)\b/i,
   /\b(antim\s*(samay|din|kshan)|aakhri\s*(samay|din))\b/i,
   /(अंतिम\s*(समय|दिन|क्षण|यात्रा)|आख़िरी\s*(समय|दिन))/,
   // Outlive / widow

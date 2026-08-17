@@ -29,7 +29,12 @@ describe('classifyUserMessage — death topic blocking', () => {
     ['hi marenge', 'main kab marunga'],
     ['hi akaal devanagari', 'akaal mrityu yog hai kya'],
     ['hi family devanagari', 'mere pita ki mrityu kab hogi'],
-    ['hi 8th house mix', '8th house ka kya scene hai meri zindagi ke liye'],
+    // 2026-08-17 fix: "life end(s)" wasn't covered on the input side at all —
+    // only the output-side filter caught a narrower "life ends (in/at/on)" form.
+    ['en life end direct', 'When will my life end'],
+    ['en life end soon', 'Will my life end soon according to my chart'],
+    ['en am I in last days', 'Am I in my last days'],
+    ['hi 8th house death', '8th house se meri death kab hogi'],
   ];
 
   for (const [label, msg] of cases) {
@@ -141,6 +146,16 @@ describe('classifyUserMessage — non-death astrology questions', () => {
     'When is the next lunar eclipse',
     'who is the god of the sun',
     'what should I do during a grahan',
+    // Regression pin for the 2026-08-17 fix: DEATH_PATTERNS' 8th-house and
+    // "last days" rules treated bare "life"/"zindagi" and bare "last days" as
+    // death words, blocking completely ordinary astrology phrasing.
+    '8th house ka kya scene hai meri zindagi ke liye',
+    'Tell me about my 8th house and what it means for my life',
+    'What does the 8th house say about my life partner?',
+    'What about the last days of my Saturn Mahadasha?',
+    'How will the last days of this month be for me?',
+    'What are the final moments of my career dasha going to feel like?',
+    'When will this hard phase of my life end',
   ];
 
   for (const msg of cases) {
