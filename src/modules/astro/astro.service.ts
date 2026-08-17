@@ -1101,10 +1101,13 @@ async function buildChatPanchangFacts(lat: number, lon: number): Promise<string[
   const facts = [
     `Today's Panchang (${panchang.date}, ${panchang.vara}): Tithi ${panchang.tithi.name} (${panchang.tithi.paksha} Paksha, ${panchang.tithi.isAuspicious ? 'auspicious' : 'not traditionally auspicious'}), Nakshatra ${panchang.nakshatra.name}, Yoga ${panchang.yoga.name}, Karana ${panchang.karana.name}`,
     `Rahu Kaal today (avoid starting anything important): ${panchang.rahuKaal.start}-${panchang.rahuKaal.end}`,
+    `Gulika Kaal today (also avoid): ${panchang.gulikaKaal.start}-${panchang.gulikaKaal.end}`,
     `Abhijit Muhurta today (traditionally auspicious for starting things): ${panchang.abhijitMuhurta.start}-${panchang.abhijitMuhurta.end}`,
   ];
   if (goodChoghadiya) {
-    facts.push(`Favorable Choghadiya windows today (daytime): ${goodChoghadiya}`);
+    facts.push(
+      `Favorable Choghadiya windows today (daytime — for pooja/worship timing specifically, prefer an Amrit or Shubh slot over Labh/Char if more than one is listed, since those favor commerce/travel): ${goodChoghadiya}`,
+    );
   }
   return facts;
 }
