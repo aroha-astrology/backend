@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import { db } from '../../config/db.js';
 import { reports, type ReportRow, type NewReportRow } from '../../db/schema.js';
@@ -110,6 +110,41 @@ export async function findReportRow(
 /** Same role as findReportRow but for partner/compatibility reports (input IS NOT NULL),
  * which have no periodMonth dimension and dedupe on input hash instead — see the
  * uniqInputHash* indexes claimReportRow conflicts against. */
+/**
+ * The reader's own currently-valid yearly report row (if any) — `periodMonth` (the purchase/
+ * generation date, see ReportDef.isYearly's doc comment) within the last 365 days of `now`.
+ * Guards a yearly purchase against being bought twice within its own still-active year: the
+ * (userId[, birthProfileId], reportKey, periodMonth) unique index only blocks an EXACT
+ * same-day repeat purchase (see pickReportConflictTarget), not "any purchase within an
+ * already-active year" — this closes that gap so purchaseReport can reuse-and-refund instead
+ * of double-charging. A 'failed' row doesn't count as active (matches deriveOneTimeCardState's
+ * own convention that a failed attempt is retryable, not "still owned") — only 'ready'/
+ * 'generating' block a fresh purchase. */
+export async function findActiveYearlyReportRow(
+  userId: string,
+  birthProfileId: string | null,
+  reportKey: string,
+  now: string,
+): Promise<ReportRow | undefined> {
+  const rows = await db
+    .select()
+    .from(reports)
+    .where(
+      and(
+        eq(reports.userId, userId),
+        profileFilter(birthProfileId),
+        eq(reports.reportKey, reportKey),
+        sql`${reports.periodMonth} is not null`,
+        sql`${reports.periodMonth} > (${now}::date - interval '1 year')`,
+        sql`${reports.periodMonth} <= ${now}::date`,
+        inArray(reports.status, ['ready', 'generating']),
+      ),
+    )
+    .orderBy(desc(reports.periodMonth))
+    .limit(1);
+  return rows[0];
+}
+
 export async function findReportRowByInputHash(
   userId: string,
   birthProfileId: string | null,

@@ -1472,7 +1472,16 @@ export const reports = pgTable(
       onDelete: 'cascade',
     }),
     reportKey: text('report_key').notNull(),
-    /** First-of-month for monthly reports; null for one-time reports. */
+    /** First-of-month for monthly reports; the PURCHASE date for a yearly report
+     * (REPORT_CATALOGUE's `isYearly` key — its 1-year validity window is `[periodMonth,
+     * periodMonth + 1 year)`, always derived at read time, never stored); null for every
+     * other one-time report.
+     * ponytail: reusing a column named "period_month" to hold a period START (day
+     * granularity, not month) is a deliberate shortcut — it gets yearly reports a distinct
+     * row + correct same-day dedupe for free from the existing 4 unique indexes below with
+     * zero migration. Rename to `period_start` (and the indexes/DTOs that reference it) if a
+     * THIRD non-monthly period shape is ever needed and the overload starts reading as a bug
+     * rather than a documented convention. */
     periodMonth: date('period_month'),
     status: reportStatusEnum('status').notNull().default('generating'),
     /** Canonical English structured sections — shape is defined per report type (see

@@ -25,6 +25,7 @@ import { assignSectionIds } from '../../config/report-sections.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import { deductWalletBalance, addWalletBalance, findActiveUserById } from '../users/users.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import { todayForApp } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
 import {
@@ -38,6 +39,7 @@ import type { BirthRecord } from '../../lib/swarm/state.js';
 import {
   claimReportRow,
   countReadyReportsByKey,
+  findActiveYearlyReportRow,
   findReportById,
   findReportRow,
   findReportRowByInputHash,
@@ -339,7 +341,10 @@ async function fetchPersonContext(
   userId: string,
   birthProfileId: string | null,
 ): Promise<
-  Pick<ReportScoreContext, 'personName' | 'personDob' | 'personGender' | 'personRelationshipStatus'>
+  Pick<
+    ReportScoreContext,
+    'personName' | 'personDob' | 'personGender' | 'personRelationshipStatus' | 'personPhone'
+  >
 > {
   try {
     const user = await findActiveUserById(userId);
@@ -349,6 +354,7 @@ async function fetchPersonContext(
         personDob: null,
         personGender: null,
         personRelationshipStatus: null,
+        personPhone: null,
       };
     }
     const profile = await resolveProfileContext(user, birthProfileId);
@@ -359,6 +365,10 @@ async function fetchPersonContext(
       // Account-level, not per-profile — same sourcing chat-grounding.ts's
       // buildProfileFacts already uses for this field (see that comment).
       personRelationshipStatus: user.relationshipStatus ?? null,
+      // Also account-level (no per-profile phone) — see ReportScoreContext.personPhone's doc
+      // comment for why this is safe to source here (numerology's phone block computes FROM
+      // it, never echoes it back raw).
+      personPhone: user.phoneE164 ?? null,
     };
   } catch (err) {
     logger.warn(
@@ -370,6 +380,7 @@ async function fetchPersonContext(
       personDob: null,
       personGender: null,
       personRelationshipStatus: null,
+      personPhone: null,
     };
   }
 }
@@ -408,12 +419,77 @@ async function fetchPersonContext(
  * Best-effort: a degraded chart yields no condition lines rather than throwing,
  * exactly like the report's own optional fact blocks.
  */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** A yearly report's [start, end) validity window (end exclusive) — see ReportDef.isYearly's
+ * doc comment. `null` for every non-yearly report key, and for a yearly key whose `periodMonth`
+ * is somehow unset (defensive only — purchaseReport always sets it for an isYearly key). */
+interface YearWindow {
+  start: string; // 'YYYY-MM-DD'
+  end: string; // 'YYYY-MM-DD', exclusive
+}
+
+function yearWindowFor(reportKey: string, periodMonth: string | null): YearWindow | null {
+  if (!periodMonth || !getReportDef(reportKey)?.isYearly) return null;
+  const start = new Date(periodMonth);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start);
+  end.setUTCFullYear(end.getUTCFullYear() + 1);
+  return { start: periodMonth, end: end.toISOString().slice(0, 10) };
+}
+
+/**
+ * Drops any RankedWindow-shaped timing fact whose `startDate` falls outside a yearly report's
+ * own purchased year — a yearly report must never promise a timing window past the year the
+ * reader paid for (see ReportDef.isYearly's doc comment). A no-op (returns `scores` unchanged)
+ * for every non-yearly report key.
+ *
+ * Applied to the two places a RankedWindow date appears in `scores`: the top-level `windows`
+ * field (marriage/wealth/true_love's own timing-window list) and every
+ * `lifeContext.domains[].nextWindow` (all 4 yearly report types carry `lifeContext` via
+ * `ReportSharedFacts`). numerology has neither field (its forward-looking data is
+ * `monthlyForecast`/`yearlyForecast` — fixed-length tables computed relative to today, not
+ * open-ended dated windows — so this clamp is a no-op for it beyond `lifeContext`).
+ */
+function clampWindowsToYear(scores: ReportScores, window: YearWindow | null): ReportScores {
+  if (!window) return scores;
+  const inWindow = (dateStr: unknown): boolean =>
+    typeof dateStr === 'string' && dateStr >= window.start && dateStr < window.end;
+
+  const out: ReportScores = { ...scores };
+
+  if (Array.isArray(out.windows)) {
+    out.windows = out.windows.filter(
+      (w) => isRecord(w) && inWindow((w as { startDate?: unknown }).startDate),
+    );
+  }
+
+  if (isRecord(out.lifeContext) && Array.isArray(out.lifeContext.domains)) {
+    const lifeContext = out.lifeContext;
+    out.lifeContext = {
+      ...lifeContext,
+      domains: (lifeContext.domains as unknown[]).map((d) => {
+        if (!isRecord(d)) return d;
+        const nextWindow = d.nextWindow;
+        const keep =
+          isRecord(nextWindow) && inWindow((nextWindow as { startDate?: unknown }).startDate);
+        return keep ? d : { ...d, nextWindow: null };
+      }),
+    };
+  }
+
+  return out;
+}
+
 function computeScoresWithCondition(
   generator: {
     computeScores: (ctx: ReportScoreContext, periodMonth: string | null) => ReportScores;
   },
   ctx: ReportScoreContext,
   periodMonth: string | null,
+  reportKey: string,
 ): ReportScores {
   const scores = generator.computeScores(ctx, periodMonth);
   let planetCondition: string[] = [];
@@ -429,11 +505,14 @@ function computeScoresWithCondition(
   } catch (err) {
     logger.warn({ err }, 'chart-condition facts failed for report; continuing without them');
   }
-  return {
-    ...scores,
-    ...(planetCondition.length > 0 ? { planetCondition } : {}),
-    ...(planetStrength.length > 0 ? { planetStrength } : {}),
-  };
+  return clampWindowsToYear(
+    {
+      ...scores,
+      ...(planetCondition.length > 0 ? { planetCondition } : {}),
+      ...(planetStrength.length > 0 ? { planetStrength } : {}),
+    },
+    yearWindowFor(reportKey, periodMonth),
+  );
 }
 
 export async function buildReportScoreContext(
@@ -553,9 +632,11 @@ async function computeWindowSummaries(
  */
 async function computeReportVerdict(
   scores: Record<string, unknown>,
+  reportKey: ReportKey,
+  periodMonth: string | null,
 ): Promise<ReportVerdict | null> {
   try {
-    return await generateReportVerdict(scores);
+    return await generateReportVerdict(scores, reportKey, yearWindowFor(reportKey, periodMonth));
   } catch (err) {
     logger.warn({ err }, 'report verdict generation failed, continuing without it');
     return null;
@@ -584,7 +665,12 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     }
 
     const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
-    const scores = computeScoresWithCondition(generator, scoreContext, row.periodMonth);
+    const scores = computeScoresWithCondition(
+      generator,
+      scoreContext,
+      row.periodMonth,
+      row.reportKey,
+    );
 
     // Resume hint for a reclaimed row (a previous attempt's checkpoint — see
     // saveReportProgress) — empty on a brand-new claim, since `content` is null until the
@@ -613,7 +699,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
       (scores as { planetCondition?: string[] }).planetCondition ?? [],
     ).catch(() => ({ sections: generated, dropped: 0 }));
     const windowSummaries = await computeWindowSummaries(scores);
-    const verdict = await computeReportVerdict(scores);
+    const verdict = await computeReportVerdict(scores, row.reportKey as ReportKey, row.periodMonth);
 
     // Every dated timing window this report just promised, recorded so it can
     // later be scored against what actually happened. Best-effort: capture must
@@ -706,7 +792,14 @@ export async function purchaseReport(
 
   const perUnitPricePaise = features[def.featureFlagKey]?.pricePaise ?? def.basePricePaise;
   const months = body.months ?? [];
-  const periodMonths: (string | null)[] = def.isMonthly ? months.map(monthKeyToDate) : [null];
+  // Yearly (isYearly) reports are a single flat-price row like a one-time report — see
+  // ReportDef.isYearly's doc comment — except `periodMonth` is set to TODAY (the purchase/
+  // generation date) instead of staying null, so its 1-year validity window and its
+  // once-a-year repurchase dedupe both fall out of the existing (userId, reportKey,
+  // periodMonth) unique indexes for free.
+  const periodMonths: (string | null)[] = def.isMonthly
+    ? months.map(monthKeyToDate)
+    : [def.isYearly ? todayForApp() : null];
   const rowPrices = computeRowPrices(def, perUnitPricePaise, periodMonths.length);
   const totalPricePaise = rowPrices.reduce((a, b) => a + b, 0);
   const partnerInput = def.requiresPartner
@@ -726,6 +819,35 @@ export async function purchaseReport(
       const periodMonth = periodMonths[i] ?? null;
       const rowPrice = rowPrices[i] ?? 0;
       const input = withAnswers(partnerInput, answers);
+
+      // Yearly reports: the exact-periodMonth unique index below only blocks a same-DAY
+      // repeat purchase — it would happily insert a SECOND row for a different day even
+      // while last year's report is still active. Check for an active one first and
+      // reuse+refund exactly like the existing-row branch further down, rather than double-
+      // charging for a report the reader already owns for the next several months.
+      if (def.isYearly) {
+        const active = await findActiveYearlyReportRow(
+          user.id,
+          birthProfileId,
+          def.key,
+          periodMonth as string,
+        );
+        if (active) {
+          summaries.push({
+            id: active.id,
+            reportKey: def.key,
+            periodMonth: active.periodMonth,
+            status: active.status,
+          });
+          await addWalletBalance(
+            user.id,
+            rowPrice,
+            `refund:${reasonForRow(def.key, periodMonth)}`,
+          ).catch(() => {});
+          processedCount = i + 1;
+          continue;
+        }
+      }
 
       const claimed = await claimReportRow({
         userId: user.id,
@@ -904,6 +1026,7 @@ export async function getReportCatalogueForUser(
       key: def.key,
       label: def.label,
       isMonthly: def.isMonthly,
+      isYearly: def.isYearly ?? false,
       requiresPartner: def.requiresPartner,
       enabled: resolved?.enabled ?? true,
       pricePaise: resolved?.pricePaise ?? def.basePricePaise,
@@ -934,7 +1057,7 @@ async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, un
   }
 
   const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
-  return computeScoresWithCondition(generator, scoreContext, row.periodMonth);
+  return computeScoresWithCondition(generator, scoreContext, row.periodMonth, row.reportKey);
 }
 
 /** Same JSON.stringify+sha256 idiom as hashLeafValues (report-scores.ts) and
@@ -1246,7 +1369,12 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
   }
 
   const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
-  const scores = computeScoresWithCondition(generator, scoreContext, row.periodMonth);
+  const scores = computeScoresWithCondition(
+    generator,
+    scoreContext,
+    row.periodMonth,
+    row.reportKey,
+  );
   const generated = await generator.generateNarrative(scores, 'en');
   // Same fact-check second pass as the initial generation path above, so a
   // regenerated report is never held to a weaker standard than a fresh one.
@@ -1255,7 +1383,7 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
     (scores as { planetCondition?: string[] }).planetCondition ?? [],
   ).catch(() => ({ sections: generated, dropped: 0 }));
   const windowSummaries = await computeWindowSummaries(scores);
-  const verdict = await computeReportVerdict(scores);
+  const verdict = await computeReportVerdict(scores, row.reportKey as ReportKey, row.periodMonth);
 
   await overwriteReadyReportContent(row.id, {
     content: {
@@ -1264,6 +1392,55 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
       ...(windowSummaries ? { windowSummaries } : {}),
       ...(verdict ? { verdict } : {}),
     },
+    model: MODEL,
+  });
+  return 'regenerated';
+}
+
+/**
+ * Cheap counterpart to `regenerateReportContent` above — regenerates ONLY the "Final Verdict"
+ * card (one LLM call) and merges it into the row's EXISTING `content`, leaving `sections`/
+ * `windowSummaries`/`contentVersion` completely untouched. Built for
+ * scripts/regenerate-report-verdicts.ts, backfilling the fix for the verdict prompt that used
+ * to see every report's `lifeContext` and drift toward career/wealth bullets regardless of the
+ * report's own topic (see verdict.ts's VERDICT_TOPIC/VERDICT_EXCLUDED_KEYS doc comments) —
+ * running the FULL narrative regeneration for that fix would re-spend the 1-3 expensive
+ * narrative LLM calls this feature never needed to touch.
+ *
+ * Gated to rows that ALREADY have a verdict (`row.content.verdict` present) — a report with no
+ * verdict at all (an earlier generation-time LLM call failed) was never affected by the bug this
+ * backfills, so leaving it verdict-less here is correct, not a gap; use
+ * `regenerateReportContent` instead if giving every old report a first verdict is separately
+ * wanted. Returns 'skipped' (never throws) on any failure — the old content is left completely
+ * untouched either way, same never-partially-overwrite guarantee as `regenerateReportContent`.
+ */
+export async function regenerateReportVerdict(row: ReportRow): Promise<'regenerated' | 'skipped'> {
+  const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
+  if (!generator) return 'skipped';
+  const existingContent = row.content as { verdict?: unknown } | null;
+  if (!existingContent?.verdict) return 'skipped';
+
+  const kundli = await findKundliByUserId(row.userId, row.birthProfileId);
+  if (!kundli || kundli.status !== 'ready' || !kundli.chartData) return 'skipped';
+
+  let partnerChart: Record<string, unknown> | null = null;
+  if (hasPartnerBirthInput(row.input)) {
+    const metrology = await computeMetrology(partnerInputToBirthRecord(row.input));
+    partnerChart = (metrology.chart as Record<string, unknown> | undefined) ?? null;
+  }
+
+  const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
+  const scores = computeScoresWithCondition(
+    generator,
+    scoreContext,
+    row.periodMonth,
+    row.reportKey,
+  );
+  const verdict = await computeReportVerdict(scores, row.reportKey as ReportKey, row.periodMonth);
+  if (!verdict) return 'skipped'; // generation failed — old (wrong-topic) verdict stays rather than nothing
+
+  await overwriteReadyReportContent(row.id, {
+    content: { ...row.content, verdict },
     model: MODEL,
   });
   return 'regenerated';

@@ -3,6 +3,7 @@ import {
   namesStartingWith,
   namesHittingTarget,
   rankNamesForTargets,
+  inferGenderFromName,
 } from '../src/lib/astro-engine/names/name-lookup.js';
 import {
   computeNameAlignment,
@@ -48,6 +49,41 @@ describe('namesStartingWith', () => {
     const mixed = new Set(namesStartingWith('A', 200));
     expect(boy).not.toEqual(mixed);
     expect(girl).not.toEqual(mixed);
+  });
+});
+
+describe('gender pool excludes cross-listed ambiguous names', () => {
+  // "Aditya" sits in BOTH FEMALE_GIVEN_NAMES and MALE_GIVEN_NAMES (one of 488 such names in
+  // this corpus) — a reader who asks for one gender should never see a name the corpus itself
+  // can't confidently attribute to that gender.
+  it('never hands "Aditya" back for a stated-gender lookup, in either direction', () => {
+    const male = namesStartingWith('Adi', 500, 'boy').map((n) => n.toLowerCase());
+    const female = namesStartingWith('Adi', 500, 'girl').map((n) => n.toLowerCase());
+    expect(male).not.toContain('aditya');
+    expect(female).not.toContain('aditya');
+  });
+
+  it('still surfaces "Aditya" when no gender is stated (full corpus)', () => {
+    const mixed = namesStartingWith('Adi', 500).map((n) => n.toLowerCase());
+    expect(mixed).toContain('aditya');
+  });
+});
+
+describe('inferGenderFromName', () => {
+  it("guesses female from a name that's ONLY in the female slice", () => {
+    expect(inferGenderFromName('Arpna Sharma')).toBe('female');
+  });
+
+  it('returns null for a name absent from the corpus entirely', () => {
+    expect(inferGenderFromName('Zyxqlmnop')).toBeNull();
+  });
+
+  it('returns null (not a guess) for an ambiguous cross-listed name', () => {
+    expect(inferGenderFromName('Aditya')).toBeNull();
+  });
+
+  it('only looks at the first token, ignoring the surname', () => {
+    expect(inferGenderFromName('Arpna Verma')).toBe('female');
   });
 });
 

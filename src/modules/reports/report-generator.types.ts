@@ -73,6 +73,18 @@ export interface ReportScoreContext {
    */
   personRelationshipStatus?: string | null;
   /**
+   * The account-level `users.phone_e164` (E.164, e.g. "+919876543210") — already decrypted by
+   * the repo layer by the time it reaches here (see that column's own doc comment in
+   * db/schema.ts), same account-level sourcing as `personRelationshipStatus` above (no
+   * per-profile equivalent exists). ONLY consumed by `numerology`'s phone-numerology block
+   * (`computeMobileNumberScores` in astro-engine/numerology/mobileNumber.ts) — every other
+   * report type ignores it. That module must never place the raw digits anywhere in `scores`
+   * or the narrative prompt (see its own doc comment for why) — this field exists purely so
+   * `computeScores` can compute FROM it, not so it can be echoed back. Optional for the same
+   * additive-only reason as `personRelationshipStatus` above.
+   */
+  personPhone?: string | null;
+  /**
    * Optional free-text/enum answers the user gave to a small, skippable pre-purchase
    * questionnaire (see `PurchaseReportBody.answers`, threaded through purely in-memory from
    * `purchaseReport` to `runReportGeneration` — never persisted, since it's only consumed once

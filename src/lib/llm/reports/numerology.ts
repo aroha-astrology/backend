@@ -32,6 +32,7 @@ import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
 import type { NumerologyScores } from '../../astro-engine/reports/numerology.js';
 import type {
   ReportSection,
+  ReportSectionItem,
   SectionGenerationProgress,
 } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
@@ -153,6 +154,58 @@ function buildFactsCall3(scores: NumerologyScores): string {
   return lines.join('\n');
 }
 
+const PHONE_GROUNDING_RULE =
+  "Every fact about the reader's phone number below (its vibration, its harmony reading, whether it's friendly or clashes with their Mulank/Bhagyank, its digit pairs, its zeros, its repeating digits) is a GIVEN FACT, already computed deterministically — this app is a Vedic astrology app, not a phone carrier, so it never sees the reader's actual digits, only their already-computed vibration and pattern facts. Never invent, second-guess, or contradict any of them.";
+const PHONE_SUGGESTION_RULE =
+  "The suggested replacement patterns listed below are GIVEN FACTS — each keeps the reader's own real operator prefix (so it's an actually obtainable number, not an invented one) and lands on a vibration already verified to be friendly to the reader's Mulank/Bhagyank, with given reasons. The reader is meant to ask their mobile provider for an AVAILABLE number matching that VIBRATION on their own prefix — NOT to request the exact given example digits, which are illustrative only. Make this explicit once in the lead-in paragraph. For EVERY given suggestion, write exactly 2-3 short bullet phrases (not sentences) on the practical everyday effect that vibration is classically associated with bringing — ground each bullet in the given reasons where possible. Never invent an extra suggestion, drop one, or restate a given vibration/score as anything other than what is given.";
+
+function narrativeSystemPromptCall4(): string {
+  return `You are writing the closing phone-number section of a Numerology Report for a mobile Vedic astrology app. The app already computed the reader's current mobile number's numerological vibration and its harmony against their Mulank and Bhagyank, plus a short list of given positive and cautionary readings, plus a small set of suggested replacement-number vibration patterns. Your job is ONLY to write the narrative explanation and the short bullet copy for each suggestion.
+
+${PHONE_GROUNDING_RULE}
+${PLAIN_LANGUAGE_RULE}
+${SAFETY_RULE}
+${PHONE_SUGGESTION_RULE}
+
+Return STRICT JSON only, no markdown fences, in this exact shape:
+{"sections": [{"heading": string, "paragraphs": string[], "items"?: [{"title": string, "bullets": string[]}]}]}
+
+"items" is only used in the ONE section below; never include a "title" for an item that is not one of the exact given example numbers — do not add badge or score fields, the app fills those in from the given facts, not you.
+
+Write EXACTLY 1 section:
+1. Heading close to "Your Phone Number's Vibration" — 1-2 paragraphs explaining the given current vibration and harmony reading in plain language (what "vibration" means here, and whether it's classically supportive, neutral, or draining for this reader specifically), briefly touching the most notable given positive and/or caution. Then a short lead-in sentence framing the suggestions per PHONE_SUGGESTION_RULE, followed by an "items" array, one entry per given suggestion IN THE GIVEN ORDER, each with "title" set to the exact given masked example and "bullets" per PHONE_SUGGESTION_RULE.
+
+Paragraphs are 2-4 sentences. Second person ("you"). Never claim a phone number can guarantee an outcome — frame everything as a classical tendency to be mindful of, same discipline as the rest of this report.`;
+}
+
+function buildFactsCall4(scores: NumerologyScores): string {
+  const p = scores.phoneNumber;
+  const suggestions = scores.phoneSuggestions ?? [];
+  if (!p) return 'No phone number available for this reader.';
+  const lines: string[] = [];
+  lines.push(
+    `Current phone number's vibration: ${p.vibration}. Harmony score: ${p.harmony}/10 (${p.verdict}).`,
+  );
+  lines.push(`This reader's Mulank: ${p.mulank}. Bhagyank: ${p.bhagyank}.`);
+  lines.push(
+    `Given positive readings: ${p.positives.map((x) => `${x.label} — ${x.detail}`).join('; ') || 'none'}.`,
+  );
+  lines.push(
+    `Given cautionary readings: ${p.cautions.map((x) => `${x.label} — ${x.detail}`).join('; ') || 'none'}.`,
+  );
+  lines.push(
+    suggestions.length > 0
+      ? `Suggested replacement-number vibration patterns (write one items entry for every one of these ${suggestions.length}, in this exact order): ${suggestions
+          .map(
+            (s) =>
+              `"${s.maskedExample}" -> vibration ${s.vibration}, match score ${s.score}, reasons: ${s.reasons.join('; ')}`,
+          )
+          .join('; ')}.`
+      : 'Suggested replacement-number patterns: NONE available.',
+  );
+  return lines.join('\n');
+}
+
 const SECTIONS_SCHEMA = {
   type: 'object',
   properties: {
@@ -163,6 +216,23 @@ const SECTIONS_SCHEMA = {
         properties: {
           heading: { type: 'string' },
           paragraphs: { type: 'array', items: { type: 'string' } },
+          // Only ever populated for the phone section (call4) — see
+          // narrativeSystemPromptCall4. Calls 1-3 never ask for this, so the model simply
+          // omits it there; harmless to allow on every call's schema.
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                bullets: { type: 'array', items: { type: 'string' } },
+                // Translation pass only — see `translated` in mergeItems below.
+                note: { type: 'string' },
+                badge: { type: 'string' },
+              },
+              required: ['title', 'bullets'],
+            },
+          },
         },
         required: ['heading', 'paragraphs'],
       },
@@ -192,11 +262,89 @@ function parseSections(raw: string): ReportSection[] | null {
   }
 }
 
+/** Merges the LLM's bullet copy for a given item title back onto the given deterministic
+ * suggestion fact (maskedExample/vibration/score/recommended/reasons) — same discipline as
+ * name-change.ts's own `mergeItems`: the LLM never supplies badge or score itself (see
+ * narrativeSystemPromptCall4's explicit instruction), so a hallucinated or missing title just
+ * drops that item rather than fabricating one that wasn't in `known`. `translated` is set ONLY
+ * on the translation pass — see name-change.ts's identical function for the full rationale
+ * (duplicated here rather than shared: the two report types' item shapes/callers differ enough
+ * that a shared helper would need its own parameterization for no real savings). */
+function mergeItems(
+  raw: unknown,
+  known: Map<string, ReportSectionItem>,
+  translated = false,
+): ReportSectionItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ReportSectionItem[] = [];
+  for (const entry of raw as unknown[]) {
+    const e = entry as { title?: unknown; bullets?: unknown; note?: unknown; badge?: unknown };
+    if (typeof e.title !== 'string') continue;
+    const base = known.get(e.title.trim().toLowerCase());
+    if (!base) continue; // not one of the given facts — drop rather than invent
+    const bullets = Array.isArray(e.bullets)
+      ? e.bullets.filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
+      : [];
+    const note =
+      translated && base.note && typeof e.note === 'string' && e.note.trim() ? e.note.trim() : null;
+    const badge =
+      translated && base.badge && typeof e.badge === 'string' && sameDigits(e.badge, base.badge)
+        ? e.badge.trim()
+        : null;
+    out.push({ ...base, bullets, ...(note ? { note } : {}), ...(badge ? { badge } : {}) });
+  }
+  return out;
+}
+
+/** True when both strings contain the same digits in the same order — stops a translated badge
+ * from restating the reader's own numbers as something else. Same guard as name-change.ts. */
+function sameDigits(a: string, b: string): boolean {
+  const digits = (s: string): string => (s.match(/\d/g) ?? []).join('');
+  return digits(a) === digits(b);
+}
+
+/** Like `parseSections`, but also resolves `items` against `known` (via `mergeItems`) for
+ * whichever section(s) the model returned an items array for — used by the phone-section
+ * generation call and by the translation pass (which round-trips every already-generated
+ * section, only one of which — the phone section, if present — ever carries items). */
+function parseSectionsWithItems(
+  raw: string,
+  known: Map<string, ReportSectionItem>,
+  translated = false,
+): ReportSection[] | null {
+  try {
+    const data = JSON.parse(cleanJsonString(raw)) as { sections?: unknown };
+    if (!Array.isArray(data.sections) || data.sections.length === 0) return null;
+    const sections: ReportSection[] = [];
+    for (const entry of data.sections) {
+      const e = entry as { heading?: unknown; paragraphs?: unknown; items?: unknown };
+      if (typeof e.heading !== 'string' || !e.heading.trim()) continue;
+      if (!Array.isArray(e.paragraphs)) continue;
+      const paragraphs = e.paragraphs.filter(
+        (p): p is string => typeof p === 'string' && p.trim().length > 0,
+      );
+      if (paragraphs.length === 0) continue;
+      const items = mergeItems(e.items, known, translated);
+      sections.push({
+        heading: e.heading.trim(),
+        paragraphs,
+        ...(items.length > 0 ? { items } : {}),
+      });
+    }
+    return sections.length > 0 ? sections : null;
+  } catch {
+    return null;
+  }
+}
+
 async function callAndParse(
   systemPrompt: string,
   facts: string,
   condition: string[] | undefined,
   label: string,
+  /** Present ONLY for call4 (the phone section) — resolves its `items` against the given
+   * suggestion facts. Every other call omits this and gets the plain paragraphs-only parse. */
+  itemsKnown?: Map<string, ReportSectionItem>,
 ): Promise<ReportSection[]> {
   const raw = await generate({
     profile: REPORT_PROFILE,
@@ -208,7 +356,7 @@ async function callAndParse(
     ],
   });
 
-  const parsed = parseSections(raw);
+  const parsed = itemsKnown ? parseSectionsWithItems(raw, itemsKnown) : parseSections(raw);
   if (!parsed) {
     void import('../../logger.js').then((m) =>
       m.logger.error({ raw, label }, 'unparseable JSON in numerology report narrative'),
@@ -235,10 +383,17 @@ export async function generateNumerologyNarrative(
     systemPrompt: string,
     facts: string,
     label: string,
+    itemsKnown?: Map<string, ReportSectionItem>,
   ): Promise<ReportSection[]> {
     const cached = existing[index];
     if (cached) return cached;
-    const group = await callAndParse(systemPrompt, facts, scores.planetCondition, label);
+    const group = await callAndParse(
+      systemPrompt,
+      facts,
+      scores.planetCondition,
+      label,
+      itemsKnown,
+    );
     await progress?.onGroupComplete(group);
     return group;
   }
@@ -261,7 +416,35 @@ export async function generateNumerologyNarrative(
     buildFactsCall3(scores),
     'call3',
   );
-  return [...part1, ...part2, ...part3];
+
+  // Call4 (the phone-number section) is entirely conditional on the reader having a phone
+  // number to read at all (see NumerologyScores.phoneNumber's doc comment) — skipped, not
+  // called with empty facts, so a reader with no phone on file pays for and waits on exactly
+  // 3 calls, same as before this feature shipped. This is WHY numerology is in
+  // APPEND_ONLY_SECTION_IDS (report-sections.ts): the section count varies reader to reader.
+  if (!scores.phoneNumber) {
+    return [...part1, ...part2, ...part3];
+  }
+  const known = new Map<string, ReportSectionItem>(
+    (scores.phoneSuggestions ?? []).map((s) => [
+      s.maskedExample.toLowerCase(),
+      {
+        title: s.maskedExample,
+        badge: `Vibration ${s.vibration}`,
+        score: s.score,
+        highlight: s.recommended,
+        bullets: [],
+      },
+    ]),
+  );
+  const part4 = await callOrResume(
+    3,
+    narrativeSystemPromptCall4(),
+    buildFactsCall4(scores),
+    'call4',
+    known,
+  );
+  return [...part1, ...part2, ...part3, ...part4];
 }
 
 /** Translate an already-generated (concatenated) section list — one call, same idiom as
@@ -278,12 +461,19 @@ export async function translateNumerologyNarrative(
     messages: [
       {
         role: 'user',
-        content: `Translate the following report sections into the language "${targetLanguage}". Keep the exact same JSON structure ({"sections": [{"heading": string, "paragraphs": string[]}]}) and the same number of sections and paragraphs. ONLY translate the human-readable text.\n\nOriginal Content:\n${JSON.stringify({ sections }, null, 2)}`,
+        content: `Translate the following report sections into the language "${targetLanguage}". Keep the exact same JSON structure ({"sections": [{"heading": string, "paragraphs": string[], "items"?: [{"title": string, "bullets": string[], "badge"?: string}]}]}) and the same number of sections, paragraphs, and items. For any "items", keep "title" EXACTLY as given (it is a masked phone number, not translatable text) and translate ONLY its "bullets" and, if given, its "badge" label — keep any digits inside "badge" completely unchanged, translate only the surrounding word(s). ONLY translate the human-readable text.\n\nOriginal Content:\n${JSON.stringify({ sections }, null, 2)}`,
       },
     ],
   });
 
-  const parsed = parseSections(raw);
+  // Only the phone section (if this report has one) ever carries items — build `known` from
+  // whichever input section has them, same "resolve against what was actually generated, not
+  // against scores again" idea as name-change.ts's translation path.
+  const known = new Map<string, ReportSectionItem>();
+  for (const s of sections) {
+    for (const item of s.items ?? []) known.set(item.title.trim().toLowerCase(), item);
+  }
+  const parsed = known.size > 0 ? parseSectionsWithItems(raw, known, true) : parseSections(raw);
   if (!parsed) {
     throw new Error(
       `numerology report translation returned unparseable JSON (target=${targetLanguage})`,

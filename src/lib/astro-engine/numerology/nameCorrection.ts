@@ -12,6 +12,7 @@ import {
   calculatePersonality,
 } from './index';
 import { calculateMulank, calculateBhagyank, reduceToSingleDigit } from './vedic';
+import { FRIENDLY_MAP, ENEMY_MAP } from './number-compatibility';
 
 export type NameAlignment = 'aligned' | 'partially_aligned' | 'misaligned';
 
@@ -28,30 +29,6 @@ export interface NameAlignmentResult {
   friendly: number[];
   enemy: number[];
 }
-
-const FRIENDLY_MAP: Record<number, number[]> = {
-  1: [1, 3, 5, 9],
-  2: [2, 7, 9],
-  3: [1, 3, 5, 9],
-  4: [1, 4, 6, 8],
-  5: [1, 3, 5, 9],
-  6: [3, 6, 9],
-  7: [2, 7, 9],
-  8: [4, 6, 8],
-  9: [1, 3, 5, 6, 9],
-};
-
-const ENEMY_MAP: Record<number, number[]> = {
-  1: [2, 4, 8],
-  2: [4, 5, 8],
-  3: [4, 6, 8],
-  4: [2, 3, 5, 7, 9],
-  5: [2, 4, 6, 8],
-  6: [1, 2, 5, 7, 8],
-  7: [1, 3, 4, 5, 6, 8],
-  8: [1, 2, 3, 5, 7, 9],
-  9: [2, 4, 7, 8],
-};
 
 /**
  * Resolve the best target name-number for a person. Mulank (psychic) drives
@@ -85,8 +62,10 @@ export function computeNameAlignment(name: string, dob: Date): NameAlignmentResu
 
   const chaldeanReduced = reduceToSingleDigit(chaldean);
   const alignment: NameAlignment =
-    chaldeanReduced === primary ? 'aligned'
-      : targets.includes(chaldeanReduced) ? 'partially_aligned'
+    chaldeanReduced === primary
+      ? 'aligned'
+      : targets.includes(chaldeanReduced)
+        ? 'partially_aligned'
         : 'misaligned';
 
   return {
@@ -107,7 +86,10 @@ export function computeNameAlignment(name: string, dob: Date): NameAlignmentResu
  * Recompute the Chaldean number for a candidate spelling and check whether it
  * lands on any of the target numbers. Used to validate AI-suggested variants.
  */
-export function variantHitsTarget(variant: string, targets: number[]): { chaldean: number; hits: boolean } {
+export function variantHitsTarget(
+  variant: string,
+  targets: number[],
+): { chaldean: number; hits: boolean } {
   const chaldean = analyzeNameNumerology(variant).chaldean;
   const reduced = reduceToSingleDigit(chaldean);
   return { chaldean: reduced, hits: targets.includes(reduced) };
@@ -125,7 +107,11 @@ export function variantHitsTarget(variant: string, targets: number[]): { chaldea
  *   - drop a trailing vowel
  *   - swap i↔ee, a↔aa
  */
-export function generateDeterministicVariants(name: string, targets: number[], wanted: number): Array<{ variant: string; chaldean: number; change: string }> {
+export function generateDeterministicVariants(
+  name: string,
+  targets: number[],
+  wanted: number,
+): Array<{ variant: string; chaldean: number; change: string }> {
   const seen = new Set<string>([name.toLowerCase()]);
   const out: Array<{ variant: string; chaldean: number; change: string }> = [];
 
@@ -174,4 +160,3 @@ export function generateDeterministicVariants(name: string, targets: number[], w
 
   return out;
 }
-

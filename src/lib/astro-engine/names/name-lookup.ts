@@ -41,16 +41,56 @@ export function namesStartingWith(syllable: string, limit: number, childGender?:
 }
 
 /**
+ * Names that appear in BOTH `FEMALE_GIVEN_NAMES` and `MALE_GIVEN_NAMES` (488 of them —
+ * "aditya", "ajay", "akash", "anil", "ankit", "ashish", etc.), computed once at module load.
+ * When a caller states a specific gender, these are excluded from that gender's own pool —
+ * a name the corpus itself can't confidently attribute to one gender shouldn't be handed to
+ * a reader who asked for one. They're still fully available through `ALL_GIVEN_NAMES` (the
+ * no-gender-stated path below), since they ARE real names, just not gender-specific ones.
+ */
+const AMBIGUOUS_GIVEN_NAMES: ReadonlySet<string> = (() => {
+  const maleSet = new Set(MALE_GIVEN_NAMES.map((n) => n.toLowerCase()));
+  return new Set(
+    FEMALE_GIVEN_NAMES.filter((n) => maleSet.has(n.toLowerCase())).map((n) => n.toLowerCase()),
+  );
+})();
+
+const FEMALE_ONLY_NAMES: readonly string[] = FEMALE_GIVEN_NAMES.filter(
+  (n) => !AMBIGUOUS_GIVEN_NAMES.has(n.toLowerCase()),
+);
+const MALE_ONLY_NAMES: readonly string[] = MALE_GIVEN_NAMES.filter(
+  (n) => !AMBIGUOUS_GIVEN_NAMES.has(n.toLowerCase()),
+);
+
+/**
  * The corpus slice to search for a given gender. Accepts BOTH vocabularies in play: baby_name's
  * report-question values ("boy"/"girl", see frontend's report-questions.ts) and the account-level
  * `users.gender`/`birth_profiles.gender` values ("male"/"female"/"other") that name_change reads
  * off `ReportScoreContext.personGender`. Anything else — absent, null, "other" — searches the full
  * corpus, since forcing a binary here would be a guess, not a classical requirement.
+ *
+ * A stated gender searches the UNAMBIGUOUS slice only (see AMBIGUOUS_GIVEN_NAMES above) — a
+ * reader who asked for female names should never see one the corpus also lists as male.
  */
 function poolForGender(gender?: string | null): readonly string[] {
-  if (gender === 'boy' || gender === 'male') return MALE_GIVEN_NAMES;
-  if (gender === 'girl' || gender === 'female') return FEMALE_GIVEN_NAMES;
+  if (gender === 'boy' || gender === 'male') return MALE_ONLY_NAMES;
+  if (gender === 'girl' || gender === 'female') return FEMALE_ONLY_NAMES;
   return ALL_GIVEN_NAMES; // unisex names appear in both source lists — callers dedupe
+}
+
+/**
+ * Best-effort gender guess for a reader who has none on file (`personGender` null/'other') —
+ * looks their OWN first name up in the unambiguous gendered slices before name_change falls
+ * back to searching the full ungendered corpus for alternative-name suggestions. Returns null
+ * (search everything) when the name isn't in either slice — including when it simply isn't in
+ * the corpus at all, which is common (this corpus is a few thousand names, not exhaustive).
+ */
+export function inferGenderFromName(name: string): 'male' | 'female' | null {
+  const first = name.trim().split(/\s+/)[0]?.toLowerCase();
+  if (!first) return null;
+  if (FEMALE_ONLY_NAMES.some((n) => n.toLowerCase() === first)) return 'female';
+  if (MALE_ONLY_NAMES.some((n) => n.toLowerCase() === first)) return 'male';
+  return null;
 }
 
 /** Fisher-Yates on a copy — cheap over a few thousand strings, run once per lookup. */

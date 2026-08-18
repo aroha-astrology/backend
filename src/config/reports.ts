@@ -35,6 +35,24 @@ export interface ReportDef {
   featureFlagKey: string;
   label: string;
   isMonthly: boolean;
+  /**
+   * True for the 4 one-time report types whose content genuinely moves year to year
+   * (marriage/wealth/true_love/numerology — timing windows, decade arcs, personal year) —
+   * false/absent for every other key, including every `isMonthly` key (those are never
+   * yearly; the two are mutually exclusive purchase shapes, never combined).
+   *
+   * A yearly purchase is still a SINGLE flat-price row, structurally identical to a
+   * one-time purchase (`validatePurchaseShape`/`computeRowPrices` both key off `isMonthly`
+   * alone and are untouched by this flag) — the only two differences are (1) `periodMonth`
+   * is set to the PURCHASE date instead of staying null (see `purchaseReport`'s
+   * `periodMonths` construction — deliberately reusing the `period_month` column as a
+   * period START rather than adding a new column/migration; see that column's own doc
+   * comment in db/schema.ts for the ceiling this shortcut has and the upgrade path), and
+   * (2) the catalogue card renews once a year instead of never (see frontend's
+   * `yearlyCardState` in reports-logic.ts). Expiry is ALWAYS derived (`start + 1 year`),
+   * never stored.
+   */
+  isYearly?: boolean;
   /** True for kundli_milan and match_report — the two reports that take a second person's birth details. */
   requiresPartner: boolean;
   /** Fallback price if the feature flag has no admin price override. For monthly reports this
@@ -48,6 +66,7 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     featureFlagKey: 'reports.marriage',
     label: 'Marriage Report',
     isMonthly: false,
+    isYearly: true,
     requiresPartner: false,
     basePricePaise: 9900,
   },
@@ -72,6 +91,7 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     featureFlagKey: 'reports.true_love',
     label: 'True Love Report',
     isMonthly: false,
+    isYearly: true,
     requiresPartner: false,
     basePricePaise: 9900,
   },
@@ -80,6 +100,7 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     featureFlagKey: 'reports.wealth',
     label: 'Wealth Report',
     isMonthly: false,
+    isYearly: true,
     requiresPartner: false,
     basePricePaise: 9900,
   },
@@ -138,6 +159,7 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     featureFlagKey: 'reports.numerology',
     label: 'Numerology Report',
     isMonthly: false,
+    isYearly: true,
     requiresPartner: false,
     // Same ₹99 tier as marriage/wealth/true_love/baby_name: a 3-call narrative (6 sections)
     // covering the full deterministic number set (Mulank/Bhagyank/Life Path/Expression/Soul

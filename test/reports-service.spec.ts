@@ -15,6 +15,7 @@ const state = vi.hoisted(() => {
   return {
     claimReportRow: vi.fn(),
     findReportRow: vi.fn(),
+    findActiveYearlyReportRow: vi.fn(),
     findReportById: vi.fn(),
     findStaleGeneratingReports: vi.fn(),
     listReportsForUser: vi.fn(),
@@ -44,6 +45,7 @@ const state = vi.hoisted(() => {
 vi.mock('../src/modules/reports/reports.repo.js', () => ({
   claimReportRow: state.claimReportRow,
   findReportRow: state.findReportRow,
+  findActiveYearlyReportRow: state.findActiveYearlyReportRow,
   findReportById: state.findReportById,
   findStaleGeneratingReports: state.findStaleGeneratingReports,
   listReportsForUser: state.listReportsForUser,
@@ -163,6 +165,7 @@ beforeEach(() => {
   for (const key of Object.keys(state.REPORT_GENERATORS)) delete state.REPORT_GENERATORS[key];
   state.claimReportRow.mockReset();
   state.findReportRow.mockReset();
+  state.findActiveYearlyReportRow.mockReset();
   state.findReportById.mockReset();
   state.findStaleGeneratingReports.mockReset().mockResolvedValue([]);
   state.listReportsForUser.mockReset().mockResolvedValue([]);
@@ -270,28 +273,38 @@ describe('purchaseReport — validation', () => {
 
 describe('purchaseReport — pricing and row shape', () => {
   it('one-time report: debits basePricePaise under the one-time reason and claims a single null-period row', async () => {
-    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'r1', status: 'generating' }));
+    // past_life, not marriage — marriage is now `isYearly` (see ReportDef.isYearly), which
+    // legitimately claims a non-null (today's date) periodMonth; this test is specifically
+    // about the plain one-time (null-period) shape, so it needs a still-genuinely-one-time key.
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'r1',
+        reportKey: 'past_life',
+        pricePaidPaise: 2500,
+        status: 'generating',
+      }),
+    );
 
-    const result = await purchaseReport(makeUser(), { reportKey: 'marriage' });
+    const result = await purchaseReport(makeUser(), { reportKey: 'past_life' });
 
     expect(state.deductWalletBalance).toHaveBeenCalledWith(
       'user-1',
-      9900,
-      'report_unlock:marriage',
+      2500,
+      'report_unlock:past_life',
     );
     expect(state.claimReportRow).toHaveBeenCalledTimes(1);
     expect(state.claimReportRow).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'user-1',
         birthProfileId: null,
-        reportKey: 'marriage',
+        reportKey: 'past_life',
         periodMonth: null,
         input: null,
-        pricePaidPaise: 9900,
+        pricePaidPaise: 2500,
       }),
     );
     expect(result.reports).toEqual([
-      { id: 'r1', reportKey: 'marriage', periodMonth: null, status: 'generating' },
+      { id: 'r1', reportKey: 'past_life', periodMonth: null, status: 'generating' },
     ]);
   });
 
@@ -452,20 +465,26 @@ describe('purchaseReport — pricing and row shape', () => {
 
 describe('purchaseReport — duplicate purchase reuse and refunds', () => {
   it('reuses an existing row and refunds its share when claimReportRow signals a duplicate (undefined)', async () => {
+    // past_life, not marriage — see the "one-time report" test above for why.
     state.claimReportRow.mockResolvedValue(undefined);
     state.findReportRow.mockResolvedValue(
-      makeReportRow({ id: 'existing-1', status: 'ready', periodMonth: null }),
+      makeReportRow({
+        id: 'existing-1',
+        reportKey: 'past_life',
+        status: 'ready',
+        periodMonth: null,
+      }),
     );
 
-    const result = await purchaseReport(makeUser(), { reportKey: 'marriage' });
+    const result = await purchaseReport(makeUser(), { reportKey: 'past_life' });
 
     expect(state.addWalletBalance).toHaveBeenCalledWith(
       'user-1',
-      9900,
-      'refund:report_unlock:marriage',
+      2500,
+      'refund:report_unlock:past_life',
     );
     expect(result.reports).toEqual([
-      { id: 'existing-1', reportKey: 'marriage', periodMonth: null, status: 'ready' },
+      { id: 'existing-1', reportKey: 'past_life', periodMonth: null, status: 'ready' },
     ]);
   });
 
@@ -577,21 +596,27 @@ describe('purchaseReport — preview-to-purchase upgrade (the two collision path
   });
 
   it('a genuinely already-purchased (non-preview) row still refunds and reuses, unchanged from before', async () => {
+    // past_life, not marriage — see the "one-time report" test above for why.
     state.claimReportRow.mockResolvedValue(undefined);
     state.findReportRow.mockResolvedValue(
-      makeReportRow({ id: 'purchased-1', status: 'ready', isPreview: false }),
+      makeReportRow({
+        id: 'purchased-1',
+        reportKey: 'past_life',
+        status: 'ready',
+        isPreview: false,
+      }),
     );
 
-    const result = await purchaseReport(makeUser(), { reportKey: 'marriage' });
+    const result = await purchaseReport(makeUser(), { reportKey: 'past_life' });
 
     expect(state.upgradePreviewToPurchased).not.toHaveBeenCalled();
     expect(state.addWalletBalance).toHaveBeenCalledWith(
       'user-1',
-      9900,
-      'refund:report_unlock:marriage',
+      2500,
+      'refund:report_unlock:past_life',
     );
     expect(result.reports).toEqual([
-      { id: 'purchased-1', reportKey: 'marriage', periodMonth: null, status: 'ready' },
+      { id: 'purchased-1', reportKey: 'past_life', periodMonth: null, status: 'ready' },
     ]);
   });
 });

@@ -109,6 +109,12 @@ export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> =
     'this_year_this_month',
     'twelve_month_forecast',
     'luckiest_days_colors_years',
+    // Conditional 9th section (call4, llm/reports/numerology.ts) — only generated for a reader
+    // with a phone number on file/given (see NumerologyScores.phoneNumber). Must stay LAST:
+    // ids zip onto sections by POSITION, and `numerology` is in APPEND_ONLY_SECTION_IDS below
+    // specifically so a report generated WITHOUT this 9th section (8 sections) still gets its
+    // first 8 ids assigned correctly instead of losing every id to a strict length mismatch.
+    'phone_number_alignment',
   ],
   // `suggested_names` is deliberately the same id baby_name uses — the frontend's heading keys are
   // flat (`reports.sectionHeading.<id>`), so both report types share the one already-translated
@@ -163,7 +169,12 @@ export interface SectionWithId {
  * The invariant a key in this set must hold: its id list is only ever appended to. Inserting
  * an id in the middle would mislabel every stored report from that point on.
  */
-const APPEND_ONLY_SECTION_IDS: ReadonlySet<string> = new Set(['past_life']);
+const APPEND_ONLY_SECTION_IDS: ReadonlySet<string> = new Set([
+  'past_life',
+  // numerology's phone-number section (call4, llm/reports/numerology.ts) only generates for a
+  // reader with a phone number on file/given — see its own list above for the full rationale.
+  'numerology',
+]);
 
 /**
  * Zips canonical `id`s onto `sections` by position, for the given report key. Assigns only

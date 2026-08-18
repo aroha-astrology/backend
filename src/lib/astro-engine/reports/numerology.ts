@@ -43,6 +43,12 @@ import {
   type KuaData,
 } from '../numerology/vedic.js';
 import { computeNameAlignment, type NameAlignmentResult } from '../numerology/nameCorrection.js';
+import {
+  analyzeMobileNumber,
+  suggestPhoneNumbers,
+  type MobileNumberAnalysis,
+  type SuggestedPhoneNumber,
+} from '../numerology/mobileNumber.js';
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
@@ -143,6 +149,15 @@ export interface NumerologyScores extends Record<string, unknown>, ReportSharedF
    * — answers "which years ahead are numerologically strongest for me," which the existing
    * 12-month `monthlyForecast` doesn't reach (months, not years). */
   yearlyForecast: YearlyForecastEntry[];
+
+  /** Phone-number numerology (mobileNumber.ts) — absent when the reader has no phone number to
+   * read (no `ctx.personPhone` and no `answers.phoneNumber` override; see `resolvePhone`).
+   * `MobileNumberAnalysis.maskedNumber` is the ONLY representation of the number this object
+   * ever carries — the raw digits used to compute it are never placed on `scores` (see
+   * mobileNumber.ts's own doc comment on why). */
+  phoneNumber?: MobileNumberAnalysis;
+  /** Up to 5 replacement-number suggestions — same absence condition as `phoneNumber` above. */
+  phoneSuggestions?: SuggestedPhoneNumber[];
 }
 
 function resolveName(ctx: ReportScoreContext): string {
@@ -165,6 +180,21 @@ function resolveDob(ctx: ReportScoreContext): { dobString: string; dob: Date } {
 
 function resolveGender(ctx: ReportScoreContext): 'male' | 'female' {
   return ctx.personGender === 'female' ? 'female' : 'male';
+}
+
+/**
+ * The number to run phone numerology on — `answers.phoneNumber` (the optional pre-purchase
+ * question override, see frontend's report-questions.ts) takes priority over the account's own
+ * `ctx.personPhone` (`users.phone_e164`), so a reader without a phone on file (or who simply
+ * wants to check a DIFFERENT number) isn't stuck. Returns `null` when neither source is
+ * present/usable — the phone block is then entirely absent from `scores` (see
+ * NumerologyScores.phoneNumber's doc comment), never a placeholder analysis.
+ */
+function resolvePhone(ctx: ReportScoreContext): string | null {
+  const override = ctx.userAnswers?.phoneNumber?.trim();
+  if (override) return override;
+  const account = ctx.personPhone?.trim();
+  return account ? account : null;
 }
 
 export function computeNumerologyScores(
@@ -214,6 +244,22 @@ export function computeNumerologyScores(
   const lifeContext = computeLifeContext(ctx.chart, analyses, ctx.dashaData ?? null, now);
   const header = buildReportHeader(ctx.chart, ctx.personName, ctx.personDob, lifeContext);
 
+  // Best-effort, like every other optional fact block in this report: analyzeMobileNumber
+  // throws on a too-short number (e.g. a malformed answers.phoneNumber override), which must
+  // never fail the whole report — same `catch` + `undefined`-field discipline as
+  // computeWindowSummaries/computeReportVerdict in reports.service.ts.
+  const phone = resolvePhone(ctx);
+  let phoneNumber: MobileNumberAnalysis | undefined;
+  let phoneSuggestions: SuggestedPhoneNumber[] | undefined;
+  if (phone) {
+    try {
+      phoneNumber = analyzeMobileNumber(phone, dob);
+      phoneSuggestions = suggestPhoneNumbers(phone, dob, 5);
+    } catch {
+      // Malformed/too-short number — leave both fields absent rather than a broken block.
+    }
+  }
+
   return {
     header,
     lifeContext,
@@ -236,5 +282,7 @@ export function computeNumerologyScores(
     nameAlignment,
     luckyDayColor,
     yearlyForecast,
+    ...(phoneNumber ? { phoneNumber } : {}),
+    ...(phoneSuggestions ? { phoneSuggestions } : {}),
   };
 }

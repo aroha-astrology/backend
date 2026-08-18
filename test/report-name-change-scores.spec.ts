@@ -26,14 +26,26 @@ describe('computeNameChangeScores — delegates to the real deterministic engine
     expect(scores.variants.length).toBeLessThanOrEqual(12);
   });
 
-  it('surfaces the reader gender the alternative-name shortlist is filtered on', () => {
+  it('surfaces the reader gender the alternative-name shortlist is filtered on, from personGender when stated', () => {
     expect(computeNameChangeScores(makeCtx({ personGender: 'female' }), null).gender).toBe(
       'female',
     );
     expect(computeNameChangeScores(makeCtx({ personGender: 'male' }), null).gender).toBe('male');
-    // 'other'/missing stays null — searching the full corpus beats guessing a binary.
-    expect(computeNameChangeScores(makeCtx({ personGender: 'other' }), null).gender).toBeNull();
-    expect(computeNameChangeScores(makeCtx(), null).gender).toBeNull();
+  });
+
+  it("falls back to inferring gender from the reader's own first name when personGender is 'other'/missing", () => {
+    // NAME is 'Priya Sharma' — 'Priya' is a female-only corpus name, so both 'other' and
+    // missing personGender should infer 'female' rather than staying null.
+    expect(computeNameChangeScores(makeCtx({ personGender: 'other' }), null).gender).toBe('female');
+    expect(computeNameChangeScores(makeCtx(), null).gender).toBe('female');
+  });
+
+  it('stays null only when BOTH personGender and the first-name guess come up empty', () => {
+    const scores = computeNameChangeScores(
+      makeCtx({ personGender: 'other', personName: 'Zyxqlmnop' }),
+      null,
+    );
+    expect(scores.gender).toBeNull();
   });
 
   it('leaves the surname untouched on at least half the variants (this report changes the first name)', () => {

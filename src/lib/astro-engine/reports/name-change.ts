@@ -23,6 +23,7 @@
 
 import { computeNameAlignment, type NameAlignmentResult } from '../numerology/nameCorrection.js';
 import { generateSpellingVariants } from '../names/name-variants.js';
+import { inferGenderFromName } from '../names/name-lookup.js';
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
@@ -60,11 +61,15 @@ export interface NameChangeScores extends Record<string, unknown>, ReportSharedF
    * soulUrge, personality, target numbers, alignment classification, friendly/enemy numbers. */
   alignment: NameAlignmentResult;
   /**
-   * The reader's own gender, straight off `ctx.personGender`, narrowed to the binary the name
-   * corpus is split on. Drives which corpus slice the narrative layer's alternative-first-name
-   * list is drawn from (`rankNamesForTargets`) — a man must never be handed a female-coded name.
-   * `'other'`/missing stays `null` (search the full corpus): unlike numerology's Kua formula
-   * there's no classical reason to force a binary here, so we don't guess.
+   * The reader's own gender — `ctx.personGender` when it's stated, else a best-effort guess
+   * from the reader's OWN first name against the corpus (`inferGenderFromName`) when it isn't.
+   * Narrowed to the binary the name corpus is split on either way. Drives which corpus slice
+   * the narrative layer's alternative-first-name list is drawn from (`rankNamesForTargets`) —
+   * a man must never be handed a female-coded name. Stays `null` (search the full corpus) only
+   * when BOTH sources come up empty — an account with no gender on file whose first name also
+   * isn't in this (non-exhaustive, few-thousand-name) corpus. Unlike numerology's Kua formula
+   * there's no classical reason to force a binary when neither source has an answer, so at that
+   * point we genuinely don't guess.
    */
   gender: 'male' | 'female' | null;
   /** Up to 12 deterministic spelling variants that already hit one of `alignment.targets`, at
@@ -103,12 +108,17 @@ export function computeNameChangeScores(
   const lifeContext = computeLifeContext(ctx.chart, analyses, ctx.dashaData ?? null, new Date());
   const header = buildReportHeader(ctx.chart, ctx.personName, ctx.personDob, lifeContext);
 
+  const gender =
+    ctx.personGender === 'male' || ctx.personGender === 'female'
+      ? ctx.personGender
+      : inferGenderFromName(currentName);
+
   return {
     header,
     lifeContext,
     currentName,
     dob: dobString,
-    gender: ctx.personGender === 'male' || ctx.personGender === 'female' ? ctx.personGender : null,
+    gender,
     alignment,
     variants,
   };

@@ -261,15 +261,26 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     defaultPricePaise: 2500,
   },
-  // Unlike every other reports.* key (all off by default, turned on deliberately from the
-  // admin panel), this one defaults ON — it's the paid replacement for the compatibility
-  // page's "Check Compatibility" button, an existing always-on nav feature, not a new
-  // discretionary report a user opts into browsing.
+  // Retired (defaultEnabled flipped to false): kundli_milan's sections 6-7 ("Health, Wealth &
+  // Career Compatibility" / "Children & Family Harmony Timing") already cover the same 8
+  // life-area synastry read as this report — see kundli-milan.ts's own RISK_GROUNDING_RULE
+  // doc comment, which says so explicitly ("the same synastry read the pricier Compatibility
+  // Match Report uses"). Two ₹50-₹99 products doing the same job was confusing, not
+  // complementary, so kundli_milan keeps the full read and this one goes dark. Existing
+  // purchased match_report rows stay fully readable (the report detail route doesn't gate on
+  // this flag) — this only turns off NEW purchases, both in the Reports catalogue (renders as
+  // "Coming Soon" — see ReportCard.tsx's comingSoon prop) and on the dedicated /compatibility
+  // page (see its own matchReportUnavailable gate). Generator/prompt code (match-report.*)
+  // is deliberately left in place, not deleted — kundli_milan's own sections 6-7 read
+  // match-risks.ts directly. NOTE: this default only takes effect where no admin `feature_flags`
+  // DB override already exists (DB row wins over this default — see resolveFeaturesForUser's
+  // doc comment) — if this key was ever explicitly turned on via the admin panel, that override
+  // needs flipping there too after deploy.
   {
     key: 'reports.match_report',
     label: 'Compatibility Match Report',
     group: 'reports',
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultPricePaise: 5000,
   },
   // Both have a fully registered generator (real LLM narrative, full i18n) --

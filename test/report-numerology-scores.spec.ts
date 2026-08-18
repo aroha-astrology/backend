@@ -190,3 +190,49 @@ describe('computeNumerologyScores — yearlyForecast (which years ahead are nume
     }
   });
 });
+
+describe('computeNumerologyScores — phone numerology (privacy + presence)', () => {
+  const RAW_PHONE = '9876543210';
+
+  it('is absent entirely when the reader has no phone number on file and gave no override', () => {
+    const scores = computeNumerologyScores(makeCtx({ personPhone: null }), null, NOW);
+    expect(scores.phoneNumber).toBeUndefined();
+    expect(scores.phoneSuggestions).toBeUndefined();
+  });
+
+  it('computes from ctx.personPhone (the account phone) when present', () => {
+    const scores = computeNumerologyScores(makeCtx({ personPhone: RAW_PHONE }), null, NOW);
+    expect(scores.phoneNumber).toBeDefined();
+    expect(scores.phoneSuggestions).toBeDefined();
+    expect(scores.phoneSuggestions).toHaveLength(5);
+  });
+
+  it("prefers the answers.phoneNumber override over the account's own phone", () => {
+    const scores = computeNumerologyScores(
+      makeCtx({ personPhone: '1111111111', userAnswers: { phoneNumber: RAW_PHONE } }),
+      null,
+      NOW,
+    );
+    // Both numbers reduce to a real vibration either way, so assert via the masked form
+    // instead of comparing vibrations (which could coincidentally match).
+    expect(scores.phoneNumber?.maskedNumber).toBe('98••••3210');
+  });
+
+  it('NEVER places the raw phone digits anywhere in the emitted scores object', () => {
+    const scores = computeNumerologyScores(makeCtx({ personPhone: RAW_PHONE }), null, NOW);
+    // The whole scores object is what reaches the LLM prompt (via reportFactsMessage) and the
+    // frontend response — if the raw number ever leaked into ANY field, this catches it,
+    // rather than trusting that only the fields we remembered to check are clean.
+    expect(JSON.stringify(scores)).not.toContain(RAW_PHONE);
+  });
+
+  it('degrades to absent (not a thrown error) for a too-short override', () => {
+    const scores = computeNumerologyScores(
+      makeCtx({ personPhone: null, userAnswers: { phoneNumber: '123' } }),
+      null,
+      NOW,
+    );
+    expect(scores.phoneNumber).toBeUndefined();
+    expect(scores.phoneSuggestions).toBeUndefined();
+  });
+});

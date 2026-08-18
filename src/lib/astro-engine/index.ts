@@ -112,9 +112,14 @@ export {
 } from './numerology/nameCorrection';
 export type { NameAlignment, NameAlignmentResult } from './numerology/nameCorrection';
 
-// Mobile Number Numerology
-export { analyzeMobileNumber } from './numerology/mobileNumber';
-export type { MobileVerdict, MobileNumberAnalysis } from './numerology/mobileNumber';
+// Phone Number Numerology
+export { analyzeMobileNumber, suggestPhoneNumbers } from './numerology/mobileNumber';
+export type {
+  MobileVerdict,
+  MobileNumberAnalysis,
+  DigitPairFinding,
+  SuggestedPhoneNumber,
+} from './numerology/mobileNumber';
 
 // Lal Kitab
 export * from './lalkitab/chart';

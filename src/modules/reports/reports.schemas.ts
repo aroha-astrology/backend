@@ -82,6 +82,9 @@ export const ReportCatalogueEntrySchema = z
     key: z.string(),
     label: z.string(),
     isMonthly: z.boolean(),
+    /** True for the 4 one-time report types that renew once a year (marriage/wealth/
+     * true_love/numerology) — see backend's ReportDef.isYearly doc comment. */
+    isYearly: z.boolean(),
     requiresPartner: z.boolean(),
     enabled: z.boolean(),
     /** Never hardcode a price client-side — always read it from here. */
