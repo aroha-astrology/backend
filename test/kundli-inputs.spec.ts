@@ -31,12 +31,12 @@ describe('missingKundliParams (strict required set)', () => {
     expect(missingKundliParams(completeProfile({ timeOfBirth: null }))).toEqual(['timeOfBirth']);
   });
 
-  it("treats birthTimeAccuracy='unknown' as missing time even if a value is present", () => {
+  it("does NOT block on birthTimeAccuracy='unknown' when a time value is present — generates with a caveat instead", () => {
     expect(
       missingKundliParams(
         completeProfile({ timeOfBirth: '06:30:00', birthTimeAccuracy: 'unknown' }),
       ),
-    ).toEqual(['timeOfBirth']);
+    ).toEqual([]);
   });
 
   it('reports every chart-required field for an empty profile', () => {
@@ -74,14 +74,17 @@ describe('birthTimeQuality / chartWarning — the accuracy funnel', () => {
     expect(chartWarning('approximate')).toMatch(/approximate/i);
   });
 
-  it("'unknown' when accuracy is explicitly 'unknown', even with a (placeholder) time value present", () => {
-    const profile = completeProfile({ timeOfBirth: '12:00:00', birthTimeAccuracy: 'unknown' });
-    expect(birthTimeQuality(profile)).toBe('unknown');
-    expect(missingKundliParams(profile)).toEqual(['timeOfBirth']); // blocks chart generation
+  it("folds a self-rated 'unknown' accuracy into 'approximate' when a time value IS present — generates, with the same caveat as 'approximate'", () => {
+    const profile = completeProfile({ timeOfBirth: '14:03:00', birthTimeAccuracy: 'unknown' });
+    expect(birthTimeQuality(profile)).toBe('approximate');
+    expect(missingKundliParams(profile)).toEqual([]); // still generates a full chart
+    expect(chartWarning(birthTimeQuality(profile))).toMatch(/approximate/i);
   });
 
-  it("'unknown' when there is simply no time value at all", () => {
-    expect(birthTimeQuality(completeProfile({ timeOfBirth: null }))).toBe('unknown');
+  it("'unknown' when there is simply no time value at all — the only case that still blocks", () => {
+    const profile = completeProfile({ timeOfBirth: null });
+    expect(birthTimeQuality(profile)).toBe('unknown');
+    expect(missingKundliParams(profile)).toEqual(['timeOfBirth']);
   });
 });
 

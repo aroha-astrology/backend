@@ -88,10 +88,14 @@ function placeIsComplete(place: UserRow['placeOfBirth']): boolean {
 export function missingKundliParams(profile: ProfileContext): KundliRequiredField[] {
   const missing: KundliRequiredField[] = [];
   if (!profile.dateOfBirth) missing.push('dateOfBirth');
-  // An EXACT time is required for a full chart: a null time OR an explicitly 'unknown'
-  // accuracy both count as missing. 'approximate' is deliberately treated as present here —
-  // see birthTimeQuality below for the caveat that accompanies an approximate chart.
-  if (!profile.timeOfBirth || profile.birthTimeAccuracy === 'unknown') missing.push('timeOfBirth');
+  // Only a genuinely absent time value blocks generation. A self-rated 'unknown' accuracy
+  // does NOT — the reader already typed in a specific clock time earlier in the same
+  // onboarding flow (accuracy is a separate, later self-rating step; see
+  // frontend's onboarding step 5 vs step 6), so there is real data to compute from, just
+  // lower confidence in it. That lower confidence is surfaced as a caveat instead of a
+  // block — see birthTimeQuality/chartWarning below, which fold 'unknown' into the same
+  // 'approximate' tier.
+  if (!profile.timeOfBirth) missing.push('timeOfBirth');
   if (!placeIsComplete(profile.placeOfBirth)) missing.push('placeOfBirth');
   return missing;
 }
@@ -101,19 +105,21 @@ export type BirthTimeQuality = 'exact' | 'approximate' | 'unknown';
 /**
  * The funnel decision for a resolved profile: `'exact'` → a normal, fully-trustworthy chart;
  * `'approximate'` → a full chart, but ascendant/houses/dasha timing should be shown with a
- * caveat (see chartWarning below); `'unknown'` → missingKundliParams already reports
- * `timeOfBirth` as missing, and the funnel's next step is birth-time rectification (see
- * rectification.ts) rather than "please enter a birth time".
+ * caveat (see chartWarning below) — covers BOTH a self-rated 'approximate' time and a
+ * self-rated 'unknown' one, since both mean "there is a number, but don't treat it as
+ * certain"; `'unknown'` here means there is literally no time value at all, which
+ * missingKundliParams already blocks, so a 'ready' chart never carries this quality.
  */
 export function birthTimeQuality(profile: ProfileContext): BirthTimeQuality {
-  if (!profile.timeOfBirth || profile.birthTimeAccuracy === 'unknown') return 'unknown';
-  return profile.birthTimeAccuracy === 'approximate' ? 'approximate' : 'exact';
+  if (!profile.timeOfBirth) return 'unknown';
+  return profile.birthTimeAccuracy === 'exact' ? 'exact' : 'approximate';
 }
 
-/** User-facing caveat for an `'approximate'`-accuracy chart — null for 'exact'/'unknown' (the
- * latter has no chart to caveat; missingKundliParams already blocks it). Ascendant, house
- * cusps, and dasha timing are the results sensitive to a few minutes of birth-time error;
- * planet SIGN placements are not. */
+/** User-facing caveat for an `'approximate'`-accuracy chart (self-rated 'approximate' OR
+ * 'unknown', see birthTimeQuality) — null for 'exact'/'unknown' (the latter has no chart to
+ * caveat; missingKundliParams already blocks it). Ascendant, house cusps, and dasha timing
+ * are the results sensitive to a few minutes of birth-time error; planet SIGN placements
+ * are not. */
 export function chartWarning(quality: BirthTimeQuality): string | null {
   if (quality !== 'approximate') return null;
   return 'Your birth time is approximate. Ascendant, house placements, and dasha timing may shift with a more exact time — planet positions by sign are still accurate.';
