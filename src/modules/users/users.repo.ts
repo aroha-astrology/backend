@@ -28,6 +28,10 @@ import {
   notifications,
   walletTransactions,
   palmReadings,
+  aiUsage,
+  voiceSessions,
+  orders,
+  reports,
   type NewUserRow,
   type NewUserConsentLogRow,
   type UserRow,
@@ -724,23 +728,40 @@ export async function countNewUsersSince(since: Date): Promise<number> {
 }
 
 /**
- * `DateRange`-bounded sibling of `countUsersActiveSince` — added alongside it
- * (not a replacement) so admin-alerts.service.ts's existing open-ended
- * "since" call keeps working unchanged. Powers the admin dashboard's active-
- * users metric, which needs a closed [from, to) window rather than "since".
+ * Distinct users active in the closed [from, to) window. Powers the admin
+ * dashboard's active-users tiles and the Telegram /activity command.
+ *
+ * Counted from an event union, NOT `users.lastActiveAt`: that column is a
+ * single field overwritten on every request, so a user active yesterday AND
+ * today only lands in today's bucket — past windows silently shrank as people
+ * came back. Same union `recurringUsersForWeek` uses, plus lastActiveAt as a
+ * tail so a user who only browsed (no AI call / chat / order / report) still
+ * counts on the day they last visited.
  */
 export async function usersActiveBetween(range: DateRange): Promise<number> {
-  const [res] = await db
-    .select({ count: count() })
-    .from(users)
-    .where(
-      and(
-        isNull(users.deletedAt),
-        gte(users.lastActiveAt, range.from),
-        lt(users.lastActiveAt, range.to),
-      ),
-    );
-  return res?.count ?? 0;
+  const from = range.from.toISOString();
+  const to = range.to.toISOString();
+  const result = await db.execute<{ activeCount: string }>(sql`
+    WITH activity AS (
+      SELECT user_id, created_at FROM ${aiUsage} WHERE user_id IS NOT NULL
+      UNION ALL
+      SELECT user_id, created_at FROM ${chatSessions}
+      UNION ALL
+      SELECT user_id, created_at FROM ${voiceSessions}
+      UNION ALL
+      SELECT user_id, created_at FROM ${orders}
+      UNION ALL
+      SELECT user_id, created_at FROM ${reports}
+      UNION ALL
+      SELECT id AS user_id, last_active_at AS created_at FROM ${users}
+        WHERE last_active_at IS NOT NULL
+    )
+    SELECT count(DISTINCT a.user_id) AS "activeCount"
+    FROM activity a
+    JOIN ${users} u ON u.id = a.user_id AND u.deleted_at IS NULL
+    WHERE a.created_at >= ${from} AND a.created_at < ${to}
+  `);
+  return Number(result[0]?.activeCount ?? 0);
 }
 
 /** `DateRange`-bounded sibling of `countNewUsersSince` — see `usersActiveBetween`'s comment. */
