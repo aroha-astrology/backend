@@ -297,6 +297,27 @@ const EnvSchema = z
     // (GET /v1/horoscope's existing cache-miss path). See horoscope.repo.ts
     // listRecentlyActiveUsersAfter.
     HOROSCOPE_ACTIVE_WINDOW_DAYS: z.coerce.number().int().positive().default(2),
+
+    // --- Email / SMTP (Gmail / transactional emails / daily reports) -------
+    SMTP_HOST: z.string().default('smtp.gmail.com'),
+    SMTP_PORT: z.coerce.number().int().positive().default(465),
+    SMTP_SECURE: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
+    SMTP_FROM: z.string().optional(),
+    // Comma-separated list of emails that receive daily 8 AM IST metrics reports
+    REPORT_RECIPIENT_EMAILS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((email) => email.trim())
+          .filter(Boolean),
+      ),
   })
   .superRefine((value, ctx) => {
     const hasPath = Boolean(value.FIREBASE_SERVICE_ACCOUNT_PATH);

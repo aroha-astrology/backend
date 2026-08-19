@@ -40,6 +40,7 @@ import {
   runDeletionRequestReminder,
 } from './deletion-reminder.service.js';
 import { runSupportMailPoll } from '../support/support-mail.service.js';
+import { runDailyUserReport } from './daily-user-report.service.js';
 
 const ErrorSchema = z
   .object({
@@ -649,5 +650,68 @@ const supportMailPollRoute = createRoute({
 
 cronRouter.openapi(supportMailPollRoute, async (c) => {
   const result = await runSupportMailPoll();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Daily 8:00 AM IST user activity & growth metrics report email.
+// Scheduled via scripts/cron-daily-user-report.sh at 02:30 UTC.
+// ---------------------------------------------------------------------------
+
+const DailyUserReportBodySchema = z
+  .object({
+    recipientEmails: z.array(z.string().email()).optional(),
+  })
+  .openapi('DailyUserReportBody');
+
+const DailyUserReportResultSchema = z
+  .object({
+    emailDispatched: z.boolean(),
+    recipients: z.array(z.string()),
+    messageId: z.string().optional(),
+    error: z.string().optional(),
+    data: z.object({
+      generatedAtIST: z.string(),
+      dateIST: z.string(),
+      yesterdayDateIST: z.string(),
+      newUsersYesterday: z.number(),
+      newUsersTodayTill8am: z.number(),
+      activeUsersYesterday: z.number(),
+      activeUsersTodayTill8am: z.number(),
+      totalUsers: z.number(),
+      revenueYesterday: z.object({ totalPaise: z.number(), count: z.number() }),
+      revenueTodayTill8am: z.object({ totalPaise: z.number(), count: z.number() }),
+    }),
+  })
+  .openapi('DailyUserReportResult');
+
+const dailyUserReportRoute = createRoute({
+  method: 'post',
+  path: '/cron/daily-user-report',
+  tags: ['Cron'],
+  summary: 'Send 8:00 AM IST daily user growth and activity metrics email report',
+  description:
+    'Gathers total new users yesterday, new users today till 8 AM IST, active users yesterday, ' +
+    'and active users today till 8 AM IST, then sends an email report via Gmail/SMTP. ' +
+    'Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: {
+      content: { 'application/json': { schema: DailyUserReportBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Report generated and dispatch attempted',
+      content: { 'application/json': { schema: DailyUserReportResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(dailyUserReportRoute, async (c) => {
+  const body = c.req.valid('json');
+  const result = await runDailyUserReport({
+    recipientEmails: body?.recipientEmails,
+  });
   return c.json(result, 200);
 });
