@@ -937,22 +937,26 @@ export function buildVoiceSystemInstruction(opts: {
     );
   }
 
-  if (locale !== 'en') {
-    // Same wording, and the same hard-won reason, as the locale block in
-    // buildChatMessages: a bare "Respond in language: X" measurably degrades
-    // grounding, not just script, and makes the model re-ask for birth details
-    // the chart data already contains. Adapted only where the text version
-    // refers to a written example.
-    sections.push(
-      `Respond in language: ${locale}. This changes ONLY the spoken language — every ` +
-        `instruction above still applies at full force: cite the specific CHART DATA facts ` +
-        `above (the actual house/sign/dasha placements), give a concrete, definitive, ` +
-        `chart-grounded answer, and never ask the user for birth details or chart information ` +
-        `already present in CHART DATA above. Do not fall back to generic, textbook-style ` +
-        `descriptions of what astrologers "generally" look at — commit to the same level of ` +
-        `specific, confident narration you would in English, just spoken in ${locale}.`,
-    );
-  }
+  // Unlike text chat (buildChatMessages), a call has no single fixed output
+  // language to pin: the user is heard, not typed at, and may speak a
+  // different language than their app setting (${locale}) — or switch
+  // mid-call. So instead of a hard "Respond in language: X" pin, this always
+  // applies (even when locale is 'en'), matching the user's own spoken
+  // language turn by turn, with ${locale} as only the opening-line default
+  // before they've said anything.
+  sections.push(
+    `The app is set to "${locale}", but that is only a starting default for your opening ` +
+      `line — for every turn after that, listen to whichever language the user is actually ` +
+      `speaking in and reply in that same language, switching naturally if they switch ` +
+      `mid-call. Never lecture them about the switch or ask which language to use — just ` +
+      `follow their lead. This changes ONLY the spoken language — every instruction above ` +
+      `still applies at full force: cite the specific CHART DATA facts above (the actual ` +
+      `house/sign/dasha placements), give a concrete, definitive, chart-grounded answer, and ` +
+      `never ask the user for birth details or chart information already present in CHART ` +
+      `DATA above. Do not fall back to generic, textbook-style descriptions of what ` +
+      `astrologers "generally" look at — commit to the same level of specific, confident ` +
+      `narration in whatever language the user is speaking.`,
+  );
 
   // PERSONAL_TOUCH now allows the name sparingly throughout (both here and in
   // text chat via buildChatMessages' displayName param) — this call-connected

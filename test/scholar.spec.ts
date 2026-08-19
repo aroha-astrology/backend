@@ -254,3 +254,16 @@ describe('scholar text-chat displayName (PERSONAL_TOUCH)', () => {
     expect(content.toLowerCase()).toMatch(/never invent one|claim to know it/);
   });
 });
+
+describe('scholar voice call — spoken-language matching', () => {
+  it("tells the model to follow the user's spoken language even when locale is en", () => {
+    const content = buildVoiceSystemInstruction({ groundingFacts: [], locale: 'en' });
+    expect(content.toLowerCase()).toContain('listen to whichever language the user is actually');
+  });
+
+  it('uses the given locale only as the opening-line default, not a hard pin', () => {
+    const content = buildVoiceSystemInstruction({ groundingFacts: [], locale: 'kn' });
+    expect(content).toContain('The app is set to "kn"');
+    expect(content).toContain('only a starting default for your opening');
+  });
+});
