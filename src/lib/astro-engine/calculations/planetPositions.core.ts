@@ -381,6 +381,12 @@ export async function calculateAscendant(
  * leaving planets in house 0.
  */
 export function assignPlanetsToHouses(planets: PlanetPosition[], houses: HouseData[]): void {
+  // `houses` can be a cached array shared across independent calls (see
+  // calculateHouses' EphemerisCache, keyed only on jd/lat/lng/system/ayanamsa
+  // — not per-request), so this must reset before populating or a second
+  // call for the same birth data duplicates every planet already assigned.
+  for (const house of houses) house.planets = [];
+
   for (const planet of planets) {
     const lon = normalizeDegree(planet.longitude);
     let assignedHouse = houses[0].house; // sane fallback (house 1)

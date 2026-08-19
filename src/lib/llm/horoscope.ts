@@ -11,11 +11,13 @@
 
 import { generate } from './gemini-client.js';
 import {
+  FORECAST_PERIODIC_TRANSLATION_PROFILE,
   FORECAST_TRANSLATION_PROFILE,
   HOROSCOPE_PROFILE,
   HOROSCOPE_TRANSLATION_PROFILE,
   HOROSCOPE_YEARLY_PROFILE,
   MODEL,
+  type GenerationProfile,
 } from '../../config/llm.js';
 import {
   buildGroundingFacts,
@@ -943,7 +945,11 @@ function restoreNonTranslatableFields<T>(original: T, translated: T): T {
 /**
  * Translates arbitrary JSON content (like Moon Sign forecasts) to the target language.
  */
-export async function translateForecastContent<T>(content: T, targetLanguage: string): Promise<T> {
+export async function translateForecastContent<T>(
+  content: T,
+  targetLanguage: string,
+  profile: GenerationProfile = FORECAST_TRANSLATION_PROFILE,
+): Promise<T> {
   const prompt = `Translate the following astrology forecast into "${targetLanguage}".
 Keep the exact same JSON structure, keys, formatting, and meaning. ONLY translate the string values.
 Do not translate the keys. Do not change any numbers or enums.
@@ -954,7 +960,7 @@ ${JSON.stringify(content, null, 2)}`;
 
   const response = await generate({
     messages: [{ role: 'user', content: prompt }],
-    profile: FORECAST_TRANSLATION_PROFILE,
+    profile,
   });
 
   const parsed = parseTranslatedJson<T>(response);

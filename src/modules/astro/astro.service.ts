@@ -33,7 +33,7 @@ import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
 import { nextEclipses, localEclipses } from '../../lib/astro-engine/panchang/eclipse.js';
 import { SIGNS } from '../../lib/astro-tools/index.js';
 import { findPredictionsDueForReview, recordPrediction } from './prediction-outcomes.repo.js';
-import { MODEL as MODEL_NAME } from '../../config/llm.js';
+import { MODEL as MODEL_NAME, FORECAST_PERIODIC_TRANSLATION_PROFILE } from '../../config/llm.js';
 import {
   rectifyBirthTime,
   type LifeEvent,
@@ -683,7 +683,11 @@ async function getCachedForecastTranslation<T>(
   }
 
   try {
-    const translated = await translateForecastContent(englishContent, language);
+    const translated = await translateForecastContent(
+      englishContent,
+      language,
+      period === 'daily' ? undefined : FORECAST_PERIODIC_TRANSLATION_PROFILE,
+    );
     await db
       .insert(forecastTranslations)
       .values({

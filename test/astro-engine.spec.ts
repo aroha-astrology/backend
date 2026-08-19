@@ -83,4 +83,20 @@ describe('astro-engine: calculateChart ayanamsa cache correctness', () => {
     expect(raman.ayanamsaValue).toBeGreaterThan(20);
     expect(raman.ayanamsaValue).toBeLessThan(23);
   }, 20_000);
+
+  // calculateHouses is cached and returns the SAME houses array by reference
+  // on a cache hit (identical jd/lat/lng/system/ayanamsa) — a second
+  // calculateChart call for the same birth data must not duplicate every
+  // planet already pushed into houses[i].planets on the first call.
+  it('does not duplicate planets in houses[].planets across repeated calls for the same birth data', async () => {
+    const args = [1990, 5, 20, 6, 30, 5.5, 19.076, 72.8777, 'lahiri', 'W'] as const;
+    await calculateChart(...args);
+    const chart = await calculateChart(...args);
+
+    const allPlanetsListed = chart.houses.flatMap((h) => h.planets);
+    expect(allPlanetsListed).toHaveLength(chart.planets.length);
+    for (const h of chart.houses) {
+      expect(new Set(h.planets).size).toBe(h.planets.length);
+    }
+  }, 20_000);
 });

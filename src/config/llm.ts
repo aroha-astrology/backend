@@ -220,6 +220,28 @@ export const FORECAST_TRANSLATION_PROFILE: GenerationProfile = {
 };
 
 /**
+ * Weekly/monthly/yearly moon-sign forecast translation — same schema as
+ * FORECAST_TRANSLATION_PROFILE above plus a variable-length `keyEvents[]`
+ * (one full-sentence description per ingress/station sampled across the
+ * period — a yearly forecast can carry a dozen-plus of these) and each of
+ * the 6 `categories` now carrying its own hook/description/advice rather
+ * than daily's bare description. That pushed a Hindi re-emission of a
+ * yearly forecast past FORECAST_TRANSLATION_PROFILE's 4096-token ceiling
+ * (confirmed via production logs: truncated mid-JSON, "Unterminated string
+ * in JSON"), silently falling back to English content. Matches
+ * REPORT_TRANSLATION_PROFILE/PALM_TRANSLATION_PROFILE's 8192 "large
+ * schema" tier. Cached forever per (date, sign, period, language) after the
+ * first successful call, so the larger ceiling is not a recurring cost.
+ */
+export const FORECAST_PERIODIC_TRANSLATION_PROFILE: GenerationProfile = {
+  name: 'forecast-periodic-translation',
+  temperature: 0.3,
+  jsonMode: true,
+  stream: false,
+  maxTokens: 8192,
+};
+
+/**
  * Horoscope translation (daily/weekly/monthly/yearly) — re-emits the summary
  * + 6-category `structured` block + (yearly only) the 12-entry
  * `monthlyBreakdown` in the target language. Same non-Latin-script token
