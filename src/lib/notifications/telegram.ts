@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
 import { logger } from '../logger.js';
+import { emailSupportTicket, emailDeletionRequest } from './support-email.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
 
@@ -102,6 +103,7 @@ function supportTicketRecipients(): (string | number)[] {
 }
 
 export async function notifySupportTicket(fields: {
+  ticketId: string;
   userId: string;
   contact?: string | null;
   category: string;
@@ -113,6 +115,12 @@ export async function notifySupportTicket(fields: {
     (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
     `Category: ${escapeMarkdown(fields.category)}\n` +
     `\n*Message:* ${escapeMarkdown(clipForTelegram(fields.message))}`;
+
+  // The support-mailbox copy is fanned out from HERE, not from the route, so
+  // that every caller of this function — now and later — gets the email too
+  // and the two channels can't drift apart. No-ops when the mailbox is
+  // unconfigured; never throws (see support-email.ts).
+  void emailSupportTicket(fields).catch(() => {});
 
   const recipients = supportTicketRecipients();
   if (recipients.length === 0) return sendMessage(text);
@@ -147,6 +155,10 @@ export async function notifyAccountDeletionRequest(fields: {
     `\nNothing has been erased yet\\. Approve or reject:\n` +
     `\`/approvedelete ${escapeMarkdown(fields.userId)}\`\n` +
     `\`/rejectdelete ${escapeMarkdown(fields.userId)}\``;
+
+  // Same fan-out-from-the-funnel reasoning as notifySupportTicket above — this
+  // covers both callers (the request itself, and the daily reminder cron).
+  void emailDeletionRequest(fields).catch(() => {});
 
   const recipients = supportTicketRecipients();
   if (recipients.length === 0) return sendMessage(text);

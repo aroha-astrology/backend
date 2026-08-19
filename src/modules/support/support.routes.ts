@@ -110,8 +110,9 @@ supportRouter.openapi(createTicketRoute, async (c) => {
     appVersion,
   });
 
-  // Fire-and-forget — a Telegram outage must never fail the ticket-creation request.
+  // Fire-and-forget — a Telegram/mailbox outage must never fail the ticket-creation request.
   void notifySupportTicket({
+    ticketId: ticket.id,
     userId: user.id,
     contact: user.phoneE164 ?? user.email,
     category: body.category,

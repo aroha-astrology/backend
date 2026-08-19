@@ -136,6 +136,18 @@ const EnvSchema = z
     // and the Live socket both live under v1beta directly.
     GEMINI_LIVE_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta'),
     GEMINI_LIVE_MODEL: z.string().default('gemini-3.1-flash-live-preview'),
+    // Yogi Baba's speaking voice, pinned into the ephemeral token's setup (see
+    // lib/llm/gemini-live-token.ts). Left unset, Gemini Live picks its own
+    // default, which is what made the persona sound nothing like "Yogi Baba".
+    //
+    // An env var rather than a constant because "does this sound like Baba" is
+    // an ear judgement, not a spec: changing it here is a pm2 restart, no deploy
+    // and no app build, so alternatives can be auditioned against real calls.
+    // 'Algieba' (smooth) is the chosen default; 'Charon' (deep, authoritative)
+    // is the safe fallback — it is one of the 8 voices every Live model tier
+    // accepts, whereas Algieba comes from the wider 30-voice TTS set that only
+    // native-audio models support.
+    GEMINI_LIVE_VOICE: z.string().default('Algieba'),
     // A kill switch that sits BELOW the `paid.voiceChat` feature flag: the flag
     // is the product control (admin-togglable, per-user/per-group), this is the
     // operational one. It exists so voice can be cut instantly from the box —
@@ -231,6 +243,34 @@ const EnvSchema = z
           .filter(Boolean),
       ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+    // Support mailbox — the SAME Gmail account is used in both directions:
+    // outbound (new tickets / deletion requests are mailed to it) and inbound
+    // (POST /cron/support-mail-poll reads replies back out of it and writes
+    // them onto the ticket). One credential covers both because Gmail's SMTP
+    // and IMAP endpoints take the same login.
+    //
+    // SUPPORT_EMAIL_APP_PASSWORD must be a Google *App Password*, NOT the
+    // account password: Gmail stopped accepting account passwords for
+    // SMTP/IMAP in 2022, so a real password here fails to authenticate. Generate
+    // one at myaccount.google.com -> App passwords (requires 2-Step Verification
+    // to be on). Spaces in the 16-char code are stripped below — Google displays
+    // it as "abcd efgh ijkl mnop" and it gets pasted that way constantly.
+    //
+    // Both unset = the whole email path is off; the Telegram alerts and the
+    // admin panel keep working exactly as before.
+    SUPPORT_EMAIL_USER: z.string().email().optional(),
+    SUPPORT_EMAIL_APP_PASSWORD: z
+      .string()
+      .min(1)
+      .optional()
+      .transform((value) => value?.replace(/\s+/g, '')),
+    // Where ticket mail is delivered. Defaults to SUPPORT_EMAIL_USER (the
+    // mailbox mails itself, and replies land back in the same inbox for the
+    // poller to find). Only set this to send somewhere else — note the poller
+    // still reads SUPPORT_EMAIL_USER's inbox, so a reply is only picked up if
+    // it ends up there.
+    SUPPORT_EMAIL_TO: z.string().email().optional(),
 
     // Phone allowlist (E.164) gating the HTTP admin API (/v1/admin/*) — see
     // requireAdmin in middleware/auth.ts. Checked against the Firebase ID
