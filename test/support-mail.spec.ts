@@ -80,6 +80,15 @@ describe('support mailbox — quote stripping', () => {
   it('leaves an unquoted reply untouched', () => {
     expect(stripQuotedReply('  Just this.  ')).toBe('Just this.');
   });
+
+  it('still cuts when the crude HTML-to-text fallback leaves residue right after "wrote:"', () => {
+    // e.g. an undecoded &nbsp; or unstripped tag fragment on the same line —
+    // this used to survive because the marker required the line to end
+    // right at "wrote:".
+    const raw =
+      'good\n\nOn Wed, 19 Aug 2026 at 11:20, Aroha Support <s@example.com> wrote:&nbsp;Test subir';
+    expect(stripQuotedReply(raw)).toBe('good');
+  });
 });
 
 describe('support mailbox — deletion commands', () => {

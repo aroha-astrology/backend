@@ -68,7 +68,12 @@ export interface SupportMailPollResult {
  * its marker here rather than reaching for a dependency.
  */
 const QUOTE_MARKERS: readonly RegExp[] = [
-  /^\s*On .*wrote:\s*$/m, // Gmail / Apple Mail, English
+  // No `$` anchor after "wrote:": the crude HTML-to-text fallback below can
+  // leave stray residue (an unstripped tag, an undecoded &nbsp;) right after
+  // it, and requiring the rest of the line to be blank let that residue
+  // defeat the cut entirely — the quote header itself ended up in the
+  // user-visible reply instead of being removed.
+  /^\s*On .*wrote:/m, // Gmail / Apple Mail, English
   /^\s*>/m, // any quoted block
   /^\s*-{2,}\s*Original Message\s*-{2,}/im, // Outlook
   /^\s*_{10,}\s*$/m, // Outlook (horizontal rule above the quote)
