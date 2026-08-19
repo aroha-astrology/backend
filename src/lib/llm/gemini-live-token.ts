@@ -112,7 +112,11 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
   let lastBody = '';
 
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const picked = await pickKey(tried);
+    // preferPaid: true — voice deliberately draws from the paid reserve
+    // first rather than spending the shared free-tier pool every other
+    // Gemini feature depends on, falling back to free only once the
+    // reserve itself is exhausted or cooling down (see pickKey's contract).
+    const picked = await pickKey(tried, true);
     if (!picked) break; // every key excluded or cooling down
 
     // See gemini-client.ts: reaching the reserve means this mint is about to
@@ -138,7 +142,21 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
       // `config`, and `responseModalities` lives under `generationConfig`.
       bidiGenerateContentSetup: {
         model: `models/${env.GEMINI_LIVE_MODEL}`,
-        generationConfig: { responseModalities: ['AUDIO'] },
+        // `speechConfig` pins the voice. Without it Gemini Live picks its own
+        // default, and the persona ("Yogi Baba") was being spoken by whatever
+        // that happened to be. Deliberately voiceName ONLY — `speechConfig` also
+        // accepts a `languageCode`, and setting it here would override the
+        // per-call language that rides in on the system instruction's locale
+        // (scholar.ts's buildVoiceSystemInstruction), breaking every non-English
+        // call. This also closes the gap the `tools: []` note below describes:
+        // anything left unconstrained is something the token-holding browser can
+        // declare for itself, and the voice was unconstrained.
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: env.GEMINI_LIVE_VOICE } },
+          },
+        },
         // Required for the client to resume across paid-minute boundaries
         // without losing the conversation — each minute is a fresh socket.
         sessionResumption: opts.resumptionHandle ? { handle: opts.resumptionHandle } : {},

@@ -143,11 +143,13 @@ const EnvSchema = z
     // An env var rather than a constant because "does this sound like Baba" is
     // an ear judgement, not a spec: changing it here is a pm2 restart, no deploy
     // and no app build, so alternatives can be auditioned against real calls.
-    // 'Algieba' (smooth) is the chosen default; 'Charon' (deep, authoritative)
-    // is the safe fallback — it is one of the 8 voices every Live model tier
-    // accepts, whereas Algieba comes from the wider 30-voice TTS set that only
-    // native-audio models support.
-    GEMINI_LIVE_VOICE: z.string().default('Algieba'),
+    // 'Algenib' (gravelly, deep, masculine) is the chosen default — closest
+    // prebuilt match to a calm, slightly coarse baba voice; 'Charon' (deep,
+    // authoritative) is the safe fallback — it is one of the 8 voices every
+    // Live model tier accepts, whereas Algenib comes from the wider 30-voice
+    // TTS set that only native-audio models support (same set 'Algieba', the
+    // prior default, came from).
+    GEMINI_LIVE_VOICE: z.string().default('Algenib'),
     // A kill switch that sits BELOW the `paid.voiceChat` feature flag: the flag
     // is the product control (admin-togglable, per-user/per-group), this is the
     // operational one. It exists so voice can be cut instantly from the box —

@@ -101,7 +101,25 @@ const FOLLOW_UP_CURIOSITY = `The open follow-ups block below lists questions tie
  * The "Ask next:" convention is dropped deliberately: it is a UI affordance for
  * a tappable suggestion chip, and read aloud it is just a strange sentence.
  */
-const OUTPUT_STYLE_VOICE = `You are speaking OUT LOUD in a live conversation, not writing. Keep every reply to 2-3 sentences, well under 60 words — a spoken reply that runs long is one the listener cannot follow or remember. Never use any formatting: no markdown, no bold, no headers, no numbered lists, no bullets. Never say the words "asterisk", "bullet", "colon" or read punctuation aloud. Write numbers, dates and planet names exactly as they should be spoken (say "the second half of March", not "2nd half of Mar"). Open with the answer itself — no preamble, no "let me look at your chart". Use plain, warm, conversational language, contractions included, the way a person actually talks. If the user starts speaking while you are talking, stop immediately and listen — being interrupted is normal and expected here, never something to apologise for or talk over. If a question genuinely needs a longer answer, give the single most important part now and offer to go deeper, rather than delivering a monologue.`;
+const OUTPUT_STYLE_VOICE = `You are speaking OUT LOUD in a live conversation, not writing. Keep every reply to 2-3 sentences, well under 60 words — a spoken reply that runs long is one the listener cannot follow or remember. Never use any formatting: no markdown, no bold, no headers, no numbered lists, no bullets. Never say the words "asterisk", "bullet", "colon" or read punctuation aloud. Write numbers, dates and planet names exactly as they should be spoken (say "the second half of March", not "2nd half of Mar"). Open with the answer itself — no preamble, no "let me look at your chart". Use plain language, contractions included, the way a person actually talks — never stiff or written-sounding. If the user starts speaking while you are talking, stop immediately and listen — being interrupted is normal and expected here, never something to apologise for or talk over. If a question genuinely needs a longer answer, give the single most important part now and offer to go deeper, rather than delivering a monologue.`;
+
+/**
+ * How Yogi Baba SOUNDS, as opposed to what he says (OUTPUT_STYLE_VOICE).
+ *
+ * Separate from OUTPUT_STYLE_VOICE because they answer different questions and
+ * regress independently: that one is about length and the absence of markup,
+ * this one is about register. The persona is named "Yogi Baba" in the UI
+ * (frontend i18n `chat.personaGeneral`), and a prompt that only asked for
+ * "warm, conversational" produced a chatty peer instead — the timbre is now
+ * pinned to a calm one server-side (GEMINI_LIVE_VOICE), and this is the other
+ * half of that: a voice model matches the delivery it is asked for, and asking
+ * for nothing gets an upbeat read of solemn material.
+ *
+ * The closing sentence is load-bearing: "unhurried, with pauses" and "2-3
+ * sentences, under 60 words" pull against each other, and without it the model
+ * resolves the conflict by talking for longer.
+ */
+const VOICE_DELIVERY = `Delivery matters as much as the words. Speak the way an old teacher speaks: low, unhurried and settled, with a calm that never tips into flatness. Land on your words rather than hurrying past them, and let a short pause fall before something that matters. Warm, but never chatty; certain, but never loud — you do not perform authority, you simply have it. Hold this same steadiness when the chart carries difficult news: an even voice is what reassures, not a bright one. None of this licenses a longer answer — the length limit still holds exactly as stated, and the pauses live inside those two or three sentences, never beyond them.`;
 
 const HEDGE_LANGUAGE = `Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
 
@@ -953,6 +971,7 @@ export function buildVoiceSystemInstruction(opts: {
   // no post-processing pass (nothing like streamDirectModeParagraph's word
   // budget) to fall back on if the model runs long.
   sections.push(OUTPUT_STYLE_VOICE);
+  sections.push(VOICE_DELIVERY);
 
   return sections.join('\n\n');
 }

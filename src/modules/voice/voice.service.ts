@@ -35,24 +35,15 @@ import * as voiceRepo from './voice.repo.js';
  * (voice.repo.ts's claimVoiceMinute), not here, so concurrent mint requests
  * cannot race past it.
  *
- * A deliberate product choice rather than a technical limit: voice runs on a
- * preview model whose free-tier quota is shared with every text feature in the
- * app, and an unbounded session is the one shape that could drain that quota
- * for everybody else. It also bounds the worst case a user can spend in a
- * single tap to this number × the per-minute price — 15 minutes is ₹300 at the
- * default price.
+ * A deliberate product choice rather than a technical limit: voice now mints
+ * from the paid reserve (see gemini-live-token.ts's preferPaid), so this
+ * ceiling bounds real spend per call rather than shared free-tier quota — 3
+ * minutes is ₹60 at the default price.
  *
- * Every renewed minute re-mints from the same rotating key pool every other
- * Gemini call uses (see gemini-key-pool.ts), so a long call already spreads
- * its mints across keys rather than pinning one — and Google's own session
- * resumption (the handle carried in `sessionResumption` at mint time) has been
- * verified live to survive a mint from a DIFFERENT key, so raising this
- * doesn't risk the conversation silently restarting partway through a call.
- * 3 -> 15 (2026-07-29): the mic and wire-format bugs that made every call fail
- * before this point are what kept this at a token 3-minute ceiling; there was
- * no real usage yet to justify a higher number against actual quota pressure.
+ * 15 -> 3 (2026-08-19): tightened once voice started drawing on the paid key
+ * on every call instead of only as a free-pool fallback.
  */
-export const VOICE_MAX_MINUTES = 15;
+export const VOICE_MAX_MINUTES = 3;
 
 /** Fallback when the feature registry has no price configured for voice. */
 const DEFAULT_MINUTE_PRICE_PAISE = 2000;
