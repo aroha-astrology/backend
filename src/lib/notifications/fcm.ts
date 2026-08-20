@@ -8,6 +8,10 @@ const PERMANENT_FAILURE_CODES = new Set([
   'messaging/registration-token-not-registered',
   'messaging/invalid-argument',
   'messaging/invalid-registration-token',
+  // Token was minted under a different Firebase project than the one
+  // sending (e.g. iOS build pointing at the wrong GoogleService-Info.plist)
+  // — will never succeed for this project, no matter how many times retried.
+  'messaging/mismatched-credential',
 ]);
 
 export async function sendPush(

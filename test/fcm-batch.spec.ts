@@ -100,6 +100,19 @@ describe('sendPushBatch — dead-token pruning', () => {
     expect(state.revokeTokensByValue).toHaveBeenCalledWith(['tok-dead']);
   });
 
+  it('revokes a token minted under a different Firebase project (mismatched-credential)', async () => {
+    state.sendEach.mockResolvedValueOnce({
+      successCount: 0,
+      failureCount: 1,
+      responses: [{ success: false, error: { code: 'messaging/mismatched-credential' } }],
+    });
+
+    const result = await sendPushBatch(['tok-wrong-project'], 'Title', 'Body');
+
+    expect(result).toEqual({ success: 0, failure: 1 });
+    expect(state.revokeTokensByValue).toHaveBeenCalledWith(['tok-wrong-project']);
+  });
+
   it('does not revoke a token that failed for a transient reason', async () => {
     state.sendEach.mockResolvedValueOnce({
       successCount: 0,
