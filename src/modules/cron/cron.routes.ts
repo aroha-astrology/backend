@@ -35,6 +35,7 @@ import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js
 import { reapStaleReports } from '../reports/reports.service.js';
 import { reapStalePalmReadings } from '../palm/palm.service.js';
 import { runLowBalanceAlert } from './low-balance-alert.service.js';
+import { sweepDueCampaigns, sweepExpiredGrants } from './gift-campaign-sweep.service.js';
 import {
   DELETION_REMINDER_AFTER_DAYS,
   runDeletionRequestReminder,
@@ -583,6 +584,41 @@ const lowBalanceAlertRoute = createRoute({
 cronRouter.openapi(lowBalanceAlertRoute, async (c) => {
   const result = await runLowBalanceAlert();
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Gift campaigns — fires any admin-scheduled campaign whose send time has
+// arrived, and claws back any credited-but-expired gift past its
+// credit_expiry_days. Wired to run once a day (see
+// scripts/cron-festival-campaigns.sh). See gift-campaign-sweep.service.ts.
+// ---------------------------------------------------------------------------
+
+const festivalCampaignsRoute = createRoute({
+  method: 'post',
+  path: '/cron/festival-campaigns',
+  tags: ['Cron'],
+  summary: 'Send due scheduled gift campaigns and claw back expired unused credit',
+  description:
+    'Machine-to-machine endpoint, meant to run once a day via the OS crontab. Two independent ' +
+    'sweeps: any gift_campaigns row with status=scheduled and scheduled_send_at in the past is ' +
+    'sent (audience resolved, credited if auto_credit, notified either way); any ' +
+    'wallet_transactions grant past its expires_at has its still-unspent portion clawed back. ' +
+    'Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: {
+        'application/json': { schema: z.object({ sent: z.number(), expired: z.number() }) },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(festivalCampaignsRoute, async (c) => {
+  const { sent } = await sweepDueCampaigns();
+  const { expired } = await sweepExpiredGrants();
+  return c.json({ sent, expired }, 200);
 });
 
 // ---------------------------------------------------------------------------
