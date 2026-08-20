@@ -321,6 +321,7 @@ export async function claimCampaignBonus(
   userId: string,
   campaignKey: string,
   amountPaise: number,
+  expiresAt?: Date,
 ): Promise<{ claimed: boolean; walletBalancePaise: number }> {
   return db.transaction(async (tx) => {
     const [locked] = await tx.execute<{ wallet_balance_paise: number }>(sql`
@@ -349,6 +350,7 @@ export async function claimCampaignBonus(
       delta: amountPaise,
       reason: campaignKey,
       balanceAfter: updated.walletBalancePaise,
+      expiresAt: expiresAt ?? null,
     });
 
     return { claimed: true, walletBalancePaise: updated.walletBalancePaise };
