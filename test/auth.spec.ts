@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   resolveFeaturesForUser: vi.fn(),
   hasGivenFeedback: vi.fn(),
   getClaimedCampaignKeys: vi.fn(),
+  findLiveSelfClaimCampaign: vi.fn(),
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', () => ({
@@ -68,6 +69,11 @@ vi.mock('../src/modules/feedback/feedback.repo.js', () => ({
   hasGivenFeedback: state.hasGivenFeedback,
 }));
 
+vi.mock('../src/modules/gift-campaigns/gift-campaigns.repo.js', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return { ...actual, findLiveSelfClaimCampaign: state.findLiveSelfClaimCampaign };
+});
+
 const { createApp } = await import('../src/app.js');
 
 describe('POST /v1/auth/session', () => {
@@ -87,6 +93,7 @@ describe('POST /v1/auth/session', () => {
     state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
     state.hasGivenFeedback.mockReset().mockResolvedValue(false);
     state.getClaimedCampaignKeys.mockReset().mockResolvedValue([]);
+    state.findLiveSelfClaimCampaign.mockReset().mockResolvedValue(undefined);
   });
 
   it('returns 401 when the Authorization header is missing', async () => {

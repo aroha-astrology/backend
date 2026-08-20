@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireFirebaseToken } from '../../middleware/auth.js';
-import { toUserDto } from '../users/users.service.js';
+import { toUserDto, resolveActiveClaimableCampaign } from '../users/users.service.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import { hasGivenFeedback } from '../feedback/feedback.repo.js';
@@ -72,8 +72,22 @@ authRouter.openapi(sessionRoute, async (c) => {
   const claimedCampaigns = created
     ? []
     : await getClaimedCampaignKeys(user.id, CLAIM_CAMPAIGN_KEYS);
+  // A brand-new signup is never eligible for a claim campaign either (the same-day
+  // signup guard inside resolveActiveClaimableCampaign would exclude them from any
+  // campaign live today, and there's nothing historical to be eligible for) — same
+  // short-circuit as feedbackGiven/claimedCampaigns above, skips the lookup entirely.
+  const activeClaimableCampaign = created
+    ? null
+    : await resolveActiveClaimableCampaign(user, claimedCampaigns);
   const body = {
-    user: toUserDto(user, profile, features, feedbackGiven, claimedCampaigns),
+    user: toUserDto(
+      user,
+      profile,
+      features,
+      feedbackGiven,
+      claimedCampaigns,
+      activeClaimableCampaign,
+    ),
     created,
   };
   return c.json(body, created ? 201 : 200);

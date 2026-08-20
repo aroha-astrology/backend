@@ -22,6 +22,7 @@ import {
   unlockGemstone,
   getNotifications,
   markNotificationsRead,
+  resolveActiveClaimableCampaign,
 } from './users.service.js';
 
 const ErrorSchema = z
@@ -261,7 +262,11 @@ usersRouter.openapi(getMeRoute, async (c) => {
   const features = await resolveFeaturesForUser(user.id);
   const feedbackGiven = await hasGivenFeedback(user.id);
   const claimedCampaigns = await getClaimedCampaignKeys(user.id, CLAIM_CAMPAIGN_KEYS);
-  return c.json(toUserDto(user, profile, features, feedbackGiven, claimedCampaigns), 200);
+  const activeClaimableCampaign = await resolveActiveClaimableCampaign(user, claimedCampaigns);
+  return c.json(
+    toUserDto(user, profile, features, feedbackGiven, claimedCampaigns, activeClaimableCampaign),
+    200,
+  );
 });
 
 usersRouter.openapi(patchMeRoute, async (c) => {
@@ -275,7 +280,11 @@ usersRouter.openapi(patchMeRoute, async (c) => {
   const features = await resolveFeaturesForUser(next.id);
   const feedbackGiven = await hasGivenFeedback(next.id);
   const claimedCampaigns = await getClaimedCampaignKeys(next.id, CLAIM_CAMPAIGN_KEYS);
-  return c.json(toUserDto(next, profile, features, feedbackGiven, claimedCampaigns), 200);
+  const activeClaimableCampaign = await resolveActiveClaimableCampaign(next, claimedCampaigns);
+  return c.json(
+    toUserDto(next, profile, features, feedbackGiven, claimedCampaigns, activeClaimableCampaign),
+    200,
+  );
 });
 
 usersRouter.openapi(deleteMeRoute, async (c) => {

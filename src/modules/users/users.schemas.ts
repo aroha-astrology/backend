@@ -286,6 +286,19 @@ export const UserSchema = z
           'campaign this user has already redeemed via POST /v1/me/claim-bonus/{campaignKey}. ' +
           'Server truth, so a claim modal never offers a claim a second device already redeemed.',
       ),
+    activeClaimableCampaign: z
+      .object({
+        key: z.string(),
+        title: z.string(),
+        amountPaise: z.number().int(),
+        validUntil: z.string(),
+      })
+      .nullable()
+      .describe(
+        'Whichever self-claim gift campaign (static or admin-created) is currently live and ' +
+          'eligible for this user, or null. Drives the generic FestivalGiftModal — see ' +
+          'resolveActiveClaimableCampaign in users.service.ts.',
+      ),
 
     features: z
       .record(

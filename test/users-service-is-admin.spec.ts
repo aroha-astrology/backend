@@ -20,19 +20,19 @@ beforeEach(() => {
 describe('toUserDto isAdmin', () => {
   it('is true when the user row phone is on the ADMIN_PHONE_E164 allowlist', () => {
     const row = makeUserRow({ phoneE164: '+919999111111' });
-    const dto = toUserDto(row, makeProfileContext(), {}, false, []);
+    const dto = toUserDto(row, makeProfileContext(), {}, false, [], null);
     expect(dto.isAdmin).toBe(true);
   });
 
   it('is false when the user row phone is not on the allowlist', () => {
     const row = makeUserRow({ phoneE164: '+911111111111' });
-    const dto = toUserDto(row, makeProfileContext(), {}, false, []);
+    const dto = toUserDto(row, makeProfileContext(), {}, false, [], null);
     expect(dto.isAdmin).toBe(false);
   });
 
   it('is false when the user row has no phone at all', () => {
     const row = makeUserRow({ phoneE164: null });
-    const dto = toUserDto(row, makeProfileContext(), {}, false, []);
+    const dto = toUserDto(row, makeProfileContext(), {}, false, [], null);
     expect(dto.isAdmin).toBe(false);
   });
 });

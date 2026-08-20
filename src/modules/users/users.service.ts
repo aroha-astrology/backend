@@ -11,6 +11,9 @@ import { deleteHoroscopesForProfile } from '../horoscope/horoscope.repo.js';
 import { type ProfileContext } from '../birth-profiles/profile-context.js';
 import { priceOf, payoutOf, type ResolvedFeature } from '../features/features.service.js';
 import { formatPaise } from '../../lib/money.js';
+import { CLAIM_CAMPAIGNS } from '../../config/campaigns.js';
+import { istDateString } from '../../lib/astro-tools/transit-events.js';
+import { findLiveSelfClaimCampaign } from '../gift-campaigns/gift-campaigns.repo.js';
 import {
   unlockGemstoneForOwnedProfile,
   unlockHouseForOwnedProfile,
@@ -46,6 +49,60 @@ const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean 
   grantedAt != null && revokedAt == null;
 
 /**
+ * Whatever self-claim campaign (static or DB-backed) is currently live AND
+ * eligible for this user, or null. Mirrors the exact gates the claim-bonus
+ * route itself enforces (the balance ceiling, already-claimed, signed-up-
+ * today) so the frontend never offers a claim the route would refuse — same
+ * intent as useClaimCampaign's old client-side gates, just computed here
+ * since there's no longer one fixed key to hardcode into every client build.
+ */
+export async function resolveActiveClaimableCampaign(
+  user: UserRow,
+  claimedCampaigns: string[],
+  now: Date = new Date(),
+): Promise<{ key: string; title: string; amountPaise: number; validUntil: string } | null> {
+  const today = istDateString(now);
+
+  // Static campaigns: at most one is ever "today" — CLAIM_CAMPAIGNS is small, a linear scan is fine.
+  const staticLive = CLAIM_CAMPAIGNS.find((c) => c.istDate === today);
+  if (
+    staticLive &&
+    !claimedCampaigns.includes(staticLive.key) &&
+    istDateString(user.createdAt) !== staticLive.istDate &&
+    (staticLive.maxBalancePaise === undefined ||
+      user.walletBalancePaise < staticLive.maxBalancePaise)
+  ) {
+    const amountPaise = await payoutOf(user.id, staticLive.featureKey, staticLive.fallbackPaise);
+    if (amountPaise > 0) {
+      return {
+        key: staticLive.key,
+        title: staticLive.key,
+        amountPaise,
+        validUntil: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
+  }
+
+  const dbLive = await findLiveSelfClaimCampaign(now);
+  if (
+    dbLive &&
+    !claimedCampaigns.includes(dbLive.key) &&
+    istDateString(user.createdAt) !== istDateString(dbLive.sentAt ?? now) &&
+    (dbLive.audienceMaxBalancePaise === null ||
+      user.walletBalancePaise < dbLive.audienceMaxBalancePaise)
+  ) {
+    return {
+      key: dbLive.key,
+      title: dbLive.title,
+      amountPaise: dbLive.amountPaise,
+      validUntil: dbLive.validUntil!.toISOString(),
+    };
+  }
+
+  return null;
+}
+
+/**
  * `unlockedHouses`/`gemstoneUnlocked` are per-profile, not per-user — `profile`
  * must be resolved via {@link resolveActiveProfileContext} (or an equivalent
  * `resolveProfileContext` call) by the caller so a secondary profile's own
@@ -59,7 +116,8 @@ const consentActive = (grantedAt: Date | null, revokedAt: Date | null): boolean 
  * `feedbackGiven` is passed in for the same reason, via `hasGivenFeedback()`.
  * `claimedCampaigns` likewise, via `getClaimedCampaignKeys()` — the campaign
  * keys (see config/campaigns.ts) this user has already claimed, of any
- * one-time claim campaign that currently exists.
+ * one-time claim campaign that currently exists. `activeClaimableCampaign`
+ * likewise, via `resolveActiveClaimableCampaign()` above.
  */
 export function toUserDto(
   row: UserRow,
@@ -67,6 +125,12 @@ export function toUserDto(
   features: Record<string, ResolvedFeature>,
   feedbackGiven: boolean,
   claimedCampaigns: string[],
+  activeClaimableCampaign: {
+    key: string;
+    title: string;
+    amountPaise: number;
+    validUntil: string;
+  } | null,
 ): UserDto {
   return {
     id: row.id,
@@ -141,6 +205,7 @@ export function toUserDto(
     gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
     feedbackGiven,
     claimedCampaigns,
+    activeClaimableCampaign,
 
     features,
 

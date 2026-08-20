@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   resolveFeaturesForUser: vi.fn(),
   hasGivenFeedback: vi.fn(),
   getClaimedCampaignKeys: vi.fn(),
+  findLiveSelfClaimCampaign: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -65,6 +66,11 @@ vi.mock('../src/modules/feedback/feedback.repo.js', () => ({
   hasGivenFeedback: state.hasGivenFeedback,
 }));
 
+vi.mock('../src/modules/gift-campaigns/gift-campaigns.repo.js', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return { ...actual, findLiveSelfClaimCampaign: state.findLiveSelfClaimCampaign };
+});
+
 const { createApp } = await import('../src/app.js');
 
 const AUTH = { Authorization: 'Bearer token', 'Content-Type': 'application/json' } as const;
@@ -79,6 +85,7 @@ describe('GET /v1/me', () => {
     state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
     state.hasGivenFeedback.mockReset().mockResolvedValue(false);
     state.getClaimedCampaignKeys.mockReset().mockResolvedValue([]);
+    state.findLiveSelfClaimCampaign.mockReset().mockResolvedValue(undefined);
   });
 
   it('returns the current user profile', async () => {
@@ -126,6 +133,7 @@ describe('PATCH /v1/me', () => {
     state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
     state.hasGivenFeedback.mockReset().mockResolvedValue(false);
     state.getClaimedCampaignKeys.mockReset().mockResolvedValue([]);
+    state.findLiveSelfClaimCampaign.mockReset().mockResolvedValue(undefined);
   });
 
   it('updates the profile and stamps profileCompletedAt when all fields are present', async () => {
