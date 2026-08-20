@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
-import { resolveFeaturesForUser, payoutOf } from '../features/features.service.js';
+import { resolveFeaturesForUser } from '../features/features.service.js';
 import { hasGivenFeedback } from '../feedback/feedback.repo.js';
 import {
   ensureReferralCode,
@@ -9,7 +9,8 @@ import {
   getClaimedCampaignKeys,
   claimCampaignBonus,
 } from './users.repo.js';
-import { CLAIM_CAMPAIGN_KEYS, findClaimCampaign } from '../../config/campaigns.js';
+import { CLAIM_CAMPAIGN_KEYS } from '../../config/campaigns.js';
+import { resolveClaimCampaign } from '../gift-campaigns/gift-campaigns.service.js';
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { Errors } from '../../lib/errors.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
@@ -313,15 +314,16 @@ usersRouter.openapi(unlockGemstoneRoute, async (c) => {
 usersRouter.openapi(claimCampaignBonusRoute, async (c) => {
   const user = c.get('user');
   const { campaignKey } = c.req.valid('param');
-  const campaign = findClaimCampaign(campaignKey);
+
+  const campaign = await resolveClaimCampaign(campaignKey, user.id);
   if (!campaign) throw Errors.notFound('Unknown campaign');
-  if (istDateString(new Date()) !== campaign.istDate) {
+  if (!campaign.isOpenNow) {
     throw Errors.conflict('This claim window has closed.');
   }
   // A brand-new account already receives the standard signup wallet balance (see the
   // `wallet_balance_paise` column default) — someone who signed up today would otherwise
   // stack that with the campaign bonus. Applies to every campaign, not just this one.
-  if (istDateString(user.createdAt) === campaign.istDate) {
+  if (istDateString(user.createdAt) === campaign.eligibleIstDate) {
     throw Errors.conflict(
       'New signups already receive a starting balance and are not eligible for this claim.',
     );
@@ -335,11 +337,15 @@ usersRouter.openapi(claimCampaignBonusRoute, async (c) => {
   ) {
     throw Errors.conflict('This offer is only for wallets running low.');
   }
-  const amountPaise = await payoutOf(user.id, campaign.featureKey, campaign.fallbackPaise);
-  if (amountPaise <= 0) {
+  if (campaign.amountPaise <= 0) {
     throw Errors.conflict('This offer is not currently available.');
   }
-  const result = await claimCampaignBonus(user.id, campaign.key, amountPaise);
+  const result = await claimCampaignBonus(
+    user.id,
+    campaign.key,
+    campaign.amountPaise,
+    campaign.expiresAt,
+  );
   return c.json(result, 200);
 });
 
