@@ -629,11 +629,64 @@ export const walletTransactions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    expiredAt: timestamp('expired_at', { withTimezone: true }),
   },
   (table) => ({
     userIdx: index('wallet_transactions_user_id_idx').on(table.userId),
   }),
 );
+
+/* -------------------------------------------------------------------------- */
+/* gift_campaigns — admin-managed festival/occasion wallet-credit campaigns    */
+/* -------------------------------------------------------------------------- */
+
+export const giftCampaignDeliveryModeEnum = pgEnum('gift_campaign_delivery_mode', [
+  'self_claim',
+  'auto_credit',
+]);
+
+export const giftCampaignStatusEnum = pgEnum('gift_campaign_status', [
+  'draft',
+  'scheduled',
+  'sent',
+  'canceled',
+]);
+
+export const giftCampaigns = pgTable(
+  'gift_campaigns',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    key: text('key').notNull(),
+    title: text('title').notNull(),
+    amountPaise: integer('amount_paise').notNull(),
+    audienceMaxBalancePaise: integer('audience_max_balance_paise'),
+    deliveryMode: giftCampaignDeliveryModeEnum('delivery_mode').notNull(),
+    claimWindowDays: integer('claim_window_days'),
+    creditExpiryDays: integer('credit_expiry_days'),
+    scheduledSendAt: timestamp('scheduled_send_at', { withTimezone: true }),
+    status: giftCampaignStatusEnum('status').notNull().default('draft'),
+    validFrom: timestamp('valid_from', { withTimezone: true }),
+    validUntil: timestamp('valid_until', { withTimezone: true }),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    keyUnique: uniqueIndex('gift_campaigns_key_unique').on(table.key),
+    statusIdx: index('gift_campaigns_status_idx').on(table.status),
+  }),
+);
+
+export type GiftCampaignRow = typeof giftCampaigns.$inferSelect;
+export type NewGiftCampaignRow = typeof giftCampaigns.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
 /* coupons — admin-issued discount codes for credit-pack purchases             */

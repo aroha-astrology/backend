@@ -121,6 +121,8 @@ const baseLedgerRow = {
   reason: 'chat_message',
   balanceAfter: 8000,
   createdAt: new Date('2026-07-12T00:00:00Z'),
+  expiresAt: null,
+  expiredAt: null,
 };
 
 describe('listTransactions', () => {
