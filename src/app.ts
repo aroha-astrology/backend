@@ -15,6 +15,7 @@ import { legalRouter } from './modules/legal/legal.routes.js';
 import { billingRouter } from './modules/billing/billing.routes.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
 import { adminGroupsRouter } from './modules/admin/admin-groups.routes.js';
+import { adminGiftCampaignsRouter } from './modules/admin/admin-gift-campaigns.routes.js';
 import { supportRouter } from './modules/support/support.routes.js';
 import { preferencesRouter } from './modules/preferences/preferences.routes.js';
 import { feedbackRouter } from './modules/feedback/feedback.routes.js';
@@ -106,6 +107,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', billingRouter);
   app.route('/v1', adminRouter);
   app.route('/v1', adminGroupsRouter);
+  app.route('/v1', adminGiftCampaignsRouter);
   app.route('/v1', supportRouter);
   app.route('/v1', preferencesRouter);
   app.route('/v1', feedbackRouter);
