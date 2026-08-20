@@ -18,9 +18,9 @@ import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-y
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
-import { buildReportGemstones } from './report-gemstones.js';
+import { buildReportRemedies } from './report-remedy-slots.js';
 import { computeReportVargas, type ReportVarga } from './report-vargas.js';
-import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
+import type { ReportSharedFactsWithRemedies } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export interface MoonPlacement {
@@ -71,7 +71,7 @@ export interface KootaBreakdownEntry {
   description: string;
 }
 
-export interface KundliMilanScores extends Record<string, unknown>, ReportSharedFactsWithGemstones {
+export interface KundliMilanScores extends Record<string, unknown>, ReportSharedFactsWithRemedies {
   gunaMilanScore: number;
   gunaMaxScore: number;
   gunaBreakdown: KootaBreakdownEntry[];
@@ -218,16 +218,16 @@ export function computeKundliMilanScores(
     ctx.dashaData ?? null,
   );
 
-  // header/lifeContext/gemstones are scoped to the PRIMARY person (chart1) only — same
+  // header/lifeContext/planetRemedies are scoped to the PRIMARY person (chart1) only — same
   // "primary person's own chart, never the partner's" precedent as primaryDoshaYoga above.
   const now = new Date();
   const analyses1 = analyzePlanetStrengths(chart1);
   const lifeContext = computeLifeContext(chart1, analyses1, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart1, ctx.personName, ctx.personDob, lifeContext);
-  const gemstones = buildReportGemstones('kundli_milan', chart1);
+  const planetRemedies = buildReportRemedies('kundli_milan', chart1);
   // Navamsa (D9) for BOTH people — the classical marriage chart, read jointly for synastry.
   const vargas = computeReportVargas(chart1, ['D9']);
   const partnerVargas = computeReportVargas(chart2, ['D9']);
 
-  return { ...baseScores, riskFactors, header, lifeContext, gemstones, vargas, partnerVargas };
+  return { ...baseScores, riskFactors, header, lifeContext, planetRemedies, vargas, partnerVargas };
 }

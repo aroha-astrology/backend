@@ -2,16 +2,17 @@
 // Shared fact mixins every report type's own Scores interface extends
 // =============================================================================
 // `header` (report-header.ts) and `lifeContext` (report-life-context.ts) are
-// computed identically by all 14 report types; `gemstones` (report-gemstones.ts)
-// only by the 5 flagship report types that carry one (see reportHasGemstones).
-// Declared once here so each report type's own `XScores extends
-// Record<string, unknown>` interface adds these fields via `, ReportSharedFacts`
-// (or `, ReportSharedFactsWithGemstones`) instead of re-declaring them 14 times.
+// computed identically by all 14 report types; `planetRemedies`
+// (report-remedy-slots.ts) only by the 4 flagship report types that carry one
+// (see reportHasRemedySlots). Declared once here so each report type's own
+// `XScores extends Record<string, unknown>` interface adds these fields via
+// `, ReportSharedFacts` (or `, ReportSharedFactsWithRemedies`) instead of
+// re-declaring them 14 times.
 // =============================================================================
 
 import type { ReportHeader } from './report-header.js';
 import type { LifeContext } from './report-life-context.js';
-import type { ReportGemstone } from './report-gemstones.js';
+import type { ReportRemedyEntry } from './report-remedy-slots.js';
 import type { ReportVarga } from './report-vargas.js';
 
 export interface ReportSharedFacts {
@@ -45,6 +46,6 @@ export interface ReportSharedFacts {
   planetCondition?: string[];
 }
 
-export interface ReportSharedFactsWithGemstones extends ReportSharedFacts {
-  gemstones: ReportGemstone[];
+export interface ReportSharedFactsWithRemedies extends ReportSharedFacts {
+  planetRemedies: ReportRemedyEntry[];
 }

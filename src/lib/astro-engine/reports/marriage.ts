@@ -38,15 +38,15 @@ import { computeDecadeArc, type DecadeBand } from './report-decade-arc.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
-import { buildReportGemstones } from './report-gemstones.js';
+import { buildReportRemedies } from './report-remedy-slots.js';
 import { computeReportVargas } from './report-vargas.js';
 import { ashtakavargaFacts } from '../../chat-grounding.js';
-import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
+import type { ReportSharedFactsWithRemedies } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export type MarriageBand = 'slow_build' | 'steady' | 'accelerated';
 
-export interface MarriageScores extends Record<string, unknown>, ReportSharedFactsWithGemstones {
+export interface MarriageScores extends Record<string, unknown>, ReportSharedFactsWithRemedies {
   marriageScore: number;
   band: MarriageBand;
   manglik: { isManglik: boolean; cancelled: boolean };
@@ -355,7 +355,7 @@ export function computeMarriageScores(
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
-  const gemstones = buildReportGemstones('marriage', chart);
+  const planetRemedies = buildReportRemedies('marriage', chart);
   // Navamsa (D9) — the classical marriage/spouse/dharma chart, the same varga chat-grounding.ts
   // surfaces to the AI chat feature for this exact chart (see VARGA_LABELS.D9 there).
   const vargas = computeReportVargas(chart, ['D9']);
@@ -370,7 +370,7 @@ export function computeMarriageScores(
   return {
     header,
     lifeContext,
-    gemstones,
+    planetRemedies,
     vargas,
     ashtakavargaSummary,
     marriageScore,

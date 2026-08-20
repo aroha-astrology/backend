@@ -62,7 +62,7 @@ export function computeReportVargas(
     for (const p of withLongitude) {
       // calc() always returns a 0-11 sign index (fractional-division arithmetic, never
       // out of range) — same guaranteed-valid-index basis as this engine's other `]!` uses
-      // (e.g. report-archetype.ts, report-gemstones.ts).
+      // (e.g. report-archetype.ts, report-remedy-slots.ts).
       planets[p.planet] = ZODIAC_SIGNS[calc(p.longitude)]!;
     }
     return {

@@ -51,20 +51,18 @@ export const SCORES_PROSE_ALLOWLIST: Record<string, string[]> = {
     // `windows[].summary` by reports.service.ts's getReportForUser BEFORE this translation step
     // runs, so it's present in `scores` here exactly like any other prose field.
     'windows[].summary',
-    // report-gemstones.ts — backend-authored English role/benefit prose, same convention as
-    // the fields above.
-    'gemstones[].role',
-    'gemstones[].benefit',
-    'gemstones[].reason',
+    // report-remedy-slots.ts — static Lal Kitab remedy/totka sentences, `[]` on the leaf itself
+    // (not just the containing array) since each entry holds a STRING ARRAY, not one string.
+    'planetRemedies[].remedies[]',
+    'planetRemedies[].totke[]',
   ],
   kundli_milan: [
     'primaryDoshaYoga.positives[].label',
     'primaryDoshaYoga.positives[].detail',
     'primaryDoshaYoga.cautions[].label',
     'primaryDoshaYoga.cautions[].detail',
-    'gemstones[].role',
-    'gemstones[].benefit',
-    'gemstones[].reason',
+    'planetRemedies[].remedies[]',
+    'planetRemedies[].totke[]',
   ],
   match_report: [
     'primaryDoshaYoga.positives[].label',
@@ -72,9 +70,11 @@ export const SCORES_PROSE_ALLOWLIST: Record<string, string[]> = {
     'primaryDoshaYoga.cautions[].label',
     'primaryDoshaYoga.cautions[].detail',
   ],
-  true_love: ['windows[].summary', 'gemstones[].role', 'gemstones[].benefit', 'gemstones[].reason'],
-  wealth: ['windows[].summary', 'gemstones[].role', 'gemstones[].benefit', 'gemstones[].reason'],
-  remedies: ['gemstones[].role', 'gemstones[].benefit', 'gemstones[].reason'],
+  true_love: ['windows[].summary', 'planetRemedies[].remedies[]', 'planetRemedies[].totke[]'],
+  wealth: ['windows[].summary', 'planetRemedies[].remedies[]', 'planetRemedies[].totke[]'],
+  // planetRemedies[] here covers all 9 classical planets (not a 4-slot subset like the other
+  // report types above) — same allowlist mechanism, just a longer array at read time.
+  remedies: ['planetRemedies[].remedies[]', 'planetRemedies[].totke[]'],
 };
 
 interface ExtractedLeaf {
@@ -82,6 +82,9 @@ interface ExtractedLeaf {
   path: string;
   /** Present only for a `field[].sub` path — which array entry this leaf came from. */
   arrayIndex?: number;
+  /** Present only for a `field[].sub[]` path — the leaf itself is a string array (e.g.
+   * `planetRemedies[].remedies[]`), so this is the index WITHIN that inner array. */
+  subIndex?: number;
   value: string;
 }
 
@@ -114,12 +117,23 @@ export function extractScoresProse(
   const leaves: ExtractedLeaf[] = [];
   for (const path of paths) {
     if (path.includes('[].')) {
-      const [arrayPath, fieldPath] = path.split('[].') as [string, string];
+      const [arrayPath, rawFieldPath] = path.split('[].') as [string, string];
       const arr = getAt(scores, arrayPath.split('.'));
       if (Array.isArray(arr)) {
+        // A trailing `[]` on the field half (e.g. "remedies[]") means the leaf itself is a
+        // string array, not a single string — one extra index level (subIndex) per element.
+        const isNestedArray = rawFieldPath.endsWith('[]');
+        const fieldPath = isNestedArray ? rawFieldPath.slice(0, -2) : rawFieldPath;
         arr.forEach((item, index) => {
           const value = getAt(item, fieldPath.split('.'));
-          if (typeof value === 'string' && value.trim()) {
+          if (isNestedArray) {
+            if (!Array.isArray(value)) return;
+            value.forEach((v, subIndex) => {
+              if (typeof v === 'string' && v.trim()) {
+                leaves.push({ path, arrayIndex: index, subIndex, value: v });
+              }
+            });
+          } else if (typeof value === 'string' && value.trim()) {
             leaves.push({ path, arrayIndex: index, value });
           }
         });
@@ -145,10 +159,24 @@ export function spliceScoresProse(
     const translated = translatedValues[i];
     if (!translated) return;
     if (leaf.arrayIndex !== undefined) {
-      const [arrayPath, fieldPath] = leaf.path.split('[].') as [string, string];
+      const [arrayPath, rawFieldPath] = leaf.path.split('[].') as [string, string];
       const arr = getAt(clone, arrayPath.split('.'));
-      if (Array.isArray(arr) && arr[leaf.arrayIndex] && typeof arr[leaf.arrayIndex] === 'object') {
-        setAt(arr[leaf.arrayIndex] as Record<string, unknown>, fieldPath.split('.'), translated);
+      if (
+        !Array.isArray(arr) ||
+        !arr[leaf.arrayIndex] ||
+        typeof arr[leaf.arrayIndex] !== 'object'
+      ) {
+        return;
+      }
+      const item = arr[leaf.arrayIndex] as Record<string, unknown>;
+      if (leaf.subIndex !== undefined) {
+        const fieldPath = rawFieldPath.slice(0, -2); // strip trailing "[]"
+        const inner = getAt(item, fieldPath.split('.'));
+        if (Array.isArray(inner) && leaf.subIndex < inner.length) {
+          inner[leaf.subIndex] = translated;
+        }
+      } else {
+        setAt(item, rawFieldPath.split('.'), translated);
       }
     } else {
       setAt(clone, leaf.path.split('.'), translated);

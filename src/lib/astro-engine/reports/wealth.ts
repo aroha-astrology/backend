@@ -21,10 +21,10 @@ import { computeDecadeArc, type DecadeBand } from './report-decade-arc.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
-import { buildReportGemstones } from './report-gemstones.js';
+import { buildReportRemedies } from './report-remedy-slots.js';
 import { computeReportVargas } from './report-vargas.js';
 import { ashtakavargaFacts } from '../../chat-grounding.js';
-import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
+import type { ReportSharedFactsWithRemedies } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export type WealthPattern = 'steady_accumulation' | 'volatile_gains' | 'late_blooming';
@@ -33,7 +33,7 @@ export type WealthPattern = 'steady_accumulation' | 'volatile_gains' | 'late_blo
  * previously unanswered anywhere in this report. */
 export type IncomeSource = 'salaried' | 'business' | 'property';
 
-export interface WealthScores extends Record<string, unknown>, ReportSharedFactsWithGemstones {
+export interface WealthScores extends Record<string, unknown>, ReportSharedFactsWithRemedies {
   /** Unweighted average of 2nd-lord, 11th-lord, and Jupiter strength scores (30/60/90 mapping). */
   wealthScore: number;
   secondLordStrength: PlanetStrength;
@@ -290,7 +290,7 @@ export function computeWealthScores(
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
-  const gemstones = buildReportGemstones('wealth', chart);
+  const planetRemedies = buildReportRemedies('wealth', chart);
   // Hora (D2) — the classical wealth/financial-stability/liquid-assets chart.
   const vargas = computeReportVargas(chart, ['D2']);
   const ashtakavargaSummary = ashtakavargaFacts(
@@ -301,7 +301,7 @@ export function computeWealthScores(
   return {
     header,
     lifeContext,
-    gemstones,
+    planetRemedies,
     vargas,
     ashtakavargaSummary,
     wealthScore,

@@ -19,12 +19,12 @@ import { computeDecadeArc, type DecadeBand } from './report-decade-arc.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
-import { buildReportGemstones } from './report-gemstones.js';
+import { buildReportRemedies } from './report-remedy-slots.js';
 import { computeReportVargas } from './report-vargas.js';
-import type { ReportSharedFactsWithGemstones } from './report-shared-facts.js';
+import type { ReportSharedFactsWithRemedies } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
-export interface TrueLoveScores extends Record<string, unknown>, ReportSharedFactsWithGemstones {
+export interface TrueLoveScores extends Record<string, unknown>, ReportSharedFactsWithRemedies {
   /** Average of 5th-lord strength score and Venus strength score (romance/creativity signifiers). */
   romanceScore: number;
   /** Average of 7th-lord strength score and Venus strength score (partnership signifiers). */
@@ -212,14 +212,14 @@ export function computeTrueLoveScores(
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);
   const header = buildReportHeader(chart, ctx.personName, ctx.personDob, lifeContext);
-  const gemstones = buildReportGemstones('true_love', chart);
+  const planetRemedies = buildReportRemedies('true_love', chart);
   // Navamsa (D9) — same marriage/relationship-domain varga as marriage.ts/kundli-milan.ts.
   const vargas = computeReportVargas(chart, ['D9']);
 
   return {
     header,
     lifeContext,
-    gemstones,
+    planetRemedies,
     vargas,
     romanceScore,
     partnershipScore,

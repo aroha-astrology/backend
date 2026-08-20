@@ -1308,7 +1308,7 @@ describe('getReportForUser', () => {
     await vi.waitFor(() => {
       expect(state.overwriteReadyReportContent).toHaveBeenCalledWith(
         'stale-report',
-        expect.objectContaining({ content: expect.objectContaining({ contentVersion: 3 }) }),
+        expect.objectContaining({ content: expect.objectContaining({ contentVersion: 4 }) }),
       );
     });
   });
@@ -1325,7 +1325,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         id: 'current-report',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 3 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 4 },
       }),
     );
 
@@ -1729,7 +1729,7 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
     expect(state.overwriteReadyReportContent).toHaveBeenCalledWith('r1', {
       content: {
         sections: [{ heading: 'H', paragraphs: ['p'] }],
-        contentVersion: 3,
+        contentVersion: 4,
         verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
       },
       model: expect.any(String),

@@ -97,7 +97,9 @@ import { notifyUser } from '../../lib/notifications/notify-user.js';
 /**
  * Bumped whenever the persisted `content` shape changes meaningfully (new section-skeleton /
  * life-context / gemstones / verdict rebuild = version 2; divisional-chart (varga) + Ashtakavarga
- * facts added to the narrative of all 11 chart-based report types = version 3). Stamped onto
+ * facts added to the narrative of all 11 chart-based report types = version 3; the 5 flagship
+ * reports' gemstone slot replaced with Lal Kitab remedies, and Marriage Timing hidden for
+ * already-married users = version 4). Stamped onto
  * `content.contentVersion` by both write paths (`runReportGeneration`, `regenerateReportContent`).
  * A `ready` row whose stamp doesn't match the current version was generated before this shape
  * existed — `getReportForUser` detects this on read and fires a background regeneration (see
@@ -106,7 +108,7 @@ import { notifyUser } from '../../lib/notifications/notify-user.js';
  * regenerating reports nobody may ever look at again. No refund, no re-purchase — same
  * no-cost-to-the-user contract `regenerateReportContent` already documents.
  */
-const CONTENT_VERSION = 3;
+const CONTENT_VERSION = 4;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
