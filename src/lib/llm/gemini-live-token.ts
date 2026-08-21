@@ -162,6 +162,18 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
         sessionResumption: opts.resumptionHandle ? { handle: opts.resumptionHandle } : {},
         // A Content message, not a bare string.
         systemInstruction: { parts: [{ text: opts.systemInstruction }] },
+        // Ask Google to transcribe both sides of the call to text, on the same
+        // socket and the same paid minute — an AudioTranscriptionConfig, empty
+        // object enables it with default settings. This is what lets the call
+        // be saved as a chat-history transcript afterward (see
+        // modules/voice/voice.service.ts's endVoiceSessionForUser); it costs
+        // nothing extra since it rides the existing stream rather than a
+        // second call. Pinned here, not sent by the client, for the same
+        // reason `tools: []` below is: anything left unconstrained is
+        // something the token-holding browser could turn on or off for
+        // itself.
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
         // Pin tools to none. Anything left unconstrained here is something the
         // browser can declare for itself in its own setup frame, since it holds
         // the token — an empty list is what stops a tampered client granting

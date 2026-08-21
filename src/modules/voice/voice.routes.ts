@@ -5,6 +5,7 @@ import { requireFeature } from '../../middleware/feature.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { Errors } from '../../lib/errors.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
+import { ChatHistoryTurnSchema } from '../astro/astro.schemas.js';
 import {
   startVoiceSession,
   extendVoiceSession,
@@ -221,7 +222,9 @@ const endRoute = createRoute({
     '`connected: false` refunds the most recently granted minute, but only if this arrives ' +
     'within a short grace window of that grant — see voice.service.ts for why the window ' +
     'exists. Deliberately NOT gated on the feature flag, so a session already in progress ' +
-    'can always be closed even if voice is switched off mid-call.',
+    'can always be closed even if voice is switched off mid-call. `transcript`, when given, ' +
+    'is saved as a chat-history session and mined for durable facts, same as text chat — ' +
+    'see voice.service.ts.',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser] as const,
   request: {
@@ -238,6 +241,15 @@ const endRoute = createRoute({
                 'False when the client never reached a working call on the minute it just ' +
                   'paid for (socket refused, mic denied, immediate hangup) — as opposed to a ' +
                   'call that connected and simply ended. Omit for an ordinary hangup.',
+              ),
+            transcript: z
+              .array(ChatHistoryTurnSchema)
+              .max(60)
+              .optional()
+              .describe(
+                'The whole call, assembled client-side from Gemini Live transcription events. ' +
+                  'Omit (or send empty) when the call never connected — there is nothing worth ' +
+                  'saving.',
               ),
           }),
         },
@@ -256,7 +268,7 @@ const endRoute = createRoute({
 voiceRouter.openapi(endRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const { connected } = c.req.valid('json') ?? {};
-  await endVoiceSessionForUser(user.id, id, connected);
+  const { connected, transcript } = c.req.valid('json') ?? {};
+  await endVoiceSessionForUser(user.id, id, connected, transcript);
   return c.json({ ok: true as const }, 200);
 });

@@ -23,12 +23,15 @@ import { buildVoiceSystemInstruction } from '../../lib/swarm/agents/scholar.js';
 import { buildGroundingFacts, buildProfileFacts } from '../../lib/chat-grounding.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
 import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
-import { getUserFacts } from '../astro/user-facts.repo.js';
+import { getUserFacts, saveUserFacts } from '../astro/user-facts.repo.js';
 import { findActiveUserById, deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { insertAiUsage } from '../admin/ai-usage.repo.js';
 import * as voiceRepo from './voice.repo.js';
+import * as chatSessionsRepo from '../astro/chat-sessions.repo.js';
+import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
+import type { ChatHistoryTurn } from '../astro/astro.schemas.js';
 
 /**
  * Hard ceiling on billable minutes per session. Enforced in SQL
@@ -274,11 +277,17 @@ export async function extendVoiceSession(
  * never turned into a working call — see CONNECT_GRACE_MS for the window this
  * is honored in and why. Anything else (connected omitted, or true) behaves
  * exactly as before: nothing charged or refunded, just marked ended.
+ *
+ * `transcript`, when the call actually connected, is saved as an ordinary
+ * chat-history session and mined for durable facts — see `persistTranscript`.
+ * A call that never connected (the `connected: false` branch above) has
+ * nothing worth saving and returns before reaching that step.
  */
 export async function endVoiceSessionForUser(
   userId: string,
   voiceSessionId: string,
   connected?: boolean,
+  transcript?: ChatHistoryTurn[],
 ): Promise<void> {
   if (connected === false) {
     try {
@@ -305,9 +314,64 @@ export async function endVoiceSessionForUser(
     }
   }
 
-  await voiceRepo.endVoiceSession(voiceSessionId, userId).catch((err: unknown) => {
+  // `active: true` is in voiceRepo's WHERE clause, so only the call that
+  // actually flips the row gets one back — a retried /end (error handler and
+  // page-unload both firing, or the refund branch above having already ended
+  // it) gets null and must not save the transcript a second time.
+  const row = await voiceRepo.endVoiceSession(voiceSessionId, userId).catch((err: unknown) => {
     logger.warn({ err, userId, voiceSessionId }, 'voice: failed to mark session ended');
+    return null;
   });
+
+  if (row && transcript && transcript.length > 0) {
+    await persistTranscript(userId, row.birthProfileId, transcript).catch((err: unknown) => {
+      logger.warn({ err, userId, voiceSessionId }, 'voice: failed to persist call transcript');
+    });
+  }
+}
+
+/**
+ * Saves a finished call as an ordinary `chat_sessions` row — the same
+ * encrypt-on-write path text chat uses (chat-sessions.repo.ts), so the
+ * transcript is readable in Chat History and encrypted at rest identically.
+ *
+ * Scoped to the profile the call was GROUNDED to (the voice_sessions row),
+ * not whichever profile happens to be active now — the user may have
+ * switched profiles between hanging up and this write landing.
+ *
+ * Fact extraction is fire-and-forget, copying chatStream's exact discipline
+ * (astro.service.ts): a failure here must never affect a call the user
+ * already ended, and this is what makes the call's content available to
+ * later TEXT chats too, not just a reopened copy of this same session.
+ */
+async function persistTranscript(
+  userId: string,
+  birthProfileId: string | null,
+  transcript: ChatHistoryTurn[],
+): Promise<void> {
+  const firstUserTurn = transcript.find((t) => t.role === 'user')?.content ?? '';
+  const title =
+    firstUserTurn.length > 50 ? firstUserTurn.slice(0, 47) + '...' : firstUserTurn || 'Voice call';
+
+  await chatSessionsRepo.createChatSession(userId, birthProfileId, title, transcript);
+
+  const userText = transcript
+    .filter((t) => t.role === 'user')
+    .map((t) => t.content)
+    .join('\n');
+  const assistantText = transcript
+    .filter((t) => t.role === 'assistant')
+    .map((t) => t.content)
+    .join('\n');
+  if (!userText && !assistantText) return;
+
+  void getUserFacts(userId, birthProfileId)
+    .catch(() => [])
+    .then((existingFacts) => extractTurnFacts(userText, assistantText, existingFacts, userId))
+    .then((newFacts) => {
+      if (newFacts.length > 0) return saveUserFacts(userId, birthProfileId, newFacts);
+    })
+    .catch(() => {});
 }
 
 /**

@@ -80,12 +80,31 @@ export async function releaseVoiceMinute(id: string, userId: string): Promise<vo
     .where(and(eq(voiceSessions.id, id), eq(voiceSessions.userId, userId)));
 }
 
-export async function endVoiceSession(id: string, userId: string): Promise<void> {
+/**
+ * Marks a session ended, returning the row IFF this call is the one that
+ * actually flipped it. `active = true` in the WHERE clause is the whole
+ * duplicate guard — a second call for the same session (a retry, or `/end`
+ * firing from an error handler and a page-unload handler both) fails the
+ * predicate and gets null back. voice.service.ts relies on that: only a
+ * non-null return may persist the call's transcript, which is what keeps a
+ * duplicate `/end` from saving the same call to chat history twice. Same
+ * one-UPDATE-as-the-guard pattern claimVoiceMinute and
+ * endVoiceSessionWithRefund above already use.
+ */
+export async function endVoiceSession(id: string, userId: string): Promise<VoiceSessionRow | null> {
   const now = new Date();
-  await db
+  const [row] = await db
     .update(voiceSessions)
     .set({ active: false, endedAt: now, updatedAt: now })
-    .where(and(eq(voiceSessions.id, id), eq(voiceSessions.userId, userId)));
+    .where(
+      and(
+        eq(voiceSessions.id, id),
+        eq(voiceSessions.userId, userId),
+        eq(voiceSessions.active, true),
+      ),
+    )
+    .returning();
+  return row ?? null;
 }
 
 /**

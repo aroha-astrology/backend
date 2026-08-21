@@ -22,10 +22,13 @@ const state = vi.hoisted(() => ({
   getKundliForUser: vi.fn(),
   withLiveSadeSati: vi.fn(),
   getUserFacts: vi.fn(),
+  saveUserFacts: vi.fn(),
   buildGroundingFacts: vi.fn(),
   buildProfileFacts: vi.fn(),
   buildVoiceSystemInstruction: vi.fn(),
   insertAiUsage: vi.fn(),
+  createChatSession: vi.fn(),
+  extractTurnFacts: vi.fn(),
 }));
 
 const fakeEnv = {
@@ -70,6 +73,7 @@ vi.mock('../src/modules/kundli/kundli.service.js', () => ({
 
 vi.mock('../src/modules/astro/user-facts.repo.js', () => ({
   getUserFacts: state.getUserFacts,
+  saveUserFacts: state.saveUserFacts,
 }));
 
 vi.mock('../src/lib/chat-grounding.js', () => ({
@@ -83,6 +87,14 @@ vi.mock('../src/lib/swarm/agents/scholar.js', () => ({
 
 vi.mock('../src/modules/admin/ai-usage.repo.js', () => ({
   insertAiUsage: state.insertAiUsage,
+}));
+
+vi.mock('../src/modules/astro/chat-sessions.repo.js', () => ({
+  createChatSession: state.createChatSession,
+}));
+
+vi.mock('../src/lib/chat-fact-extraction.js', () => ({
+  extractTurnFacts: state.extractTurnFacts,
 }));
 
 const { startVoiceSession, extendVoiceSession, endVoiceSessionForUser, VOICE_MAX_MINUTES } =
@@ -105,7 +117,12 @@ beforeEach(() => {
   state.releaseVoiceMinute.mockReset().mockResolvedValue(undefined);
   state.createVoiceSession.mockReset().mockResolvedValue({ id: SESSION });
   state.getVoiceSession.mockReset().mockResolvedValue({ id: SESSION, active: true });
-  state.endVoiceSession.mockReset().mockResolvedValue(undefined);
+  // A row means "this call flipped active=true -> false"; voice.repo.ts
+  // returns null on a duplicate/retried /end, which most tests below don't
+  // exercise, so the default here is the common "this was the real end" case.
+  state.endVoiceSession
+    .mockReset()
+    .mockResolvedValue({ id: SESSION, userId: USER, birthProfileId: null, active: false });
   state.endVoiceSessionWithRefund.mockReset().mockResolvedValue(null);
 
   state.deductWalletBalance.mockReset().mockResolvedValue(true);
@@ -126,6 +143,10 @@ beforeEach(() => {
   state.buildProfileFacts.mockReset().mockReturnValue([]);
   state.buildVoiceSystemInstruction.mockReset().mockReturnValue('SYSTEM PROMPT');
   state.insertAiUsage.mockReset().mockResolvedValue(undefined);
+
+  state.createChatSession.mockReset().mockResolvedValue({ id: 'chat-session-1' });
+  state.extractTurnFacts.mockReset().mockResolvedValue([]);
+  state.saveUserFacts.mockReset().mockResolvedValue(undefined);
 });
 
 describe('startVoiceSession', () => {
@@ -390,5 +411,115 @@ describe('endVoiceSessionForUser', () => {
 
     expect(state.addWalletBalance).not.toHaveBeenCalled();
     expect(state.endVoiceSession).toHaveBeenCalledWith(SESSION, USER);
+  });
+});
+
+describe('endVoiceSessionForUser — saving the call as a chat session', () => {
+  const TRANSCRIPT = [
+    { role: 'user' as const, content: 'What does my chart say about marriage?' },
+    { role: 'assistant' as const, content: 'Your 7th house is strong, expect a good match.' },
+  ];
+
+  it('saves the transcript as a chat session, titled from the first user turn', async () => {
+    state.endVoiceSession.mockResolvedValue({
+      id: SESSION,
+      userId: USER,
+      birthProfileId: null,
+      active: false,
+    });
+
+    await endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT);
+
+    expect(state.createChatSession).toHaveBeenCalledWith(
+      USER,
+      null,
+      'What does my chart say about marriage?',
+      TRANSCRIPT,
+    );
+  });
+
+  it('truncates a long first turn to match the text-chat title convention', async () => {
+    const longTurn = 'a'.repeat(80);
+    await endVoiceSessionForUser(USER, SESSION, undefined, [{ role: 'user', content: longTurn }]);
+
+    const title = state.createChatSession.mock.calls[0]?.[2] as string;
+    expect(title).toBe('a'.repeat(47) + '...');
+  });
+
+  it('scopes the saved session to the profile the CALL was grounded to, not a param', async () => {
+    state.endVoiceSession.mockResolvedValue({
+      id: SESSION,
+      userId: USER,
+      birthProfileId: 'profile-xyz',
+      active: false,
+    });
+
+    await endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT);
+
+    expect(state.createChatSession).toHaveBeenCalledWith(
+      USER,
+      'profile-xyz',
+      expect.any(String),
+      TRANSCRIPT,
+    );
+  });
+
+  it('extracts and saves durable facts from the call, same as text chat', async () => {
+    state.extractTurnFacts.mockResolvedValue([{ fact: 'is engaged', followUpQuestion: null }]);
+
+    await endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT);
+
+    await vi.waitFor(() => {
+      expect(state.extractTurnFacts).toHaveBeenCalledWith(
+        TRANSCRIPT[0]!.content,
+        TRANSCRIPT[1]!.content,
+        [],
+        USER,
+      );
+      expect(state.saveUserFacts).toHaveBeenCalledWith(USER, null, [
+        { fact: 'is engaged', followUpQuestion: null },
+      ]);
+    });
+  });
+
+  it('does not save anything when no transcript is given (ordinary hangup)', async () => {
+    await endVoiceSessionForUser(USER, SESSION);
+
+    expect(state.createChatSession).not.toHaveBeenCalled();
+    expect(state.extractTurnFacts).not.toHaveBeenCalled();
+  });
+
+  it('does not save anything for an empty transcript', async () => {
+    await endVoiceSessionForUser(USER, SESSION, undefined, []);
+
+    expect(state.createChatSession).not.toHaveBeenCalled();
+  });
+
+  it('does not save anything when connected:false refunds the call (nothing to save)', async () => {
+    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1 });
+
+    await endVoiceSessionForUser(USER, SESSION, false, TRANSCRIPT);
+
+    expect(state.createChatSession).not.toHaveBeenCalled();
+  });
+
+  it('never saves twice — a retried /end gets null from the repo and is a no-op', async () => {
+    // null is what voiceRepo.endVoiceSession returns when its `active = true`
+    // predicate fails, i.e. a session this call (or another in flight) already
+    // ended. This is the duplicate guard: the SECOND /end for the same call
+    // (error handler AND page-unload both firing) must not double-save.
+    state.endVoiceSession.mockResolvedValue(null);
+
+    await endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT);
+
+    expect(state.createChatSession).not.toHaveBeenCalled();
+  });
+
+  it('never throws when saving the transcript fails — the client already hung up', async () => {
+    state.createChatSession.mockRejectedValue(new Error('db down'));
+
+    await expect(
+      endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT),
+    ).resolves.toBeUndefined();
   });
 });
