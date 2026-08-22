@@ -49,7 +49,7 @@ export async function notifyWalletTopUp(fields: {
   newBalancePaise: number;
 }): Promise<boolean> {
   const text =
-    `💰 *Wallet Top-Up*\n\n` +
+    `💰 *Wallet Top\\-Up*\n\n` +
     `User: \`${escapeMarkdown(fields.userId)}\`\n` +
     (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
     `Added: ${escapeMarkdown(formatRupees(fields.amountPaise))}\n` +
@@ -182,6 +182,21 @@ export async function sendMessage(text: string, chatId?: string | number): Promi
       }),
     });
     if (!resp.ok) {
+      // A stray unescaped MarkdownV2 char (`-`, `.`, `(`) 400s the whole
+      // message and the alert vanishes silently. Resend as plain text rather
+      // than lose it — ugly beats missing.
+      if (resp.status === 400) {
+        logger.warn(
+          { status: resp.status },
+          'telegram:sendMessage markdown rejected, retrying as plain text',
+        );
+        const plain = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: targetChatId, text }),
+        });
+        return plain.ok;
+      }
       logger.warn({ status: resp.status }, 'telegram:sendMessage failed');
       return false;
     }
