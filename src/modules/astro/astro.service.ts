@@ -48,7 +48,12 @@ import {
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { buildPurchaseFacts } from '../../lib/chat-purchase-facts.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
-import { classifyUserMessage, classifyAssistantOutput } from '../../lib/content-policy.js';
+import {
+  classifyUserMessage,
+  classifyAssistantOutput,
+  containsLegalRefusalFraming,
+  getNeutralDecline,
+} from '../../lib/content-policy.js';
 import {
   getKundliForUser,
   withLiveSadeSati,
@@ -1369,8 +1374,33 @@ export async function buildSecondChartFacts(
 function buildSavedProfilesFacts(
   profiles: Array<{ displayName: string | null; relationship: string | null }>,
 ): string[] {
+  // Emitted whether or not any profile is saved: the case it matters MOST in is
+  // the empty one, where a spouse/child question is answered purely off the
+  // seeker's own 7th/5th house and nothing tells the model a sharper read is
+  // even on offer. Worded as an answer-first close so it can never turn into a
+  // deflection ("add their profile and then I can tell you") — the standing
+  // ANSWER_DIRECTLY / NO_HEDGE_OPENERS rules in scholar.ts forbid that shape,
+  // and this fact restates the boundary rather than relying on them alone.
+  const addProfileOffer =
+    `ADD-A-PROFILE OFFER: when the seeker asks about a specific family member — spouse, ` +
+    `child, parent, sibling — whose own profile is NOT saved on this account, answer the ` +
+    `question FULLY first from the seeker's own chart exactly as you normally would (7th ` +
+    `house and Venus/Jupiter for a spouse, 5th house for children, and so on). Then, only at ` +
+    `the very end, add ONE short closing sentence offering to read that person's own chart if ` +
+    `they add their birth details, and say where: the profile switcher at the top of the app. ` +
+    `Keep it in the prose, not on the "Ask next:" line. Never open with the offer, never let ` +
+    `it replace, shorten or hedge the actual answer, never repeat it if any earlier turn in ` +
+    `this conversation already made it, and never state a price or call it free.`;
+
   const named = profiles.filter((p) => p.displayName);
-  if (named.length === 0) return [];
+  if (named.length === 0) {
+    return [
+      `No family or partner profiles are saved on this account, so only the seeker's own chart ` +
+        `is available. Answer family questions from it as usual; never invent birth details for ` +
+        `anyone else.`,
+      addProfileOffer,
+    ];
+  }
   const list = named
     .map((p) => `${p.displayName} (${p.relationship ?? 'saved profile'})`)
     .join(', ');
@@ -1380,6 +1410,7 @@ function buildSavedProfilesFacts(
       `name the likely candidate(s) by name and ask before assuming — e.g. "Do you mean Arjun? ` +
       `I can read his own chart for this." Once they confirm by name, that saved profile's real ` +
       `chart becomes available. Never guess a name that isn't in this list.`,
+    addProfileOffer,
   ];
 }
 
@@ -1686,21 +1717,22 @@ export async function* chatStream(
   // as falsifiable claims once the stream completes (below).
   const windowSink: DomainWindowSink = { windows: [] };
 
-  const tokenStream = scholarStream(
-    state,
-    message,
-    groundingSource,
-    birthTimeUnknown,
-    signal,
-    locale,
-    userFacts,
-    extraFacts,
-    // Same field voice already has and uses for its call-connected opener
-    // (buildCallSystemPrompt) — profile.displayName covers both the primary
-    // account and an additional saved profile correctly (see profile-context.ts).
-    profile?.displayName,
-    windowSink,
-  );
+  const startStream = () =>
+    scholarStream(
+      state,
+      message,
+      groundingSource,
+      birthTimeUnknown,
+      signal,
+      locale,
+      userFacts,
+      extraFacts,
+      // Same field voice already has and uses for its call-connected opener
+      // (buildCallSystemPrompt) — profile.displayName covers both the primary
+      // account and an additional saved profile correctly (see profile-context.ts).
+      profile?.displayName,
+      windowSink,
+    );
 
   // Output-side backstop for the death/self-harm policy: the input filter
   // above is the primary defense, but the LLM can still occasionally produce
@@ -1710,16 +1742,76 @@ export async function* chatStream(
   // violation that only completes mid-reply is caught and swapped for the
   // canned response before that delta ever reaches the client, without
   // sacrificing token-by-token streaming for the rest of the reply.
+  //
+  // Second guard, same loop: the model borrows the death policy's canned
+  // "it's against the law" line for declines that have nothing to do with
+  // death — a name change for luck at online games and physical-appearance
+  // questions about a partner each reproduced it verbatim. `inputPolicy`
+  // did NOT block above, so legal-refusal framing in this reply is a false
+  // refusal telling the user their question is illegal when it is not, and
+  // that is the part that must never ship. Three prompt-side bans failed to
+  // stop it (see containsLegalRefusalFraming's comment), hence enforcement
+  // here. The line always LEADS the reply, so hold the first
+  // OPENER_HOLD_CHARS before emitting anything — a fraction of a second of
+  // generation, and it keeps the reply recallable, which mid-stream token
+  // yielding otherwise makes impossible. On a trip, re-roll the generation
+  // once: sampling is non-zero temperature, so a resample rarely repeats it.
+  const OPENER_HOLD_CHARS = 140;
+
   let fullText = '';
-  for await (const token of tokenStream) {
-    const tentative = fullText + token;
-    const outputPolicy = classifyAssistantOutput(tentative, locale);
-    if (outputPolicy.blocked) {
-      yield { type: 'token', content: outputPolicy.cannedResponse };
-      return;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    fullText = '';
+    let released = false;
+    let leaked = false;
+    // A re-roll regrounds from scratch; without this the retry's windows
+    // would be appended to the abandoned attempt's and double-recorded below.
+    windowSink.windows.length = 0;
+
+    for await (const token of startStream()) {
+      const tentative = fullText + token;
+      const outputPolicy = classifyAssistantOutput(tentative, locale);
+      if (outputPolicy.blocked) {
+        yield { type: 'token', content: outputPolicy.cannedResponse };
+        return;
+      }
+      fullText = tentative;
+
+      if (released) {
+        yield { type: 'token', content: token };
+        continue;
+      }
+      if (fullText.length < OPENER_HOLD_CHARS) continue;
+      if (containsLegalRefusalFraming(fullText)) {
+        leaked = true;
+        break;
+      }
+      released = true;
+      yield { type: 'token', content: fullText };
     }
-    fullText = tentative;
-    yield { type: 'token', content: token };
+
+    // A reply shorter than the hold threshold ended while still buffered, so
+    // it was never judged in the loop above — judge it here before emitting.
+    if (!released && !leaked) {
+      if (containsLegalRefusalFraming(fullText)) {
+        leaked = true;
+      } else {
+        released = true;
+        if (fullText) yield { type: 'token', content: fullText };
+      }
+    }
+
+    if (!leaked) break;
+
+    logger.warn(
+      { userId, attempt },
+      'reply used the death policy legal-refusal framing for a non-death question',
+    );
+
+    if (attempt === 1) {
+      // The re-roll leaked too. Send a decline that is at least true.
+      fullText = getNeutralDecline(locale);
+      yield { type: 'token', content: fullText };
+    }
   }
 
   // Fire-and-forget, every turn — no turn-count threshold, so even a user's

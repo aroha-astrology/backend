@@ -167,6 +167,62 @@ export function classifyUserMessage(text: string, language?: string): PolicyDeci
   return { blocked: false, topic: null, cannedResponse: '', logTag: '' };
 }
 
+/**
+ * Detects the death policy's canned line (or its legal framing) being reused
+ * for a decline that has nothing to do with death.
+ *
+ * The line is written to be warm and final, and it is the ONLY ready-made
+ * refusal script anywhere in the prompt — so whenever the model decides it
+ * would rather not answer something, that is the phrasing it reaches for.
+ * Confirmed in the wild on three unrelated questions: a name change for luck
+ * in online games, and physical-appearance questions about a partner. Three
+ * separate prompt-side bans (POLICY_SYSTEM_DIRECTIVE's closing paragraph,
+ * scholar.ts DATE_SPECIFICITY, scholar.ts NO_HEDGE_OPENERS) have all failed
+ * to stop it, which is why this one is enforced in code.
+ *
+ * Matches the legal-framing clause rather than the whole sentence, since the
+ * model paraphrases the surrounding words but keeps the "against the law"
+ * claim intact. Telling the user their question is illegal when it is not is
+ * the part that actually has to never ship.
+ */
+// ponytail: substring match on the legal claim, not a classifier — a heavy
+// paraphrase ("this would break the law here") still slips through. Swap in a
+// cheap classifier call only if the logged warn rate shows that happening.
+const LEGAL_REFUSAL_FRAMING: RegExp[] = [
+  /\b(against|contrary\s+to)\s+the\s+law\b/i,
+  /\b(it|this|that)(?:'?s|\s+(?:is|was|would\s+be))\s+illegal\b/i,
+  /कानून\s*के\s*विरुद्ध/,
+  /আইনের\s*বিরুদ্ধে/,
+  /சட்டத்திற்கு\s*எதிரான/,
+  /చట్టానికి\s*విరుద్ధం/,
+  /कायद्याच्या\s*विरुद्ध/,
+  /કાયદાની\s*વિરુદ્ધ/,
+];
+
+/**
+ * Last-resort decline for when a reply trips containsLegalRefusalFraming twice
+ * in a row. Says only what is actually true — this isn't a chart question —
+ * and makes no claim about legality. Never used for death/suicide, which have
+ * their own canned lines above.
+ */
+const NEUTRAL_DECLINE: Record<LangCode, string> = {
+  en: "That's not something I can read from your chart — but ask me anything about your chart or the road ahead, and I'll gladly look.",
+  hi: 'यह आपकी कुंडली से पढ़ने वाली बात नहीं है — लेकिन अपनी कुंडली या आने वाले समय के बारे में कुछ भी पूछिए, मैं ज़रूर देखूँगा।',
+  bn: 'এটি আপনার কুণ্ডলী থেকে পড়ার মতো বিষয় নয় — তবে আপনার কুণ্ডলী বা আগামী সময় নিয়ে যা খুশি জিজ্ঞাসা করুন, আমি নিশ্চয়ই দেখব।',
+  ta: 'இது உங்கள் ஜாதகத்திலிருந்து படிக்கக்கூடிய விஷயம் அல்ல — ஆனால் உங்கள் ஜாதகம் அல்லது வரும் காலம் குறித்து எதுவும் கேளுங்கள், நான் நிச்சயம் பார்க்கிறேன்.',
+  te: 'ఇది మీ జాతకం నుండి చదవగలిగే విషయం కాదు — కానీ మీ జాతకం లేదా రాబోయే కాలం గురించి ఏదైనా అడగండి, నేను తప్పకుండా చూస్తాను.',
+  mr: 'ही गोष्ट तुमच्या कुंडलीतून वाचता येण्यासारखी नाही — पण तुमच्या कुंडलीबद्दल किंवा येणाऱ्या काळाबद्दल काहीही विचारा, मी नक्की पाहीन.',
+  gu: 'આ તમારી કુંડળીમાંથી વાંચી શકાય એવી બાબત નથી — પણ તમારી કુંડળી કે આવનારા સમય વિશે કંઈ પણ પૂછો, હું જરૂર જોઈશ.',
+};
+
+export function getNeutralDecline(language?: string): string {
+  return NEUTRAL_DECLINE[normalizeLang(language)];
+}
+
+export function containsLegalRefusalFraming(text: string): boolean {
+  return matchesAny(String(text ?? ''), LEGAL_REFUSAL_FRAMING);
+}
+
 export function classifyAssistantOutput(text: string, language?: string): PolicyDecision {
   const lang = normalizeLang(language);
   const t = String(text ?? '');
