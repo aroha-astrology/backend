@@ -23,6 +23,7 @@
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
 import { generate } from '../../lib/llm/gemini-client.js';
+import { cleanJsonString } from '../../lib/llm/horoscope.js';
 import {
   PALM_OBSERVE_PROFILE,
   PALM_INTERPRET_PROFILE,
@@ -30,8 +31,10 @@ import {
   MODEL,
 } from '../../config/llm.js';
 import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
-import { resolveFeaturesForUser } from '../features/features.service.js';
+import { resolveFeaturesForUser, modelOf } from '../features/features.service.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import { analyzePlanetStrengths } from '../../lib/astro-engine/gemstones.js';
+import { getVimshottariDashaFromChart } from '../../lib/astro-engine/reports/chart-facts.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import {
   createPendingPalmReading,
@@ -48,19 +51,30 @@ import {
   savePalmTranslation,
   findStaleGeneratingPalmReadings,
   saveMountRelief,
+  saveObservations,
 } from './palm.repo.js';
 import { writeFrame, downloadFrame, frameRelativePath } from '../../lib/palm/storage.js';
 import { computeFramesHash, type PalmCaptureSlot } from '../../lib/palm/storage-paths.js';
 import { matchPalmRules, type PalmRuleFact } from '../../lib/astro-engine/palm/palm-rules.js';
+import {
+  chartDomainScores,
+  clampToChart,
+  crossCheckPalmAgainstChart,
+} from '../../lib/astro-engine/palm/palm-chart.js';
 import { buildObserveMessages, parseObserveResponse } from '../../lib/llm/palm/observe.js';
 import { buildInterpretPrompt, parseInterpretResponse } from '../../lib/llm/palm/interpret.js';
 import { buildSynthesizePrompt, parseSynthesizeResponse } from '../../lib/llm/palm/synthesize.js';
 import type { PalmHandObservations } from '../../lib/astro-engine/palm/palm-types.js';
+import type { PalmLineNote } from '../../lib/llm/palm/interpret.js';
 import type { ReportSection } from '../../modules/reports/report-generator.types.js';
 import type { UserRow, PalmReadingRow, KundliRow } from '../../db/schema.js';
 import type { PalmReadingDto } from './palm.schemas.js';
 
 export const PALM_FEATURE_KEY = 'paid.palmReading';
+/** Admin -> Features model pickers (see config/features.ts's `ai` group). Both resolve to
+ * the global MODEL until someone picks a model in the dashboard. */
+const PALM_VISION_MODEL_KEY = 'ai.palmVisionModel';
+const PALM_INTERPRET_MODEL_KEY = 'ai.palmInterpretModel';
 const DEFAULT_PALM_PRICE_PAISE = 9900;
 
 const PRIMARY_SLOTS = [
@@ -91,20 +105,41 @@ const MOUNT_PLANETS = ['Jupiter', 'Saturn', 'Sun', 'Mercury', 'Venus', 'Moon', '
  * which is sized for conversational Q&A, not a one-shot background report). */
 function buildPalmChartFacts(kundli: KundliRow | undefined): string {
   if (!kundli || kundli.status !== 'ready') return '';
-  const chart = kundli.chartData as {
+  const chart = kundli.chartData;
+  if (!chart) return '';
+  const typed = chart as {
     ascendant?: { sign?: string };
     planets?: Array<{ planet: string; sign: string; house?: number }>;
-  } | null;
-  if (!chart) return '';
+  };
+
   const lines: string[] = [];
-  if (chart.ascendant?.sign) lines.push(`Ascendant: ${chart.ascendant.sign}`);
-  for (const planet of chart.planets ?? []) {
-    if ((MOUNT_PLANETS as readonly string[]).includes(planet.planet)) {
-      lines.push(
-        `${planet.planet} in ${planet.sign}${planet.house ? ` (house ${planet.house})` : ''}`,
-      );
-    }
+  if (typed.ascendant?.sign) lines.push(`Ascendant: ${typed.ascendant.sign}`);
+
+  // Each planet's CLASSIFIED strength, not just its position. Sign+house alone gave the
+  // interpreting model nothing to corroborate a mount against without re-deriving dignity
+  // itself; this hands it the same verdict analyzePlanetStrengths gives every paid report.
+  const analyses =
+    Array.isArray(typed.planets) && typed.planets.length > 0 ? analyzePlanetStrengths(chart) : [];
+  for (const planet of typed.planets ?? []) {
+    if (!(MOUNT_PLANETS as readonly string[]).includes(planet.planet)) continue;
+    const strength = analyses.find((a) => a.planet === planet.planet)?.strength;
+    lines.push(
+      `${planet.planet} in ${planet.sign}${planet.house ? ` (house ${planet.house})` : ''}${
+        strength ? ` — ${strength}` : ''
+      }`,
+    );
   }
+
+  // The running dasha decides WHEN the chart's promises land, so a palm timeline written
+  // without it can name a life stage the chart says is years away.
+  const dasha = getVimshottariDashaFromChart(chart);
+  if (dasha?.currentMahadasha?.planet) {
+    lines.push(
+      `Current Vimshottari period: ${dasha.currentMahadasha.planet} mahadasha` +
+        (dasha.currentAntardasha?.planet ? ` / ${dasha.currentAntardasha.planet} antardasha` : ''),
+    );
+  }
+
   return lines.join('\n');
 }
 
@@ -177,6 +212,7 @@ export async function saveHandMountRelief(
   readingId: string,
   hand: 'primary' | 'secondary',
   scores: Record<string, unknown>,
+  regions?: Record<string, { cx: number; cy: number; radius: number }>,
 ): Promise<void> {
   await loadOwnedReading(userId, readingId); // ownership check; throws 404 if not the caller's reading
   const clean: Record<string, number> = {};
@@ -186,8 +222,28 @@ export async function saveHandMountRelief(
       clean[key] = Math.max(0, Math.min(1, value));
     }
   }
-  if (Object.keys(clean).length === 0) return;
-  await saveMountRelief(readingId, hand, clean);
+  const cleanRegions: Record<string, { cx: number; cy: number; radius: number }> = {};
+  for (const key of MOUNT_KEYS) {
+    const region = regions?.[key];
+    if (!region) continue;
+    // Same trust-boundary posture as the scores above: clamp into the normalized range and
+    // drop anything that isn't a finite number, rather than letting a bad payload put an
+    // overlay dot off-canvas on the user's own photograph.
+    const { cx, cy, radius } = region;
+    if (![cx, cy, radius].every((n) => typeof n === 'number' && Number.isFinite(n))) continue;
+    cleanRegions[key] = {
+      cx: Math.max(0, Math.min(1, cx)),
+      cy: Math.max(0, Math.min(1, cy)),
+      radius: Math.max(0, Math.min(0.5, radius)),
+    };
+  }
+  if (Object.keys(clean).length === 0 && Object.keys(cleanRegions).length === 0) return;
+  await saveMountRelief(
+    readingId,
+    hand,
+    clean,
+    Object.keys(cleanRegions).length > 0 ? cleanRegions : undefined,
+  );
 }
 
 function missingSlots(frames: Record<string, unknown>): string[] {
@@ -269,6 +325,7 @@ async function observeHand(
   slots: readonly string[],
   frames: Record<string, { path: string }>,
   userId: string,
+  model: string,
 ): Promise<PalmHandObservations> {
   const frameInputs = await Promise.all(
     slots.map(async (slot) => {
@@ -283,8 +340,11 @@ async function observeHand(
   const raw = await generate({
     profile: PALM_OBSERVE_PROFILE,
     messages,
-    // No separate vision-tier model — confirmed live against the same MODEL every other
-    // profile uses (gemini-3.1-flash-lite accepts image_url content parts natively).
+    // Admin-selectable (Admin -> Features -> "Palm — vision model"); resolves to the global
+    // MODEL until a model is picked there. Line tracing is the ceiling on the whole feature —
+    // the polylines are drawn straight onto the user's own photograph — so this is the one
+    // call worth spending a larger model on.
+    model,
     userId,
     timeoutMs: 90_000,
   });
@@ -348,8 +408,11 @@ async function runObservationPhase(
   const primaryHand = claimed.primaryHand as 'left' | 'right';
   const secondaryHand = secondaryHandOf(primaryHand);
 
-  const primaryObs = await observeHand(primaryHand, PRIMARY_SLOTS, frames, user.id);
-  const secondaryObs = await observeHand(secondaryHand, SECONDARY_SLOTS, frames, user.id);
+  // The FREE scan deliberately stays on the default model: it is uncapped and sends six images
+  // per reading, so a premium model here is unbounded cost. The paid phase re-observes the
+  // primary hand on the admin-selected model instead (see runInterpretationPhase).
+  const primaryObs = await observeHand(primaryHand, PRIMARY_SLOTS, frames, user.id, MODEL);
+  const secondaryObs = await observeHand(secondaryHand, SECONDARY_SLOTS, frames, user.id, MODEL);
 
   const confidenceScore = Math.round(
     ((primaryObs.imageQuality.score + secondaryObs.imageQuality.score) / 2) * 10,
@@ -362,8 +425,10 @@ async function runObservationPhase(
   });
 }
 
-/** PAID phase — Stage B (interpret) + Stage C (synthesize), reading the already-stored
- * Stage-A observations rather than re-downloading frames or calling the vision model again. */
+/** PAID phase — an optional Stage-A re-observation on the admin-selected vision model, then
+ * Stage B (interpret) + Stage C (synthesize). Re-observing is skipped entirely when the
+ * selected model is the one the free scan already used, so the default configuration behaves
+ * exactly as before. */
 async function runInterpretationPhase(
   user: UserRow,
   claimed: PalmReadingRow,
@@ -376,8 +441,32 @@ async function runInterpretationPhase(
   };
   const primaryHand = claimed.primaryHand as 'left' | 'right';
   const secondaryHand = secondaryHandOf(primaryHand);
-  const primaryObs = stored.primary;
   const secondaryObs = stored.secondary;
+
+  // Re-measure the PRIMARY hand on the better model now that this reading is paid for: the
+  // primary hand is the one whose photograph gets the drawn overlay and carries the bulk of the
+  // reading. Best-effort — a failure here keeps the free scan's observations rather than
+  // failing (and refunding) a reading that has everything it needs to proceed.
+  const visionModel = await modelOf(PALM_VISION_MODEL_KEY, MODEL);
+  let primaryObs = stored.primary;
+  if (visionModel !== MODEL) {
+    try {
+      primaryObs = await observeHand(
+        primaryHand,
+        PRIMARY_SLOTS,
+        claimed.frames as Record<string, { path: string }>,
+        user.id,
+        visionModel,
+      );
+      await saveObservations(readingId, { primary: primaryObs, secondary: secondaryObs });
+    } catch (err) {
+      logger.warn(
+        { err, readingId, visionModel },
+        'palm: paid re-observation failed, keeping the free scan observations',
+      );
+      primaryObs = stored.primary;
+    }
+  }
   const mountRelief = claimed.mountRelief as {
     primary?: Record<string, number>;
     secondary?: Record<string, number>;
@@ -388,21 +477,33 @@ async function runInterpretationPhase(
 
   const kundli = await findKundliByUserId(user.id, claimed.birthProfileId);
   const chartFacts = buildPalmChartFacts(kundli);
+  const chart = kundli?.status === 'ready' ? kundli.chartData : null;
 
+  // Palm/chart reconciliation. The mount-vs-planet facts go into the SAME grounding block as
+  // every other fact so the reading has to speak to them; the six domain scores are then
+  // clamped to the chart's own (palm-chart.ts) so the palm screen can never show a number that
+  // contradicts what the Wealth/Marriage/Career reports show for the same person.
+  const chartCrossChecks = chart ? crossCheckPalmAgainstChart(primaryObs, chart) : [];
+  const chartScores = chartDomainScores(chart);
+
+  const interpretModel = await modelOf(PALM_INTERPRET_MODEL_KEY, MODEL);
   const interpretPrompt = buildInterpretPrompt({
     primaryHand,
-    facts: primaryFacts,
+    facts: [...primaryFacts, ...chartCrossChecks],
     chartFacts,
+    chartScores,
     language: 'en',
   });
   const interpretRaw = await generate({
     profile: PALM_INTERPRET_PROFILE,
     messages: [{ role: 'user', content: interpretPrompt }],
+    model: interpretModel,
     userId: user.id,
   });
   const interpretation = parseInterpretResponse(interpretRaw);
   if (!interpretation) throw new Error('Stage B (interpret) returned unparseable output');
-  const { sections, scores } = interpretation;
+  const { sections, lineNotes } = interpretation;
+  const scores = clampToChart(interpretation.scores, chartScores);
 
   const synthesizePrompt = buildSynthesizePrompt({
     primaryHandLabel: `${primaryHand} hand — vartamana karma (current, lived path)`,
@@ -413,14 +514,15 @@ async function runInterpretationPhase(
   const synthesizeRaw = await generate({
     profile: PALM_INTERPRET_PROFILE,
     messages: [{ role: 'user', content: synthesizePrompt }],
+    model: interpretModel,
     userId: user.id,
   });
   const synthesis = parseSynthesizeResponse(synthesizeRaw);
   if (!synthesis) throw new Error('Stage C (synthesize) returned unparseable output');
 
   await markPalmReadingReady(readingId, claimedAt, {
-    content: { sections, scores, synthesis },
-    model: MODEL,
+    content: { sections, scores, synthesis, lineNotes, chartScores },
+    model: interpretModel,
   });
   await notifyPalmReadingReady(user.id, readingId);
 }
@@ -434,11 +536,17 @@ async function notifyPalmReadingReady(userId: string, readingId: string): Promis
   });
 }
 
-function toDto(row: PalmReadingRow, sections?: ReportSection[]): PalmReadingDto {
+function toDto(
+  row: PalmReadingRow,
+  sections?: ReportSection[],
+  lineNotes?: Record<string, PalmLineNote>,
+): PalmReadingDto {
   const content = row.content as {
     sections?: ReportSection[];
     scores?: Record<string, number>;
     synthesis?: unknown;
+    lineNotes?: Record<string, PalmLineNote>;
+    chartScores?: Record<string, number>;
   } | null;
   // Built as a loose record and cast at the boundary — PalmReadingResponseSchema documents
   // this DTO as intentionally loosely typed on the wire, and constructing it field-by-field
@@ -457,12 +565,20 @@ function toDto(row: PalmReadingRow, sections?: ReportSection[]): PalmReadingDto 
   // until 'ready' (paid).
   if (row.status === 'observed' && row.observations) {
     dto.observations = row.observations;
+    if (row.mountRelief) dto.mountRelief = row.mountRelief;
   }
   if (row.status === 'ready') {
     dto.sections = sections ?? content?.sections ?? [];
     if (row.observations) dto.observations = row.observations;
+    if (row.mountRelief) dto.mountRelief = row.mountRelief;
     if (content?.scores) dto.scores = content.scores;
     if (content?.synthesis !== undefined) dto.synthesis = content.synthesis;
+    // What the user sees when they tap a line or mount on their own photograph.
+    const notes = lineNotes ?? content?.lineNotes;
+    if (notes) dto.lineNotes = notes;
+    // The chart's own verdict on the same six areas — shown beside the palm scores so any
+    // remaining gap is visible rather than hidden (the palm score is already clamped to it).
+    if (content?.chartScores) dto.chartScores = content.chartScores;
   }
   // Keep the raw provider error in the DB column for ops/debugging — never echo verbatim.
   if (row.status === 'failed')
@@ -478,29 +594,47 @@ export async function getPalmReadingForUser(
   const row = await loadOwnedReading(userId, readingId);
   if (row.status !== 'ready' || language === 'en') return toDto(row);
 
-  const cached = row.translations?.[language] as { sections?: ReportSection[] } | undefined;
-  if (cached?.sections) return toDto(row, cached.sections);
+  const cached = row.translations?.[language] as
+    | { sections?: ReportSection[]; lineNotes?: Record<string, PalmLineNote> }
+    | undefined;
+  if (cached?.sections) return toDto(row, cached.sections, cached.lineNotes);
 
-  const content = row.content as { sections?: ReportSection[] } | null;
+  const content = row.content as {
+    sections?: ReportSection[];
+    lineNotes?: Record<string, PalmLineNote>;
+  } | null;
   const englishSections = content?.sections ?? [];
+  const englishNotes = content?.lineNotes ?? {};
   try {
-    const prompt = `Translate the following JSON report sections into ${language}, preserving the exact same shape { "sections": [{ "heading": string, "paragraphs": string[] }] }. Do not add or remove sections or paragraphs.\n\n${JSON.stringify({ sections: englishSections })}`;
+    // Sections AND lineNotes go through in ONE call: the tap-a-line cards are the same
+    // reading in miniature, and translating them separately would double the cost while
+    // letting the two drift apart in tone and terminology.
+    const prompt =
+      `Translate the following JSON into ${language}, preserving the exact same shape ` +
+      `{ "sections": [{ "heading": string, "paragraphs": string[] }], "lineNotes": { "<id>": { "meaning": string, "prediction": string } } }. ` +
+      `Do not add or remove sections, paragraphs or lineNotes entries, and keep every lineNotes key EXACTLY as given (they are ids, not text).\n\n` +
+      JSON.stringify({ sections: englishSections, lineNotes: englishNotes });
     const raw = await generate({
       profile: PALM_TRANSLATION_PROFILE,
       messages: [{ role: 'user', content: prompt }],
       userId,
     });
-    const translated = JSON.parse(raw.trim().replace(/^```json\n?|```$/g, '')) as {
+    const translated = JSON.parse(cleanJsonString(raw)) as {
       sections?: ReportSection[];
+      lineNotes?: Record<string, PalmLineNote>;
     };
     if (translated.sections) {
-      await savePalmTranslation(readingId, language, { sections: translated.sections });
-      return toDto(row, translated.sections);
+      const payload = {
+        sections: translated.sections,
+        lineNotes: translated.lineNotes ?? englishNotes,
+      };
+      await savePalmTranslation(readingId, language, payload);
+      return toDto(row, payload.sections, payload.lineNotes);
     }
   } catch (err) {
     logger.warn({ err, readingId, language }, 'failed to translate palm reading');
   }
-  return toDto(row, englishSections);
+  return toDto(row, englishSections, englishNotes);
 }
 
 export async function listPalmReadings(

@@ -133,6 +133,12 @@ export interface AdminFeatureRow {
   enabled: boolean;
   pricePaise: number | null;
   originalPricePaise: number | null;
+  /** Currently selected model, for a key that declares `modelOptions`; null for every other
+   * key (and for a model key whose toggle is off — see FeatureDef.modelOptions). */
+  model: string | null;
+  /** Non-empty only for model-picker keys — the dashboard renders a dropdown of these instead
+   * of a price box. Sent from the registry so the options live in exactly one place. */
+  modelOptions: string[];
 }
 
 /** Merges FEATURE_REGISTRY (the source of truth for what features exist) with resolveFeatures()'s admin overrides. */
@@ -147,6 +153,8 @@ export async function listFeaturesForAdmin(): Promise<AdminFeatureRow[]> {
     // No registry-level default for this one (unlike pricePaise/basePricePaise)
     // — a feature with no admin override simply has no discount to show.
     originalPricePaise: resolved[feature.key]?.originalPricePaise ?? null,
+    model: resolved[feature.key]?.model ?? feature.defaultModel ?? null,
+    modelOptions: [...(feature.modelOptions ?? [])],
   }));
 }
 
@@ -155,7 +163,11 @@ export async function listFeaturesForAdmin(): Promise<AdminFeatureRow[]> {
  * price as it currently resolves" (registry default or existing override) —
  * distinct from an explicit `null`, which clears it. `originalPricePaise`
  * follows the identical undefined-preserves/null-clears convention,
- * independently of `pricePaise`. Rejects an unknown key up front since
+ * independently of `pricePaise`, and so does `model` (the AI model-picker
+ * keys' selection). A `model` value outside the key's registry
+ * `modelOptions` is rejected rather than stored: a typo'd model id would
+ * fail every request for that feature until someone noticed. Rejects an
+ * unknown key up front since
  * FEATURE_REGISTRY is the source of truth for what keys exist; writing an
  * override row for a key nothing reads would be silent dead configuration.
  */
@@ -164,6 +176,7 @@ export async function updateFeature(
   enabled: boolean,
   pricePaise: number | null | undefined,
   originalPricePaise: number | null | undefined,
+  model: string | null | undefined,
   adminPhone: string,
 ): Promise<AdminFeatureRow> {
   if (!isKnownFeatureKey(key)) {
@@ -171,28 +184,30 @@ export async function updateFeature(
   }
   const registryEntry = FEATURE_REGISTRY.find((feature) => feature.key === key)!;
 
-  let resolvedPrice: number | null;
-  let resolvedOriginalPrice: number | null;
-  if (pricePaise === undefined || originalPricePaise === undefined) {
-    const resolved = await resolveFeatures();
-    resolvedPrice =
-      pricePaise === undefined
-        ? (resolved[key]?.pricePaise ?? registryEntry.defaultPricePaise ?? null)
-        : pricePaise;
-    resolvedOriginalPrice =
-      originalPricePaise === undefined
-        ? (resolved[key]?.originalPricePaise ?? null)
-        : originalPricePaise;
-  } else {
-    resolvedPrice = pricePaise;
-    resolvedOriginalPrice = originalPricePaise;
+  if (model != null && !(registryEntry.modelOptions ?? []).includes(model)) {
+    throw Errors.badRequest(`Model "${model}" is not an option for feature "${key}"`);
   }
+
+  // Resolve once, unconditionally. This used to be skipped when every field was supplied
+  // explicitly; with three independent undefined-preserves fields that conditional was three
+  // ways to be wrong for one cached read (resolveFeatures memoizes for 30s).
+  const resolved = await resolveFeatures();
+  const current = resolved[key];
+  const resolvedPrice =
+    pricePaise === undefined
+      ? (current?.pricePaise ?? registryEntry.defaultPricePaise ?? null)
+      : pricePaise;
+  const resolvedOriginalPrice =
+    originalPricePaise === undefined ? (current?.originalPricePaise ?? null) : originalPricePaise;
+  const resolvedModel =
+    model === undefined ? (current?.model ?? registryEntry.defaultModel ?? null) : model;
 
   const row = await upsertFeatureOverride(
     key,
     enabled,
     resolvedPrice,
     resolvedOriginalPrice,
+    resolvedModel,
     adminPhone,
   );
   invalidateFeatureCache();
@@ -201,6 +216,7 @@ export async function updateFeature(
     enabled,
     pricePaise: resolvedPrice,
     originalPricePaise: resolvedOriginalPrice,
+    model: resolvedModel,
   });
 
   return {
@@ -210,6 +226,8 @@ export async function updateFeature(
     enabled: row.enabled,
     pricePaise: row.pricePaise,
     originalPricePaise: row.originalPricePaise,
+    model: row.enabled ? row.model : null,
+    modelOptions: [...(registryEntry.modelOptions ?? [])],
   };
 }
 

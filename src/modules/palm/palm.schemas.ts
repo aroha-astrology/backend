@@ -63,5 +63,13 @@ export const SaveMountReliefBodySchema = z
   .object({
     hand: z.enum(['primary', 'secondary']),
     scores: z.record(z.string(), z.number()),
+    /** Where each mount actually sits on THIS photograph, normalized 0-1, derived from the
+     * MediaPipe hand landmarks the relief pass already computes. Optional: the same detection
+     * produces both, so a client that can send scores can send these, but an older client that
+     * only sends scores stays valid. The overlay draws its mount dots from these instead of
+     * from fixed anatomical averages that know nothing about this hand or its framing. */
+    regions: z
+      .record(z.string(), z.object({ cx: z.number(), cy: z.number(), radius: z.number() }))
+      .optional(),
   })
   .openapi('SaveMountReliefBody');

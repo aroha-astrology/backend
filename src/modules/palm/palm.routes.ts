@@ -183,8 +183,8 @@ const mountReliefRoute = createRoute({
 palmRouter.openapi(mountReliefRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const { hand, scores } = c.req.valid('json');
-  await saveHandMountRelief(user.id, id, hand, scores);
+  const { hand, scores, regions } = c.req.valid('json');
+  await saveHandMountRelief(user.id, id, hand, scores, regions);
   return c.json({ ok: true }, 200);
 });
 

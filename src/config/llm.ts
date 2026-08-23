@@ -445,15 +445,21 @@ export const PALM_OBSERVE_PROFILE: GenerationProfile = {
  * age-wise timeline, destiny scores, and (when both hands were captured) the
  * blueprint-vs-lived synthesis. Larger than REPORT_PROFILE's 4096 because
  * this is a deliberately deep, "give as much detail as possible" report
- * (unlike a report section list, palm has ~10 chapters plus per-line/per-mount
- * prose) — background job, never blocking.
+ * (unlike a report section list, palm has ~13 chapters plus a meaning and a
+ * prediction for every line and mount) — background job, never blocking.
+ *
+ * 16384, not 8192: the chapter list and the per-line/per-mount `lineNotes`
+ * block both grew. A ceiling that truncates does not error — it returns
+ * unparseable JSON, which fails the reading and refunds the user, and in a
+ * non-Latin script it bites at roughly half the English word count (this
+ * codebase has shipped exactly that bug before — see CHAT_PROFILE's history).
  */
 export const PALM_INTERPRET_PROFILE: GenerationProfile = {
   name: 'palm-interpret',
   temperature: 0.5,
   jsonMode: true,
   stream: false,
-  maxTokens: 8192,
+  maxTokens: 16384,
 };
 
 /**
@@ -470,5 +476,5 @@ export const PALM_TRANSLATION_PROFILE: GenerationProfile = {
   temperature: 0.3,
   jsonMode: true,
   stream: false,
-  maxTokens: 8192,
+  maxTokens: 16384,
 };

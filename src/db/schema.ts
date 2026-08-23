@@ -2106,6 +2106,11 @@ export const featureFlags = pgTable('feature_flags', {
    * pricePaise). Null means "no discount configured" — never fabricated from
    * `pricePaise` or the structural `basePricePaise`. */
   originalPricePaise: integer('original_price_paise'),
+  /** Admin-selected model for an AI feature (only meaningful for registry entries that declare
+   * `modelOptions`). Null means "use the registry default". Note the row's `enabled` flag is the
+   * kill switch for a model key: disabled resolves back to the global GEMINI_MODEL regardless of
+   * what is selected here — see modelOf() in features.service.ts. */
+  model: text('model'),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),
@@ -2318,6 +2323,21 @@ export const palmReadingStatusEnum = pgEnum('palm_reading_status', [
   'failed',
 ]);
 
+/** `mountRelief` holds two kinds of entry keyed by hand: `primary`/`secondary` (per-mount 0-1
+ * relief scores, read by palm-rules.ts) and `primaryRegions`/`secondaryRegions` (per-mount
+ * normalized positions on that hand's photograph, read by the annotated overlay). Kept as
+ * siblings in one column so recording them stays a single best-effort write. */
+export interface PalmMountRegion {
+  cx: number;
+  cy: number;
+  radius: number;
+}
+
+export type PalmMountReliefData = Record<
+  string,
+  Record<string, number> | Record<string, PalmMountRegion>
+>;
+
 export const palmReadings = pgTable(
   'palm_readings',
   {
@@ -2351,8 +2371,13 @@ export const palmReadings = pgTable(
      * variance pass scores it, both 0-1 normalized per hand) and uploaded alongside the
      * front-view frames. Optional and best-effort: absent for any hand where landmark
      * detection failed. Used by palm-rules.ts to corroborate or flag disagreement with the
-     * vision model's own "flat/normal/prominent" mount rating — never a replacement for it. */
-    mountRelief: jsonb('mount_relief').$type<Record<string, Record<string, number>>>(),
+     * vision model's own "flat/normal/prominent" mount rating — never a replacement for it.
+     *
+     * `<hand>Regions` carries WHERE each mount sits on that hand's front-view photograph
+     * (normalized 0-1, from the same landmark detection). The annotated overlay draws its mount
+     * dots from these, so they land on the actual hand in the actual framing rather than at
+     * fixed anatomical averages. */
+    mountRelief: jsonb('mount_relief').$type<PalmMountReliefData>(),
     /** Stage B/C output — canonical English narrative sections. Null while
      * 'pending'/'generating'/'failed'. */
     content: jsonb('content').$type<Record<string, unknown>>(),

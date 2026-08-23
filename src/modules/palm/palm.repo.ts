@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
-import { palmReadings, type PalmReadingRow } from '../../db/schema.js';
+import { palmReadings, type PalmMountReliefData, type PalmReadingRow } from '../../db/schema.js';
 
 /** Consider a 'generating' row abandoned (crashed mid-run) after this long — same value as
  * every other report-style generation lock in this codebase (gemstone, reports). */
@@ -94,16 +94,34 @@ export async function saveMountRelief(
   readingId: string,
   hand: 'primary' | 'secondary',
   scores: Record<string, number>,
+  regions?: Record<string, { cx: number; cy: number; radius: number }>,
 ): Promise<void> {
   const row = await findPalmReadingById(readingId);
   if (!row) return;
-  const mountRelief: Record<string, Record<string, number>> = {
+  // Regions live under a sibling key rather than inside the score map so the shape the rules
+  // engine reads (mountRelief.primary -> mount -> 0-1 score) is unchanged.
+  const mountRelief: PalmMountReliefData = {
     ...row.mountRelief,
     [hand]: scores,
+    ...(regions ? { [`${hand}Regions`]: regions } : {}),
   };
   await db
     .update(palmReadings)
     .set({ mountRelief, updatedAt: new Date() })
+    .where(eq(palmReadings.id, readingId));
+}
+
+/** Overwrites the stored Stage-A observations in place, without touching status or the claim
+ * fence — used only by the paid phase's optional re-observation on a better vision model
+ * (palm.service.ts). Deliberately NOT markPalmReadingObserved: the row is already past
+ * 'observed' and mid-claim, and this must not disturb either. */
+export async function saveObservations(
+  readingId: string,
+  observations: Record<string, unknown>,
+): Promise<void> {
+  await db
+    .update(palmReadings)
+    .set({ observations, updatedAt: new Date() })
     .where(eq(palmReadings.id, readingId));
 }
 

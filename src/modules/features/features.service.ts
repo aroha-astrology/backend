@@ -15,6 +15,10 @@ export interface ResolvedFeature {
    * the registry has no structural default for it, so a key with no override
    * row always resolves this to null (no discount to show). */
   originalPricePaise: number | null;
+  /** Admin-selected model for an AI feature, already resolved: null whenever the caller should
+   * use the global default model — either because the key declares no `modelOptions`, or
+   * because its toggle is off (the kill switch). See `modelOf()`. */
+  model: string | null;
 }
 
 /** This is on the hot path of GET /v1/me — 30s is enough to spare the DB a
@@ -35,6 +39,7 @@ function registryDefaults(): Record<string, ResolvedFeature> {
       enabled: feature.defaultEnabled,
       pricePaise: feature.defaultPricePaise ?? null,
       originalPricePaise: null,
+      model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
     };
   }
   return out;
@@ -60,10 +65,15 @@ export async function resolveFeatures(): Promise<Record<string, ResolvedFeature>
   try {
     const overrides = await findAllFeatureOverrides();
     for (const row of overrides) {
+      const def = FEATURE_REGISTRY.find((f) => f.key === row.key);
       merged[row.key] = {
         enabled: row.enabled,
         pricePaise: row.pricePaise,
         originalPricePaise: row.originalPricePaise,
+        // A disabled model key resolves to null = "use the global default model", so switching
+        // the toggle off is a one-click revert that doesn't require remembering which model
+        // was the default. See FeatureDef.modelOptions.
+        model: row.enabled ? (row.model ?? def?.defaultModel ?? null) : null,
       };
     }
     cache = { value: merged, expiresAt: Date.now() + CACHE_TTL_MS };
@@ -99,6 +109,21 @@ export function invalidateFeatureCache(): void {
 export async function priceOf(userId: string, key: string, fallback: number): Promise<number> {
   const features = await resolveFeaturesForUser(userId);
   return features[key]?.pricePaise ?? fallback;
+}
+
+/**
+ * The admin-selected model for one AI feature — the single way any Gemini call site should
+ * learn which model to use, exactly as `priceOf` is for money. Falls back to `fallback`
+ * (normally `env.GEMINI_MODEL`) whenever no model is configured OR the key's toggle is off,
+ * so an admin can always put a feature back on the default model with one click.
+ *
+ * Global (not per-user): a model is an operational/cost decision, not something a user group
+ * should be able to change, so this reads `resolveFeatures()` rather than the group-aware
+ * resolver — the same reason group overrides never touch price.
+ */
+export async function modelOf(key: string, fallback: string): Promise<string> {
+  const features = await resolveFeatures();
+  return features[key]?.model ?? fallback;
 }
 
 /**
@@ -208,12 +233,14 @@ export async function resolveFeaturesForUser(
         enabled: false,
         pricePaise: value.pricePaise,
         originalPricePaise: value.originalPricePaise,
+        model: value.model,
       };
     } else if (enabledKeys.has(key)) {
       merged[key] = {
         enabled: true,
         pricePaise: value.pricePaise,
         originalPricePaise: value.originalPricePaise,
+        model: value.model,
       };
     } else {
       merged[key] = value;

@@ -21,10 +21,11 @@ const SAMPLE_OBSERVATION = {
       present: true,
       length: 'medium',
       depth: 'deep',
+      // Stage A emits Gemini's native 0-1000 spatial integers; the parser normalizes them.
       polyline: [
-        [0.42, 0.3],
-        [0.35, 0.5],
-        [0.4, 0.75],
+        [420, 300],
+        [350, 500],
+        [400, 750],
       ],
     },
     heartLine: { present: true, length: 'long', depth: 'medium', endingPosition: 'jupiter' },
@@ -94,7 +95,7 @@ describe('parseObserveResponse', () => {
     expect(result!.imageQuality.score).toBe(8);
   });
 
-  it('parses a line polyline as an array of normalized [x,y] points', () => {
+  it('normalizes a 0-1000 polyline down to the 0-1 space the overlay draws in', () => {
     const result = parseObserveResponse(JSON.stringify(SAMPLE_OBSERVATION));
     expect(result!.majorLines.lifeLine.polyline).toEqual([
       [0.42, 0.3],
@@ -113,8 +114,8 @@ describe('parseObserveResponse', () => {
           length: 'medium',
           depth: 'medium',
           polyline: [
-            [0.5, 'oops'],
-            [1.5, 0.2],
+            [500, 'oops'],
+            [1500, 200],
           ],
         },
       },

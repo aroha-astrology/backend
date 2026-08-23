@@ -12,15 +12,16 @@ export async function upsertFeatureOverride(
   enabled: boolean,
   pricePaise: number | null,
   originalPricePaise: number | null,
+  model: string | null,
   updatedBy: string | null,
 ): Promise<FeatureFlagRow> {
   const now = new Date();
   const [row] = await db
     .insert(featureFlags)
-    .values({ key, enabled, pricePaise, originalPricePaise, updatedBy, updatedAt: now })
+    .values({ key, enabled, pricePaise, originalPricePaise, model, updatedBy, updatedAt: now })
     .onConflictDoUpdate({
       target: featureFlags.key,
-      set: { enabled, pricePaise, originalPricePaise, updatedBy, updatedAt: now },
+      set: { enabled, pricePaise, originalPricePaise, model, updatedBy, updatedAt: now },
     })
     .returning();
   return row!;

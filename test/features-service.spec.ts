@@ -40,6 +40,9 @@ describe('resolveFeatures — merge behavior', () => {
         enabled: feature.defaultEnabled,
         pricePaise: feature.defaultPricePaise ?? null,
         originalPricePaise: null,
+        // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
+        // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
+        model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
       });
     }
   });
@@ -63,6 +66,7 @@ describe('resolveFeatures — merge behavior', () => {
       enabled: false,
       pricePaise: 12345,
       originalPricePaise: 19999,
+      model: null,
     });
   });
 
@@ -86,6 +90,9 @@ describe('resolveFeatures — merge behavior', () => {
         enabled: feature.defaultEnabled,
         pricePaise: feature.defaultPricePaise ?? null,
         originalPricePaise: null,
+        // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
+        // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
+        model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
       });
     }
   });
@@ -121,6 +128,9 @@ describe('resolveFeatures — DB failure fallback', () => {
         enabled: feature.defaultEnabled,
         pricePaise: feature.defaultPricePaise ?? null,
         originalPricePaise: null,
+        // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
+        // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
+        model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
       });
     }
     expect(logger.error).toHaveBeenCalled();

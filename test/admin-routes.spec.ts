@@ -347,6 +347,8 @@ describe('PUT /v1/admin/features', () => {
       true,
       14900,
       49900,
+      // paid.chat declares no modelOptions, so its resolved model is always null.
+      null,
       ADMIN_PHONE,
     );
     expect(body.pricePaise).toBe(14900);

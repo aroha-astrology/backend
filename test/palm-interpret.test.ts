@@ -17,6 +17,7 @@ describe('buildInterpretPrompt', () => {
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
       chartFacts: 'Ascendant: Leo. Jupiter exalted in 9th house.',
+      chartScores: null,
       language: 'en',
     });
     expect(prompt).toContain('<palm_facts>');
@@ -29,6 +30,7 @@ describe('buildInterpretPrompt', () => {
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
       chartFacts: 'Ascendant: Leo. Jupiter exalted in 9th house.',
+      chartScores: null,
       language: 'en',
     });
     expect(prompt).toContain('mount.jupiter.prominent');
@@ -41,6 +43,7 @@ describe('buildInterpretPrompt', () => {
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
       chartFacts: '',
+      chartScores: null,
       language: 'en',
     });
     expect(prompt.toLowerCase()).toContain('never invent');
@@ -51,6 +54,7 @@ describe('buildInterpretPrompt', () => {
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
       chartFacts: 'Jupiter exalted in 9th house.',
+      chartScores: null,
       language: 'en',
     });
     expect(prompt.toLowerCase()).toContain('corrobor');
@@ -61,6 +65,7 @@ describe('buildInterpretPrompt', () => {
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
       chartFacts: '',
+      chartScores: null,
       language: 'en',
     });
     for (const chapter of [
@@ -82,6 +87,7 @@ describe('buildInterpretPrompt', () => {
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
       chartFacts: '',
+      chartScores: null,
       language: 'en',
     });
     expect(prompt).toContain('"scores"');

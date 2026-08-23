@@ -13,7 +13,36 @@
 // see palm-rules.test.ts.
 // =============================================================================
 
-import type { PalmHandObservations, PalmMounts, PalmSpecialMarking } from './palm-types.js';
+import type {
+  PalmFingerprint,
+  PalmHandObservations,
+  PalmMounts,
+  PalmSpecialMarking,
+} from './palm-types.js';
+
+type PalmFingerprintPattern = PalmFingerprint['pattern'];
+
+const FINGERPRINT_MEANING: Record<PalmFingerprintPattern, string> = {
+  loop: 'adaptable and people-attuned, taking the shape of the room without losing itself',
+  whorl: 'individualistic and self-directed, needing to reach conclusions personally',
+  arch: 'grounded, practical and steady, trusting what can be tested',
+};
+
+/** Which life domain each finger governs — used only to say WHERE a fingerprint pattern
+ * expresses itself, never to invent a second meaning for the pattern. */
+const FINGER_DOMAIN: Record<PalmFingerprint['finger'], string> = {
+  thumb: 'will and drive',
+  index: 'leadership and ambition',
+  middle: 'duty and discipline',
+  ring: 'creativity and self-expression',
+  little: 'communication and commerce',
+};
+
+const PHALANGE_MEANING: Record<'top' | 'middle' | 'base', string> = {
+  top: 'a mind led by ideas and principle before practicalities',
+  middle: 'a temperament led by planning, order and getting the method right',
+  base: 'a temperament led by physical, material and sensory reality',
+};
 
 export interface PalmRuleFact {
   key: string;
@@ -179,6 +208,59 @@ export function matchPalmRules(
     );
   }
 
+  if (heart.present && heart.depth === 'deep') {
+    pushIfMeaningful(
+      facts,
+      'heartLine.depth.deep',
+      'Heart line is deeply etched.',
+      'feelings run strong and are held a long time; loyalty is intense, and so is hurt',
+      'Cheiro / Western chiromancy',
+    );
+  } else if (heart.present && heart.depth === 'faint') {
+    pushIfMeaningful(
+      facts,
+      'heartLine.depth.faint',
+      'Heart line is faintly etched.',
+      'a cooler, more private emotional register — affection shown through action rather than words',
+      'Cheiro / Western chiromancy',
+    );
+  }
+  if (heart.present && heart.length === 'long') {
+    pushIfMeaningful(
+      facts,
+      'heartLine.length.long',
+      'Heart line runs long across the palm.',
+      'a generous, other-centred way of loving, sometimes at the cost of the self',
+      'Cheiro / Western chiromancy',
+    );
+  } else if (heart.present && heart.length === 'short') {
+    pushIfMeaningful(
+      facts,
+      'heartLine.length.short',
+      'Heart line is short.',
+      'a self-contained emotional life with a small, deliberately chosen inner circle',
+      'Cheiro / Western chiromancy',
+    );
+  }
+  if (heart.present && (heart.breaks ?? 0) > 0) {
+    pushIfMeaningful(
+      facts,
+      'heartLine.breaks',
+      `Heart line shows ${heart.breaks} break(s).`,
+      'a decisive emotional turning point that reshapes how this person attaches — not a verdict on any one relationship',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (heart.present && heart.forks) {
+    pushIfMeaningful(
+      facts,
+      'heartLine.forked',
+      'Heart line forks at its end.',
+      'the classical balance of head and heart in love — able to feel deeply without losing judgement',
+      'Cheiro / Western chiromancy',
+    );
+  }
+
   // --- Head line ------------------------------------------------------
   const head = hand.majorLines.headLine;
   if (head.present && head.separation === 'very separated') {
@@ -187,6 +269,51 @@ export function matchPalmRules(
       'headLine.separation.verySeparated',
       'Head line is widely separated from the life line at its origin.',
       'early independence of thought, and a tendency toward impulsive decisions',
+      'Cheiro / Hasta Samudrika Shastra',
+    );
+  }
+
+  if (head.present && head.length === 'long') {
+    pushIfMeaningful(
+      facts,
+      'headLine.length.long',
+      'Head line runs long across the palm.',
+      'a thorough, analytical mind that likes to follow a thought all the way down',
+      'Cheiro / Hasta Samudrika Shastra',
+    );
+  } else if (head.present && head.length === 'short') {
+    pushIfMeaningful(
+      facts,
+      'headLine.length.short',
+      'Head line is short.',
+      'a decisive, practical mind that prefers acting to deliberating — this is about style of thought, never about intelligence',
+      'Cheiro / Hasta Samudrika Shastra',
+    );
+  }
+  if (head.present && head.depth === 'deep') {
+    pushIfMeaningful(
+      facts,
+      'headLine.depth.deep',
+      'Head line is deeply etched.',
+      'sustained concentration and a retentive memory',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (head.present && (head.islands ?? 0) > 0) {
+    pushIfMeaningful(
+      facts,
+      'headLine.islands',
+      `Head line shows ${head.islands} island(s).`,
+      'a stretch of mental strain or scattered focus to manage deliberately — rest and routine matter more than usual through it',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (head.present && head.separation === 'attached to life') {
+    pushIfMeaningful(
+      facts,
+      'headLine.separation.attached',
+      'Head line begins joined to the life line.',
+      'a cautious start closely tied to family expectation, with independence arriving later and deliberately',
       'Cheiro / Hasta Samudrika Shastra',
     );
   }
@@ -233,6 +360,82 @@ export function matchPalmRules(
     );
   }
 
+  if (fate.present && fate.depth === 'deep') {
+    pushIfMeaningful(
+      facts,
+      'fateLine.depth.deep',
+      'Fate line is deeply and clearly etched.',
+      'a strong sense of vocation — work and identity are closely bound together',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (fate.present && (fate.breaks ?? 0) > 0) {
+    pushIfMeaningful(
+      facts,
+      'fateLine.breaks',
+      `Fate line shows ${fate.breaks} break(s).`,
+      'one or more deliberate changes of direction in working life — classically a redirection, not a failure',
+      'Hasta Samudrika Shastra',
+    );
+  }
+
+  // --- Sun/health lines and the ring lines --------------------------------
+  const sun = hand.majorLines.sunLine;
+  if (sun?.present) {
+    pushIfMeaningful(
+      facts,
+      'sunLine.present',
+      'A sun (Apollo) line is visible.',
+      'recognition earned through the work itself rather than through position — reputation that follows the craft',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  const health = hand.majorLines.healthLine;
+  if (health?.present) {
+    pushIfMeaningful(
+      facts,
+      'healthLine.present',
+      'A health (Mercury) line is visible.',
+      'a constitution that registers stress physically first — classically a prompt toward routine and digestion care, never a statement of illness',
+      'Hasta Samudrika Shastra',
+    );
+  } else if (health && health.present === false) {
+    pushIfMeaningful(
+      facts,
+      'healthLine.absent',
+      'No health (Mercury) line is visible.',
+      'classically the more fortunate reading — a robust constitution that does not carry stress in the body',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (hand.majorLines.girdleOfVenus?.present) {
+    pushIfMeaningful(
+      facts,
+      'girdleOfVenus.present',
+      'A girdle of Venus is visible above the heart line.',
+      'heightened sensitivity and aesthetic responsiveness; strong feeling that needs a creative outlet to sit comfortably',
+      'Cheiro / Western chiromancy',
+    );
+  }
+  if (hand.majorLines.ringOfSolomon?.present) {
+    pushIfMeaningful(
+      facts,
+      'ringOfSolomon.present',
+      'A ring of Solomon is visible at the base of the index finger.',
+      'a natural aptitude for understanding people — the classical teacher and counsellor mark',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (hand.majorLines.simianLine?.present) {
+    pushIfMeaningful(
+      facts,
+      'simianLine.present',
+      'Heart and head lines run together as a single simian crease.',
+      'unusual singleness of purpose — thought and feeling pull one way at a time, which brings great focus and little middle ground. An ordinary hand variation, not a defect and not a medical finding.',
+      'Hasta Samudrika Shastra',
+    );
+  }
+
   // --- Minor lines — the percussion-edge features ---------------------
   const marriage = hand.minorLines.marriageLines;
   if (marriage.count >= 2) {
@@ -263,6 +466,43 @@ export function matchPalmRules(
     );
   }
 
+  if (hand.minorLines.travelLines.count >= 2) {
+    pushIfMeaningful(
+      facts,
+      'travelLines.multiple',
+      `${hand.minorLines.travelLines.count} travel lines visible on the percussion edge.`,
+      'a life that moves — relocation, or work that repeatedly takes this person away from where they started',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (hand.minorLines.childrenLines.count > 0) {
+    pushIfMeaningful(
+      facts,
+      'childrenLines.count',
+      `${hand.minorLines.childrenLines.count} children line(s) visible.`,
+      'classically read as significant nurturing bonds rather than a literal count of births — care given, never a prediction of how many',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  const bracelets = hand.minorLines.bracelets;
+  if (bracelets && bracelets.count >= 3) {
+    pushIfMeaningful(
+      facts,
+      'bracelets.three',
+      `${bracelets.count} wrist bracelets (rascettes) are visible.`,
+      'the classical auspicious count — a settled, well-supported foundation to build on',
+      'Hasta Samudrika Shastra',
+    );
+  } else if (bracelets && bracelets.count > 0 && bracelets.firstClear === false) {
+    pushIfMeaningful(
+      facts,
+      'bracelets.firstUnclear',
+      'The first wrist bracelet is broken or unclear.',
+      'a prompt toward steady routine and rest in the early years — guidance on habit, never a health verdict',
+      'Hasta Samudrika Shastra',
+    );
+  }
+
   // --- Thumb ------------------------------------------------------------
   if (hand.thumb.flexibility === 'hypermobile' || hand.thumb.flexibility === 'flexible') {
     pushIfMeaningful(
@@ -278,6 +518,92 @@ export function matchPalmRules(
       'thumb.stiff',
       'Thumb flexibility is stiff.',
       'strong-willed, disciplined, resistant to changing course once decided',
+      'Hasta Samudrika Shastra',
+    );
+  }
+
+  if (hand.thumb.setAngle === 'low') {
+    pushIfMeaningful(
+      facts,
+      'thumb.setAngle.low',
+      'The thumb is set low on the hand, opening wide from the palm.',
+      'generosity and an open, unguarded manner — gives easily, sometimes before checking',
+      'Hasta Samudrika Shastra',
+    );
+  } else if (hand.thumb.setAngle === 'high') {
+    pushIfMeaningful(
+      facts,
+      'thumb.setAngle.high',
+      'The thumb is set high and close to the palm.',
+      'a careful, self-protective streak — commitments are weighed before they are given',
+      'Hasta Samudrika Shastra',
+    );
+  }
+
+  // --- Fingers ------------------------------------------------------------
+  const fingers = hand.fingers;
+  if (fingers?.indexVsRing === 'indexLonger') {
+    pushIfMeaningful(
+      facts,
+      'fingers.indexLonger',
+      'The index (Jupiter) finger is longer than the ring (Apollo) finger.',
+      'a natural pull toward leading, teaching and taking responsibility for others',
+      'Hasta Samudrika Shastra',
+    );
+  } else if (fingers?.indexVsRing === 'ringLonger') {
+    pushIfMeaningful(
+      facts,
+      'fingers.ringLonger',
+      'The ring (Apollo) finger is longer than the index (Jupiter) finger.',
+      'a pull toward expression, performance and risk over formal authority',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (fingers?.littleFingerSet === 'low') {
+    pushIfMeaningful(
+      facts,
+      'fingers.littleFingerLowSet',
+      'The little (Mercury) finger is set low on the hand.',
+      'a slower start in making oneself heard — communication and confidence that arrive with experience rather than early',
+      'Cheiro / Western chiromancy',
+    );
+  }
+  if (fingers?.spacing === 'wide') {
+    pushIfMeaningful(
+      facts,
+      'fingers.spacingWide',
+      'The fingers spread widely apart when the hand is open.',
+      'an independent, unconstrained temperament that resists being managed',
+      'Hasta Samudrika Shastra',
+    );
+  } else if (fingers?.spacing === 'tight') {
+    pushIfMeaningful(
+      facts,
+      'fingers.spacingTight',
+      'The fingers stay close together when the hand is open.',
+      'caution and a preference for security over exposure',
+      'Hasta Samudrika Shastra',
+    );
+  }
+  if (fingers?.dominantPhalange && fingers.dominantPhalange !== 'even') {
+    pushIfMeaningful(
+      facts,
+      `fingers.dominantPhalange.${fingers.dominantPhalange}`,
+      `The ${fingers.dominantPhalange} phalanges are the most developed across the fingers.`,
+      PHALANGE_MEANING[fingers.dominantPhalange],
+      'Hasta Samudrika Shastra',
+    );
+  }
+
+  // --- Fingerprints — measured by Stage A and, until now, never read ------
+  for (const print of hand.fingerprints) {
+    const meaning = FINGERPRINT_MEANING[print.pattern];
+    if (!meaning) continue;
+    pushIfMeaningful(
+      facts,
+      `fingerprint.${print.finger}.${print.pattern}`,
+      `The ${print.finger} carries a ${print.pattern} fingerprint pattern.`,
+      `${meaning} — read through the ${FINGER_DOMAIN[print.finger] ?? 'general'} domain that finger governs`,
       'Hasta Samudrika Shastra',
     );
   }

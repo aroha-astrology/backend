@@ -101,7 +101,7 @@ describe('upsertFeatureOverride', () => {
     const { chain, calls } = makeInsertChain([returned]);
     state.insert.mockReturnValue(chain);
 
-    const result = await upsertFeatureOverride('paid.chat', false, 1500, 2000, 'admin-1');
+    const result = await upsertFeatureOverride('paid.chat', false, 1500, 2000, null, 'admin-1');
 
     expect(state.insert).toHaveBeenCalledWith(featureFlags);
     expect(calls.values).toMatchObject({
@@ -133,7 +133,7 @@ describe('upsertFeatureOverride', () => {
     const { chain, calls } = makeInsertChain([returned]);
     state.insert.mockReturnValue(chain);
 
-    await upsertFeatureOverride('nav.home', false, null, null, 'admin-1');
+    await upsertFeatureOverride('nav.home', false, null, null, null, 'admin-1');
 
     expect(calls.values).toMatchObject({
       key: 'nav.home',
@@ -155,7 +155,7 @@ describe('upsertFeatureOverride', () => {
     const { chain, calls } = makeInsertChain([returned]);
     state.insert.mockReturnValue(chain);
 
-    await upsertFeatureOverride('paid.chat', true, 2000, null, 'admin-1');
+    await upsertFeatureOverride('paid.chat', true, 2000, null, null, 'admin-1');
 
     expect(calls.values).toMatchObject({
       key: 'paid.chat',

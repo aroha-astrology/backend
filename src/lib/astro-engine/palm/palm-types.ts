@@ -56,18 +56,54 @@ export interface PalmMajorLines {
   headLine: PalmMajorLine;
   fateLine: PalmMajorLine;
   sunLine?: PalmMajorLine;
+  healthLine?: PalmMajorLine;
+  girdleOfVenus?: PalmMajorLine;
+  ringOfSolomon?: PalmMajorLine;
+  simianLine?: PalmMajorLine;
 }
+
+/** Every traceable line key, in the order the annotated overlay draws them. Shared with the
+ * frontend's PalmAnnotatedView colour map and Stage B's `lineNotes` keying — the ids are the
+ * contract between the three, which is why the UI can key straight into lineNotes instead of
+ * fuzzy-matching a section heading. */
+export const PALM_LINE_KEYS = [
+  'heartLine',
+  'headLine',
+  'lifeLine',
+  'fateLine',
+  'sunLine',
+  'healthLine',
+  'girdleOfVenus',
+  'ringOfSolomon',
+  'simianLine',
+] as const;
+
+export type PalmLineKey = (typeof PALM_LINE_KEYS)[number];
 
 export interface PalmMinorLines {
   marriageLines: { count: number; forked?: boolean; islands?: boolean };
   childrenLines: { count: number };
   intuitionLine: { present: boolean };
   travelLines: { count: number };
+  /** Rascettes — the wrist bracelets. Classically 3 well-formed bracelets is the auspicious
+   * count; the first one's clarity is what carries meaning, not a promise about lifespan. */
+  bracelets?: { count: number; firstClear?: boolean };
 }
 
 export interface PalmThumbAnalysis {
   flexibility: 'stiff' | 'normal' | 'flexible' | 'hypermobile';
   setAngle: 'high' | 'medium' | 'low';
+}
+
+export interface PalmFingerAnalysis {
+  /** Index vs ring finger relative length — a classical temperament marker (Jupiter vs Apollo
+   * dominance), and one of the few finger facts readable from a plain front-view photo. */
+  indexVsRing: 'indexLonger' | 'equal' | 'ringLonger';
+  /** Whether the little finger reaches past the top crease of the ring finger's upper phalange. */
+  littleFingerSet: 'low' | 'normal' | 'high';
+  /** Which of the three phalange bands is visibly dominant across the fingers overall. */
+  dominantPhalange: 'top' | 'middle' | 'base' | 'even';
+  spacing: 'tight' | 'normal' | 'wide';
 }
 
 export interface PalmFingerprint {
@@ -98,6 +134,7 @@ export interface PalmHandObservations {
   majorLines: PalmMajorLines;
   minorLines: PalmMinorLines;
   thumb: PalmThumbAnalysis;
+  fingers?: PalmFingerAnalysis;
   fingerprints: PalmFingerprint[];
   specialMarkings: PalmSpecialMarking[];
 }

@@ -100,6 +100,8 @@ export const AdminFeatureRowSchema = z
     enabled: z.boolean(),
     pricePaise: z.number().int().nullable(),
     originalPricePaise: z.number().int().nullable(),
+    model: z.string().nullable(),
+    modelOptions: z.array(z.string()),
   })
   .openapi('AdminFeatureRow');
 
@@ -113,6 +115,9 @@ export const UpdateFeatureBodySchema = z
     enabled: z.boolean(),
     pricePaise: z.number().int().nullable().optional(),
     originalPricePaise: z.number().int().nullable().optional(),
+    /** Omitted = leave the current selection; null = clear it back to the registry default.
+     * Validated against the key's own `modelOptions` in updateFeature(). */
+    model: z.string().nullable().optional(),
   })
   .openapi('UpdateFeatureBody');
 

@@ -148,6 +148,8 @@ describe('listFeaturesForAdmin', () => {
       enabled: false,
       pricePaise: 1500,
       originalPricePaise: 2500,
+      model: null,
+      modelOptions: [],
     });
     // A key with no override falls back to its registry default.
     const navHome = result.find((f) => f.key === 'nav.home');
@@ -158,6 +160,8 @@ describe('listFeaturesForAdmin', () => {
       enabled: true,
       pricePaise: null,
       originalPricePaise: null,
+      model: null,
+      modelOptions: [],
     });
   });
 
@@ -176,7 +180,7 @@ describe('listFeaturesForAdmin', () => {
 describe('updateFeature', () => {
   it('rejects an unknown feature key with a 400', async () => {
     await expect(
-      updateFeature('not.a.real.key', true, undefined, undefined, '+919999111111'),
+      updateFeature('not.a.real.key', true, undefined, undefined, undefined, '+919999111111'),
     ).rejects.toMatchObject({ status: 400 });
     expect(state.upsertFeatureOverride).not.toHaveBeenCalled();
   });
@@ -192,12 +196,20 @@ describe('updateFeature', () => {
       updatedBy: '+919999111111',
     });
 
-    const result = await updateFeature('paid.chat', false, undefined, undefined, '+919999111111');
+    const result = await updateFeature(
+      'paid.chat',
+      false,
+      undefined,
+      undefined,
+      undefined,
+      '+919999111111',
+    );
 
     expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
       'paid.chat',
       false,
       2000,
+      null,
       null,
       '+919999111111',
     );
@@ -214,6 +226,8 @@ describe('updateFeature', () => {
       enabled: false,
       pricePaise: 2000,
       originalPricePaise: null,
+      model: null,
+      modelOptions: [],
     });
   });
 
@@ -230,12 +244,13 @@ describe('updateFeature', () => {
       updatedBy: 'admin',
     });
 
-    await updateFeature('paid.chat', false, undefined, undefined, '+919999111111');
+    await updateFeature('paid.chat', false, undefined, undefined, undefined, '+919999111111');
 
     expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
       'paid.chat',
       false,
       3500,
+      null,
       null,
       '+919999111111',
     );
@@ -254,11 +269,12 @@ describe('updateFeature', () => {
       updatedBy: 'admin',
     });
 
-    await updateFeature('paid.chat', true, null, undefined, '+919999111111');
+    await updateFeature('paid.chat', true, null, undefined, undefined, '+919999111111');
 
     expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
       'paid.chat',
       true,
+      null,
       null,
       null,
       '+919999111111',
@@ -278,13 +294,14 @@ describe('updateFeature', () => {
       updatedBy: 'admin',
     });
 
-    await updateFeature('paid.chat', true, undefined, undefined, '+919999111111');
+    await updateFeature('paid.chat', true, undefined, undefined, undefined, '+919999111111');
 
     expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
       'paid.chat',
       true,
       3500,
       6000,
+      null,
       '+919999111111',
     );
   });
@@ -300,18 +317,20 @@ describe('updateFeature', () => {
       updatedBy: 'admin',
     });
 
-    await updateFeature('paid.chat', true, 2000, null, '+919999111111');
+    await updateFeature('paid.chat', true, 2000, null, undefined, '+919999111111');
 
     expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
       'paid.chat',
       true,
       2000,
       null,
+      null,
       '+919999111111',
     );
   });
 
   it('sets both pricePaise and originalPricePaise together to configure a discount', async () => {
+    state.resolveFeatures.mockResolvedValue({});
     state.upsertFeatureOverride.mockResolvedValue({
       key: 'paid.chat',
       enabled: true,
@@ -321,13 +340,14 @@ describe('updateFeature', () => {
       updatedBy: 'admin',
     });
 
-    const result = await updateFeature('paid.chat', true, 14900, 49900, '+919999111111');
+    const result = await updateFeature('paid.chat', true, 14900, 49900, undefined, '+919999111111');
 
     expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
       'paid.chat',
       true,
       14900,
       49900,
+      null,
       '+919999111111',
     );
     expect(result.pricePaise).toBe(14900);

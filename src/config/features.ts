@@ -12,7 +12,7 @@
 export interface FeatureDef {
   key: string;
   label: string;
-  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral';
+  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral' | 'ai';
   defaultEnabled: boolean;
   /**
    * For `paid`/`reports` keys this is a PRICE the user is charged. For
@@ -23,7 +23,33 @@ export interface FeatureDef {
    * previously kept their own and silently ignored the admin panel.
    */
   defaultPricePaise?: number;
+  /**
+   * Turns this entry into a MODEL PICKER in Admin -> Features: the dashboard renders a dropdown
+   * of these options instead of a price box. Only the `ai` group uses it.
+   *
+   * Semantics of the row's toggle for a model key: `enabled: false` means "ignore the selection,
+   * use the global `GEMINI_MODEL`" — i.e. the toggle is the kill switch that puts the feature
+   * back on the default model without anyone having to remember which option that was.
+   * `enabled: true` means "use the selected model". Resolution lives in `modelOf()`
+   * (features.service.ts), which every call site must go through rather than reading a constant
+   * — the same discipline `priceOf()` exists to enforce for money.
+   */
+  modelOptions?: readonly string[];
+  /** The option pre-selected when no admin override row exists yet. */
+  defaultModel?: string;
 }
+
+/**
+ * The Gemini models an admin may pick from. Deliberately a short curated list rather than a
+ * free-text box: a typo'd model id fails every request for that feature until someone notices,
+ * and per-model free-tier quotas differ (see gemini-key-pool.ts) so the set of models that are
+ * actually affordable is a decision, not a text field.
+ */
+export const SELECTABLE_GEMINI_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-flash',
+  'gemini-3.1-pro',
+] as const;
 
 export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // nav
@@ -406,6 +432,26 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'referral',
     defaultEnabled: true,
     defaultPricePaise: 2100,
+  },
+  // ai — model pickers, not toggleable product surface. See `modelOptions` on FeatureDef for
+  // what the enabled toggle means on these rows (off = fall back to the global GEMINI_MODEL).
+  // Both ship DISABLED so nothing changes until a model is deliberately picked in the
+  // dashboard — per-model key-pool quotas have to be confirmed against live keys first.
+  {
+    key: 'ai.palmVisionModel',
+    label: 'Palm — vision model (paid re-scan)',
+    group: 'ai',
+    defaultEnabled: false,
+    modelOptions: SELECTABLE_GEMINI_MODELS,
+    defaultModel: 'gemini-3.1-pro',
+  },
+  {
+    key: 'ai.palmInterpretModel',
+    label: 'Palm — interpretation model',
+    group: 'ai',
+    defaultEnabled: false,
+    modelOptions: SELECTABLE_GEMINI_MODELS,
+    defaultModel: 'gemini-3.1-flash',
   },
 ] as const;
 
