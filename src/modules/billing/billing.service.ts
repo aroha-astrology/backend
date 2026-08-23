@@ -331,7 +331,8 @@ type TransactionKind =
   | 'house_unlock'
   | 'referral_bonus'
   | 'admin_adjustment'
-  | 'report_unlock';
+  | 'report_unlock'
+  | 'daily_reward';
 
 const REPORT_UNLOCK_RE = /^report_unlock:([a-z_]+)(?::(\d{4}-\d{2}))?(?::bundle:(\d+))?$/;
 
@@ -361,6 +362,7 @@ export function parseReason(reason: string): {
   const base = isRefund ? reason.slice('refund:'.length) : reason;
 
   if (base === 'referral_bonus') return { kind: 'referral_bonus', isRefund: false };
+  if (base.startsWith('daily_reward:')) return { kind: 'daily_reward', isRefund };
   if (base === 'chat_message') return { kind: 'chat', isRefund };
   if (base === 'vastu_report') return { kind: 'vastu_report', isRefund };
   if (base === 'profile_creation') return { kind: 'profile_creation', isRefund };

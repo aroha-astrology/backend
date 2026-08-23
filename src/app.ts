@@ -18,6 +18,7 @@ import { adminGroupsRouter } from './modules/admin/admin-groups.routes.js';
 import { adminGiftCampaignsRouter } from './modules/admin/admin-gift-campaigns.routes.js';
 import { supportRouter } from './modules/support/support.routes.js';
 import { preferencesRouter } from './modules/preferences/preferences.routes.js';
+import { rewardsRouter } from './modules/rewards/rewards.routes.js';
 import { feedbackRouter } from './modules/feedback/feedback.routes.js';
 import { kundliRouter } from './modules/kundli/kundli.routes.js';
 import { horoscopeRouter } from './modules/horoscope/horoscope.routes.js';
@@ -110,6 +111,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', adminGiftCampaignsRouter);
   app.route('/v1', supportRouter);
   app.route('/v1', preferencesRouter);
+  app.route('/v1', rewardsRouter);
   app.route('/v1', feedbackRouter);
   app.route('/v1', kundliRouter);
   app.route('/v1', horoscopeRouter);

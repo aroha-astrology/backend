@@ -131,6 +131,7 @@ export const TransactionSchema = z
         'profile_creation',
         'referral_bonus',
         'admin_adjustment',
+        'daily_reward',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),

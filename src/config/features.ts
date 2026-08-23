@@ -56,6 +56,12 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // rather than the frontend's public/ bundle. Ships dark per the standing
   // rule.
   { key: 'nav.gita', label: 'Bhagavad Gita page', group: 'nav', defaultEnabled: false },
+  // Gates the /rewards page (daily login streak) and its drawer entry.
+  // The popup on app-open is gated by the same key on the frontend. Ships
+  // dark per the standing rule — the payout amounts below stay enabled
+  // (see rewards.dailyBase/rewards.streakBonus) so turning this on doesn't
+  // also require re-enabling the two payout keys.
+  { key: 'nav.rewards', label: 'Daily reward page', group: 'nav', defaultEnabled: false },
   // home
   { key: 'home.todayReading', label: 'Today Reading card', group: 'home', defaultEnabled: true },
   { key: 'home.kundliCard', label: 'Kundli card', group: 'home', defaultEnabled: true },
@@ -379,6 +385,27 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'referral',
     defaultEnabled: true,
     defaultPricePaise: 10000,
+  },
+  // Daily login streak, day 1 of 7 — see rewards.service.ts for the ladder
+  // math (each day after this adds a fixed ₹1 step, admin-tunable only here
+  // via this base). `enabled: false` is the payout kill switch, same
+  // mechanism as the other referral keys — nav.rewards above is the separate
+  // visibility switch.
+  {
+    key: 'rewards.dailyBase',
+    label: 'Daily reward — day 1 amount',
+    group: 'referral',
+    defaultEnabled: true,
+    defaultPricePaise: 500,
+  },
+  // Extra credit on top of day 7's ladder amount for completing a full
+  // 7-day streak (₹11 + this = ₹32 on day 7, ₹77 total across the week).
+  {
+    key: 'rewards.streakBonus',
+    label: 'Daily reward — 7-day streak bonus',
+    group: 'referral',
+    defaultEnabled: true,
+    defaultPricePaise: 2100,
   },
 ] as const;
 
