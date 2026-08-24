@@ -365,9 +365,19 @@ async function persistTranscript(
     .join('\n');
   if (!userText && !assistantText) return;
 
-  void getUserFacts(userId, birthProfileId)
-    .catch(() => [])
-    .then((existingFacts) => extractTurnFacts(userText, assistantText, existingFacts, userId))
+  void Promise.all([
+    getUserFacts(userId, birthProfileId).catch(() => []),
+    findActiveUserById(userId).catch(() => undefined),
+  ])
+    .then(([existingFacts, user]) =>
+      extractTurnFacts(
+        userText,
+        assistantText,
+        existingFacts,
+        userId,
+        user?.relationshipStatus ?? null,
+      ),
+    )
     .then((newFacts) => {
       if (newFacts.length > 0) return saveUserFacts(userId, birthProfileId, newFacts);
     })

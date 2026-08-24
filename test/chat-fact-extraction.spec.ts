@@ -51,6 +51,36 @@ describe('extractTurnFacts', () => {
     ]);
   });
 
+  // The bug this closes: the extractor only ever saw the exchange, so the
+  // assistant's own speculative prose ("you are likely to find a spouse…")
+  // could be stored as "is married", whose follow-up question then asked a
+  // single user how long they had been married. The profile status is now in
+  // the prompt — except prefer_not_to_say, which asserts nothing.
+  it('puts the profile relationship status in the prompt, and omits it for prefer_not_to_say', async () => {
+    state.generate.mockResolvedValue(JSON.stringify({ facts: [] }));
+
+    await extractTurnFacts(
+      'when will I marry?',
+      'you are likely to find a spouse',
+      [],
+      'u1',
+      'single',
+    );
+    expect(state.generate.mock.calls[0][0].messages[0].content).toContain(
+      'relationship status is "single"',
+    );
+
+    await extractTurnFacts('q', 'a', [], 'u1', 'prefer_not_to_say');
+    expect(state.generate.mock.calls[1][0].messages[0].content).not.toContain(
+      'relationship status is',
+    );
+
+    await extractTurnFacts('q', 'a', [], 'u1');
+    expect(state.generate.mock.calls[2][0].messages[0].content).not.toContain(
+      'relationship status is',
+    );
+  });
+
   it('returns an empty array when nothing durable was shared', async () => {
     state.generate.mockResolvedValue(JSON.stringify({ facts: [] }));
 

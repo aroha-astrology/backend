@@ -1818,7 +1818,7 @@ export async function* chatStream(
   // first message can seed durable facts. Existing facts are passed in so
   // the model doesn't re-extract near-duplicates. A failure here must never
   // affect the reply already streamed above.
-  void extractTurnFacts(message, fullText, userFacts, userId)
+  void extractTurnFacts(message, fullText, userFacts, userId, user?.relationshipStatus ?? null)
     .then((newFacts) => {
       if (newFacts.length > 0) {
         return saveUserFacts(userId, profile?.birthProfileId ?? null, newFacts);

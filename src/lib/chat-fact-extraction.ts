@@ -19,6 +19,8 @@ Extract facts worth remembering across future conversations — relationships, o
 
 ONE exception to "never include astrological conclusions": if the assistant committed to a SPECIFIC DATED TIMING for a life event — a named month, season, or date range for a marriage, job change, property purchase, childbirth, and so on — record it verbatim as a fact of the form "PREVIOUSLY TOLD THEM: their marriage window is October 2026". The user will hold the assistant to that date weeks later, in a conversation that remembers nothing else about this one, and an assistant that cannot see what it promised will contradict itself and then invent a reason why both answers were right. Record only a timing the assistant actually named; never a general reading, a remedy, a planetary placement, or a hedged "sometime around". If the same commitment is already in the known-facts list below, do not record it again.
 
+Only the USER can establish a life circumstance. Never record a circumstance the assistant speculated about, asked about, or assumed — an assistant sentence like "you are likely to find a spouse who…" is a prediction about the future, not evidence the user is married, and turning it into a fact makes the assistant interrogate the user about a life they do not have. If the exchange only contains the assistant raising it, extract nothing.
+
 Each fact is an object {"fact": string, "followUpQuestion": string | null}. Only set followUpQuestion when the fact is naturally incomplete AND there is one obvious, non-intrusive next detail worth knowing later — for example "planning to conceive after starting a new job" naturally invites "Did the new job start yet?", and "is married" naturally invites "When did they get married?". Leave followUpQuestion null for facts that are already complete on their own or where any follow-up would feel intrusive or speculative.`;
 
 /**
@@ -31,7 +33,21 @@ export async function extractTurnFacts(
   assistantReply: string,
   existingFacts: UserFact[],
   userId: string,
+  // Account-level `users.relationship_status` (same source buildProfileFacts
+  // uses for the chat prompt). The extractor used to see only the exchange,
+  // so the assistant's own speculative prose about a spouse could be stored
+  // as "is married" — and its follow-up question then interrogated a single
+  // user about a marriage they never mentioned. Optional: an unset status
+  // (pre-onboarding-step accounts, prefer_not_to_say) just omits the line.
+  relationshipStatus?: string | null,
 ): Promise<NewUserFact[]> {
+  const statusBlock =
+    relationshipStatus && relationshipStatus !== 'prefer_not_to_say'
+      ? `The user's own profile states their relationship status is "${relationshipStatus}". Never extract a fact that contradicts it.
+
+`
+      : '';
+
   const knownFactsBlock =
     existingFacts.length > 0
       ? `Facts already known about this user — do not repeat these or extract a near-duplicate restating the same thing:\n${existingFacts.map((f) => `- ${f.fact}`).join('\n')}\n\n`
@@ -39,7 +55,7 @@ export async function extractTurnFacts(
 
   const prompt = `${PROMPT_INSTRUCTIONS}
 
-${knownFactsBlock}Exchange:
+${statusBlock}${knownFactsBlock}Exchange:
 User: ${userMessage}
 Assistant: ${assistantReply}
 
