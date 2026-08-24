@@ -63,6 +63,36 @@ export async function createRazorpayOrder(params: {
   return order.id;
 }
 
+export interface RazorpayPayment {
+  id: string;
+  status: string;
+}
+
+/**
+ * Lists the payments Razorpay has recorded against one of OUR orders — used by the
+ * reconciliation sweep (billing.service.ts's reconcileStaleRazorpayOrders) to find a payment
+ * that was actually captured on Razorpay's side but never reached
+ * POST /billing/razorpay/verify (browser killed/lost connectivity between capture and that
+ * call). Returns [] on a 404 (order id Razorpay doesn't recognize) rather than throwing — a
+ * reconciliation sweep must never let one bad order abort the rest of the batch.
+ */
+export async function fetchRazorpayOrderPayments(
+  razorpayOrderId: string,
+): Promise<RazorpayPayment[]> {
+  const { keyId, keySecret } = credentials();
+  const res = await fetch(`https://api.razorpay.com/v1/orders/${razorpayOrderId}/payments`, {
+    headers: { authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}` },
+  });
+
+  if (!res.ok) {
+    logger.warn({ razorpayOrderId, status: res.status }, 'Razorpay order-payments lookup failed');
+    return [];
+  }
+
+  const body = (await res.json()) as { items?: RazorpayPayment[] };
+  return body.items ?? [];
+}
+
 /**
  * True when `signature` is Razorpay's HMAC-SHA256 of `<order_id>|<payment_id>`
  * keyed with our secret — i.e. the payment really was completed on Razorpay's

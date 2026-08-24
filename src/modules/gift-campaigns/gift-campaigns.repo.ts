@@ -69,14 +69,24 @@ export async function cancelGiftCampaignIfPending(id: string): Promise<boolean> 
   return rows.length > 0;
 }
 
-export async function markGiftCampaignSent(
+/**
+ * Atomically claims a draft/scheduled campaign for sending — the send fan-out (minutes of
+ * wallet credits + push notifications) is bracketed by nothing else, so without this CAS a
+ * double-clicked "Send Now" or a manual send racing the daily cron sweep (sweepDueCampaigns)
+ * can both pass a separate status check and both fan out, blasting every recipient twice.
+ * Same atomic-CAS shape as cancelGiftCampaignIfPending. Returns false if someone else already
+ * claimed it — the caller must then do nothing at all (not even a partial re-send).
+ */
+export async function claimGiftCampaignForSend(
   id: string,
   fields: { sentAt: Date; validFrom: Date; validUntil: Date | null },
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const rows = await db
     .update(giftCampaigns)
     .set({ status: 'sent', ...fields, updatedAt: new Date() })
-    .where(eq(giftCampaigns.id, id));
+    .where(and(eq(giftCampaigns.id, id), inArray(giftCampaigns.status, ['draft', 'scheduled'])))
+    .returning({ id: giftCampaigns.id });
+  return rows.length > 0;
 }
 
 /** Scheduled campaigns whose fire time has arrived — swept by the daily cron. */

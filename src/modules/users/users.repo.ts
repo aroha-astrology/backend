@@ -827,8 +827,8 @@ const USER_SORT_COLUMNS = {
   lastActiveAt: users.lastActiveAt,
   walletBalancePaise: users.walletBalancePaise,
 } as const;
-/** `claimedIndependenceDay` isn't a real column (see below), so it can't live in USER_SORT_COLUMNS — handled as a separate branch in listUsersPage's orderBy. */
-export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedIndependenceDay';
+/** `claimedAt` isn't a real column (see below), so it can't live in USER_SORT_COLUMNS — handled as a separate branch in listUsersPage's orderBy. */
+export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt';
 
 /** Independence Day 2026 claim campaign — see config/campaigns.ts. Same idea as
  * hasClaimedIndependenceBonus's sibling `getClaimedCampaignKeys`, inlined here
@@ -845,10 +845,17 @@ export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedIndependenceDa
  * silently made this always evaluate false. Explicit aliasing removes the
  * ambiguity entirely.
  */
-const claimedIndependenceDayExpr = () => sql<boolean>`exists (
-  select 1 from wallet_transactions wt
+const claimedAmountExpr = () => sql<number | null>`(
+  select wt.delta from wallet_transactions wt
   where wt.user_id = users.id
     and wt.reason = 'independence_day_2026'
+  limit 1
+)`;
+const claimedAtExpr = () => sql<string | null>`(
+  select wt.created_at from wallet_transactions wt
+  where wt.user_id = users.id
+    and wt.reason = 'independence_day_2026'
+  limit 1
 )`;
 
 /** Powers both the Telegram `/users` command (no `q`) and the admin dashboard's `GET /v1/admin/users?q=` search. */
@@ -860,8 +867,7 @@ export async function listUsersPage(
   sortDir: 'asc' | 'desc' = 'desc',
   contactType: ContactTypeFilter = 'all',
 ) {
-  const orderExpr =
-    sortBy === 'claimedIndependenceDay' ? claimedIndependenceDayExpr() : USER_SORT_COLUMNS[sortBy];
+  const orderExpr = sortBy === 'claimedAt' ? claimedAtExpr() : USER_SORT_COLUMNS[sortBy];
   const rows = await db
     .select({
       id: users.id,
@@ -871,7 +877,8 @@ export async function listUsersPage(
       walletBalancePaise: users.walletBalancePaise,
       createdAt: users.createdAt,
       lastActiveAt: users.lastActiveAt,
-      claimedIndependenceDay: claimedIndependenceDayExpr(),
+      claimedAmountPaise: claimedAmountExpr(),
+      claimedAt: claimedAtExpr(),
     })
     .from(users)
     .where(userSearchWhere(q, contactType))

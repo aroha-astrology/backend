@@ -1,4 +1,4 @@
-import { and, desc, eq, not, like, sql } from 'drizzle-orm';
+import { and, desc, eq, not, like, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -12,6 +12,7 @@ import {
   type WalletTransactionRow,
 } from '../../db/schema.js';
 import { resolveDateRangePreset, sumPaidOrdersBetween } from '../admin/admin.repo.js';
+import { logger } from '../../lib/logger.js';
 
 export async function findActiveCouponByCode(code: string): Promise<CouponRow | undefined> {
   const rows = await db
@@ -119,6 +120,34 @@ export async function setOrderGatewayOrderId(
   await db.update(orders).set({ gatewayOrderId }).where(eq(orders.id, orderId));
 }
 
+/** Same self-heal window as the vastu/reports/palm stale-generating reapers. Long enough that
+ *  a slow-but-legitimate checkout.js flow (OTP entry, bank redirect) never gets swept mid-pay. */
+export const RAZORPAY_RECONCILE_STALE_MS = 15 * 60_000;
+
+/**
+ * Orders that reached Razorpay (a `gatewayOrderId` exists — checkout.js actually opened) but
+ * never got confirmed client-side, past the point a legitimate in-progress payment could still
+ * be running. The only way an order becomes `paid` today is the client calling
+ * POST /billing/razorpay/verify — if the browser is killed, loses connectivity, or the tab is
+ * closed between Razorpay capturing the payment and that call landing, the order sits at
+ * `pending` forever despite real money having moved. Swept by
+ * reconcileStaleRazorpayOrders (billing.service.ts) against Razorpay's own Orders API.
+ */
+export async function findStalePendingRazorpayOrders(): Promise<OrderRow[]> {
+  const cutoff = new Date(Date.now() - RAZORPAY_RECONCILE_STALE_MS);
+  return db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.status, 'pending'),
+        eq(orders.gatewayProvider, 'razorpay'),
+        sql`${orders.gatewayOrderId} is not null`,
+        sql`${orders.createdAt} < ${cutoff}`,
+      ),
+    );
+}
+
 /**
  * Marks a pending order paid, grants its credits, bumps the coupon's
  * redemption count, and appends a credit-ledger row — all atomically. Returns
@@ -141,17 +170,41 @@ export async function confirmOrderAndGrantCredits(
 
     if (!order) return undefined;
 
+    // Grant the discount unless the coupon's redemption cap was exhausted between order
+    // creation (validateCoupon/checkout — advisory only, since creating a pending order is
+    // free and unlimited) and this confirm. The increment and the ceiling check are one
+    // conditional UPDATE, so two concurrent confirms against the last remaining redemption
+    // can't both win it.
+    let grantPaise = order.finalAmountPaise;
     if (order.couponId) {
-      await tx
+      const [bumped] = await tx
         .update(coupons)
         .set({ redemptionCount: sql`${coupons.redemptionCount} + 1` })
-        .where(eq(coupons.id, order.couponId));
+        .where(
+          and(
+            eq(coupons.id, order.couponId),
+            or(isNull(coupons.maxRedemptions), lt(coupons.redemptionCount, coupons.maxRedemptions)),
+          ),
+        )
+        .returning({ id: coupons.id });
+
+      if (!bumped) {
+        // The payment already happened on Razorpay's/Google Play's side — refusing it now
+        // would capture real money and grant nothing, which is strictly worse than the
+        // over-redemption this closes. Grant the full undiscounted price instead and log it
+        // for finance visibility; only the discount is refused, never the payment itself.
+        grantPaise = order.amountPaise;
+        logger.warn(
+          { orderId: order.id, userId, couponId: order.couponId },
+          'billing: coupon redemption cap hit at confirm time, granting undiscounted amount',
+        );
+      }
     }
 
     const [userRow] = await tx
       .update(users)
       .set({
-        walletBalancePaise: sql`${users.walletBalancePaise} + ${order.finalAmountPaise}`,
+        walletBalancePaise: sql`${users.walletBalancePaise} + ${grantPaise}`,
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId))
@@ -161,7 +214,7 @@ export async function confirmOrderAndGrantCredits(
 
     await tx.insert(walletTransactions).values({
       userId,
-      delta: order.finalAmountPaise,
+      delta: grantPaise,
       reason: `purchase:${order.packId}`,
       balanceAfter: userRow.walletBalancePaise,
     });

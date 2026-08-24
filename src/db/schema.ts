@@ -1415,6 +1415,11 @@ export const purchasePlans = pgTable(
     analysis: jsonb('analysis').$type<Record<string, unknown>>(),
     translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
     errorMessage: text('error_message'),
+    /** Stamped by markProcessing; the stale-generating reaper (purchase-plan.service.ts's
+     * reapStaleProcessingPlans) uses this to find rows abandoned mid-run — this feature is free
+     * (no wallet charge), so the reaper only needs to unstick the row and free up the caller's
+     * DAILY_PLAN_LIMIT slot, not refund anything. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -1466,6 +1471,14 @@ export const vastuPlans = pgTable(
     analysis: jsonb('analysis').$type<Record<string, unknown>>(),
     translations: jsonb('translations').$type<Record<string, Record<string, unknown>>>(),
     errorMessage: text('error_message'),
+    /** The amount actually deducted from the wallet for this plan — refund exactly this on
+     * failure/reap, never a re-derived price (a feature-flag price change between charge and
+     * refund must not change what comes back). Same convention as palm_readings.pricePaidPaise. */
+    pricePaidPaise: integer('price_paid_paise'),
+    /** Stamped by markProcessing; the stale-generating reaper (vastu.service.ts's
+     * reapStaleVastuPlans) uses this to find rows abandoned mid-run. Same fencing pattern as
+     * palm_readings.startedAt. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

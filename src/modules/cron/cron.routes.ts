@@ -34,6 +34,9 @@ import { SaturnPhaseRunBodySchema, SaturnPhaseRunResultSchema } from './saturn-p
 import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js';
 import { reapStaleReports } from '../reports/reports.service.js';
 import { reapStalePalmReadings } from '../palm/palm.service.js';
+import { reapStaleVastuPlans } from '../vastu/vastu.service.js';
+import { reapStaleProcessingPlans } from '../purchase-plan/purchase-plan.service.js';
+import { reconcileStaleRazorpayOrders } from '../billing/billing.service.js';
 import { runLowBalanceAlert } from './low-balance-alert.service.js';
 import { sweepDueCampaigns, sweepExpiredGrants } from './gift-campaign-sweep.service.js';
 import {
@@ -549,6 +552,103 @@ const palmReapStaleRoute = createRoute({
 
 cronRouter.openapi(palmReapStaleRoute, async (c) => {
   const result = await reapStalePalmReadings();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Vastu plans stale-generating reaper — same self-heal as reports/palm above,
+// keyed to VASTU_STALE_PROCESSING_MS in vastu.repo.ts.
+// ---------------------------------------------------------------------------
+
+const vastuReapStaleRoute = createRoute({
+  method: 'post',
+  path: '/cron/vastu-reap-stale',
+  tags: ['Cron'],
+  summary: "Reap vastu_plans rows stuck at 'processing' past the stale threshold",
+  description:
+    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. Marks any ' +
+    "vastu plan whose generation claim is older than VASTU_STALE_PROCESSING_MS as 'error' " +
+    '(reason: generation timed out) and refunds its price. Authenticated via the ' +
+    'X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: z.object({ reaped: z.number() }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(vastuReapStaleRoute, async (c) => {
+  const result = await reapStaleVastuPlans();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Purchase plans stale-generating reaper — this feature is free (no wallet charge), so unlike
+// vastu/reports/palm above there is nothing to refund; it exists purely to unstick a row so it
+// stops silently occupying one of the caller's DAILY_PLAN_LIMIT slots. Keyed to
+// PURCHASE_PLAN_STALE_PROCESSING_MS in purchase-plan.repo.ts.
+// ---------------------------------------------------------------------------
+
+const purchasePlanReapStaleRoute = createRoute({
+  method: 'post',
+  path: '/cron/purchase-plan-reap-stale',
+  tags: ['Cron'],
+  summary: "Reap purchase_plans rows stuck at 'processing' past the stale threshold",
+  description:
+    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. Marks any ' +
+    'purchase-timing plan whose generation claim is older than ' +
+    "PURCHASE_PLAN_STALE_PROCESSING_MS as 'error' (reason: generation timed out) — no refund, " +
+    'this feature is free. Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: z.object({ reaped: z.number() }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(purchasePlanReapStaleRoute, async (c) => {
+  const result = await reapStaleProcessingPlans();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Razorpay stale-pending reconciler — self-heals orders where the payment was captured on
+// Razorpay's side but the client never called POST /billing/razorpay/verify to confirm it
+// (browser killed/lost connectivity between capture and that call). Keyed to
+// RAZORPAY_RECONCILE_STALE_MS in billing.repo.ts.
+// ---------------------------------------------------------------------------
+
+const billingRazorpayReconcileRoute = createRoute({
+  method: 'post',
+  path: '/cron/billing-razorpay-reconcile',
+  tags: ['Cron'],
+  summary: 'Grant credits for Razorpay orders captured but never confirmed client-side',
+  description:
+    'Machine-to-machine endpoint, meant to run every 10 minutes via the OS crontab. For each ' +
+    "order still 'pending' past RAZORPAY_RECONCILE_STALE_MS with a Razorpay order id, checks " +
+    "Razorpay's Orders API for a captured payment and, if found, grants credits exactly as " +
+    'POST /billing/razorpay/verify would have. An order with no captured payment is left ' +
+    'pending — most ticks are expected to reconcile zero orders. Authenticated via the ' +
+    'X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: {
+        'application/json': {
+          schema: z.object({ checked: z.number(), reconciled: z.number() }),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(billingRazorpayReconcileRoute, async (c) => {
+  const result = await reconcileStaleRazorpayOrders();
   return c.json(result, 200);
 });
 

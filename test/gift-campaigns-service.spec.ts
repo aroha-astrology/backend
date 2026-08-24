@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({
   resolveAudience: vi.fn(),
   cancelGiftCampaignIfPending: vi.fn(),
   getGiftCampaignById: vi.fn(),
-  markGiftCampaignSent: vi.fn().mockResolvedValue(undefined),
+  claimGiftCampaignForSend: vi.fn().mockResolvedValue(true),
   getAllActiveTokens: vi.fn(),
   claimCampaignBonus: vi.fn(),
   notifyUser: vi.fn().mockResolvedValue(undefined),
@@ -22,7 +22,7 @@ vi.mock('../src/modules/gift-campaigns/gift-campaigns.repo.js', async (importOri
     resolveAudience: state.resolveAudience,
     cancelGiftCampaignIfPending: state.cancelGiftCampaignIfPending,
     getGiftCampaignById: state.getGiftCampaignById,
-    markGiftCampaignSent: state.markGiftCampaignSent,
+    claimGiftCampaignForSend: state.claimGiftCampaignForSend,
   };
 });
 
@@ -52,7 +52,7 @@ beforeEach(() => {
     if (typeof fn === 'function' && 'mockReset' in fn)
       (fn as { mockReset: () => void }).mockReset();
   }
-  state.markGiftCampaignSent.mockResolvedValue(undefined);
+  state.claimGiftCampaignForSend.mockResolvedValue(true);
   state.notifyUser.mockResolvedValue(undefined);
   state.logAdminAction.mockResolvedValue(undefined);
 });
@@ -241,7 +241,7 @@ describe('executeSend', () => {
       claimWindowDays: 5,
     } as unknown as GiftCampaignRow);
 
-    expect(state.markGiftCampaignSent).toHaveBeenCalledWith(
+    expect(state.claimGiftCampaignForSend).toHaveBeenCalledWith(
       'c1',
       expect.objectContaining({ validUntil: expect.any(Date) }),
     );
@@ -250,10 +250,19 @@ describe('executeSend', () => {
   it('marks auto_credit campaigns sent with a null validUntil (no claim window)', async () => {
     state.resolveAudience.mockResolvedValue([]);
     await executeSend(autoCreditCampaign as unknown as GiftCampaignRow);
-    expect(state.markGiftCampaignSent).toHaveBeenCalledWith(
+    expect(state.claimGiftCampaignForSend).toHaveBeenCalledWith(
       'c1',
       expect.objectContaining({ validUntil: null }),
     );
+  });
+
+  it('claims the campaign before touching the audience, and does nothing if the claim loses the race', async () => {
+    state.claimGiftCampaignForSend.mockResolvedValue(false);
+    const sent = await executeSend(autoCreditCampaign as unknown as GiftCampaignRow);
+    expect(sent).toBe(false);
+    expect(state.resolveAudience).not.toHaveBeenCalled();
+    expect(state.claimCampaignBonus).not.toHaveBeenCalled();
+    expect(state.notifyUser).not.toHaveBeenCalled();
   });
 });
 
@@ -291,5 +300,25 @@ describe('sendCampaignNow', () => {
       'POST /v1/admin/gift-campaigns/c1/send',
       {},
     );
+  });
+
+  it('throws a conflict, and never logs an admin action, if a concurrent send already claimed the campaign', async () => {
+    // Passes the advisory pre-check (status still draft) but loses the atomic claim — e.g. the
+    // cron sweep claimed it in the gap between this call's two DB reads.
+    state.getGiftCampaignById.mockResolvedValue({
+      id: 'c1',
+      status: 'draft',
+      key: 'k',
+      title: 'X',
+      amountPaise: 100,
+      audienceMaxBalancePaise: null,
+      deliveryMode: 'auto_credit',
+      claimWindowDays: null,
+      creditExpiryDays: null,
+    });
+    state.claimGiftCampaignForSend.mockResolvedValue(false);
+
+    await expect(sendCampaignNow('c1', ADMIN_PHONE)).rejects.toThrow(/already been sent/);
+    expect(state.logAdminAction).not.toHaveBeenCalled();
   });
 });

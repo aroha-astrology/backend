@@ -131,7 +131,7 @@ export const AdminUsersQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   sortBy: z
-    .enum(['createdAt', 'lastActiveAt', 'walletBalancePaise', 'claimedIndependenceDay'])
+    .enum(['createdAt', 'lastActiveAt', 'walletBalancePaise', 'claimedAt'])
     .default('createdAt'),
   sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
@@ -144,7 +144,8 @@ const AdminUserRowSchema = z.object({
   walletBalancePaise: z.number(),
   createdAt: z.string(),
   lastActiveAt: z.string().nullable(),
-  claimedIndependenceDay: z.boolean(),
+  claimedAmountPaise: z.number().nullable(),
+  claimedAt: z.string().nullable(),
 });
 
 export const AdminUsersResponseSchema = z

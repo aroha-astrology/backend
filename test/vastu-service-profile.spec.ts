@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
   markProcessing: vi.fn(),
   markDone: vi.fn(),
   markError: vi.fn(),
-  saveFollowUp: vi.fn(),
+  saveFollowUpIfAbsent: vi.fn(),
   generateVastuAnalysis: vi.fn(),
   generateVastuAnswer: vi.fn(),
 }));
@@ -38,10 +38,11 @@ vi.mock('../src/modules/vastu/vastu.repo.js', () => ({
   markProcessing: state.markProcessing,
   markDone: state.markDone,
   markError: state.markError,
-  saveFollowUp: state.saveFollowUp,
+  saveFollowUpIfAbsent: state.saveFollowUpIfAbsent,
   listPlansForUser: vi.fn(),
   deletePlanForUser: vi.fn(),
   saveVastuTranslation: vi.fn(),
+  findStaleProcessingPlans: vi.fn(),
 }));
 
 vi.mock('../src/lib/llm/vastu.js', () => ({
@@ -68,6 +69,8 @@ function makePlanRow(overrides: Partial<VastuPlanRow> = {}): VastuPlanRow {
     analysis: { intro: 'ok' },
     translations: null,
     errorMessage: null,
+    pricePaidPaise: null,
+    startedAt: null,
     createdAt: now,
     completedAt: now,
     ...overrides,
@@ -84,7 +87,7 @@ beforeEach(() => {
   state.markProcessing.mockReset().mockResolvedValue(undefined);
   state.markDone.mockReset().mockResolvedValue(undefined);
   state.markError.mockReset().mockResolvedValue(undefined);
-  state.saveFollowUp.mockReset().mockResolvedValue(undefined);
+  state.saveFollowUpIfAbsent.mockReset().mockResolvedValue(true);
   state.generateVastuAnalysis.mockReset().mockResolvedValue({ analysis: { intro: 'ok' } });
   state.generateVastuAnswer.mockReset().mockResolvedValue('An answer.');
 });

@@ -11,6 +11,7 @@ import {
   insertPendingPlan,
   listPlansForUser,
   findPlanForUser,
+  findStaleProcessingPlans,
   countRecentPlansForUser,
   markProcessing,
   markDone,
@@ -119,9 +120,11 @@ export async function requestPurchasePlanAnalysis(
     status: 'pending',
   });
 
-  // Fire-and-forget: the app runs single-instance under pm2 (-i 1), so an
-  // in-process background task survives until it finishes without needing a
-  // separate job queue — see docs/superpowers/specs/2026-07-04-panchang-parity-design.md.
+  // Fire-and-forget in-process background task — see
+  // docs/superpowers/specs/2026-07-04-panchang-parity-design.md. Runs under pm2 cluster mode
+  // (`-i max`, see scripts/deploy.sh), so a `pm2 reload` recycling the worker mid-generation
+  // kills this task with it — reapStaleProcessingPlans below is what unsticks the row when
+  // that happens, not an in-process guarantee.
   void processAnalysis(row.id, userId, {
     category: body.category,
     metadata: body.metadata,
@@ -174,6 +177,22 @@ async function processAnalysis(
     logger.error({ err, planId }, 'purchase plan LLM analysis failed');
     await markError(planId, err instanceof Error ? err.message : 'Unknown error');
   }
+}
+
+/**
+ * Self-heals any purchase_plans row stuck at 'processing' because the process that claimed it
+ * died before reaching markDone/markError. No wallet refund — this feature is free — but
+ * without this a stuck row polls forever client-side AND permanently occupies one of the
+ * caller's DAILY_PLAN_LIMIT slots (countRecentPlansForUser counts every row regardless of
+ * status). Same self-heal as vastu.service.ts's reapStaleVastuPlans, run every 5 minutes via
+ * POST /cron/purchase-plan-reap-stale.
+ */
+export async function reapStaleProcessingPlans(): Promise<{ reaped: number }> {
+  const stale = await findStaleProcessingPlans();
+  for (const row of stale) {
+    await markError(row.id, 'Generation timed out');
+  }
+  return { reaped: stale.length };
 }
 
 export function toPurchasePlanDto(row: PurchasePlanRow): PurchasePlanDto {

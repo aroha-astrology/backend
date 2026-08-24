@@ -13,12 +13,13 @@ import {
   insertPendingPlan,
   listPlansForUser,
   findPlanForUser,
+  findStaleProcessingPlans,
   countRecentPlansForUser,
   markProcessing,
   markDone,
   markError,
   deletePlanForUser,
-  saveFollowUp,
+  saveFollowUpIfAbsent,
   saveVastuTranslation,
 } from './vastu.repo.js';
 import type { VastuPlanRow } from '../../db/schema.js';
@@ -101,6 +102,10 @@ export async function requestVastuAnalysis(
       overallScore,
       language: body.language,
       status: 'pending',
+      // Persisted so the stale-processing reaper (an out-of-band cron sweep, not this request)
+      // can refund exactly what was charged even if this process dies before ever reaching
+      // processAnalysis's own refund path — see reapStaleVastuPlans.
+      pricePaidPaise: pricePaise,
     });
 
     void processAnalysis(row.id, userId, {
@@ -154,6 +159,31 @@ async function processAnalysis(
   }
 }
 
+/**
+ * Self-heals any vastu_plans row stuck at 'processing' because the process that claimed it
+ * (via markProcessing) crashed or was killed before reaching markDone/markError — pm2 restart,
+ * deploy, OOM. Without this the row sits at 'processing' forever, the user is charged and
+ * never sees a report, and askVastuQuestion is permanently unreachable for that plan (it
+ * requires status 'done'). Same self-heal as reports.service.ts's reapStaleReports and
+ * palm.service.ts's reapStalePalmReadings, run every 5 minutes via POST /cron/vastu-reap-stale.
+ */
+export async function reapStaleVastuPlans(): Promise<{ reaped: number }> {
+  const stale = await findStaleProcessingPlans();
+  for (const row of stale) {
+    // markError first: if the refund throws, the row is at least out of 'processing' and
+    // won't be double-refunded by the next sweep.
+    await markError(row.id, 'Generation timed out');
+    if (row.pricePaidPaise) {
+      await addWalletBalance(row.userId, row.pricePaidPaise, 'refund:vastu_report').catch(
+        (err: unknown) => {
+          logger.error({ err, planId: row.id }, 'vastu reap: refund failed');
+        },
+      );
+    }
+  }
+  return { reaped: stale.length };
+}
+
 export async function askVastuQuestion(
   planId: string,
   userId: string,
@@ -177,7 +207,11 @@ export async function askVastuQuestion(
     chartContext: buildChartContext(kundli),
     language: language ?? row.language,
   });
-  await saveFollowUp(planId, { question, answer });
+  // The pre-check above is advisory only — two concurrent requests can both pass it. This is
+  // the real guard: the DB decides the single winner, so the user's displayed answer can never
+  // be silently overwritten by a losing race.
+  const saved = await saveFollowUpIfAbsent(planId, { question, answer });
+  if (!saved) throw Errors.conflict('ALREADY_ASKED');
 
   const updated = await findPlanForUser(planId, userId);
   return toVastuPlanDto(updated ?? row);

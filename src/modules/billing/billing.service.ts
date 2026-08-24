@@ -7,6 +7,7 @@ import {
   findOrdersForUser,
   findDebitsForUser,
   findLatestOrderForPack,
+  findStalePendingRazorpayOrders,
   confirmOrderAndGrantCredits,
   setOrderGatewayOrderId,
   refundOrder as refundOrderRepo,
@@ -14,7 +15,12 @@ import {
 import { findActiveUserById } from '../users/users.repo.js';
 import { logger } from '../../lib/logger.js';
 import { verifyGooglePlayPurchase, consumeGooglePlayPurchase } from './google-play-verifier.js';
-import { createRazorpayOrder, getRazorpayKeyId, verifyRazorpaySignature } from './razorpay.js';
+import {
+  createRazorpayOrder,
+  getRazorpayKeyId,
+  verifyRazorpaySignature,
+  fetchRazorpayOrderPayments,
+} from './razorpay.js';
 import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
 
 /**
@@ -204,6 +210,50 @@ export async function verifyRazorpayPayment(
 }
 
 /**
+ * Reconciles orders that reached Razorpay but were never confirmed client-side — the only path
+ * that normally turns an order `paid` is the browser calling POST /billing/razorpay/verify
+ * after checkout.js closes, and if the browser dies (closed tab, lost connectivity, OS-killed
+ * app) between Razorpay capturing the payment and that call landing, the order is stuck at
+ * `pending` with real money already moved. Run every ~10 minutes via
+ * POST /cron/billing-razorpay-reconcile.
+ *
+ * Deliberately conservative: only acts when Razorpay reports an actually `captured` payment for
+ * the order. An order with no captured payment (abandoned checkout, failed card) is left
+ * `pending` — there's nothing to reconcile, and eventually granting one would be the actual bug
+ * this whole feature exists to prevent.
+ */
+export async function reconcileStaleRazorpayOrders(): Promise<{
+  checked: number;
+  reconciled: number;
+}> {
+  const stale = await findStalePendingRazorpayOrders();
+  let reconciled = 0;
+
+  for (const order of stale) {
+    if (!order.gatewayOrderId) continue; // findStalePendingRazorpayOrders already filters this; narrows the type.
+    try {
+      const payments = await fetchRazorpayOrderPayments(order.gatewayOrderId);
+      const captured = payments.find((p) => p.status === 'captured');
+      if (!captured) continue;
+
+      const result = await confirmOrderAndGrantCredits(order.id, order.userId, captured.id);
+      if (!result) continue; // Confirmed by a concurrent path (e.g. a very late verify call) in the meantime.
+
+      logger.warn(
+        { orderId: order.id, userId: order.userId, razorpayPaymentId: captured.id },
+        'billing: reconciled an order whose client-side verify call never arrived',
+      );
+      await notifyTopUp(order.userId, order.finalAmountPaise, result.walletBalancePaise);
+      reconciled++;
+    } catch (err) {
+      logger.error({ err, orderId: order.id }, 'billing: reconcile failed for order');
+    }
+  }
+
+  return { checked: stale.length, reconciled };
+}
+
+/**
  * No real payment gateway (Razorpay/Stripe) is wired up yet — this used to be
  * a MOCK that always "succeeded" and granted credits for any pending order,
  * which meant any signed-in user could get free credits by hitting this
@@ -289,7 +339,14 @@ export async function confirmGooglePlayPurchase(
   try {
     await consumeGooglePlayPurchase({ productId, purchaseToken });
   } catch (err) {
-    logger.warn({ err, purchaseToken, productId }, 'Failed to consume Google Play purchase');
+    // Truncated, not the raw token — same convention as fcm.ts's deviceToken.slice(-8). Enough
+    // to correlate a specific purchase in a support investigation without writing a live Google
+    // Play bearer credential to disk (the logger's own `redact` would blank a `purchaseToken`
+    // key entirely, which is safe but loses that correlation value).
+    logger.warn(
+      { err, purchaseTokenSuffix: purchaseToken.slice(-8), productId },
+      'Failed to consume Google Play purchase',
+    );
   }
 
   // Fresh grant only (not the idempotent-replay/already-paid branches above) —

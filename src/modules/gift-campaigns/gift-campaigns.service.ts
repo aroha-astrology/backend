@@ -8,6 +8,7 @@ import { logAdminAction } from '../admin/admin.repo.js';
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
 import { claimCampaignBonus } from '../users/users.repo.js';
 import type { GiftCampaignRow } from '../../db/schema.js';
+import { logger } from '../../lib/logger.js';
 import {
   getGiftCampaignByKey,
   generateCampaignKey,
@@ -15,7 +16,7 @@ import {
   resolveAudience,
   cancelGiftCampaignIfPending,
   getGiftCampaignById,
-  markGiftCampaignSent,
+  claimGiftCampaignForSend,
   type CreateGiftCampaignRow,
 } from './gift-campaigns.repo.js';
 import { getGiftCampaignPushCopy, normalizeLang } from './gift-campaign-copy.js';
@@ -165,12 +166,32 @@ function formatRupeeLabel(paise: number): string {
 }
 
 /**
- * Shared by the manual "Send Now" admin action and the daily cron sweep.
- * Callers are responsible for only invoking this once per campaign (both
- * only ever call it for a draft/scheduled row, then this marks it sent).
+ * Shared by the manual "Send Now" admin action and the daily cron sweep
+ * (sweepDueCampaigns). Both can legitimately race for the same campaign — a
+ * double-clicked "Send Now", or a manual send landing the same minute the cron sweep picks up
+ * a scheduled one — so the guarantee that this only ever fans out once per campaign lives HERE,
+ * as an atomic claim, not in whichever caller happens to check status first. Returns false
+ * (and does nothing else) if another call already claimed this campaign.
  */
-export async function executeSend(campaign: GiftCampaignRow): Promise<void> {
+export async function executeSend(campaign: GiftCampaignRow): Promise<boolean> {
   const now = new Date();
+  const validUntil =
+    campaign.deliveryMode === 'self_claim' && campaign.claimWindowDays
+      ? new Date(now.getTime() + campaign.claimWindowDays * 24 * 60 * 60 * 1000)
+      : null;
+
+  // Claim FIRST, before any wallet credit or push goes out — this is the single point that
+  // decides who, if anyone, gets to fan out to the audience.
+  const claimed = await claimGiftCampaignForSend(campaign.id, {
+    sentAt: now,
+    validFrom: now,
+    validUntil,
+  });
+  if (!claimed) {
+    logger.warn({ campaignId: campaign.id }, 'gift-campaign: already claimed, skipping send');
+    return false;
+  }
+
   const audience = await resolveAudience(campaign.audienceMaxBalancePaise);
   const expiresAt = campaign.creditExpiryDays
     ? new Date(now.getTime() + campaign.creditExpiryDays * 24 * 60 * 60 * 1000)
@@ -178,7 +199,12 @@ export async function executeSend(campaign: GiftCampaignRow): Promise<void> {
   const limit = pLimit(SEND_CONCURRENCY);
   const amountLabel = formatRupeeLabel(campaign.amountPaise);
 
-  await Promise.all(
+  // allSettled, not all: one recipient's failed credit/push must never abort the rest of the
+  // batch — claimCampaignBonus is idempotent (FOR UPDATE + prior-reason check), so a manual
+  // retry after a partial failure re-credits nobody who already got it, but a Promise.all
+  // rejecting here would have left the campaign stuck unclaimed with an arbitrary prefix of
+  // the audience already paid, and no way to safely retry (retrying would re-fan-out to all).
+  const results = await Promise.allSettled(
     audience.map((member) =>
       limit(async () => {
         if (campaign.deliveryMode === 'auto_credit') {
@@ -200,21 +226,31 @@ export async function executeSend(campaign: GiftCampaignRow): Promise<void> {
     ),
   );
 
-  const validUntil =
-    campaign.deliveryMode === 'self_claim' && campaign.claimWindowDays
-      ? new Date(now.getTime() + campaign.claimWindowDays * 24 * 60 * 60 * 1000)
-      : null;
-  await markGiftCampaignSent(campaign.id, { sentAt: now, validFrom: now, validUntil });
+  const failed = results.filter((r) => r.status === 'rejected').length;
+  if (failed > 0) {
+    logger.error(
+      { campaignId: campaign.id, failed, total: audience.length },
+      'gift-campaign: some recipients failed during send',
+    );
+  }
+  return true;
 }
 
 export async function sendCampaignNow(id: string, adminPhone: string): Promise<GiftCampaignRow> {
   const campaign = await getGiftCampaignById(id);
   if (!campaign) throw Errors.notFound('Unknown campaign');
+  // Fast, friendly rejection for the common case (a stale UI showing a Send button for a
+  // campaign already sent/canceled). The real guarantee against a genuine race is the atomic
+  // claim inside executeSend — this check is advisory, not the source of truth.
   if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
     throw Errors.conflict('This campaign has already been sent or canceled');
   }
-  await executeSend(campaign);
+  const sent = await executeSend(campaign);
+  if (!sent) {
+    throw Errors.conflict('This campaign has already been sent or canceled');
+  }
   await logAdminAction(adminPhone, `POST /v1/admin/gift-campaigns/${id}/send`, {});
   const updated = await getGiftCampaignById(id);
-  return updated!;
+  if (!updated) throw Errors.internal('Campaign vanished mid-send');
+  return updated;
 }
