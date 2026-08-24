@@ -1,4 +1,4 @@
-import { and, desc, eq, not, like, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, not, like, isNull, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -142,8 +142,8 @@ export async function findStalePendingRazorpayOrders(): Promise<OrderRow[]> {
       and(
         eq(orders.status, 'pending'),
         eq(orders.gatewayProvider, 'razorpay'),
-        sql`${orders.gatewayOrderId} is not null`,
-        sql`${orders.createdAt} < ${cutoff}`,
+        isNotNull(orders.gatewayOrderId),
+        lt(orders.createdAt, cutoff),
       ),
     );
 }
