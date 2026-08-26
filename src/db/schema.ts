@@ -330,6 +330,12 @@ export const users = pgTable(
     onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
     profileCompletedAt: timestamp('profile_completed_at', { withTimezone: true }),
 
+    // --- product tour ------------------------------------------------------
+    // Ids of the per-screen tours this user has finished (see the frontend's
+    // components/tour/tour-registry.ts). One column rather than a boolean per
+    // tour so adding an 11th tour is a frontend-only change.
+    toursCompleted: jsonb('tours_completed').$type<string[]>().notNull().default([]),
+
     // --- activity / client -------------------------------------------------
     lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
     streakCount: integer('streak_count'),
