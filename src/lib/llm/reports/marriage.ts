@@ -22,11 +22,18 @@ import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import type { MarriageScores } from '../../astro-engine/reports/marriage.js';
 import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import type { AgeBand } from '../../astro-engine/reports/report-age-bands.js';
+import type { PlanetStrengthRow } from '../../chat-grounding.js';
 import type {
   ReportSection,
   SectionGenerationProgress,
 } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
+
+/** `planetStrength` is bolted onto every report's `scores` centrally (reports.service.ts's
+ * `computeScoresWithCondition`, right after `computeScores` returns) rather than being part of
+ * `MarriageScores` itself — same pattern as `planetCondition`. It IS present by the time
+ * `generateMarriageNarrative` runs. */
+type MarriageScoresWithStrength = MarriageScores & { planetStrength?: PlanetStrengthRow[] };
 
 const GROUNDING_RULE =
   "Every score, label, date, house sign, trait-tilt number, dosha/yoga fact, and decade score below is a GIVEN FACT, already computed by a deterministic classical Vedic algorithm — the SAME algorithm the app's AI chat feature uses for its own timing answers about this exact chart. State these facts verbatim in your prose. Never recompute, second-guess, round differently, invent a new number, or contradict any of them — your job is ONLY to explain what they mean in plain language.";
@@ -70,11 +77,11 @@ ${TONE_RULE}
 CRITICAL — check the given relationship status before writing anything about timing: if it is "married", "divorced", or "widowed", this person already has (or had) a marriage — do NOT predict if/when they "will" get married. Instead frame the score/band/timing windows as describing the marriage-relevant period(s) this chart's own patterns highlight (useful for understanding the relationship's ups and downs, not a first-marriage countdown); if "divorced" or "widowed", also do not imply their current status is temporary. If the status is "single", "in_relationship", "engaged", or not given at all, write normally about if/when marriage may happen, as before.
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
-{"sections": [{"heading": string, "paragraphs": string[]}]}
+{"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "At A Glance" — 1-2 paragraphs stating the marriage score and band given, explaining what the band means in plain language (e.g. a "slow_build" band means the groundwork is still forming, not that marriage won't happen), and mentioning the Manglik status given (including what a cancellation means in plain terms, if cancelled).
-2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout.
+2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout. You MUST ALSO include a "uiData" object on THIS section (section 2) containing exactly this string field per planet in the given Planet Strength table below, keyed EXACTLY as "planetStrength_" followed by the planet's name in lowercase (e.g. "planetStrength_saturn"): a 1-2 line explanation of what that planet's given strength percentage and any retrograde/combust flag mean in plain language, tied to that planet's classical significations (e.g. Saturn → discipline/endurance, Moon → emotional stability, Mercury → communication) rather than marriage specifically, since this table covers the whole chart. Omit this uiData object entirely if no Planet Strength table is given.
 
 Write in a clear, natural style. Second person ("you").`;
 }
@@ -108,7 +115,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "Money After Marriage" — 1-3 paragraphs on how finances are classically read to shift after marriage, grounded in the given 2nd/11th house facts.
-2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. You MUST ALSO include a "uiData" object on this section containing exactly this string field: "remediesImpact" (a 1-3 line explanation of how performing astrological remedies will positively change or improve the marriage dynamics, giving specific examples based on the chart's placements).
+2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. If a Remedies list is given below, you MUST ALSO include a "uiData" object on this section containing, for EACH remedy planet given, two string fields keyed EXACTLY as "remedyEffect_" and "remedyDuration_" followed by that planet's name in lowercase (e.g. "remedyEffect_venus", "remedyDuration_venus"): "remedyEffect_<planet>" is a 1-2 line explanation of what performing THAT SPECIFIC already-given remedy is classically believed to strengthen for this person's marriage, tied to that planet's role (e.g. Venus → love/harmony, Jupiter → blessings/growth); "remedyDuration_<planet>" is one short, practical guideline for how long or how often to continue it (e.g. "Continue for at least 40 Fridays" or "Every Thursday for about 4 months"), matching the remedy's own weekday if it names one. Explaining an already-given remedy's effect and duration here is your job, not a new recommendation — never suggest a different remedy, puja, gemstone or purchase than the one given. Omit this uiData object entirely if no Remedies list is given.
 
 Write in a clear, natural style. Second person ("you").`;
 }
@@ -130,7 +137,7 @@ Write EXACTLY 2 sections, in this order:
 Write in a clear, natural style. Second person ("you").`;
 }
 
-function buildFactsCall1(scores: MarriageScores): string {
+function buildFactsCall1(scores: MarriageScoresWithStrength): string {
   const lines: string[] = [];
   lines.push(
     `Reader's current relationship status: ${scores.relationshipStatus ?? 'not provided'}.`,
@@ -159,6 +166,16 @@ function buildFactsCall1(scores: MarriageScores): string {
   lines.push(
     `Jupiter's own separate dasha window (supplementary dharma/marriage-karaka color only — NOT a second, competing timing answer): ${formatWindow(scores.jupiterDharmaWindow)}.`,
   );
+  if (scores.planetStrength && scores.planetStrength.length > 0) {
+    lines.push(
+      `Planet Strength table (Shadbala, whole-chart, not marriage-specific): ${scores.planetStrength
+        .map(
+          (p) =>
+            `${p.planet}: ${p.pct}% (${p.isStrong ? 'strong' : 'below par'}${p.isRetrograde ? ', retrograde' : ''}${p.isCombust ? ', combust' : ''})`,
+        )
+        .join('; ')}.`,
+    );
+  }
   return lines.join('\n');
 }
 
@@ -216,6 +233,13 @@ function buildFactsCall3(scores: MarriageScores): string {
       : 'none of the specifically checked doshas are present';
   lines.push(`What's going for you (present favorable yogas): ${positives}.`);
   lines.push(`What to hold carefully (present doshas needing awareness): ${cautions}.`);
+  if (scores.planetRemedies && scores.planetRemedies.length > 0) {
+    lines.push(
+      `Remedies already recommended elsewhere on this report (one per planet — explain effect+duration for THIS exact remedy in uiData, do not invent a different one): ${scores.planetRemedies
+        .map((r) => `${r.planet} (house ${r.house}): "${r.remedies[0]}"`)
+        .join('; ')}.`,
+    );
+  }
   return lines.join('\n');
 }
 
