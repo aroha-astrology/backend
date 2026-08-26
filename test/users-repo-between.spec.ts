@@ -5,12 +5,12 @@ import { PgDialect } from 'drizzle-orm/pg-core/dialect';
 // of the existing countUsersActiveSince/countNewUsersSince (used by
 // admin-alerts.service.ts) — added alongside them, not replacing them, so
 // admin-alerts.service.ts's existing callers are untouched.
-const state = vi.hoisted(() => ({ select: vi.fn() }));
+const state = vi.hoisted(() => ({ select: vi.fn(), execute: vi.fn() }));
 
 vi.mock('../src/config/db.js', () => {
   const sqlClient: any = (..._args: unknown[]) => Promise.resolve([]);
   sqlClient.end = vi.fn().mockResolvedValue(undefined);
-  return { db: { select: state.select }, sqlClient };
+  return { db: { select: state.select, execute: state.execute }, sqlClient };
 });
 
 import {
@@ -46,16 +46,24 @@ const range = { from: new Date('2026-07-01T00:00:00Z'), to: new Date('2026-07-08
 
 beforeEach(() => {
   state.select.mockReset();
+  state.execute.mockReset();
 });
 
 describe('usersActiveBetween', () => {
-  it('counts non-deleted users active within [from, to)', async () => {
-    const { chain, calls } = makeSelectChain([{ count: 12 }]);
-    state.select.mockReturnValue(chain);
+  // Counts from a UNION of event tables, deliberately NOT from users.lastActiveAt — that
+  // column is overwritten on every request, so a user active yesterday AND today only lands
+  // in today's bucket and past windows silently shrink as people come back. See the repo
+  // function's own doc comment. These assertions pin that union so a "simplification" back
+  // to a single lastActiveAt predicate fails here rather than in a monthly report.
+  it('counts non-deleted users active within [from, to) from the event union', async () => {
+    state.execute.mockResolvedValue([{ activeCount: '12' }]);
 
     const result = await usersActiveBetween(range);
 
-    const compiled = compile(calls.where);
+    const compiled = compile(state.execute.mock.calls[0]![0]);
+    for (const table of ['ai_usage', 'chat_sessions', 'voice_sessions', 'orders', 'reports']) {
+      expect(compiled.sql).toContain(table);
+    }
     expect(compiled.sql).toMatch(/last_active_at/);
     expect(compiled.sql).toMatch(/deleted_at/);
     expect(compiled.params).toContainEqual(range.from.toISOString());
@@ -64,9 +72,7 @@ describe('usersActiveBetween', () => {
   });
 
   it('defaults to zero with no active users', async () => {
-    const { chain } = makeSelectChain([]);
-    state.select.mockReturnValue(chain);
-
+    state.execute.mockResolvedValue([]);
     expect(await usersActiveBetween(range)).toBe(0);
   });
 });

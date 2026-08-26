@@ -977,9 +977,6 @@ export async function listReferrals() {
   }));
 }
 
-/** Cost in paise to unlock one kundli house's detail view (Rs 50 = 5 credits at the old rate). Reused by `unlockHouseForOwnedProfile` (birth-profiles.repo.ts) for the additional-profile case. */
-export const HOUSE_UNLOCK_COST_PAISE = 5000;
-
 /**
  * `pricePaise` is resolved by the caller (users.service.ts `unlockHouse`) from
  * the admin-set feature price — this function must never invent its own, or the

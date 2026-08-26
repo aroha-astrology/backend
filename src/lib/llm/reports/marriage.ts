@@ -124,7 +124,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Marriage Quality By Decade" — 2-4 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. You MUST ALSO include a "uiData" object on this section containing exactly this array field: "decadeExplanations" (an array of objects, each with "label" matching the decade name like "0-10" and "explanation" with a 1-3 line text of why it is favorable or challenging based on astrological principles).
+1. Heading close to "Marriage Quality By Decade" — 2-4 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. You MUST ALSO include a "uiData" object on this section containing exactly this array field: "decadeExplanations" (an array of objects, each with "label" copied VERBATIM from the decade-arc fact line above (e.g. "Years 1-10" — exact string, do not reformat) and "explanation" with a 1-3 line text of why it is favorable or challenging based on astrological principles).
 2. Heading close to "Modern Realities" — 1-2 paragraphs using STRICT tendency language (never "you will marry late," always something like "this chart's own timing pattern tends to favor a later window" — and only mention this at all if the given fact says it is true), the Rahu house note (framed as a tendency toward distance/foreign connection in partnership, not a certainty), and the 7th-house planet count (framed as a tendency toward a busier or more complex partnership dynamic if the count is above 2, otherwise skip that point rather than force it).
 
 Write in a clear, natural style. Second person ("you").`;
@@ -134,6 +134,12 @@ function buildFactsCall1(scores: MarriageScores): string {
   const lines: string[] = [];
   lines.push(
     `Reader's current relationship status: ${scores.relationshipStatus ?? 'not provided'}.`,
+  );
+  // Given fact, already banded deterministically (marriage.ts) from the same tilt formula the
+  // True Love Report uses — the screen renders it as its own card, so the narrative must agree
+  // with it rather than reach an independent conclusion about love vs arranged.
+  lines.push(
+    `Route to marriage this chart leans toward (GIVEN, do not contradict): ${scores.loveOrArrange ?? 'mixed'} (love = self-chosen, arrange = family-introduced, mixed = a blend).`,
   );
   lines.push(`Marriage score: ${scores.marriageScore} out of 100.`);
   lines.push(`Band: ${scores.band}.`);
@@ -375,7 +381,7 @@ export async function translateMarriageNarrative(
     messages: [
       {
         role: 'user',
-        content: `Translate the following report sections into the language "${targetLanguage}". Keep the exact same JSON structure ({"sections": [{"heading": string, "paragraphs": string[]}]}) and the same number of sections and paragraphs. ONLY translate the human-readable text.\n\nOriginal Content:\n${JSON.stringify({ sections }, null, 2)}`,
+        content: `Translate the following report sections into the language "${targetLanguage}". Keep the exact same JSON structure ({"sections": [{"heading": string, "paragraphs": string[], "uiData"?: object}]}) and the same number of sections and paragraphs. ONLY translate the human-readable text. Where a section has a "uiData" object you MUST reproduce it with its keys UNCHANGED (they are code identifiers) and only its string values translated — including any "label" fields inside "decadeExplanations", which must be copied verbatim, NOT translated.\n\nOriginal Content:\n${JSON.stringify({ sections }, null, 2)}`,
       },
     ],
   });

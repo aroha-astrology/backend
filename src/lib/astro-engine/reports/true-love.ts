@@ -98,7 +98,7 @@ function buildLoveSignificators(chart: Record<string, unknown> | null): string[]
  *   - Dividing by 12 maps that range onto [-5, 5]; adding 5 recenters it onto [0, 10], with 5
  *     (both sides equal) as the exact neutral midpoint.
  */
-function computeLoveVsArrangedTilt(
+export function computeLoveVsArrangedTilt(
   venusScore: number,
   fifthLordScore: number,
   seventhLordScore: number,

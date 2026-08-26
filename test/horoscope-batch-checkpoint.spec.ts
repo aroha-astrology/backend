@@ -81,7 +81,9 @@ describe('runHoroscopeBatch', () => {
     // test runs next and silently return the wrong page).
     vi.resetAllMocks();
     state.getOrCreateBatchRun.mockResolvedValue(freshRun());
-    state.resolveActiveProfileContext.mockResolvedValue(makeProfileContext());
+    state.resolveActiveProfileContext.mockResolvedValue(
+      makeProfileContext({ dateOfBirth: '1995-06-15' }),
+    );
     state.findHoroscope.mockResolvedValue(undefined);
   });
 

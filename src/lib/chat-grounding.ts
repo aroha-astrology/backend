@@ -1065,10 +1065,22 @@ export function planetStrengthFacts(
 
     if (chart) {
       try {
+        // ONE fact for every Vakri graha, not one per planet: analyzeAllVakriPlanets can
+        // return up to 5 (the tara grahas), and a per-planet block pushed this past the
+        // 24000-char chart-data budget — which exists so the <user_facts> reserve (dated
+        // commitments accumulated over a user's lifetime) still fits under MAX_CONTEXT_CHARS.
+        // See verify-chat-fix.spec.ts. Chart-specific measurements only: the three
+        // interpretation layers (classical/interpretive/karmic) are generic per-planet lore
+        // that scholar.ts's system prompt already tells the model how to apply.
         const vakriAnalyses = analyzeAllVakriPlanets(chart as never);
-        for (const va of vakriAnalyses) {
+        if (vakriAnalyses.length > 0) {
           facts.push(
-            `VAKRI DETAIL (${va.planet}): House ${va.placement.house} (${va.placement.sign}), rules house(s) ${va.lordship.housesOwned.join(', ')} (${va.lordship.functionalNature}). Cheshta Bala: ${va.cheshtaBala.score} Virupas (${va.cheshtaBala.level}). Classical: ${va.interpretation.classical} Interpretive: ${va.interpretation.interpretive} Karmic: ${va.interpretation.karmic} (Confidence: ${va.confidence.level}, score: ${va.confidence.score}).`,
+            `VAKRI DETAIL — ${vakriAnalyses
+              .map(
+                (va) =>
+                  `${va.planet}: H${va.placement.house} ${va.placement.sign}, rules ${va.lordship.housesOwned.join('/')} (${va.lordship.functionalNature}), Cheshta ${va.cheshtaBala.score} Virupas (${va.cheshtaBala.level}), confidence ${va.confidence.level}`,
+              )
+              .join('; ')}.`,
           );
         }
       } catch {

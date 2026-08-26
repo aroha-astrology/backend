@@ -18,7 +18,9 @@ import {
 } from '../users/users.repo.js';
 import { logger } from '../../lib/logger.js';
 
-export const LOW_BALANCE_THRESHOLD_PAISE = 10000; // ₹100
+/** Wallet level below which the share-prompt fires. Not a price or a payout — nothing is
+ * charged or paid at this number — so it stays a constant rather than a FEATURE_REGISTRY key. */
+export const DEFAULT_LOW_BALANCE_THRESHOLD_PAISE = 10000; // ₹100
 export const LOW_BALANCE_NOTIFICATION_TYPE = 'low_balance_share';
 
 const TITLE = 'Running low on balance?';
@@ -31,8 +33,8 @@ export interface LowBalanceAlertResult {
 }
 
 export async function runLowBalanceAlert(): Promise<LowBalanceAlertResult> {
-  const rearmed = await rearmRecoveredLowBalanceUsers(LOW_BALANCE_THRESHOLD_PAISE);
-  const userIds = await findUnalertedLowBalanceUserIds(LOW_BALANCE_THRESHOLD_PAISE);
+  const rearmed = await rearmRecoveredLowBalanceUsers(DEFAULT_LOW_BALANCE_THRESHOLD_PAISE);
+  const userIds = await findUnalertedLowBalanceUserIds(DEFAULT_LOW_BALANCE_THRESHOLD_PAISE);
 
   let alerted = 0;
   for (const userId of userIds) {

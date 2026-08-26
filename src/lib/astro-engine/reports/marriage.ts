@@ -35,6 +35,7 @@ import { computeArchetype, SIGN_TEMPERAMENT, type Archetype } from './report-arc
 import { computeReportTimingWindows, type RankedWindow } from './report-timing.js';
 import { computeAgeBandTable, type AgeBand } from './report-age-bands.js';
 import { computeDecadeArc, type DecadeBand } from './report-decade-arc.js';
+import { computeLoveVsArrangedTilt } from './true-love.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
@@ -86,6 +87,12 @@ export interface MarriageScores extends Record<string, unknown>, ReportSharedFac
   doshaYoga: DoshaYogaSummary;
   partnerArchetype: Archetype;
   marriageQualityArc: DecadeBand[];
+
+  /** Which route to marriage this chart leans toward: 'love' | 'arrange' | 'mixed'. Derived from
+   * the SAME documented tilt formula the True Love Report already uses
+   * (computeLoveVsArrangedTilt: Venus + 5th lord vs 7th lord + 4th lord), banded at the ends of
+   * its 0-10 range so only a clear lean is called — 4-6 stays 'mixed'. Deterministic, no LLM. */
+  loveOrArrange?: 'love' | 'arrange' | 'mixed';
 
   /** The person's own current relationship status (users.relationship_status), passed straight
    * through from ctx.personRelationshipStatus — lets the narrative module distinguish "when will
@@ -333,6 +340,18 @@ export function computeMarriageScores(
 
   const marriageQualityArc = computeDecadeArc(chart, [7], now);
 
+  // Love vs arranged lean — reuses true-love.ts's tilt rather than a second formula, so the two
+  // reports can never tell the same user opposite things about the same chart.
+  const fifthLord = getHouseLord(5, chart);
+  const loveVsArrangedTilt = computeLoveVsArrangedTilt(
+    strengthScoreOfPlanet('Venus', analyses),
+    fifthLord ? strengthScoreOfPlanet(fifthLord, analyses) : 60,
+    seventhLord ? strengthScoreOfPlanet(seventhLord, analyses) : 60,
+    fourthLord ? strengthScoreOfPlanet(fourthLord, analyses) : 60,
+  );
+  const loveOrArrange =
+    loveVsArrangedTilt >= 7 ? 'love' : loveVsArrangedTilt <= 3 ? 'arrange' : 'mixed';
+
   const fourthHouseSign = getHouseSign(4, chart);
   const inLaws = {
     fourthHouseSign,
@@ -394,6 +413,7 @@ export function computeMarriageScores(
     doshaYoga,
     partnerArchetype,
     marriageQualityArc,
+    loveOrArrange,
     relationshipStatus: ctx.personRelationshipStatus ?? null,
     inLaws,
     moneyAfterMarriage,

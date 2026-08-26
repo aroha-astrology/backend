@@ -12,7 +12,7 @@
 export interface FeatureDef {
   key: string;
   label: string;
-  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral' | 'ai';
+  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral' | 'ai' | 'rewards';
   defaultEnabled: boolean;
   /**
    * For `paid`/`reports` keys this is a PRICE the user is charged. For
@@ -413,23 +413,33 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultPricePaise: 10000,
   },
   // Daily login streak, day 1 of 7 — see rewards.service.ts for the ladder
-  // math (each day after this adds a fixed ₹1 step, admin-tunable only here
-  // via this base). `enabled: false` is the payout kill switch, same
+  // math (each day after this adds the rewards.dailyStep amount below).
+  // `enabled: false` is the payout kill switch, same
   // mechanism as the other referral keys — nav.rewards above is the separate
   // visibility switch.
   {
     key: 'rewards.dailyBase',
     label: 'Daily reward — day 1 amount',
-    group: 'referral',
+    group: 'rewards',
     defaultEnabled: true,
     defaultPricePaise: 500,
+  },
+  // Added per day on top of the day-1 base as the ladder climbs (day N pays
+  // base + (N-1) x this). A live payout, so it is tunable here rather than a
+  // module constant in rewards.service.ts — see admin-price-is-honoured.spec.ts.
+  {
+    key: 'rewards.dailyStep',
+    label: 'Daily reward — per-day step',
+    group: 'rewards',
+    defaultEnabled: true,
+    defaultPricePaise: 100,
   },
   // Extra credit on top of day 7's ladder amount for completing a full
   // 7-day streak (₹11 + this = ₹32 on day 7, ₹77 total across the week).
   {
     key: 'rewards.streakBonus',
     label: 'Daily reward — 7-day streak bonus',
-    group: 'referral',
+    group: 'rewards',
     defaultEnabled: true,
     defaultPricePaise: 2100,
   },

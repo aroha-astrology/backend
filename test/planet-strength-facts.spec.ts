@@ -108,7 +108,7 @@ describe('chat-grounding: planetStrengthFacts', () => {
 
   it('names retrograde and combust planets explicitly', () => {
     const facts = planetStrengthFacts(null, planets).join('\n');
-    expect(facts).toContain('Retrograde at birth: Mercury');
+    expect(facts).toContain('Retrograde (Vakri) at birth: Mercury');
     expect(facts).toContain('Combust');
     expect(facts).toContain('Mercury (5° from the Sun)');
   });
@@ -167,7 +167,7 @@ describe('chat-grounding: planetStrengthFacts', () => {
     // bare planet list has no julianDay for the recompute to use. That must
     // yield fewer facts, never a thrown error or an invented strength.
     const facts = planetStrengthFacts({ planets: [] }, planets);
-    expect(facts.some((f) => f.startsWith('Retrograde at birth'))).toBe(true);
+    expect(facts.some((f) => f.startsWith('Retrograde (Vakri) at birth'))).toBe(true);
     expect(facts.some((f) => f.startsWith('Planetary Strength'))).toBe(false);
   });
 });

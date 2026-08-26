@@ -466,6 +466,10 @@ describe('endVoiceSessionForUser — saving the call as a chat session', () => {
 
   it('extracts and saves durable facts from the call, same as text chat', async () => {
     state.extractTurnFacts.mockResolvedValue([{ fact: 'is engaged', followUpQuestion: null }]);
+    // The account's relationship status is the 5th argument, and it must reach the extractor
+    // here exactly as it does from text chat (astro.service.ts) — without it the extractor can
+    // store the assistant's own speculative prose about a spouse as "is married".
+    state.findActiveUserById.mockResolvedValue({ id: USER, relationshipStatus: 'single' });
 
     await endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT);
 
@@ -475,6 +479,7 @@ describe('endVoiceSessionForUser — saving the call as a chat session', () => {
         TRANSCRIPT[1]!.content,
         [],
         USER,
+        'single',
       );
       expect(state.saveUserFacts).toHaveBeenCalledWith(USER, null, [
         { fact: 'is engaged', followUpQuestion: null },

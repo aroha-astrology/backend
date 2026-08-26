@@ -39,3 +39,11 @@ scripts/load-test/results/
 
 # Local agent config — machine-specific, never shared
 .claude/
+
+# build/deploy artifacts and one-off scratch scripts (never belong in the repo)
+*.tar.gz
+delete.sql
+delete_report.ts
+regen.ts
+test-marriage.ts
+fetch_report.ts

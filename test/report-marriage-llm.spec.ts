@@ -34,9 +34,9 @@ function makeScores(overrides: Partial<MarriageScores> = {}): MarriageScores {
     ],
     jupiterDharmaWindow: null,
     ageBands: [
-      { label: 'Now � 32', startAge: 29, endAge: 32, confidence: 'MEDIUM' },
-      { label: '33 � 36', startAge: 33, endAge: 36, confidence: 'LOW' },
-      { label: '37 � 44', startAge: 37, endAge: 44, confidence: 'NONE' },
+      { label: 'Now – 32', startAge: 29, endAge: 32, confidence: 'MEDIUM' },
+      { label: '33 – 36', startAge: 33, endAge: 36, confidence: 'LOW' },
+      { label: '37 – 44', startAge: 37, endAge: 44, confidence: 'NONE' },
       { label: '45+', startAge: 45, endAge: null, confidence: 'NONE' },
     ],
     seventhLordReason: 'Mercury is in its own sign.',
@@ -136,7 +136,7 @@ describe('generateMarriageNarrative', () => {
       makeScores({
         marriageScore: 82,
         band: 'accelerated',
-        ageBands: [{ label: 'Now � 32', startAge: 29, endAge: 32, confidence: 'HIGH' }],
+        ageBands: [{ label: 'Now – 32', startAge: 29, endAge: 32, confidence: 'HIGH' }],
       }),
     );
 
@@ -277,14 +277,14 @@ describe('translateMarriageNarrative', () => {
   it('parses a valid translated response', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({
-        sections: [{ heading: '????? ??????', paragraphs: ['???? 70 ??? ?????'] }],
+        sections: [{ heading: 'हिंदी शीर्षक', paragraphs: ['आपको 70 अंक मिले।'] }],
       }),
     );
     const translated = await translateMarriageNarrative(sections, 'hi');
-    expect(translated[0]?.heading).toBe('????? ??????');
+    expect(translated[0]?.heading).toBe('हिंदी शीर्षक');
   });
 
-  it('is shape-agnostic � round-trips all 8 real sections generateMarriageNarrative now produces', async () => {
+  it('is shape-agnostic — round-trips all 8 real sections generateMarriageNarrative now produces', async () => {
     const eightSections = [
       'At A Glance',
       'Marriage Timing',

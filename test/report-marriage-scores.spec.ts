@@ -404,3 +404,42 @@ describe('computeMarriageScores — timing windows (the actual bug fix)', () => 
     }
   });
 });
+
+describe('computeMarriageScores — loveOrArrange', () => {
+  /**
+   * The card on the marriage screen renders this band verbatim, so it must be a real
+   * three-way decision, not a constant. The tilt itself (Venus + 5th lord vs 7th lord + 4th
+   * lord) is true-love.ts's own documented formula — asserted there; what is checked here is
+   * that this report bands it at the ends of the 0-10 range and never crashes without a chart.
+   */
+  it('is one of the three bands, and stays defined on a chartless call', () => {
+    const scores = computeMarriageScores({ chart: null, partnerChart: null }, null);
+    expect(['love', 'arrange', 'mixed']).toContain(scores.loveOrArrange);
+  });
+
+  it('leans love when Venus and the 5th lord outrank the 7th and 4th lords', () => {
+    const chart = makeChart({
+      venus: { sign: 'Pisces', signIndex: 11, house: 5 }, // exalted
+      houses: [
+        { house: 4, lord: 'Sun', sign: 'Leo' },
+        { house: 5, lord: 'Venus', sign: 'Pisces' },
+        { house: 7, lord: 'Saturn', sign: 'Aries' }, // debilitated
+      ],
+    });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.loveOrArrange).toBe('love');
+  });
+
+  it('leans arrange when the 7th and 4th lords outrank Venus and the 5th lord', () => {
+    const chart = makeChart({
+      venus: { sign: 'Virgo', signIndex: 5, house: 6 }, // debilitated
+      houses: [
+        { house: 4, lord: 'Jupiter', sign: 'Cancer' }, // exalted
+        { house: 5, lord: 'Venus', sign: 'Virgo' },
+        { house: 7, lord: 'Mars', sign: 'Capricorn' }, // exalted
+      ],
+    });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.loveOrArrange).toBe('arrange');
+  });
+});

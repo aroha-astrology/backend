@@ -13,14 +13,14 @@ describe('reportFactsMessage', () => {
 
   it('appends the planetary-condition block when present', () => {
     const msg = reportFactsMessage('some fact', [
-      'Retrograde at birth: Mercury.',
+      'Retrograde (Vakri) at birth: Mercury.',
       'STRENGTH RULE: x',
     ]);
     // `content` is `string | ChatContentPart[]`; this builder always returns the
     // string form, so narrow once rather than stringifying the union.
     const content = msg.content as string;
     expect(content).toContain('some fact');
-    expect(content).toContain('Retrograde at birth: Mercury.');
+    expect(content).toContain('Retrograde (Vakri) at birth: Mercury.');
     expect(content).toContain('STRENGTH RULE: x');
     // Condition must sit INSIDE the guard tags, never after them.
     expect(content.indexOf('STRENGTH RULE')).toBeLessThan(content.indexOf('</report_facts>'));
@@ -46,7 +46,7 @@ describe('chartConditionFacts (the block reports and chat now share)', () => {
 
   it('returns strength, retrogression, combustion and chalit in one block', () => {
     const facts = chartConditionFacts(chart).join('\n');
-    expect(facts).toContain('Retrograde at birth: Mercury');
+    expect(facts).toContain('Retrograde (Vakri) at birth: Mercury');
     expect(facts).toContain('Combust');
     expect(facts).toContain('Planetary Strength');
     expect(facts).toContain('STRENGTH RULE');

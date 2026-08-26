@@ -120,7 +120,7 @@ const CONTENT_VERSION = 5;
  * purely for provenance: answering "why does my report read differently than my friend's" or
  * "was this generated before or after the wording fix" without guessing from `createdAt`.
  */
-const REPORT_PROMPT_VERSION = '2026.08.1';
+const REPORT_PROMPT_VERSION = '2026.08.2';
 
 // ponytail: process-local dedup only, not a distributed/DB-backed claim — with pm2's cluster
 // workers, two near-simultaneous requests landing on DIFFERENT worker processes could each fire

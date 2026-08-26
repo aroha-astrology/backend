@@ -1308,7 +1308,7 @@ describe('getReportForUser', () => {
     await vi.waitFor(() => {
       expect(state.overwriteReadyReportContent).toHaveBeenCalledWith(
         'stale-report',
-        expect.objectContaining({ content: expect.objectContaining({ contentVersion: 4 }) }),
+        expect.objectContaining({ content: expect.objectContaining({ contentVersion: 5 }) }),
       );
     });
   });
@@ -1325,7 +1325,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         id: 'current-report',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 4 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 5 },
       }),
     );
 
@@ -1681,8 +1681,11 @@ describe('getReportStats', () => {
       { reportKey: 'wealth', count: 3 },
     ]);
 
+    // Each key carries a flat +25 social-proof padding (see getReportStats — product ask),
+    // so these are the raw counts plus that constant. Asserted as literals rather than
+    // `count + PAD` so a silent change to the padding shows up here as a real diff.
     const first = await getReportStats();
-    expect(first).toEqual({ marriage: 12, wealth: 3 });
+    expect(first).toEqual({ marriage: 37, wealth: 28 });
     expect(state.countReadyReportsByKey).toHaveBeenCalledTimes(1);
 
     // A second call within the TTL must be served from cache, not hit the DB again — even if
@@ -1690,14 +1693,14 @@ describe('getReportStats', () => {
     // call must NOT observe).
     state.countReadyReportsByKey.mockResolvedValue([{ reportKey: 'marriage', count: 999 }]);
     const second = await getReportStats();
-    expect(second).toEqual({ marriage: 12, wealth: 3 });
+    expect(second).toEqual({ marriage: 37, wealth: 28 });
     expect(state.countReadyReportsByKey).toHaveBeenCalledTimes(1);
 
     // Once the ~5-minute TTL window has elapsed, the next call must re-query and pick up the
     // now-current data instead of continuing to serve the stale cached object forever.
     vi.advanceTimersByTime(5 * 60_000 + 1);
     const third = await getReportStats();
-    expect(third).toEqual({ marriage: 999 });
+    expect(third).toEqual({ marriage: 1024 });
     expect(state.countReadyReportsByKey).toHaveBeenCalledTimes(2);
 
     // A further TTL elapse with no ready/non-preview reports at all must map to `{}`, not throw
@@ -1729,7 +1732,7 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
     expect(state.overwriteReadyReportContent).toHaveBeenCalledWith('r1', {
       content: {
         sections: [{ heading: 'H', paragraphs: ['p'] }],
-        contentVersion: 4,
+        contentVersion: 5,
         verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
       },
       model: expect.any(String),

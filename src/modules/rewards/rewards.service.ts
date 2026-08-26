@@ -6,9 +6,9 @@ import { recentDailyRewardReasons } from './rewards.repo.js';
 
 const REASON_PREFIX = 'daily_reward:';
 export const CYCLE_LEN = 7;
-/** ₹1 added per day on top of the day-1 base — the only non-admin-tunable knob;
- * add a feature key for it if that ever needs to change without a deploy. */
-const DAILY_STEP_PAISE = 100;
+/** Fallback for `rewards.dailyStep` when the registry cannot be reached — the live value is
+ * admin-tunable, same as the base and the streak bonus. */
+const DEFAULT_DAILY_STEP_PAISE = 100;
 const EXPIRY_DAYS = 30;
 
 const reasonForDate = (date: string): string => `${REASON_PREFIX}${date}`;
@@ -69,25 +69,34 @@ export function positionInCycle(run: number, claimedToday: boolean): number {
   return claimedToday ? ((run - 1) % CYCLE_LEN) + 1 : (run % CYCLE_LEN) + 1;
 }
 
-/** Pure ladder-amount formula: base + ₹1 per day after day 1, plus the streak bonus on day 7. */
-export function amountForDay(day: number, basePaise: number, bonusPaise: number): number {
-  const stepAmount = basePaise + (day - 1) * DAILY_STEP_PAISE;
+/** Pure ladder-amount formula: base + one step per day after day 1, plus the streak bonus on
+ * day 7. `stepPaise` defaults so existing callers (and tests) keep the shipped ladder. */
+export function amountForDay(
+  day: number,
+  basePaise: number,
+  bonusPaise: number,
+  stepPaise: number = DEFAULT_DAILY_STEP_PAISE,
+): number {
+  const stepAmount = basePaise + (day - 1) * stepPaise;
   return day === CYCLE_LEN ? stepAmount + bonusPaise : stepAmount;
 }
 
-async function resolveAmounts(userId: string): Promise<{ basePaise: number; bonusPaise: number }> {
-  const [basePaise, bonusPaise] = await Promise.all([
+async function resolveAmounts(
+  userId: string,
+): Promise<{ basePaise: number; bonusPaise: number; stepPaise: number }> {
+  const [basePaise, bonusPaise, stepPaise] = await Promise.all([
     payoutOf(userId, 'rewards.dailyBase', 500),
     payoutOf(userId, 'rewards.streakBonus', 2100),
+    payoutOf(userId, 'rewards.dailyStep', DEFAULT_DAILY_STEP_PAISE),
   ]);
-  return { basePaise, bonusPaise };
+  return { basePaise, bonusPaise, stepPaise };
 }
 
 export async function getDailyRewardState(
   userId: string,
   now: Date = new Date(),
 ): Promise<DailyRewardState> {
-  const { basePaise, bonusPaise } = await resolveAmounts(userId);
+  const { basePaise, bonusPaise, stepPaise } = await resolveAmounts(userId);
   const dates = (await recentDailyRewardReasons(userId)).map(dateFromReason);
   const dateSet = new Set(dates);
   const today = istDateString(now);
@@ -99,7 +108,7 @@ export async function getDailyRewardState(
     const day = i + 1;
     return {
       day,
-      amountPaise: amountForDay(day, basePaise, bonusPaise),
+      amountPaise: amountForDay(day, basePaise, bonusPaise, stepPaise),
       isBonusDay: day === CYCLE_LEN,
       claimed: dateSet.has(addDays(cycleStart, i)),
     };
@@ -111,7 +120,7 @@ export async function getDailyRewardState(
     currentDay,
     claimedToday,
     todayAmountPaise: ladder[currentDay - 1]!.amountPaise,
-    nextDayAmountPaise: amountForDay(nextDay, basePaise, bonusPaise),
+    nextDayAmountPaise: amountForDay(nextDay, basePaise, bonusPaise, stepPaise),
     expiresInDays: EXPIRY_DAYS,
     ladder,
   };
@@ -128,12 +137,12 @@ export async function claimDailyReward(
   userId: string,
   now: Date = new Date(),
 ): Promise<{ claimed: boolean; walletBalancePaise: number }> {
-  const { basePaise, bonusPaise } = await resolveAmounts(userId);
+  const { basePaise, bonusPaise, stepPaise } = await resolveAmounts(userId);
   const dates = (await recentDailyRewardReasons(userId)).map(dateFromReason);
   const today = istDateString(now);
   const claimedToday = dates.includes(today);
   const currentDay = positionInCycle(streakRun(dates, today), claimedToday);
-  const amountPaise = amountForDay(currentDay, basePaise, bonusPaise);
+  const amountPaise = amountForDay(currentDay, basePaise, bonusPaise, stepPaise);
   const expiresAt = new Date(now.getTime() + EXPIRY_DAYS * 24 * 60 * 60 * 1000);
   return claimCampaignBonus(userId, reasonForDate(today), amountPaise, expiresAt);
 }

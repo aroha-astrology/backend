@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
   deductWalletBalance: vi.fn().mockResolvedValue(true),
   getFeedbackVoteCountsByUser: vi.fn(),
   listRefundsBetween: vi.fn().mockResolvedValue([]),
+  usersActiveBetween: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('../src/modules/astro/feedback.repo.js', () => ({
@@ -35,6 +36,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   addWalletBalance: state.addWalletBalance,
   deductWalletBalance: state.deductWalletBalance,
   listRefundsBetween: state.listRefundsBetween,
+  usersActiveBetween: state.usersActiveBetween,
 }));
 
 vi.mock('../src/modules/telegram-bot/telegram-bot.repo.js', () => ({
@@ -349,6 +351,10 @@ describe('POST /internal/telegram/webhook', () => {
     state.countNewUsersThisWeek.mockResolvedValue(58);
     state.sumPaidOrdersToday.mockResolvedValue({ totalPaise: 450000, count: 18 });
     state.sumWalletBalanceOutstanding.mockResolvedValue(12345600);
+    state.usersActiveBetween
+      .mockResolvedValueOnce(41) // today
+      .mockResolvedValueOnce(37) // yesterday
+      .mockResolvedValueOnce(96); // last 7d
 
     const app = createApp();
     const res = await app.request('/internal/telegram/webhook', {
@@ -364,6 +370,9 @@ describe('POST /internal/telegram/webhook', () => {
     expect(reply).toContain('18');
     expect(reply).toContain('4500');
     expect(reply).toContain('123456');
+    expect(reply).toContain('41');
+    expect(reply).toContain('37');
+    expect(reply).toContain('96');
   });
 
   it('grants money with /money +phone amount', async () => {
