@@ -41,6 +41,14 @@ const SAFETY_RULE =
   'This is advisory guidance for reflection, never a guarantee about if or when marriage will happen, and never a substitute for the reader\'s own judgment and choices. Use tendency language ("suggests", "classically associated with", "tends to"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
 const TONE_RULE =
   'Tone: encouraging but honest — never falsely reassuring, never alarmist. If the band is "slow_build", frame it as patience and groundwork rather than a problem; if "accelerated", frame it as genuine momentum without overpromising a date.';
+/** The "uiData" object's schema is shared across all 4 narrative calls (every possible field from
+ * every call is declared on it, all required-but-nullable — see UI_DATA_PROPERTIES's own doc
+ * comment for why "required" is non-negotiable under strict structured output). Each call only
+ * OWNS a handful of those fields; this line is what tells the model to null out the rest rather
+ * than leaving them unfilled (which strict mode would reject) or inventing content for a field
+ * that belongs to a different call. */
+const UI_DATA_NULL_RULE =
+  'The "uiData" object\'s schema spans fields belonging to ALL FOUR calls of this narrative — this call only owns the field(s) named in the instructions above. Set every OTHER field in that schema to null. Never invent content for a field you do not own here, and never leave null a field you do own.';
 
 function formatWindow(window: { startDate: string; endDate: string } | null): string {
   if (!window) return 'none identified';
@@ -81,7 +89,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "At A Glance" — 1-2 paragraphs stating the marriage score and band given, explaining what the band means in plain language (e.g. a "slow_build" band means the groundwork is still forming, not that marriage won't happen), and mentioning the Manglik status given (including what a cancellation means in plain terms, if cancelled).
-2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout. You MUST ALSO include a "uiData" object on THIS section (section 2) containing exactly this string field per planet in the given Planet Strength table below, keyed EXACTLY as "planetStrength_" followed by the planet's name in lowercase (e.g. "planetStrength_saturn"): a 1-2 line explanation of what that planet's given strength percentage and any retrograde/combust flag mean in plain language, tied to that planet's classical significations (e.g. Saturn → discipline/endurance, Moon → emotional stability, Mercury → communication) rather than marriage specifically, since this table covers the whole chart. Omit this uiData object entirely if no Planet Strength table is given.
+2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout. If a Planet Strength table is given below, you MUST ALSO include a "uiData" object on THIS section (section 2) with a string field per planet in that table, keyed EXACTLY as "planetStrength_" followed by the planet's name in lowercase (e.g. "planetStrength_saturn"): a 1-2 line explanation of what that planet's given strength percentage and any retrograde/combust flag mean in plain language, tied to that planet's classical significations (e.g. Saturn → discipline/endurance, Moon → emotional stability, Mercury → communication) rather than marriage specifically, since this table covers the whole chart. Omit the uiData object entirely if no Planet Strength table is given. ${UI_DATA_NULL_RULE}
 
 Write in a clear, natural style. Second person ("you").`;
 }
@@ -97,7 +105,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Who You Will Marry" — 2-4 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts. Weave in the specific reasons given for the 7th-lord, Venus, and Jupiter strengths. Mention the given Navamsa Lagna and house placements of Venus and Jupiter. If the Ashtakavarga summary flags the 7th house, weave that in. Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual. You MUST ALSO include a "uiData" object on this section containing exactly these string fields: "planetImpact_seventhLord" (a 1-3 line explanation of its meaning, strength, and impact), "planetImpact_venus" (1-3 lines), "planetImpact_jupiter" (1-3 lines), and "seventhHouseImpact" (1-3 lines).
+1. Heading close to "Who You Will Marry" — 2-4 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts. Weave in the specific reasons given for the 7th-lord, Venus, and Jupiter strengths. Mention the given Navamsa Lagna and house placements of Venus and Jupiter. If the Ashtakavarga summary flags the 7th house, weave that in. Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual. You MUST ALSO include a "uiData" object on this section with these string fields filled in: "planetImpact_seventhLord" (a 1-3 line explanation of its meaning, strength, and impact), "planetImpact_venus" (1-3 lines), "planetImpact_jupiter" (1-3 lines), and "seventhHouseImpact" (1-3 lines). ${UI_DATA_NULL_RULE}
 2. Heading close to "Family & In-Laws" — 1-2 paragraphs on family/in-law harmony grounded in the 4th-lord strength and in-laws note given.
 
 Write in a clear, natural style. Second person ("you").`;
@@ -115,7 +123,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "Money After Marriage" — 1-3 paragraphs on how finances are classically read to shift after marriage, grounded in the given 2nd/11th house facts.
-2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. If a Remedies list is given below, you MUST ALSO include a "uiData" object on this section containing, for EACH remedy planet given, two string fields keyed EXACTLY as "remedyEffect_" and "remedyDuration_" followed by that planet's name in lowercase (e.g. "remedyEffect_venus", "remedyDuration_venus"): "remedyEffect_<planet>" is a 1-2 line explanation of what performing THAT SPECIFIC already-given remedy is classically believed to strengthen for this person's marriage, tied to that planet's role (e.g. Venus → love/harmony, Jupiter → blessings/growth); "remedyDuration_<planet>" is one short, practical guideline for how long or how often to continue it (e.g. "Continue for at least 40 Fridays" or "Every Thursday for about 4 months"), matching the remedy's own weekday if it names one. Explaining an already-given remedy's effect and duration here is your job, not a new recommendation — never suggest a different remedy, puja, gemstone or purchase than the one given. Omit this uiData object entirely if no Remedies list is given.
+2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. If a Remedies list is given below, you MUST ALSO include a "uiData" object on this section with, for EACH remedy planet given, two string fields filled in, keyed EXACTLY as "remedyEffect_" and "remedyDuration_" followed by that planet's name in lowercase (e.g. "remedyEffect_venus", "remedyDuration_venus"): "remedyEffect_<planet>" is a 1-2 line explanation of what performing THAT SPECIFIC already-given remedy is classically believed to strengthen for this person's marriage, tied to that planet's role (e.g. Venus → love/harmony, Jupiter → blessings/growth); "remedyDuration_<planet>" is one short, practical guideline for how long or how often to continue it (e.g. "Continue for at least 40 Fridays" or "Every Thursday for about 4 months"), matching the remedy's own weekday if it names one. Explaining an already-given remedy's effect and duration here is your job, not a new recommendation — never suggest a different remedy, puja, gemstone or purchase than the one given. Omit the uiData object entirely if no Remedies list is given. ${UI_DATA_NULL_RULE}
 
 Write in a clear, natural style. Second person ("you").`;
 }
@@ -131,7 +139,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Marriage Quality By Decade" — 2-4 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. You MUST ALSO include a "uiData" object on this section containing exactly this array field: "decadeExplanations" (an array of objects, each with "label" copied VERBATIM from the decade-arc fact line above (e.g. "Years 1-10" — exact string, do not reformat) and "explanation" with a 1-3 line text of why it is favorable or challenging based on astrological principles).
+1. Heading close to "Marriage Quality By Decade" — 2-4 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. You MUST ALSO include a "uiData" object on this section with its "decadeExplanations" array field filled in: one entry per given decade band, each with "label" copied VERBATIM from the decade-arc fact line above (e.g. "Years 1-10" — exact string, do not reformat) and "explanation" with a 1-3 line text of why it is favorable or challenging based on astrological principles. ${UI_DATA_NULL_RULE}
 2. Heading close to "Modern Realities" — 1-2 paragraphs using STRICT tendency language (never "you will marry late," always something like "this chart's own timing pattern tends to favor a later window" — and only mention this at all if the given fact says it is true), the Rahu house note (framed as a tendency toward distance/foreign connection in partnership, not a certainty), and the 7th-house planet count (framed as a tendency toward a busier or more complex partnership dynamic if the count is above 2, otherwise skip that point rather than force it).
 
 Write in a clear, natural style. Second person ("you").`;
@@ -261,14 +269,26 @@ function buildFactsCall4(scores: MarriageScores): string {
 }
 
 /** The 9 classical grahas — every planet name a remedy/strength uiData key can ever be suffixed
- * with. Gemini's strict structured-output mode (an OpenAI-compatible json_schema contract, see
- * gemini-client.ts's doRequest) cannot populate a bare `{type: 'object'}` with unknown/dynamic
- * keys — without declared `properties` there is no valid key for guided decoding to emit, so the
- * model silently returns an empty value instead (verified live: every uiData-bearing section on a
- * real generated report came back `{}`/`[]`, never the requested fields, despite the prompt asking
- * for them and every unit test — which only exercises fixture strings, never the real API — still
- * passing). Enumerating every possible key explicitly, all optional, is the fix: the model fills in
- * whichever of these the given facts actually cover and leaves the rest absent. */
+ * with.
+ *
+ * Two live-verified fixes layered here, both against the SAME symptom (every uiData-bearing
+ * section on a real generated report came back `{}`/`[]`, never the requested fields, despite the
+ * prompt asking for them and every unit test — which only exercises fixture strings, never the
+ * real API — still passing):
+ *
+ * 1. Gemini's strict structured-output mode (an OpenAI-compatible json_schema contract, see
+ *    gemini-client.ts's doRequest) cannot populate a bare `{type: 'object'}` with unknown/dynamic
+ *    keys — without declared `properties` there is no valid key for guided decoding to emit.
+ *    Fixed by enumerating every possible key explicitly below.
+ *
+ * 2. That alone was NOT enough (still empty after redeploying): true OpenAI-style `strict: true`
+ *    schemas require EVERY declared property to also appear in `required` — a property that is
+ *    merely declared but left out of `required` is apparently never populated by guided decoding
+ *    at all, not just "populated when the model feels like it". "Optional" is expressed instead by
+ *    a nullable type (`["string", "null"]`), which is what STRING_OR_NULL does below — every key is
+ *    always present in a real response, null for whichever ones a given call has nothing to say. */
+const STRING_OR_NULL = { type: ['string', 'null'] } as const;
+
 const GRAHAS = [
   'sun',
   'moon',
@@ -282,10 +302,12 @@ const GRAHAS = [
 ] as const;
 
 const UI_DATA_PROPERTIES = {
-  planetImpact_venus: { type: 'string' },
-  planetImpact_jupiter: { type: 'string' },
-  planetImpact_seventhLord: { type: 'string' },
-  seventhHouseImpact: { type: 'string' },
+  planetImpact_venus: STRING_OR_NULL,
+  planetImpact_jupiter: STRING_OR_NULL,
+  planetImpact_seventhLord: STRING_OR_NULL,
+  seventhHouseImpact: STRING_OR_NULL,
+  // Always present (empty array when a call has nothing to say) rather than nullable —
+  // "no items" is already a valid, unambiguous empty state for an array.
   decadeExplanations: {
     type: 'array',
     items: {
@@ -296,12 +318,14 @@ const UI_DATA_PROPERTIES = {
   },
   ...Object.fromEntries(
     GRAHAS.flatMap((p) => [
-      [`remedyEffect_${p}`, { type: 'string' }],
-      [`remedyDuration_${p}`, { type: 'string' }],
-      [`planetStrength_${p}`, { type: 'string' }],
+      [`remedyEffect_${p}`, STRING_OR_NULL],
+      [`remedyDuration_${p}`, STRING_OR_NULL],
+      [`planetStrength_${p}`, STRING_OR_NULL],
     ]),
   ),
 } as const;
+
+const UI_DATA_REQUIRED = Object.keys(UI_DATA_PROPERTIES);
 
 const SECTIONS_SCHEMA = {
   type: 'object',
@@ -313,7 +337,11 @@ const SECTIONS_SCHEMA = {
         properties: {
           heading: { type: 'string' },
           paragraphs: { type: 'array', items: { type: 'string' } },
-          uiData: { type: 'object', properties: UI_DATA_PROPERTIES },
+          uiData: {
+            type: 'object',
+            properties: UI_DATA_PROPERTIES,
+            required: UI_DATA_REQUIRED,
+          },
         },
         required: ['heading', 'paragraphs'],
       },
@@ -337,8 +365,16 @@ function parseSections(raw: string): ReportSection[] | null {
       if (paragraphs.length === 0) continue;
 
       const section: ReportSection = { heading: e.heading.trim(), paragraphs };
-      if (typeof e.uiData === 'object' && e.uiData !== null) {
-        section.uiData = e.uiData as Record<string, unknown>;
+      if (typeof e.uiData === 'object' && e.uiData !== null && !Array.isArray(e.uiData)) {
+        // Every call's uiData object carries ALL sibling calls' fields too, most of them null
+        // (see UI_DATA_NULL_RULE) — strip those before persisting so the stored content only ever
+        // holds what this section actually has something to say about.
+        const cleaned = Object.fromEntries(
+          Object.entries(e.uiData as Record<string, unknown>).filter(
+            ([, v]) => v !== null && !(Array.isArray(v) && v.length === 0),
+          ),
+        );
+        if (Object.keys(cleaned).length > 0) section.uiData = cleaned;
       }
       sections.push(section);
     }
