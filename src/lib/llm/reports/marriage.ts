@@ -76,7 +76,7 @@ Write EXACTLY 2 sections, in this order:
 1. Heading close to "At A Glance" — 1-2 paragraphs stating the marriage score and band given, explaining what the band means in plain language (e.g. a "slow_build" band means the groundwork is still forming, not that marriage won't happen), and mentioning the Manglik status given (including what a cancellation means in plain terms, if cancelled).
 2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout.
 
-Each paragraph should be 2-4 sentences. Second person ("you").`;
+Write in a clear, natural style. Second person ("you").`;
 }
 
 function narrativeSystemPromptCall2(): string {
@@ -90,10 +90,10 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Who You Will Marry" — 1-3 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts. Explicitly explain the 7th house impact on the marriage, including both positive and negative potentials. Weave in the specific reasons given for the 7th-lord, Venus, and Jupiter strengths. For each of these three planets (7th-lord, Venus, Jupiter), you MUST explicitly include a 1-3 line explanation of its meaning, its strength, and how its placement will impact the marriage both positively and negatively. Mention the given Navamsa Lagna and house placements of Venus and Jupiter. If the Ashtakavarga summary flags the 7th house, weave that in. Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual.
+1. Heading close to "Who You Will Marry" — 2-4 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts. Explicitly explain the 7th house impact on the marriage, including both positive and negative potentials. Weave in the specific reasons given for the 7th-lord, Venus, and Jupiter strengths. For each of these three planets (7th-lord, Venus, Jupiter), you MUST explicitly include a 1-3 line explanation of its meaning, its strength, and how its placement will impact the marriage both positively and negatively. Mention the given Navamsa Lagna and house placements of Venus and Jupiter. If the Ashtakavarga summary flags the 7th house, weave that in. Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual.
 2. Heading close to "Family & In-Laws" — 1-2 paragraphs on family/in-law harmony grounded in the 4th-lord strength and in-laws note given.
 
-Each paragraph should be 2-4 sentences. Second person ("you").`;
+Write in a clear, natural style. Second person ("you").`;
 }
 
 function narrativeSystemPromptCall3(): string {
@@ -107,10 +107,10 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Money After Marriage" — 1-2 paragraphs on how finances are classically read to shift after marriage, grounded in the given 2nd/11th house facts.
+1. Heading close to "Money After Marriage" — 1-3 paragraphs on how finances are classically read to shift after marriage, grounded in the given 2nd/11th house facts.
 2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. At the end of this section, add a brief paragraph explaining how performing astrological remedies (such as strengthening weak planets or mitigating doshas) will positively change or improve the marriage dynamics, giving specific examples based on the chart's placements.
 
-Each paragraph should be 2-4 sentences. Second person ("you").`;
+Write in a clear, natural style. Second person ("you").`;
 }
 
 function narrativeSystemPromptCall4(): string {
@@ -124,10 +124,10 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Marriage Quality By Decade" — 1-2 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. For each notable decade, explicitly explain WHY it is favorable or challenging based on astrological principles or life stages.
+1. Heading close to "Marriage Quality By Decade" — 2-4 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. For each notable decade, explicitly explain WHY it is favorable or challenging based on astrological principles or life stages.
 2. Heading close to "Modern Realities" — 1-2 paragraphs using STRICT tendency language (never "you will marry late," always something like "this chart's own timing pattern tends to favor a later window" — and only mention this at all if the given fact says it is true), the Rahu house note (framed as a tendency toward distance/foreign connection in partnership, not a certainty), and the 7th-house planet count (framed as a tendency toward a busier or more complex partnership dynamic if the count is above 2, otherwise skip that point rather than force it).
 
-Each paragraph should be 2-4 sentences. Second person ("you").`;
+Write in a clear, natural style. Second person ("you").`;
 }
 
 function buildFactsCall1(scores: MarriageScores): string {
