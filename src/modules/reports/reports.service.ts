@@ -109,7 +109,7 @@ import { notifyUser } from '../../lib/notifications/notify-user.js';
  * regenerating reports nobody may ever look at again. No refund, no re-purchase — same
  * no-cost-to-the-user contract `regenerateReportContent` already documents.
  */
-const CONTENT_VERSION = 4;
+const CONTENT_VERSION = 5;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
