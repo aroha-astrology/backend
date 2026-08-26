@@ -14,11 +14,15 @@ function decryptRow(row: SupportTicketRow) {
     ...row,
     message: decryptField(row.message) ?? '',
     adminNote: decryptField(row.adminNote),
+    contactName: decryptField(row.contactName),
+    contactEmail: decryptField(row.contactEmail),
   };
 }
 
 export interface CreateSupportTicketInput {
-  userId: string;
+  userId?: string;
+  contactName?: string;
+  contactEmail?: string;
   category: string;
   message: string;
   locale?: string | null;
@@ -29,7 +33,9 @@ export async function createSupportTicket(input: CreateSupportTicketInput) {
   const [row] = await db
     .insert(supportTickets)
     .values({
-      userId: input.userId,
+      userId: input.userId ?? null,
+      contactName: encryptField(input.contactName ?? null),
+      contactEmail: encryptField(input.contactEmail ?? null),
       category: input.category,
       message: encryptField(input.message) as string,
       locale: input.locale ?? null,

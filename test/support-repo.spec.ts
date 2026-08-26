@@ -192,6 +192,55 @@ describe('createSupportTicket — encryption round trip', () => {
       createSupportTicket({ userId: 'user-1', category: 'other', message: 'help' }),
     ).rejects.toThrow('createSupportTicket: insert returned no row');
   });
+
+  it('creates an anonymous ticket (no userId) from contactName/contactEmail, encrypting both', async () => {
+    const { chain, calls } = makeInsertChain();
+    // makeInsertChain's fake row doesn't echo contactName/contactEmail —
+    // extend it here so decryptRow has something to decrypt.
+    chain.returning = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: 'ticket-1',
+          userId: null,
+          contactName: calls.values.contactName,
+          contactEmail: calls.values.contactEmail,
+          category: calls.values.category,
+          message: calls.values.message,
+          locale: null,
+          appVersion: null,
+          status: 'open',
+          adminNote: null,
+          createdAt: new Date('2026-08-26T00:00:00Z'),
+          resolvedAt: null,
+        },
+      ]),
+    );
+    state.insert.mockReturnValue(chain);
+
+    const result = await createSupportTicket({
+      contactName: 'Priya Sharma',
+      contactEmail: 'priya@example.com',
+      category: 'billing',
+      message: 'I was double-charged.',
+    });
+
+    expect(calls.values.userId).toBeNull();
+    expect(calls.values.contactName).toMatch(/^enc:v1:/);
+    expect(calls.values.contactEmail).toMatch(/^enc:v1:/);
+    expect(result.userId).toBeNull();
+    expect(result.contactName).toBe('Priya Sharma');
+    expect(result.contactEmail).toBe('priya@example.com');
+  });
+
+  it('stores null contactName/contactEmail for an authenticated (in-app) ticket', async () => {
+    const { chain, calls } = makeInsertChain();
+    state.insert.mockReturnValue(chain);
+
+    await createSupportTicket({ userId: 'user-1', category: 'billing', message: 'help' });
+
+    expect(calls.values.contactName).toBeNull();
+    expect(calls.values.contactEmail).toBeNull();
+  });
 });
 
 describe('listSupportTicketsByUser', () => {
