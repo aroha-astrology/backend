@@ -141,12 +141,24 @@ export async function cmdPendingDeletes(): Promise<string> {
 }
 
 export async function cmdStats(): Promise<string> {
-  const [totalUsers, newUsersToday, newUsersWeek, revenue, outstanding] = await Promise.all([
+  const [
+    totalUsers,
+    newUsersToday,
+    newUsersWeek,
+    revenue,
+    outstanding,
+    activeToday,
+    activeYesterday,
+    activeThisWeek,
+  ] = await Promise.all([
     countUsers(),
     countNewUsersToday(),
     countNewUsersThisWeek(),
     sumPaidOrdersToday(),
     sumWalletBalanceOutstanding(),
+    usersActiveBetween(resolveDateRangePreset('today')),
+    usersActiveBetween(resolveDateRangePreset('yesterday')),
+    usersActiveBetween(resolveDateRangePreset('last7d')),
   ]);
 
   return (
@@ -154,6 +166,9 @@ export async function cmdStats(): Promise<string> {
     `Total Users: ${totalUsers}\n` +
     `New Users Today: ${newUsersToday}\n` +
     `New Users This Week: ${newUsersWeek}\n\n` +
+    `Active Users Today: ${activeToday}\n` +
+    `Active Users Yesterday: ${activeYesterday}\n` +
+    `Active Users This Week: ${activeThisWeek}\n\n` +
     `Revenue Today: ${escapeMarkdown(formatRupees(revenue.totalPaise))} \\(${revenue.count} order${revenue.count === 1 ? '' : 's'}\\)\n` +
     `Outstanding Wallet Balance: ${escapeMarkdown(formatRupees(outstanding))}`
   );
