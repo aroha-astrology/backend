@@ -19,8 +19,11 @@ import {
   AdminRecurringUsersResponseSchema,
   AdminDeletionRequestsResponseSchema,
   AdminDeletionActionResponseSchema,
+  AdminActiveUsersByLocationQuerySchema,
+  AdminActiveUsersByLocationResponseSchema,
 } from './admin.schemas.js';
 import { resolveDateRangePreset, logAdminAction } from './admin.repo.js';
+import { activeUsersByLocation } from '../users/users.repo.js';
 import {
   getOverview,
   listFeaturesForAdmin,
@@ -354,6 +357,36 @@ adminRouter.openapi(recurringUsersRoute, async (c) => {
   const weeks = await getRecurringUsers();
   await auditRead(c, 'GET /v1/admin/recurring-users', {});
   return c.json({ weeks }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/active-users/by-location                                        */
+/* -------------------------------------------------------------------------- */
+
+const activeUsersByLocationRoute = createRoute({
+  method: 'get',
+  path: '/admin/active-users/by-location',
+  tags: ['Admin'],
+  summary: 'Active users in a preset window, grouped by IP-geolocated country/city',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { query: AdminActiveUsersByLocationQuerySchema },
+  responses: {
+    200: {
+      description: 'Location breakdown',
+      content: { 'application/json': { schema: AdminActiveUsersByLocationResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(activeUsersByLocationRoute, async (c) => {
+  const { preset } = c.req.valid('query');
+  const range = resolveDateRangePreset(preset);
+  const locations = await activeUsersByLocation(range);
+  await auditRead(c, 'GET /v1/admin/active-users/by-location', { preset });
+  return c.json({ locations }, 200);
 });
 
 /* -------------------------------------------------------------------------- */

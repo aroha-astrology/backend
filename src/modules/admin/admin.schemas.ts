@@ -146,6 +146,13 @@ const AdminUserRowSchema = z.object({
   lastActiveAt: z.string().nullable(),
   claimedAmountPaise: z.number().nullable(),
   claimedAt: z.string().nullable(),
+  country: z.string().nullable(),
+  city: z.string().nullable(),
+  timeSpentTodaySec: z.number(),
+  timeSpentYesterdaySec: z.number(),
+  timeSpentWeekSec: z.number(),
+  timeSpentMonthSec: z.number(),
+  timeSpentYearSec: z.number(),
 });
 
 export const AdminUsersResponseSchema = z
@@ -251,3 +258,27 @@ const AdminRecurringUsersWeekSchema = z.object({
 export const AdminRecurringUsersResponseSchema = z
   .object({ weeks: z.array(AdminRecurringUsersWeekSchema) })
   .openapi('AdminRecurringUsersResponse');
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/active-users/by-location                                       */
+/* -------------------------------------------------------------------------- */
+
+export const AdminActiveUsersByLocationQuerySchema = z.object({
+  preset: z
+    .string()
+    .default('today')
+    .openapi({
+      example: 'today',
+      description: 'today | yesterday | last7d | this_month | this_year',
+    }),
+});
+
+const AdminLocationCountRowSchema = z.object({
+  country: z.string().nullable(),
+  city: z.string().nullable(),
+  totalUsers: z.number().int(),
+});
+
+export const AdminActiveUsersByLocationResponseSchema = z
+  .object({ locations: z.array(AdminLocationCountRowSchema) })
+  .openapi('AdminActiveUsersByLocationResponse');

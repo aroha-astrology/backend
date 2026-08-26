@@ -342,6 +342,12 @@ export const users = pgTable(
     streakLastDay: date('streak_last_day'),
     appVersion: text('app_version'),
     platform: platformEnum('platform'),
+    /** Client IP seen on the most recent activity heartbeat — used only to re-resolve geo below when it changes. */
+    lastIp: text('last_ip'),
+    /** IP-geolocation cache, refreshed only when lastIp changes (see recordActivityHeartbeat). Best-effort; null until the first heartbeat resolves. */
+    geoCountry: text('geo_country'),
+    geoCity: text('geo_city'),
+    geoResolvedAt: timestamp('geo_resolved_at', { withTimezone: true }),
     walletBalancePaise: integer('wallet_balance_paise').notNull().default(50000),
     unlockedHouses: integer('unlocked_houses')
       .array()
@@ -2563,5 +2569,33 @@ export const predictionOutcomes = pgTable(
     surfaceIdx: index('prediction_outcomes_surface_idx').on(t.surface, t.createdAt),
   }),
 );
+
+/* -------------------------------------------------------------------------- */
+/* user_activity_daily — per-user daily active-seconds, from client heartbeats */
+/* -------------------------------------------------------------------------- */
+
+/** One row per user per IST calendar day; secondsActive accumulates via heartbeat upserts. Backs the admin Users table's time-spent columns and the Active Users location breakdown. */
+export const userActivityDaily = pgTable(
+  'user_activity_daily',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    activityDate: date('activity_date').notNull(),
+    secondsActive: integer('seconds_active').notNull().default(0),
+  },
+  (t) => ({
+    userDateUnique: uniqueIndex('user_activity_daily_user_date_unique').on(
+      t.userId,
+      t.activityDate,
+    ),
+  }),
+);
+
+export type UserActivityDailyRow = typeof userActivityDaily.$inferSelect;
+export type NewUserActivityDailyRow = typeof userActivityDaily.$inferInsert;
 
 export type PredictionOutcomeRow = typeof predictionOutcomes.$inferSelect;

@@ -17,6 +17,8 @@ import {
 import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
 import { db } from '../../config/db.js';
+import { istDateString } from '../../lib/astro-tools/transit-events.js';
+import { resolveGeoForIp } from '../../lib/geo-lookup.js';
 import {
   users,
   birthProfiles,
@@ -32,6 +34,7 @@ import {
   voiceSessions,
   orders,
   reports,
+  userActivityDaily,
   type NewUserRow,
   type NewUserConsentLogRow,
   type UserRow,
@@ -766,6 +769,47 @@ export async function usersActiveBetween(range: DateRange): Promise<number> {
   return Number(result[0]?.activeCount ?? 0);
 }
 
+/** Same active-user definition as `usersActiveBetween`, grouped by each user's cached geo (nulls
+ * grouped together as "unresolved" rather than dropped, since sparse geo is expected — most users
+ * won't have sent a heartbeat since geo tracking shipped). Sorted by count descending. */
+export async function activeUsersByLocation(
+  range: DateRange,
+): Promise<{ country: string | null; city: string | null; totalUsers: number }[]> {
+  const from = range.from.toISOString();
+  const to = range.to.toISOString();
+  const result = await db.execute<{
+    country: string | null;
+    city: string | null;
+    total: string;
+  }>(sql`
+    WITH activity AS (
+      SELECT user_id, created_at FROM ${aiUsage} WHERE user_id IS NOT NULL
+      UNION ALL
+      SELECT user_id, created_at FROM ${chatSessions}
+      UNION ALL
+      SELECT user_id, created_at FROM ${voiceSessions}
+      UNION ALL
+      SELECT user_id, created_at FROM ${orders}
+      UNION ALL
+      SELECT user_id, created_at FROM ${reports}
+      UNION ALL
+      SELECT id AS user_id, last_active_at AS created_at FROM ${users}
+        WHERE last_active_at IS NOT NULL
+    )
+    SELECT u.geo_country AS "country", u.geo_city AS "city", count(DISTINCT a.user_id) AS "total"
+    FROM activity a
+    JOIN ${users} u ON u.id = a.user_id AND u.deleted_at IS NULL
+    WHERE a.created_at >= ${from} AND a.created_at < ${to}
+    GROUP BY u.geo_country, u.geo_city
+    ORDER BY "total" DESC
+  `);
+  return result.map((row) => ({
+    country: row.country,
+    city: row.city,
+    totalUsers: Number(row.total),
+  }));
+}
+
 /** `DateRange`-bounded sibling of `countNewUsersSince` — see `usersActiveBetween`'s comment. */
 export async function usersCreatedBetween(range: DateRange): Promise<number> {
   const [res] = await db
@@ -858,6 +902,27 @@ const claimedAtExpr = () => sql<string | null>`(
   limit 1
 )`;
 
+/** Sum of `user_activity_daily.seconds_active` for this user over an inclusive IST date range.
+ * Same hand-aliased-subquery style as claimedAmountExpr above, for the same reason: interpolating
+ * the `userActivityDaily` column objects directly would render unqualified inside the subquery. */
+const activitySecondsExpr = (fromDateInclusive: string, toDateInclusive: string) => sql<number>`(
+  select coalesce(sum(uad.seconds_active), 0) from user_activity_daily uad
+  where uad.user_id = users.id
+    and uad.activity_date >= ${fromDateInclusive}
+    and uad.activity_date <= ${toDateInclusive}
+)`;
+
+/** IST-anchored date strings for the Users table's 5 time-spent windows, all inclusive-inclusive. */
+function timeSpentWindows(now = new Date()) {
+  const today = istDateString(now);
+  const yesterday = istDateString(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  const weekStart = istDateString(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
+  const [year, month] = today.split('-');
+  const monthStart = `${year}-${month}-01`;
+  const yearStart = `${year}-01-01`;
+  return { today, yesterday, weekStart, monthStart, yearStart };
+}
+
 /** Powers both the Telegram `/users` command (no `q`) and the admin dashboard's `GET /v1/admin/users?q=` search. */
 export async function listUsersPage(
   limit: number,
@@ -868,6 +933,7 @@ export async function listUsersPage(
   contactType: ContactTypeFilter = 'all',
 ) {
   const orderExpr = sortBy === 'claimedAt' ? claimedAtExpr() : USER_SORT_COLUMNS[sortBy];
+  const w = timeSpentWindows();
   const rows = await db
     .select({
       id: users.id,
@@ -879,6 +945,13 @@ export async function listUsersPage(
       lastActiveAt: users.lastActiveAt,
       claimedAmountPaise: claimedAmountExpr(),
       claimedAt: claimedAtExpr(),
+      country: users.geoCountry,
+      city: users.geoCity,
+      timeSpentTodaySec: activitySecondsExpr(w.today, w.today),
+      timeSpentYesterdaySec: activitySecondsExpr(w.yesterday, w.yesterday),
+      timeSpentWeekSec: activitySecondsExpr(w.weekStart, w.today),
+      timeSpentMonthSec: activitySecondsExpr(w.monthStart, w.today),
+      timeSpentYearSec: activitySecondsExpr(w.yearStart, w.today),
     })
     .from(users)
     .where(userSearchWhere(q, contactType))
@@ -886,6 +959,47 @@ export async function listUsersPage(
     .limit(limit)
     .offset(offset);
   return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
+}
+
+/**
+ * Upserts today's (IST) active-seconds counter for `userId` by `secondsIncrement`, and — only
+ * when the IP differs from what's cached — best-effort re-resolves geo via ip-api.com. The geo
+ * call is awaited (not fire-and-forget): it only runs on an IP change, which is rare after the
+ * first heartbeat, so the extra latency is not part of every ping.
+ */
+export async function recordActivityHeartbeat(
+  userId: string,
+  ip: string | null,
+  secondsIncrement: number,
+): Promise<void> {
+  const today = istDateString(new Date());
+  await db
+    .insert(userActivityDaily)
+    .values({ userId, activityDate: today, secondsActive: secondsIncrement })
+    .onConflictDoUpdate({
+      target: [userActivityDaily.userId, userActivityDaily.activityDate],
+      set: { secondsActive: sql`${userActivityDaily.secondsActive} + ${secondsIncrement}` },
+    });
+
+  if (!ip) return;
+  const [current] = await db
+    .select({ lastIp: users.lastIp })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (current?.lastIp === ip) return;
+
+  const geo = await resolveGeoForIp(ip);
+  await db
+    .update(users)
+    .set({
+      lastIp: ip,
+      ...(geo ? { geoCountry: geo.country, geoCity: geo.city, geoResolvedAt: new Date() } : {}),
+    })
+    .where(eq(users.id, userId))
+    .catch((err) => {
+      logger.warn({ err, userId }, 'recordActivityHeartbeat: failed to persist geo update');
+    });
 }
 
 /**

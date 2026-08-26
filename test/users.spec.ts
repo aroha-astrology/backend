@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   hasGivenFeedback: vi.fn(),
   getClaimedCampaignKeys: vi.fn(),
   findLiveSelfClaimCampaign: vi.fn(),
+  recordActivityHeartbeat: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -52,6 +53,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
   ensureReferralCode: vi.fn((user) => Promise.resolve(user)),
   getClaimedCampaignKeys: state.getClaimedCampaignKeys,
+  recordActivityHeartbeat: state.recordActivityHeartbeat,
 }));
 
 vi.mock('../src/lib/notifications/telegram.js', () => ({
@@ -119,6 +121,36 @@ describe('GET /v1/me', () => {
 
     const app = createApp();
     const res = await app.request('/v1/me', { headers: AUTH });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /v1/me/activity-heartbeat', () => {
+  beforeEach(() => {
+    state.verifyIdToken.mockReset();
+    state.findUserByFirebaseUid.mockReset();
+    state.recordActivityHeartbeat.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('records one heartbeat interval for the authenticated user', async () => {
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-1'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(
+      makeUserRow({ id: 'id-1', firebaseUid: 'uid-1' }),
+    );
+
+    const app = createApp();
+    const res = await app.request('/v1/me/activity-heartbeat', { method: 'POST', headers: AUTH });
+
+    expect(res.status).toBe(200);
+    expect(state.recordActivityHeartbeat).toHaveBeenCalledTimes(1);
+    const [userId, , seconds] = state.recordActivityHeartbeat.mock.calls[0]!;
+    expect(userId).toBe('id-1');
+    expect(seconds).toBe(60);
+  });
+
+  it('returns 401 with no Authorization header', async () => {
+    const app = createApp();
+    const res = await app.request('/v1/me/activity-heartbeat', { method: 'POST' });
     expect(res.status).toBe(401);
   });
 });

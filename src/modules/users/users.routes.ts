@@ -8,10 +8,12 @@ import {
   collectUserExport,
   getClaimedCampaignKeys,
   claimCampaignBonus,
+  recordActivityHeartbeat,
 } from './users.repo.js';
 import { CLAIM_CAMPAIGN_KEYS } from '../../config/campaigns.js';
 import { resolveClaimCampaign } from '../gift-campaigns/gift-campaigns.service.js';
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
+import { getClientIp } from '../../lib/client-ip.js';
 import { Errors } from '../../lib/errors.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
 import {
@@ -79,6 +81,27 @@ const patchMeRoute = createRoute({
     },
     401: errorResponse('Unauthorized'),
     422: errorResponse('Validation failed'),
+  },
+});
+
+/** Matches the frontend's ActivityHeartbeatProvider ping interval — the server, not the client,
+ * is the source of truth for how many seconds a ping is worth, so a compromised/scripted client
+ * can't inflate its own time-spent by sending a larger claimed duration. */
+const HEARTBEAT_INTERVAL_SECONDS = 60;
+
+const activityHeartbeatRoute = createRoute({
+  method: 'post',
+  path: '/me/activity-heartbeat',
+  tags: ['Users'],
+  summary: 'Record one interval of active app usage, for admin time-spent reporting',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Success',
+      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+    },
+    401: errorResponse('Unauthorized'),
   },
 });
 
@@ -302,6 +325,13 @@ usersRouter.openapi(exportMeRoute, async (c) => {
   if (!data) throw Errors.notFound('User not found');
   c.header('Content-Disposition', 'attachment; filename="aroha-my-data.json"');
   return c.json(data, 200);
+});
+
+usersRouter.openapi(activityHeartbeatRoute, async (c) => {
+  const user = c.get('user');
+  const ip = getClientIp(c);
+  await recordActivityHeartbeat(user.id, ip, HEARTBEAT_INTERVAL_SECONDS);
+  return c.json({ success: true }, 200);
 });
 
 usersRouter.openapi(unlockHouseRoute, async (c) => {

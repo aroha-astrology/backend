@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   touchUserLastActive: vi.fn().mockResolvedValue(undefined),
   usersActiveBetween: vi.fn(),
   usersCreatedBetween: vi.fn(),
+  activeUsersByLocation: vi.fn(),
   sumWalletBalanceOutstanding: vi.fn(),
   listUsersPage: vi.fn(),
   countUsersMatching: vi.fn(),
@@ -65,6 +66,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   touchUserLastActive: state.touchUserLastActive,
   usersActiveBetween: state.usersActiveBetween,
   usersCreatedBetween: state.usersCreatedBetween,
+  activeUsersByLocation: state.activeUsersByLocation,
   sumWalletBalanceOutstanding: state.sumWalletBalanceOutstanding,
   listUsersPage: state.listUsersPage,
   countUsersMatching: state.countUsersMatching,
@@ -135,6 +137,7 @@ beforeEach(() => {
   state.payingUserCount.mockResolvedValue(0);
   state.usersActiveBetween.mockResolvedValue(0);
   state.usersCreatedBetween.mockResolvedValue(0);
+  state.activeUsersByLocation.mockResolvedValue([]);
   state.sumWalletBalanceOutstanding.mockResolvedValue(0);
   state.costByAgent.mockResolvedValue([]);
   state.recurringUsersForWeek.mockResolvedValue({ activeCount: 0, recurringCount: 0 });
@@ -252,6 +255,37 @@ describe('GET /v1/admin/recurring-users', () => {
       expect.stringContaining('/v1/admin/recurring-users'),
       expect.anything(),
     );
+  });
+});
+
+describe('GET /v1/admin/active-users/by-location', () => {
+  it('returns 200 with the mocked location breakdown', async () => {
+    signInAs(ADMIN_PHONE);
+    state.activeUsersByLocation.mockResolvedValue([
+      { country: 'India', city: 'Mumbai', totalUsers: 5 },
+      { country: null, city: null, totalUsers: 2 },
+    ]);
+    const app = createApp();
+
+    const res = await app.request('/v1/admin/active-users/by-location?preset=today', {
+      headers: authHeader(),
+    });
+    const body = (await res.json()) as { locations: Record<string, unknown>[] };
+
+    expect(res.status).toBe(200);
+    expect(body.locations).toEqual([
+      { country: 'India', city: 'Mumbai', totalUsers: 5 },
+      { country: null, city: null, totalUsers: 2 },
+    ]);
+  });
+
+  it('returns 403 for a non-admin phone', async () => {
+    signInAs(NON_ADMIN_PHONE);
+    const app = createApp();
+
+    const res = await app.request('/v1/admin/active-users/by-location', { headers: authHeader() });
+
+    expect(res.status).toBe(403);
   });
 });
 
