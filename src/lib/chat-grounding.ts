@@ -19,6 +19,7 @@ import {
   calculateShadbala,
   computePlanetStates,
   computeBhavaChalit,
+  analyzeAllVakriPlanets,
 } from './astro-engine/index.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
 import { kpLordsForPlanets } from './astro-engine/calculations/kp-sublord.js';
@@ -1053,15 +1054,30 @@ export function planetStrengthFacts(
   if (planets.length === 0) return [];
   const facts: string[] = [];
 
-  // --- Retrogression + combustion -------------------------------------------
+  // --- Retrogression + combustion + Vakri Rules Engine --------------------
   const states = computePlanetStates(planets);
 
   const retrograde = states.filter((s) => s.isRetrograde).map((s) => s.planet);
-  facts.push(
-    retrograde.length > 0
-      ? `Retrograde at birth: ${retrograde.join(', ')}. A retrograde planet gives its results internally and on its own timing — delayed, revisited, or turned inward rather than expressed outwardly.`
-      : 'Retrograde at birth: none — every planet was in direct motion.',
-  );
+  if (retrograde.length > 0) {
+    facts.push(
+      `Retrograde (Vakri) at birth: ${retrograde.join(', ')}. In Jyotish, Vakri motion grants elevated Cheshta Bala (motional strength), giving the planet greater capacity to express its portfolio. Manifestation follows non-linear, introspective, and iterative cycles.`,
+    );
+
+    if (chart) {
+      try {
+        const vakriAnalyses = analyzeAllVakriPlanets(chart as never);
+        for (const va of vakriAnalyses) {
+          facts.push(
+            `VAKRI DETAIL (${va.planet}): House ${va.placement.house} (${va.placement.sign}), rules house(s) ${va.lordship.housesOwned.join(', ')} (${va.lordship.functionalNature}). Cheshta Bala: ${va.cheshtaBala.score} Virupas (${va.cheshtaBala.level}). Classical: ${va.interpretation.classical} Interpretive: ${va.interpretation.interpretive} Karmic: ${va.interpretation.karmic} (Confidence: ${va.confidence.level}, score: ${va.confidence.score}).`,
+          );
+        }
+      } catch {
+        // Fallback gracefully if chart data is partial
+      }
+    }
+  } else {
+    facts.push('Retrograde at birth: none — every planet was in direct motion.');
+  }
 
   const combust = states.filter((s) => s.isCombust);
   if (combust.length > 0) {
@@ -1462,7 +1478,8 @@ export async function buildGroundingFacts(
   const houseOccupantsMap: Record<number, string[]> = {};
   for (const p of planets) {
     if (!houseOccupantsMap[p.house]) houseOccupantsMap[p.house] = [];
-    houseOccupantsMap[p.house].push(p.planet);
+
+    houseOccupantsMap[p.house]!.push(p.planet);
   }
 
   const transits = {

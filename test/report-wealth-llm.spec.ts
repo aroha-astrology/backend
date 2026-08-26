@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WealthScores } from '../src/lib/astro-engine/reports/wealth.js';
 
 const state = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -75,7 +75,7 @@ function makeScores(overrides: Partial<WealthScores> = {}): WealthScores {
     incomeSourceStrengths: { salaried: 'strong', business: 'average', property: 'weak' },
     strongestIncomeSource: 'salaried',
     ...overrides,
-  };
+  } as unknown as WealthScores;
 }
 
 const patternResponse = JSON.stringify({

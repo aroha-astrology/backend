@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BabyNameScores } from '../src/lib/astro-engine/reports/baby-name.js';
 
 const state = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -18,7 +18,7 @@ function makeScores(overrides: Partial<BabyNameScores> = {}): BabyNameScores {
     doshaYoga: { positives: [], cautions: [] },
     candidateNames: ['Chudamani', 'Chuni', 'Chunni'],
     ...overrides,
-  };
+  } as unknown as BabyNameScores;
 }
 
 beforeEach(() => {

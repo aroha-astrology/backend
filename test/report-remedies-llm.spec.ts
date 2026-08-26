@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RemediesScores } from '../src/lib/astro-engine/reports/remedies.js';
 
 const state = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -41,7 +41,7 @@ function makeScores(overrides: Partial<RemediesScores> = {}): RemediesScores {
       },
     ],
     ...overrides,
-  };
+  } as unknown as RemediesScores;
 }
 
 const fourSectionResponse = JSON.stringify({

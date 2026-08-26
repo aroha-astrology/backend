@@ -14,6 +14,9 @@ export {
 // Shadbala (Six-fold Strength)
 export { calculateShadbala } from './calculations/shadbala';
 
+// Vakri (Retrograde) Graha Rules Engine
+export * from './calculations/vakri';
+
 // Ashtakavarga System
 export {
   calculateBhinnaAshtakavarga,
@@ -71,7 +74,13 @@ export {
   getNamePlanes,
   getKuaData,
 } from './numerology/vedic';
-export type { LoShuGrid, ChallengeNumbers, ZodiacInfo, NamePlanes, KuaData } from './numerology/vedic';
+export type {
+  LoShuGrid,
+  ChallengeNumbers,
+  ZodiacInfo,
+  NamePlanes,
+  KuaData,
+} from './numerology/vedic';
 
 // Name Correction
 export {

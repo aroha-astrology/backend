@@ -23,11 +23,26 @@ import type { ChatMessage } from '../../../config/llm.js';
  * `planetCondition` (see chat-grounding.ts's `chartConditionFacts` — the same
  * function that grounds chat, voice and horoscopes, so the two can't diverge).
  *
+ * `vakri` is the 4-layer Vakri/Retrograde analysis block from vakri.ts.  Every
+ * line is a grounding fact; the model is instructed NOT to treat retrograde as
+ * unconditionally positive or negative — only as a modifier within the full
+ * synthesis.
+ *
  * Omitted for `window-summary.ts`, which summarises a list of timing windows
  * rather than a report and has no chart behind it.
  */
-export function reportFactsMessage(facts: string, condition?: string[]): ChatMessage {
-  const body = condition && condition.length > 0 ? `${facts}\n${condition.join('\n')}` : facts;
+export function reportFactsMessage(
+  facts: string,
+  condition?: string[],
+  vakri?: string[],
+): ChatMessage {
+  let body = facts;
+  if (condition && condition.length > 0) {
+    body += `\n${condition.join('\n')}`;
+  }
+  if (vakri && vakri.length > 0) {
+    body += `\n\n=== VAKRI (Retrograde) ANALYSIS ===\nNote: retrograde is a MODIFIER — never the sole determinant. Apply the 4-layer model (Astronomical → Classical → Interpretive → Karmic). Do NOT issue fatalistic statements.\n${vakri.join('\n')}`;
+  }
 
   return {
     role: 'system',

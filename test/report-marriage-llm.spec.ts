@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MarriageScores } from '../src/lib/astro-engine/reports/marriage.js';
 
 const state = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -89,7 +89,7 @@ function makeScores(overrides: Partial<MarriageScores> = {}): MarriageScores {
     },
     modernRealities: { lateMarriageLeaning: false, rahuHouse: 9, seventhHousePlanetCount: 1 },
     ...overrides,
-  };
+  } as unknown as MarriageScores;
 }
 
 function jsonSections(...headings: string[]): string {

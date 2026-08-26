@@ -276,6 +276,7 @@ async function generateSection(
   systemPrompt: string,
   facts: string,
   condition: string[] | undefined,
+  vakri: string[] | undefined,
   userPrompt: string,
   expectedKeys: readonly string[],
 ): Promise<ReportSection[]> {
@@ -284,7 +285,7 @@ async function generateSection(
     responseSchema: KEYED_SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition),
+      reportFactsMessage(facts, condition, vakri),
       { role: 'user', content: userPrompt },
     ],
   });
@@ -313,6 +314,7 @@ export async function generateMatchReportNarrative(
       cardsSystemPrompt(),
       facts,
       scores.planetCondition,
+      scores.vakriFacts,
       'Write the 8 life-area cards.',
       MATCH_RISK_AREA_ORDER,
     ),
@@ -320,6 +322,7 @@ export async function generateMatchReportNarrative(
       dosAndDontsSystemPrompt(),
       facts,
       scores.planetCondition,
+      scores.vakriFacts,
       "Write the Do's, Don'ts, and Classical Remedies sections.",
       MATCH_CLOSING_KEYS,
     ),

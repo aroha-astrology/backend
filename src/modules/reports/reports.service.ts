@@ -33,6 +33,7 @@ import {
   chartPlanetStrength,
   type PlanetStrengthRow,
 } from '../../lib/chat-grounding.js';
+import { analyzeAllVakriPlanets } from '../../lib/astro-engine/index.js';
 import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
 import { verifyReportClaims } from '../../lib/llm/reports/verify-claims.js';
 import type { BirthRecord } from '../../lib/swarm/state.js';
@@ -496,22 +497,32 @@ function computeScoresWithCondition(
   const scores = generator.computeScores(ctx, periodMonth);
   let planetCondition: string[] = [];
   let planetStrength: PlanetStrengthRow[] = [];
+  const vakriFacts: string[] = [];
   try {
     planetCondition = chartConditionFacts(ctx.chart);
-    // The same numbers, structured, for the reader-facing PlanetStrengthCard.
-    // `planetCondition` above is grounding prose written at the model and is
-    // suppressed by the frontend (SEPARATELY_RENDERED_KEYS); this is what the
-    // reader actually sees, so the two must never diverge — hence one source
-    // (planetStrengthTable) feeding both.
     planetStrength = chartPlanetStrength(ctx.chart);
   } catch (err) {
     logger.warn({ err }, 'chart-condition facts failed for report; continuing without them');
+  }
+  try {
+    if (ctx.chart) {
+      const vakriAnalyses = analyzeAllVakriPlanets(ctx.chart as never);
+      for (const va of vakriAnalyses) {
+        vakriFacts.push(...va.factsForLLM);
+        vakriFacts.push(
+          `VAKRI ${va.planet} interpretation — Classical: ${va.interpretation.classical} | Interpretive: ${va.interpretation.interpretive} | Karmic: ${va.interpretation.karmic} (confidence: ${va.confidence.level})`,
+        );
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'vakri facts failed for report; continuing without them');
   }
   return clampWindowsToYear(
     {
       ...scores,
       ...(planetCondition.length > 0 ? { planetCondition } : {}),
       ...(planetStrength.length > 0 ? { planetStrength } : {}),
+      ...(vakriFacts.length > 0 ? { vakriFacts } : {}),
     },
     yearWindowFor(reportKey, periodMonth),
   );

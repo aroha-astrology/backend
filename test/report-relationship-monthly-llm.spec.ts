@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RelationshipMonthlyScores } from '../src/lib/astro-engine/reports/relationship-monthly.js';
 
 const state = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -26,7 +26,7 @@ function makeScores(overrides: Partial<RelationshipMonthlyScores> = {}): Relatio
       },
     ],
     ...overrides,
-  };
+  } as unknown as RelationshipMonthlyScores;
 }
 
 beforeEach(() => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PastLifeScores } from '../src/lib/astro-engine/reports/past-life.js';
 
 const state = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -23,7 +23,7 @@ function makeScores(overrides: Partial<PastLifeScores> = {}): PastLifeScores {
     doshaYoga: { positives: [], cautions: [] },
     lifeSoFar: [],
     ...overrides,
-  };
+  } as unknown as PastLifeScores;
 }
 
 beforeEach(() => {

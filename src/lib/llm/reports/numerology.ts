@@ -341,6 +341,7 @@ async function callAndParse(
   systemPrompt: string,
   facts: string,
   condition: string[] | undefined,
+  vakri: string[] | undefined,
   label: string,
   /** Present ONLY for call4 (the phone section) — resolves its `items` against the given
    * suggestion facts. Every other call omits this and gets the plain paragraphs-only parse. */
@@ -351,7 +352,7 @@ async function callAndParse(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition),
+      reportFactsMessage(facts, condition, vakri),
       { role: 'user', content: 'Write this part of the Numerology Report narrative.' },
     ],
   });
@@ -391,6 +392,7 @@ export async function generateNumerologyNarrative(
       systemPrompt,
       facts,
       scores.planetCondition,
+      scores.vakriFacts,
       label,
       itemsKnown,
     );

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NameChangeScores } from '../src/lib/astro-engine/reports/name-change.js';
 import type { ScoredName } from '../src/lib/astro-engine/numerology/name-scoring.js';
 
@@ -37,7 +37,7 @@ function makeScores(overrides: Partial<NameChangeScores> = {}): NameChangeScores
       { variant: 'Preeya Sharma', chaldean: 9, change: 'first name — replaced "i" with "ee"' },
     ],
     ...overrides,
-  };
+  } as unknown as NameChangeScores;
 }
 
 /** Ranked alternatives always carry the reader's own surname — this report changes the FIRST

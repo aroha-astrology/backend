@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KundliMilanScores } from '../src/lib/astro-engine/reports/kundli-milan.js';
 
 const state = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -31,7 +31,7 @@ function makeScores(overrides: Partial<KundliMilanScores> = {}): KundliMilanScor
       { key: 'inlaws', severity: 'neutral', score: 60, evidence: ['4th lords average.'] },
     ],
     ...overrides,
-  };
+  } as unknown as KundliMilanScores;
 }
 
 const genericSectionResponse = JSON.stringify({

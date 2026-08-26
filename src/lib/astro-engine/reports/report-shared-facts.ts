@@ -44,6 +44,12 @@ export interface ReportSharedFacts {
    * it fires cleanly regardless of whether its ruling planet had the strength to deliver it.
    */
   planetCondition?: string[];
+  /**
+   * Structured Vakri (Retrograde) Graha facts and analysis across the chart —
+   * provides motional strength (Cheshta Bala), classical Uttara Kalamrita dignity reversals,
+   * dispositor anchors, and 3-layer interpretations.
+   */
+  vakriFacts?: string[];
 }
 
 export interface ReportSharedFactsWithRemedies extends ReportSharedFacts {

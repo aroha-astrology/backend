@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NumerologyScores } from '../src/lib/astro-engine/reports/numerology.js';
 
 const state = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -80,7 +80,7 @@ function makeScores(overrides: Partial<NumerologyScores> = {}): NumerologyScores
       { year: 2030, personalYear: 8 },
     ],
     ...overrides,
-  };
+  } as unknown as NumerologyScores;
 }
 
 const call1Response = JSON.stringify({

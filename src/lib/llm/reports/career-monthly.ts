@@ -156,7 +156,7 @@ export async function generateCareerMonthlyNarrative(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: narrativeSystemPrompt() },
-      reportFactsMessage(buildFacts(scores), scores.planetCondition),
+      reportFactsMessage(buildFacts(scores), scores.planetCondition, scores.vakriFacts),
       { role: 'user', content: "Write this month's Career report narrative." },
     ],
   });

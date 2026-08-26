@@ -252,6 +252,7 @@ async function callAndParse(
   systemPrompt: string,
   facts: string,
   condition: string[] | undefined,
+  vakri: string[] | undefined,
   label: string,
 ): Promise<ReportSection[]> {
   const raw = await generate({
@@ -259,7 +260,7 @@ async function callAndParse(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition),
+      reportFactsMessage(facts, condition, vakri),
       { role: 'user', content: 'Write this part of the True Love report narrative.' },
     ],
   });
@@ -293,7 +294,13 @@ export async function generateTrueLoveNarrative(
   ): Promise<ReportSection[]> {
     const cached = existing[index];
     if (cached) return cached;
-    const group = await callAndParse(systemPrompt, facts, scores.planetCondition, label);
+    const group = await callAndParse(
+      systemPrompt,
+      facts,
+      scores.planetCondition,
+      scores.vakriFacts,
+      label,
+    );
     await progress?.onGroupComplete(group);
     return group;
   }

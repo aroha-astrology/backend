@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MatchReportScores } from '../src/lib/astro-engine/reports/match-report.js';
 import type { MatchRiskFactor } from '../src/lib/astro-engine/matching/match-risks.js';
 import type { ReportSection } from '../src/modules/reports/report-generator.types.js';
@@ -49,7 +49,7 @@ function makeScores(overrides: Partial<MatchReportScores> = {}): MatchReportScor
     primaryDoshaYoga: { positives: [], cautions: [] },
     riskFactors: makeRiskFactors(),
     ...overrides,
-  };
+  } as unknown as MatchReportScores;
 }
 
 const eightCardsResponse = JSON.stringify({

@@ -196,3 +196,80 @@ export function evaluateRoomPlacement(roomLayout: Record<string, string[]>): {
   const overallScore = totalWeight > 0 ? Math.round(totalWeightedScore / totalWeight) : 50;
   return { roomScores, overallScore };
 }
+
+// =============================================================================
+// Astro-Vastu Directional Sensitivity & Vakri Planetary Integration
+// =============================================================================
+
+export const PLANETARY_DIRECTIONS: Record<
+  string,
+  { direction: string; deity: string; element: string }
+> = {
+  Sun: { direction: 'E', deity: 'Surya / Indra', element: 'Fire / Light' },
+  Moon: { direction: 'NW', deity: 'Chandra / Vayu', element: 'Air / Mind' },
+  Mars: { direction: 'S', deity: 'Mangala / Yama', element: 'Fire / Vitality' },
+  Mercury: { direction: 'N', deity: 'Budha / Kubera', element: 'Earth / Commerce' },
+  Jupiter: { direction: 'NE', deity: 'Guru / Ishaan', element: 'Water / Ether / Wisdom' },
+  Venus: { direction: 'SE', deity: 'Shukra / Agni', element: 'Fire / Comfort' },
+  Saturn: { direction: 'W', deity: 'Shani / Varuna', element: 'Air / Structure' },
+  Rahu: { direction: 'SW', deity: 'Rahu / Nirruti', element: 'Earth / Stability' },
+  Ketu: { direction: 'NE', deity: 'Ketu / Moksha', element: 'Ether / Spirituality' },
+};
+
+export interface AstroVastuVakriInsight {
+  planet: string;
+  direction: string;
+  element: string;
+  zoneSignificance: string;
+  recommendation: string;
+}
+
+export function evaluateAstroVastuVakri(
+  vakriPlanets: Array<{ planet: string; house?: number; sign?: string }>,
+): AstroVastuVakriInsight[] {
+  const insights: AstroVastuVakriInsight[] = [];
+
+  for (const vp of vakriPlanets) {
+    const dirInfo = PLANETARY_DIRECTIONS[vp.planet];
+    if (!dirInfo) continue;
+
+    let zoneSignificance = '';
+    let recommendation = '';
+
+    switch (vp.planet) {
+      case 'Jupiter':
+        zoneSignificance = `North-East (Ishaan) is governed by Jupiter. Retrograde Jupiter indicates internalized wisdom and sensitivity to spiritual energy flow.`;
+        recommendation = `Keep the North-East zone clutter-free, open, and serene. Place sacred items, water elements, or meditation setups here to harmonize Jupiter's expansive energy.`;
+        break;
+      case 'Saturn':
+        zoneSignificance = `West (Pashchima) is governed by Saturn. Retrograde Saturn intensifies discipline, structural foundations, and endurance.`;
+        recommendation = `Ensure the West zone is solid, well-grounded, and free from heavy dampness. Ideal for study areas, solid storage, or dining spaces that promote steady persistence.`;
+        break;
+      case 'Mars':
+        zoneSignificance = `South (Dakshina) is governed by Mars. Retrograde Mars internalizes drive, requiring balanced containment of assertive energy.`;
+        recommendation = `Maintain the South zone with clean architectural stability, warm earthy/red tones, and avoid north-facing clutter near this sector.`;
+        break;
+      case 'Venus':
+        zoneSignificance = `South-East (Agneya) is governed by Venus. Retrograde Venus reflects deep re-evaluation of aesthetics, comfort, and financial values.`;
+        recommendation = `Harmonize the South-East zone by keeping electrical equipment, kitchen hearth, or creative lighting balanced and beautifully organized.`;
+        break;
+      case 'Mercury':
+        zoneSignificance = `North (Uttara) is governed by Mercury. Retrograde Mercury prompts thorough intellectual analysis and careful commerce evaluation.`;
+        recommendation = `Keep the North zone vibrant, well-lit, and unobstructed with green plants or wealth symbols to support non-linear intellectual and commercial clarity.`;
+        break;
+      default:
+        zoneSignificance = `${dirInfo.direction} is governed by ${vp.planet}.`;
+        recommendation = `Maintain harmony, cleanliness, and proper elemental balance in the ${dirInfo.direction} zone.`;
+    }
+
+    insights.push({
+      planet: vp.planet,
+      direction: dirInfo.direction,
+      element: dirInfo.element,
+      zoneSignificance,
+      recommendation,
+    });
+  }
+
+  return insights;
+}

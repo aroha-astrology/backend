@@ -174,6 +174,7 @@ async function generateSection(
   systemPrompt: string,
   facts: string,
   condition: string[] | undefined,
+  vakri: string[] | undefined,
   userPrompt: string,
   label: string,
 ): Promise<ReportSection[]> {
@@ -182,7 +183,7 @@ async function generateSection(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition),
+      reportFactsMessage(facts, condition, vakri),
       { role: 'user', content: userPrompt },
     ],
   });
@@ -215,6 +216,7 @@ export async function generateKundliMilanNarrative(
       narrativeSystemPrompt(),
       buildFacts(scores),
       scores.planetCondition,
+      scores.vakriFacts,
       'Write the Kundli Milan report narrative.',
       'call1',
     ),
@@ -222,6 +224,7 @@ export async function generateKundliMilanNarrative(
       narrativeSystemPromptCall2(),
       buildFactsCall2(scores),
       scores.planetCondition,
+      scores.vakriFacts,
       'Write the additional Kundli Milan report sections.',
       'call2',
     ),

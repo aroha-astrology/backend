@@ -233,6 +233,7 @@ async function generateSection(
   systemPrompt: string,
   facts: string,
   condition: string[] | undefined,
+  vakri: string[] | undefined,
   userPrompt: string,
 ): Promise<ReportSection[]> {
   const raw = await generate({
@@ -240,7 +241,7 @@ async function generateSection(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition),
+      reportFactsMessage(facts, condition, vakri),
       { role: 'user', content: userPrompt },
     ],
   });
@@ -268,18 +269,21 @@ export async function generateWealthNarrative(scores: WealthScores): Promise<Rep
       narrativeSystemPrompt(),
       buildFacts(scores),
       scores.planetCondition,
+      scores.vakriFacts,
       'Write the Wealth report narrative.',
     ),
     generateSection(
       enrichedSystemPrompt(),
       buildEnrichedFacts(scores),
       scores.planetCondition,
+      scores.vakriFacts,
       'Write the additional Wealth report sections.',
     ),
     generateSection(
       incomeSourceSystemPrompt(),
       buildIncomeSourceFacts(scores),
       scores.planetCondition,
+      scores.vakriFacts,
       'Write the final Wealth report sections.',
     ),
   ]);

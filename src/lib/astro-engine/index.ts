@@ -24,6 +24,9 @@ export {
 } from './calculations/planet-state';
 export type { PlanetState } from './calculations/planet-state';
 
+// Vakri (Retrograde) Graha Rules Engine
+export * from './calculations/vakri';
+
 // Ashtakavarga System
 export {
   calculateBhinnaAshtakavarga,

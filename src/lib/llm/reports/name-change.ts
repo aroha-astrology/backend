@@ -294,7 +294,11 @@ export async function generateNameChangeNarrative(
         role: 'system',
         content: narrativeSystemPrompt(scores.variants.length, suggestions.length),
       },
-      reportFactsMessage(buildFacts(scores, suggestions), scores.planetCondition),
+      reportFactsMessage(
+        buildFacts(scores, suggestions),
+        scores.planetCondition,
+        scores.vakriFacts,
+      ),
       { role: 'user', content: 'Write the Name Change report narrative.' },
     ],
   });
