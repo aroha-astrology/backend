@@ -263,7 +263,7 @@ async function send(subject: string, text: string, html: string): Promise<boolea
 
 export async function emailSupportTicket(fields: {
   ticketId: string;
-  userId: string;
+  userId?: string | null;
   contact?: string | null;
   category: string;
   message: string;
@@ -271,7 +271,7 @@ export async function emailSupportTicket(fields: {
   const facts: Array<[string, string]> = [
     ['Category', fields.category],
     ...(fields.contact ? ([['Contact', fields.contact]] as Array<[string, string]>) : []),
-    ['User', fields.userId],
+    ['User', fields.userId ?? 'Anonymous (public form)'],
     ['Ticket', fields.ticketId],
   ];
 

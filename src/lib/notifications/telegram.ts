@@ -104,14 +104,14 @@ function supportTicketRecipients(): (string | number)[] {
 
 export async function notifySupportTicket(fields: {
   ticketId: string;
-  userId: string;
+  userId?: string | null;
   contact?: string | null;
   category: string;
   message: string;
 }): Promise<boolean> {
   const text =
     `🆘 *New Support Ticket*\n\n` +
-    `User: \`${escapeMarkdown(fields.userId)}\`\n` +
+    `User: \`${escapeMarkdown(fields.userId ?? 'Anonymous (public form)')}\`\n` +
     (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
     `Category: ${escapeMarkdown(fields.category)}\n` +
     `\n*Message:* ${escapeMarkdown(clipForTelegram(fields.message))}`;
