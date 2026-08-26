@@ -17,7 +17,10 @@
 **Files:**
 
 - Modify: `C:\dev\aroha-astrology\jyotish-backend\src\db\schema.ts:2254-2279`
-- Generated: `C:\dev\aroha-astrology\jyotish-backend\src\db\migrations\0061_*.sql` (name chosen by drizzle-kit)
+- Create: `C:\dev\aroha-astrology\jyotish-backend\src\db\migrations\0061_public_support_tickets.sql`
+- Modify: `C:\dev\aroha-astrology\jyotish-backend\src\db\migrations\meta\_journal.json`
+
+**Note (discovered during execution, corrects the original plan):** `0053_order_reference_and_report_input_hash.sql`'s own top-of-file comment reveals every migration since `0050` has been **hand-written**, not `drizzle-kit generate`-produced — the last drizzle-kit snapshot on disk is still `0049`, so `generate` diffs against a stale baseline and reinvents already-applied objects. Steps 2-4 below follow the established hand-written convention (`0052`/`0053`'s own style: defensive `IF NOT EXISTS`/`duplicate_object` guards, no `--> statement-breakpoint` markers, comment block explaining why) instead of running `db:generate`. No live database is touched by this task — applying the migration is left for later (deploy step or a manual `db:migrate` run against a real target), per this session's decision.
 
 - [ ] **Step 1: Edit the `supportTickets` table definition**
 
@@ -60,44 +63,70 @@ export const supportTickets = pgTable(
 
 (Only two real changes: `userId` drops `.notNull()`, and `contactName`/`contactEmail` are new.)
 
-- [ ] **Step 2: Generate the migration**
+- [ ] **Step 2: Hand-write the migration file**
 
-Run (from `jyotish-backend`, with `DATABASE_URL` set in `.env` as every prior migration in this repo requires):
-
-```bash
-npm run db:generate
-```
-
-Expected: a new file `src/db/migrations/0061_<two-word-slug>.sql` (drizzle-kit picks the slug; don't rename it) plus updated `src/db/migrations/meta/_journal.json` and a new `meta/0061_snapshot.json`. The generated SQL should contain an `ALTER TABLE "support_tickets" ALTER COLUMN "user_id" DROP NOT NULL` and two `ADD COLUMN` statements for `contact_name text` / `contact_email text`.
-
-- [ ] **Step 3: Hand-append the CHECK constraint**
-
-Drizzle's schema builder here has no existing `check()` precedent in this codebase, so add the constraint as plain SQL at the end of the generated `0061_*.sql` file:
+Create `src/db/migrations/0061_public_support_tickets.sql`:
 
 ```sql
-ALTER TABLE "support_tickets"
-  ADD CONSTRAINT "support_tickets_identity_check"
-  CHECK ("user_id" IS NOT NULL OR "contact_email" IS NOT NULL);
+-- =============================================================================
+-- Public (anonymous) support tickets
+-- =============================================================================
+-- Hand-written, not drizzle-kit-generated — same reason as every migration
+-- from 0050 onward (see 0053's own comment): the last drizzle-kit snapshot on
+-- disk predates them, so `generate` diffs against a stale baseline. Follows
+-- 0052/0053's pattern: defensive IF NOT EXISTS / duplicate_object guards, one
+-- file, no statement-breakpoint markers.
+--
+-- Lets a support ticket exist without an account. The public /support form on
+-- the landing site (no login) has no userId to attach a ticket to, so
+-- contact_name/contact_email are the fallback identity. The CHECK constraint
+-- guarantees every ticket carries ONE of the two.
+-- =============================================================================
+
+ALTER TABLE "support_tickets" ALTER COLUMN "user_id" DROP NOT NULL;
+
+ALTER TABLE "support_tickets" ADD COLUMN IF NOT EXISTS "contact_name" text;
+ALTER TABLE "support_tickets" ADD COLUMN IF NOT EXISTS "contact_email" text;
+
+DO $$ BEGIN
+  ALTER TABLE "support_tickets"
+    ADD CONSTRAINT "support_tickets_identity_check"
+    CHECK ("user_id" IS NOT NULL OR "contact_email" IS NOT NULL);
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 ```
 
-- [ ] **Step 4: Apply the migration to your local/dev database**
+- [ ] **Step 3: Add the journal entry**
 
-```bash
-npm run db:migrate
+`drizzle-kit migrate` (whatever eventually applies this) reads `meta/_journal.json` to know which files exist and in what order — that list is kept up to date by hand for every hand-written migration too (unlike the snapshot files, which aren't). Add this entry to the `entries` array, immediately after the `idx: 60` entry (following the existing one-day-increment convention on `when`):
+
+```json
+{
+  "idx": 61,
+  "version": "7",
+  "when": 1787414400000,
+  "tag": "0061_public_support_tickets",
+  "breakpoints": true
+}
 ```
 
-Expected: no errors. Confirm with `psql "$DATABASE_URL" -c '\d support_tickets'` (or your DB client of choice) that `user_id` is nullable, `contact_name`/`contact_email` exist, and `support_tickets_identity_check` is listed under Check constraints.
+- [ ] **Step 4: No local apply**
+
+Per this session's decision, this migration is not applied to any database as part of this plan — it ships to whichever environment runs it next (a deploy step, or a manual `db:migrate`/`psql` run) already reviewed as a file. Skip straight to committing.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd C:/dev/aroha-astrology/jyotish-backend
-git add src/db/schema.ts src/db/migrations/0061_*.sql src/db/migrations/meta/_journal.json src/db/migrations/meta/0061_snapshot.json
+git add src/db/schema.ts src/db/migrations/0061_public_support_tickets.sql src/db/migrations/meta/_journal.json
 git commit -m "feat(support): make support_tickets.user_id nullable, add contact_name/contact_email
 
 Lets a ticket exist without an account (the public /support form has none
 to attach to) while a CHECK constraint still guarantees every ticket has
-SOME identity — userId or contactEmail."
+SOME identity — userId or contactEmail. Hand-written migration, not applied
+locally — see file header for why (every migration since 0050 is hand-written,
+same reason)."
 ```
 
 ---
@@ -727,12 +756,53 @@ npm run test
 
 Expected: PASS, no regressions elsewhere.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5b: Fix the router mount order (discovered while running Step 4/5, not in the original plan)**
+
+All 27 tests in the file failed with 401, not the expected pass — because `birthProfilesRouter`/`profilesRouter`/`deviceTokensRouter`/`billingRouter` each call `.use('*', requireUser)`, and per this codebase's own documented Hono behavior (see `app.ts`'s comment above `gitaRouter`'s mount, and `admin.routes.ts`'s top-of-file comment), that wildcard leaks onto every router mounted _after_ it at the same `/v1` base path. `supportRouter` was mounted after all four, so the new unauthenticated route inherited `requireUser` and 401'd. This is the exact bug `gitaRouter` hit and was moved to fix — same fix here.
+
+In `src/app.ts`, move `app.route('/v1', supportRouter);` from its old position (after `adminGiftCampaignsRouter`, before `preferencesRouter`) to right after the `gita/audio` static mount, before `usersRouter`:
+
+```ts
+// supportRouter now also carries POST /public/support/tickets, which (like
+// gitaRouter's GET /gita/verses above) has no auth at all — same reasoning,
+// same fix: it must be mounted before any router that calls
+// `.use('*', requireUser)` on itself, or it inherits that wildcard and
+// 401s. birthProfilesRouter/profilesRouter/deviceTokensRouter/billingRouter
+// below are exactly that; supportRouter's own /support/tickets and
+// /admin/support/tickets/* routes are unaffected by moving earlier — they
+// already apply requireUser/requireAdmin per-route, not via a wildcard.
+app.route('/v1', supportRouter);
+app.route('/v1', usersRouter);
+app.route('/v1', birthProfilesRouter);
+app.route('/v1', profilesRouter);
+app.route('/v1', deviceTokensRouter);
+app.route('/v1', billingRouter);
+app.route('/v1', adminRouter);
+app.route('/v1', adminGroupsRouter);
+app.route('/v1', adminGiftCampaignsRouter);
+app.route('/v1', preferencesRouter);
+```
+
+Re-run `npx vitest run test/support-routes.spec.ts` — expect all 27 to pass.
+
+- [ ] **Step 6: Full backend suite**
+
+```bash
+npm run test
+```
+
+Expected: PASS, no regressions from the reorder (every other router's routes are unaffected — only mount position changed, no middleware removed).
+
+- [ ] **Step 7: Commit**
 
 ```bash
 cd C:/dev/aroha-astrology/jyotish-backend
-git add src/modules/support/support.routes.ts test/support-routes.spec.ts
-git commit -m "feat(support): add POST /v1/public/support/tickets (unauthenticated, rate-limited, honeypot-protected)"
+git add src/modules/support/support.routes.ts src/app.ts test/support-routes.spec.ts
+git commit -m "feat(support): add POST /v1/public/support/tickets (unauthenticated, rate-limited, honeypot-protected)
+
+Also moves supportRouter's mount earlier in app.ts, before the routers that
+leak a wildcard requireUser onto anything mounted after them — same fix
+gitaRouter's own mount position already documents."
 ```
 
 ---

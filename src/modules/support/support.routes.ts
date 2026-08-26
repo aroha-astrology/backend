@@ -6,6 +6,7 @@ import { notifySupportTicket } from '../../lib/notifications/telegram.js';
 import { logAdminAction } from '../admin/admin.repo.js';
 import {
   CreateTicketBodySchema,
+  CreatePublicTicketBodySchema,
   SupportTicketSchema,
   ListMyTicketsResponseSchema,
   AdminListTicketsQuerySchema,
@@ -70,6 +71,13 @@ async function auditRead(
 /** Ticket creation is a rare, deliberate user action (not an LLM call) — capped tightly enough to stop spam without ever bothering a real user submitting one genuine ticket. */
 const createTicketRateLimit = rateLimiter({ windowMs: 60_000, max: 5, name: 'support-tickets' });
 
+/** Public form is a much smaller trickle than the in-app flow but has no auth to lean on, so the cap is tighter and keyed by IP — rateLimiter's identify() already falls back to `ip:<addr>` whenever there's no authenticated user (see middleware/rate-limit.ts). */
+const publicTicketRateLimit = rateLimiter({
+  windowMs: 60 * 60_000,
+  max: 3,
+  name: 'public-support-tickets',
+});
+
 /* -------------------------------------------------------------------------- */
 /* POST /support/tickets                                                      */
 /* -------------------------------------------------------------------------- */
@@ -115,6 +123,75 @@ supportRouter.openapi(createTicketRoute, async (c) => {
     ticketId: ticket.id,
     userId: user.id,
     contact: user.phoneE164 ?? user.email,
+    category: body.category,
+    message: body.message,
+  }).catch(() => {});
+
+  return c.json(ticket, 201);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /public/support/tickets                                              */
+/* -------------------------------------------------------------------------- */
+
+const createPublicTicketRoute = createRoute({
+  method: 'post',
+  path: '/public/support/tickets',
+  tags: ['Support'],
+  summary: 'Submit a help/support request without an account (landing site /support form)',
+  middleware: [publicTicketRateLimit] as const,
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: CreatePublicTicketBodySchema } },
+    },
+  },
+  responses: {
+    201: {
+      description: 'Ticket created (or a no-op fake success if the honeypot was filled)',
+      content: { 'application/json': { schema: SupportTicketSchema } },
+    },
+    422: errorResponse('Validation failed'),
+    429: errorResponse('Rate limit exceeded'),
+  },
+});
+
+supportRouter.openapi(createPublicTicketRoute, async (c) => {
+  const body = c.req.valid('json');
+
+  // Honeypot: a real visitor never sees or fills this field (hidden
+  // client-side on the landing form). A bot that fills every field gets a
+  // normal-looking 201 with nothing actually written — a validation error
+  // here would just teach it to omit the field and retry.
+  if (body.website) {
+    return c.json(
+      {
+        id: '00000000-0000-0000-0000-000000000000',
+        category: body.category,
+        message: body.message,
+        locale: null,
+        appVersion: null,
+        status: 'open',
+        adminNote: null,
+        createdAt: new Date().toISOString(),
+        resolvedAt: null,
+      },
+      201,
+    );
+  }
+
+  const ticket = await createTicket({
+    contactName: body.name,
+    contactEmail: body.email,
+    category: body.category,
+    message: body.message,
+  });
+
+  // Fire-and-forget, same as the authenticated route above.
+  void notifySupportTicket({
+    ticketId: ticket.id,
+    userId: null,
+    contact: body.email,
     category: body.category,
     message: body.message,
   }).catch(() => {});

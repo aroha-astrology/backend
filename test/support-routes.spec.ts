@@ -241,6 +241,134 @@ describe('POST /v1/support/tickets', () => {
   });
 });
 
+describe('POST /v1/public/support/tickets', () => {
+  function makeAnonTicketRow(overrides: Record<string, unknown> = {}) {
+    const now = new Date('2026-08-26T00:00:00Z');
+    return {
+      id: 'ticket-2',
+      userId: null,
+      contactName: 'Priya Sharma',
+      contactEmail: 'priya@example.com',
+      category: 'billing',
+      message: 'I was double-charged for my Kundli report.',
+      locale: null,
+      appVersion: null,
+      status: 'open',
+      adminNote: null,
+      createdAt: now,
+      resolvedAt: null,
+      ...overrides,
+    };
+  }
+
+  it('creates an anonymous ticket without an Authorization header and returns 201', async () => {
+    state.createSupportTicket.mockResolvedValue(makeAnonTicketRow());
+    const app = createApp();
+
+    const res = await app.request('/v1/public/support/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Priya Sharma',
+        email: 'priya@example.com',
+        category: 'billing',
+        message: 'I was double-charged for my Kundli report.',
+        website: '',
+      }),
+    });
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(res.status).toBe(201);
+    expect(state.createSupportTicket).toHaveBeenCalledWith({
+      contactName: 'Priya Sharma',
+      contactEmail: 'priya@example.com',
+      category: 'billing',
+      message: 'I was double-charged for my Kundli report.',
+    });
+    expect(body.id).toBe('ticket-2');
+    expect(body.userId).toBeUndefined();
+  });
+
+  it('notifies with userId: null and contact set to the submitted email', async () => {
+    state.createSupportTicket.mockResolvedValue(makeAnonTicketRow());
+    const app = createApp();
+
+    await app.request('/v1/public/support/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Priya Sharma',
+        email: 'priya@example.com',
+        category: 'billing',
+        message: 'I was double-charged for my Kundli report.',
+        website: '',
+      }),
+    });
+
+    expect(state.notifySupportTicket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: null,
+        contact: 'priya@example.com',
+        category: 'billing',
+      }),
+    );
+  });
+
+  it('silently drops the submission when the honeypot field is filled, but still returns 201', async () => {
+    const app = createApp();
+
+    const res = await app.request('/v1/public/support/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Bot',
+        email: 'bot@example.com',
+        category: 'other',
+        message: 'buy cheap watches',
+        website: 'http://spam.example',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(state.createSupportTicket).not.toHaveBeenCalled();
+    expect(state.notifySupportTicket).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing email (schema validation)', async () => {
+    const app = createApp();
+
+    const res = await app.request('/v1/public/support/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Priya', category: 'billing', message: 'help' }),
+    });
+
+    // Same runtime behavior as the authenticated route's own "missing
+    // message" test above: @hono/zod-openapi's default hook returns 400.
+    expect(res.status).toBe(400);
+    expect(state.createSupportTicket).not.toHaveBeenCalled();
+  });
+
+  it('requires no Authorization header (still succeeds with none)', async () => {
+    state.createSupportTicket.mockResolvedValue(makeAnonTicketRow());
+    const app = createApp();
+
+    const res = await app.request('/v1/public/support/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Priya Sharma',
+        email: 'priya@example.com',
+        category: 'billing',
+        message: 'help',
+        website: '',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+  });
+});
+
 describe('GET /v1/support/tickets', () => {
   it("returns only the caller's own tickets", async () => {
     signInAs(NON_ADMIN_PHONE, 'user-42');

@@ -101,6 +101,15 @@ export function createApp(): OpenAPIHono {
       rewriteRequestPath: (path) => path.replace(/^\/v1\/gita\/audio/, ''),
     }),
   );
+  // supportRouter now also carries POST /public/support/tickets, which (like
+  // gitaRouter's GET /gita/verses above) has no auth at all — same reasoning,
+  // same fix: it must be mounted before any router that calls
+  // `.use('*', requireUser)` on itself, or it inherits that wildcard and
+  // 401s. birthProfilesRouter/profilesRouter/deviceTokensRouter/billingRouter
+  // below are exactly that; supportRouter's own /support/tickets and
+  // /admin/support/tickets/* routes are unaffected by moving earlier — they
+  // already apply requireUser/requireAdmin per-route, not via a wildcard.
+  app.route('/v1', supportRouter);
   app.route('/v1', usersRouter);
   app.route('/v1', birthProfilesRouter);
   app.route('/v1', profilesRouter);
@@ -109,7 +118,6 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', adminRouter);
   app.route('/v1', adminGroupsRouter);
   app.route('/v1', adminGiftCampaignsRouter);
-  app.route('/v1', supportRouter);
   app.route('/v1', preferencesRouter);
   app.route('/v1', rewardsRouter);
   app.route('/v1', feedbackRouter);
