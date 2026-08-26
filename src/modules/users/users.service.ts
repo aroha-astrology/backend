@@ -205,6 +205,9 @@ export function toUserDto(
     gemstoneUnlocked: profile.gemstoneUnlockedAt !== null,
     feedbackGiven,
     claimedCampaigns,
+    // jsonb default '[]' — the ?? is for rows read through a connection that
+    // predates migration 0060, not for normal operation.
+    toursCompleted: row.toursCompleted ?? [],
     activeClaimableCampaign,
 
     features,
@@ -450,6 +453,18 @@ export async function updateMe(
   }
 
   const patch = buildPatch(body);
+
+  // Tour completion is an append-if-absent against the row we just read, not a
+  // client-supplied array — two devices finishing different tours must not
+  // clobber each other. `resetTours` (the Settings "show me around again" row)
+  // wins over an append in the same request; nothing sends both.
+  if (body.resetTours) {
+    patch.toursCompleted = [];
+  } else if (body.tourCompleted) {
+    const seen = current.toursCompleted ?? [];
+    patch.toursCompleted = seen.includes(body.tourCompleted) ? seen : [...seen, body.tourCompleted];
+  }
+
   const consentLogs = body.consent ? applyConsent(body.consent, patch, userId, ctx) : [];
 
   // Referral code validated up front (before the patch commits) so an unknown/self

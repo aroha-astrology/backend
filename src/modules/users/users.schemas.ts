@@ -279,6 +279,13 @@ export const UserSchema = z
           'reinstall or a second device. Unrelated to the Google Play review card, which ' +
           'reports no outcome back and so can never set this.',
       ),
+    toursCompleted: z
+      .array(z.string())
+      .describe(
+        'Ids of the per-screen product tours this user has already seen (see the frontend ' +
+          'components/tour/tour-registry.ts). Server truth, so a tour does not replay after a ' +
+          'reinstall or on a second device the way its localStorage mirror alone would.',
+      ),
     claimedCampaigns: z
       .array(z.string())
       .describe(
@@ -459,6 +466,23 @@ export const UpdateMeBodySchema = z
     platform: PlatformSchema.optional(),
     referralSource: z.string().max(200).optional(),
     referredByCode: z.string().max(64).optional(),
+
+    // product tour (handled specially by the service — neither maps 1:1 to a column)
+    tourCompleted: z
+      .string()
+      .max(64)
+      .optional()
+      .describe(
+        'Id of a tour the user just finished, appended to `toursCompleted` if not already ' +
+          'there. Deliberately an append of ONE id rather than a whole-array replace: two ' +
+          'devices finishing different tours would otherwise clobber each other.',
+      ),
+    resetTours: z
+      .boolean()
+      .optional()
+      .describe(
+        'Clears `toursCompleted`, so every tour runs again. Backs the Settings replay row.',
+      ),
 
     // consent (handled specially by the service)
     consent: ConsentInputSchema.optional(),
