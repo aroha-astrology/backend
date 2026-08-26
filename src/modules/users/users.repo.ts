@@ -17,6 +17,7 @@ import {
 import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
 import { db } from '../../config/db.js';
+import { CLAIM_CAMPAIGN_KEYS } from '../../config/campaigns.js';
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { resolveGeoForIp } from '../../lib/geo-lookup.js';
 import {
@@ -288,24 +289,37 @@ export async function addWalletBalance(
 }
 
 /**
- * Which of the given claim-campaign keys (see config/campaigns.ts) this user
- * has already claimed — surfaced on the user DTO as `claimedCampaigns` (like
- * `feedbackGiven`) so a claim modal never offers a claim the server would
- * refuse. Generic across every campaign so a new event never needs a new
- * repo function: it's just another key in CLAIM_CAMPAIGNS.
+ * Which claim-campaign keys this user has already claimed — surfaced on the
+ * user DTO as `claimedCampaigns` (like `feedbackGiven`) so a claim modal never
+ * offers a claim the server would refuse, and so `resolveActiveClaimableCampaign`
+ * can tell a claimed DB campaign apart from an unclaimed one.
+ *
+ * Matches both the given static `campaignKeys` (see config/campaigns.ts) AND
+ * any admin-created `gift_campaigns.key` — omitting the latter used to mean
+ * `resolveActiveClaimableCampaign`'s `!claimedCampaigns.includes(dbLive.key)`
+ * check was always true for a DB-backed campaign (a gift_campaigns key never
+ * appears in the static array passed in), so the claim modal for an
+ * admin-created gift never learned it had already been claimed and kept
+ * resurfacing on every launch. No financial risk (claimCampaignBonus's own
+ * ledger check is what actually blocks a double credit) but a confusing loop
+ * for anyone who'd already claimed.
  */
 export async function getClaimedCampaignKeys(
   userId: string,
   campaignKeys: readonly string[],
 ): Promise<string[]> {
-  if (campaignKeys.length === 0) return [];
   const rows = await db
     .selectDistinct({ reason: walletTransactions.reason })
     .from(walletTransactions)
     .where(
       and(
         eq(walletTransactions.userId, userId),
-        inArray(walletTransactions.reason, [...campaignKeys]),
+        or(
+          campaignKeys.length > 0
+            ? inArray(walletTransactions.reason, [...campaignKeys])
+            : sql`false`,
+          sql`exists (select 1 from gift_campaigns gc where gc.key = ${walletTransactions.reason})`,
+        ),
       ),
     );
   return rows.map((r) => r.reason);
@@ -874,11 +888,19 @@ const USER_SORT_COLUMNS = {
 /** `claimedAt` isn't a real column (see below), so it can't live in USER_SORT_COLUMNS — handled as a separate branch in listUsersPage's orderBy. */
 export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt';
 
-/** Independence Day 2026 claim campaign — see config/campaigns.ts. Same idea as
- * hasClaimedIndependenceBonus's sibling `getClaimedCampaignKeys`, inlined here
- * because this is a paginated admin list rather than a single-user lookup. A
- * fresh call per use (rather than a shared constant) since it's referenced in
- * both the select list and, when sorted on, the orderBy clause.
+/** Most recent one-time claim-campaign grant — see config/campaigns.ts and
+ * gift-campaigns.repo.ts. Same idea as hasClaimedIndependenceBonus's sibling
+ * `getClaimedCampaignKeys`, inlined here because this is a paginated admin
+ * list rather than a single-user lookup. A fresh call per use (rather than a
+ * shared constant) since it's referenced in both the select list and, when
+ * sorted on, the orderBy clause.
+ *
+ * Matches EITHER a static CLAIM_CAMPAIGN_KEYS reason or any admin-created
+ * `gift_campaigns.key` — this used to hardcode `reason = 'independence_day_2026'`
+ * only, which meant the "🇮🇳 Gift claimed" column silently went blank for every
+ * campaign shipped after that one (the top-up bonuses, and every admin-created
+ * gift_campaigns send). ORDER BY + LIMIT 1 picks the latest grant when a user
+ * has claimed more than one campaign over time.
  *
  * Deliberately hand-aliases the inner table and references the outer `users`
  * table by its literal name, rather than interpolating `walletTransactions`/
@@ -889,16 +911,22 @@ export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt';
  * silently made this always evaluate false. Explicit aliasing removes the
  * ambiguity entirely.
  */
+const claimedCampaignReasonFilter = sql`(
+  wt.reason = any(${[...CLAIM_CAMPAIGN_KEYS]})
+  or exists (select 1 from gift_campaigns gc where gc.key = wt.reason)
+)`;
 const claimedAmountExpr = () => sql<number | null>`(
   select wt.delta from wallet_transactions wt
   where wt.user_id = users.id
-    and wt.reason = 'independence_day_2026'
+    and ${claimedCampaignReasonFilter}
+  order by wt.created_at desc
   limit 1
 )`;
 const claimedAtExpr = () => sql<string | null>`(
   select wt.created_at from wallet_transactions wt
   where wt.user_id = users.id
-    and wt.reason = 'independence_day_2026'
+    and ${claimedCampaignReasonFilter}
+  order by wt.created_at desc
   limit 1
 )`;
 
