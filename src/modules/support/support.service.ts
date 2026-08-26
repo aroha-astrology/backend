@@ -21,7 +21,9 @@ import {
 /** Row shape shared by every support.repo.ts read/write (post-decryption). */
 interface DecryptedTicketRow {
   id: string;
-  userId: string;
+  userId: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
   category: string;
   message: string;
   locale: string | null;
@@ -51,6 +53,8 @@ function toAdminDto(row: DecryptedTicketRow): AdminSupportTicketDto {
   return {
     id: row.id,
     userId: row.userId,
+    contactName: row.contactName,
+    contactEmail: row.contactEmail,
     category: row.category,
     message: row.message,
     locale: row.locale,
@@ -127,7 +131,7 @@ export async function updateTicketForAdmin(
   // way a reply gets written: support-mail.service.ts routes Gmail replies
   // through this same function. Putting the notify at either call site alone
   // would leave the other silent.
-  if (body.adminNote !== undefined) {
+  if (body.adminNote !== undefined && updated.userId) {
     void notifyUser(updated.userId, {
       title: SUPPORT_REPLY_TITLE,
       body: SUPPORT_REPLY_BODY,
