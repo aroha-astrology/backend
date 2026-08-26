@@ -2257,9 +2257,15 @@ export const supportTickets = pgTable(
     id: uuid('id')
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    // Nullable — a ticket filed from the public /support form (no account)
+    // has no userId. contactName/contactEmail are the fallback identity for
+    // that case; a DB-level CHECK constraint (0061_public_support_tickets.sql)
+    // enforces "one or the other."
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    // Only set when userId is null. Encrypted at rest via field-encryption.ts,
+    // same convention as message/adminNote below.
+    contactName: text('contact_name'),
+    contactEmail: text('contact_email'),
     category: text('category').notNull(),
     message: text('message').notNull(),
     locale: text('locale'),
