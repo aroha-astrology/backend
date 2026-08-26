@@ -1,4 +1,4 @@
-import type { Choghadiya } from '@jyotish-ai/shared';
+import type { Choghadiya } from '@aroha-astrology/shared';
 /**
  * Calculate all 16 Choghadiya periods (8 day + 8 night) for a given day.
  *

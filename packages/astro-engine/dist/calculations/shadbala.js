@@ -1,11 +1,8 @@
-"use strict";
 // =============================================================================
 // Shadbala (Six-fold Strength) Calculations
 // All values are in Virupas (1 Rupa = 60 Virupas)
 // =============================================================================
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateShadbala = calculateShadbala;
-const shared_1 = require("@jyotish-ai/shared");
+import { ZODIAC_SIGNS, SIGN_LORDS, PLANET_EXALTATION, PLANET_OWN_SIGNS, PLANET_FRIENDS, PLANET_ENEMIES, } from '@aroha-astrology/shared';
 // =============================================================================
 // Constants
 // =============================================================================
@@ -95,8 +92,8 @@ function getPlanetPos(chartData, planet) {
 function getPlanetRelation(planet, signLord) {
     if (planet === signLord)
         return 'friend'; // own sign treated as friend for relationship
-    const friends = shared_1.PLANET_FRIENDS[planet] || [];
-    const enemies = shared_1.PLANET_ENEMIES[planet] || [];
+    const friends = PLANET_FRIENDS[planet] || [];
+    const enemies = PLANET_ENEMIES[planet] || [];
     if (friends.includes(signLord))
         return 'friend';
     if (enemies.includes(signLord))
@@ -159,11 +156,11 @@ function isDaytime(chartData) {
  * Maximum 60 Virupas at exact exaltation, 0 at exact debilitation.
  */
 function calculateUchchaBala(planet, longitude) {
-    const exaltData = shared_1.PLANET_EXALTATION[planet];
+    const exaltData = PLANET_EXALTATION[planet];
     if (!exaltData)
         return 30; // default neutral for planets without exaltation data
     // Exaltation point as absolute longitude
-    const exaltSign = shared_1.ZODIAC_SIGNS.indexOf(exaltData.sign);
+    const exaltSign = ZODIAC_SIGNS.indexOf(exaltData.sign);
     const exaltDeg = exaltSign * 30 + exaltData.degree;
     // Debilitation is exactly 180° from exaltation
     const debilDeg = normalizeDegree(exaltDeg + 180);
@@ -182,16 +179,16 @@ function calculateUchchaBala(planet, longitude) {
  */
 function calculateSaptavargajaBala(planet, longitude, chartData) {
     const signIndex = getSignIndex(longitude);
-    const signName = shared_1.ZODIAC_SIGNS[signIndex];
+    const signName = ZODIAC_SIGNS[signIndex];
     const signDeg = normalizeDegree(longitude) % 30;
-    const signLord = shared_1.SIGN_LORDS[signName];
+    const signLord = SIGN_LORDS[signName];
     // Check Moolatrikona
     const mt = MOOLATRIKONA[planet];
     if (mt && signName === mt.sign && signDeg >= mt.startDeg && signDeg <= mt.endDeg) {
         return SAPTAVARGAJA_POINTS.moolatrikona;
     }
     // Check own sign
-    const ownSigns = shared_1.PLANET_OWN_SIGNS[planet] || [];
+    const ownSigns = PLANET_OWN_SIGNS[planet] || [];
     if (ownSigns.includes(signName)) {
         return SAPTAVARGAJA_POINTS.own;
     }
@@ -447,7 +444,7 @@ function calculateVarshaMasaDinaHoraBala(planet, chartData) {
     // Simplified approximation
     const moonPos = getPlanetPos(chartData, 'Moon');
     if (moonPos) {
-        const masaLord = shared_1.SIGN_LORDS[moonPos.sign];
+        const masaLord = SIGN_LORDS[moonPos.sign];
         if (planet === masaLord) {
             total += 30;
         }
@@ -608,7 +605,7 @@ function calculateDrikBala(planet, chartData) {
  * @param chartData - Complete chart data with planet positions and houses
  * @returns Array of PlanetShadbala for Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn
  */
-function calculateShadbala(chartData) {
+export function calculateShadbala(chartData) {
     const results = [];
     for (const planet of SHADBALA_PLANETS) {
         const pos = getPlanetPos(chartData, planet);

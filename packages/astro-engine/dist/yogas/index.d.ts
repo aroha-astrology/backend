@@ -1,4 +1,4 @@
-import type { ChartData, Yoga } from '@jyotish-ai/shared';
+import type { ChartData, Yoga } from '@aroha-astrology/shared';
 /**
  * Detect all yogas (planetary combinations) in the given chart.
  * Returns an array of 50+ yoga results, each with presence, strength, and details.

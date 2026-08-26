@@ -66,6 +66,7 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
       rahuHouse: 0,
       ketuHouse: 0,
       isPartial: false,
+      description: 'Kaal Sarp Dosha is not present.',
     };
   }
 
@@ -117,6 +118,7 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
       rahuHouse,
       ketuHouse,
       isPartial: false,
+      description: 'Kaal Sarp Dosha is not present.',
     };
   }
 
@@ -140,5 +142,6 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
     rahuHouse,
     ketuHouse,
     isPartial,
+    description: `${isPartial ? 'Partial ' : ''}${name} Kaal Sarp Dosha is present (Rahu in house ${rahuHouse}, Ketu in house ${ketuHouse}).`,
   };
 }

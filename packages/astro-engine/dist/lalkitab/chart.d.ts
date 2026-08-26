@@ -1,4 +1,4 @@
-import type { ChartData, LalKitabChart } from '@jyotish-ai/shared';
+import type { ChartData, LalKitabChart } from '@aroha-astrology/shared';
 /**
  * Create a Lal Kitab chart from standard Vedic chart data.
  *

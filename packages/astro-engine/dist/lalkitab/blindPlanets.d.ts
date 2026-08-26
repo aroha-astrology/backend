@@ -1,4 +1,4 @@
-import type { LalKitabChart, BlindPlanet } from '@jyotish-ai/shared';
+import type { LalKitabChart, BlindPlanet } from '@aroha-astrology/shared';
 /**
  * Detect blind and half-blind planets in a Lal Kitab chart.
  *

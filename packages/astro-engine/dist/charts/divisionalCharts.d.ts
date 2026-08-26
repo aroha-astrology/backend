@@ -1,4 +1,4 @@
-import type { Planet, ZodiacSign, DivisionalChart, ChartData } from '@jyotish-ai/shared';
+import type { Planet, ZodiacSign, DivisionalChart, ChartData } from '@aroha-astrology/shared';
 export declare function calculateD1(longitude: number): number;
 export declare function calculateD2(longitude: number): number;
 export declare function calculateD3(longitude: number): number;

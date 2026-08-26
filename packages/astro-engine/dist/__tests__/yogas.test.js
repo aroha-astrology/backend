@@ -1,8 +1,6 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const vitest_1 = require("vitest");
-const shared_1 = require("@jyotish-ai/shared");
-const yogas_1 = require("../yogas");
+import { describe, it, expect } from 'vitest';
+import { ZODIAC_SIGNS, SIGN_LORDS } from '@aroha-astrology/shared';
+import { detectAllYogas } from '../yogas';
 function createMockChart(planetOverrides) {
     const defaults = [
         { planet: 'Sun', longitude: 10, latitude: 0, speed: 1, sign: 'Aries', signIndex: 0, signDegree: 10, nakshatra: 'Ashwini', nakshatraIndex: 0, nakshatraPada: 3, nakshatraLord: 'Ketu', isRetrograde: false, house: 1 },
@@ -23,9 +21,9 @@ function createMockChart(planetOverrides) {
     const houses = Array.from({ length: 12 }, (_, i) => ({
         house: i + 1,
         cusp: i * 30,
-        sign: shared_1.ZODIAC_SIGNS[i],
+        sign: ZODIAC_SIGNS[i],
         signIndex: i,
-        lord: shared_1.SIGN_LORDS[shared_1.ZODIAC_SIGNS[i]],
+        lord: SIGN_LORDS[ZODIAC_SIGNS[i]],
         planets: defaults.filter((p) => p.house === i + 1).map((p) => p.planet),
     }));
     return {
@@ -37,95 +35,95 @@ function createMockChart(planetOverrides) {
         julianDay: 2451545,
     };
 }
-(0, vitest_1.describe)('Yoga Detection', () => {
-    (0, vitest_1.it)('should return an array of yogas', () => {
+describe('Yoga Detection', () => {
+    it('should return an array of yogas', () => {
         const chart = createMockChart([]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
-        (0, vitest_1.expect)(Array.isArray(yogas)).toBe(true);
-        (0, vitest_1.expect)(yogas.length).toBeGreaterThan(0);
+        const yogas = detectAllYogas(chart);
+        expect(Array.isArray(yogas)).toBe(true);
+        expect(yogas.length).toBeGreaterThan(0);
     });
-    (0, vitest_1.it)('should detect Ruchaka yoga (Mars in own sign in Kendra)', () => {
+    it('should detect Ruchaka yoga (Mars in own sign in Kendra)', () => {
         const chart = createMockChart([
             { planet: 'Mars', house: 1, sign: 'Aries', signIndex: 0 },
         ]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
+        const yogas = detectAllYogas(chart);
         const ruchaka = yogas.find((y) => y.name === 'Ruchaka Yoga');
-        (0, vitest_1.expect)(ruchaka).toBeDefined();
+        expect(ruchaka).toBeDefined();
         if (ruchaka)
-            (0, vitest_1.expect)(ruchaka.present).toBe(true);
+            expect(ruchaka.present).toBe(true);
     });
-    (0, vitest_1.it)('should detect Hamsa yoga (Jupiter exalted in Kendra)', () => {
+    it('should detect Hamsa yoga (Jupiter exalted in Kendra)', () => {
         const chart = createMockChart([
             { planet: 'Jupiter', house: 4, sign: 'Cancer', signIndex: 3 },
         ]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
+        const yogas = detectAllYogas(chart);
         const hamsa = yogas.find((y) => y.name === 'Hamsa Yoga');
-        (0, vitest_1.expect)(hamsa).toBeDefined();
+        expect(hamsa).toBeDefined();
         if (hamsa)
-            (0, vitest_1.expect)(hamsa.present).toBe(true);
+            expect(hamsa.present).toBe(true);
     });
-    (0, vitest_1.it)('should detect Shasha yoga (Saturn exalted in Kendra)', () => {
+    it('should detect Shasha yoga (Saturn exalted in Kendra)', () => {
         const chart = createMockChart([
             { planet: 'Saturn', house: 7, sign: 'Libra', signIndex: 6 },
         ]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
+        const yogas = detectAllYogas(chart);
         const shasha = yogas.find((y) => y.name === 'Shasha Yoga');
-        (0, vitest_1.expect)(shasha).toBeDefined();
+        expect(shasha).toBeDefined();
         if (shasha)
-            (0, vitest_1.expect)(shasha.present).toBe(true);
+            expect(shasha.present).toBe(true);
     });
-    (0, vitest_1.it)('should detect Gajakesari yoga (Jupiter in Kendra from Moon)', () => {
+    it('should detect Gajakesari yoga (Jupiter in Kendra from Moon)', () => {
         // Moon in house 2, Jupiter in house 5 (4th from Moon)
         const chart = createMockChart([
             { planet: 'Moon', house: 1 },
             { planet: 'Jupiter', house: 4 },
         ]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
+        const yogas = detectAllYogas(chart);
         const gajakesari = yogas.find((y) => y.name === 'Gajakesari Yoga');
-        (0, vitest_1.expect)(gajakesari).toBeDefined();
+        expect(gajakesari).toBeDefined();
         if (gajakesari)
-            (0, vitest_1.expect)(gajakesari.present).toBe(true);
+            expect(gajakesari.present).toBe(true);
     });
-    (0, vitest_1.it)('should detect Budhaditya yoga (Sun and Mercury in same house in Kendra)', () => {
+    it('should detect Budhaditya yoga (Sun and Mercury in same house in Kendra)', () => {
         const chart = createMockChart([
             { planet: 'Sun', house: 1 },
             { planet: 'Mercury', house: 1 },
         ]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
+        const yogas = detectAllYogas(chart);
         const budhaditya = yogas.find((y) => y.name === 'Budhaditya');
         if (budhaditya) {
             // Only forms in kendra/trikona
-            (0, vitest_1.expect)(budhaditya.present).toBe(true);
+            expect(budhaditya.present).toBe(true);
         }
     });
-    (0, vitest_1.it)('should detect Guru-Mangala yoga (Jupiter and Mars conjunction)', () => {
+    it('should detect Guru-Mangala yoga (Jupiter and Mars conjunction)', () => {
         const chart = createMockChart([
             { planet: 'Jupiter', house: 5 },
             { planet: 'Mars', house: 5 },
         ]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
+        const yogas = detectAllYogas(chart);
         const guruMangala = yogas.find((y) => y.name === 'Guru-Mangala Yoga');
-        (0, vitest_1.expect)(guruMangala).toBeDefined();
+        expect(guruMangala).toBeDefined();
         if (guruMangala)
-            (0, vitest_1.expect)(guruMangala.present).toBe(true);
+            expect(guruMangala.present).toBe(true);
     });
-    (0, vitest_1.it)('should detect Harsha yoga (6th lord in 6th house)', () => {
+    it('should detect Harsha yoga (6th lord in 6th house)', () => {
         // For Aries ascendant, 6th house = Virgo, lord = Mercury
         const chart = createMockChart([
             { planet: 'Mercury', house: 6, sign: 'Virgo', signIndex: 5 },
         ]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
+        const yogas = detectAllYogas(chart);
         const harsha = yogas.find((y) => y.name === 'Harsha Yoga');
-        (0, vitest_1.expect)(harsha).toBeDefined();
+        expect(harsha).toBeDefined();
         if (harsha)
-            (0, vitest_1.expect)(harsha.present).toBe(true);
+            expect(harsha.present).toBe(true);
     });
-    (0, vitest_1.it)('should have strength between 0 and 100 for all yogas', () => {
+    it('should have strength between 0 and 100 for all yogas', () => {
         const chart = createMockChart([]);
-        const yogas = (0, yogas_1.detectAllYogas)(chart);
+        const yogas = detectAllYogas(chart);
         for (const yoga of yogas) {
-            (0, vitest_1.expect)(yoga.strength).toBeGreaterThanOrEqual(0);
-            (0, vitest_1.expect)(yoga.strength).toBeLessThanOrEqual(100);
+            expect(yoga.strength).toBeGreaterThanOrEqual(0);
+            expect(yoga.strength).toBeLessThanOrEqual(100);
         }
     });
 });

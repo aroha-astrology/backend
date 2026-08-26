@@ -74,7 +74,7 @@ const SE_SIDM_B_V_RAMAN = 3;
 // Ayanamsa Mapping
 // =============================================================================
 
-const AYANAMSA_MAP: Record<Ayanamsa, number> = {
+const AYANAMSA_MAP: Partial<Record<Ayanamsa, number>> = {
   lahiri: SE_SIDM_LAHIRI,
   krishnamurti: SE_SIDM_KRISHNAMURTI,
   raman: SE_SIDM_B_V_RAMAN,

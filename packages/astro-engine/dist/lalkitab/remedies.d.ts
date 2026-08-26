@@ -1,4 +1,4 @@
-import type { Planet } from '@jyotish-ai/shared';
+import type { Planet } from '@aroha-astrology/shared';
 /**
  * Get Lal Kitab remedies and totke for a planet in a specific house.
  *

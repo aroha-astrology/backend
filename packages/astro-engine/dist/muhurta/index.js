@@ -1,17 +1,14 @@
-"use strict";
 // =============================================================================
 // Muhurta Calculator
 // =============================================================================
 // Finds the best muhurta (auspicious time) for a given activity type within
 // a date range. Scoring is based on tithi quality, nakshatra quality, yoga,
 // lagna strength, and rahu kaal avoidance.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.findBestMuhurta = findBestMuhurta;
-const shared_1 = require("@jyotish-ai/shared");
-const tithi_1 = require("../panchang/tithi");
-const nakshatra_1 = require("../panchang/nakshatra");
-const yoga_1 = require("../panchang/yoga");
-const rahuKaal_1 = require("../panchang/rahuKaal");
+import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
+import { calculateTithi } from '../panchang/tithi';
+import { calculateNakshatra } from '../panchang/nakshatra';
+import { calculatePanchangYoga } from '../panchang/yoga';
+import { calculateRahuKaal } from '../panchang/rahuKaal';
 const MUHURTA_PREFERENCES = {
     marriage: {
         // Good tithis: 2,3,5,7,10,11,12,13 of Shukla Paksha
@@ -188,7 +185,7 @@ function estimateLagnaSign(date, latitude, longitude) {
     const hoursSinceSunrise = hours - 6;
     const signsAdvanced = Math.floor(hoursSinceSunrise / 2);
     const lagnaIndex = ((sunSignIndex + signsAdvanced) % 12 + 12) % 12;
-    return shared_1.ZODIAC_SIGNS[lagnaIndex];
+    return ZODIAC_SIGNS[lagnaIndex];
 }
 function parseTimeToMin(time) {
     const [h, m] = time.split(':').map(Number);
@@ -212,7 +209,7 @@ function parseTimeToMin(time) {
  * @param tz - Timezone string (e.g., "Asia/Kolkata") -- used for display only
  * @returns Array of MuhurtaResult sorted by score descending
  */
-function findBestMuhurta(type, startDate, endDate, lat, lng, _tz) {
+export function findBestMuhurta(type, startDate, endDate, lat, lng, _tz) {
     const prefs = MUHURTA_PREFERENCES[type];
     const results = [];
     // Iterate day by day
@@ -232,12 +229,12 @@ function findBestMuhurta(type, startDate, endDate, lat, lng, _tz) {
             const baseMoonLong = estimateMoonLong(slotDate);
             const hourOfDay = slotDate.getHours() + slotDate.getMinutes() / 60;
             const moonLong = (baseMoonLong + hourOfDay * 0.55) % 360;
-            const tithi = (0, tithi_1.calculateTithi)(moonLong, sunLong);
-            const nakshatra = (0, nakshatra_1.calculateNakshatra)(moonLong);
-            const yoga = (0, yoga_1.calculatePanchangYoga)(sunLong, moonLong);
-            const rahuKaal = (0, rahuKaal_1.calculateRahuKaal)(sunrise, sunset, dayOfWeek);
+            const tithi = calculateTithi(moonLong, sunLong);
+            const nakshatra = calculateNakshatra(moonLong);
+            const yoga = calculatePanchangYoga(sunLong, moonLong);
+            const rahuKaal = calculateRahuKaal(sunrise, sunset, dayOfWeek);
             const lagnaSign = estimateLagnaSign(slotDate, lat, lng);
-            const lagnaIndex = shared_1.ZODIAC_SIGNS.indexOf(lagnaSign);
+            const lagnaIndex = ZODIAC_SIGNS.indexOf(lagnaSign);
             // Score calculation (0-100)
             let score = 50; // base
             const reasoning = [];

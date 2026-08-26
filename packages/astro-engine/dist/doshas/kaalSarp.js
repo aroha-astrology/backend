@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectKaalSarpDosha = detectKaalSarpDosha;
-const shared_1 = require("@jyotish-ai/shared");
+import { KAAL_SARP_TYPES } from '@aroha-astrology/shared';
 /**
  * Kaal Sarp Dosha Detection
  *
@@ -50,7 +47,7 @@ function isBetweenKetuRahu(house, rahuHouse, ketuHouse) {
     }
     return visited.includes(house);
 }
-function detectKaalSarpDosha(chartData) {
+export function detectKaalSarpDosha(chartData) {
     const rahu = chartData.planets.find((p) => p.planet === 'Rahu');
     const ketu = chartData.planets.find((p) => p.planet === 'Ketu');
     if (!rahu || !ketu) {
@@ -111,7 +108,7 @@ function detectKaalSarpDosha(chartData) {
     }
     // Determine the named type from KAAL_SARP_TYPES
     const typeKey = `${rahuHouse}-${ketuHouse}`;
-    const name = shared_1.KAAL_SARP_TYPES[typeKey] || 'Unknown';
+    const name = KAAL_SARP_TYPES[typeKey] || 'Unknown';
     // Severity: full is more severe than partial
     let severity;
     if (isPartial) {

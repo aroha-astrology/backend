@@ -1,4 +1,4 @@
-import type { Planet, ChartData, BhinnaAshtakavarga, SarvaAshtakavarga, AshtakavargaData } from '@jyotish-ai/shared';
+import type { Planet, ChartData, BhinnaAshtakavarga, SarvaAshtakavarga, AshtakavargaData } from '@aroha-astrology/shared';
 /**
  * Calculate Bhinna (individual) Ashtakavarga for all 7 planets.
  *

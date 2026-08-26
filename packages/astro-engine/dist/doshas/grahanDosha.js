@@ -1,6 +1,3 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectGrahanDosha = detectGrahanDosha;
 /**
  * Grahan Dosha Detection
  *
@@ -12,7 +9,7 @@ exports.detectGrahanDosha = detectGrahanDosha;
 function getPlanetPosition(chartData, planet) {
     return chartData.planets.find((p) => p.planet === planet);
 }
-function detectGrahanDosha(chartData) {
+export function detectGrahanDosha(chartData) {
     const sun = getPlanetPosition(chartData, 'Sun');
     const moon = getPlanetPosition(chartData, 'Moon');
     const rahu = getPlanetPosition(chartData, 'Rahu');

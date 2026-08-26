@@ -1,4 +1,4 @@
-import type { ChartData, PlanetShadbala } from '@jyotish-ai/shared';
+import type { ChartData, PlanetShadbala } from '@aroha-astrology/shared';
 /**
  * Calculate the complete Shadbala (six-fold strength) for all 7 planets.
  *

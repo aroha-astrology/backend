@@ -1,12 +1,9 @@
-"use strict";
 // =============================================================================
 // Lal Kitab Pakka Ghar (Permanent House) Analysis
 // =============================================================================
 // Each planet has a permanent (pakka) house. When a planet sits in its pakka
 // ghar it gives strong results. Displacement modifies effects.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyzePakkaGhar = analyzePakkaGhar;
-const shared_1 = require("@jyotish-ai/shared");
+import { LALKITAB_PAKKA_GHAR } from '@aroha-astrology/shared';
 /**
  * Analyze each planet's placement relative to its Pakka Ghar.
  *
@@ -14,7 +11,7 @@ const shared_1 = require("@jyotish-ai/shared");
  *   Sun=1, Moon=4, Mars=3, Mercury=7, Jupiter=2,
  *   Venus=7, Saturn=8, Rahu=12, Ketu=6
  */
-function analyzePakkaGhar(lkChart) {
+export function analyzePakkaGhar(lkChart) {
     const results = [];
     // Gather a planet->house mapping from the chart
     const planetHouseMap = {};
@@ -27,7 +24,7 @@ function analyzePakkaGhar(lkChart) {
         'Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu',
     ];
     for (const planet of planets) {
-        const pakkaGhar = shared_1.LALKITAB_PAKKA_GHAR[planet];
+        const pakkaGhar = LALKITAB_PAKKA_GHAR[planet];
         const currentHouse = planetHouseMap[planet];
         if (currentHouse === undefined)
             continue;

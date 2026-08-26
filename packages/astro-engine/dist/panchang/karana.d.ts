@@ -1,4 +1,4 @@
-import type { Karana } from '@jyotish-ai/shared';
+import type { Karana } from '@aroha-astrology/shared';
 /**
  * Calculate the karana from Moon and Sun longitudes.
  *

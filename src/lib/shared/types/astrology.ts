@@ -211,6 +211,7 @@ export interface KaalSarpDosha {
   rahuHouse: number;
   ketuHouse: number;
   isPartial: boolean;
+  description: string;
 }
 
 export interface SadeSati {
@@ -221,30 +222,35 @@ export interface SadeSati {
   severity: 'none' | 'mild' | 'moderate' | 'severe';
   saturnSign: ZodiacSign;
   moonSign: ZodiacSign;
+  description: string;
 }
 
 export interface PitraDosha {
   present: boolean;
   indicators: string[];
   severity: 'none' | 'mild' | 'moderate' | 'severe';
+  description: string;
 }
 
 export interface KemDrumaDosha {
   present: boolean;
   cancellations: string[];
   severity: 'none' | 'mild' | 'moderate' | 'severe';
+  description: string;
 }
 
 export interface GrahanDosha {
   present: boolean;
   type: 'surya_grahan' | 'chandra_grahan' | 'both' | 'none';
   severity: 'none' | 'mild' | 'moderate' | 'severe';
+  description: string;
 }
 
 export interface GuruChandalDosha {
   present: boolean;
   house: number;
   severity: 'none' | 'mild' | 'moderate' | 'severe';
+  description: string;
 }
 
 export interface DoshaAnalysis {

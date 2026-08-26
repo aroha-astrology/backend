@@ -1,4 +1,4 @@
-import type { YoginiDasha } from '@jyotish-ai/shared';
+import type { YoginiDasha } from '@aroha-astrology/shared';
 /**
  * Calculate the Yogini Dasha system.
  *

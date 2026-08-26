@@ -1,34 +1,20 @@
-"use strict";
 // =============================================================================
 // Panchang Module - Barrel Export & Full Panchang Calculator
 // =============================================================================
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateRegionalMonths = exports.calculateHora = exports.calculateChoghadiya = exports.calculateYamagandaKaal = exports.calculateGulikaKaal = exports.calculateRahuKaal = exports.calculateKarana = exports.calculatePanchangYoga = exports.calculateNakshatra = exports.calculateTithi = void 0;
-exports.calculateFullPanchang = calculateFullPanchang;
-const tithi_1 = require("./tithi");
-const nakshatra_1 = require("./nakshatra");
-const yoga_1 = require("./yoga");
-const karana_1 = require("./karana");
-const rahuKaal_1 = require("./rahuKaal");
-const regional_1 = require("./regional");
-var tithi_2 = require("./tithi");
-Object.defineProperty(exports, "calculateTithi", { enumerable: true, get: function () { return tithi_2.calculateTithi; } });
-var nakshatra_2 = require("./nakshatra");
-Object.defineProperty(exports, "calculateNakshatra", { enumerable: true, get: function () { return nakshatra_2.calculateNakshatra; } });
-var yoga_2 = require("./yoga");
-Object.defineProperty(exports, "calculatePanchangYoga", { enumerable: true, get: function () { return yoga_2.calculatePanchangYoga; } });
-var karana_2 = require("./karana");
-Object.defineProperty(exports, "calculateKarana", { enumerable: true, get: function () { return karana_2.calculateKarana; } });
-var rahuKaal_2 = require("./rahuKaal");
-Object.defineProperty(exports, "calculateRahuKaal", { enumerable: true, get: function () { return rahuKaal_2.calculateRahuKaal; } });
-Object.defineProperty(exports, "calculateGulikaKaal", { enumerable: true, get: function () { return rahuKaal_2.calculateGulikaKaal; } });
-Object.defineProperty(exports, "calculateYamagandaKaal", { enumerable: true, get: function () { return rahuKaal_2.calculateYamagandaKaal; } });
-var choghadiya_1 = require("./choghadiya");
-Object.defineProperty(exports, "calculateChoghadiya", { enumerable: true, get: function () { return choghadiya_1.calculateChoghadiya; } });
-var hora_1 = require("./hora");
-Object.defineProperty(exports, "calculateHora", { enumerable: true, get: function () { return hora_1.calculateHora; } });
-var regional_2 = require("./regional");
-Object.defineProperty(exports, "calculateRegionalMonths", { enumerable: true, get: function () { return regional_2.calculateRegionalMonths; } });
+import { calculateTithi } from './tithi';
+import { calculateNakshatra } from './nakshatra';
+import { calculatePanchangYoga } from './yoga';
+import { calculateKarana } from './karana';
+import { calculateRahuKaal, calculateGulikaKaal, calculateYamagandaKaal } from './rahuKaal';
+import { calculateRegionalMonths } from './regional';
+export { calculateTithi } from './tithi';
+export { calculateNakshatra } from './nakshatra';
+export { calculatePanchangYoga } from './yoga';
+export { calculateKarana } from './karana';
+export { calculateRahuKaal, calculateGulikaKaal, calculateYamagandaKaal } from './rahuKaal';
+export { calculateChoghadiya } from './choghadiya';
+export { calculateHora } from './hora';
+export { calculateRegionalMonths } from './regional';
 // Weekday names
 const WEEKDAY_NAMES = [
     'Ravivaar', 'Somvaar', 'Mangalvaar', 'Budhvaar',
@@ -92,19 +78,19 @@ function estimateSunriseSunset(date, latitude, longitude) {
  * @param moonLong - Sidereal longitude of the Moon (0-360)
  * @returns Complete PanchangData
  */
-function calculateFullPanchang(date, latitude, longitude, sunLong, moonLong) {
+export function calculateFullPanchang(date, latitude, longitude, sunLong, moonLong) {
     const dayOfWeek = date.getDay(); // 0=Sunday
     // Estimate sunrise and sunset
     const { sunrise, sunset } = estimateSunriseSunset(date, latitude, longitude);
     // Calculate the five limbs (pancha-anga)
-    const tithi = (0, tithi_1.calculateTithi)(moonLong, sunLong);
-    const nakshatra = (0, nakshatra_1.calculateNakshatra)(moonLong);
-    const yoga = (0, yoga_1.calculatePanchangYoga)(sunLong, moonLong);
-    const karana = (0, karana_1.calculateKarana)(moonLong, sunLong);
+    const tithi = calculateTithi(moonLong, sunLong);
+    const nakshatra = calculateNakshatra(moonLong);
+    const yoga = calculatePanchangYoga(sunLong, moonLong);
+    const karana = calculateKarana(moonLong, sunLong);
     // Calculate inauspicious periods
-    const rahuKaal = (0, rahuKaal_1.calculateRahuKaal)(sunrise, sunset, dayOfWeek);
-    const gulikaKaal = (0, rahuKaal_1.calculateGulikaKaal)(sunrise, sunset, dayOfWeek);
-    const yamagandaKaal = (0, rahuKaal_1.calculateYamagandaKaal)(sunrise, sunset, dayOfWeek);
+    const rahuKaal = calculateRahuKaal(sunrise, sunset, dayOfWeek);
+    const gulikaKaal = calculateGulikaKaal(sunrise, sunset, dayOfWeek);
+    const yamagandaKaal = calculateYamagandaKaal(sunrise, sunset, dayOfWeek);
     // Abhijit Muhurta: the 8th muhurta of the day (midday, approximately)
     // Divide day into 15 muhurtas. Abhijit = around the 8th muhurta (local noon).
     const sunriseMin = parseTimeToMin(sunrise);
@@ -114,7 +100,7 @@ function calculateFullPanchang(date, latitude, longitude, sunLong, moonLong) {
     const abhijitStart = sunriseMin + 7 * muhurtaDuration;
     const abhijitEnd = abhijitStart + muhurtaDuration;
     const isoDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    const regionalMonths = (0, regional_1.calculateRegionalMonths)({
+    const regionalMonths = calculateRegionalMonths({
         isoDate,
         gregorianYear: date.getFullYear(),
         sunSiderealLong: sunLong,

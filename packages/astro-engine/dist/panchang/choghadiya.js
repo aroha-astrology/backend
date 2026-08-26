@@ -1,12 +1,9 @@
-"use strict";
 // =============================================================================
 // Choghadiya Calculation
 // =============================================================================
 // Choghadiya divides day and night into 8 periods each (16 total per day).
 // Each period is named after one of 7 types, cycling per the weekday lord.
 // Types: Amrit, Shubh, Labh, Char (good/neutral), Rog, Kaal, Udveg (bad)
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateChoghadiya = calculateChoghadiya;
 // Choghadiya names and their nature
 const CHOGHADIYA_TYPES = {
     Amrit: 'good',
@@ -73,7 +70,7 @@ function formatTime(totalMinutes) {
  * @param dayOfWeek - Day of week (0=Sunday, ..., 6=Saturday)
  * @returns Array of 16 Choghadiya periods (8 day followed by 8 night)
  */
-function calculateChoghadiya(sunrise, sunset, dayOfWeek) {
+export function calculateChoghadiya(sunrise, sunset, dayOfWeek) {
     const sunriseMin = parseTime(sunrise);
     const sunsetMin = parseTime(sunset);
     const dayDuration = sunsetMin - sunriseMin;

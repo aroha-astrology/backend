@@ -1,4 +1,4 @@
-import type { Hora } from '@jyotish-ai/shared';
+import type { Hora } from '@aroha-astrology/shared';
 /**
  * Calculate the current planetary hora.
  *

@@ -1,1 +1,1 @@
-{"version":3,"file":"nakshatra.d.ts","sourceRoot":"","sources":["../../src/panchang/nakshatra.ts"],"names":[],"mappings":"AAMA,OAAO,KAAK,EAAE,aAAa,EAAE,MAAM,oBAAoB,CAAC;AAYxD;;;;;GAKG;AACH,wBAAgB,kBAAkB,CAAC,QAAQ,EAAE,MAAM,GAAG,aAAa,CAqBlE"}
+{"version":3,"file":"nakshatra.d.ts","sourceRoot":"","sources":["../../src/panchang/nakshatra.ts"],"names":[],"mappings":"AAMA,OAAO,KAAK,EAAE,aAAa,EAAE,MAAM,yBAAyB,CAAC;AAY7D;;;;;GAKG;AACH,wBAAgB,kBAAkB,CAAC,QAAQ,EAAE,MAAM,GAAG,aAAa,CAqBlE"}

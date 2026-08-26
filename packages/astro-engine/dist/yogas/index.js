@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectAllYogas = detectAllYogas;
-const shared_1 = require("@jyotish-ai/shared");
+import { ZODIAC_SIGNS, SIGN_LORDS, PLANET_EXALTATION, PLANET_DEBILITATION, PLANET_OWN_SIGNS, PLANET_FRIENDS, PLANET_ENEMIES, NATURAL_BENEFICS, NATURAL_MALEFICS, } from '@aroha-astrology/shared';
 // ============================================================
 // Helper Functions
 // ============================================================
@@ -34,17 +31,17 @@ function isInKendraOrTrikona(house) {
 }
 /** Is the planet exalted in the given sign? */
 function isPlanetExalted(planet, sign) {
-    const exaltation = shared_1.PLANET_EXALTATION[planet];
+    const exaltation = PLANET_EXALTATION[planet];
     return exaltation ? exaltation.sign === sign : false;
 }
 /** Is the planet in its own sign? */
 function isPlanetInOwnSign(planet, sign) {
-    const ownSigns = shared_1.PLANET_OWN_SIGNS[planet];
+    const ownSigns = PLANET_OWN_SIGNS[planet];
     return ownSigns ? ownSigns.includes(sign) : false;
 }
 /** Is the planet debilitated in the given sign? */
 function isPlanetDebilitated(planet, sign) {
-    const debilitation = shared_1.PLANET_DEBILITATION[planet];
+    const debilitation = PLANET_DEBILITATION[planet];
     return debilitation ? debilitation.sign === sign : false;
 }
 /** Get the lord of a given house number (1-12) from chart data. */
@@ -54,9 +51,9 @@ function getHouseLord(houseNum, chartData) {
         return houseData.lord;
     }
     // Fallback: use whole-sign from ascendant
-    const ascSignIndex = shared_1.ZODIAC_SIGNS.indexOf(chartData.ascendant.sign);
+    const ascSignIndex = ZODIAC_SIGNS.indexOf(chartData.ascendant.sign);
     const houseSignIndex = (ascSignIndex + houseNum - 1) % 12;
-    return shared_1.SIGN_LORDS[shared_1.ZODIAC_SIGNS[houseSignIndex]];
+    return SIGN_LORDS[ZODIAC_SIGNS[houseSignIndex]];
 }
 /** Are two planets conjunct (in the same house)? */
 function arePlanetsConjunct(p1, p2, chartData) {
@@ -103,7 +100,7 @@ function isPlanetAspectedBy(target, aspector, chartData) {
 }
 /** Get the sign index (0-11) for a zodiac sign. */
 function signIndex(sign) {
-    return shared_1.ZODIAC_SIGNS.indexOf(sign);
+    return ZODIAC_SIGNS.indexOf(sign);
 }
 /** Is a sign an odd sign (fire/air: Aries, Gemini, Leo, Libra, Sagittarius, Aquarius)? */
 function isOddSign(sign) {
@@ -132,9 +129,9 @@ function computePlanetStrength(planet, chartData) {
     }
     else {
         // Check friendly / enemy sign
-        const signLord = shared_1.SIGN_LORDS[sign];
-        const friends = shared_1.PLANET_FRIENDS[planet] || [];
-        const enemies = shared_1.PLANET_ENEMIES[planet] || [];
+        const signLord = SIGN_LORDS[sign];
+        const friends = PLANET_FRIENDS[planet] || [];
+        const enemies = PLANET_ENEMIES[planet] || [];
         if (friends.includes(signLord)) {
             strength = 60;
         }
@@ -183,7 +180,7 @@ function planetsInHouse(house, chartData) {
 }
 /** Check if any benefic aspects a given house. */
 function isBeneficAspectingHouse(house, chartData) {
-    return shared_1.NATURAL_BENEFICS.some((b) => doesPlanetAspect(b, house, chartData));
+    return NATURAL_BENEFICS.some((b) => doesPlanetAspect(b, house, chartData));
 }
 // ============================================================
 // Yoga Detection Functions
@@ -240,8 +237,8 @@ function detectDharmaKarmadhipati(chartData) {
     // Conjunction: both lords in same house
     const conjunct = arePlanetsConjunct(lord9, lord10, chartData);
     // Mutual exchange: lord9 in sign owned by lord10 and vice versa
-    const lord9InLord10Sign = shared_1.SIGN_LORDS[sign9] === lord10;
-    const lord10InLord9Sign = shared_1.SIGN_LORDS[sign10] === lord9;
+    const lord9InLord10Sign = SIGN_LORDS[sign9] === lord10;
+    const lord10InLord9Sign = SIGN_LORDS[sign10] === lord9;
     const exchange = lord9InLord10Sign && lord10InLord9Sign;
     // Mutual aspect
     const mutualAspect = doesPlanetAspect(lord9, house10, chartData) &&
@@ -338,9 +335,9 @@ function detectNeechBhangaRaja(chartData) {
             continue;
         let cancelled = false;
         // Condition 1: Lord of the sign where the planet is exalted aspects the debilitated planet
-        const exaltData = shared_1.PLANET_EXALTATION[planet];
+        const exaltData = PLANET_EXALTATION[planet];
         if (exaltData) {
-            const exaltLord = shared_1.SIGN_LORDS[exaltData.sign];
+            const exaltLord = SIGN_LORDS[exaltData.sign];
             if (isPlanetAspectedBy(planet, exaltLord, chartData)) {
                 cancelled = true;
             }
@@ -351,7 +348,7 @@ function detectNeechBhangaRaja(chartData) {
             }
         }
         // Condition 2: Lord of the sign where planet is debilitated is in kendra from lagna or Moon
-        const debilSignLord = shared_1.SIGN_LORDS[sign];
+        const debilSignLord = SIGN_LORDS[sign];
         const debilLordHouse = getPlanetHouse(debilSignLord, chartData);
         if (isInKendra(debilLordHouse)) {
             cancelled = true;
@@ -366,7 +363,7 @@ function detectNeechBhangaRaja(chartData) {
         // Condition 3: The debilitated planet is exalted in Navamsa (we don't have navamsa, skip)
         // Condition 4: The debilitated planet is conjunct or aspected by the lord of its exaltation sign
         if (exaltData) {
-            const exaltLord = shared_1.SIGN_LORDS[exaltData.sign];
+            const exaltLord = SIGN_LORDS[exaltData.sign];
             if (arePlanetsConjunct(planet, exaltLord, chartData)) {
                 cancelled = true;
             }
@@ -476,7 +473,7 @@ function detectVasumathi(chartData) {
     const targetHouses = targetPositions.map((offset) => ((moonHouse + offset - 2) % 12) + 1);
     const beneficsFound = [];
     const housesFound = [];
-    for (const benefic of shared_1.NATURAL_BENEFICS) {
+    for (const benefic of NATURAL_BENEFICS) {
         const bHouse = getPlanetHouse(benefic, chartData);
         if (targetHouses.includes(bHouse)) {
             beneficsFound.push(benefic);
@@ -485,7 +482,7 @@ function detectVasumathi(chartData) {
         }
     }
     // Need benefics in all four positions for full yoga; partial if at least 3
-    const fullPositionsCovered = targetHouses.filter((th) => shared_1.NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th)).length;
+    const fullPositionsCovered = targetHouses.filter((th) => NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th)).length;
     const present = fullPositionsCovered >= 3;
     let strength = 0;
     if (present) {
@@ -698,7 +695,7 @@ function detectAdhi(chartData) {
     const targetHouses = positions.map((offset) => ((moonHouse + offset - 2) % 12) + 1);
     const found = [];
     const housesFound = [];
-    for (const benefic of shared_1.NATURAL_BENEFICS) {
+    for (const benefic of NATURAL_BENEFICS) {
         const bHouse = getPlanetHouse(benefic, chartData);
         if (targetHouses.includes(bHouse)) {
             found.push(benefic);
@@ -707,7 +704,7 @@ function detectAdhi(chartData) {
         }
     }
     // Need benefics in at least 2 of these 3 positions
-    const positionsCovered = targetHouses.filter((th) => shared_1.NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th)).length;
+    const positionsCovered = targetHouses.filter((th) => NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th)).length;
     const present = positionsCovered >= 2;
     let strength = 0;
     if (present) {
@@ -888,7 +885,7 @@ function detectAmala(chartData) {
     const tenthFromMoon = moonHouse > 0 ? ((moonHouse + 8) % 12) + 1 : 0;
     const found = [];
     const housesFound = [];
-    for (const benefic of shared_1.NATURAL_BENEFICS) {
+    for (const benefic of NATURAL_BENEFICS) {
         const bHouse = getPlanetHouse(benefic, chartData);
         if (bHouse === tenthFromLagna || (tenthFromMoon > 0 && bHouse === tenthFromMoon)) {
             found.push(benefic);
@@ -1002,7 +999,7 @@ function detectChandraAdhi(chartData) {
     const targetHouses = offsets.map((o) => ((moonHouse + o - 2) % 12) + 1);
     const found = [];
     const housesFound = [];
-    for (const benefic of shared_1.NATURAL_BENEFICS) {
+    for (const benefic of NATURAL_BENEFICS) {
         const bHouse = getPlanetHouse(benefic, chartData);
         if (targetHouses.includes(bHouse)) {
             found.push(benefic);
@@ -1011,7 +1008,7 @@ function detectChandraAdhi(chartData) {
         }
     }
     // Full yoga: all three positions occupied by benefics
-    const positionsCovered = targetHouses.filter((th) => shared_1.NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th)).length;
+    const positionsCovered = targetHouses.filter((th) => NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th)).length;
     const present = positionsCovered === 3;
     let strength = 0;
     if (present) {
@@ -1271,7 +1268,7 @@ function detectParvata(chartData) {
     const kendras = [1, 4, 7, 10];
     let maleficInKendra = false;
     for (const k of kendras) {
-        for (const mal of shared_1.NATURAL_MALEFICS) {
+        for (const mal of NATURAL_MALEFICS) {
             if (getPlanetHouse(mal, chartData) === k) {
                 maleficInKendra = true;
                 break;
@@ -1472,8 +1469,8 @@ function detectChandraMangalDhana(chartData) {
     const lord1Sign = getPlanetSign(lord1, chartData);
     const lord2Sign = getPlanetSign(lord2, chartData);
     const exchange = lord1 !== lord2 &&
-        shared_1.SIGN_LORDS[lord1Sign] === lord2 &&
-        shared_1.SIGN_LORDS[lord2Sign] === lord1;
+        SIGN_LORDS[lord1Sign] === lord2 &&
+        SIGN_LORDS[lord2Sign] === lord1;
     const present = (conjunct || exchange) && lord1 !== lord2;
     const lord1House = getPlanetHouse(lord1, chartData);
     let strength = 0;
@@ -1560,7 +1557,7 @@ function detectKendradhipatiDosha(chartData) {
     const housesFound = [];
     for (const k of kendras) {
         const lord = getHouseLord(k, chartData);
-        if (shared_1.NATURAL_BENEFICS.includes(lord) && lord !== 'Moon') {
+        if (NATURAL_BENEFICS.includes(lord) && lord !== 'Moon') {
             // Moon is exempt in many traditions
             found.push(lord);
             housesFound.push(k);
@@ -1866,7 +1863,7 @@ function detectChaturSagara(chartData) {
 function detectVasuki(chartData) {
     // Vasuki Yoga: Benefics in 3rd house from Lagna
     const found = [];
-    for (const b of shared_1.NATURAL_BENEFICS) {
+    for (const b of NATURAL_BENEFICS) {
         if (getPlanetHouse(b, chartData) === 3)
             found.push(b);
     }
@@ -1941,7 +1938,7 @@ function detectAdhiYogaFromLagna(chartData) {
     const offsets = [6, 7, 8];
     const found = [];
     const housesFound = [];
-    for (const b of shared_1.NATURAL_BENEFICS) {
+    for (const b of NATURAL_BENEFICS) {
         const bHouse = getPlanetHouse(b, chartData);
         if (offsets.includes(bHouse)) {
             found.push(b);
@@ -1949,7 +1946,7 @@ function detectAdhiYogaFromLagna(chartData) {
                 housesFound.push(bHouse);
         }
     }
-    const positionsCovered = offsets.filter((h) => shared_1.NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === h)).length;
+    const positionsCovered = offsets.filter((h) => NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === h)).length;
     const present = positionsCovered >= 2;
     let strength = 0;
     if (present) {
@@ -1976,7 +1973,7 @@ function detectAdhiYogaFromLagna(chartData) {
  * Returns an array of 50+ yoga results, each with presence, strength, and details.
  * All calculations are purely deterministic math based on planet positions and house data.
  */
-function detectAllYogas(chartData) {
+export function detectAllYogas(chartData) {
     const yogas = [];
     // ---- Pancha Mahapurusha (5) ----
     yogas.push(detectRuchaka(chartData));

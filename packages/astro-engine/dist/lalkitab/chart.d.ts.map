@@ -1,1 +1,1 @@
-{"version":3,"file":"chart.d.ts","sourceRoot":"","sources":["../../src/lalkitab/chart.ts"],"names":[],"mappings":"AAMA,OAAO,KAAK,EAAE,SAAS,EAAE,aAAa,EAAsB,MAAM,oBAAoB,CAAC;AAGvF;;;;;GAKG;AACH,wBAAgB,mBAAmB,CAAC,SAAS,EAAE,SAAS,GAAG,aAAa,CAsBvE"}
+{"version":3,"file":"chart.d.ts","sourceRoot":"","sources":["../../src/lalkitab/chart.ts"],"names":[],"mappings":"AAMA,OAAO,KAAK,EAAE,SAAS,EAAE,aAAa,EAAsB,MAAM,yBAAyB,CAAC;AAG5F;;;;;GAKG;AACH,wBAAgB,mBAAmB,CAAC,SAAS,EAAE,SAAS,GAAG,aAAa,CAsBvE"}

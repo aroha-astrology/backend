@@ -1,4 +1,4 @@
-import type { Ayanamsa, HouseSystem, PlanetPosition, HouseData, AscendantData, ChartData } from '@jyotish-ai/shared';
+import type { Ayanamsa, HouseSystem, PlanetPosition, HouseData, AscendantData, ChartData } from '@aroha-astrology/shared';
 /**
  * Convert a date/time with timezone offset to a Julian Day number.
  */

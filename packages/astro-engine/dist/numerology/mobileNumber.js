@@ -1,12 +1,9 @@
-"use strict";
 // =============================================================================
 // Mobile Number Numerology
 // =============================================================================
 // Deterministic vibration + harmony scoring for a 10-digit mobile number,
 // evaluated against the holder's Mulank and Bhagyank.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyzeMobileNumber = analyzeMobileNumber;
-const vedic_1 = require("./vedic");
+import { calculateMulank, calculateBhagyank, reduceToSingleDigit } from './vedic';
 const FRIENDLY_MAP = {
     1: [1, 3, 5, 9],
     2: [2, 7, 9],
@@ -86,7 +83,7 @@ function scoreToVerdict(score) {
  *
  * Throws if the cleaned mobile is fewer than 10 digits.
  */
-function analyzeMobileNumber(mobile, dob) {
+export function analyzeMobileNumber(mobile, dob) {
     const cleaned = (mobile ?? '').replace(/\D/g, '');
     if (cleaned.length < 10) {
         throw new Error('Invalid mobile: need at least 10 digits');
@@ -95,9 +92,9 @@ function analyzeMobileNumber(mobile, dob) {
     let total = 0;
     for (const ch of digits)
         total += Number(ch);
-    const vibration = (0, vedic_1.reduceToSingleDigit)(total);
-    const mulank = (0, vedic_1.calculateMulank)(dob);
-    const bhagyank = (0, vedic_1.calculateBhagyank)(dob);
+    const vibration = reduceToSingleDigit(total);
+    const mulank = calculateMulank(dob);
+    const bhagyank = calculateBhagyank(dob);
     const lastDigit = Number(digits[digits.length - 1]);
     const lastFour = digits.slice(-4);
     const harmony = harmonyScore(vibration, mulank, bhagyank, lastDigit);

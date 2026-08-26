@@ -1,1 +1,1 @@
-{"version":3,"file":"guruChandal.d.ts","sourceRoot":"","sources":["../../src/doshas/guruChandal.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,SAAS,EAAE,gBAAgB,EAAU,MAAM,oBAAoB,CAAC;AAa9E,wBAAgB,sBAAsB,CAAC,SAAS,EAAE,SAAS,GAAG,gBAAgB,CA+B7E"}
+{"version":3,"file":"guruChandal.d.ts","sourceRoot":"","sources":["../../src/doshas/guruChandal.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,SAAS,EAAE,gBAAgB,EAAU,MAAM,yBAAyB,CAAC;AAanF,wBAAgB,sBAAsB,CAAC,SAAS,EAAE,SAAS,GAAG,gBAAgB,CA+B7E"}

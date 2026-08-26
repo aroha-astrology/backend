@@ -1,12 +1,9 @@
-"use strict";
 // =============================================================================
 // Planetary Hora Calculation
 // =============================================================================
 // Each hour of the day is ruled by a planet. The first hora after sunrise
 // belongs to the weekday lord. Subsequent horas cycle through the Chaldean
 // order: Sun, Venus, Mercury, Moon, Saturn, Jupiter, Mars.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateHora = calculateHora;
 // Chaldean order of planets for hora cycling
 const HORA_ORDER = [
     'Sun', 'Venus', 'Mercury', 'Moon', 'Saturn', 'Jupiter', 'Mars',
@@ -51,7 +48,7 @@ function formatTime(totalMinutes) {
  * @param dayOfWeek - Day of week (0=Sunday, ..., 6=Saturday)
  * @returns Hora object with ruling planet, time range, and auspiciousness
  */
-function calculateHora(sunrise, currentTime, dayOfWeek) {
+export function calculateHora(sunrise, currentTime, dayOfWeek) {
     const sunriseMin = parseTime(sunrise);
     const currentMin = parseTime(currentTime);
     // Assume sunset is approximately 12 hours after sunrise for hora calculation

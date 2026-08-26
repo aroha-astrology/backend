@@ -1,11 +1,8 @@
-"use strict";
 // =============================================================================
 // Lal Kitab Remedies & Totke
 // =============================================================================
 // 108 combinations (9 planets x 12 houses) with practical remedies and totke
 // sourced from traditional Lal Kitab remedy texts.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.getLalKitabRemedies = getLalKitabRemedies;
 /**
  * Generate a lookup key for planet + house combination.
  */
@@ -1453,7 +1450,7 @@ const REMEDY_DATABASE = {
  * Returns remedies (general corrective actions) and totke (specific practical
  * rituals) for each of the 108 planet-house combinations.
  */
-function getLalKitabRemedies(planet, house) {
+export function getLalKitabRemedies(planet, house) {
     if (house < 1 || house > 12) {
         return { remedies: [], totke: [] };
     }

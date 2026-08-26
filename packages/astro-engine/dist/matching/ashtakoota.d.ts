@@ -1,4 +1,4 @@
-import type { AshtakootaResult, ZodiacSign } from '@jyotish-ai/shared';
+import type { AshtakootaResult, ZodiacSign } from '@aroha-astrology/shared';
 /**
  * Computes all 8 Kootas for Ashtakoota marriage compatibility.
  *

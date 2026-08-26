@@ -1,4 +1,4 @@
-import type { PanchangYoga } from '@jyotish-ai/shared';
+import type { PanchangYoga } from '@aroha-astrology/shared';
 /**
  * Calculate the Panchang Yoga from Sun and Moon longitudes.
  *

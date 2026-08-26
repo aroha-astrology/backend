@@ -1,4 +1,3 @@
-"use strict";
 // =============================================================================
 // Ashtakavarga System - Benefic Point Calculations
 // =============================================================================
@@ -6,12 +5,6 @@
 // of the 7 planets across 12 signs. The classical rules define specific houses
 // from each contributor where a planet receives a benefic point.
 // =============================================================================
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateBhinnaAshtakavarga = calculateBhinnaAshtakavarga;
-exports.calculateSarvaAshtakavarga = calculateSarvaAshtakavarga;
-exports.calculateAshtakavarga = calculateAshtakavarga;
-exports.getBindusForPlanetInSign = getBindusForPlanetInSign;
-exports.evaluateSignStrength = evaluateSignStrength;
 // =============================================================================
 // Constants: Classical Benefic Point Rules
 // =============================================================================
@@ -146,7 +139,7 @@ function houseToSignIndex(startSignIndex, houseOffset) {
  * @param chartData - Complete chart data with planet positions
  * @returns Array of BhinnaAshtakavarga, one per planet
  */
-function calculateBhinnaAshtakavarga(chartData) {
+export function calculateBhinnaAshtakavarga(chartData) {
     const results = [];
     for (const targetPlanet of AV_PLANETS) {
         // Initialize bindu count for each of the 12 signs
@@ -191,7 +184,7 @@ function calculateBhinnaAshtakavarga(chartData) {
  * @param bhinnaData - Array of BhinnaAshtakavarga from calculateBhinnaAshtakavarga
  * @returns SarvaAshtakavarga with 12 sign totals and grand total
  */
-function calculateSarvaAshtakavarga(bhinnaData) {
+export function calculateSarvaAshtakavarga(bhinnaData) {
     const sarvaBindus = new Array(12).fill(0);
     for (const bhinna of bhinnaData) {
         for (let i = 0; i < 12; i++) {
@@ -210,7 +203,7 @@ function calculateSarvaAshtakavarga(bhinnaData) {
  * @param chartData - Complete chart data
  * @returns AshtakavargaData with bhinna and sarva
  */
-function calculateAshtakavarga(chartData) {
+export function calculateAshtakavarga(chartData) {
     const bhinna = calculateBhinnaAshtakavarga(chartData);
     const sarva = calculateSarvaAshtakavarga(bhinna);
     return {
@@ -228,7 +221,7 @@ function calculateAshtakavarga(chartData) {
  * @param signIndex - The sign index (0-11)
  * @returns Number of bindus (0-8)
  */
-function getBindusForPlanetInSign(bhinnaData, planet, signIndex) {
+export function getBindusForPlanetInSign(bhinnaData, planet, signIndex) {
     const planetData = bhinnaData.find((b) => b.planet === planet);
     if (!planetData)
         return 0;
@@ -243,7 +236,7 @@ function getBindusForPlanetInSign(bhinnaData, planet, signIndex) {
  * @param signIndex - The sign index (0-11)
  * @returns 'strong' if above average, 'weak' if below, 'average' if within 1 point
  */
-function evaluateSignStrength(sarva, signIndex) {
+export function evaluateSignStrength(sarva, signIndex) {
     const average = sarva.total / 12;
     const bindus = sarva.bindus[signIndex];
     if (bindus > average + 1)

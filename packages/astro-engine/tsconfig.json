@@ -2,9 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
-    "module": "Node16",
-    "moduleResolution": "Node16"
+    "baseUrl": ".",
+    "paths": {
+      "@aroha-astrology/shared": ["../../src/lib/shared/index.ts"],
+      "@aroha-astrology/shared/*": ["../../src/lib/shared/*"]
+    }
   },
   "include": ["src/**/*"]
 }

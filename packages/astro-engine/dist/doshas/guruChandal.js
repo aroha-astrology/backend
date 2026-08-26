@@ -1,6 +1,3 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectGuruChandalDosha = detectGuruChandalDosha;
 /**
  * Guru Chandal Dosha Detection
  *
@@ -10,7 +7,7 @@ exports.detectGuruChandalDosha = detectGuruChandalDosha;
 function getPlanetPosition(chartData, planet) {
     return chartData.planets.find((p) => p.planet === planet);
 }
-function detectGuruChandalDosha(chartData) {
+export function detectGuruChandalDosha(chartData) {
     const jupiter = getPlanetPosition(chartData, 'Jupiter');
     const rahu = getPlanetPosition(chartData, 'Rahu');
     const ketu = getPlanetPosition(chartData, 'Ketu');

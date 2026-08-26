@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectMangalDosha = detectMangalDosha;
-const shared_1 = require("@jyotish-ai/shared");
+import { PLANET_EXALTATION, PLANET_OWN_SIGNS, } from '@aroha-astrology/shared';
 /**
  * Mangal (Mars) Dosha Detection
  *
@@ -54,11 +51,11 @@ function checkCancellations(chartData) {
     const marsSign = mars.sign;
     const marsSignIndex = mars.signIndex;
     // 1. Mars in own sign (Aries or Scorpio)
-    if (shared_1.PLANET_OWN_SIGNS.Mars.includes(marsSign)) {
+    if (PLANET_OWN_SIGNS.Mars.includes(marsSign)) {
         cancellations.push(`Mars in own sign ${marsSign} - cancellation applies`);
     }
     // 2. Mars exalted (Capricorn)
-    if (shared_1.PLANET_EXALTATION.Mars && marsSign === shared_1.PLANET_EXALTATION.Mars.sign) {
+    if (PLANET_EXALTATION.Mars && marsSign === PLANET_EXALTATION.Mars.sign) {
         cancellations.push('Mars exalted in Capricorn - cancellation applies');
     }
     // 3. Mars conjunct (same house/sign) a benefic (Jupiter or Venus)
@@ -103,7 +100,7 @@ function checkCancellations(chartData) {
     }
     return cancellations;
 }
-function detectMangalDosha(chartData) {
+export function detectMangalDosha(chartData) {
     const mars = getPlanetPosition(chartData, 'Mars');
     if (!mars) {
         return {
@@ -118,6 +115,7 @@ function detectMangalDosha(chartData) {
             marsHouseFromVenus: 0,
             cancellations: [],
             type: 'none',
+            description: 'Mangal Dosha is not present in the chart.',
         };
     }
     const lagnaSignIndex = chartData.ascendant.signIndex;
@@ -180,6 +178,7 @@ function detectMangalDosha(chartData) {
         marsHouseFromVenus,
         cancellations,
         type,
+        description: present ? `Mangal Dosha is present (${type}).` : 'Mangal Dosha is not present.',
     };
 }
 //# sourceMappingURL=mangalDosha.js.map

@@ -1,12 +1,9 @@
-"use strict";
 // =============================================================================
 // Lal Kitab Karmic Debt (Rin) Detection
 // =============================================================================
 // Lal Kitab identifies 8 types of ancestral/karmic debts based on planetary
 // afflictions. Each debt type has specific indicators and traditional remedies.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectDebts = detectDebts;
-const shared_1 = require("@jyotish-ai/shared");
+import { NATURAL_MALEFICS } from '@aroha-astrology/shared';
 /**
  * Check whether a planet is afflicted: conjunct with or aspected by malefics,
  * or placed in an unfavorable house.
@@ -21,7 +18,7 @@ function isPlanetAfflicted(planet, chartData, housesToCheck) {
         return false;
     // Check for conjunction with malefics in the same house
     const houseData = chartData.houses[planetPos.house - 1];
-    const maleficsInHouse = houseData.planets.filter(p => p !== planet && shared_1.NATURAL_MALEFICS.includes(p));
+    const maleficsInHouse = houseData.planets.filter(p => p !== planet && NATURAL_MALEFICS.includes(p));
     if (maleficsInHouse.length > 0)
         return true;
     // Check if planet is retrograde (weakened)
@@ -31,7 +28,7 @@ function isPlanetAfflicted(planet, chartData, housesToCheck) {
     // In Vedic astrology: Mars aspects 4,7,8th; Saturn aspects 3,7,10th; Jupiter aspects 5,7,9th
     // Rahu/Ketu aspect 5,7,9th
     for (const mp of chartData.planets) {
-        if (!shared_1.NATURAL_MALEFICS.includes(mp.planet))
+        if (!NATURAL_MALEFICS.includes(mp.planet))
             continue;
         if (mp.planet === planet)
             continue;
@@ -79,7 +76,7 @@ function isPlanetInHouses(planet, chartData, houses) {
 /**
  * Detect all 8 types of karmic debts (Rin) in a Lal Kitab chart.
  */
-function detectDebts(chartData) {
+export function detectDebts(chartData) {
     const debts = [];
     // 1. Pitra Rin (Ancestral/Father's debt)
     // Sun afflicted in houses 2, 5, 9, or 10
@@ -266,7 +263,7 @@ function detectDebts(chartData) {
         const mercPos = chartData.planets.find(p => p.planet === 'Mercury');
         if (venusPos && mercPos && venusPos.house === mercPos.house) {
             const houseData = chartData.houses[venusPos.house - 1];
-            const hasMalefic = houseData.planets.some(p => shared_1.NATURAL_MALEFICS.includes(p));
+            const hasMalefic = houseData.planets.some(p => NATURAL_MALEFICS.includes(p));
             if (hasMalefic) {
                 indicators.push(`Venus-Mercury conjunction afflicted by malefics in house ${venusPos.house}`);
             }

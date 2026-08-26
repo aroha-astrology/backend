@@ -1,5 +1,6 @@
 export { dateToJulianDay, calculatePlanetPositions, calculateHouses, calculateAscendant, calculateChart, } from './calculations/planetPositions';
 export { calculateShadbala } from './calculations/shadbala';
+export * from './calculations/vakri';
 export { calculateBhinnaAshtakavarga, calculateSarvaAshtakavarga, calculateAshtakavarga, getBindusForPlanetInSign, evaluateSignStrength, } from './calculations/ashtakavarga';
 export * from './dashas/index';
 export * from './doshas/index';
@@ -11,7 +12,7 @@ export * from './panchang/index';
 export { findBestMuhurta } from './muhurta/index';
 export { calculateLifePath, calculateExpression, calculateSoulUrge, calculatePersonality, calculateLuckyNumbers, analyzeNameNumerology, calculateFullNumerology, } from './numerology/index';
 export { reduceToSingleDigit, calculateMulank, calculateBhagyank, calculateKuaNumber, calculateLoShuGrid, calculateChallengeNumbers, calculatePersonalYear, calculatePersonalMonth, generateMonthlyForecast, getZodiacSign, getNamePlanes, getKuaData, } from './numerology/vedic';
-export type { LoShuGrid, ChallengeNumbers, ZodiacInfo, NamePlanes, KuaData } from './numerology/vedic';
+export type { LoShuGrid, ChallengeNumbers, ZodiacInfo, NamePlanes, KuaData, } from './numerology/vedic';
 export { computeNameAlignment, variantHitsTarget, generateDeterministicVariants, } from './numerology/nameCorrection';
 export type { NameAlignment, NameAlignmentResult } from './numerology/nameCorrection';
 export { analyzeMobileNumber } from './numerology/mobileNumber';

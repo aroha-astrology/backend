@@ -1,4 +1,3 @@
-"use strict";
 // =============================================================================
 // Karana Calculation
 // =============================================================================
@@ -8,8 +7,6 @@
 // Fixed: Kimstughna (1st half of Shukla Pratipada), Shakuni, Chatushpada,
 //        Nagava (2nd half of Krishna Chaturdashi and both halves of Amavasya).
 // The 7 rotating karanas cycle 8 times to fill the remaining 56 slots.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateKarana = calculateKarana;
 const ROTATING_KARANAS = [
     'Bava', 'Balava', 'Kaulava', 'Taitila', 'Gara', 'Vanija', 'Vishti',
 ];
@@ -23,7 +20,7 @@ const FIXED_KARANAS = [
  * @param sunLong - Sidereal longitude of the Sun (0-360)
  * @returns Karana with index, name, and whether it is fixed
  */
-function calculateKarana(moonLong, sunLong) {
+export function calculateKarana(moonLong, sunLong) {
     // Elongation of Moon from Sun
     let diff = moonLong - sunLong;
     if (diff < 0)

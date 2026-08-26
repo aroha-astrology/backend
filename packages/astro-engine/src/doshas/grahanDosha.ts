@@ -57,5 +57,6 @@ export function detectGrahanDosha(chartData: ChartData): GrahanDosha {
     present,
     type,
     severity,
+    description: present ? `Grahan Dosha is present (${type}).` : 'Grahan Dosha is not present.',
   };
 }

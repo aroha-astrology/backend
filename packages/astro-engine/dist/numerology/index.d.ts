@@ -1,4 +1,4 @@
-import type { NumerologyResult } from '@jyotish-ai/shared';
+import type { NumerologyResult } from '@aroha-astrology/shared';
 /**
  * Calculate the Life Path number from a date of birth.
  * Reduces each component (day, month, year) separately, then sums and reduces.

@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectSadeSati = detectSadeSati;
-const shared_1 = require("@jyotish-ai/shared");
+import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
 /**
  * Sade Sati Detection
  *
@@ -17,19 +14,19 @@ const shared_1 = require("@jyotish-ai/shared");
 /** Average Saturn transit time per sign in days (~2.5 years). */
 const SATURN_DAYS_PER_SIGN = 912; // ~2.5 years * 365.25
 function getSignIndex(sign) {
-    return shared_1.ZODIAC_SIGNS.indexOf(sign);
+    return ZODIAC_SIGNS.indexOf(sign);
 }
 function getSignFromLongitude(longitude) {
     const index = Math.floor(longitude / 30) % 12;
-    return shared_1.ZODIAC_SIGNS[index];
+    return ZODIAC_SIGNS[index];
 }
 function getSignIndexFromLongitude(longitude) {
     return Math.floor(longitude / 30) % 12;
 }
-function detectSadeSati(moonSign, saturnLongitude) {
+export function detectSadeSati(moonSign, saturnLongitude) {
     const moonSignIndex = getSignIndex(moonSign);
     const saturnSignIndex = getSignIndexFromLongitude(saturnLongitude);
-    const saturnSign = shared_1.ZODIAC_SIGNS[saturnSignIndex];
+    const saturnSign = ZODIAC_SIGNS[saturnSignIndex];
     // Determine relative position of Saturn to Moon sign
     const risingSignIndex = (moonSignIndex - 1 + 12) % 12; // sign before Moon
     const settingSignIndex = (moonSignIndex + 1) % 12; // sign after Moon

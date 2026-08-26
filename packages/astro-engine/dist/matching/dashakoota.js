@@ -1,4 +1,3 @@
-"use strict";
 // =============================================================================
 // Dashakoota (10-Porutham) Matching System - South Indian Compatibility
 // =============================================================================
@@ -7,14 +6,12 @@
 // Each porutham is pass/fail with a weight. Total points awarded for passes.
 // All calculations use classical Vedic rules, fully deterministic.
 // =============================================================================
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateDashakoota = calculateDashakoota;
-const shared_1 = require("@jyotish-ai/shared");
+import { NAKSHATRA_GANA, NAKSHATRA_YONI, SIGN_LORDS, PLANET_FRIENDS, PLANET_ENEMIES, ZODIAC_SIGNS, } from '@aroha-astrology/shared';
 // =============================================================================
 // Helpers
 // =============================================================================
 function signIndexOf(sign) {
-    return shared_1.ZODIAC_SIGNS.indexOf(sign);
+    return ZODIAC_SIGNS.indexOf(sign);
 }
 function signDistance(sign1, sign2) {
     const i1 = signIndexOf(sign1);
@@ -24,9 +21,9 @@ function signDistance(sign1, sign2) {
 function getPlanetRelation(planet1, planet2) {
     if (planet1 === planet2)
         return 'friend';
-    if (shared_1.PLANET_FRIENDS[planet1]?.includes(planet2))
+    if (PLANET_FRIENDS[planet1]?.includes(planet2))
         return 'friend';
-    if (shared_1.PLANET_ENEMIES[planet1]?.includes(planet2))
+    if (PLANET_ENEMIES[planet1]?.includes(planet2))
         return 'enemy';
     return 'neutral';
 }
@@ -65,8 +62,8 @@ function calculateDina(nakshatraIndex1, nakshatraIndex2) {
 // Deva-Manushya = compatible (one direction accepted in South Indian)
 // Any combo with Rakshasa (unless both Rakshasa) = incompatible
 function calculateGana(nakshatraIndex1, nakshatraIndex2) {
-    const gana1 = shared_1.NAKSHATRA_GANA[nakshatraIndex1];
-    const gana2 = shared_1.NAKSHATRA_GANA[nakshatraIndex2];
+    const gana1 = NAKSHATRA_GANA[nakshatraIndex1];
+    const gana2 = NAKSHATRA_GANA[nakshatraIndex2];
     let pass;
     if (gana1 === gana2) {
         pass = true;
@@ -148,8 +145,8 @@ const YONI_ENEMIES = {
     Cow: 'Tiger',
 };
 function calculateYoni(nakshatraIndex1, nakshatraIndex2) {
-    const yoni1 = shared_1.NAKSHATRA_YONI[nakshatraIndex1];
-    const yoni2 = shared_1.NAKSHATRA_YONI[nakshatraIndex2];
+    const yoni1 = NAKSHATRA_YONI[nakshatraIndex1];
+    const yoni2 = NAKSHATRA_YONI[nakshatraIndex2];
     if (!yoni1 || !yoni2) {
         return { score: 0, maxScore: 1, description: 'Invalid nakshatra index' };
     }
@@ -206,8 +203,8 @@ function calculateRashi(moonSign1, moonSign2) {
 // Both neutral = acceptable.
 // Any enemy combination = incompatible.
 function calculateRasyadhipathi(moonSign1, moonSign2) {
-    const lord1 = shared_1.SIGN_LORDS[moonSign1];
-    const lord2 = shared_1.SIGN_LORDS[moonSign2];
+    const lord1 = SIGN_LORDS[moonSign1];
+    const lord2 = SIGN_LORDS[moonSign2];
     const rel1to2 = getPlanetRelation(lord1, lord2);
     const rel2to1 = getPlanetRelation(lord2, lord1);
     // Pass if no enemy relationship exists
@@ -425,7 +422,7 @@ function overallCompatibility(total, max) {
  * @param _charts - Optional chart data (reserved for future use with divisional charts)
  * @returns Full DashakootaResult with all 10 porutham scores and total
  */
-function calculateDashakoota(nakshatraIndex1, nakshatraIndex2, moonSign1, moonSign2, _charts) {
+export function calculateDashakoota(nakshatraIndex1, nakshatraIndex2, moonSign1, moonSign2, _charts) {
     const poruthams = [
         { name: 'Dina', ...calculateDina(nakshatraIndex1, nakshatraIndex2) },
         { name: 'Gana', ...calculateGana(nakshatraIndex1, nakshatraIndex2) },

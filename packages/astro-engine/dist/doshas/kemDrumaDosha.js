@@ -1,6 +1,3 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectKemDrumaDosha = detectKemDrumaDosha;
 /**
  * Kemdrum Dosha Detection
  *
@@ -31,7 +28,7 @@ function isAspectedByJupiter(chartData, targetSignIndex) {
     }
     return false;
 }
-function detectKemDrumaDosha(chartData) {
+export function detectKemDrumaDosha(chartData) {
     const moon = chartData.planets.find((p) => p.planet === 'Moon');
     if (!moon) {
         return {

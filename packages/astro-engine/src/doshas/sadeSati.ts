@@ -106,5 +106,6 @@ export function detectSadeSati(moonSign: ZodiacSign, saturnLongitude: number): S
     severity,
     saturnSign,
     moonSign,
+    description: active ? `Sade Sati is active in its ${phase} phase with Saturn transiting ${saturnSign} and Moon in ${moonSign}.` : 'Sade Sati is not active.',
   };
 }

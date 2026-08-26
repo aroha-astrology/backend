@@ -1,4 +1,4 @@
-import type { NakshatraData } from '@jyotish-ai/shared';
+import type { NakshatraData } from '@aroha-astrology/shared';
 /**
  * Calculate the nakshatra from the Moon's sidereal longitude.
  *

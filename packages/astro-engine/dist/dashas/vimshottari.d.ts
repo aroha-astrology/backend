@@ -1,4 +1,4 @@
-import type { VimshottariDasha } from '@jyotish-ai/shared';
+import type { VimshottariDasha } from '@aroha-astrology/shared';
 /**
  * Calculate the full Vimshottari Dasha tree for a given Moon longitude
  * and birth date.

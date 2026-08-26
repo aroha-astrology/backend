@@ -1,4 +1,3 @@
-"use strict";
 // =============================================================================
 // Ashtakoota (8-Koota) Matching System - North Indian Compatibility
 // =============================================================================
@@ -8,14 +7,12 @@
 // Maximum total score: 36 points.
 // All calculations are deterministic with classical Vedic rules.
 // =============================================================================
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateAshtakoota = calculateAshtakoota;
-const shared_1 = require("@jyotish-ai/shared");
+import { KOOTA_MAX_SCORES, NAKSHATRA_GANA, NAKSHATRA_YONI, NAKSHATRA_NADI, SIGN_LORDS, PLANET_FRIENDS, PLANET_ENEMIES, ZODIAC_SIGNS, } from '@aroha-astrology/shared';
 // =============================================================================
 // Helpers
 // =============================================================================
 function signIndexOf(sign) {
-    return shared_1.ZODIAC_SIGNS.indexOf(sign);
+    return ZODIAC_SIGNS.indexOf(sign);
 }
 /** Sign element: 0=Fire, 1=Earth, 2=Air, 3=Water */
 function signElement(sign) {
@@ -59,7 +56,7 @@ function calculateVarna(moonSign1, moonSign2) {
     const score = boyRank >= girlRank ? 1 : 0;
     return {
         koota: 'Varna',
-        maxScore: shared_1.KOOTA_MAX_SCORES.Varna,
+        maxScore: KOOTA_MAX_SCORES.Varna,
         score,
         description: score === 1
             ? 'Varna of boy is equal or higher than girl'
@@ -115,7 +112,7 @@ function calculateVashya(moonSign1, moonSign2) {
     const score = Math.max(score1, score2);
     return {
         koota: 'Vashya',
-        maxScore: shared_1.KOOTA_MAX_SCORES.Vashya,
+        maxScore: KOOTA_MAX_SCORES.Vashya,
         score,
         description: score >= 2
             ? 'Good mutual attraction and compatibility'
@@ -147,7 +144,7 @@ function calculateTara(nakshatraIndex1, nakshatraIndex2) {
         score += 1.5;
     return {
         koota: 'Tara',
-        maxScore: shared_1.KOOTA_MAX_SCORES.Tara,
+        maxScore: KOOTA_MAX_SCORES.Tara,
         score,
         description: score === 3
             ? 'Tara is favorable in both directions'
@@ -179,12 +176,12 @@ const YONI_ENEMIES = {
     Cow: 'Tiger',
 };
 function calculateYoni(nakshatraIndex1, nakshatraIndex2) {
-    const yoni1 = shared_1.NAKSHATRA_YONI[nakshatraIndex1];
-    const yoni2 = shared_1.NAKSHATRA_YONI[nakshatraIndex2];
+    const yoni1 = NAKSHATRA_YONI[nakshatraIndex1];
+    const yoni2 = NAKSHATRA_YONI[nakshatraIndex2];
     if (!yoni1 || !yoni2) {
         return {
             koota: 'Yoni',
-            maxScore: shared_1.KOOTA_MAX_SCORES.Yoni,
+            maxScore: KOOTA_MAX_SCORES.Yoni,
             score: 0,
             description: 'Invalid nakshatra index',
             compatibility: 'poor',
@@ -236,7 +233,7 @@ function calculateYoni(nakshatraIndex1, nakshatraIndex2) {
     }
     return {
         koota: 'Yoni',
-        maxScore: shared_1.KOOTA_MAX_SCORES.Yoni,
+        maxScore: KOOTA_MAX_SCORES.Yoni,
         score,
         description,
         compatibility: compatibilityLabel(score, 4),
@@ -251,15 +248,15 @@ function calculateYoni(nakshatraIndex1, nakshatraIndex2) {
 function getPlanetRelation(planet1, planet2) {
     if (planet1 === planet2)
         return 'friend';
-    if (shared_1.PLANET_FRIENDS[planet1]?.includes(planet2))
+    if (PLANET_FRIENDS[planet1]?.includes(planet2))
         return 'friend';
-    if (shared_1.PLANET_ENEMIES[planet1]?.includes(planet2))
+    if (PLANET_ENEMIES[planet1]?.includes(planet2))
         return 'enemy';
     return 'neutral';
 }
 function calculateGrahaMaitri(moonSign1, moonSign2) {
-    const lord1 = shared_1.SIGN_LORDS[moonSign1];
-    const lord2 = shared_1.SIGN_LORDS[moonSign2];
+    const lord1 = SIGN_LORDS[moonSign1];
+    const lord2 = SIGN_LORDS[moonSign2];
     const rel1to2 = getPlanetRelation(lord1, lord2);
     const rel2to1 = getPlanetRelation(lord2, lord1);
     // Combine both directions into a compound relationship
@@ -295,7 +292,7 @@ function calculateGrahaMaitri(moonSign1, moonSign2) {
     }
     return {
         koota: 'GrahaMaitri',
-        maxScore: shared_1.KOOTA_MAX_SCORES.GrahaMaitri,
+        maxScore: KOOTA_MAX_SCORES.GrahaMaitri,
         score,
         description,
         compatibility: compatibilityLabel(score, 5),
@@ -309,8 +306,8 @@ function calculateGrahaMaitri(moonSign1, moonSign2) {
 // Deva-Rakshasa = 0, Rakshasa-Deva = 0,
 // Manushya-Rakshasa = 0, Rakshasa-Manushya = 0
 function calculateGana(nakshatraIndex1, nakshatraIndex2) {
-    const gana1 = shared_1.NAKSHATRA_GANA[nakshatraIndex1];
-    const gana2 = shared_1.NAKSHATRA_GANA[nakshatraIndex2];
+    const gana1 = NAKSHATRA_GANA[nakshatraIndex1];
+    const gana2 = NAKSHATRA_GANA[nakshatraIndex2];
     let score;
     let description;
     if (gana1 === gana2) {
@@ -329,7 +326,7 @@ function calculateGana(nakshatraIndex1, nakshatraIndex2) {
     }
     return {
         koota: 'Gana',
-        maxScore: shared_1.KOOTA_MAX_SCORES.Gana,
+        maxScore: KOOTA_MAX_SCORES.Gana,
         score,
         description,
         compatibility: compatibilityLabel(score, 6),
@@ -361,7 +358,7 @@ function calculateBhakoot(moonSign1, moonSign2) {
     const score = isBad ? 0 : 7;
     return {
         koota: 'Bhakoot',
-        maxScore: shared_1.KOOTA_MAX_SCORES.Bhakoot,
+        maxScore: KOOTA_MAX_SCORES.Bhakoot,
         score,
         description: isBad
             ? `Bhakoot dosha: ${dist}-${reverseDist} relationship is inauspicious`
@@ -374,13 +371,13 @@ function calculateBhakoot(moonSign1, moonSign2) {
 // =============================================================================
 // Same nadi = 0 (worst - Nadi dosha), Different nadi = 8
 function calculateNadi(nakshatraIndex1, nakshatraIndex2) {
-    const nadi1 = shared_1.NAKSHATRA_NADI[nakshatraIndex1];
-    const nadi2 = shared_1.NAKSHATRA_NADI[nakshatraIndex2];
+    const nadi1 = NAKSHATRA_NADI[nakshatraIndex1];
+    const nadi2 = NAKSHATRA_NADI[nakshatraIndex2];
     const same = nadi1 === nadi2;
     const score = same ? 0 : 8;
     return {
         koota: 'Nadi',
-        maxScore: shared_1.KOOTA_MAX_SCORES.Nadi,
+        maxScore: KOOTA_MAX_SCORES.Nadi,
         score,
         description: same
             ? `Same nadi (${nadi1}) - Nadi dosha present`
@@ -417,7 +414,7 @@ function overallCompatibility(total) {
  * @param moonSign2 - Girl's Moon sign
  * @returns Full AshtakootaResult with all 8 koota scores and total
  */
-function calculateAshtakoota(nakshatraIndex1, nakshatraIndex2, moonSign1, moonSign2) {
+export function calculateAshtakoota(nakshatraIndex1, nakshatraIndex2, moonSign1, moonSign2) {
     const scores = [
         calculateVarna(moonSign1, moonSign2),
         calculateVashya(moonSign1, moonSign2),

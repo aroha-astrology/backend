@@ -1,4 +1,4 @@
-import type { DashakootaResult, ZodiacSign, ChartData } from '@jyotish-ai/shared';
+import type { DashakootaResult, ZodiacSign, ChartData } from '@aroha-astrology/shared';
 /**
  * Computes all 10 Poruthams for South Indian (Dashakoota) marriage compatibility.
  *

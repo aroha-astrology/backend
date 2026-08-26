@@ -1,4 +1,3 @@
-"use strict";
 // =============================================================================
 // Regional Lunar/Solar Month Calculation
 // =============================================================================
@@ -25,8 +24,6 @@
 // intercalary lunar month inserted ~every 32 months. We flag it via a small
 // table of verified Gregorian ranges so the UI can mark those days distinctly
 // and the regional detail line can prefix the doubled month with "Adhika".
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateRegionalMonths = calculateRegionalMonths;
 // 12 month names in each regional convention. Order is the canonical
 // Chaitra → Phalguna sequence for lunar (Amanta/Purnimanta), and the
 // Boishakh → Choitro sequence for Bengali solar.
@@ -126,36 +123,15 @@ function lookupEraYear(region, isoDate) {
     return chosen ? chosen.eraYear : null;
 }
 function fallbackEraYear(region, gregorianYear, monthIndex) {
-    // Without a seeded boundary, approximate: the era year for any date roughly
-    // equals gregorianYear + offset, but each calendar's new year is a few months
-    // into the Gregorian year. Before the new year, we're still in the previous
-    // era year. Lunisolar new year ≈ Chaitra (monthIndex 0) start; Bengali new
-    // year ≈ Boishakh (monthIndex 0) start. Months Phalguna/Choitro (index 11)
-    // immediately precede the new year, so they belong to the prior era year.
-    const offset = ERA_OFFSETS[region];
-    // Treat monthIndex 11 as straddling: if we're in Phalguna/Choitro of
-    // Gregorian year Y, era year is gregorianYear + offset (since the new year
-    // hasn't ticked yet for this Gregorian cycle).
-    // For monthIndex 0..10 we've already passed new year ⇒ +offset is correct.
-    // monthIndex 11 ⇒ subtract one (we're still in the pre-new-year tail).
+    const offset = ERA_OFFSETS[region] ?? 0;
     const adjustment = monthIndex === 11 ? -1 : 0;
     return gregorianYear + offset + adjustment;
 }
-/**
- * Compute the lunar/solar month + era year as understood by each of the four
- * regional Panchang traditions.
- *
- * @returns A record keyed by RegionId.
- */
-function calculateRegionalMonths(args) {
+export function calculateRegionalMonths(args) {
     const { isoDate, gregorianYear, sunSiderealLong, paksha } = args;
-    // Sun's sidereal rashi index (0 = Mesha/Aries, ..., 11 = Meena/Pisces)
     const sunRashi = Math.floor(((sunSiderealLong % 360) + 360) % 360 / 30);
     const pakshaLower = paksha === 'Shukla' || paksha === 'shukla' ? 'shukla' : 'krishna';
-    // Amanta lunar month index = sun rashi (Mesha → Chaitra = 0)
     const amantaIndex = sunRashi;
-    // Purnimanta is half a paksha ahead during Krishna paksha (the "next" month
-    // has effectively begun the day after Purnima in the Purnimanta system).
     const purnimantaIndex = (sunRashi + (pakshaLower === 'krishna' ? 1 : 0)) % 12;
     const adhik = findAdhikMaas(isoDate);
     const buildLunar = (region, monthIndex) => {
@@ -163,26 +139,21 @@ function calculateRegionalMonths(args) {
         const year = seeded ?? fallbackEraYear(region, gregorianYear, monthIndex);
         return {
             region,
-            calendar: CALENDAR_NAMES[region],
-            monthSystem: MONTH_SYSTEMS[region],
+            calendar: CALENDAR_NAMES[region] || '',
+            monthSystem: MONTH_SYSTEMS[region] || 'amanta',
             monthIndex,
-            monthName: MONTH_NAMES[region][monthIndex],
+            monthName: (MONTH_NAMES[region] || [])[monthIndex] || '',
             paksha: pakshaLower,
             year,
             ...(adhik ? { isAdhikMaas: true, adhikMaasLabel: adhik.label } : {}),
         };
     };
-    // Bengali solar month tracks Sun's rashi directly (Mesha → Boishakh).
     const bengaliMonthIndex = sunRashi;
     const bengaliYearSeeded = lookupEraYear('east', isoDate);
     const bengaliYear = bengaliYearSeeded ?? fallbackEraYear('east', gregorianYear, bengaliMonthIndex);
-    // Bengali calendar is purely solar — Adhik Maas does not apply directly, but
-    // Bengali culture observes the parallel "Mol Maas" with the same Gregorian
-    // dates as the lunisolar Adhik Maas. We surface the same flag for UI
-    // consistency.
     const east = {
         region: 'east',
-        calendar: CALENDAR_NAMES.east,
+        calendar: CALENDAR_NAMES.east || '',
         monthSystem: 'solar',
         monthIndex: bengaliMonthIndex,
         monthName: SOLAR_MONTHS_EAST[bengaliMonthIndex],

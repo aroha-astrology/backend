@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectPitraDosha = detectPitraDosha;
-const shared_1 = require("@jyotish-ai/shared");
+import { NATURAL_MALEFICS, PLANET_DEBILITATION, SIGN_LORDS, ZODIAC_SIGNS, } from '@aroha-astrology/shared';
 /**
  * Pitra Dosha Detection
  *
@@ -18,7 +15,7 @@ function getPlanetPosition(chartData, planet) {
 function getHouseFromLagna(signIndex, lagnaSignIndex) {
     return ((signIndex - lagnaSignIndex + 12) % 12) + 1;
 }
-function detectPitraDosha(chartData) {
+export function detectPitraDosha(chartData) {
     const indicators = [];
     const lagnaSignIndex = chartData.ascendant.signIndex;
     // Condition 1: Sun + Rahu conjunction (same house)
@@ -29,18 +26,18 @@ function detectPitraDosha(chartData) {
     }
     // Condition 2: 9th house afflicted by malefics
     const ninthHouseSignIndex = (lagnaSignIndex + 8) % 12;
-    const maleficsInNinth = chartData.planets.filter((p) => shared_1.NATURAL_MALEFICS.includes(p.planet) &&
+    const maleficsInNinth = chartData.planets.filter((p) => NATURAL_MALEFICS.includes(p.planet) &&
         getHouseFromLagna(p.signIndex, lagnaSignIndex) === 9);
     if (maleficsInNinth.length > 0) {
         const names = maleficsInNinth.map((p) => p.planet).join(', ');
         indicators.push(`9th house afflicted by malefic(s): ${names}`);
     }
     // Condition 3: 9th lord debilitated
-    const ninthSign = shared_1.ZODIAC_SIGNS[ninthHouseSignIndex];
-    const ninthLord = shared_1.SIGN_LORDS[ninthSign];
+    const ninthSign = ZODIAC_SIGNS[ninthHouseSignIndex];
+    const ninthLord = SIGN_LORDS[ninthSign];
     const ninthLordPosition = getPlanetPosition(chartData, ninthLord);
     if (ninthLordPosition) {
-        const debilitation = shared_1.PLANET_DEBILITATION[ninthLord];
+        const debilitation = PLANET_DEBILITATION[ninthLord];
         if (debilitation && ninthLordPosition.sign === debilitation.sign) {
             indicators.push(`9th lord ${ninthLord} is debilitated in ${ninthLordPosition.sign}`);
         }

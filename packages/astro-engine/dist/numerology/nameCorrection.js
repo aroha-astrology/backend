@@ -1,15 +1,10 @@
-"use strict";
 // =============================================================================
 // Name Correction Numerology
 // =============================================================================
 // Deterministic math that drives Name Correction reports. The AI layer reads
 // these results and writes the prose; calculation here never depends on AI.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.computeNameAlignment = computeNameAlignment;
-exports.variantHitsTarget = variantHitsTarget;
-exports.generateDeterministicVariants = generateDeterministicVariants;
-const index_1 = require("./index");
-const vedic_1 = require("./vedic");
+import { analyzeNameNumerology, calculateSoulUrge, calculatePersonality, } from './index';
+import { calculateMulank, calculateBhagyank, reduceToSingleDigit } from './vedic';
 const FRIENDLY_MAP = {
     1: [1, 3, 5, 9],
     2: [2, 7, 9],
@@ -54,15 +49,15 @@ function pickTargets(mulank, bhagyank) {
  * The returned object is what the AI prompt reads and what the page renders
  * in the "your numerological signature" strip.
  */
-function computeNameAlignment(name, dob) {
-    const mulank = (0, vedic_1.calculateMulank)(dob);
-    const bhagyank = (0, vedic_1.calculateBhagyank)(dob);
-    const { pythagorean, chaldean } = (0, index_1.analyzeNameNumerology)(name);
-    const soulUrge = (0, index_1.calculateSoulUrge)(name);
-    const personality = (0, index_1.calculatePersonality)(name);
+export function computeNameAlignment(name, dob) {
+    const mulank = calculateMulank(dob);
+    const bhagyank = calculateBhagyank(dob);
+    const { pythagorean, chaldean } = analyzeNameNumerology(name);
+    const soulUrge = calculateSoulUrge(name);
+    const personality = calculatePersonality(name);
     const targets = pickTargets(mulank, bhagyank);
     const primary = targets[0];
-    const chaldeanReduced = (0, vedic_1.reduceToSingleDigit)(chaldean);
+    const chaldeanReduced = reduceToSingleDigit(chaldean);
     const alignment = chaldeanReduced === primary ? 'aligned'
         : targets.includes(chaldeanReduced) ? 'partially_aligned'
             : 'misaligned';
@@ -83,9 +78,9 @@ function computeNameAlignment(name, dob) {
  * Recompute the Chaldean number for a candidate spelling and check whether it
  * lands on any of the target numbers. Used to validate AI-suggested variants.
  */
-function variantHitsTarget(variant, targets) {
-    const chaldean = (0, index_1.analyzeNameNumerology)(variant).chaldean;
-    const reduced = (0, vedic_1.reduceToSingleDigit)(chaldean);
+export function variantHitsTarget(variant, targets) {
+    const chaldean = analyzeNameNumerology(variant).chaldean;
+    const reduced = reduceToSingleDigit(chaldean);
     return { chaldean: reduced, hits: targets.includes(reduced) };
 }
 /**
@@ -100,7 +95,7 @@ function variantHitsTarget(variant, targets) {
  *   - drop a trailing vowel
  *   - swap i↔ee, a↔aa
  */
-function generateDeterministicVariants(name, targets, wanted) {
+export function generateDeterministicVariants(name, targets, wanted) {
     const seen = new Set([name.toLowerCase()]);
     const out = [];
     const candidates = [];

@@ -1,4 +1,3 @@
-"use strict";
 // =============================================================================
 // Divisional Chart (Varga) Calculations - Shodashvarga (16 Divisions)
 // =============================================================================
@@ -7,39 +6,7 @@
 // the sign index (0-11) in the respective divisional chart.
 // All math is fully deterministic with no external dependencies.
 // =============================================================================
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.DIVISIONAL_CALCULATORS = exports.D60_DEITY_NAMES = void 0;
-exports.calculateD1 = calculateD1;
-exports.calculateD2 = calculateD2;
-exports.calculateD3 = calculateD3;
-exports.calculateD4 = calculateD4;
-exports.calculateD5 = calculateD5;
-exports.calculateD6 = calculateD6;
-exports.calculateD7 = calculateD7;
-exports.calculateD8 = calculateD8;
-exports.calculateD9 = calculateD9;
-exports.calculateD10 = calculateD10;
-exports.calculateD11 = calculateD11;
-exports.calculateD12 = calculateD12;
-exports.calculateD14 = calculateD14;
-exports.calculateD16 = calculateD16;
-exports.calculateD20 = calculateD20;
-exports.calculateD21 = calculateD21;
-exports.calculateD24 = calculateD24;
-exports.calculateD27 = calculateD27;
-exports.calculateD30 = calculateD30;
-exports.calculateD40 = calculateD40;
-exports.calculateD45 = calculateD45;
-exports.calculateD60 = calculateD60;
-exports.calculateD81 = calculateD81;
-exports.calculateD108 = calculateD108;
-exports.calculateAllDivisionalCharts = calculateAllDivisionalCharts;
-exports.calculateAllDivisionalChartsWithLagna = calculateAllDivisionalChartsWithLagna;
-exports.calculateAllDivisionalChartsForStorage = calculateAllDivisionalChartsForStorage;
-exports.getVargaWithLagna = getVargaWithLagna;
-exports.buildVargaChartData = buildVargaChartData;
-exports.getMoonChart = getMoonChart;
-const shared_1 = require("@jyotish-ai/shared");
+import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -73,7 +40,7 @@ function signModality(idx) {
 // =============================================================================
 // D1 - Rashi
 // =============================================================================
-function calculateD1(longitude) {
+export function calculateD1(longitude) {
     return signIndex(longitude);
 }
 // =============================================================================
@@ -82,7 +49,7 @@ function calculateD1(longitude) {
 // Each sign is split into two halves of 15 degrees.
 // Odd signs: 0-15 = Sun (Leo=4), 15-30 = Moon (Cancer=3)
 // Even signs: 0-15 = Moon (Cancer=3), 15-30 = Sun (Leo=4)
-function calculateD2(longitude) {
+export function calculateD2(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const firstHalf = deg < 15;
@@ -102,7 +69,7 @@ function calculateD2(longitude) {
 // Part 1 (0-10): same sign
 // Part 2 (10-20): 5th from sign
 // Part 3 (20-30): 9th from sign
-function calculateD3(longitude) {
+export function calculateD3(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const part = Math.floor(deg / 10); // 0, 1, or 2
@@ -117,7 +84,7 @@ function calculateD3(longitude) {
 // Part 2 (7.5-15): 4th from sign
 // Part 3 (15-22.5): 7th from sign
 // Part 4 (22.5-30): 10th from sign
-function calculateD4(longitude) {
+export function calculateD4(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const part = Math.floor(deg / 7.5); // 0, 1, 2, or 3
@@ -128,7 +95,7 @@ function calculateD4(longitude) {
 // D5 - Panchamsa (Awards, Fame)
 // =============================================================================
 // Each sign divided into 5 parts of 6 degrees.
-function calculateD5(longitude) {
+export function calculateD5(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const part = Math.floor(deg / 6); // 5 parts of 6 degrees
@@ -138,7 +105,7 @@ function calculateD5(longitude) {
 // D6 - Shashtamsa (Health, Litigation)
 // =============================================================================
 // Each sign divided into 6 parts of 5 degrees.
-function calculateD6(longitude) {
+export function calculateD6(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const part = Math.floor(deg / 5); // 6 parts of 5 degrees
@@ -150,7 +117,7 @@ function calculateD6(longitude) {
 // Each sign divided into 7 equal parts of 4 17/7 degrees (30/7).
 // Odd signs: count from same sign forward.
 // Even signs: count from 7th sign forward.
-function calculateD7(longitude) {
+export function calculateD7(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 7; // ~4.285714 degrees
@@ -162,7 +129,7 @@ function calculateD7(longitude) {
 // D8 - Ashtamsa (Sudden Events, Troubles)
 // =============================================================================
 // Each sign divided into 8 parts of 3.75 degrees.
-function calculateD8(longitude) {
+export function calculateD8(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const part = Math.floor(deg / 3.75); // 8 parts of 3.75 degrees
@@ -177,7 +144,7 @@ function calculateD8(longitude) {
 // Earth (Taurus, Virgo, Cap) -> start from Capricorn (9)
 // Air (Gemini, Libra, Aqua) -> start from Libra (6)
 // Water (Cancer, Scorpio, Pisces) -> start from Cancer (3)
-function calculateD9(longitude) {
+export function calculateD9(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 9; // 3.333... degrees
@@ -193,7 +160,7 @@ function calculateD9(longitude) {
 // Each sign divided into 10 parts of 3 degrees.
 // Odd signs: count from same sign.
 // Even signs: count from 9th sign (offset 8).
-function calculateD10(longitude) {
+export function calculateD10(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const part = Math.floor(deg / 3); // 0-9
@@ -204,7 +171,7 @@ function calculateD10(longitude) {
 // D11 - Rudramsa (Death, Destruction, Sudden Changes)
 // =============================================================================
 // Each sign divided into 11 parts.
-function calculateD11(longitude) {
+export function calculateD11(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 11;
@@ -216,7 +183,7 @@ function calculateD11(longitude) {
 // =============================================================================
 // Each sign divided into 12 parts of 2.5 degrees.
 // Always start from same sign and count forward.
-function calculateD12(longitude) {
+export function calculateD12(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const part = Math.floor(deg / 2.5); // 0-11
@@ -226,7 +193,7 @@ function calculateD12(longitude) {
 // D14 - Chaturdamsa (Death of family members, deeper karmic analysis)
 // =============================================================================
 // Each sign divided into 14 parts.
-function calculateD14(longitude) {
+export function calculateD14(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 14;
@@ -240,7 +207,7 @@ function calculateD14(longitude) {
 // Movable signs (Cardinal): start from Aries (0)
 // Fixed signs: start from Leo (4)
 // Dual signs (Mutable): start from Sagittarius (8)
-function calculateD16(longitude) {
+export function calculateD16(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 16; // 1.875
@@ -256,7 +223,7 @@ function calculateD16(longitude) {
 // Movable signs: start from Aries (0)
 // Fixed signs: start from Sagittarius (8)
 // Dual signs: start from Leo (4)
-function calculateD20(longitude) {
+export function calculateD20(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 20; // 1.5
@@ -269,7 +236,7 @@ function calculateD20(longitude) {
 // D21 - Ekavimsamsa (Extended spiritual analysis)
 // =============================================================================
 // Each sign divided into 21 parts.
-function calculateD21(longitude) {
+export function calculateD21(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 21;
@@ -282,7 +249,7 @@ function calculateD21(longitude) {
 // Each sign divided into 24 parts of 1.25 degrees.
 // Odd signs: start from Leo (4)
 // Even signs: start from Cancer (3)
-function calculateD24(longitude) {
+export function calculateD24(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 24; // 1.25
@@ -298,7 +265,7 @@ function calculateD24(longitude) {
 // Earth signs (Taurus, Virgo, Cap): start from Cancer (3)
 // Air signs (Gemini, Libra, Aqua): start from Libra (6)
 // Water signs (Cancer, Scorpio, Pisces): start from Capricorn (9)
-function calculateD27(longitude) {
+export function calculateD27(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 27; // ~1.1111
@@ -318,7 +285,7 @@ function calculateD27(longitude) {
 // Mars -> Aries(0), Saturn -> Aquarius(10), Jupiter -> Sagittarius(8),
 // Mercury -> Gemini(2), Venus -> Libra(6)
 // (Using standard Trimshamsha sign mappings per Parashara)
-function calculateD30(longitude) {
+export function calculateD30(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     // Trimshamsha ruler -> sign mapping (Parashara)
@@ -365,7 +332,7 @@ function calculateD30(longitude) {
 // Each sign divided into 40 parts of 0.75 degrees (45').
 // Odd signs: start from Aries (0)
 // Even signs: start from Libra (6)
-function calculateD40(longitude) {
+export function calculateD40(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 40; // 0.75
@@ -380,7 +347,7 @@ function calculateD40(longitude) {
 // Movable signs: start from Aries (0)
 // Fixed signs: start from Leo (4)
 // Dual signs: start from Sagittarius (8)
-function calculateD45(longitude) {
+export function calculateD45(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 45; // 0.6667
@@ -396,7 +363,7 @@ function calculateD45(longitude) {
 // Classical 60-part mapping: the 60 deities cycle through the zodiac.
 // Each part maps to a sign: part 0 = same sign, counting forward.
 // (Standard Parashara: start from same sign, count forward through 60 parts)
-function calculateD60(longitude) {
+export function calculateD60(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 60; // 0.5 degrees
@@ -410,7 +377,7 @@ function calculateD60(longitude) {
 // D81 - Navanavamsa (Hidden Fortune)
 // =============================================================================
 // Each sign divided into 81 parts.
-function calculateD81(longitude) {
+export function calculateD81(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 81;
@@ -421,7 +388,7 @@ function calculateD81(longitude) {
 // D108 - Ashtottaramsa (Final Fate of Life)
 // =============================================================================
 // Each sign divided into 108 parts.
-function calculateD108(longitude) {
+export function calculateD108(longitude) {
     const si = signIndex(longitude);
     const deg = signDegree(longitude);
     const partSize = 30 / 108;
@@ -431,7 +398,7 @@ function calculateD108(longitude) {
 // =============================================================================
 // D60 Classical Deity Names (for reference / display)
 // =============================================================================
-exports.D60_DEITY_NAMES = [
+export const D60_DEITY_NAMES = [
     'Ghora', 'Rakshasa', 'Deva', 'Kubera', 'Yaksha', 'Kinnara',
     'Bhrashta', 'Kulaghna', 'Garala', 'Vahni', 'Maya', 'Purishaka',
     'Apampathi', 'Marut', 'Kaala', 'Sarpa', 'Amrita', 'Indu',
@@ -446,7 +413,7 @@ exports.D60_DEITY_NAMES = [
 // =============================================================================
 // Lookup: chart type to calculator
 // =============================================================================
-exports.DIVISIONAL_CALCULATORS = {
+export const DIVISIONAL_CALCULATORS = {
     D1: calculateD1, D2: calculateD2, D3: calculateD3, D4: calculateD4,
     D5: calculateD5, D6: calculateD6, D7: calculateD7, D8: calculateD8,
     D9: calculateD9, D10: calculateD10, D11: calculateD11, D12: calculateD12,
@@ -462,7 +429,7 @@ exports.DIVISIONAL_CALCULATORS = {
  * @returns A record keyed by DivisionalChart type, each containing an array of
  *          planet positions (sign index + sign name) within that varga.
  */
-function calculateAllDivisionalCharts(chartData) {
+export function calculateAllDivisionalCharts(chartData) {
     const result = {};
     const chartTypes = [
         'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10',
@@ -470,13 +437,13 @@ function calculateAllDivisionalCharts(chartData) {
         'D40', 'D45', 'D60', 'D81', 'D108',
     ];
     for (const chart of chartTypes) {
-        const calc = exports.DIVISIONAL_CALCULATORS[chart];
+        const calc = DIVISIONAL_CALCULATORS[chart];
         const entries = [];
         for (const planetPos of chartData.planets) {
             const si = calc(planetPos.longitude);
             entries.push({
                 planet: planetPos.planet,
-                sign: shared_1.ZODIAC_SIGNS[si],
+                sign: ZODIAC_SIGNS[si],
                 signIndex: si,
             });
         }
@@ -489,7 +456,7 @@ function calculateAllDivisionalCharts(chartData) {
  * Use this when you need to render the varga as a full chart with houses —
  * the ascendant longitude is run through the same fractional rule as the planets.
  */
-function calculateAllDivisionalChartsWithLagna(chartData) {
+export function calculateAllDivisionalChartsWithLagna(chartData) {
     const result = {};
     const ascLongitude = chartData.ascendant.signIndex * 30 + (chartData.ascendant.degree ?? 0);
     const chartTypes = [
@@ -498,13 +465,13 @@ function calculateAllDivisionalChartsWithLagna(chartData) {
         'D40', 'D45', 'D60', 'D81', 'D108',
     ];
     for (const chart of chartTypes) {
-        const calc = exports.DIVISIONAL_CALCULATORS[chart];
+        const calc = DIVISIONAL_CALCULATORS[chart];
         const entries = [];
         for (const planetPos of chartData.planets) {
             const si = calc(planetPos.longitude);
             entries.push({
                 planet: planetPos.planet,
-                sign: shared_1.ZODIAC_SIGNS[si],
+                sign: ZODIAC_SIGNS[si],
                 signIndex: si,
             });
         }
@@ -520,7 +487,7 @@ function calculateAllDivisionalChartsWithLagna(chartData) {
  * This is what should be written to `kundli_charts.divisional_charts` going
  * forward — old code keeps working, new code can read the lagnas.
  */
-function calculateAllDivisionalChartsForStorage(chartData) {
+export function calculateAllDivisionalChartsForStorage(chartData) {
     const withLagna = calculateAllDivisionalChartsWithLagna(chartData);
     const arrays = {};
     const lagnas = {};
@@ -535,7 +502,7 @@ function calculateAllDivisionalChartsForStorage(chartData) {
  * a given varga type, falling back to the natal ascendant sign index when the
  * stored row predates the `_lagna` companion (best-effort).
  */
-function getVargaWithLagna(storage, type, fallbackAscSignIndex) {
+export function getVargaWithLagna(storage, type, fallbackAscSignIndex) {
     if (!storage || typeof storage !== 'object')
         return null;
     const s = storage;
@@ -551,14 +518,14 @@ function getVargaWithLagna(storage, type, fallbackAscSignIndex) {
  * Houses are assigned by counting forward from the varga Lagna (whole-sign houses).
  * Renders correctly through NorthIndianChart / SouthIndianChart.
  */
-function buildVargaChartData(source, varga) {
+export function buildVargaChartData(source, varga) {
     const ascSign = varga.ascendantSignIndex;
     const houses = Array.from({ length: 12 }, (_, i) => {
         const signIdx = mod12(ascSign + i);
         return {
             house: i + 1,
             cusp: signIdx * 30,
-            sign: shared_1.ZODIAC_SIGNS[signIdx],
+            sign: ZODIAC_SIGNS[signIdx],
             signIndex: signIdx,
             lord: 'Sun', // placeholder — house lord isn't displayed in the card chart
             planets: varga.planets
@@ -571,7 +538,7 @@ function buildVargaChartData(source, varga) {
         const sIdx = v?.signIndex ?? natal.signIndex;
         return {
             ...natal,
-            sign: shared_1.ZODIAC_SIGNS[sIdx],
+            sign: ZODIAC_SIGNS[sIdx],
             signIndex: sIdx,
             house: mod12(sIdx - ascSign) + 1,
         };
@@ -582,7 +549,7 @@ function buildVargaChartData(source, varga) {
         houses,
         ascendant: {
             ...source.ascendant,
-            sign: shared_1.ZODIAC_SIGNS[ascSign],
+            sign: ZODIAC_SIGNS[ascSign],
             signIndex: ascSign,
         },
     };
@@ -594,7 +561,7 @@ function buildVargaChartData(source, varga) {
  * Reference: classical Vedic Chandra Lagna; treats Moon's position as the
  * ascendant for emotional/mental life analysis.
  */
-function getMoonChart(source) {
+export function getMoonChart(source) {
     const moon = source.planets.find((p) => p.planet === 'Moon');
     if (!moon)
         return source;
@@ -605,7 +572,7 @@ function getMoonChart(source) {
         return {
             house: i + 1,
             cusp: signIdx * 30,
-            sign: shared_1.ZODIAC_SIGNS[signIdx],
+            sign: ZODIAC_SIGNS[signIdx],
             signIndex: signIdx,
             lord: existing?.lord ?? 'Sun',
             planets: source.planets
@@ -623,7 +590,7 @@ function getMoonChart(source) {
         houses,
         ascendant: {
             ...source.ascendant,
-            sign: shared_1.ZODIAC_SIGNS[moonSign],
+            sign: ZODIAC_SIGNS[moonSign],
             signIndex: moonSign,
         },
     };

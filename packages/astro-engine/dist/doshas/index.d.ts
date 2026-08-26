@@ -1,4 +1,4 @@
-import type { ChartData, DoshaAnalysis } from '@jyotish-ai/shared';
+import type { ChartData, DoshaAnalysis } from '@aroha-astrology/shared';
 export { detectMangalDosha } from './mangalDosha';
 export { detectKaalSarpDosha } from './kaalSarp';
 export { detectSadeSati } from './sadeSati';

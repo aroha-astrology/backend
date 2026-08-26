@@ -1,4 +1,4 @@
-import type { ChartData, LalKitabDebt } from '@jyotish-ai/shared';
+import type { ChartData, LalKitabDebt } from '@aroha-astrology/shared';
 /**
  * Detect all 8 types of karmic debts (Rin) in a Lal Kitab chart.
  */

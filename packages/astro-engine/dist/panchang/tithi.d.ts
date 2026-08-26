@@ -1,4 +1,4 @@
-import type { Tithi } from '@jyotish-ai/shared';
+import type { Tithi } from '@aroha-astrology/shared';
 /**
  * Calculate the tithi from Moon and Sun longitudes.
  *

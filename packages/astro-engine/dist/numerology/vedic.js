@@ -1,30 +1,16 @@
-"use strict";
 // =============================================================================
 // Vedic Numerology Module
 // =============================================================================
 // Implements Indian numerology: Mulank, Bhagyank, Kua Number, Lo Shu Grid,
 // Challenge Numbers, Personal Year/Month forecasting, Zodiac mapping,
 // and Name Plane analysis.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.reduceToSingleDigit = reduceToSingleDigit;
-exports.calculateMulank = calculateMulank;
-exports.calculateBhagyank = calculateBhagyank;
-exports.calculateKuaNumber = calculateKuaNumber;
-exports.calculateLoShuGrid = calculateLoShuGrid;
-exports.calculateChallengeNumbers = calculateChallengeNumbers;
-exports.calculatePersonalYear = calculatePersonalYear;
-exports.calculatePersonalMonth = calculatePersonalMonth;
-exports.generateMonthlyForecast = generateMonthlyForecast;
-exports.getZodiacSign = getZodiacSign;
-exports.getNamePlanes = getNamePlanes;
-exports.getKuaData = getKuaData;
 // =============================================================================
 // Helpers
 // =============================================================================
 /**
  * Reduce a number to a single digit (1–9), no master number preservation.
  */
-function reduceToSingleDigit(n) {
+export function reduceToSingleDigit(n) {
     n = Math.abs(n);
     while (n > 9) {
         let sum = 0;
@@ -53,7 +39,7 @@ function sumDigits(n) {
  * Mulank (Psychic Number): derived from the day of birth, reduced to 1–9.
  * E.g., born on the 29th → 2+9=11 → 1+1=2
  */
-function calculateMulank(dob) {
+export function calculateMulank(dob) {
     const day = dob.getUTCDate();
     return reduceToSingleDigit(day);
 }
@@ -62,7 +48,7 @@ function calculateMulank(dob) {
  * reduced to 1–9.
  * E.g., 15/08/1987 → 1+5+0+8+1+9+8+7=39 → 3+9=12 → 1+2=3
  */
-function calculateBhagyank(dob) {
+export function calculateBhagyank(dob) {
     const day = dob.getUTCDate();
     const month = dob.getUTCMonth() + 1;
     const year = dob.getUTCFullYear();
@@ -76,7 +62,7 @@ function calculateBhagyank(dob) {
  * Male:   reduce(sum of birth year digits) → 11 - result; if 5 → use 2
  * Female: reduce(sum of birth year digits) → result + 4; if 5 → use 8; if >9 → reduce again
  */
-function calculateKuaNumber(birthYear, gender) {
+export function calculateKuaNumber(birthYear, gender) {
     const yearReduced = reduceToSingleDigit(sumDigits(birthYear));
     if (gender === 'male') {
         let kua = 11 - yearReduced;
@@ -109,7 +95,7 @@ function calculateKuaNumber(birthYear, gender) {
  * Returns grid cells as a 3x3 matrix where each cell holds the count of
  * occurrences of that cell's number in the DOB.
  */
-function calculateLoShuGrid(dob) {
+export function calculateLoShuGrid(dob) {
     const GRID_TEMPLATE = [
         [4, 9, 2],
         [3, 5, 7],
@@ -146,7 +132,7 @@ function calculateLoShuGrid(dob) {
  * Calculate the four Challenge Numbers based on DOB.
  * Age brackets: 0–29, 30–38, 39–47, 48+
  */
-function calculateChallengeNumbers(dob) {
+export function calculateChallengeNumbers(dob) {
     const day = dob.getUTCDate();
     const month = dob.getUTCMonth() + 1;
     const year = dob.getUTCFullYear();
@@ -177,7 +163,7 @@ function calculateChallengeNumbers(dob) {
  * Personal Year Number for a given calendar year.
  * Formula: reduce(birth_day + birth_month + sum_digits(target_year))
  */
-function calculatePersonalYear(dob, year) {
+export function calculatePersonalYear(dob, year) {
     const day = dob.getUTCDate();
     const month = dob.getUTCMonth() + 1;
     return reduceToSingleDigit(sumDigits(day) + sumDigits(month) + sumDigits(year));
@@ -186,13 +172,13 @@ function calculatePersonalYear(dob, year) {
  * Personal Month Number.
  * Formula: reduce(personal_year + calendar_month)
  */
-function calculatePersonalMonth(personalYear, month) {
+export function calculatePersonalMonth(personalYear, month) {
     return reduceToSingleDigit(personalYear + month);
 }
 /**
  * Generate a 12-month rolling forecast starting from a given month/year.
  */
-function generateMonthlyForecast(dob, startYear, startMonth) {
+export function generateMonthlyForecast(dob, startYear, startMonth) {
     const MONTH_NAMES = [
         'January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December',
@@ -238,7 +224,7 @@ const ZODIAC_DATA = [
 /**
  * Get zodiac sign and attributes from a date of birth.
  */
-function getZodiacSign(dob) {
+export function getZodiacSign(dob) {
     const month = dob.getUTCMonth() + 1;
     const day = dob.getUTCDate();
     for (const z of ZODIAC_DATA) {
@@ -268,7 +254,7 @@ const PLANE_LETTERS = {
 /**
  * Classify each letter in the name into the four numerological planes.
  */
-function getNamePlanes(fullName) {
+export function getNamePlanes(fullName) {
     const upper = fullName.toUpperCase().replace(/[^A-Z]/g, '');
     const letters = {
         knowledge: [],
@@ -305,7 +291,7 @@ const KUA_ELEMENTS = {
     8: 'Earth',
     9: 'Fire',
 };
-function getKuaData(birthYear, gender) {
+export function getKuaData(birthYear, gender) {
     const kuaNumber = calculateKuaNumber(birthYear, gender);
     return {
         kuaNumber,

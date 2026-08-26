@@ -78,5 +78,6 @@ export function detectPitraDosha(chartData: ChartData): PitraDosha {
     present,
     indicators,
     severity,
+    description: present ? `Pitra Dosha is present due to: ${indicators.join(', ')}.` : 'Pitra Dosha is not present.',
   };
 }

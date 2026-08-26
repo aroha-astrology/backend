@@ -1,11 +1,8 @@
-"use strict";
 // =============================================================================
 // Panchang Yoga Calculation
 // =============================================================================
 // Yoga = (Sun longitude + Moon longitude) / 13°20', mod 27
 // There are 27 yogas, each spanning 13°20'.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculatePanchangYoga = calculatePanchangYoga;
 const YOGA_NAMES = [
     'Vishkambha', 'Priti', 'Ayushman', 'Saubhagya', 'Shobhana',
     'Atiganda', 'Sukarma', 'Dhriti', 'Shula', 'Ganda',
@@ -42,7 +39,7 @@ const AUSPICIOUS_YOGA_INDICES = new Set([
  * @param moonLong - Sidereal longitude of the Moon (0-360)
  * @returns PanchangYoga with index, name, and auspiciousness
  */
-function calculatePanchangYoga(sunLong, moonLong) {
+export function calculatePanchangYoga(sunLong, moonLong) {
     // Sum of Sun and Moon longitudes
     let sum = sunLong + moonLong;
     // Normalize to 0-360

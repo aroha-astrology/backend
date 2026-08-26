@@ -1,4 +1,4 @@
-import type { PanchangData } from '@jyotish-ai/shared';
+import type { PanchangData } from '@aroha-astrology/shared';
 export { calculateTithi } from './tithi';
 export { calculateNakshatra } from './nakshatra';
 export { calculatePanchangYoga } from './yoga';

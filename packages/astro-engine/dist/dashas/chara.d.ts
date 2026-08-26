@@ -1,4 +1,4 @@
-import type { ZodiacSign, ChartData, CharaDasha } from '@jyotish-ai/shared';
+import type { ZodiacSign, ChartData, CharaDasha } from '@aroha-astrology/shared';
 /**
  * Calculate the Chara (Jaimini) Dasha.
  *

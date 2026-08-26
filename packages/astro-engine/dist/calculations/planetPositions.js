@@ -1,14 +1,7 @@
-"use strict";
 // =============================================================================
 // Planet Position Calculations using Swiss Ephemeris (swisseph-wasm)
 // =============================================================================
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.dateToJulianDay = dateToJulianDay;
-exports.calculatePlanetPositions = calculatePlanetPositions;
-exports.calculateHouses = calculateHouses;
-exports.calculateAscendant = calculateAscendant;
-exports.calculateChart = calculateChart;
-const shared_1 = require("@jyotish-ai/shared");
+import { ZODIAC_SIGNS, NAKSHATRAS, NAKSHATRA_LORDS, SIGN_LORDS, NAKSHATRA_SPAN, } from '@aroha-astrology/shared';
 // =============================================================================
 // SwissEph WASM Singleton
 // =============================================================================
@@ -85,16 +78,16 @@ function getSignDegree(longitude) {
 }
 function getNakshatraInfo(longitude) {
     const normalizedLong = normalizeDegree(longitude);
-    const nakshatraIndex = Math.floor(normalizedLong / shared_1.NAKSHATRA_SPAN);
+    const nakshatraIndex = Math.floor(normalizedLong / NAKSHATRA_SPAN);
     const clampedIndex = Math.min(nakshatraIndex, 26);
-    const positionInNakshatra = normalizedLong - clampedIndex * shared_1.NAKSHATRA_SPAN;
-    const padaSpan = shared_1.NAKSHATRA_SPAN / 4;
+    const positionInNakshatra = normalizedLong - clampedIndex * NAKSHATRA_SPAN;
+    const padaSpan = NAKSHATRA_SPAN / 4;
     const pada = Math.min(Math.floor(positionInNakshatra / padaSpan) + 1, 4);
     return {
         index: clampedIndex,
         pada,
-        lord: shared_1.NAKSHATRA_LORDS[clampedIndex],
-        name: shared_1.NAKSHATRAS[clampedIndex],
+        lord: NAKSHATRA_LORDS[clampedIndex],
+        name: NAKSHATRAS[clampedIndex],
     };
 }
 // =============================================================================
@@ -103,7 +96,7 @@ function getNakshatraInfo(longitude) {
 /**
  * Convert a date/time with timezone offset to a Julian Day number.
  */
-async function dateToJulianDay(year, month, day, hour, min, timezone) {
+export async function dateToJulianDay(year, month, day, hour, min, timezone) {
     const swe = await getSwe();
     const utHour = hour + min / 60 - timezone;
     return swe.julday(year, month, day, utHour);
@@ -111,7 +104,7 @@ async function dateToJulianDay(year, month, day, hour, min, timezone) {
 /**
  * Calculate sidereal positions of all 9 Vedic planets.
  */
-async function calculatePlanetPositions(jd, ayanamsa = 'lahiri') {
+export async function calculatePlanetPositions(jd, ayanamsa = 'lahiri') {
     const swe = await getSwe();
     // Set the sidereal mode
     const sidMode = AYANAMSA_MAP[ayanamsa];
@@ -141,7 +134,7 @@ async function calculatePlanetPositions(jd, ayanamsa = 'lahiri') {
             longitude,
             latitude,
             speed,
-            sign: shared_1.ZODIAC_SIGNS[signIndex],
+            sign: ZODIAC_SIGNS[signIndex],
             signIndex,
             signDegree,
             nakshatra: nakshatraInfo.name,
@@ -162,7 +155,7 @@ async function calculatePlanetPositions(jd, ayanamsa = 'lahiri') {
         longitude: ketuLongitude,
         latitude: -rahuLatitude,
         speed: rahuSpeed,
-        sign: shared_1.ZODIAC_SIGNS[ketuSignIndex],
+        sign: ZODIAC_SIGNS[ketuSignIndex],
         signIndex: ketuSignIndex,
         signDegree: ketuSignDegree,
         nakshatra: ketuNakshatraInfo.name,
@@ -177,7 +170,7 @@ async function calculatePlanetPositions(jd, ayanamsa = 'lahiri') {
 /**
  * Calculate house cusps for a given time and geographic location.
  */
-async function calculateHouses(jd, lat, lng, system = 'W', ayanamsa = 'lahiri') {
+export async function calculateHouses(jd, lat, lng, system = 'W', ayanamsa = 'lahiri') {
     const swe = await getSwe();
     // Set sidereal mode before calling houses_ex
     const sidMode = AYANAMSA_MAP[ayanamsa];
@@ -204,9 +197,9 @@ async function calculateHouses(jd, lat, lng, system = 'W', ayanamsa = 'lahiri') 
         houses.push({
             house: i,
             cusp,
-            sign: shared_1.ZODIAC_SIGNS[signIndex],
+            sign: ZODIAC_SIGNS[signIndex],
             signIndex,
-            lord: shared_1.SIGN_LORDS[shared_1.ZODIAC_SIGNS[signIndex]],
+            lord: SIGN_LORDS[ZODIAC_SIGNS[signIndex]],
             planets: [],
         });
     }
@@ -215,7 +208,7 @@ async function calculateHouses(jd, lat, lng, system = 'W', ayanamsa = 'lahiri') 
 /**
  * Calculate the ascendant (lagna) position.
  */
-async function calculateAscendant(jd, lat, lng, ayanamsa = 'lahiri') {
+export async function calculateAscendant(jd, lat, lng, ayanamsa = 'lahiri') {
     const swe = await getSwe();
     const sidMode = AYANAMSA_MAP[ayanamsa];
     swe.set_sid_mode(sidMode, 0, 0);
@@ -225,7 +218,7 @@ async function calculateAscendant(jd, lat, lng, ayanamsa = 'lahiri') {
     const signDegree = getSignDegree(siderealAsc);
     const nakshatraInfo = getNakshatraInfo(siderealAsc);
     return {
-        sign: shared_1.ZODIAC_SIGNS[signIndex],
+        sign: ZODIAC_SIGNS[signIndex],
         signIndex,
         degree: signDegree,
         nakshatra: nakshatraInfo.name,
@@ -251,7 +244,7 @@ function assignPlanetsToHouses(planets, houses) {
 /**
  * Generate a complete chart with planets, houses, and ascendant.
  */
-async function calculateChart(year, month, day, hour, min, timezone, lat, lng, ayanamsa = 'lahiri', houseSystem = 'W') {
+export async function calculateChart(year, month, day, hour, min, timezone, lat, lng, ayanamsa = 'lahiri', houseSystem = 'W') {
     const swe = await getSwe();
     const sidMode = AYANAMSA_MAP[ayanamsa];
     swe.set_sid_mode(sidMode, 0, 0);

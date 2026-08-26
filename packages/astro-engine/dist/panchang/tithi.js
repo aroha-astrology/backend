@@ -1,12 +1,9 @@
-"use strict";
 // =============================================================================
 // Tithi Calculation
 // =============================================================================
 // Tithi = (Moon longitude - Sun longitude) / 12 degrees
 // Result mod 30 gives the tithi number (1-30).
 // Tithis 1-15 are Shukla Paksha, 16-30 are Krishna Paksha.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateTithi = calculateTithi;
 const TITHI_NAMES = [
     'Pratipada', 'Dwitiya', 'Tritiya', 'Chaturthi', 'Panchami',
     'Shashthi', 'Saptami', 'Ashtami', 'Navami', 'Dashami',
@@ -32,7 +29,7 @@ const AUSPICIOUS_TITHI_INDICES = new Set([1, 2, 4, 6, 9, 10, 11, 12, 14, 16, 17,
  * @param sunLong - Sidereal longitude of the Sun (0-360)
  * @returns Tithi object with number, name, paksha, deity, and auspiciousness
  */
-function calculateTithi(moonLong, sunLong) {
+export function calculateTithi(moonLong, sunLong) {
     // Elongation of Moon from Sun
     let diff = moonLong - sunLong;
     if (diff < 0)

@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateYoginiDasha = calculateYoginiDasha;
-const shared_1 = require("@jyotish-ai/shared");
+import { YOGINI_YEARS, YOGINI_PLANETS, NAKSHATRA_SPAN, } from '@aroha-astrology/shared';
 // ============================================================
 // Helpers
 // ============================================================
@@ -24,14 +21,14 @@ function isDateInRange(date, start, end) {
  */
 function getNakshatraIndex(moonLongitude) {
     const normalized = ((moonLongitude % 360) + 360) % 360;
-    return Math.floor(normalized / shared_1.NAKSHATRA_SPAN);
+    return Math.floor(normalized / NAKSHATRA_SPAN);
 }
 /**
  * Fraction of the current nakshatra already traversed (0-1).
  */
 function getNakshatraTraversedFraction(moonLongitude) {
     const normalized = ((moonLongitude % 360) + 360) % 360;
-    return (normalized % shared_1.NAKSHATRA_SPAN) / shared_1.NAKSHATRA_SPAN;
+    return (normalized % NAKSHATRA_SPAN) / NAKSHATRA_SPAN;
 }
 // ============================================================
 // Starting Yogini
@@ -64,8 +61,8 @@ function buildYoginiAntardashas(startYoginiIdx, startDate, mahadashaDurationYear
     let cursor = new Date(startDate.getTime());
     for (let i = 0; i < 8; i++) {
         const idx = (startYoginiIdx + i) % 8;
-        const planet = shared_1.YOGINI_PLANETS[idx];
-        const durationYears = mahadashaDurationYears * (shared_1.YOGINI_YEARS[idx] / YOGINI_TOTAL_YEARS);
+        const planet = YOGINI_PLANETS[idx];
+        const durationYears = mahadashaDurationYears * (YOGINI_YEARS[idx] / YOGINI_TOTAL_YEARS);
         const endDate = addYears(cursor, durationYears);
         const isActive = isDateInRange(currentDate, cursor, endDate);
         periods.push({
@@ -100,7 +97,7 @@ function buildYoginiAntardashas(startYoginiIdx, startDate, mahadashaDurationYear
  * @param birthDate      Date/time of birth.
  * @returns              A `YoginiDasha` object.
  */
-function calculateYoginiDasha(moonLongitude, birthDate) {
+export function calculateYoginiDasha(moonLongitude, birthDate) {
     const now = new Date();
     // 1. Starting yogini
     const nakshatraIdx = getNakshatraIndex(moonLongitude);
@@ -108,7 +105,7 @@ function calculateYoginiDasha(moonLongitude, birthDate) {
     // 2. Balance of first dasha
     const traversed = getNakshatraTraversedFraction(moonLongitude);
     const balanceFraction = 1 - traversed;
-    const firstFullYears = shared_1.YOGINI_YEARS[startYoginiIdx];
+    const firstFullYears = YOGINI_YEARS[startYoginiIdx];
     const firstBalanceYears = firstFullYears * balanceFraction;
     // 3. Build mahadasha list covering 120 years from birth
     //    (multiple 36-year cycles, cycling through all 8 yoginis)
@@ -126,13 +123,13 @@ function calculateYoginiDasha(moonLongitude, birthDate) {
             durationYears = firstBalanceYears;
         }
         else {
-            durationYears = shared_1.YOGINI_YEARS[yoginiIdx];
+            durationYears = YOGINI_YEARS[yoginiIdx];
         }
         // Clamp to not exceed target
         if (accumulatedYears + durationYears > TARGET_YEARS) {
             durationYears = TARGET_YEARS - accumulatedYears;
         }
-        const planet = shared_1.YOGINI_PLANETS[yoginiIdx];
+        const planet = YOGINI_PLANETS[yoginiIdx];
         const endDate = addYears(cursor, durationYears);
         const isActive = isDateInRange(now, cursor, endDate);
         yoginis.push({

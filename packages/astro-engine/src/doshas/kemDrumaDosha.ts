@@ -41,6 +41,7 @@ export function detectKemDrumaDosha(chartData: ChartData): KemDrumaDosha {
       present: false,
       cancellations: [],
       severity: 'none',
+      description: 'Kemdrum Dosha is not present.',
     };
   }
 
@@ -68,6 +69,7 @@ export function detectKemDrumaDosha(chartData: ChartData): KemDrumaDosha {
       present: false,
       cancellations: [],
       severity: 'none',
+      description: 'Kemdrum Dosha is not present.',
     };
   }
 
@@ -108,5 +110,6 @@ export function detectKemDrumaDosha(chartData: ChartData): KemDrumaDosha {
     present,
     cancellations,
     severity,
+    description: rawPresent ? `Kemdrum Dosha is present because the Moon is isolated with no planets in adjacent houses or kendras.${cancellations.length > 0 ? ' (Cancelled: ' + cancellations.join(', ') + ')' : ''}` : 'Kemdrum Dosha is not present.',
   };
 }

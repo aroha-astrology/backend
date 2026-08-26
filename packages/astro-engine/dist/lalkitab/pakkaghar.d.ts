@@ -1,4 +1,4 @@
-import type { LalKitabChart, Planet } from '@jyotish-ai/shared';
+import type { LalKitabChart, Planet } from '@aroha-astrology/shared';
 export interface PakkaGharResult {
     planet: Planet;
     pakkaGhar: number;

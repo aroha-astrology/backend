@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateCharaDasha = calculateCharaDasha;
-const shared_1 = require("@jyotish-ai/shared");
+import { ZODIAC_SIGNS, SIGN_LORDS } from '@aroha-astrology/shared';
 // ============================================================
 // Helpers
 // ============================================================
@@ -19,13 +16,13 @@ function isDateInRange(date, start, end) {
  * Get the 0-based index of a zodiac sign.
  */
 function signIndex(sign) {
-    return shared_1.ZODIAC_SIGNS.indexOf(sign);
+    return ZODIAC_SIGNS.indexOf(sign);
 }
 /**
  * Get the zodiac sign at a 0-based index (wraps around).
  */
 function signAt(index) {
-    return shared_1.ZODIAC_SIGNS[((index % 12) + 12) % 12];
+    return ZODIAC_SIGNS[((index % 12) + 12) % 12];
 }
 /**
  * Whether a sign is odd-footed (Aries, Gemini, Leo, Libra, Sagittarius, Aquarius)
@@ -95,7 +92,7 @@ function jaiminiSignLord(sign, chartData) {
         }
         return 'Saturn';
     }
-    return shared_1.SIGN_LORDS[sign];
+    return SIGN_LORDS[sign];
 }
 /**
  * Calculate the Chara Dasha duration (in years) for a given sign.
@@ -178,7 +175,7 @@ function charaDashaSignSequence(ascendantSign) {
  * @param chartData      Full chart data with planet positions.
  * @returns              A `CharaDasha` object.
  */
-function calculateCharaDasha(ascendantSign, chartData) {
+export function calculateCharaDasha(ascendantSign, chartData) {
     const now = new Date();
     // Extract birth date from chartData's julian day isn't directly available
     // as a Date, so we derive it from the ascendant or use the first house cusp.

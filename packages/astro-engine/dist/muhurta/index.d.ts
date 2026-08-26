@@ -1,4 +1,4 @@
-import type { MuhurtaType, MuhurtaResult } from '@jyotish-ai/shared';
+import type { MuhurtaType, MuhurtaResult } from '@aroha-astrology/shared';
 /**
  * Find the best muhurta windows for a given activity type within a date range.
  *

@@ -1,17 +1,8 @@
-"use strict";
 // =============================================================================
 // Numerology Module
 // =============================================================================
 // Implements Pythagorean and Chaldean numerology systems.
 // All calculations are pure deterministic math -- no randomness.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateLifePath = calculateLifePath;
-exports.calculateExpression = calculateExpression;
-exports.calculateSoulUrge = calculateSoulUrge;
-exports.calculatePersonality = calculatePersonality;
-exports.calculateLuckyNumbers = calculateLuckyNumbers;
-exports.analyzeNameNumerology = analyzeNameNumerology;
-exports.calculateFullNumerology = calculateFullNumerology;
 // =============================================================================
 // Pythagorean System: A=1, B=2, ... I=9, J=1, K=2, ... R=9, S=1, ... Z=8
 // =============================================================================
@@ -72,7 +63,7 @@ function reduceStrict(n) {
  * @param dob - Date of birth as "YYYY-MM-DD"
  * @returns Life Path number (1-9, 11, 22, or 33)
  */
-function calculateLifePath(dob) {
+export function calculateLifePath(dob) {
     const parts = dob.split('-').map(Number);
     const year = parts[0];
     const month = parts[1];
@@ -101,7 +92,7 @@ function digitSum(n) {
  * @param fullName - Full name (spaces are ignored)
  * @returns Expression number (1-9, 11, 22, or 33)
  */
-function calculateExpression(fullName) {
+export function calculateExpression(fullName) {
     const upper = fullName.toUpperCase().replace(/[^A-Z]/g, '');
     let total = 0;
     for (const ch of upper) {
@@ -115,7 +106,7 @@ function calculateExpression(fullName) {
  * @param fullName - Full name
  * @returns Soul Urge number (1-9, 11, 22, or 33)
  */
-function calculateSoulUrge(fullName) {
+export function calculateSoulUrge(fullName) {
     const upper = fullName.toUpperCase().replace(/[^A-Z]/g, '');
     let total = 0;
     for (const ch of upper) {
@@ -131,7 +122,7 @@ function calculateSoulUrge(fullName) {
  * @param fullName - Full name
  * @returns Personality number (1-9, 11, 22, or 33)
  */
-function calculatePersonality(fullName) {
+export function calculatePersonality(fullName) {
     const upper = fullName.toUpperCase().replace(/[^A-Z]/g, '');
     let total = 0;
     for (const ch of upper) {
@@ -149,7 +140,7 @@ function calculatePersonality(fullName) {
  * @param lifePath - Life Path number (1-9, 11, 22, 33)
  * @returns Array of lucky numbers
  */
-function calculateLuckyNumbers(lifePath) {
+export function calculateLuckyNumbers(lifePath) {
     const base = reduceStrict(lifePath);
     const lucky = new Set();
     // The base number itself
@@ -178,7 +169,7 @@ function calculateLuckyNumbers(lifePath) {
  * @param name - Name to analyze
  * @returns Object with pythagorean and chaldean name numbers
  */
-function analyzeNameNumerology(name) {
+export function analyzeNameNumerology(name) {
     const upper = name.toUpperCase().replace(/[^A-Z]/g, '');
     let pythagoreanTotal = 0;
     let chaldeanTotal = 0;
@@ -257,7 +248,7 @@ const PERSONALITY_MEANINGS = {
  * @param fullName - Full name
  * @returns Complete NumerologyResult
  */
-function calculateFullNumerology(dob, fullName) {
+export function calculateFullNumerology(dob, fullName) {
     const lifePath = calculateLifePath(dob);
     const expression = calculateExpression(fullName);
     const soulUrge = calculateSoulUrge(fullName);

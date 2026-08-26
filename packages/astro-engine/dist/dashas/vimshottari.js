@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateVimshottariDasha = calculateVimshottariDasha;
-const shared_1 = require("@jyotish-ai/shared");
+import { VIMSHOTTARI_ORDER, VIMSHOTTARI_YEARS, VIMSHOTTARI_TOTAL_YEARS, NAKSHATRA_LORDS, NAKSHATRA_SPAN, } from '@aroha-astrology/shared';
 // ============================================================
 // Helpers
 // ============================================================
@@ -25,7 +22,7 @@ function isDateInRange(date, start, end) {
  */
 function getNakshatraIndex(moonLongitude) {
     const normalized = ((moonLongitude % 360) + 360) % 360;
-    return Math.floor(normalized / shared_1.NAKSHATRA_SPAN);
+    return Math.floor(normalized / NAKSHATRA_SPAN);
 }
 /**
  * Returns the fraction of the nakshatra already traversed by the Moon.
@@ -33,8 +30,8 @@ function getNakshatraIndex(moonLongitude) {
  */
 function getNakshatraTraversedFraction(moonLongitude) {
     const normalized = ((moonLongitude % 360) + 360) % 360;
-    const posInNakshatra = normalized % shared_1.NAKSHATRA_SPAN;
-    return posInNakshatra / shared_1.NAKSHATRA_SPAN;
+    const posInNakshatra = normalized % NAKSHATRA_SPAN;
+    return posInNakshatra / NAKSHATRA_SPAN;
 }
 const LEVEL_SEQUENCE = [
     'mahadasha',
@@ -64,12 +61,12 @@ function buildSubPeriods(startPlanet, startDate, parentYears, depth, currentDate
     if (depth > maxDepth)
         return [];
     const level = LEVEL_SEQUENCE[depth];
-    const startIdx = shared_1.VIMSHOTTARI_ORDER.indexOf(startPlanet);
+    const startIdx = VIMSHOTTARI_ORDER.indexOf(startPlanet);
     const periods = [];
     let cursor = new Date(startDate.getTime());
     for (let i = 0; i < 9; i++) {
-        const planet = shared_1.VIMSHOTTARI_ORDER[(startIdx + i) % 9];
-        const durationYears = parentYears * (shared_1.VIMSHOTTARI_YEARS[planet] / shared_1.VIMSHOTTARI_TOTAL_YEARS);
+        const planet = VIMSHOTTARI_ORDER[(startIdx + i) % 9];
+        const durationYears = parentYears * (VIMSHOTTARI_YEARS[planet] / VIMSHOTTARI_TOTAL_YEARS);
         const endDate = addYears(cursor, durationYears);
         const isActive = isDateInRange(currentDate, cursor, endDate);
         const period = {
@@ -106,40 +103,40 @@ function buildSubPeriods(startPlanet, startDate, parentYears, depth, currentDate
  * @param birthDate      Date/time of birth.
  * @returns              A `VimshottariDasha` object.
  */
-function calculateVimshottariDasha(moonLongitude, birthDate) {
+export function calculateVimshottariDasha(moonLongitude, birthDate) {
     const now = new Date();
     // 1. Determine starting dasha lord from Moon's nakshatra
     const nakshatraIdx = getNakshatraIndex(moonLongitude);
-    const startingLord = shared_1.NAKSHATRA_LORDS[nakshatraIdx];
+    const startingLord = NAKSHATRA_LORDS[nakshatraIdx];
     // 2. Balance of the first dasha
     //    The fraction of the nakshatra already traversed has been "used up",
     //    so the remaining fraction gives the balance.
     const traversed = getNakshatraTraversedFraction(moonLongitude);
     const balanceFraction = 1 - traversed;
-    const firstDashaFullYears = shared_1.VIMSHOTTARI_YEARS[startingLord];
+    const firstDashaFullYears = VIMSHOTTARI_YEARS[startingLord];
     const firstDashaBalanceYears = firstDashaFullYears * balanceFraction;
     // 3. Build mahadashas covering 120 years from birth.
     //    The first dasha uses the balance; subsequent dashas use full years.
     //    After the first 9 planets the sequence wraps, but the total of
     //    balance + remaining 8 full dashas + wrap-around always equals 120 years.
-    const startIdx = shared_1.VIMSHOTTARI_ORDER.indexOf(startingLord);
+    const startIdx = VIMSHOTTARI_ORDER.indexOf(startingLord);
     const mahadashas = [];
     let cursor = new Date(birthDate.getTime());
     let accumulatedYears = 0;
     let periodCount = 0;
-    while (accumulatedYears < shared_1.VIMSHOTTARI_TOTAL_YEARS) {
-        const planet = shared_1.VIMSHOTTARI_ORDER[(startIdx + periodCount) % 9];
+    while (accumulatedYears < VIMSHOTTARI_TOTAL_YEARS) {
+        const planet = VIMSHOTTARI_ORDER[(startIdx + periodCount) % 9];
         let durationYears;
         if (periodCount === 0) {
             // First mahadasha uses the balance
             durationYears = firstDashaBalanceYears;
         }
         else {
-            durationYears = shared_1.VIMSHOTTARI_YEARS[planet];
+            durationYears = VIMSHOTTARI_YEARS[planet];
         }
         // Clamp so we don't exceed 120 years total
-        if (accumulatedYears + durationYears > shared_1.VIMSHOTTARI_TOTAL_YEARS) {
-            durationYears = shared_1.VIMSHOTTARI_TOTAL_YEARS - accumulatedYears;
+        if (accumulatedYears + durationYears > VIMSHOTTARI_TOTAL_YEARS) {
+            durationYears = VIMSHOTTARI_TOTAL_YEARS - accumulatedYears;
         }
         const endDate = addYears(cursor, durationYears);
         const isActive = isDateInRange(now, cursor, endDate);

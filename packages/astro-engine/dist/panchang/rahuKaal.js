@@ -1,15 +1,10 @@
-"use strict";
 // =============================================================================
 // Rahu Kaal, Gulika Kaal, and Yamaganda Kaal Calculations
 // =============================================================================
 // Divide the time between sunrise and sunset into 8 equal parts.
 // The Rahu Kaal period for each day is determined by RAHU_KAAL_PERIODS.
 // Gulika and Yamaganda follow similar patterns with different period indices.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateRahuKaal = calculateRahuKaal;
-exports.calculateGulikaKaal = calculateGulikaKaal;
-exports.calculateYamagandaKaal = calculateYamagandaKaal;
-const shared_1 = require("@jyotish-ai/shared");
+import { RAHU_KAAL_PERIODS } from '@aroha-astrology/shared';
 /**
  * Parse a time string "HH:MM" into total minutes from midnight.
  */
@@ -49,8 +44,8 @@ function calculateKaalPeriod(sunrise, sunset, periodIndex) {
  * @param dayOfWeek - Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
  * @returns Start and end times of Rahu Kaal as "HH:MM"
  */
-function calculateRahuKaal(sunrise, sunset, dayOfWeek) {
-    const periodIndex = shared_1.RAHU_KAAL_PERIODS[dayOfWeek];
+export function calculateRahuKaal(sunrise, sunset, dayOfWeek) {
+    const periodIndex = RAHU_KAAL_PERIODS[dayOfWeek];
     return calculateKaalPeriod(sunrise, sunset, periodIndex);
 }
 // Gulika Kaal periods by day of week (0=Sunday)
@@ -72,7 +67,7 @@ const GULIKA_KAAL_PERIODS = {
  * @param dayOfWeek - Day of week (0=Sunday, ..., 6=Saturday)
  * @returns Start and end times of Gulika Kaal as "HH:MM"
  */
-function calculateGulikaKaal(sunrise, sunset, dayOfWeek) {
+export function calculateGulikaKaal(sunrise, sunset, dayOfWeek) {
     const periodIndex = GULIKA_KAAL_PERIODS[dayOfWeek];
     return calculateKaalPeriod(sunrise, sunset, periodIndex);
 }
@@ -95,7 +90,7 @@ const YAMAGANDA_KAAL_PERIODS = {
  * @param dayOfWeek - Day of week (0=Sunday, ..., 6=Saturday)
  * @returns Start and end times of Yamaganda Kaal as "HH:MM"
  */
-function calculateYamagandaKaal(sunrise, sunset, dayOfWeek) {
+export function calculateYamagandaKaal(sunrise, sunset, dayOfWeek) {
     const periodIndex = YAMAGANDA_KAAL_PERIODS[dayOfWeek];
     return calculateKaalPeriod(sunrise, sunset, periodIndex);
 }

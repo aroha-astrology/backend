@@ -21,6 +21,7 @@ export function detectGuruChandalDosha(chartData: ChartData): GuruChandalDosha {
       present: false,
       house: 0,
       severity: 'none',
+      description: 'Guru Chandal Dosha is not present.',
     };
   }
 
@@ -41,5 +42,8 @@ export function detectGuruChandalDosha(chartData: ChartData): GuruChandalDosha {
     present,
     house: present ? jupiterHouse : 0,
     severity,
+    description: present 
+      ? `Guru Chandal Dosha is present in house ${jupiterHouse} due to Jupiter conjunct ${conjunctRahu ? 'Rahu' : 'Ketu'}.`
+      : 'Guru Chandal Dosha is not present.',
   };
 }

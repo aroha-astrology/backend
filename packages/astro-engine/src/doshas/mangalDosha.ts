@@ -156,6 +156,7 @@ export function detectMangalDosha(chartData: ChartData): MangalDosha {
       marsHouseFromVenus: 0,
       cancellations: [],
       type: 'none',
+      description: 'Mangal Dosha is not present in the chart.',
     };
   }
 
@@ -217,5 +218,6 @@ export function detectMangalDosha(chartData: ChartData): MangalDosha {
     marsHouseFromVenus,
     cancellations,
     type,
+    description: present ? `Mangal Dosha is present (${type}).` : 'Mangal Dosha is not present.',
   };
 }

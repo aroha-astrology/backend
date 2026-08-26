@@ -1,12 +1,9 @@
-"use strict";
 // =============================================================================
 // Lal Kitab Blind Planet Detection
 // =============================================================================
 // A planet is "blind" (dormant) when no planets occupy the two adjacent houses.
 // A planet is "half-blind" when only one adjacent house has planets.
 // Adjacent houses wrap: house 1's previous is house 12, house 12's next is house 1.
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectBlindPlanets = detectBlindPlanets;
 /**
  * Detect blind and half-blind planets in a Lal Kitab chart.
  *
@@ -14,7 +11,7 @@ exports.detectBlindPlanets = detectBlindPlanets;
  * 12 to 1) are empty. It is half-blind when exactly one adjacent house has
  * planets.
  */
-function detectBlindPlanets(lkChart) {
+export function detectBlindPlanets(lkChart) {
     const results = [];
     // Build a quick lookup: house number -> list of planets
     const housePlanets = {};
