@@ -141,6 +141,7 @@ const AdminUserRowSchema = z.object({
   displayName: z.string().nullable(),
   phoneE164: z.string().nullable(),
   email: z.string().nullable(),
+  referralSource: z.string().nullable(),
   walletBalancePaise: z.number(),
   createdAt: z.string(),
   lastActiveAt: z.string().nullable(),
