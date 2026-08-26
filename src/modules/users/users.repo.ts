@@ -874,6 +874,7 @@ export async function listUsersPage(
       displayName: users.displayName,
       phoneE164: users.phoneE164,
       email: users.email,
+      referralSource: users.referralSource,
       walletBalancePaise: users.walletBalancePaise,
       createdAt: users.createdAt,
       lastActiveAt: users.lastActiveAt,
