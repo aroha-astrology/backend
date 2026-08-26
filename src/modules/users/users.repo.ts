@@ -318,7 +318,7 @@ export async function getClaimedCampaignKeys(
           campaignKeys.length > 0
             ? inArray(walletTransactions.reason, [...campaignKeys])
             : sql`false`,
-          sql`exists (select 1 from gift_campaigns gc where gc.key = ${walletTransactions.reason})`,
+          sql`exists (select 1 from gift_campaigns gc where gc.key = wallet_transactions.reason)`,
         ),
       ),
     );
@@ -911,8 +911,20 @@ export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt';
  * silently made this always evaluate false. Explicit aliasing removes the
  * ambiguity entirely.
  */
+const staticCampaignKeysList =
+  CLAIM_CAMPAIGN_KEYS.length > 0
+    ? sql.join(
+        CLAIM_CAMPAIGN_KEYS.map((k) => sql`${k}`),
+        sql`, `,
+      )
+    : null;
+// `= any(${array})` with a plain JS array is NOT a proven binding in this
+// codebase's postgres.js setup (prepare: false) — every other dynamic-list
+// filter here (claimPalmGeneration in palm.repo.ts) uses `IN (${sql.join(...)})`
+// instead. An earlier version of this used `= any()` directly and it 500'd
+// GET /v1/admin/users in production the moment it shipped.
 const claimedCampaignReasonFilter = sql`(
-  wt.reason = any(${[...CLAIM_CAMPAIGN_KEYS]})
+  ${staticCampaignKeysList ? sql`wt.reason in (${staticCampaignKeysList})` : sql`false`}
   or exists (select 1 from gift_campaigns gc where gc.key = wt.reason)
 )`;
 const claimedAmountExpr = () => sql<number | null>`(
