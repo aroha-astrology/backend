@@ -87,10 +87,10 @@ ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
-{"sections": [{"heading": string, "paragraphs": string[]}]}
+{"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Who You Will Marry" — 2-4 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts. Explicitly explain the 7th house impact on the marriage, including both positive and negative potentials. Weave in the specific reasons given for the 7th-lord, Venus, and Jupiter strengths. For each of these three planets (7th-lord, Venus, Jupiter), you MUST explicitly include a 1-3 line explanation of its meaning, its strength, and how its placement will impact the marriage both positively and negatively. Mention the given Navamsa Lagna and house placements of Venus and Jupiter. If the Ashtakavarga summary flags the 7th house, weave that in. Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual.
+1. Heading close to "Who You Will Marry" — 2-4 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts. Weave in the specific reasons given for the 7th-lord, Venus, and Jupiter strengths. Mention the given Navamsa Lagna and house placements of Venus and Jupiter. If the Ashtakavarga summary flags the 7th house, weave that in. Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual. You MUST ALSO include a "uiData" object on this section containing exactly these string fields: "planetImpact_seventhLord" (a 1-3 line explanation of its meaning, strength, and impact), "planetImpact_venus" (1-3 lines), "planetImpact_jupiter" (1-3 lines), and "seventhHouseImpact" (1-3 lines).
 2. Heading close to "Family & In-Laws" — 1-2 paragraphs on family/in-law harmony grounded in the 4th-lord strength and in-laws note given.
 
 Write in a clear, natural style. Second person ("you").`;
@@ -104,11 +104,11 @@ ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
-{"sections": [{"heading": string, "paragraphs": string[]}]}
+{"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "Money After Marriage" — 1-3 paragraphs on how finances are classically read to shift after marriage, grounded in the given 2nd/11th house facts.
-2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. At the end of this section, add a brief paragraph explaining how performing astrological remedies (such as strengthening weak planets or mitigating doshas) will positively change or improve the marriage dynamics, giving specific examples based on the chart's placements.
+2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. You MUST ALSO include a "uiData" object on this section containing exactly this string field: "remediesImpact" (a 1-3 line explanation of how performing astrological remedies will positively change or improve the marriage dynamics, giving specific examples based on the chart's placements).
 
 Write in a clear, natural style. Second person ("you").`;
 }
@@ -121,10 +121,10 @@ ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
-{"sections": [{"heading": string, "paragraphs": string[]}]}
+{"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Marriage Quality By Decade" — 2-4 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. For each notable decade, explicitly explain WHY it is favorable or challenging based on astrological principles or life stages.
+1. Heading close to "Marriage Quality By Decade" — 2-4 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. You MUST ALSO include a "uiData" object on this section containing exactly this array field: "decadeExplanations" (an array of objects, each with "label" matching the decade name like "0-10" and "explanation" with a 1-3 line text of why it is favorable or challenging based on astrological principles).
 2. Heading close to "Modern Realities" — 1-2 paragraphs using STRICT tendency language (never "you will marry late," always something like "this chart's own timing pattern tends to favor a later window" — and only mention this at all if the given fact says it is true), the Rahu house note (framed as a tendency toward distance/foreign connection in partnership, not a certainty), and the 7th-house planet count (framed as a tendency toward a busier or more complex partnership dynamic if the count is above 2, otherwise skip that point rather than force it).
 
 Write in a clear, natural style. Second person ("you").`;
@@ -240,6 +240,7 @@ const SECTIONS_SCHEMA = {
         properties: {
           heading: { type: 'string' },
           paragraphs: { type: 'array', items: { type: 'string' } },
+          uiData: { type: 'object' },
         },
         required: ['heading', 'paragraphs'],
       },
@@ -254,14 +255,19 @@ function parseSections(raw: string): ReportSection[] | null {
     if (!Array.isArray(data.sections) || data.sections.length === 0) return null;
     const sections: ReportSection[] = [];
     for (const entry of data.sections) {
-      const e = entry as { heading?: unknown; paragraphs?: unknown };
+      const e = entry as { heading?: unknown; paragraphs?: unknown; uiData?: unknown };
       if (typeof e.heading !== 'string' || !e.heading.trim()) continue;
       if (!Array.isArray(e.paragraphs)) continue;
       const paragraphs = e.paragraphs.filter(
         (p): p is string => typeof p === 'string' && p.trim().length > 0,
       );
       if (paragraphs.length === 0) continue;
-      sections.push({ heading: e.heading.trim(), paragraphs });
+
+      const section: ReportSection = { heading: e.heading.trim(), paragraphs };
+      if (typeof e.uiData === 'object' && e.uiData !== null) {
+        section.uiData = e.uiData as Record<string, unknown>;
+      }
+      sections.push(section);
     }
     return sections.length > 0 ? sections : null;
   } catch {

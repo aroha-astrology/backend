@@ -149,6 +149,8 @@ export interface ReportSection {
   bullets?: string[];
   /** Card-rendered ranked/scored items, rendered under `bullets` — optional, additive-only. */
   items?: ReportSectionItem[];
+  /** Structured data for the UI cards (e.g., Planet Strength, Decades, Remedies) */
+  uiData?: Record<string, unknown>;
 }
 
 /**

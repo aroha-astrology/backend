@@ -138,6 +138,7 @@ export const ReportSectionSchema = z
     id: z.string().optional(),
     heading: z.string(),
     paragraphs: z.array(z.string()),
+    uiData: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi('ReportSection');
 
