@@ -13,7 +13,7 @@ import { formatPaise } from '../../lib/money.js';
 import { payoutOf } from '../features/features.service.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import { resolveAudience } from '../gift-campaigns/gift-campaigns.repo.js';
-import { previewAudience } from '../gift-campaigns/gift-campaigns.service.js';
+import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
 import { normalizeLang, type LangCode } from '../cron/broadcast-copy.js';
 import { logAdminAction } from './admin.repo.js';
 
@@ -80,7 +80,7 @@ const previewRoute = createRoute({
   method: 'get',
   path: '/admin/broadcast/referral-promo/preview',
   tags: ['Admin'],
-  summary: 'Eligible/pushable count for the referral-promo broadcast (everyone, no cost)',
+  summary: 'Eligible/pushable count for the referral-promo broadcast, split by platform',
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   responses: {
@@ -88,7 +88,13 @@ const previewRoute = createRoute({
       description: 'Audience size',
       content: {
         'application/json': {
-          schema: z.object({ eligibleCount: z.number(), pushableCount: z.number() }),
+          schema: z.object({
+            eligibleCount: z.number(),
+            pushableCount: z.number(),
+            iosCount: z.number(),
+            androidCount: z.number(),
+            webCount: z.number(),
+          }),
         },
       },
     },
@@ -101,9 +107,33 @@ const previewRoute = createRoute({
 });
 
 adminBroadcastRouter.openapi(previewRoute, async (c) => {
-  // amountPaise=0: this broadcast has no cost, previewAudience's cost field is unused here.
-  const { eligibleCount, pushableCount } = await previewAudience(0, null);
-  return c.json({ eligibleCount, pushableCount }, 200);
+  const [audience, tokens] = await Promise.all([resolveAudience(null), getAllActiveTokens()]);
+
+  // A user can hold more than one active token (a phone + a tablet, or a
+  // reinstall that never revoked the old one) — count distinct USERS per
+  // platform, same dedup previewAudience already does for the combined total,
+  // so "how many people get this on iOS" isn't inflated by extra devices.
+  const usersByPlatform: Record<'ios' | 'android' | 'web', Set<string>> = {
+    ios: new Set(),
+    android: new Set(),
+    web: new Set(),
+  };
+  const allPushableUsers = new Set<string>();
+  for (const t of tokens) {
+    usersByPlatform[t.platform].add(t.userId);
+    allPushableUsers.add(t.userId);
+  }
+
+  return c.json(
+    {
+      eligibleCount: audience.length,
+      pushableCount: allPushableUsers.size,
+      iosCount: usersByPlatform.ios.size,
+      androidCount: usersByPlatform.android.size,
+      webCount: usersByPlatform.web.size,
+    },
+    200,
+  );
 });
 
 /* -------------------------------------------------------------------------- */
