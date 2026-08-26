@@ -260,6 +260,49 @@ function buildFactsCall4(scores: MarriageScores): string {
   return lines.join('\n');
 }
 
+/** The 9 classical grahas — every planet name a remedy/strength uiData key can ever be suffixed
+ * with. Gemini's strict structured-output mode (an OpenAI-compatible json_schema contract, see
+ * gemini-client.ts's doRequest) cannot populate a bare `{type: 'object'}` with unknown/dynamic
+ * keys — without declared `properties` there is no valid key for guided decoding to emit, so the
+ * model silently returns an empty value instead (verified live: every uiData-bearing section on a
+ * real generated report came back `{}`/`[]`, never the requested fields, despite the prompt asking
+ * for them and every unit test — which only exercises fixture strings, never the real API — still
+ * passing). Enumerating every possible key explicitly, all optional, is the fix: the model fills in
+ * whichever of these the given facts actually cover and leaves the rest absent. */
+const GRAHAS = [
+  'sun',
+  'moon',
+  'mars',
+  'mercury',
+  'jupiter',
+  'venus',
+  'saturn',
+  'rahu',
+  'ketu',
+] as const;
+
+const UI_DATA_PROPERTIES = {
+  planetImpact_venus: { type: 'string' },
+  planetImpact_jupiter: { type: 'string' },
+  planetImpact_seventhLord: { type: 'string' },
+  seventhHouseImpact: { type: 'string' },
+  decadeExplanations: {
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: { label: { type: 'string' }, explanation: { type: 'string' } },
+      required: ['label', 'explanation'],
+    },
+  },
+  ...Object.fromEntries(
+    GRAHAS.flatMap((p) => [
+      [`remedyEffect_${p}`, { type: 'string' }],
+      [`remedyDuration_${p}`, { type: 'string' }],
+      [`planetStrength_${p}`, { type: 'string' }],
+    ]),
+  ),
+} as const;
+
 const SECTIONS_SCHEMA = {
   type: 'object',
   properties: {
@@ -270,7 +313,7 @@ const SECTIONS_SCHEMA = {
         properties: {
           heading: { type: 'string' },
           paragraphs: { type: 'array', items: { type: 'string' } },
-          uiData: { type: 'object' },
+          uiData: { type: 'object', properties: UI_DATA_PROPERTIES },
         },
         required: ['heading', 'paragraphs'],
       },
