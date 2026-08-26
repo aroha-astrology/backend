@@ -23,6 +23,30 @@ export const CreateTicketBodySchema = z
 
 export type CreateTicketBody = z.infer<typeof CreateTicketBodySchema>;
 
+/**
+ * Anonymous/unauthenticated ticket — no bearer token, so the submitter
+ * identifies themselves via name/email instead of an account. `website` is a
+ * honeypot: a real visitor never sees or fills it (hidden client-side on the
+ * landing form). It deliberately has NO length/format constraint and isn't
+ * `.openapi()`-documented — a schema-level 422 on it would just teach a bot
+ * to omit the field and retry; instead the route handler checks it and
+ * silently drops the submission while still returning 201. See
+ * support.routes.ts's createPublicTicketRoute handler.
+ */
+export const CreatePublicTicketBodySchema = z
+  .object({
+    name: z.string().min(1).max(100).openapi({ example: 'Priya Sharma' }),
+    email: z.string().email().max(255).openapi({ example: 'priya@example.com' }),
+    category: z.string().min(1).max(100).openapi({ example: 'billing' }),
+    message: z.string().min(1).max(5000).openapi({
+      example: 'I was double-charged for my Kundli report.',
+    }),
+    website: z.string().optional(),
+  })
+  .openapi('CreatePublicSupportTicketBody');
+
+export type CreatePublicTicketBody = z.infer<typeof CreatePublicTicketBodySchema>;
+
 /** Caller-facing shape — deliberately omits `userId` (implicit: it's always the caller's own). `adminNote` IS included: it's the support team's reply, shown to the user on their ticket. */
 export const SupportTicketSchema = z
   .object({
@@ -48,11 +72,13 @@ export const ListMyTicketsResponseSchema = z
 /* GET/PATCH /admin/support/tickets                                          */
 /* -------------------------------------------------------------------------- */
 
-/** Admin-facing shape — carries `userId` (whose ticket) and `adminNote` (internal), unlike the caller-facing SupportTicketSchema. */
+/** Admin-facing shape — carries `userId`/`contactName`/`contactEmail` (whose ticket, or who to contact if there's no account) and `adminNote` (internal), unlike the caller-facing SupportTicketSchema. */
 export const AdminSupportTicketSchema = z
   .object({
     id: z.string().uuid(),
-    userId: z.string().uuid(),
+    userId: z.string().uuid().nullable(),
+    contactName: z.string().nullable(),
+    contactEmail: z.string().nullable(),
     category: z.string(),
     message: z.string(),
     locale: z.string().nullable(),
