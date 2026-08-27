@@ -45,6 +45,8 @@ import {
 } from './deletion-reminder.service.js';
 import { runSupportMailPoll } from '../support/support-mail.service.js';
 import { runDailyUserReport } from './daily-user-report.service.js';
+import { sendFestivalAlert } from './festival-alert.service.js';
+import { FestivalAlertBodySchema, FestivalAlertResultSchema } from './festival-alert.schemas.js';
 
 const ErrorSchema = z
   .object({
@@ -370,6 +372,49 @@ cronRouter.openapi(transitAlertsRoute, async (c) => {
   // the boolean is folded into `reason` rather than overloading the field.
   const { skipped: _skipped, reason, ...rest } = r;
   return c.json({ action: 'send' as const, ...rest, ...(reason ? { reason } : {}) }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Festival alert — "<festival> is tomorrow" push, one day before every major
+// Hindu festival in src/config/hindu-festivals.ts. Unlike transit-alerts,
+// this is a single static send: no LLM drafting and no per-user
+// personalization, since the festival name/muhurat is fully known a day in
+// advance. Wired to run once a day (see scripts/cron-festival-alert.sh).
+// ---------------------------------------------------------------------------
+
+const festivalAlertRoute = createRoute({
+  method: 'post',
+  path: '/cron/festival-alert',
+  tags: ['Cron'],
+  summary: 'Send "<festival> is tomorrow" push ahead of the next major Hindu festival',
+  description:
+    'Machine-to-machine endpoint, meant to run once a day via the OS crontab. Looks up ' +
+    "tomorrow's IST date in the curated festival table; if it has a major festival, sends a " +
+    'static push (name + muhurat time if the festival has one) to every active device token. ' +
+    "A no-op on any date with no major festival tomorrow. Idempotent per tomorrow's IST date via " +
+    'cron_batch_runs, unless `force`. Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: {
+      required: false,
+      content: { 'application/json': { schema: FestivalAlertBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Run completed (or skipped — see `skipped`/`reason`)',
+      content: { 'application/json': { schema: FestivalAlertResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(festivalAlertRoute, async (c) => {
+  const body = c.req.valid('json') ?? {};
+  const result = await sendFestivalAlert({
+    force: body.force ?? false,
+    dryRun: body.dryRun ?? false,
+  });
+  return c.json(result, 200);
 });
 
 // ---------------------------------------------------------------------------
