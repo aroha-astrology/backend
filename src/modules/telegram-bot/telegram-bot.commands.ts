@@ -151,6 +151,7 @@ export async function cmdStats(): Promise<string> {
     activeYesterday,
     activeThisWeek,
     activeThisMonth,
+    activeThisYear,
     concurrentNow,
   ] = await Promise.all([
     countUsers(),
@@ -162,6 +163,7 @@ export async function cmdStats(): Promise<string> {
     usersActiveBetween(resolveDateRangePreset('yesterday')),
     usersActiveBetween(resolveDateRangePreset('last7d')),
     usersActiveBetween(resolveDateRangePreset('this_month')),
+    usersActiveBetween(resolveDateRangePreset('this_year')),
     usersActiveBetween({
       from: new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS),
       to: new Date(),
@@ -173,11 +175,12 @@ export async function cmdStats(): Promise<string> {
     `Total Users: ${totalUsers}\n` +
     `New Users Today: ${newUsersToday}\n` +
     `New Users This Week: ${newUsersWeek}\n\n` +
-    `Concurrent Users \\(Online Now\\): ${concurrentNow}\n\n` +
-    `Active Users Today: ${activeToday}\n` +
-    `Active Users Yesterday: ${activeYesterday}\n` +
-    `Active Users This Week: ${activeThisWeek}\n` +
-    `Active Users This Month: ${activeThisMonth}\n\n` +
+    `Concurrent Users \\(Online Now\\): ${concurrentNow}\n` +
+    `Concurrent Users \\(today\\): ${activeToday}\n` +
+    `Concurrent Users \\(yesterday\\): ${activeYesterday}\n` +
+    `Concurrent Users \\(weekly\\): ${activeThisWeek}\n` +
+    `Concurrent Users \\(monthly\\): ${activeThisMonth}\n` +
+    `Concurrent Users \\(yearly\\): ${activeThisYear}\n\n` +
     `Revenue Today: ${escapeMarkdown(formatRupees(revenue.totalPaise))} \\(${revenue.count} order${revenue.count === 1 ? '' : 's'}\\)\n` +
     `Outstanding Wallet Balance: ${escapeMarkdown(formatRupees(outstanding))}`
   );
