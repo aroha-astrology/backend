@@ -150,6 +150,7 @@ export async function cmdStats(): Promise<string> {
     activeToday,
     activeYesterday,
     activeThisWeek,
+    concurrentNow,
   ] = await Promise.all([
     countUsers(),
     countNewUsersToday(),
@@ -159,6 +160,10 @@ export async function cmdStats(): Promise<string> {
     usersActiveBetween(resolveDateRangePreset('today')),
     usersActiveBetween(resolveDateRangePreset('yesterday')),
     usersActiveBetween(resolveDateRangePreset('last7d')),
+    usersActiveBetween({
+      from: new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS),
+      to: new Date(),
+    }),
   ]);
 
   return (
@@ -166,6 +171,7 @@ export async function cmdStats(): Promise<string> {
     `Total Users: ${totalUsers}\n` +
     `New Users Today: ${newUsersToday}\n` +
     `New Users This Week: ${newUsersWeek}\n\n` +
+    `Concurrent Users \\(Online Now\\): ${concurrentNow}\n\n` +
     `Active Users Today: ${activeToday}\n` +
     `Active Users Yesterday: ${activeYesterday}\n` +
     `Active Users This Week: ${activeThisWeek}\n\n` +
