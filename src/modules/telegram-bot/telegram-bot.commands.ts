@@ -14,8 +14,10 @@ import {
   clearDeletionRequest,
   listPendingDeletionRequestsBefore,
   usersActiveBetween,
+  countUsersActiveSince,
 } from '../users/users.repo.js';
 import { CONCURRENT_ACTIVE_WINDOW_MS } from '../admin-alerts/admin-alerts.service.js';
+import { maxOnlineCountBetween } from '../admin-alerts/admin-alerts.repo.js';
 import { deleteMe } from '../users/users.service.js';
 import { resolveDateRangePreset } from '../admin/admin.repo.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
@@ -140,6 +142,11 @@ export async function cmdPendingDeletes(): Promise<string> {
   return `*Pending Deletion Requests \\(${pending.length}\\)*\n\n${lines.join('\n')}`;
 }
 
+const peakBetween = (preset: string) => {
+  const { from, to } = resolveDateRangePreset(preset);
+  return maxOnlineCountBetween(from, to);
+};
+
 export async function cmdStats(): Promise<string> {
   const [
     totalUsers,
@@ -147,11 +154,11 @@ export async function cmdStats(): Promise<string> {
     newUsersWeek,
     revenue,
     outstanding,
-    activeToday,
-    activeYesterday,
-    activeThisWeek,
-    activeThisMonth,
-    activeThisYear,
+    peakToday,
+    peakYesterday,
+    peakThisWeek,
+    peakThisMonth,
+    peakThisYear,
     concurrentNow,
   ] = await Promise.all([
     countUsers(),
@@ -159,15 +166,12 @@ export async function cmdStats(): Promise<string> {
     countNewUsersThisWeek(),
     sumPaidOrdersToday(),
     sumWalletBalanceOutstanding(),
-    usersActiveBetween(resolveDateRangePreset('today')),
-    usersActiveBetween(resolveDateRangePreset('yesterday')),
-    usersActiveBetween(resolveDateRangePreset('last7d')),
-    usersActiveBetween(resolveDateRangePreset('this_month')),
-    usersActiveBetween(resolveDateRangePreset('this_year')),
-    usersActiveBetween({
-      from: new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS),
-      to: new Date(),
-    }),
+    peakBetween('today'),
+    peakBetween('yesterday'),
+    peakBetween('last7d'),
+    peakBetween('this_month'),
+    peakBetween('this_year'),
+    countUsersActiveSince(new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS)),
   ]);
 
   return (
@@ -176,11 +180,11 @@ export async function cmdStats(): Promise<string> {
     `New Users Today: ${newUsersToday}\n` +
     `New Users This Week: ${newUsersWeek}\n\n` +
     `Concurrent Users \\(Online Now\\): ${concurrentNow}\n` +
-    `Concurrent Users \\(today\\): ${activeToday}\n` +
-    `Concurrent Users \\(yesterday\\): ${activeYesterday}\n` +
-    `Concurrent Users \\(weekly\\): ${activeThisWeek}\n` +
-    `Concurrent Users \\(monthly\\): ${activeThisMonth}\n` +
-    `Concurrent Users \\(yearly\\): ${activeThisYear}\n\n` +
+    `Concurrent Users \\(today\\): ${peakToday}\n` +
+    `Concurrent Users \\(yesterday\\): ${peakYesterday}\n` +
+    `Concurrent Users \\(weekly\\): ${peakThisWeek}\n` +
+    `Concurrent Users \\(monthly\\): ${peakThisMonth}\n` +
+    `Concurrent Users \\(yearly\\): ${peakThisYear}\n\n` +
     `Revenue Today: ${escapeMarkdown(formatRupees(revenue.totalPaise))} \\(${revenue.count} order${revenue.count === 1 ? '' : 's'}\\)\n` +
     `Outstanding Wallet Balance: ${escapeMarkdown(formatRupees(outstanding))}`
   );

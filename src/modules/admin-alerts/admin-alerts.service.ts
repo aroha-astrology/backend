@@ -2,6 +2,7 @@ import { getRedis } from '../../config/redis.js';
 import { alertThrottled } from '../../lib/notifications/alerts.js';
 import { sendAlert } from '../../lib/notifications/telegram.js';
 import { countUsersActiveSince, countNewUsersSince, countUsers } from '../users/users.repo.js';
+import { insertOnlineSample } from './admin-alerts.repo.js';
 
 export const MILESTONE_THRESHOLDS = [50, 100, 250, 500];
 
@@ -73,6 +74,7 @@ export async function checkConcurrentActivity(): Promise<{
   const activeCount = await countUsersActiveSince(
     new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS),
   );
+  void insertOnlineSample(activeCount);
 
   if (activeCount > CONCURRENT_ACTIVE_THRESHOLD) {
     void alertThrottled(

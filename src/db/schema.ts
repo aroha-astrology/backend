@@ -2598,4 +2598,28 @@ export const userActivityDaily = pgTable(
 export type UserActivityDailyRow = typeof userActivityDaily.$inferSelect;
 export type NewUserActivityDailyRow = typeof userActivityDaily.$inferInsert;
 
+/* -------------------------------------------------------------------------- */
+/* online_user_samples — periodic concurrent-online-count snapshots */
+/* -------------------------------------------------------------------------- */
+
+/** One row per 5-min cron tick; onlineCount is a countUsersActiveSince(5min) snapshot. Powers peak-concurrent-users-per-period in the Telegram bot's /stats. */
+export const onlineUserSamples = pgTable(
+  'online_user_samples',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    sampledAt: timestamp('sampled_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    onlineCount: integer('online_count').notNull(),
+  },
+  (t) => ({
+    sampledAtIdx: index('online_user_samples_sampled_at_idx').on(t.sampledAt),
+  }),
+);
+
+export type OnlineUserSampleRow = typeof onlineUserSamples.$inferSelect;
+export type NewOnlineUserSampleRow = typeof onlineUserSamples.$inferInsert;
+
 export type PredictionOutcomeRow = typeof predictionOutcomes.$inferSelect;
