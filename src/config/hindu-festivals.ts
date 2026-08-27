@@ -72,10 +72,19 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2026-04-19': [{ name: 'Akshaya Tritiya', emoji: '✨', importance: 'major' }],
   '2026-06-25': [{ name: 'Devshayani Ekadashi', emoji: '🕉', importance: 'minor' }],
   '2026-06-29': [{ name: 'Guru Purnima', emoji: '🌕', importance: 'major' }],
-  '2026-07-29': [{ name: 'Raksha Bandhan', emoji: '🪢', importance: 'major' }],
   '2026-08-04': [{ name: 'Krishna Janmashtami', emoji: '🦚', importance: 'major' }],
   '2026-08-15': [{ name: 'Independence Day', emoji: '🇮🇳', importance: 'minor' }],
   '2026-08-16': [{ name: 'Ganesh Chaturthi', emoji: '🐘', importance: 'major' }],
+  // Note: this table previously had Raksha Bandhan dated 2026-07-29 — wrong month.
+  // drikpanchang.com confirms 2026-08-28 (Purnima Tithi ends 09:48 AM that day).
+  '2026-08-28': [
+    {
+      name: 'Raksha Bandhan',
+      emoji: '🪢',
+      importance: 'major',
+      muhurat: { start: '05:57', end: '09:48', anchor: 'sunrise', label: 'Rakhi Muhurat' },
+    },
+  ],
   '2026-09-11': [{ name: 'Sharad Navratri begins', emoji: '🪔', importance: 'major' }],
   '2026-09-19': [{ name: 'Durga Ashtami', emoji: '🗡', importance: 'major' }],
   '2026-09-21': [{ name: 'Vijayadashami (Dussehra)', emoji: '🏹', importance: 'major' }],
@@ -100,7 +109,16 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2027-05-09': [{ name: 'Akshaya Tritiya', emoji: '✨', importance: 'major' }],
   '2027-07-14': [{ name: 'Devshayani Ekadashi', emoji: '🕉', importance: 'minor' }],
   '2027-07-18': [{ name: 'Guru Purnima', emoji: '🌕', importance: 'major' }],
-  '2027-08-18': [{ name: 'Raksha Bandhan', emoji: '🪢', importance: 'major' }],
+  // Note: this table previously had Raksha Bandhan dated 2027-08-18 — off by a day.
+  // drikpanchang.com confirms 2027-08-17.
+  '2027-08-17': [
+    {
+      name: 'Raksha Bandhan',
+      emoji: '🪢',
+      importance: 'major',
+      muhurat: { start: '05:51', end: '12:58', anchor: 'sunrise', label: 'Rakhi Muhurat' },
+    },
+  ],
   '2027-08-25': [{ name: 'Krishna Janmashtami', emoji: '🦚', importance: 'major' }],
   '2027-09-04': [{ name: 'Ganesh Chaturthi', emoji: '🐘', importance: 'major' }],
   '2027-09-30': [{ name: 'Sharad Navratri begins', emoji: '🪔', importance: 'major' }],
