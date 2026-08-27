@@ -21,7 +21,7 @@ describe('tomorrowIstDate', () => {
 
 describe('festivalForAlert', () => {
   it('returns the major festival for a date that has one', () => {
-    const f = festivalForAlert('2026-08-16'); // Ganesh Chaturthi, major
+    const f = festivalForAlert('2026-09-14'); // Ganesh Chaturthi, major
     expect(f?.name).toBe('Ganesh Chaturthi');
   });
 

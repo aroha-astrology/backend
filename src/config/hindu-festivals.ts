@@ -12,6 +12,12 @@
 // years/festivals. Move to packages/shared (already a precedent — see
 // packages/shared/src/constants/astrology.ts) if a third consumer appears or
 // the two copies actually drift.
+//
+// 2026-08-27: a full audit (3 parallel agents, one per year-ish range, each
+// cross-checking drikpanchang.com direct-fetch against 2+ independent
+// sources) found 17 wrong dates across the original table — including an
+// entire mid-2026 block (Jun-Sep) shifted a full lunar month early, and a
+// Diwali/Dhanteras swap. All fixed below.
 
 export interface HinduFestival {
   name: string;
@@ -54,9 +60,13 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2025-10-20': [{ name: 'Diwali (Lakshmi Puja)', emoji: '🪔', importance: 'major' }],
   '2025-10-22': [{ name: 'Govardhan Puja', emoji: '🐄', importance: 'minor' }],
   '2025-10-23': [{ name: 'Bhai Dooj', emoji: '👫', importance: 'minor' }],
-  '2025-10-28': [{ name: 'Chhath Puja', emoji: '🌅', importance: 'major' }],
-  '2025-11-15': [{ name: 'Tulsi Vivah', emoji: '🌿', importance: 'minor' }],
-  '2025-11-25': [{ name: 'Utpanna Ekadashi', emoji: '🕉', importance: 'minor' }],
+  // Note: previously dated 2025-10-28 — actual Chhath Puja (Sandhya Arghya) is Oct 27; Oct 28 is
+  // the closing Usha Arghya morning ritual, not the main day.
+  '2025-10-27': [{ name: 'Chhath Puja', emoji: '🌅', importance: 'major' }],
+  // Note: previously dated 2025-11-15 — that's actually Utpanna Ekadashi's date (a swap error).
+  '2025-11-02': [{ name: 'Tulsi Vivah', emoji: '🌿', importance: 'minor' }],
+  // Note: previously dated 2025-11-25 — actual is Nov 15 (was swapped with Tulsi Vivah above).
+  '2025-11-15': [{ name: 'Utpanna Ekadashi', emoji: '🕉', importance: 'minor' }],
   '2025-12-01': [{ name: 'Mokshada Ekadashi (Gita Jayanti)', emoji: '📖', importance: 'major' }],
 
   // -- 2026 --------------------------------------------------------------
@@ -68,15 +78,14 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2026-03-04': [{ name: 'Holi', emoji: '🎨', importance: 'major' }],
   '2026-03-19': [{ name: 'Chaitra Navratri begins', emoji: '🪔', importance: 'major' }],
   '2026-03-26': [{ name: 'Rama Navami', emoji: '🏹', importance: 'major' }],
-  '2026-04-01': [{ name: 'Hanuman Jayanti', emoji: '🐒', importance: 'major' }],
+  // Note: previously dated 2026-04-01 — actual is Apr 2.
+  '2026-04-02': [{ name: 'Hanuman Jayanti', emoji: '🐒', importance: 'major' }],
   '2026-04-19': [{ name: 'Akshaya Tritiya', emoji: '✨', importance: 'major' }],
-  '2026-06-25': [{ name: 'Devshayani Ekadashi', emoji: '🕉', importance: 'minor' }],
-  '2026-06-29': [{ name: 'Guru Purnima', emoji: '🌕', importance: 'major' }],
-  '2026-08-04': [{ name: 'Krishna Janmashtami', emoji: '🦚', importance: 'major' }],
+  // Note: previously dated 2026-06-25 — a full month early. Actual is Jul 25.
+  '2026-07-25': [{ name: 'Devshayani Ekadashi', emoji: '🕉', importance: 'minor' }],
+  // Note: previously dated 2026-06-29 — a full month early. Actual is Jul 29.
+  '2026-07-29': [{ name: 'Guru Purnima', emoji: '🌕', importance: 'major' }],
   '2026-08-15': [{ name: 'Independence Day', emoji: '🇮🇳', importance: 'minor' }],
-  '2026-08-16': [{ name: 'Ganesh Chaturthi', emoji: '🐘', importance: 'major' }],
-  // Note: this table previously had Raksha Bandhan dated 2026-07-29 — wrong month.
-  // drikpanchang.com confirms 2026-08-28 (Purnima Tithi ends 09:48 AM that day).
   '2026-08-28': [
     {
       name: 'Raksha Bandhan',
@@ -85,10 +94,18 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
       muhurat: { start: '05:57', end: '09:48', anchor: 'sunrise', label: 'Rakhi Muhurat' },
     },
   ],
-  '2026-09-11': [{ name: 'Sharad Navratri begins', emoji: '🪔', importance: 'major' }],
-  '2026-09-19': [{ name: 'Durga Ashtami', emoji: '🗡', importance: 'major' }],
-  '2026-09-21': [{ name: 'Vijayadashami (Dussehra)', emoji: '🏹', importance: 'major' }],
-  '2026-09-29': [{ name: 'Karwa Chauth', emoji: '🌙', importance: 'major' }],
+  // Note: previously dated 2026-08-04 — a full month early. Actual is Sep 4.
+  '2026-09-04': [{ name: 'Krishna Janmashtami', emoji: '🦚', importance: 'major' }],
+  // Note: previously dated 2026-08-16 — a full month early. Actual is Sep 14.
+  '2026-09-14': [{ name: 'Ganesh Chaturthi', emoji: '🐘', importance: 'major' }],
+  // Note: previously dated 2026-09-11 — a full month early. Actual is Oct 11.
+  '2026-10-11': [{ name: 'Sharad Navratri begins', emoji: '🪔', importance: 'major' }],
+  // Note: previously dated 2026-09-19 — a full month early. Actual is Oct 19.
+  '2026-10-19': [{ name: 'Durga Ashtami', emoji: '🗡', importance: 'major' }],
+  // Note: previously dated 2026-09-21 — a full month early. Actual is Oct 20.
+  '2026-10-20': [{ name: 'Vijayadashami (Dussehra)', emoji: '🏹', importance: 'major' }],
+  // Note: previously dated 2026-09-29 — a full month early. Actual is Oct 29.
+  '2026-10-29': [{ name: 'Karwa Chauth', emoji: '🌙', importance: 'major' }],
   '2026-11-06': [{ name: 'Dhanteras', emoji: '💰', importance: 'major' }],
   '2026-11-08': [{ name: 'Diwali (Lakshmi Puja)', emoji: '🪔', importance: 'major' }],
   '2026-11-10': [{ name: 'Govardhan Puja', emoji: '🐄', importance: 'minor' }],
@@ -101,16 +118,32 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2027-01-26': [{ name: 'Republic Day', emoji: '🇮🇳', importance: 'minor' }],
   '2027-02-11': [{ name: 'Vasant Panchami', emoji: '📚', importance: 'major' }],
   '2027-03-06': [{ name: 'Maha Shivaratri', emoji: '🔱', importance: 'major' }],
-  '2027-03-22': [{ name: 'Holika Dahan', emoji: '🔥', importance: 'minor' }],
-  '2027-03-23': [{ name: 'Holi', emoji: '🎨', importance: 'major' }],
-  '2027-04-08': [{ name: 'Chaitra Navratri begins', emoji: '🪔', importance: 'major' }],
+  // Note: previously dated 2027-03-22 — actual is Mar 21.
+  '2027-03-21': [
+    {
+      name: 'Holika Dahan',
+      emoji: '🔥',
+      importance: 'minor',
+      muhurat: { start: '18:33', end: '20:55', label: 'Dahan Muhurat' },
+    },
+  ],
+  // Note: previously dated 2027-03-23 — actual is Mar 22 (follows Holika Dahan).
+  '2027-03-22': [{ name: 'Holi', emoji: '🎨', importance: 'major' }],
+  // Note: previously dated 2027-04-08 — actual Ghatasthapana is Apr 7.
+  '2027-04-07': [
+    {
+      name: 'Chaitra Navratri begins',
+      emoji: '🪔',
+      importance: 'major',
+      muhurat: { start: '06:05', end: '07:26', anchor: 'sunrise', label: 'Ghatasthapana Muhurat' },
+    },
+  ],
   '2027-04-15': [{ name: 'Rama Navami', emoji: '🏹', importance: 'major' }],
-  '2027-04-21': [{ name: 'Hanuman Jayanti', emoji: '🐒', importance: 'major' }],
+  // Note: previously dated 2027-04-21 — actual is Apr 20.
+  '2027-04-20': [{ name: 'Hanuman Jayanti', emoji: '🐒', importance: 'major' }],
   '2027-05-09': [{ name: 'Akshaya Tritiya', emoji: '✨', importance: 'major' }],
   '2027-07-14': [{ name: 'Devshayani Ekadashi', emoji: '🕉', importance: 'minor' }],
   '2027-07-18': [{ name: 'Guru Purnima', emoji: '🌕', importance: 'major' }],
-  // Note: this table previously had Raksha Bandhan dated 2027-08-18 — off by a day.
-  // drikpanchang.com confirms 2027-08-17.
   '2027-08-17': [
     {
       name: 'Raksha Bandhan',
@@ -123,7 +156,15 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2027-09-04': [{ name: 'Ganesh Chaturthi', emoji: '🐘', importance: 'major' }],
   '2027-09-30': [{ name: 'Sharad Navratri begins', emoji: '🪔', importance: 'major' }],
   '2027-10-07': [{ name: 'Durga Ashtami', emoji: '🗡', importance: 'major' }],
-  '2027-10-08': [{ name: 'Vijayadashami (Dussehra)', emoji: '🏹', importance: 'major' }],
+  // Note: previously dated 2027-10-08 — that's actually Maha Navami. Actual Vijayadashami is Oct 9.
+  '2027-10-09': [
+    {
+      name: 'Vijayadashami (Dussehra)',
+      emoji: '🏹',
+      importance: 'major',
+      muhurat: { start: '14:05', end: '14:52', label: 'Vijay Muhurat' },
+    },
+  ],
   '2027-10-18': [
     {
       name: 'Karwa Chauth',
