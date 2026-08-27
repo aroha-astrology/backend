@@ -62,11 +62,17 @@ export async function resolveClaimCampaign(
   }
 
   const dbCampaign = await getGiftCampaignByKey(campaignKey);
-  if (!dbCampaign || dbCampaign.deliveryMode !== 'self_claim' || dbCampaign.status !== 'sent') {
+  if (!dbCampaign) {
     return undefined;
   }
 
+  // A row that exists but isn't a currently-sent self-claim offer (still draft/scheduled,
+  // canceled, or auto_credit) is "not available right now", not "never existed" — the route
+  // turns isOpenNow: false into a 409, which is the honest status for a campaign a user found
+  // out about before it actually went live, rather than a confusing 404.
   const isOpenNow =
+    dbCampaign.deliveryMode === 'self_claim' &&
+    dbCampaign.status === 'sent' &&
     dbCampaign.validFrom !== null &&
     dbCampaign.validUntil !== null &&
     now >= dbCampaign.validFrom &&

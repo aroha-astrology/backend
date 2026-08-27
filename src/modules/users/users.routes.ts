@@ -357,7 +357,7 @@ usersRouter.openapi(claimCampaignBonusRoute, async (c) => {
   const campaign = await resolveClaimCampaign(campaignKey, user.id);
   if (!campaign) throw Errors.notFound('Unknown campaign');
   if (!campaign.isOpenNow) {
-    throw Errors.conflict('This claim window has closed.');
+    throw Errors.conflict('This offer is not currently available.');
   }
   // A brand-new account already receives the standard signup wallet balance (see the
   // `wallet_balance_paise` column default) — someone who signed up today would otherwise

@@ -76,17 +76,23 @@ describe('resolveClaimCampaign — DB campaigns (gift_campaigns table)', () => {
     expect(result?.isOpenNow).toBe(false);
   });
 
-  it('is undefined for an auto_credit campaign (not claimable via this route)', async () => {
+  it('is closed (not undefined) for an auto_credit campaign (not claimable via this route)', async () => {
     state.getGiftCampaignByKey.mockResolvedValue({
       ...baseDbCampaign,
       deliveryMode: 'auto_credit',
     });
     const result = await resolveClaimCampaign('diwali_2026_abc123', 'user-1', now);
-    expect(result).toBeUndefined();
+    expect(result?.isOpenNow).toBe(false);
   });
 
-  it('is undefined for a campaign that has not been sent yet', async () => {
+  it('is closed (not undefined) for a campaign that has not been sent yet', async () => {
     state.getGiftCampaignByKey.mockResolvedValue({ ...baseDbCampaign, status: 'scheduled' });
+    const result = await resolveClaimCampaign('diwali_2026_abc123', 'user-1', now);
+    expect(result?.isOpenNow).toBe(false);
+  });
+
+  it('is still undefined for a totally unknown key (a real 404)', async () => {
+    state.getGiftCampaignByKey.mockResolvedValue(undefined);
     const result = await resolveClaimCampaign('diwali_2026_abc123', 'user-1', now);
     expect(result).toBeUndefined();
   });
