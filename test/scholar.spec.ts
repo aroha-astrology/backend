@@ -226,6 +226,12 @@ describe('scholar voice call-connected greeting', () => {
     const content = buildVoiceSystemInstruction({ groundingFacts: [], displayName: 'Priya' });
     expect(content).toContain("don't repeat the name in every reply");
   });
+
+  it('also bans memory-attribution phrasing for voice, via SHARED_PROMPT_RULES', () => {
+    const content = buildVoiceSystemInstruction({ groundingFacts: [] }).toLowerCase();
+    expect(content).toContain('as we discussed');
+    expect(content).toContain('as i can see in your chart');
+  });
 });
 
 describe('scholar text-chat displayName (PERSONAL_TOUCH)', () => {
@@ -252,6 +258,31 @@ describe('scholar text-chat displayName (PERSONAL_TOUCH)', () => {
   it('still forbids inventing or claiming a name when none is on file', () => {
     const content = systemContent();
     expect(content.toLowerCase()).toMatch(/never invent one|claim to know it/);
+  });
+});
+
+describe('scholar text-chat memory attribution (NO_MEMORY_ATTRIBUTION)', () => {
+  it('bans phrasing that reveals stored/recalled conversation history', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toContain('as we discussed');
+    expect(content).toContain('as i know from our previous');
+    expect(content).toContain('you told me earlier');
+  });
+
+  it('instructs framing known facts as a chart reading instead', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toContain('as i can see in your chart');
+    expect(content).toContain('i can predict that');
+  });
+
+  it('no longer tells the model that referencing a past fact "reads like remembering"', () => {
+    const content = systemContent();
+    expect(content).not.toContain('reads like an astrologer who actually remembers them');
+  });
+
+  it('still allows honesty if the user themselves raises an earlier answer', () => {
+    const content = systemContent().toLowerCase();
+    expect(content).toContain('if the user themselves brings up something said earlier');
   });
 });
 
