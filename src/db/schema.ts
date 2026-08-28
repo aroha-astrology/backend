@@ -1751,9 +1751,19 @@ export const chatSessions = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
+    /**
+     * User-facing "delete" is a soft delete: set here, hidden from every read
+     * immediately, hard-purged by cron 7 days later (see
+     * purgeOldDeletedChatSessions in chat-sessions.repo.ts). user_facts has no
+     * FK to this table, so deleting a session never touches extracted facts.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => ({
     userIdx: index('chat_sessions_user_id_idx').on(table.userId),
+    deletedAtIdx: index('chat_sessions_deleted_at_idx')
+      .on(table.deletedAt)
+      .where(sql`${table.deletedAt} is not null`),
   }),
 );
 

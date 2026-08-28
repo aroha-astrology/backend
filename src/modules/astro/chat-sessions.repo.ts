@@ -1,4 +1,4 @@
-import { eq, and, isNull, desc } from 'drizzle-orm';
+import { eq, and, isNull, desc, lt, isNotNull } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { chatSessions, type ChatSessionRow } from '../../db/schema.js';
 import type { ChatHistoryTurn } from './astro.schemas.js';
@@ -39,7 +39,13 @@ export async function getChatSessions(userId: string, birthProfileId: string | n
       updatedAt: chatSessions.updatedAt,
     })
     .from(chatSessions)
-    .where(and(eq(chatSessions.userId, userId), profileFilter(birthProfileId)))
+    .where(
+      and(
+        eq(chatSessions.userId, userId),
+        profileFilter(birthProfileId),
+        isNull(chatSessions.deletedAt),
+      ),
+    )
     .orderBy(desc(chatSessions.updatedAt));
   return rows.map((row) => ({ ...row, summary: decryptField(row.summary) }));
 }
@@ -55,10 +61,52 @@ export async function getChatSession(id: string, userId: string, birthProfileId:
   // the SQL-side profileFilter() above). A session created while chatting
   // "as" one saved profile must never surface while a sibling profile (or
   // the primary profile) is active for the same account.
-  if (!session || session.userId !== userId || session.birthProfileId !== birthProfileId) {
+  if (
+    !session ||
+    session.userId !== userId ||
+    session.birthProfileId !== birthProfileId ||
+    session.deletedAt
+  ) {
     return null;
   }
   return decryptRow(session);
+}
+
+/**
+ * User-facing delete: hides the session immediately, keeps the row (and any
+ * facts already extracted from it into user_facts, which has no FK here) for
+ * 7 days before purgeOldDeletedChatSessions hard-deletes it.
+ */
+export async function softDeleteChatSession(
+  id: string,
+  userId: string,
+  birthProfileId: string | null,
+) {
+  const result = await db
+    .update(chatSessions)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(chatSessions.id, id),
+        eq(chatSessions.userId, userId),
+        profileFilter(birthProfileId),
+        isNull(chatSessions.deletedAt),
+      ),
+    )
+    .returning({ id: chatSessions.id });
+  return result.length > 0;
+}
+
+const DELETED_CHAT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Cron sweep: hard-deletes chat_sessions soft-deleted more than 7 days ago. */
+export async function purgeOldDeletedChatSessions() {
+  const cutoff = new Date(Date.now() - DELETED_CHAT_RETENTION_MS);
+  const result = await db
+    .delete(chatSessions)
+    .where(and(isNotNull(chatSessions.deletedAt), lt(chatSessions.deletedAt, cutoff)))
+    .returning({ id: chatSessions.id });
+  return { purged: result.length };
 }
 
 export async function createChatSession(

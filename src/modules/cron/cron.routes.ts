@@ -38,6 +38,7 @@ import { reapStaleVastuPlans } from '../vastu/vastu.service.js';
 import { reapStaleProcessingPlans } from '../purchase-plan/purchase-plan.service.js';
 import { reconcileStaleRazorpayOrders } from '../billing/billing.service.js';
 import { runLowBalanceAlert } from './low-balance-alert.service.js';
+import { purgeOldDeletedChatSessions } from '../astro/chat-sessions.repo.js';
 import { sweepDueCampaigns, sweepExpiredGrants } from './gift-campaign-sweep.service.js';
 import {
   DELETION_REMINDER_AFTER_DAYS,
@@ -597,6 +598,38 @@ const palmReapStaleRoute = createRoute({
 
 cronRouter.openapi(palmReapStaleRoute, async (c) => {
   const result = await reapStalePalmReadings();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Deleted chat-sessions purge — a user's "delete chat" is a soft delete
+// (deleted_at set, see chat-sessions.repo.ts) so the row and any facts
+// already extracted from it survive for a 7-day grace window; this sweep
+// hard-deletes rows past that window. Wired to run once a day (see
+// scripts/cron-chat-sessions-purge.sh).
+// ---------------------------------------------------------------------------
+
+const chatSessionsPurgeRoute = createRoute({
+  method: 'post',
+  path: '/cron/chat-sessions-purge',
+  tags: ['Cron'],
+  summary: 'Hard-delete chat sessions soft-deleted more than 7 days ago',
+  description:
+    'Machine-to-machine endpoint, meant to run once a day via the OS crontab. Permanently ' +
+    'removes chat_sessions rows whose deleted_at is more than 7 days in the past. Extracted ' +
+    'user_facts are never touched — they have no foreign key to chat_sessions. Authenticated ' +
+    'via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: z.object({ purged: z.number() }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(chatSessionsPurgeRoute, async (c) => {
+  const result = await purgeOldDeletedChatSessions();
   return c.json(result, 200);
 });
 

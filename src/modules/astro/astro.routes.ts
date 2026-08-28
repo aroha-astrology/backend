@@ -911,6 +911,49 @@ astroRouter.openapi(chatSessionByIdRoute, async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* DELETE /chat/sessions/:id                                                  */
+/* -------------------------------------------------------------------------- */
+
+const deleteChatSessionRoute = createRoute({
+  method: 'delete',
+  path: '/chat/sessions/{id}',
+  tags: ['Astro'],
+  summary: 'Delete a chat session',
+  description:
+    'Soft delete: hides the session immediately. The row (and any facts already saved to ' +
+    'user_facts) is kept for 7 days before a cron job hard-deletes it.',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  request: {
+    params: z.object({
+      id: z
+        .string()
+        .uuid()
+        .openapi({ param: { name: 'id', in: 'path' } }),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Session deleted',
+      content: { 'application/json': { schema: z.object({ ok: z.literal(true) }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Session not found'),
+  },
+});
+
+astroRouter.openapi(deleteChatSessionRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const profile = await resolveActiveProfileContext(user);
+  const deleted = await chatSessionsRepo.softDeleteChatSession(id, user.id, profile.birthProfileId);
+  if (!deleted) {
+    throw Errors.notFound('Session not found');
+  }
+  return c.json({ ok: true as const }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
 /* GET /remedies                                                              */
 /* -------------------------------------------------------------------------- */
 
