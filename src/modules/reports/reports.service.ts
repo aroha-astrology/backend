@@ -1369,6 +1369,21 @@ export async function getReportStats(): Promise<ReportStatsDto> {
  * is only ever called after every step above has already succeeded.
  */
 export async function regenerateReportContent(row: ReportRow): Promise<'regenerated' | 'skipped'> {
+  // Unlike runReportGeneration (see fireReportGeneration), this had no
+  // request-context wrapper — both of ITS callers (lazy on-view regen,
+  // the bulk admin regenerate script) also call straight through with no
+  // ambient userId. That's harmless for ai_usage attribution (comment
+  // there already covers it) but silently broke group-scoped model
+  // selection specifically: gemini-client.ts's resolveGroupAwareModel needs
+  // a userId to look up group membership, so every regeneration would
+  // resolve the ai.reportModel picker as if the user were in no group at
+  // all, even for a group an admin explicitly pinned to a different model.
+  return runWithRequestContext({ userId: row.userId, feature: row.reportKey }, () =>
+    regenerateReportContentInner(row),
+  );
+}
+
+async function regenerateReportContentInner(row: ReportRow): Promise<'regenerated' | 'skipped'> {
   const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
   if (!generator) return 'skipped';
 

@@ -7,6 +7,7 @@ import {
   featureFlagGroupOverrides,
   users,
   type UserGroupRow,
+  type FeatureFlagGroupOverrideRow,
 } from '../../db/schema.js';
 
 /* -------------------------------------------------------------------------- */
@@ -113,24 +114,37 @@ export async function listGroupIdsForUser(userId: string): Promise<string[]> {
 /* Group feature overrides                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * `model` is resolved by the caller (admin-groups.service.ts#updateGroupFeatureForAdmin) BEFORE
+ * this is called — same division of responsibility as upsertFeatureOverride's global counterpart
+ * (features.repo.ts): the "undefined preserves the existing choice" convention lives one layer up,
+ * this always writes a concrete value. Returns the written row via RETURNING so the caller never
+ * needs a second SELECT to report back what it just wrote.
+ */
 export async function upsertGroupFeatureOverride(
   groupId: string,
   featureKey: string,
   enabled: boolean,
   updatedBy: string | null,
-): Promise<void> {
+  model: string | null = null,
+): Promise<FeatureFlagGroupOverrideRow> {
   const now = new Date();
-  await db
+  const [row] = await db
     .insert(featureFlagGroupOverrides)
-    .values({ groupId, featureKey, enabled, updatedBy, updatedAt: now })
+    .values({ groupId, featureKey, enabled, updatedBy, updatedAt: now, model })
     .onConflictDoUpdate({
       target: [featureFlagGroupOverrides.groupId, featureFlagGroupOverrides.featureKey],
-      set: { enabled, updatedBy, updatedAt: now },
-    });
+      set: { enabled, updatedBy, updatedAt: now, model },
+    })
+    .returning();
+  return row!;
 }
 
 /** Removing an override returns that key to "inherit from global" for the group — a real third state. */
-export async function deleteGroupFeatureOverride(groupId: string, featureKey: string): Promise<void> {
+export async function deleteGroupFeatureOverride(
+  groupId: string,
+  featureKey: string,
+): Promise<void> {
   await db
     .delete(featureFlagGroupOverrides)
     .where(
@@ -144,6 +158,7 @@ export async function deleteGroupFeatureOverride(groupId: string, featureKey: st
 export interface GroupFeatureOverride {
   featureKey: string;
   enabled: boolean;
+  model: string | null;
 }
 
 export async function listGroupFeatureOverrides(groupId: string): Promise<GroupFeatureOverride[]> {
@@ -151,6 +166,7 @@ export async function listGroupFeatureOverrides(groupId: string): Promise<GroupF
     .select({
       featureKey: featureFlagGroupOverrides.featureKey,
       enabled: featureFlagGroupOverrides.enabled,
+      model: featureFlagGroupOverrides.model,
     })
     .from(featureFlagGroupOverrides)
     .where(eq(featureFlagGroupOverrides.groupId, groupId));
@@ -160,6 +176,7 @@ export interface AllGroupFeatureOverride {
   groupId: string;
   featureKey: string;
   enabled: boolean;
+  model: string | null;
 }
 
 /** Every override across every group, in one query — used by `resolveFeaturesForUser`'s own process cache. */
@@ -169,6 +186,7 @@ export async function listAllGroupFeatureOverrides(): Promise<AllGroupFeatureOve
       groupId: featureFlagGroupOverrides.groupId,
       featureKey: featureFlagGroupOverrides.featureKey,
       enabled: featureFlagGroupOverrides.enabled,
+      model: featureFlagGroupOverrides.model,
     })
     .from(featureFlagGroupOverrides);
 }

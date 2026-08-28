@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { dashaLordTransitQuality, detectDoubleTransit, SIGNS } from './astro-tools/index.js';
+import { findPeriodAsOf, type RawDashaPeriod } from './astro-tools/dasha-reading.js';
 import {
   dateToJulianDay,
   calculatePlanetPositions,
@@ -152,11 +153,40 @@ interface CurrentDasha {
   mahaEnd?: string | undefined;
 }
 
-function currentDasha(dasha: Record<string, unknown> | null): CurrentDasha {
+/**
+ * Resolves the Mahadasha/Antardasha/Pratyantardasha actually covering `asOf`
+ * — NOT the `currentMahadasha`/`currentAntardasha`/`currentPratyantardasha`
+ * fields on the stored dasha blob, which are frozen at whatever "now" was
+ * when the kundli was generated (see kundli.service.ts's birthHash — it has
+ * no time component, so a kundli is never regenerated just because time
+ * moved on). Without this, the "Active Major Planetary Period" fact silently
+ * goes stale the moment the user's real Antardasha rolls over — months to
+ * years after the kundli was first computed, and forever after for a user
+ * who never triggers a regeneration. Falls back to the frozen fields only
+ * when `dasha.mahadashas` isn't present (older/degraded rows), matching
+ * dasha-reading.ts's buildDashaReading, which fixed this exact bug for the
+ * dasha-chapter card already.
+ */
+function currentDasha(dasha: Record<string, unknown> | null, asOf: Date): CurrentDasha {
   const v = (dasha?.vimshottari ?? {}) as Record<string, unknown>;
-  const md = v.currentMahadasha as Record<string, unknown> | undefined;
-  const ad = v.currentAntardasha as Record<string, unknown> | undefined;
-  const pd = v.currentPratyantardasha as Record<string, unknown> | undefined;
+
+  const mahadashas = v.mahadashas as RawDashaPeriod[] | undefined;
+  const md =
+    (mahadashas && findPeriodAsOf(mahadashas, asOf)) ??
+    (v.currentMahadasha as RawDashaPeriod | undefined);
+
+  const mdSubPeriods = md?.subPeriods as RawDashaPeriod[] | undefined;
+  const ad =
+    (mdSubPeriods && findPeriodAsOf(mdSubPeriods, asOf)) ??
+    (md === v.currentMahadasha ? (v.currentAntardasha as RawDashaPeriod | undefined) : undefined);
+
+  const adSubPeriods = ad?.subPeriods as RawDashaPeriod[] | undefined;
+  const pd =
+    (adSubPeriods && findPeriodAsOf(adSubPeriods, asOf)) ??
+    (ad === v.currentAntardasha
+      ? (v.currentPratyantardasha as RawDashaPeriod | undefined)
+      : undefined);
+
   return {
     mahadasha: md?.planet ? String(md.planet) : undefined,
     antardasha: ad?.planet ? String(ad.planet) : undefined,
@@ -1312,16 +1342,52 @@ export interface DomainWindowSink {
   }>;
 }
 
+/**
+ * The 5 of ~15 DOMAIN_CONFIG domains a horoscope actually narrates as its own
+ * block (health/career/marriage/finance/education — see HOROSCOPE_SYSTEM's
+ * STRUCTURED_JSON_RULE in lib/llm/horoscope.ts). `scope: 'periodic'` scores
+ * only these; siblings/parents/legal/foreign/spirituality/business/friends/
+ * property/vehicle/children have no corresponding output block and were
+ * costing 2/3 of the domain-confidence pass for text nothing ever reads.
+ */
+const HOROSCOPE_DOMAINS: readonly Domain[] = ['health', 'career', 'love', 'wealth', 'education'];
+
 export async function buildGroundingFacts(
   src: GroundingSource,
   asOfDate?: string,
   now: Date = new Date(),
   synthesis?: DailySynthesisResult | null,
   sink?: DomainWindowSink,
+  /**
+   * 'full' (default): every fact chat/voice/reports need to answer an
+   * arbitrary question — unchanged.
+   *
+   * 'periodic': the horoscope pipeline only. Skips facts that are (a) fixed
+   * for the user's entire life and (b) not something the horoscope's own
+   * 6-block output ever narrates: the 24 divisional charts, Chandra/Surya
+   * Kundali, per-planet Bhinnashtakavarga detail, and the Jaimini special
+   * points. Also narrows the domain-confidence sweep to HOROSCOPE_DOMAINS.
+   * Added 2026-08-28: measured at 107 facts / 23,675 chars for 'full' against
+   * a real chart (test/verify-chat-fix.spec.ts) — of which only the Moon-
+   * transit line and ~8 synthesis lines actually differ from one day to the
+   * next. A daily reading was being asked to find "what's different about
+   * today" inside a haystack that was ~97% identical to yesterday's, which is
+   * exactly the failure mode the team had already spotted from the outside
+   * (see SHOW_TOMORROW_TOGGLE's comment in the frontend). Every fact this
+   * scope keeps is either day-varying or part of the natal core the six
+   * category blocks are house-grounded on (categoryGrounding in
+   * lib/llm/horoscope.ts); chat/voice/reports pass no third argument here and
+   * are completely unaffected.
+   */
+  scope: 'full' | 'periodic' = 'full',
 ): Promise<string[]> {
   const houses = getHouses(src.chart);
   const planets = getPlanets(src.chart);
-  const dasha = currentDasha(src.dasha);
+  // The reading is FOR asOfDate when the caller supplies one (horoscope's
+  // period start), not necessarily the instant this function happens to run —
+  // same reasoning as the transit lookups below, applied to the dasha anchor.
+  const dashaAsOf = asOfDate ? parseDateMidday(asOfDate) : now;
+  const dasha = currentDasha(src.dasha, dashaAsOf);
   const facts: string[] = [];
 
   // --- Date anchor, always first: survives clip() truncation (which cuts
@@ -1501,7 +1567,9 @@ export async function buildGroundingFacts(
 
   const sharedDashaTree = buildSharedDashaTree(src.dasha, now);
 
-  for (const domain of Object.keys(DOMAIN_CONFIG) as Domain[]) {
+  const domainsToScore =
+    scope === 'periodic' ? HOROSCOPE_DOMAINS : (Object.keys(DOMAIN_CONFIG) as Domain[]);
+  for (const domain of domainsToScore) {
     const config = DOMAIN_CONFIG[domain];
     const houseLords = config.natalHouses.map((h) => houseLordsMap[h]).filter(Boolean) as string[];
     const houseOccupants = config.natalHouses.flatMap((h) => houseOccupantsMap[h] ?? []);
@@ -1567,19 +1635,27 @@ export async function buildGroundingFacts(
 
   // --- Ashtakavarga summary ---------------------------------------------------
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
-  facts.push(...bhinnashtakavargaFacts(src.ashtakavarga, planets));
-
-  // --- All 24 divisional (varga) charts --------------------------------------
-  facts.push(...divisionalChartFacts(src.chart));
 
   // --- Lal Kitab karmic profile (Rin debts, Pakka Ghar, blind planets) -------
   facts.push(...karmicProfileFacts(src.chart));
 
-  // --- Chandra/Surya Kundali (Moon/Sun as 1st house) --------------------------
-  facts.push(...chandraSuryaKundaliFacts(planets));
+  // The following four sections are fixed for the user's entire life AND have
+  // no corresponding block in the horoscope's own output (see HOROSCOPE_DOMAINS'
+  // doc comment above) — skipped under 'periodic' scope, kept for 'full'
+  // (chat/voice/reports, which must be able to answer a direct question about
+  // any of them).
+  if (scope === 'full') {
+    facts.push(...bhinnashtakavargaFacts(src.ashtakavarga, planets));
 
-  // --- Jaimini special points (Arudha Lagna, Upapada Lagna, Karakamsha) -------
-  facts.push(...jaiminiPointFacts(src.chart, ascSignIndex));
+    // --- All 24 divisional (varga) charts ------------------------------------
+    facts.push(...divisionalChartFacts(src.chart));
+
+    // --- Chandra/Surya Kundali (Moon/Sun as 1st house) -----------------------
+    facts.push(...chandraSuryaKundaliFacts(planets));
+
+    // --- Jaimini special points (Arudha Lagna, Upapada Lagna, Karakamsha) ----
+    facts.push(...jaiminiPointFacts(src.chart, ascSignIndex));
+  }
 
   // --- Full Gochar (all-planet live transit snapshot) -------------------------
   facts.push(...(await fullGocharFacts(ascSignIndex, asOfDate)));

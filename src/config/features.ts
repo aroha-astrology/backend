@@ -49,6 +49,7 @@ export const SELECTABLE_GEMINI_MODELS = [
   'gemini-3.1-flash-lite',
   'gemini-3.1-flash',
   'gemini-3.1-pro',
+  'gemini-3.7-flash',
 ] as const;
 
 export const FEATURE_REGISTRY: readonly FeatureDef[] = [
@@ -462,6 +463,41 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     modelOptions: SELECTABLE_GEMINI_MODELS,
     defaultModel: 'gemini-3.1-flash',
+  },
+  // 2026-08-28: the three highest-traffic/most-reasoning-heavy surfaces
+  // (personalized horoscope, AI chat, paid reports) previously had NO model
+  // picker at all — every one of them ran on the fixed global GEMINI_MODEL
+  // (flash-lite) regardless of admin.model settings, since modelOf()/
+  // modelForUser() were only ever wired to the two palm keys above. Ships
+  // DISABLED per the standing rule for every key on this page — nothing
+  // changes for anyone until a model is deliberately picked.
+  {
+    key: 'ai.horoscopeModel',
+    label: 'Horoscope — daily/weekly/monthly/yearly generation model',
+    group: 'ai',
+    defaultEnabled: false,
+    modelOptions: SELECTABLE_GEMINI_MODELS,
+    defaultModel: 'gemini-3.1-flash',
+  },
+  {
+    key: 'ai.chatModel',
+    label: 'AI Chat — astrologer reply model',
+    group: 'ai',
+    defaultEnabled: false,
+    modelOptions: SELECTABLE_GEMINI_MODELS,
+    defaultModel: 'gemini-3.1-flash',
+  },
+  {
+    key: 'ai.reportModel',
+    label: 'Paid Reports — narrative generation model',
+    group: 'ai',
+    defaultEnabled: false,
+    modelOptions: SELECTABLE_GEMINI_MODELS,
+    // REPORT_PROFILE already defaults to REASONING_MODEL (config/llm.ts) when
+    // this key is off/unset — 'gemini-3.1-pro' here is only the option
+    // pre-selected the FIRST time an admin opens this key's dropdown, not a
+    // silent behavior change; see modelForReportProfile() in gemini-client.ts.
+    defaultModel: 'gemini-3.1-pro',
   },
 ] as const;
 

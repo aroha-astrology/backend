@@ -80,8 +80,10 @@ const ANTARDASHA_NUANCE: Record<Planet, string> = {
   Ketu: 'with a reflective, detached undertone',
 };
 
-interface RawDashaPeriod {
+export interface RawDashaPeriod {
   planet?: unknown;
+  /** Some stored dasha shapes carry `.lord` instead of `.planet` — kept so callers reading either field don't need a second interface. */
+  lord?: unknown;
   startDate?: unknown;
   endDate?: unknown;
   subPeriods?: unknown;
@@ -116,8 +118,19 @@ function parseDateMidday(dateStr: string): Date {
  * `isActive` flag, which was only ever computed relative to "now" at kundli
  * generation time and goes wrong for any other date (a different period, or
  * simply real time having moved on since generation).
+ *
+ * Exported (2026-08-28) so chat-grounding.ts's `currentDasha()` and
+ * daily-synthesis.ts's `extractSynthesisInputs()` can share this instead of
+ * each reading the frozen `currentMahadasha`/`currentAntardasha` fields
+ * directly — those two were still doing that, so the horoscope's "Active
+ * Major Planetary Period" fact AND its deterministic day-score were both
+ * silently stuck on whatever period was current when the kundli was first
+ * generated, for the life of the kundli.
  */
-function findPeriodAsOf(periods: RawDashaPeriod[], target: Date): RawDashaPeriod | undefined {
+export function findPeriodAsOf(
+  periods: RawDashaPeriod[],
+  target: Date,
+): RawDashaPeriod | undefined {
   const t = target.getTime();
   return periods.find((p) => {
     const start = toDate(p.startDate);

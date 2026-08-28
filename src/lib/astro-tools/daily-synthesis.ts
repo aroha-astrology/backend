@@ -28,6 +28,7 @@ import { findTransitEvents } from './transit-events.js';
 import { reduceToSingleDigit } from '../astro-engine/numerology/chaldean.js';
 import { computePanchaka } from './panchaka.js';
 import { calculateTithi } from '../astro-engine/panchang/tithi.js';
+import { findPeriodAsOf, type RawDashaPeriod } from './dasha-reading.js';
 import type { Category, CategoryReading } from '@aroha-astrology/shared';
 
 // =============================================================================
@@ -253,10 +254,30 @@ export function mahadashaBand(mdQuality: DashaTranistDetail | undefined): [numbe
 
 /**
  * The Antardasha lord narrows the Mahadasha band toward its own dignity —
- * quartering the band's width and re-centering it at the AD lord's implied
- * position within the MD band — but can never widen it or push outside the
- * MD band's own floor/ceiling. A weak AD lord narrows toward the MD band's
- * low end; a strong one narrows toward its high end.
+ * re-centering it at the AD lord's implied position within the MD band — but
+ * can never widen it or push outside the MD band's own floor/ceiling. A weak
+ * AD lord narrows toward the MD band's low end; a strong one toward its high
+ * end.
+ *
+ * 2026-08-28: the multiplier below was 0.5 ("quartering the band's width"),
+ * giving a narrowed band exactly 1.0 wide. That is provably too narrow for
+ * `computeAggregateScore` to ever express: rounding a value confined to a
+ * 1.0-wide interval to the nearest integer can reach at most 2 adjacent
+ * scores, no matter how much `gocharaFraction` (which genuinely does move
+ * day to day — Moon's nakshatra alone changes roughly daily) varies within
+ * it. Verified against a real chart over a real 30-day window
+ * (test/daily-synthesis-score-variation.spec.ts): the score was PERFECTLY
+ * FLAT for every day within one Antardasha, changing only when the Antardasha
+ * itself rolled over — i.e. the "daily" reading's score was not actually
+ * tracking daily transits at all. 0.75 widens the narrowed band to 1.5 —
+ * still a real narrowing relative to the Mahadasha band's 2.0 (the BPHS
+ * hierarchy this function exists to enforce), but wide enough for gochara's
+ * genuine day-to-day movement to cross a rounding boundary within a single
+ * Antardasha instead of only at its edges. ponytail: 0.75 was picked to make
+ * the empirical 30-day test above pass (>=3 distinct scores) on the fixture
+ * chart, not derived from a formal bound — if a wider real-world sample ever
+ * shows it still under-varies, raise this before touching anything else in
+ * the pipeline.
  */
 export function narrowByAntardasha(
   mdBand: [number, number],
@@ -267,7 +288,7 @@ export function narrowByAntardasha(
   const width = ceiling - floor;
   const adPosition = adQuality.qualityScore / 5; // 0 (debilitated) .. 1 (exalted)
   const adCenter = floor + adPosition * width;
-  const narrowedHalfWidth = (width / 2) * 0.5; // quarter of the original width
+  const narrowedHalfWidth = (width / 2) * 0.75;
   return [
     clamp(adCenter - narrowedHalfWidth, floor, ceiling),
     clamp(adCenter + narrowedHalfWidth, floor, ceiling),
@@ -568,10 +589,24 @@ export async function synthesizeDailyForecast(
  *
  * Returns null when the chart lacks a natal Moon placement (chart not ready
  * or malformed) — the only precondition the synthesis engine actually needs.
+ *
+ * `asOf`, when given, resolves the Mahadasha/Antardasha lord actually
+ * covering that instant via `findPeriodAsOf` — NOT the stored
+ * `currentMahadasha`/`currentAntardasha` fields, which are frozen at
+ * kundli-generation time (see kundli.service.ts's birthHash: no time
+ * component, so a kundli is never regenerated just because time passed).
+ * Without this, `computeAggregateScore`'s Mahadasha/Antardasha BAND — the
+ * thing that sets the day's score ceiling/floor — silently locks onto
+ * whichever period was active when the kundli was first computed, for the
+ * life of the kundli, regardless of how stale that period has since become.
+ * Same fix chat-grounding.ts's `currentDasha()` applies for the narrated
+ * "Active Major Planetary Period" fact. Omitted `asOf` falls back to `now`,
+ * matching the un-dated (real-time) callers this function already had.
  */
 export function extractSynthesisInputs(
   chart: Record<string, unknown> | null | undefined,
   dasha: Record<string, unknown> | null | undefined,
+  asOf?: string,
 ): DailySynthesisParams | null {
   const natalPlanets = (chart?.planets as Array<Record<string, unknown>> | undefined) ?? [];
   const moonPlanet = natalPlanets.find((p) => p.planet === 'Moon');
@@ -583,8 +618,20 @@ export function extractSynthesisInputs(
   const natalMoonNakIdx = (moonPlanet.nakshatraIndex as number | undefined) ?? 0;
 
   const vimshottari = (dasha?.vimshottari as Record<string, unknown> | undefined) ?? {};
-  const currentMd = vimshottari.currentMahadasha as Record<string, unknown> | undefined;
-  const currentAd = vimshottari.currentAntardasha as Record<string, unknown> | undefined;
+  const target = asOf ? new Date(asOf) : new Date();
+
+  const mahadashas = vimshottari.mahadashas as RawDashaPeriod[] | undefined;
+  const currentMd =
+    (mahadashas && findPeriodAsOf(mahadashas, target)) ??
+    (vimshottari.currentMahadasha as RawDashaPeriod | undefined);
+
+  const mdSubPeriods = currentMd?.subPeriods as RawDashaPeriod[] | undefined;
+  const currentAd =
+    (mdSubPeriods && findPeriodAsOf(mdSubPeriods, target)) ??
+    (currentMd === vimshottari.currentMahadasha
+      ? (vimshottari.currentAntardasha as RawDashaPeriod | undefined)
+      : undefined);
+
   const currentMdPlanet = (currentMd?.lord ?? currentMd?.planet) as string | undefined;
   const currentAdPlanet = (currentAd?.lord ?? currentAd?.planet) as string | undefined;
 
@@ -609,7 +656,7 @@ export async function synthesizeDailyForecastFromKundli(
   dasha: Record<string, unknown> | null | undefined,
   asOf?: string,
 ): Promise<DailySynthesisResult | null> {
-  const inputs = extractSynthesisInputs(chart, dasha);
+  const inputs = extractSynthesisInputs(chart, dasha, asOf);
   if (!inputs) return null;
   return synthesizeDailyForecast({ ...inputs, ...(asOf ? { asOf } : {}) });
 }

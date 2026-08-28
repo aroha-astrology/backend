@@ -87,7 +87,10 @@ const listGroupsRoute = createRoute({
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   responses: {
-    200: { description: 'Group list', content: { 'application/json': { schema: AdminGroupsResponseSchema } } },
+    200: {
+      description: 'Group list',
+      content: { 'application/json': { schema: AdminGroupsResponseSchema } },
+    },
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
   },
@@ -114,7 +117,10 @@ const createGroupRoute = createRoute({
     body: { required: true, content: { 'application/json': { schema: CreateGroupBodySchema } } },
   },
   responses: {
-    200: { description: 'Created group', content: { 'application/json': { schema: AdminGroupRowSchema } } },
+    200: {
+      description: 'Created group',
+      content: { 'application/json': { schema: AdminGroupRowSchema } },
+    },
     400: errorResponse('A group with that name (case-insensitive) already exists'),
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
@@ -160,12 +166,15 @@ const listMembersRoute = createRoute({
   method: 'get',
   path: '/admin/groups/{id}/members',
   tags: ['Admin'],
-  summary: 'List a group\'s members',
+  summary: "List a group's members",
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   request: { params: AdminGroupIdParamSchema },
   responses: {
-    200: { description: 'Member list', content: { 'application/json': { schema: AdminGroupMembersResponseSchema } } },
+    200: {
+      description: 'Member list',
+      content: { 'application/json': { schema: AdminGroupMembersResponseSchema } },
+    },
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
   },
@@ -240,7 +249,8 @@ const listGroupFeaturesRoute = createRoute({
   method: 'get',
   path: '/admin/groups/{id}/features',
   tags: ['Admin'],
-  summary: 'FEATURE_REGISTRY merged with this group\'s own overrides ("inherit" | true | false per key)',
+  summary:
+    'FEATURE_REGISTRY merged with this group\'s own overrides ("inherit" | true | false per key)',
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   request: { params: AdminGroupIdParamSchema },
@@ -269,19 +279,23 @@ const updateGroupFeatureRoute = createRoute({
   method: 'put',
   path: '/admin/groups/{id}/features',
   tags: ['Admin'],
-  summary: 'Set (true/false) or clear (null -> "inherit") this group\'s override for one feature key',
+  summary:
+    'Set (true/false) or clear (null -> "inherit") this group\'s override for one feature key',
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   request: {
     params: AdminGroupIdParamSchema,
-    body: { required: true, content: { 'application/json': { schema: UpdateGroupFeatureBodySchema } } },
+    body: {
+      required: true,
+      content: { 'application/json': { schema: UpdateGroupFeatureBodySchema } },
+    },
   },
   responses: {
     200: {
       description: 'Updated group feature row',
       content: { 'application/json': { schema: AdminGroupFeatureRowSchema } },
     },
-    400: errorResponse('Unknown feature key'),
+    400: errorResponse("Unknown feature key, or model not in the key's modelOptions"),
     401: errorResponse('Unauthorized'),
     403: errorResponse('Admin access required'),
   },
@@ -289,7 +303,7 @@ const updateGroupFeatureRoute = createRoute({
 
 adminGroupsRouter.openapi(updateGroupFeatureRoute, async (c) => {
   const { id } = c.req.valid('param');
-  const { key, enabled } = c.req.valid('json');
-  const row = await updateGroupFeatureForAdmin(id, key, enabled, adminPhoneOf(c));
+  const { key, enabled, model } = c.req.valid('json');
+  const row = await updateGroupFeatureForAdmin(id, key, enabled, adminPhoneOf(c), model);
   return c.json(row, 200);
 });

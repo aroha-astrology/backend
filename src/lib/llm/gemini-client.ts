@@ -24,6 +24,7 @@ import {
 import { msUntilNextPacificMidnight } from './quota-window.js';
 import { recordPaidKeyUse } from './paid-usage.js';
 import { getRequestContext } from '../request-context.js';
+import { modelForUser } from '../../modules/features/features.service.js';
 
 export class GeminiError extends Error {
   constructor(
@@ -261,6 +262,46 @@ function cooldownMsForRateLimit(response: Response, bodyText: string | undefined
   return Number.isNaN(hintedMs) ? DEFAULT_KEY_COOLDOWN_MS : Math.min(hintedMs, MAX_KEY_COOLDOWN_MS);
 }
 
+/**
+ * Profiles whose model an admin can pin per user-group via the group-features
+ * dashboard (see modelForUser() in features.service.ts), keyed by
+ * `profile.name` -> the FEATURE_REGISTRY model-picker key.
+ *
+ * ONLY 'report' is listed. `generate()`/`stream()` have no reliable way to
+ * learn which user a call belongs to except `opts.userId` (rarely set) or
+ * this ambient request context — and of the three high-traffic surfaces this
+ * exists for (horoscope, chat, reports), only report generation
+ * (reports.service.ts's `fireReportGeneration`) actually wraps its call in
+ * `runWithRequestContext({ userId })`. Horoscope and chat do NOT reliably run
+ * inside one (horoscope's on-demand GET-triggered path and chat's route both
+ * call straight through with no wrapper), so both resolve their model
+ * EXPLICITLY at their own call site instead (`ctx.userId` is always directly
+ * on hand there) rather than relying on this fallback silently doing nothing
+ * for most of their traffic. Extend this map only for a profile whose real
+ * callers are confirmed to run inside `runWithRequestContext`.
+ */
+const GROUP_MODEL_PROFILE_KEYS: Partial<Record<string, string>> = {
+  report: 'ai.reportModel',
+};
+
+/**
+ * Resolves the group/admin-selected model for `opts`, or `undefined` when
+ * none applies (an explicit `opts.model` always wins over this and this is
+ * never consulted for it; no matching profile; or no userId reachable) — in
+ * which case the caller's own `opts.profile.model ?? env.GEMINI_MODEL`
+ * fallback takes over exactly as before this existed. Must never throw:
+ * `modelForUser` calls `resolveFeaturesForUser`, which already fails open to
+ * the registry default on a DB error, so a lookup failure here degrades to
+ * "no override", not a broken request.
+ */
+async function resolveGroupAwareModel(opts: LLMRequestOptions): Promise<string | undefined> {
+  const featureKey = GROUP_MODEL_PROFILE_KEYS[opts.profile.name];
+  if (!featureKey) return undefined;
+  const userId = opts.userId ?? getRequestContext()?.userId;
+  if (!userId) return undefined;
+  return modelForUser(userId, featureKey, opts.profile.model ?? env.GEMINI_MODEL);
+}
+
 // =============================================================================
 // Buffered Generate (non-streaming)
 // =============================================================================
@@ -279,8 +320,17 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
   // Mirrors doRequest()'s own model resolution — duplicated rather than
   // returned from doRequest() to avoid changing its signature for every
-  // caller, just for this one telemetry field.
-  const model = opts.model ?? opts.profile.model ?? env.GEMINI_MODEL;
+  // caller, just for this one telemetry field. `resolveGroupAwareModel` sits
+  // between the explicit per-call override and the profile/env default — see
+  // its own doc comment for which profiles it actually applies to.
+  const model =
+    opts.model ?? (await resolveGroupAwareModel(opts)) ?? opts.profile.model ?? env.GEMINI_MODEL;
+  // Carries the resolved model into doRequest() via its existing
+  // `opts.model ?? opts.profile.model ?? env.GEMINI_MODEL` resolution, so
+  // doRequest() itself needs no changes and no group-aware knowledge of its
+  // own — every attempt/key-iteration below reuses this one resolution
+  // rather than re-querying it per attempt.
+  const effectiveOpts: LLMRequestOptions = opts.model === model ? opts : { ...opts, model };
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineAt) {
@@ -327,7 +377,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       if (picked.tier === 'paid') void recordPaidKeyUse(opts.profile.name);
 
       try {
-        response = await doRequest(opts, false, abort.signal, picked.key);
+        response = await doRequest(effectiveOpts, false, abort.signal, picked.key);
         bodyText = await response.text();
       } catch (err) {
         // Network/timeout error — not a per-key problem, must not trigger key

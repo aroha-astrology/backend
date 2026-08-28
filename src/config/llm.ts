@@ -134,17 +134,29 @@ export const FACT_EXTRACTION_PROFILE: GenerationProfile = {
 };
 
 /**
- * Personalized daily horoscope — called once per active user per day from the
- * CRON pipeline (never per-request), so a moderate temperature for narrative
- * variety is fine without repeated-cost or timeout concerns. Non-streaming:
- * runDailyHoroscopes awaits the full summary before writing the DB row.
+ * Personalized daily/tomorrow/weekly/monthly horoscope — generated once per
+ * user per period and cached, never per-request, so a moderate temperature for
+ * narrative variety is fine without repeated-cost or timeout concerns.
+ * Non-streaming: the caller awaits the full summary before writing the DB row.
+ *
+ * 2026-08-28: raised 800 -> 4096. The 800 ceiling was sized when a horoscope
+ * was ONE block (hook/description/advice). It is now SIX independent blocks
+ * (health/career/marriage/finance/education/overall), each with its own
+ * hook+description+advice, plus luckyColor/luckyNumber — 18 text fields, not 3.
+ * Against the prompt's own word caps that is ~760 output tokens for `daily`,
+ * ~1000 for `weekly` and ~1250 for `monthly` in ENGLISH, before the 2-4x
+ * non-Latin-script inflation documented all over this file. Truncation here
+ * does not degrade gracefully: it returns unparseable JSON, which
+ * parseStructuredResponse rejects and the caller turns into a `failed` row, so
+ * the user gets no reading at all. Matches HOROSCOPE_YEARLY_PROFILE and
+ * HOROSCOPE_TRANSLATION_PROFILE, which already carry this exact schema.
  */
 export const HOROSCOPE_PROFILE: GenerationProfile = {
   name: 'horoscope',
   temperature: 0.6,
   jsonMode: true,
   stream: false,
-  maxTokens: 800,
+  maxTokens: 4096,
 };
 
 /**

@@ -2234,6 +2234,13 @@ export const featureFlagGroupOverrides = pgTable(
       .references(() => userGroups.id, { onDelete: 'cascade' }),
     featureKey: text('feature_key').notNull(),
     enabled: boolean('enabled').notNull(),
+    /** Per-group model override for an AI model-picker key (see FeatureDef.modelOptions on
+     * config/features.ts) — null means "inherit the global feature_flags.model choice", same
+     * inherit-when-null convention `enabled` would use if this row didn't exist at all. Only
+     * meaningful when `enabled` is true; a disabled override falls back to the global default
+     * model regardless of what's stored here (same kill-switch semantics as feature_flags.model
+     * — see modelOf()/modelForUser() in features.service.ts). */
+    model: text('model'),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

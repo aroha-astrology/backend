@@ -78,9 +78,8 @@ vi.mock('../src/modules/features/features.repo.js', () => ({
 }));
 
 const { createApp } = await import('../src/app.js');
-const { invalidateFeatureCache, invalidateGroupOverrideCache } = await import(
-  '../src/modules/features/features.service.js'
-);
+const { invalidateFeatureCache, invalidateGroupOverrideCache } =
+  await import('../src/modules/features/features.service.js');
 
 const ADMIN_PHONE = '+919999111111';
 const NON_ADMIN_PHONE = '+911111111111';
@@ -133,7 +132,14 @@ describe('GET /v1/admin/groups', () => {
   it('returns 200 with the group list including member counts', async () => {
     signInAs(ADMIN_PHONE);
     state.listGroupsWithMemberCount.mockResolvedValue([
-      { id: GROUP_ID, name: 'Beta testers', description: null, createdAt: new Date(), createdBy: ADMIN_PHONE, memberCount: 2 },
+      {
+        id: GROUP_ID,
+        name: 'Beta testers',
+        description: null,
+        createdAt: new Date(),
+        createdBy: ADMIN_PHONE,
+        memberCount: 2,
+      },
     ]);
     const app = createApp();
 
@@ -233,7 +239,9 @@ describe('GET /v1/admin/groups/:id/members', () => {
     ]);
     const app = createApp();
 
-    const res = await app.request(`/v1/admin/groups/${GROUP_ID}/members`, { headers: authHeader() });
+    const res = await app.request(`/v1/admin/groups/${GROUP_ID}/members`, {
+      headers: authHeader(),
+    });
     const body = (await res.json()) as { members: { userId: string }[] };
 
     expect(res.status).toBe(200);
@@ -275,12 +283,16 @@ describe('DELETE /v1/admin/groups/:id/members/:userId', () => {
 });
 
 describe('GET /v1/admin/groups/:id/features', () => {
-  it('returns every FEATURE_REGISTRY key annotated with this group\'s override state', async () => {
+  it("returns every FEATURE_REGISTRY key annotated with this group's override state", async () => {
     signInAs(ADMIN_PHONE);
-    state.listGroupFeatureOverrides.mockResolvedValue([{ featureKey: 'paid.chat', enabled: false }]);
+    state.listGroupFeatureOverrides.mockResolvedValue([
+      { featureKey: 'paid.chat', enabled: false },
+    ]);
     const app = createApp();
 
-    const res = await app.request(`/v1/admin/groups/${GROUP_ID}/features`, { headers: authHeader() });
+    const res = await app.request(`/v1/admin/groups/${GROUP_ID}/features`, {
+      headers: authHeader(),
+    });
     const body = (await res.json()) as { features: { key: string; state: unknown }[] };
 
     expect(res.status).toBe(200);
@@ -319,7 +331,13 @@ describe('PUT /v1/admin/groups/:id/features', () => {
 
     expect(res.status).toBe(200);
     expect(body.state).toBe(false);
-    expect(state.upsertGroupFeatureOverride).toHaveBeenCalledWith(GROUP_ID, 'paid.chat', false, ADMIN_PHONE);
+    expect(state.upsertGroupFeatureOverride).toHaveBeenCalledWith(
+      GROUP_ID,
+      'paid.chat',
+      false,
+      ADMIN_PHONE,
+      null,
+    );
   });
 
   it('a null enabled clears the override (back to "inherit")', async () => {

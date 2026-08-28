@@ -160,14 +160,24 @@ describe('deleteGroupForAdmin', () => {
 describe('listMembersForAdmin', () => {
   it('serializes addedAt to ISO for each member', async () => {
     state.listMembers.mockResolvedValue([
-      { userId: 'u1', displayName: 'Asha', phoneE164: '+919999999999', addedAt: new Date('2026-07-01T00:00:00Z') },
+      {
+        userId: 'u1',
+        displayName: 'Asha',
+        phoneE164: '+919999999999',
+        addedAt: new Date('2026-07-01T00:00:00Z'),
+      },
     ]);
 
     const result = await listMembersForAdmin('g1');
 
     expect(state.listMembers).toHaveBeenCalledWith('g1');
     expect(result).toEqual([
-      { userId: 'u1', displayName: 'Asha', phoneE164: '+919999999999', addedAt: '2026-07-01T00:00:00.000Z' },
+      {
+        userId: 'u1',
+        displayName: 'Asha',
+        phoneE164: '+919999999999',
+        addedAt: '2026-07-01T00:00:00.000Z',
+      },
     ]);
   });
 });
@@ -200,23 +210,64 @@ describe('removeMemberForAdmin', () => {
 
 describe('listGroupFeaturesForAdmin', () => {
   it('merges FEATURE_REGISTRY with the group overrides, defaulting to "inherit"', async () => {
-    state.listGroupFeatureOverrides.mockResolvedValue([{ featureKey: 'paid.chat', enabled: false }]);
+    state.listGroupFeatureOverrides.mockResolvedValue([
+      { featureKey: 'paid.chat', enabled: false },
+    ]);
 
     const result = await listGroupFeaturesForAdmin('g1');
 
     const chat = result.find((f) => f.key === 'paid.chat');
-    expect(chat).toEqual({ key: 'paid.chat', label: 'AI Chat', group: 'paid', state: false });
+    expect(chat).toEqual({
+      key: 'paid.chat',
+      label: 'AI Chat',
+      group: 'paid',
+      state: false,
+      model: null,
+      modelOptions: [],
+    });
     const navHome = result.find((f) => f.key === 'nav.home');
-    expect(navHome).toEqual({ key: 'nav.home', label: 'Home tab', group: 'nav', state: 'inherit' });
+    expect(navHome).toEqual({
+      key: 'nav.home',
+      label: 'Home tab',
+      group: 'nav',
+      state: 'inherit',
+      model: null,
+      modelOptions: [],
+    });
   });
 
   it('reflects an explicit true override as state: true, not "inherit"', async () => {
-    state.listGroupFeatureOverrides.mockResolvedValue([{ featureKey: 'paid.vastu', enabled: true }]);
+    state.listGroupFeatureOverrides.mockResolvedValue([
+      { featureKey: 'paid.vastu', enabled: true },
+    ]);
 
     const result = await listGroupFeaturesForAdmin('g1');
 
     const vastu = result.find((f) => f.key === 'paid.vastu');
     expect(vastu?.state).toBe(true);
+  });
+
+  it("falls back to the registry's defaultModel when a model-picker key is enabled with no model chosen yet", async () => {
+    state.listGroupFeatureOverrides.mockResolvedValue([
+      { featureKey: 'ai.horoscopeModel', enabled: true, model: null },
+    ]);
+
+    const result = await listGroupFeaturesForAdmin('g1');
+
+    const horoscope = result.find((f) => f.key === 'ai.horoscopeModel');
+    expect(horoscope?.model).toBe('gemini-3.1-flash'); // ai.horoscopeModel's registry defaultModel
+    expect(horoscope?.modelOptions.length).toBeGreaterThan(0);
+  });
+
+  it('reports model: null for a model-picker key that is disabled or inherited, even if a stale model value is stored', async () => {
+    state.listGroupFeatureOverrides.mockResolvedValue([
+      { featureKey: 'ai.horoscopeModel', enabled: false, model: 'gemini-3.1-pro' },
+    ]);
+
+    const result = await listGroupFeaturesForAdmin('g1');
+
+    const horoscope = result.find((f) => f.key === 'ai.horoscopeModel');
+    expect(horoscope?.model).toBeNull();
   });
 });
 
@@ -232,7 +283,13 @@ describe('updateGroupFeatureForAdmin', () => {
   it('upserts a true/false override, invalidates the cache, and audit-logs', async () => {
     const result = await updateGroupFeatureForAdmin('g1', 'paid.chat', false, ADMIN_PHONE);
 
-    expect(state.upsertGroupFeatureOverride).toHaveBeenCalledWith('g1', 'paid.chat', false, ADMIN_PHONE);
+    expect(state.upsertGroupFeatureOverride).toHaveBeenCalledWith(
+      'g1',
+      'paid.chat',
+      false,
+      ADMIN_PHONE,
+      null,
+    );
     expect(state.deleteGroupFeatureOverride).not.toHaveBeenCalled();
     expect(state.invalidateGroupOverrideCache).toHaveBeenCalledTimes(1);
     expect(state.logAdminAction).toHaveBeenCalledWith(
@@ -240,7 +297,14 @@ describe('updateGroupFeatureForAdmin', () => {
       expect.stringContaining('/v1/admin/groups/g1/features'),
       expect.objectContaining({ key: 'paid.chat', enabled: false }),
     );
-    expect(result).toEqual({ key: 'paid.chat', label: 'AI Chat', group: 'paid', state: false });
+    expect(result).toEqual({
+      key: 'paid.chat',
+      label: 'AI Chat',
+      group: 'paid',
+      state: false,
+      model: null,
+      modelOptions: [],
+    });
   });
 
   it('a null enabled DELETES the override (back to "inherit") instead of upserting', async () => {
@@ -249,6 +313,39 @@ describe('updateGroupFeatureForAdmin', () => {
     expect(state.deleteGroupFeatureOverride).toHaveBeenCalledWith('g1', 'paid.chat');
     expect(state.upsertGroupFeatureOverride).not.toHaveBeenCalled();
     expect(state.invalidateGroupOverrideCache).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ key: 'paid.chat', label: 'AI Chat', group: 'paid', state: 'inherit' });
+    expect(result).toEqual({
+      key: 'paid.chat',
+      label: 'AI Chat',
+      group: 'paid',
+      state: 'inherit',
+      model: null,
+      modelOptions: [],
+    });
+  });
+
+  it('sets a group model override for a model-picker key while enabled, validated against modelOptions', async () => {
+    const result = await updateGroupFeatureForAdmin(
+      'g1',
+      'ai.horoscopeModel',
+      true,
+      ADMIN_PHONE,
+      'gemini-3.1-pro',
+    );
+
+    expect(state.upsertGroupFeatureOverride).toHaveBeenCalledWith(
+      'g1',
+      'ai.horoscopeModel',
+      true,
+      ADMIN_PHONE,
+      'gemini-3.1-pro',
+    );
+    expect(result.model).toBe('gemini-3.1-pro');
+  });
+
+  it("rejects a model not in the key's modelOptions with a 400 and never writes", async () => {
+    await expect(
+      updateGroupFeatureForAdmin('g1', 'ai.horoscopeModel', true, ADMIN_PHONE, 'not-a-real-model'),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(state.upsertGroupFeatureOverride).not.toHaveBeenCalled();
   });
 });

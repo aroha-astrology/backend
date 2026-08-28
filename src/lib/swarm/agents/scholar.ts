@@ -3,7 +3,8 @@
 // =============================================================================
 
 import { stream as llmStream, generate as llmGenerate } from '../../llm/gemini-client.js';
-import { CHAT_PROFILE, ROUTING_PROFILE } from '../../../config/llm.js';
+import { CHAT_PROFILE, ROUTING_PROFILE, MODEL } from '../../../config/llm.js';
+import { modelForUser } from '../../../modules/features/features.service.js';
 import { logger } from '../../logger.js';
 import {
   buildGroundingFacts,
@@ -1102,6 +1103,8 @@ export function extractNextUnit(
 async function* streamDirectModeParagraph(
   messages: Array<{ role: string; content: string }>,
   signal: AbortSignal | undefined,
+  /** Admin/group-selected model override — see scholarStream's own resolution via modelForUser. */
+  model?: string,
 ): AsyncGenerator<string, void, unknown> {
   // A little above the 110-word target, matching the "never more than 170"
   // ceiling with margin for the closing sentence — same budget as before,
@@ -1126,7 +1129,7 @@ async function* streamDirectModeParagraph(
   // happened to cross the budget.
   let pending = '';
 
-  for await (const delta of llmStream({ profile: CHAT_PROFILE, messages, signal })) {
+  for await (const delta of llmStream({ profile: CHAT_PROFILE, messages, signal, model })) {
     if (inAskNext) {
       askNext += delta;
       continue;
@@ -1230,5 +1233,12 @@ export async function* scholarStream(
     displayName,
   );
 
-  yield* streamDirectModeParagraph(messages, signal);
+  // Resolved explicitly (not via gemini-client.ts's ambient-request-context
+  // fallback — see GROUP_MODEL_PROFILE_KEYS' own doc comment there) because
+  // the chat route never wraps generation in runWithRequestContext, so that
+  // fallback would silently never fire for chat. `state.userId` is always on
+  // hand here regardless.
+  const model = state.userId ? await modelForUser(state.userId, 'ai.chatModel', MODEL) : undefined;
+
+  yield* streamDirectModeParagraph(messages, signal, model);
 }

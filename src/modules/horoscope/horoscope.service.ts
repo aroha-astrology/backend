@@ -115,6 +115,7 @@ function buildHoroscopeContext(
 ): HoroscopeContext {
   return {
     userId: user.id,
+    birthProfileId: profile.birthProfileId,
     forDate,
     period,
     profile: {

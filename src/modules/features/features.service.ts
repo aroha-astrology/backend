@@ -127,6 +127,21 @@ export async function modelOf(key: string, fallback: string): Promise<string> {
 }
 
 /**
+ * Like `modelOf`, but honours a GROUP override on top of the global choice —
+ * the per-user counterpart `resolveFeaturesForUser` is to `resolveFeatures`.
+ * A group's model only applies while that group's row is enabled for this
+ * key (same kill-switch semantics as the global row); a user in no group, or
+ * in only groups with no override for this key, falls back to `modelOf`'s
+ * global resolution. Callers with no natural per-user context (a detached
+ * background job with no `userId` at all) should keep calling `modelOf`
+ * directly rather than pass a null/placeholder id here.
+ */
+export async function modelForUser(userId: string, key: string, fallback: string): Promise<string> {
+  const features = await resolveFeaturesForUser(userId);
+  return features[key]?.model ?? fallback;
+}
+
+/**
  * Like `priceOf`, but honours the feature's enabled flag: a disabled key pays
  * nothing. Used for the referral/reward amounts, where switching the toggle off
  * in the admin panel should stop that side of the payout rather than merely
@@ -214,10 +229,19 @@ export async function resolveFeaturesForUser(
   const memberGroupIds = new Set(groupIds);
   const disabledKeys = new Set<string>();
   const enabledKeys = new Set<string>();
+  // A group's `model` only matters for a key it also enables (an override
+  // that's off falls back to the global model like everything else about a
+  // disabled key). If the user is in more than one group that both enable
+  // the same key with DIFFERENT models set, last-row-wins — an edge case
+  // rare enough (multi-group membership with conflicting model picks for the
+  // same key) not to warrant its own precedence rule on top of the existing
+  // disabled-beats-enabled one.
+  const enabledModelByKey = new Map<string, string | null>();
   for (const row of overrides) {
     if (!memberGroupIds.has(row.groupId)) continue;
     if (row.enabled) {
       enabledKeys.add(row.featureKey);
+      enabledModelByKey.set(row.featureKey, row.model);
     } else {
       disabledKeys.add(row.featureKey);
     }
@@ -240,7 +264,10 @@ export async function resolveFeaturesForUser(
         enabled: true,
         pricePaise: value.pricePaise,
         originalPricePaise: value.originalPricePaise,
-        model: value.model,
+        // A null group model means "this group has no override" (inherit
+        // the global model), not "force null" — same convention `modelOf`
+        // already uses for the global row.
+        model: enabledModelByKey.get(key) ?? value.model,
       };
     } else {
       merged[key] = value;
