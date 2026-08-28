@@ -23,6 +23,10 @@ const fakeEnv = vi.hoisted(() => ({
   GEMINI_API_KEY: 'test-key',
   GEMINI_BASE_URL: 'https://gemini.test/v1beta/openai',
   GEMINI_MODEL: 'gemini-3.1-flash-lite',
+  // Distinct from GEMINI_MODEL so REASONING_MODEL (config/llm.ts) resolves to
+  // a real fallback model instead of collapsing back to the primary — see the
+  // 'falls back to REASONING_MODEL on a 5xx' describe block below.
+  GEMINI_REASONING_MODEL: 'gemini-3.6-flash',
   LOG_LEVEL: 'silent',
 }));
 
@@ -940,6 +944,73 @@ describe('paid reserve escalation on the last attempt', () => {
       (call) => (call[1] as { headers: Record<string, string> }).headers.Authorization,
     );
     expect(authHeaders).not.toContain('Bearer paid-key');
+  });
+
+  // The paid reserve escalates on a 5xx but can hit the SAME overloaded model
+  // (see aroha-...-2026-08-28: 25 paid-reserve calls today, chat still failing).
+  // These cover the model-level fallback added alongside it: a 5xx means the
+  // MODEL is the capacity problem, so retries should also stop asking for it.
+  describe('model fallback on a 5xx', () => {
+    function requestBodyOf(fetchMock: ReturnType<typeof vi.fn>, callIndex: number) {
+      return JSON.parse((fetchMock.mock.calls[callIndex]?.[1] as { body: string }).body) as {
+        model: string;
+      };
+    }
+
+    it('generate() retries a 503 on REASONING_MODEL instead of the model that just failed', async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(overloaded())
+        .mockResolvedValueOnce({
+          status: 200,
+          ok: true,
+          headers: new Headers(),
+          text: () =>
+            Promise.resolve(
+              JSON.stringify({
+                choices: [{ message: { content: '{"yogas":[]}' }, finish_reason: 'stop' }],
+                usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+              }),
+            ),
+        });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const resultPromise = generate({
+        profile: TRANSLATION_PROFILE,
+        messages: [{ role: 'user', content: 'translate' }],
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await resultPromise;
+
+      expect(requestBodyOf(fetchMock, 0).model).toBe('gemini-3.1-flash-lite');
+      expect(requestBodyOf(fetchMock, 1).model).toBe('gemini-3.6-flash');
+      await vi.waitFor(() => expect(state.insertAiUsage).toHaveBeenCalledTimes(1));
+      expect(state.insertAiUsage).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'gemini-3.6-flash' }),
+      );
+    });
+
+    it('stream() retries a 503 on REASONING_MODEL instead of the model that just failed', async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(overloaded())
+        .mockResolvedValueOnce(makeSseResponse(['hello']));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const genPromise = drainStream(
+        stream({
+          profile: TRANSLATION_PROFILE,
+          messages: [{ role: 'user', content: 'translate' }],
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(10_000);
+      await genPromise;
+
+      expect(requestBodyOf(fetchMock, 0).model).toBe('gemini-3.1-flash-lite');
+      expect(requestBodyOf(fetchMock, 1).model).toBe('gemini-3.6-flash');
+    });
   });
 
   it('never spends a billed key regenerating a reply the caller already abandoned', async () => {
