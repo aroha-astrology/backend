@@ -10,7 +10,7 @@
 // =============================================================================
 
 import { env } from '../../config/env.js';
-import { type ChatMessage, type LLMRequestOptions } from '../../config/llm.js';
+import { type ChatMessage, type LLMRequestOptions, REASONING_MODEL } from '../../config/llm.js';
 import { logger } from '../logger.js';
 import { alertThrottled } from '../notifications/alerts.js';
 import { insertAiUsage } from '../../modules/admin/ai-usage.repo.js';
@@ -325,12 +325,18 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
   // its own doc comment for which profiles it actually applies to.
   const model =
     opts.model ?? (await resolveGroupAwareModel(opts)) ?? opts.profile.model ?? env.GEMINI_MODEL;
-  // Carries the resolved model into doRequest() via its existing
-  // `opts.model ?? opts.profile.model ?? env.GEMINI_MODEL` resolution, so
-  // doRequest() itself needs no changes and no group-aware knowledge of its
-  // own — every attempt/key-iteration below reuses this one resolution
-  // rather than re-querying it per attempt.
-  const effectiveOpts: LLMRequestOptions = opts.model === model ? opts : { ...opts, model };
+  // A 5xx is a capacity problem with THIS model, not with any key — rotating
+  // keys (above) or tiers (paid reserve, below) still points at the same
+  // overloaded model. REASONING_MODEL is already a separately-provisioned
+  // Gemini model (see config/llm.ts); reusing it here as a capacity fallback
+  // costs nothing extra to configure. `undefined` when it's the same model
+  // (unset in this env) — matches REASONING_MODEL's own "unset changes
+  // nothing" contract.
+  const fallbackModel = REASONING_MODEL !== model ? REASONING_MODEL : undefined;
+  // Which model actually served the response — may differ from `model` once
+  // sawServerError flips the retries below onto fallbackModel. Recorded on
+  // ai_usage so cost attribution reflects what was really billed.
+  let servedByModel = model;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineAt) {
@@ -375,6 +381,14 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       // Reaching the reserve means the free pool is dry and we are now billing.
       // Fire-and-forget: this is telemetry, it must never fail the request.
       if (picked.tier === 'paid') void recordPaidKeyUse(opts.profile.name);
+
+      // Once a prior attempt saw a 5xx, every later attempt reaches for the
+      // fallback model instead of retrying the one that just failed — same
+      // "don't repeat what just failed" rationale as the paid-reserve escalation
+      // above, just aimed at the model instead of the key.
+      servedByModel = sawServerError && fallbackModel ? fallbackModel : model;
+      const effectiveOpts: LLMRequestOptions =
+        opts.model === servedByModel ? opts : { ...opts, model: servedByModel };
 
       try {
         response = await doRequest(effectiveOpts, false, abort.signal, picked.key);
@@ -535,7 +549,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       // never propagated.
       void insertAiUsage({
         ...usageAttribution(opts),
-        model,
+        model: servedByModel,
         tier: servedByTier,
         tokensIn: data.usage.prompt_tokens,
         tokensOut: billedOutputTokens(data.usage),
@@ -562,6 +576,11 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
   const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
   const model = opts.model ?? opts.profile.model ?? env.GEMINI_MODEL;
+  // See generate(): a 5xx is the model's capacity problem, not a key problem,
+  // so later attempts reach for a differently-provisioned model instead of
+  // retrying the same one. `undefined` when REASONING_MODEL is unset (same as
+  // `model`), matching its own "unset changes nothing" contract.
+  const fallbackModel = REASONING_MODEL !== model ? REASONING_MODEL : undefined;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineAt) {
@@ -579,6 +598,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       let poolExhausted = false;
       let rateLimitBodyText: string | undefined;
       let streamedByTier: KeyTier = 'free';
+      let streamedByModel = model;
       const keyIterations = Math.max(1, poolSize());
 
       for (let keyIter = 0; keyIter < keyIterations; keyIter++) {
@@ -595,8 +615,12 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         // See generate(): reaching the reserve means we have started billing.
         if (picked.tier === 'paid') void recordPaidKeyUse(opts.profile.name);
 
+        streamedByModel = sawServerError && fallbackModel ? fallbackModel : model;
+        const effectiveOpts: LLMRequestOptions =
+          opts.model === streamedByModel ? opts : { ...opts, model: streamedByModel };
+
         try {
-          response = await doRequest(opts, true, abort.signal, picked.key);
+          response = await doRequest(effectiveOpts, true, abort.signal, picked.key);
         } catch (err) {
           networkErr = err;
           response = undefined;
@@ -799,7 +823,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
           // are billed whether or not the consumer read them.
           void insertAiUsage({
             ...usageAttribution(opts),
-            model,
+            model: streamedByModel,
             tier: streamedByTier,
             tokensIn: usage.prompt_tokens,
             tokensOut: billedOutputTokens(usage),
