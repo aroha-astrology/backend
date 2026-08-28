@@ -57,10 +57,13 @@ export async function listFactNudgeCandidates(): Promise<FactNudgeCandidate[]> {
  * picks each planet's most recent ingress at or before `now`.
  */
 export function currentPlanetSignsQuery(now: Date): SQL {
+  // now.toISOString(), not the raw Date: db.execute()'s postgres driver
+  // doesn't type-tag bound params the way the query builder's typed
+  // comparators do, and crashes trying to bind a Date directly.
   return sql`
     SELECT DISTINCT ON (planet) planet, to_sign AS sign
     FROM transit_events
-    WHERE event_type = 'ingress' AND exact_at <= ${now} AND to_sign IS NOT NULL
+    WHERE event_type = 'ingress' AND exact_at <= ${now.toISOString()} AND to_sign IS NOT NULL
     ORDER BY planet, exact_at DESC
   `;
 }

@@ -46,7 +46,7 @@ describe('currentPlanetSignsQuery', () => {
     expect(sql).toContain("event_type = 'ingress'");
     expect(sql).toMatch(/exact_at <= \$1/);
     expect(sql).toMatch(/ORDER BY planet, exact_at DESC/i);
-    expect(params).toEqual([now]);
+    expect(params).toEqual([now.toISOString()]);
   });
 
   it('excludes station events, which carry no destination sign', () => {
