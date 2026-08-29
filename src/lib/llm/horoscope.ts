@@ -1042,6 +1042,12 @@ ${JSON.stringify(translatable, null, 2)}`;
       ...original.structured.remedy,
       reason: parsed.structured.remedy.reason,
     };
+  } else if (!parsed.structured?.remedy && original.structured?.remedy && parsed.structured) {
+    // Model dropped `remedy` from this translation entirely — fall back to the
+    // untranslated (English-reason) original rather than caching a remedy-less
+    // reading for the rest of the day. See parseRemedy's fail-soft contract:
+    // losing the remedy silently is worse here than showing an English sentence.
+    parsed.structured.remedy = original.structured.remedy;
   }
 
   return parsed;
