@@ -35,7 +35,6 @@ export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> =
     'family_in_laws',
     'money_after_marriage',
     'going_for_you_and_hold_carefully',
-    'marriage_quality_by_decade',
     'modern_realities',
   ],
   kundli_milan: [

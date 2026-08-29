@@ -108,11 +108,11 @@ describe('generateMarriageNarrative', () => {
       .mockResolvedValueOnce(jsonSections('At A Glance', 'Marriage Timing'))
       .mockResolvedValueOnce(jsonSections('Who You Will Marry', 'Family & In-Laws'))
       .mockResolvedValueOnce(jsonSections('Money After Marriage', "What's Going For You"))
-      .mockResolvedValueOnce(jsonSections('Marriage Quality By Decade', 'Modern Realities'));
+      .mockResolvedValueOnce(jsonSections('Modern Realities'));
 
     const sections = await generateMarriageNarrative(makeScores());
     expect(state.generate).toHaveBeenCalledTimes(4);
-    expect(sections).toHaveLength(8);
+    expect(sections).toHaveLength(7);
     expect(sections.map((s) => s.heading)).toEqual([
       'At A Glance',
       'Marriage Timing',
@@ -120,7 +120,6 @@ describe('generateMarriageNarrative', () => {
       'Family & In-Laws',
       'Money After Marriage',
       "What's Going For You",
-      'Marriage Quality By Decade',
       'Modern Realities',
     ]);
   });
@@ -235,12 +234,12 @@ describe('generateMarriageNarrative', () => {
     expect(content.toLowerCase()).toContain('early years after the wedding');
   });
 
-  it('embeds the decade arc and modern-realities facts in the fourth call', async () => {
+  it('embeds the modern-realities facts in the fourth call', async () => {
     state.generate
       .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
       .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
       .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
-      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+      .mockResolvedValueOnce(jsonSections('H4a'));
 
     await generateMarriageNarrative(
       makeScores({
@@ -250,7 +249,7 @@ describe('generateMarriageNarrative', () => {
 
     const fourthCall = state.generate.mock.calls[3]?.[0];
     const content = fourthCall.messages.map((m: { content: string }) => m.content).join('\n');
-    expect(content).toContain('Years 1-10');
+    expect(content).not.toContain('Years 1-10');
     expect(content.toLowerCase()).toContain('yes');
     expect(content).toContain('12');
     expect(content).toContain('3');
@@ -284,21 +283,20 @@ describe('translateMarriageNarrative', () => {
     expect(translated[0]?.heading).toBe('हिंदी शीर्षक');
   });
 
-  it('is shape-agnostic — round-trips all 8 real sections generateMarriageNarrative now produces', async () => {
-    const eightSections = [
+  it('is shape-agnostic — round-trips all 7 real sections generateMarriageNarrative now produces', async () => {
+    const sevenSections = [
       'At A Glance',
       'Marriage Timing',
       'Who You Will Marry',
       'Family & In-Laws',
       'Money After Marriage',
       "What's Going For You",
-      'Marriage Quality By Decade',
       'Modern Realities',
     ].map((heading) => ({ heading, paragraphs: [`Paragraph for ${heading}.`] }));
 
-    state.generate.mockResolvedValueOnce(JSON.stringify({ sections: eightSections }));
-    const translated = await translateMarriageNarrative(eightSections, 'hi');
-    expect(translated).toHaveLength(8);
+    state.generate.mockResolvedValueOnce(JSON.stringify({ sections: sevenSections }));
+    const translated = await translateMarriageNarrative(sevenSections, 'hi');
+    expect(translated).toHaveLength(7);
   });
 
   it('throws on an unparseable translated response', async () => {

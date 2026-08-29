@@ -2,13 +2,14 @@
 // Marriage report — LLM narrative
 // =============================================================================
 // Turns the deterministic MarriageScores into narrative prose across 4 bounded
-// calls (comfortably under REPORT_PROFILE's 4096-token ceiling each, 2
-// sections per call — same discipline as the original 2-call version, just
-// extended to cover the larger fact surface the report now carries): call 1
-// covers score/band/Manglik + marriage timing, call 2 covers the 7th-house
-// temperament/archetype + family/in-laws, call 3 covers money-after-marriage +
-// the dosha/yoga summary, call 4 covers the marriage-quality decade arc +
-// modern realities. No fallback filler on a bad response — same discipline as
+// calls (comfortably under REPORT_PROFILE's 4096-token ceiling each — same
+// discipline as the original 2-call version, just extended to cover the
+// larger fact surface the report now carries): call 1 covers band/Manglik +
+// marriage timing (2 sections), call 2 covers the 7th-house
+// temperament/archetype + family/in-laws (2 sections), call 3 covers
+// money-after-marriage + the dosha/yoga summary (2 sections), call 4 covers
+// modern realities only (1 section — the marriage-quality-by-decade section
+// was removed). No fallback filler on a bad response — same discipline as
 // generateKundliMilanNarrative: an unparseable response throws so the
 // orchestration layer marks the row failed and refunds, rather than caching
 // generic text.
@@ -36,7 +37,7 @@ import { reportFactsMessage } from './report-facts-message.js';
 type MarriageScoresWithStrength = MarriageScores & { planetStrength?: PlanetStrengthRow[] };
 
 const GROUNDING_RULE =
-  "Every score, label, date, house sign, trait-tilt number, dosha/yoga fact, and decade score below is a GIVEN FACT, already computed by a deterministic classical Vedic algorithm — the SAME algorithm the app's AI chat feature uses for its own timing answers about this exact chart. State these facts verbatim in your prose. Never recompute, second-guess, round differently, invent a new number, or contradict any of them — your job is ONLY to explain what they mean in plain language.";
+  "Every score, label, date, house sign, trait-tilt number, and dosha/yoga fact below is a GIVEN FACT, already computed by a deterministic classical Vedic algorithm — the SAME algorithm the app's AI chat feature uses for its own timing answers about this exact chart. State these facts verbatim in your prose. Never recompute, second-guess, round differently, invent a new number, or contradict any of them — your job is ONLY to explain what they mean in plain language.";
 const SAFETY_RULE =
   'This is advisory guidance for reflection, never a guarantee about if or when marriage will happen, and never a substitute for the reader\'s own judgment and choices. Use tendency language ("suggests", "classically associated with", "tends to"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
 const TONE_RULE =
@@ -88,7 +89,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "At A Glance" — 1-2 paragraphs stating the marriage score and band given, explaining what the band means in plain language (e.g. a "slow_build" band means the groundwork is still forming, not that marriage won't happen), and mentioning the Manglik status given (including what a cancellation means in plain terms, if cancelled).
+1. Heading close to "At A Glance" — 1-2 paragraphs stating the band given (do NOT state the underlying numeric score), explaining what the band means in plain language (e.g. a "slow_build" band means the groundwork is still forming, not that marriage won't happen), and mentioning the Manglik status given (including what a cancellation means in plain terms, if cancelled).
 2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout. If a Planet Strength table is given below, you MUST ALSO include a "uiData" object on THIS section (section 2) with a string field per planet in that table, keyed EXACTLY as "planetStrength_" followed by the planet's name in lowercase (e.g. "planetStrength_saturn"): a 1-2 line explanation of what that planet's given strength percentage and any retrograde/combust flag mean in plain language, tied to that planet's classical significations (e.g. Saturn → discipline/endurance, Moon → emotional stability, Mercury → communication) rather than marriage specifically, since this table covers the whole chart. Omit the uiData object entirely if no Planet Strength table is given. ${UI_DATA_NULL_RULE}
 
 Write in a clear, natural style. Second person ("you").`;
@@ -129,7 +130,7 @@ Write in a clear, natural style. Second person ("you").`;
 }
 
 function narrativeSystemPromptCall4(): string {
-  return `You are writing the closing section of a Marriage Report for a mobile Vedic astrology app. The app already computed a decade-by-decade marriage-quality arc (0-100 scores with a tone per decade) and a set of "modern realities" facts: whether this chart's OWN timing data itself skews toward a later marriage age, Rahu's natal house, and how many planets occupy the 7th house. Your job is ONLY to write the narrative explanation.
+  return `You are writing the closing section of a Marriage Report for a mobile Vedic astrology app. The app already computed a set of "modern realities" facts: whether this chart's OWN timing data itself skews toward a later marriage age, Rahu's natal house, and how many planets occupy the 7th house. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -138,9 +139,8 @@ ${SAFETY_RULE}
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
-Write EXACTLY 2 sections, in this order:
-1. Heading close to "Marriage Quality By Decade" — 2-4 paragraphs walking through the given decade bands and their tone, framed as a long-arc pattern, not a fixed fate. You MUST ALSO include a "uiData" object on this section with its "decadeExplanations" array field filled in: one entry per given decade band, each with "label" copied VERBATIM from the decade-arc fact line above (e.g. "Years 1-10" — exact string, do not reformat) and "explanation" with a 1-3 line text of why it is favorable or challenging based on astrological principles. ${UI_DATA_NULL_RULE}
-2. Heading close to "Modern Realities" — 1-2 paragraphs using STRICT tendency language (never "you will marry late," always something like "this chart's own timing pattern tends to favor a later window" — and only mention this at all if the given fact says it is true), the Rahu house note (framed as a tendency toward distance/foreign connection in partnership, not a certainty), and the 7th-house planet count (framed as a tendency toward a busier or more complex partnership dynamic if the count is above 2, otherwise skip that point rather than force it).
+Write EXACTLY 1 section:
+1. Heading close to "Modern Realities" — 1-2 paragraphs using STRICT tendency language (never "you will marry late," always something like "this chart's own timing pattern tends to favor a later window" — and only mention this at all if the given fact says it is true), the Rahu house note (framed as a tendency toward distance/foreign connection in partnership, not a certainty), and the 7th-house planet count (framed as a tendency toward a busier or more complex partnership dynamic if the count is above 2, otherwise skip that point rather than force it).
 
 Write in a clear, natural style. Second person ("you").`;
 }
@@ -254,11 +254,6 @@ function buildFactsCall3(scores: MarriageScores): string {
 function buildFactsCall4(scores: MarriageScores): string {
   const lines: string[] = [];
   lines.push(
-    `Marriage-quality decade arc (0-100 score + tone per decade band, centered on the 7th house): ${scores.marriageQualityArc
-      .map((d) => `${d.label}: score ${d.score}/100 (${d.tone})`)
-      .join('; ')}.`,
-  );
-  lines.push(
     `Modern realities — does this chart's own timing data itself skew toward a later marriage age: ${scores.modernRealities.lateMarriageLeaning ? 'yes' : 'no'}.`,
   );
   lines.push(`Rahu's natal house: ${scores.modernRealities.rahuHouse ?? 'unavailable'}.`);
@@ -306,16 +301,6 @@ const UI_DATA_PROPERTIES = {
   planetImpact_jupiter: STRING_OR_NULL,
   planetImpact_seventhLord: STRING_OR_NULL,
   seventhHouseImpact: STRING_OR_NULL,
-  // Always present (empty array when a call has nothing to say) rather than nullable —
-  // "no items" is already a valid, unambiguous empty state for an array.
-  decadeExplanations: {
-    type: 'array',
-    items: {
-      type: 'object',
-      properties: { label: { type: 'string' }, explanation: { type: 'string' } },
-      required: ['label', 'explanation'],
-    },
-  },
   ...Object.fromEntries(
     GRAHAS.flatMap((p) => [
       [`remedyEffect_${p}`, STRING_OR_NULL],
@@ -472,8 +457,8 @@ export async function generateMarriageNarrative(
 
 /** Translate an already-generated (concatenated) section list — one call, same idiom as
  * translateKundliMilanNarrative. Shape-agnostic: works over whatever number of sections
- * `generateMarriageNarrative` produced (now 8, was 4), since it only ever round-trips the
- * generic {sections: [{heading, paragraphs}]} shape without assuming a fixed count. */
+ * `generateMarriageNarrative` produced (now 7, was 8, was 4), since it only ever round-trips
+ * the generic {sections: [{heading, paragraphs}]} shape without assuming a fixed count. */
 export async function translateMarriageNarrative(
   sections: ReportSection[],
   targetLanguage: string,
@@ -484,7 +469,7 @@ export async function translateMarriageNarrative(
     messages: [
       {
         role: 'user',
-        content: `Translate the following report sections into the language "${targetLanguage}". Keep the exact same JSON structure ({"sections": [{"heading": string, "paragraphs": string[], "uiData"?: object}]}) and the same number of sections and paragraphs. ONLY translate the human-readable text. Where a section has a "uiData" object you MUST reproduce it with its keys UNCHANGED (they are code identifiers) and only its string values translated — including any "label" fields inside "decadeExplanations", which must be copied verbatim, NOT translated.\n\nOriginal Content:\n${JSON.stringify({ sections }, null, 2)}`,
+        content: `Translate the following report sections into the language "${targetLanguage}". Keep the exact same JSON structure ({"sections": [{"heading": string, "paragraphs": string[], "uiData"?: object}]}) and the same number of sections and paragraphs. ONLY translate the human-readable text. Where a section has a "uiData" object you MUST reproduce it with its keys UNCHANGED (they are code identifiers) and only its string values translated.\n\nOriginal Content:\n${JSON.stringify({ sections }, null, 2)}`,
       },
     ],
   });
