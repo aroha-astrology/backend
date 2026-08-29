@@ -235,6 +235,8 @@ export interface ClaimReportInput {
 export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow | undefined> {
   const now = new Date();
   const staleSeconds = REPORT_STALE_GENERATING_MS / 1000;
+  // 'queued' is re-claimable on sight (nothing is running yet, so there is no work to
+  // interrupt); only an actively-'generating' row is protected, and only until it goes stale.
   const claimable = sql`(${reports.status} <> 'generating' OR ${reports.updatedAt} < now() - ${staleSeconds} * interval '1 second')`;
   const setWhere = sql`${claimable} AND ${reports.status} <> 'ready'`;
   const inputHash = claim.input !== null ? hashReportInput(claim.input) : null;
@@ -248,8 +250,13 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
     inputHash,
     pricePaidPaise: claim.pricePaidPaise,
     isPreview: claim.isPreview,
-    status: 'generating' as const,
-    startedAt: now,
+    // Enqueued, not started: claimReportRow's job is to establish the row's identity
+    // and win the race for it, NOT to begin work. claimQueuedReports is the only
+    // thing that moves a row to 'generating', which is what bounds concurrency.
+    status: 'queued' as const,
+    startedAt: null,
+    nextAttemptAt: null,
+    generationAttempts: 0,
     error: null,
   };
 
@@ -265,8 +272,13 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
       target,
       targetWhere,
       set: {
-        status: 'generating',
-        startedAt: now,
+        status: 'queued',
+        startedAt: null,
+        // A fresh purchase is a fresh retry budget — otherwise a row that burned
+        // its 3 attempts months ago would be dead on arrival for the buyer who
+        // just paid for it again.
+        nextAttemptAt: null,
+        generationAttempts: 0,
         error: null,
         pricePaidPaise: claim.pricePaidPaise,
         isPreview: claim.isPreview,
@@ -425,18 +437,73 @@ export async function saveReportProgress(
  * same "empty RETURNING means lost the race" convention as every other guarded transition in
  * this codebase.
  */
-export async function reclaimStaleReportForRetry(
+/**
+ * The queue's pull step: promote up to `limit` runnable 'queued' rows to
+ * 'generating' and hand them back to the caller to run.
+ *
+ * `FOR UPDATE SKIP LOCKED` is what makes this safe with several pm2 workers
+ * pulling at the same instant — each transaction locks the rows it took and
+ * every other puller steps over them instead of blocking, so no two processes
+ * can ever start the same report. This replaces the old "purchase fires
+ * generation directly" path; it is the ONLY transition into 'generating'.
+ *
+ * `generationAttempts` is incremented here, so it counts generation STARTS
+ * (exactly one per attempt) rather than only the reaper's retries as it used
+ * to. `startedAt` is a JS Date, not `now()`: it doubles as the CAS fencing
+ * token (see markReportReady) and a millisecond-precision JS Date round-trips
+ * through timestamptz exactly, where a microsecond-precision DB `now()` would
+ * not survive the comparison.
+ */
+export async function claimQueuedReports(limit: number): Promise<ReportRow[]> {
+  if (limit <= 0) return [];
+  const now = new Date();
+
+  const runnable = db
+    .select({ id: reports.id })
+    .from(reports)
+    .where(
+      and(
+        eq(reports.status, 'queued'),
+        sql`(${reports.nextAttemptAt} is null or ${reports.nextAttemptAt} <= now())`,
+      ),
+    )
+    .orderBy(reports.createdAt)
+    .limit(limit)
+    .for('update', { skipLocked: true });
+
+  return db
+    .update(reports)
+    .set({
+      status: 'generating',
+      startedAt: now,
+      nextAttemptAt: null,
+      generationAttempts: sql`${reports.generationAttempts} + 1`,
+      updatedAt: now,
+    })
+    .where(inArray(reports.id, runnable))
+    .returning();
+}
+
+/**
+ * Put a failed-but-retryable row back on the queue instead of failing and
+ * refunding it — the transient-failure path (a Gemini 503, a rate-limited key,
+ * a killed process). Fenced on `previousStartedAt` exactly like
+ * markReportReady/markReportFailed, so a row some other worker has already
+ * reclaimed is left alone (returns undefined).
+ *
+ * Deliberately does NOT touch `content`: whatever the generator checkpointed via
+ * saveReportProgress survives, so the retry resumes from the last completed
+ * section group rather than re-paying for the whole report.
+ */
+export async function requeueReportForRetry(
   id: string,
   previousStartedAt: Date,
+  nextAttemptAt: Date,
 ): Promise<ReportRow | undefined> {
   const now = new Date();
   const [row] = await db
     .update(reports)
-    .set({
-      startedAt: now,
-      generationAttempts: sql`${reports.generationAttempts} + 1`,
-      updatedAt: now,
-    })
+    .set({ status: 'queued', startedAt: null, nextAttemptAt, updatedAt: now })
     .where(
       and(
         eq(reports.id, id),

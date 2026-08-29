@@ -298,6 +298,17 @@ const EnvSchema = z
     // listRecentlyActiveUsersAfter.
     HOROSCOPE_ACTIVE_WINDOW_DAYS: z.coerce.number().int().positive().default(2),
 
+    // How many report generations ONE process runs at a time. A report is
+    // several sequential Gemini calls, so before the queue existed a 12-month
+    // bundle purchase started 12 of them simultaneously — on a box that runs
+    // the DB, two API processes and the swarm service with very little free
+    // RAM. Rows over the cap wait at status 'queued' and are pulled as slots
+    // free up (see pumpReportQueue in reports.service.ts).
+    //
+    // Per PROCESS: the real ceiling is this value times the pm2 instance
+    // count. Raise it only alongside the Gemini key pool's own RPM headroom.
+    REPORT_QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(2),
+
     // --- Email / SMTP (Gmail / transactional emails / daily reports) -------
     SMTP_HOST: z.string().default('smtp.gmail.com'),
     SMTP_PORT: z.coerce.number().int().positive().default(465),

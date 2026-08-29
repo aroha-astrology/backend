@@ -1534,7 +1534,18 @@ export type NewVastuPlanRow = typeof vastuPlans.$inferInsert;
  * simply omitted from that index instead, exactly like
  * gemstone_recommendations_user_primary_unique omits birth_profile_id).
  */
-export const reportStatusEnum = pgEnum('report_status', ['generating', 'ready', 'failed']);
+export const reportStatusEnum = pgEnum('report_status', [
+  /** Purchased/claimed but not started — waiting for a generation slot. Every new
+   * claim lands here; the puller (pumpReportQueue in reports.service.ts) moves it to
+   * 'generating' when the process is under REPORT_QUEUE_CONCURRENCY. A failed attempt
+   * with retry budget left comes BACK here with next_attempt_at set. Deliberately not
+   * exposed to clients — the DTO layer reports it as 'generating' (see publicStatus)
+   * so "not started yet" and "in progress" stay one polling state for the app. */
+  'queued',
+  'generating',
+  'ready',
+  'failed',
+]);
 
 export const reports = pgTable(
   'reports',
@@ -1561,7 +1572,11 @@ export const reports = pgTable(
      * THIRD non-monthly period shape is ever needed and the overload starts reading as a bug
      * rather than a documented convention. */
     periodMonth: date('period_month'),
-    status: reportStatusEnum('status').notNull().default('generating'),
+    // Defaults to 'queued', not 'generating': a row inserted without an explicit
+    // status has certainly not started, and defaulting it to 'generating' would
+    // strand it forever (nothing runs it, and the stale reaper skips rows with no
+    // startedAt). 'queued' makes the fallback self-correcting — the pump picks it up.
+    status: reportStatusEnum('status').notNull().default('queued'),
     /** Canonical English structured sections — shape is defined per report type (see
      * ReportGenerator in reports/report-generator.types.ts), not by this table. Null while
      * 'generating'/'failed'. */
@@ -1629,6 +1644,10 @@ export const reports = pgTable(
      * loop forever. NOT incremented by a normal purchase-claim reclaim (only the reaper's
      * automatic retry counts), and reset to 0 by markReportReady on success. */
     generationAttempts: integer('generation_attempts').notNull().default(0),
+    /** Backoff gate for a 'queued' row: the puller ignores it until now() passes this.
+     * Null means "runnable immediately" — the normal case for a fresh purchase. Only
+     * set when a failed attempt is requeued for retry (see requeueReportForRetry). */
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -1638,6 +1657,12 @@ export const reports = pgTable(
   },
   (table) => ({
     userReportKeyIdx: index('reports_user_idx').on(table.userId, table.reportKey),
+    // The queue's only read: "oldest runnable queued row". Partial so it stays tiny
+    // (a few rows at a time) no matter how large the table grows — this is polled by
+    // every generation completion, not just the 5-minute cron.
+    queuedIdx: index('reports_queued_idx')
+      .on(table.nextAttemptAt, table.createdAt)
+      .where(sql`${table.status} = 'queued'`),
     // The 2x2 cross described in the table doc comment above — one-time vs.
     // monthly (periodMonth null/not-null) crossed with primary vs. additional
     // profile (birthProfileId null/not-null), each ALSO gated by

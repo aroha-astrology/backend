@@ -539,7 +539,8 @@ cronRouter.openapi(liveActivityCheckRoute, async (c) => {
 // Reports stale-generating reaper — self-heals any purchased-report row stuck
 // at 'generating' because the process that claimed it crashed mid-run. Wired
 // to run every 5 minutes (see scripts/cron-reports-reap-stale.sh), matching
-// REPORT_STALE_GENERATING_MS in reports.repo.ts.
+// REPORT_STALE_GENERATING_MS in reports.repo.ts. Doubles as the generation
+// queue's heartbeat — see reapStaleReports' own doc comment.
 // ---------------------------------------------------------------------------
 
 const reportsReapStaleRoute = createRoute({
@@ -549,12 +550,13 @@ const reportsReapStaleRoute = createRoute({
   summary: "Reap purchased-report rows stuck at 'generating' past the stale threshold",
   description:
     'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. A stale ' +
-    'row is reclaimed and generation re-fired (`retried`) up to MAX_REPORT_GENERATION_ATTEMPTS ' +
-    'times — a resumable generator (marriage/numerology/true_love) picks up from its last ' +
-    "checkpoint rather than paying for the whole report again. Past that ceiling it's marked " +
-    "'failed' (reason: generation timed out) and refunded (`reaped`) — the same self-heal a " +
-    'repeat purchase against the same identity already gets via claimReportRow, but without ' +
-    'requiring one. Authenticated via the X-Cron-Secret header.',
+    "row goes back to 'queued' (`retried`) up to MAX_REPORT_GENERATION_ATTEMPTS times — a " +
+    'resumable generator (marriage/numerology/true_love) picks up from its last checkpoint ' +
+    "rather than paying for the whole report again. Past that ceiling it's marked 'failed' " +
+    '(reason: generation timed out) and refunded (`reaped`). Also pumps the generation queue ' +
+    'on every run, which makes this the safety net for a queue that stalled with runnable ' +
+    'rows still on it — a retry whose backoff has expired, or every in-flight generation ' +
+    'dying at once. Authenticated via the X-Cron-Secret header.',
   responses: {
     200: {
       description: 'Sweep completed',

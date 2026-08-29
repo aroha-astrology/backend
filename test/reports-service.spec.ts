@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { env } from '../src/config/env.js';
 import type { ReportRow, UserRow } from '../src/db/schema.js';
 import type * as ReportGeneratorTypesModule from '../src/modules/reports/report-generator.types.js';
 import type * as WindowSummaryModule from '../src/lib/llm/reports/window-summary.js';
@@ -14,6 +15,7 @@ const state = vi.hoisted(() => {
   const REPORT_GENERATORS: Record<string, ReportGenerator> = {};
   return {
     claimReportRow: vi.fn(),
+    claimQueuedReports: vi.fn(),
     findReportRow: vi.fn(),
     findActiveYearlyReportRow: vi.fn(),
     findReportById: vi.fn(),
@@ -22,7 +24,7 @@ const state = vi.hoisted(() => {
     markReportReady: vi.fn(),
     markReportFailed: vi.fn(),
     overwriteReadyReportContent: vi.fn(),
-    reclaimStaleReportForRetry: vi.fn(),
+    requeueReportForRetry: vi.fn(),
     saveReportProgress: vi.fn(),
     saveReportTranslation: vi.fn(),
     upgradePreviewToPurchased: vi.fn(),
@@ -44,6 +46,7 @@ const state = vi.hoisted(() => {
 
 vi.mock('../src/modules/reports/reports.repo.js', () => ({
   claimReportRow: state.claimReportRow,
+  claimQueuedReports: state.claimQueuedReports,
   findReportRow: state.findReportRow,
   findActiveYearlyReportRow: state.findActiveYearlyReportRow,
   findReportById: state.findReportById,
@@ -52,7 +55,7 @@ vi.mock('../src/modules/reports/reports.repo.js', () => ({
   markReportReady: state.markReportReady,
   markReportFailed: state.markReportFailed,
   overwriteReadyReportContent: state.overwriteReadyReportContent,
-  reclaimStaleReportForRetry: state.reclaimStaleReportForRetry,
+  requeueReportForRetry: state.requeueReportForRetry,
   saveReportProgress: state.saveReportProgress,
   saveReportTranslation: state.saveReportTranslation,
   upgradePreviewToPurchased: state.upgradePreviewToPurchased,
@@ -155,15 +158,52 @@ function makeReportRow(overrides: Partial<ReportRow> = {}): ReportRow {
     startedAt: now,
     error: null,
     generationAttempts: 0,
+    nextAttemptAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
   };
 }
 
+/**
+ * Stands in for the real queue between claimReportRow (which now only ENQUEUES) and
+ * the pump's claimQueuedReports pull, so a test can still express "this row was
+ * bought" in one line and have generation actually run — mirroring production, where
+ * purchaseReport queues and pumpReportQueue immediately pulls what fits.
+ *
+ * Reads claimReportRow's own resolved values rather than asking tests to register rows
+ * twice, and applies the same promotion the real pull does: status -> 'generating',
+ * a fresh claim token, and generationAttempts + 1. That increment matters — it is what
+ * decides requeue-for-retry vs. give-up-and-refund, so faking it away would hide an
+ * off-by-one in exactly the branch these tests exist to cover.
+ */
+const pulledClaims = new WeakSet<object>();
+
+async function pullQueuedFromClaims(limit: number): Promise<ReportRow[]> {
+  const pulled: ReportRow[] = [];
+  for (const result of state.claimReportRow.mock.results) {
+    if (pulled.length >= limit) break;
+    if (result.type !== 'return') continue;
+    const row = (await result.value) as ReportRow | undefined;
+    if (!row || pulledClaims.has(row)) continue;
+    pulledClaims.add(row);
+    pulled.push({
+      ...row,
+      status: 'generating',
+      startedAt: row.startedAt ?? new Date(),
+      generationAttempts: row.generationAttempts + 1,
+    });
+  }
+  return pulled;
+}
+
 beforeEach(() => {
   for (const key of Object.keys(state.REPORT_GENERATORS)) delete state.REPORT_GENERATORS[key];
   state.claimReportRow.mockReset();
+  state.claimQueuedReports.mockReset().mockImplementation(pullQueuedFromClaims);
+  state.requeueReportForRetry
+    .mockReset()
+    .mockImplementation((id: string) => Promise.resolve({ id, status: 'queued' }));
   state.findReportRow.mockReset();
   state.findActiveYearlyReportRow.mockReset();
   state.findReportById.mockReset();
@@ -171,7 +211,6 @@ beforeEach(() => {
   state.listReportsForUser.mockReset().mockResolvedValue([]);
   state.markReportReady.mockReset().mockResolvedValue(undefined);
   state.markReportFailed.mockReset().mockResolvedValue(undefined);
-  state.reclaimStaleReportForRetry.mockReset();
   state.saveReportProgress.mockReset().mockResolvedValue(undefined);
   state.saveReportTranslation.mockReset().mockResolvedValue(undefined);
   state.upgradePreviewToPurchased.mockReset().mockResolvedValue(undefined);
@@ -622,7 +661,11 @@ describe('purchaseReport — preview-to-purchase upgrade (the two collision path
 });
 
 describe('purchaseReport — background generation safety net', () => {
-  it('marks the row failed and refunds when no generator is registered for the report key (e.g. wealth, pending a later task)', async () => {
+  // A failed attempt with retry budget left goes BACK on the queue instead of being
+  // failed and refunded on the spot. That is the whole point of the queue: before it,
+  // a single transient Gemini 503 burned a report the user had already paid for. The
+  // give-up-and-refund behaviour still exists — see the retry-budget tests below.
+  it('requeues rather than refunding when no generator is registered for the report key (e.g. a key pending a later task)', async () => {
     state.claimReportRow.mockResolvedValue(
       makeReportRow({ id: 'w1', reportKey: 'wealth', pricePaidPaise: 9900 }),
     );
@@ -630,20 +673,17 @@ describe('purchaseReport — background generation safety net', () => {
     await purchaseReport(makeUser(), { reportKey: 'wealth' });
 
     await vi.waitFor(() => {
-      expect(state.markReportFailed).toHaveBeenCalledWith(
+      expect(state.requeueReportForRetry).toHaveBeenCalledWith(
         'w1',
         expect.any(Date),
-        expect.stringContaining('No generator registered'),
+        expect.any(Date),
       );
     });
-    expect(state.addWalletBalance).toHaveBeenCalledWith(
-      'user-1',
-      9900,
-      'refund:report_unlock:wealth',
-    );
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
   });
 
-  it('marks the row failed and refunds when the birth chart is not ready yet', async () => {
+  it('requeues rather than refunding when the birth chart is not ready yet', async () => {
     state.REPORT_GENERATORS.marriage = {
       key: 'marriage',
       computeScores: vi.fn().mockReturnValue({}),
@@ -655,21 +695,12 @@ describe('purchaseReport — background generation safety net', () => {
 
     await purchaseReport(makeUser(), { reportKey: 'marriage' });
 
-    await vi.waitFor(() => {
-      expect(state.markReportFailed).toHaveBeenCalledWith(
-        'm1',
-        expect.any(Date),
-        'Birth chart is not ready yet',
-      );
-    });
-    expect(state.addWalletBalance).toHaveBeenCalledWith(
-      'user-1',
-      9900,
-      'refund:report_unlock:marriage',
-    );
+    await vi.waitFor(() => expect(state.requeueReportForRetry).toHaveBeenCalled());
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
   });
 
-  it('marks the row failed and refunds when the registered generator throws during narrative generation', async () => {
+  it('requeues rather than refunding when the registered generator throws during narrative generation', async () => {
     state.REPORT_GENERATORS.marriage = {
       key: 'marriage',
       computeScores: vi.fn().mockReturnValue({ score: 1 }),
@@ -681,14 +712,61 @@ describe('purchaseReport — background generation safety net', () => {
 
     await purchaseReport(makeUser(), { reportKey: 'marriage' });
 
+    await vi.waitFor(() => expect(state.requeueReportForRetry).toHaveBeenCalled());
+    expect(state.markReportFailed).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('marks the row failed and refunds once the attempt that just failed exhausts the retry budget', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({ score: 1 }),
+      generateNarrative: vi.fn().mockRejectedValue(new Error('LLM exploded')),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    // The pull increments, so this row reaches the generator ON its final allowed attempt.
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'm3',
+        reportKey: 'marriage',
+        generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS - 1,
+      }),
+    );
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
     await vi.waitFor(() => {
-      expect(state.markReportFailed).toHaveBeenCalledWith('m2', expect.any(Date), 'LLM exploded');
+      expect(state.markReportFailed).toHaveBeenCalledWith('m3', expect.any(Date), 'LLM exploded');
     });
+    expect(state.requeueReportForRetry).not.toHaveBeenCalled();
     expect(state.addWalletBalance).toHaveBeenCalledWith(
       'user-1',
       9900,
       'refund:report_unlock:marriage',
     );
+  });
+
+  it('backs off further on each successive retry, so a rate-limited Gemini key is not hammered', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({ score: 1 }),
+      generateNarrative: vi.fn().mockRejectedValue(new Error('429')),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({ id: 'm4', reportKey: 'marriage', generationAttempts: 1 }),
+    );
+    const before = Date.now();
+
+    await purchaseReport(makeUser(), { reportKey: 'marriage' });
+
+    await vi.waitFor(() => expect(state.requeueReportForRetry).toHaveBeenCalled());
+    // Second attempt (attempts=1, pulled as 2) waits 2 minutes, not the first attempt's 1.
+    const nextAttemptAt = state.requeueReportForRetry.mock.calls[0]?.[2] as Date;
+    expect(nextAttemptAt.getTime() - before).toBeGreaterThanOrEqual(120_000);
+    expect(nextAttemptAt.getTime() - before).toBeLessThan(180_000);
   });
 
   it('computes the partner chart via computeMetrology and marks the row ready on success', async () => {
@@ -997,6 +1075,59 @@ describe('purchaseReport — background generation safety net', () => {
   });
 });
 
+describe('the generation queue — concurrency cap', () => {
+  /** A generator whose narrative call hangs until the test releases it, so a
+   * generation can be held "in flight" while the cap is inspected. */
+  function makeHangingGenerator(key: string) {
+    const releases: Array<() => void> = [];
+    const generateNarrative = vi.fn(
+      () =>
+        new Promise((resolve) =>
+          releases.push(() => resolve([{ heading: 'H', paragraphs: ['p'] }])),
+        ),
+    );
+    state.REPORT_GENERATORS[key] = {
+      key,
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative,
+      translateNarrative: vi.fn(),
+    } as unknown as ReportGenerator;
+    return { generateNarrative, releases };
+  }
+
+  it('starts at most REPORT_QUEUE_CONCURRENCY generations at once, and starts the next only as one finishes', async () => {
+    const cap = env.REPORT_QUEUE_CONCURRENCY;
+    const months = Array.from(
+      { length: cap + 1 },
+      (_, i) => `2026-${String(i + 1).padStart(2, '0')}`,
+    );
+    const { generateNarrative, releases } = makeHangingGenerator('health_monthly');
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
+    let n = 0;
+    state.claimReportRow.mockImplementation(() =>
+      Promise.resolve(
+        makeReportRow({ id: `q${++n}`, reportKey: 'health_monthly', periodMonth: `2026-0${n}-01` }),
+      ),
+    );
+
+    await purchaseReport(makeUser(), { reportKey: 'health_monthly', months });
+
+    // Every month is queued, but only `cap` of them are actually running — before the
+    // queue existed this fired one generation per row, all at once.
+    await vi.waitFor(() => expect(generateNarrative).toHaveBeenCalledTimes(cap));
+    expect(state.claimQueuedReports).toHaveBeenCalledWith(cap);
+    expect(generateNarrative).toHaveBeenCalledTimes(cap);
+
+    // Freeing one slot pulls exactly one more off the queue, not the whole backlog.
+    releases[0]?.();
+    await vi.waitFor(() => expect(generateNarrative).toHaveBeenCalledTimes(cap + 1));
+
+    // Drain, so no generation is left in flight to leak the counter into later tests.
+    for (const release of releases) release();
+    await vi.waitFor(() => expect(state.markReportReady).toHaveBeenCalledTimes(cap + 1));
+  });
+});
+
 describe('notifyReportReady', () => {
   it('sends a push using the catalogue label and reportId-based deep link', async () => {
     state.findActiveTokensForUser.mockResolvedValue([{ token: 'tok-a' }, { token: 'tok-b' }]);
@@ -1056,7 +1187,7 @@ describe('reapStaleReports', () => {
     const result = await reapStaleReports();
 
     expect(result).toEqual({ reaped: 2, retried: 0 });
-    expect(state.reclaimStaleReportForRetry).not.toHaveBeenCalled();
+    expect(state.requeueReportForRetry).not.toHaveBeenCalled();
     expect(state.markReportFailed).toHaveBeenCalledWith(
       's1',
       staleAt,
@@ -1079,7 +1210,7 @@ describe('reapStaleReports', () => {
     );
   });
 
-  it('reclaims and retries a stale row under the retry budget, WITHOUT failing or refunding it', async () => {
+  it('requeues a stale row under the retry budget rather than re-firing it directly, WITHOUT failing or refunding it', async () => {
     const staleAt = new Date('2026-07-01T00:00:00Z');
     const staleRow = makeReportRow({
       id: 's1',
@@ -1088,37 +1219,32 @@ describe('reapStaleReports', () => {
       generationAttempts: 1,
     });
     state.findStaleGeneratingReports.mockResolvedValue([staleRow]);
-    const reclaimedAt = new Date('2026-07-01T00:10:00Z');
-    state.reclaimStaleReportForRetry.mockResolvedValue({
-      ...staleRow,
-      startedAt: reclaimedAt,
-      generationAttempts: 2,
-    });
-    // Registered purely so the fire-and-forget retry has somewhere to land — its outcome
-    // isn't what this test is about (see the dedicated resumption tests below for that).
-    state.REPORT_GENERATORS.marriage = {
-      key: 'marriage',
-      computeScores: vi.fn().mockReturnValue({}),
-      generateNarrative: vi.fn().mockResolvedValue([]),
-      translateNarrative: vi.fn(),
-    };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] } });
 
     const result = await reapStaleReports();
 
     expect(result).toEqual({ reaped: 0, retried: 1 });
-    expect(state.reclaimStaleReportForRetry).toHaveBeenCalledWith('s1', staleAt);
+    // Back on the queue, runnable immediately (it already waited out the stale window)
+    // — the capacity-gated pump decides when it actually restarts, so a crash that
+    // stranded ten rows can no longer restart ten generations at once.
+    expect(state.requeueReportForRetry).toHaveBeenCalledWith('s1', staleAt, expect.any(Date));
     expect(state.markReportFailed).not.toHaveBeenCalled();
     expect(state.addWalletBalance).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(state.markReportReady).toHaveBeenCalled());
   });
 
-  it('does nothing when reclaiming loses the race (already reclaimed/finished elsewhere)', async () => {
+  it('always pumps the queue afterwards — the safety net for a queue stalled with runnable rows on it', async () => {
+    state.findStaleGeneratingReports.mockResolvedValue([]);
+
+    await reapStaleReports();
+
+    expect(state.claimQueuedReports).toHaveBeenCalled();
+  });
+
+  it('does nothing when requeueing loses the race (already reclaimed/finished elsewhere)', async () => {
     const staleAt = new Date('2026-07-01T00:00:00Z');
     state.findStaleGeneratingReports.mockResolvedValue([
       makeReportRow({ id: 's1', reportKey: 'marriage', startedAt: staleAt, generationAttempts: 0 }),
     ]);
-    state.reclaimStaleReportForRetry.mockResolvedValue(undefined);
+    state.requeueReportForRetry.mockResolvedValue(undefined);
 
     const result = await reapStaleReports();
 

@@ -1,0 +1,14 @@
+-- Reports become a real queue: every claim now lands in 'queued' and a puller
+-- (pumpReportQueue in reports.service.ts) promotes it to 'generating' only while
+-- the process is under REPORT_QUEUE_CONCURRENCY. Before this, purchase fired an
+-- unbounded fire-and-forget generation per row — a 12-month bundle started 12
+-- concurrent Gemini pipelines at once.
+--
+-- Split from 0067 on purpose: Postgres forbids USING a newly added enum value in
+-- the same transaction that added it, and 0067's partial index predicate does
+-- exactly that (WHERE status = 'queued'). Drizzle runs one transaction per
+-- migration file, so the split is what makes the index legal.
+--
+-- Guarded so it is safe to re-run: this repo has a history of migrations being
+-- applied by hand on the box and then reconciled in the journal afterwards.
+ALTER TYPE "report_status" ADD VALUE IF NOT EXISTS 'queued' BEFORE 'generating';

@@ -39,8 +39,9 @@ import {
   hashReportInput,
   markReportFailed,
   markReportReady,
+  claimQueuedReports,
   overwriteReadyReportContent,
-  reclaimStaleReportForRetry,
+  requeueReportForRetry,
   saveReportProgress,
   upgradePreviewToPurchased,
 } from '../src/modules/reports/reports.repo.js';
@@ -116,7 +117,7 @@ function makeUpdateChain() {
 }
 
 /** Same shape as makeUpdateChain, but `.where()` returns a chain link supporting `.returning()`
- * — for the guarded-transition repo functions (e.g. reclaimStaleReportForRetry) that need the
+ * — for the guarded-transition repo functions (e.g. requeueReportForRetry) that need the
  * updated row back, mirroring makeInsertChain's `.returning()` support on the insert side. */
 function makeUpdateReturningChain(returningResult: unknown[]) {
   const calls: { set?: unknown; where?: unknown } = {};
@@ -446,27 +447,114 @@ describe('saveReportProgress — mid-generation checkpoint', () => {
   });
 });
 
-describe("reclaimStaleReportForRetry — the reaper's retry path", () => {
-  it('bumps generationAttempts and stamps a fresh startedAt, fenced by id + generating status + the PREVIOUS claim token', async () => {
-    const previousStartedAt = new Date('2026-01-01T00:00:00Z');
-    const { chain, calls } = makeUpdateReturningChain([
-      { id: 'report-1', status: 'generating', generationAttempts: 2 },
+/** The queue puller's select leg: `.from().where().orderBy().limit().for()`, where the
+ * final chain object is used as a SUBQUERY value rather than awaited — makeSelectChain
+ * resolves at `.orderBy()`/`.limit()`, which would hand `inArray` a promise instead. */
+function makeSubquerySelectChain() {
+  const calls: { where?: unknown; limit?: number; forArgs?: unknown[] } = {};
+  const chain: Record<string, unknown> = {
+    from: vi.fn(() => chain),
+    where: vi.fn((cond: unknown) => {
+      calls.where = cond;
+      return chain;
+    }),
+    orderBy: vi.fn(() => chain),
+    limit: vi.fn((n: number) => {
+      calls.limit = n;
+      return chain;
+    }),
+    for: vi.fn((...args: unknown[]) => {
+      calls.forArgs = args;
+      return chain;
+    }),
+  };
+  return { chain, calls };
+}
+
+describe('claimQueuedReports — the queue pull', () => {
+  it('locks with FOR UPDATE SKIP LOCKED so concurrent pm2 workers never pull the same row', async () => {
+    const { chain: selectChain, calls: selectCalls } = makeSubquerySelectChain();
+    state.select.mockReturnValue(selectChain);
+    const { chain: updateChain } = makeUpdateReturningChain([]);
+    state.update.mockReturnValue(updateChain);
+
+    await claimQueuedReports(3);
+
+    expect(selectCalls.forArgs).toEqual(['update', { skipLocked: true }]);
+    expect(selectCalls.limit).toBe(3);
+  });
+
+  it('only considers queued rows whose backoff has expired (or was never set)', async () => {
+    const { chain: selectChain, calls: selectCalls } = makeSubquerySelectChain();
+    state.select.mockReturnValue(selectChain);
+    const { chain: updateChain } = makeUpdateReturningChain([]);
+    state.update.mockReturnValue(updateChain);
+
+    await claimQueuedReports(1);
+
+    const query = compile(selectCalls.where);
+    expect(query.params).toEqual(['queued']);
+    expect(query.sql).toContain('"reports"."next_attempt_at" is null');
+    expect(query.sql).toContain('"reports"."next_attempt_at" <= now()');
+  });
+
+  it('promotes to generating, stamps the claim token, clears the backoff and counts the attempt', async () => {
+    const { chain: selectChain } = makeSubquerySelectChain();
+    state.select.mockReturnValue(selectChain);
+    const { chain: updateChain, calls } = makeUpdateReturningChain([
+      { id: 'report-1', status: 'generating' },
     ]);
+    state.update.mockReturnValue(updateChain);
+
+    const rows = await claimQueuedReports(2);
+
+    expect(rows).toEqual([{ id: 'report-1', status: 'generating' }]);
+    expect(calls.set).toMatchObject({
+      status: 'generating',
+      startedAt: expect.any(Date),
+      nextAttemptAt: null,
+      generationAttempts: expect.anything(),
+    });
+  });
+
+  it('short-circuits without touching the DB when there is no capacity to fill', async () => {
+    const rows = await claimQueuedReports(0);
+
+    expect(rows).toEqual([]);
+    expect(state.select).not.toHaveBeenCalled();
+    expect(state.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('requeueReportForRetry — the transient-failure path', () => {
+  it('puts the row back on the queue behind a backoff, fenced by id + generating status + the PREVIOUS claim token', async () => {
+    const previousStartedAt = new Date('2026-01-01T00:00:00Z');
+    const nextAttemptAt = new Date('2026-01-01T00:01:00Z');
+    const { chain, calls } = makeUpdateReturningChain([{ id: 'report-1', status: 'queued' }]);
     state.update.mockReturnValue(chain);
 
-    const row = await reclaimStaleReportForRetry('report-1', previousStartedAt);
+    const row = await requeueReportForRetry('report-1', previousStartedAt, nextAttemptAt);
 
-    expect(row).toEqual({ id: 'report-1', status: 'generating', generationAttempts: 2 });
-    expect(calls.set).toMatchObject({ generationAttempts: expect.anything() });
+    expect(row).toEqual({ id: 'report-1', status: 'queued' });
+    expect(calls.set).toMatchObject({ status: 'queued', startedAt: null, nextAttemptAt });
     const query = compile(calls.where);
     expect(query.params).toEqual(['report-1', 'generating', previousStartedAt.toISOString()]);
+  });
+
+  it('never clears content — a retry resumes from the last checkpointed section group', async () => {
+    const { chain, calls } = makeUpdateReturningChain([{ id: 'report-1' }]);
+    state.update.mockReturnValue(chain);
+
+    await requeueReportForRetry('report-1', new Date(), new Date());
+
+    expect(calls.set).not.toHaveProperty('content');
   });
 
   it('returns undefined when it loses the race (already reclaimed/finished by something else)', async () => {
     const { chain } = makeUpdateReturningChain([]);
     state.update.mockReturnValue(chain);
 
-    const row = await reclaimStaleReportForRetry('report-1', new Date('2026-01-01T00:00:00Z'));
+    const row = await requeueReportForRetry('report-1', new Date(), new Date());
 
     expect(row).toBeUndefined();
   });

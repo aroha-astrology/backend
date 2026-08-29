@@ -14,6 +14,7 @@ import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
 import { runWithRequestContext } from '../../lib/request-context.js';
 import { MODEL } from '../../config/llm.js';
+import { env } from '../../config/env.js';
 import {
   getReportDef,
   monthlyBundlePricePaise,
@@ -38,6 +39,7 @@ import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
 import { verifyReportClaims } from '../../lib/llm/reports/verify-claims.js';
 import type { BirthRecord } from '../../lib/swarm/state.js';
 import {
+  claimQueuedReports,
   claimReportRow,
   countReadyReportsByKey,
   findActiveYearlyReportRow,
@@ -50,7 +52,7 @@ import {
   markReportFailed,
   markReportReady,
   overwriteReadyReportContent,
-  reclaimStaleReportForRetry,
+  requeueReportForRetry,
   saveReportProgress,
   saveReportScoresTranslation,
   saveReportTranslation,
@@ -142,6 +144,11 @@ function triggerLazyRegenerationIfStale(row: ReportRow): void {
   const contentVersion = (row.content as { contentVersion?: number } | null)?.contentVersion;
   if (contentVersion === CONTENT_VERSION) return;
   if (regeneratingReportIds.has(row.id)) return;
+  // Shares the generation queue's budget without owning a queue row: a
+  // CONTENT_VERSION bump makes EVERY view of an old report trigger one of these,
+  // which would sail straight past the cap the paid queue respects. Skipping is
+  // free — the next view of this report triggers the check again.
+  if (reportQueueCapacity() === 0) return;
 
   regeneratingReportIds.add(row.id);
   void regenerateReportContent(row)
@@ -750,33 +757,155 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
       /* already logged */
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     logger.error(
-      { err, reportId: row.id, reportKey: row.reportKey },
+      { err, reportId: row.id, reportKey: row.reportKey, attempt: row.generationAttempts },
       'report background generation failed',
     );
-    await markReportFailed(row.id, claimedAt, err instanceof Error ? err.message : String(err));
-    await addWalletBalance(
-      row.userId,
-      row.pricePaidPaise,
-      `refund:${reasonForRow(row.reportKey, row.periodMonth)}`,
-    ).catch((refundErr: unknown) =>
-      logger.error({ err: refundErr, reportId: row.id }, 'report generation refund failed'),
-    );
+    await failOrRequeueReport(row, claimedAt, message);
   }
 }
 
-/** Kick off background generation without blocking the caller. */
-function fireReportGeneration(row: ReportRow, birthProfileId: string | null): void {
-  // Every report type shares one `report` LLM profile, so without a feature
-  // label all 10+ of them land in ai_usage as one indistinguishable `report`
-  // row and per-report cost is unrecoverable. Set explicitly from the row
-  // rather than inherited, since this also runs detached from any request (the
-  // stale-report reaper, admin regeneration) where there is no ambient context.
-  void runWithRequestContext({ userId: row.userId, feature: row.reportKey }, () =>
-    runReportGeneration(row, birthProfileId),
-  ).catch((err: unknown) => {
-    logger.error({ err, reportId: row.id }, 'report background generation errored unexpectedly');
-  });
+/** How long a failed attempt waits before the queue will pick it up again:
+ * 1 minute, then 2, then 4. Deliberately longer than a bare retry — most real
+ * failures here are a rate-limited or exhausted Gemini key, and hammering it
+ * immediately just burns the next key in the pool too. Nothing polls this
+ * directly; the pump reads `nextAttemptAt` and the 5-minute reaper cron is what
+ * guarantees a backed-off row is eventually looked at again. */
+function retryBackoffMs(attempt: number): number {
+  return 60_000 * 2 ** Math.max(0, attempt - 1);
+}
+
+/**
+ * A generation attempt failed. Under the retry budget this puts the row BACK on
+ * the queue (keeping whatever the generator checkpointed, and keeping the user's
+ * money) rather than failing it outright — a transient Gemini 503 or an exhausted
+ * key used to burn a paid report on the first try, since only the crash/stall path
+ * ever got retried. Past the budget it falls back to the original behaviour: mark
+ * failed and refund.
+ *
+ * Fenced on `claimedAt` throughout, so a row another worker has already taken over
+ * is never failed or refunded from here.
+ */
+async function failOrRequeueReport(
+  row: ReportRow,
+  claimedAt: Date,
+  message: string,
+): Promise<void> {
+  // generationAttempts is incremented by claimQueuedReports when the row is pulled,
+  // so it already counts the attempt that just failed.
+  if (row.generationAttempts < MAX_REPORT_GENERATION_ATTEMPTS) {
+    const nextAttemptAt = new Date(Date.now() + retryBackoffMs(row.generationAttempts));
+    const requeued = await requeueReportForRetry(row.id, claimedAt, nextAttemptAt);
+    if (requeued) {
+      logger.warn(
+        { reportId: row.id, attempt: row.generationAttempts, nextAttemptAt },
+        'report generation requeued for retry',
+      );
+      return;
+    }
+    // Lost the fence — something else (the reaper, a repeat purchase) already moved
+    // this row on. Not ours to fail or refund.
+    return;
+  }
+
+  await markReportFailed(row.id, claimedAt, message);
+  await addWalletBalance(
+    row.userId,
+    row.pricePaidPaise,
+    `refund:${reasonForRow(row.reportKey, row.periodMonth)}`,
+  ).catch((refundErr: unknown) =>
+    logger.error({ err: refundErr, reportId: row.id }, 'report generation refund failed'),
+  );
+}
+
+// -----------------------------------------------------------------------------
+// The generation queue
+// -----------------------------------------------------------------------------
+// Purchasing a report no longer starts generating it. `claimReportRow` inserts
+// the row at status 'queued' and this pump promotes rows to 'generating' only
+// while the process is under REPORT_QUEUE_CONCURRENCY. Three things drive the
+// pump, and none of them is a timer — matching the rest of this codebase, where
+// periodic work is the OS crontab's job:
+//
+//   1. a purchase/preview, so the common case (a free slot) still starts
+//      instantly and the buyer sees no added latency;
+//   2. every generation finishing, success or failure, which drains the backlog
+//      as fast as capacity actually frees up;
+//   3. POST /cron/reports-reap-stale every 5 minutes, the safety net that
+//      restarts a pump that stopped with work still queued — an all-slots-busy
+//      moment followed by every generation dying at once, or a row parked on a
+//      retry backoff whose `nextAttemptAt` has since passed.
+//
+// The cap is per PROCESS, so with pm2 running N instances the real ceiling is
+// N x REPORT_QUEUE_CONCURRENCY. That is deliberate: the DB claim
+// (claimQueuedReports, FOR UPDATE SKIP LOCKED) is what guarantees correctness
+// across processes, and a counter is all that is needed on top of it.
+// ponytail: per-process cap. If a true global ceiling is ever needed, the Redis
+// client and lock helper in lib/cache/locks.ts already exist to hold one.
+// -----------------------------------------------------------------------------
+
+/**
+ * What clients are allowed to see. 'queued' is an internal scheduling detail —
+ * to the app "bought, nothing to show yet" and "actively being written" are the
+ * same 202-poll state, and the public response schemas (reports.schemas.ts) only
+ * ever declare three statuses. Mapping here rather than widening those schemas
+ * keeps the queue invisible to the frontend and the mobile shell, which need no
+ * change for any of this.
+ */
+function publicStatus(status: ReportRow['status']): 'generating' | 'ready' | 'failed' {
+  return status === 'queued' ? 'generating' : status;
+}
+
+let reportsInFlight = 0;
+
+/** Slots free in THIS process right now. Also read by the lazy-regeneration
+ * trigger, which shares the same LLM budget without owning a queue row. */
+function reportQueueCapacity(): number {
+  return Math.max(0, env.REPORT_QUEUE_CONCURRENCY - reportsInFlight);
+}
+
+/**
+ * Claim whatever runnable queued rows fit in this process's free slots and run
+ * them; re-pump as each one finishes so the backlog drains without a timer.
+ *
+ * Never throws and never blocks its caller — a purchase must not fail because
+ * the queue read did, and the 5-minute reaper cron will pump again regardless.
+ */
+export function pumpReportQueue(): void {
+  const capacity = reportQueueCapacity();
+  if (capacity === 0) return;
+
+  void claimQueuedReports(capacity)
+    .then((rows) => {
+      for (const row of rows) {
+        reportsInFlight++;
+        // Every report type shares one `report` LLM profile, so without a feature
+        // label all 10+ of them land in ai_usage as one indistinguishable `report`
+        // row and per-report cost is unrecoverable. Set explicitly from the row
+        // rather than inherited, since this always runs detached from the request
+        // that queued it (and from no request at all, under the reaper cron).
+        void runWithRequestContext({ userId: row.userId, feature: row.reportKey }, () =>
+          runReportGeneration(row, row.birthProfileId),
+        )
+          .catch((err: unknown) => {
+            // runReportGeneration handles its own failures (retry or fail+refund);
+            // reaching here means the handling itself broke, so the row is left for
+            // the stale reaper rather than retried inline.
+            logger.error(
+              { err, reportId: row.id },
+              'report background generation errored unexpectedly',
+            );
+          })
+          .finally(() => {
+            reportsInFlight--;
+            pumpReportQueue();
+          });
+      }
+    })
+    .catch((err: unknown) => {
+      logger.error({ err }, 'report queue pull failed');
+    });
 }
 
 export interface PurchaseReportResult {
@@ -850,7 +979,7 @@ export async function purchaseReport(
             id: active.id,
             reportKey: def.key,
             periodMonth: active.periodMonth,
-            status: active.status,
+            status: publicStatus(active.status),
           });
           await addWalletBalance(
             user.id,
@@ -877,9 +1006,8 @@ export async function purchaseReport(
           id: claimed.id,
           reportKey: def.key,
           periodMonth: claimed.periodMonth,
-          status: claimed.status,
+          status: publicStatus(claimed.status),
         });
-        fireReportGeneration(claimed, birthProfileId);
       } else {
         // A row already exists at this exact identity that claimReportRow's own claimability
         // guard couldn't reclaim — the DB layer guaranteed no duplicate row was ever inserted
@@ -906,7 +1034,7 @@ export async function purchaseReport(
             id: existing.id,
             reportKey: def.key,
             periodMonth: existing.periodMonth,
-            status: existing.status,
+            status: publicStatus(existing.status),
           });
         } else {
           // Genuinely already purchased & ready/in-flight for this exact identity — reuse it
@@ -916,7 +1044,7 @@ export async function purchaseReport(
               id: existing.id,
               reportKey: def.key,
               periodMonth: existing.periodMonth,
-              status: existing.status,
+              status: publicStatus(existing.status),
             });
           }
           await addWalletBalance(
@@ -938,6 +1066,11 @@ export async function purchaseReport(
     throw err;
   }
 
+  // One pump for the whole purchase, not one per row: a 12-month bundle queues 12
+  // rows and this starts however many the process has slots for, leaving the rest
+  // for the pump each finishing generation fires.
+  pumpReportQueue();
+
   return { reports: summaries };
 }
 
@@ -945,7 +1078,7 @@ export async function purchaseReport(
  * Free "generate the real report and blur it" preview — sibling to
  * `purchaseReport`, but billed at 0 and flagged `isPreview: true`. The
  * generation pipeline itself needs ZERO changes: a preview runs through the
- * exact same `fireReportGeneration` background path as a real purchase, so
+ * exact same queued-and-pumped background path as a real purchase, so
  * the report content is genuinely real (not a fake teaser) — the client is
  * expected to blur/paywall it client-side using the `isPreview` flag
  * `getReportForUser` returns once ready.
@@ -986,8 +1119,8 @@ export async function previewReport(
   });
 
   if (claimed) {
-    fireReportGeneration(claimed, birthProfileId);
-    return { id: claimed.id, reportKey: def.key, status: claimed.status };
+    pumpReportQueue();
+    return { id: claimed.id, reportKey: def.key, status: publicStatus(claimed.status) };
   }
 
   // A row already exists at this identity (prior preview still generating/ready, or a real
@@ -998,7 +1131,7 @@ export async function previewReport(
     // undefined — this would indicate the row was deleted between the two calls.
     throw Errors.internal('Report row not found after a duplicate preview claim');
   }
-  return { id: existing.id, reportKey: def.key, status: existing.status };
+  return { id: existing.id, reportKey: def.key, status: publicStatus(existing.status) };
 }
 
 /**
@@ -1018,7 +1151,7 @@ export async function getReportHistoryForUser(
       id: r.id,
       reportKey: r.reportKey,
       label: getReportDef(r.reportKey as ReportKey)?.label ?? r.reportKey,
-      status: r.status,
+      status: publicStatus(r.status),
       periodMonth: r.periodMonth,
       createdAt: r.createdAt.toISOString(),
     }));
@@ -1048,7 +1181,7 @@ export async function getReportCatalogueForUser(
       originalPricePaise: resolved?.originalPricePaise ?? null,
       purchases: rows
         .filter((r) => r.reportKey === def.key)
-        .map((r) => ({ id: r.id, periodMonth: r.periodMonth, status: r.status })),
+        .map((r) => ({ id: r.id, periodMonth: r.periodMonth, status: publicStatus(r.status) })),
     };
   });
 }
@@ -1145,7 +1278,10 @@ export async function getReportForUser(
   // 404, not 403, on a row that exists but belongs to someone else — avoids leaking existence.
   if (!row || row.userId !== userId) throw Errors.notFound('Report not found');
 
-  if (row.status === 'generating') return { status: 'generating' };
+  // 'queued' included: a bought-but-not-yet-started row is a 202-poll for the client,
+  // exactly like one mid-generation. Also keeps this ahead of the ready/failed branches
+  // so a queued row never falls through to the content path with null content.
+  if (row.status === 'queued' || row.status === 'generating') return { status: 'generating' };
   // Keep the raw provider error in the DB column for ops/debugging, but never
   // echo it verbatim to the client — it can contain API key fragments or
   // internal stack details. The refund (if any) is handled by the background
@@ -1251,30 +1387,39 @@ async function withTranslatedSections(
   }
 }
 
-/** How many times reapStaleReports will reclaim-and-retry the SAME row before giving up and
- * refunding it — bounds automatic retry so a permanently-broken generation (bad chart data, a
- * prompt that always fails) eventually stops rather than looping forever. Deliberately small:
+/** How many generation attempts the SAME row gets before it is given up on and refunded —
+ * bounds automatic retry so a permanently-broken generation (bad chart data, a prompt that
+ * always fails) eventually stops rather than looping forever. Counted by
+ * `generationAttempts`, which claimQueuedReports increments on every pull, so it now covers
+ * BOTH failure modes: a generation that threw (failOrRequeueReport) and one whose process
+ * died mid-run (reapStaleReports). Deliberately small:
  * a resumable generator (marriage/numerology/true_love) only re-pays for whichever call
  * failed last time, so a low ceiling is cheap; a non-resumable one re-pays for the whole
  * report each attempt, so it shouldn't be high either. */
 export const MAX_REPORT_GENERATION_ATTEMPTS = 3;
 
 /**
- * Periodic sweep for rows abandoned mid-generation (the Node process crashed
- * or was killed after `claimReportRow` but before `markReportReady`/
- * `markReportFailed`) — see `findStaleGeneratingReports`'s doc comment for
- * why this active sweep is needed on top of claimReportRow's own staleness
- * check. Driven by the OS crontab hitting POST /cron/reports-reap-stale
- * (see cron.routes.ts) rather than an in-process timer, matching every other
- * periodic job in this codebase. Never throws — a failure reaping one row is
- * logged and the sweep continues with the rest.
+ * Periodic sweep for rows abandoned mid-generation — the Node process crashed
+ * or was killed after `claimQueuedReports` promoted the row but before
+ * `markReportReady`/`markReportFailed`. This is the ONLY failure mode the row
+ * itself cannot recover from, because the code that would have requeued it died
+ * with the process.
  *
- * Under MAX_REPORT_GENERATION_ATTEMPTS, a stale row is reclaimed and generation
- * is re-fired (fire-and-forget, same as a fresh purchase) rather than immediately
- * failed+refunded — a resumable generator (see generateNarrative's `progress`
- * parameter) picks up from whatever it already checkpointed rather than paying
- * for the whole report again. At or past the ceiling, falls back to the
- * original behavior: mark failed and refund.
+ * Driven by the OS crontab hitting POST /cron/reports-reap-stale every 5
+ * minutes (see cron.routes.ts) rather than an in-process timer, matching every
+ * other periodic job in this codebase. Never throws — a failure reaping one row
+ * is logged and the sweep continues with the rest.
+ *
+ * Under MAX_REPORT_GENERATION_ATTEMPTS a stale row goes back to 'queued'
+ * (`retried`) instead of being re-fired directly, so it re-enters through the
+ * same capacity-gated pump as everything else — a crash that stranded ten rows
+ * no longer restarts ten generations at once. Whatever the dead attempt
+ * checkpointed via saveReportProgress is kept, so a resumable generator picks up
+ * where it stopped rather than re-paying for the whole report. At or past the
+ * ceiling, unchanged: mark failed and refund (`reaped`).
+ *
+ * Always ends by pumping, which is what makes this the safety net for a queue
+ * that stalled with runnable rows still on it (see the pump's own comment).
  */
 export async function reapStaleReports(): Promise<{ reaped: number; retried: number }> {
   const staleRows = await findStaleGeneratingReports();
@@ -1282,14 +1427,13 @@ export async function reapStaleReports(): Promise<{ reaped: number; retried: num
   let retried = 0;
 
   for (const row of staleRows) {
-    if (!row.startedAt) continue; // claimReportRow always stamps 'generating' rows with startedAt — defensive only.
+    if (!row.startedAt) continue; // claimQueuedReports always stamps 'generating' rows with startedAt — defensive only.
     try {
       if (row.generationAttempts < MAX_REPORT_GENERATION_ATTEMPTS) {
-        const reclaimed = await reclaimStaleReportForRetry(row.id, row.startedAt);
-        if (reclaimed) {
-          fireReportGeneration(reclaimed, row.birthProfileId);
-          retried++;
-        }
+        // Runnable immediately: the row already paid its wait by sitting stale for
+        // REPORT_STALE_GENERATING_MS, so no extra backoff on top.
+        const requeued = await requeueReportForRetry(row.id, row.startedAt, new Date());
+        if (requeued) retried++;
         // Lost the race (already reclaimed/finished by something else, e.g. a repeat
         // purchase) — nothing to do, it's no longer this sweep's problem either way.
         continue;
@@ -1312,6 +1456,11 @@ export async function reapStaleReports(): Promise<{ reaped: number; retried: num
       logger.error({ err, reportId: row.id, reportKey: row.reportKey }, 'stale report reap failed');
     }
   }
+
+  // The safety-net pump: picks up rows this sweep just requeued, plus anything
+  // stranded since the last one (a retry whose backoff has expired, or a queue
+  // that stalled because every in-flight generation died at the same moment).
+  pumpReportQueue();
 
   return { reaped, retried };
 }
@@ -1369,7 +1518,7 @@ export async function getReportStats(): Promise<ReportStatsDto> {
  * is only ever called after every step above has already succeeded.
  */
 export async function regenerateReportContent(row: ReportRow): Promise<'regenerated' | 'skipped'> {
-  // Unlike runReportGeneration (see fireReportGeneration), this had no
+  // Unlike runReportGeneration (see pumpReportQueue), this had no
   // request-context wrapper — both of ITS callers (lazy on-view regen,
   // the bulk admin regenerate script) also call straight through with no
   // ambient userId. That's harmless for ai_usage attribution (comment
