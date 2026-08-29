@@ -309,13 +309,16 @@ async function resolveGroupAwareModel(opts: LLMRequestOptions): Promise<string |
 export async function generate(opts: LLMRequestOptions): Promise<string> {
   let rateLimitWaits = 0;
   // Set once any free-tier attempt comes back 5xx (in practice a 503 "this
-  // model is currently experiencing high demand"). From then on every
-  // remaining attempt reaches for the paid reserve FIRST instead of waiting
-  // for attempt MAX_ATTEMPTS. A 5xx is a capacity signal — precisely what the
-  // reserve exists for — and waiting for the last attempt meant a slow string
-  // of failures could blow MAX_TOTAL_ELAPSED_MS and fail the user with the
-  // reserve never touched at all.
+  // model is currently experiencing high demand"). Only affects the model
+  // fallback below — a 5xx is a capacity problem with the MODEL, not the key.
   let sawServerError = false;
+  // Set on ANY attempt failure (network error, 4xx, or 5xx). From then on
+  // every remaining attempt reaches for the paid reserve FIRST instead of
+  // waiting for attempt MAX_ATTEMPTS. Waiting for the last attempt meant a
+  // slow string of failures (timeouts, a dead key returning 400, ...) could
+  // blow MAX_TOTAL_ELAPSED_MS and fail the user with the reserve never
+  // touched at all.
+  let sawFailure = false;
   const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
   // Mirrors doRequest()'s own model resolution — duplicated rather than
@@ -370,7 +373,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       // demand") or a string of timeouts — the failures most likely to be
       // capacity-related, and so most likely to be fixed by the paid tier —
       // exhausted every attempt on free keys and gave up with the reserve idle.
-      const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawServerError);
+      const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawFailure);
       if (!picked) {
         // Every key is either already tried this attempt or cooling down.
         poolExhausted = true;
@@ -434,6 +437,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
         throw new GeminiError('Request aborted by caller');
       }
       logger.warn({ err: networkErr, attempt }, 'Gemini request network error/timeout');
+      sawFailure = true;
       if (attempt < MAX_ATTEMPTS) {
         await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
         continue;
@@ -504,6 +508,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
 
     if (!response.ok) {
       if (response.status >= 500) sawServerError = true;
+      sawFailure = true;
       logger.warn({ status: response.status, body: bodyText.slice(0, 500) }, 'Gemini API error');
       void alertThrottled(
         `gemini:http-${response.status}`,
@@ -571,8 +576,11 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
   // Once we have emitted tokens to the consumer we must NOT silently retry and
   // replay a fresh completion — that produces duplicated/garbled output.
   let yieldedAny = false;
-  // See generate(): any 5xx escalates every later attempt to the paid reserve.
+  // See generate(): a 5xx escalates the model fallback below.
   let sawServerError = false;
+  // See generate(): ANY attempt failure escalates every later attempt to the
+  // paid reserve, not just a 5xx.
+  let sawFailure = false;
   const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
   const model = opts.model ?? opts.profile.model ?? env.GEMINI_MODEL;
@@ -605,7 +613,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         // See generate(): last attempt escalates to the paid reserve rather
         // than failing the user on a free tier that has already failed, and any
         // 5xx escalates immediately rather than waiting for that last attempt.
-        const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawServerError);
+        const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawFailure);
         if (!picked) {
           poolExhausted = true;
           break;
@@ -656,6 +664,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
           throw new GeminiError('Request aborted by caller');
         }
         logger.warn({ err: networkErr, attempt }, 'Gemini stream request network error/timeout');
+        sawFailure = true;
         if (attempt < MAX_ATTEMPTS) {
           await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
           continue;
@@ -727,6 +736,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         const bodyText = await response.text();
 
         if (response.status >= 500) sawServerError = true;
+        sawFailure = true;
         logger.warn(
           { status: response.status, body: bodyText.slice(0, 500) },
           'Gemini stream API error',
@@ -842,6 +852,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         throw new GeminiError(`Stream interrupted after partial output: ${String(err)}`);
       }
       logger.warn({ err, attempt }, 'Gemini stream read error');
+      sawFailure = true;
       if (attempt < MAX_ATTEMPTS) {
         await sleep(Math.min(generalBackoff(attempt), Math.max(0, deadlineAt - Date.now())));
         continue;
