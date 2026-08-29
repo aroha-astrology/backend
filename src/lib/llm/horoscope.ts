@@ -19,6 +19,7 @@ import {
   MODEL,
   type GenerationProfile,
 } from '../../config/llm.js';
+import { SHLOKA_CATALOGUE_BLOCK, SHLOKA_SLUGS } from '../../config/shloka-catalogue.js';
 import {
   buildGroundingFacts,
   buildProfileFacts,
@@ -119,6 +120,25 @@ const LUCKY_ELEMENTS_RULE = `Also include at the top level (sibling to health/ca
 const DAILY_ANCHOR_RULE =
   "The chart data includes a \"Moon is transiting...\" line — this is the only fact that actually changes day to day (Saturn/Jupiter hold the same sign for months or years, and the natal chart never changes), so it is what makes THIS day's reading different from yesterday's or tomorrow's. At least 2-3 of the six hooks must draw on it (the sign, lunar mansion, or house it touches) or on another same-day-specific fact, not just restate a permanent natal theme in different words — a hook that would read equally true on any other day is a failure, however punchy it sounds.";
 
+/**
+ * Asks the model to close the loop from diagnosis to action: look at the six
+ * blocks it is about to write, name the day's single dominant pressure (a
+ * mood, a friction, a worry — whatever the weakest/most-challenging block is
+ * really about), and pick ONE mantra from the app's existing chant library
+ * that answers it. `slug` is constrained to SHLOKA_SLUGS in the response
+ * schema, so the model can only ever name a mantra that actually exists —
+ * this rule is what makes it pick well, the schema is what makes it pick
+ * validly. Only wired into daily/tomorrow (see HOROSCOPE_SYSTEM below):
+ * weekly/monthly/yearly cover too broad a span for one mantra to "answer",
+ * and a second competing suggestion in the same UI would just be noise.
+ */
+const REMEDY_RULE = `Also choose ONE remedy mantra for the day, as a top-level "remedy" object (sibling to health/career/marriage/finance/education/overall): {"slug": string, "japCount": integer, "reason": string}.
+First silently identify the day's single dominant pressure from the six blocks you're writing (e.g. irritability, money worry, a relationship friction, low energy, self-doubt) — usually whichever block reads most challenging/avoid, or the strongest theme if all six are calm.
+Then pick the ONE mantra below whose theme most directly answers that pressure. "slug" MUST be copied exactly from this list — do not invent a slug or alter one:
+${SHLOKA_CATALOGUE_BLOCK}
+"japCount": how many times to chant it, chosen from {1, 3, 9, 11, 21, 27, 54, 108} — a sharper or more specific pressure gets a shorter, more focused count; a broad daily-maintenance day gets 108.
+"reason": ONE plain-language sentence (under 25 words) telling the user why this mantra, today — name the pressure, not astrology mechanics (same plain-language rule as every other block).`;
+
 const HOROSCOPE_SYSTEM: Record<Exclude<HoroscopePeriod, 'yearly'>, string> = {
   daily: `You are writing a short personalized daily Vedic astrology horoscope for a mobile app.
 
@@ -128,6 +148,7 @@ ${PLAIN_LANGUAGE_RULE}
 ${STRUCTURED_JSON_RULE}
 ${LUCKY_ELEMENTS_RULE}
 ${DAILY_ANCHOR_RULE}
+${REMEDY_RULE}
 Keep each block's "hook" under 20 words and "description" under 40 words. ${STYLE_RULE}`,
   tomorrow: `You are writing a short personalized Vedic astrology horoscope for the upcoming day (the day after today) for a mobile app.
 
@@ -137,6 +158,7 @@ ${PLAIN_LANGUAGE_RULE}
 ${STRUCTURED_JSON_RULE}
 ${LUCKY_ELEMENTS_RULE}
 ${DAILY_ANCHOR_RULE}
+${REMEDY_RULE}
 Keep each block's "hook" under 20 words and "description" under 40 words. Write in tendency language about what the day favors. Do NOT use the words "today" or "tomorrow" anywhere in the hook/description/advice text itself — this exact reading is later reused verbatim as the user's "today" horoscope once that day arrives, so it must read correctly regardless of which calendar day it's displayed on. ${STYLE_RULE}`,
   weekly: `You are writing a short personalized weekly Vedic astrology horoscope for a mobile app, summarizing the arc of the coming week.
 
@@ -189,6 +211,23 @@ const blockSchema = {
   required: ['hook', 'description', 'advice', 'quality', 'score'],
 };
 
+/**
+ * Not in HOROSCOPE_RESPONSE_SCHEMA's `required` — this schema is shared by
+ * daily/tomorrow/weekly/monthly generation, but REMEDY_RULE (and therefore
+ * this field) is only in the daily/tomorrow prompts. Leaving it optional
+ * lets weekly/monthly simply not produce one rather than forcing the model
+ * to invent a remedy its prompt never asked for.
+ */
+const remedySchema = {
+  type: 'object',
+  properties: {
+    slug: { type: 'string', enum: SHLOKA_SLUGS },
+    japCount: { type: 'integer' },
+    reason: { type: 'string' },
+  },
+  required: ['slug', 'japCount', 'reason'],
+};
+
 const HOROSCOPE_RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
@@ -200,6 +239,7 @@ const HOROSCOPE_RESPONSE_SCHEMA = {
     overall: blockSchema,
     luckyColor: { type: 'string' },
     luckyNumber: { type: 'integer' },
+    remedy: remedySchema,
   },
   required: [
     'health',
@@ -252,6 +292,19 @@ const STRUCTURED_HOROSCOPE_TRANSLATION_SCHEMA = {
         education: blockSchema,
       },
       required: ['overall', 'health', 'career', 'marriage', 'finance', 'education'],
+    },
+    // Optional, like categoryHooks below — only daily/tomorrow rows carry a
+    // remedy (see REMEDY_RULE), so a weekly/monthly translation input simply
+    // has none. `slug`/`japCount` are restored from the original after
+    // translation (see translateHoroscopeContent) — only `reason` is real
+    // translatable content.
+    remedy: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string' },
+        japCount: { type: 'integer' },
+        reason: { type: 'string' },
+      },
     },
   },
   required: ['hook', 'description', 'advice', 'quality', 'score', 'categories'],
@@ -650,6 +703,7 @@ export function parseStructuredResponse(
       overall?: unknown;
       luckyColor?: unknown;
       luckyNumber?: unknown;
+      remedy?: unknown;
     };
 
     const health = parseCategoryBlock(data.health);
@@ -702,6 +756,11 @@ export function parseStructuredResponse(
       quality: scoreToQuality(overallScore),
     };
 
+    // Dropped rather than failing the whole reading: a bad/hallucinated
+    // remedy must never cost the user their six-block horoscope. See
+    // parseRemedy's own doc comment for what "bad" means here.
+    const remedy = parseRemedy(data.remedy);
+
     return {
       // Legacy top-level fields mirror categories.overall.
       hook: overall.hook,
@@ -719,6 +778,7 @@ export function parseStructuredResponse(
         finance: financeC,
         education: educationC,
       },
+      ...(remedy ? { remedy } : {}),
     };
   } catch {
     return null;
@@ -782,6 +842,29 @@ function parseCategoryBlock(block: unknown): CategoryReading | null {
     advice,
     quality,
     score: Math.min(5, Math.max(1, Math.round(rawScore))),
+  };
+}
+
+/**
+ * Validates the model's remedy pick against SHLOKA_SLUGS — the enum in the
+ * response schema should already guarantee this, but the response schema is
+ * advisory for a Gemini-via-OpenAI-compat call the same way it is everywhere
+ * else in this file (see hasRawJargon's doc comment on this app's general
+ * "post-hoc check, don't just trust the schema" discipline). Any failure
+ * here — unknown slug, missing reason, an out-of-range/non-numeric japCount —
+ * returns null and the caller drops the remedy silently rather than failing
+ * the six-block reading over it.
+ */
+function parseRemedy(raw: unknown): { slug: string; japCount: number; reason: string } | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as { slug?: unknown; japCount?: unknown; reason?: unknown };
+  if (typeof r.slug !== 'string' || !SHLOKA_SLUGS.includes(r.slug)) return null;
+  if (typeof r.reason !== 'string' || !r.reason.trim() || hasRawJargon(r.reason)) return null;
+  if (typeof r.japCount !== 'number' || !Number.isFinite(r.japCount)) return null;
+  return {
+    slug: r.slug,
+    japCount: Math.min(108, Math.max(1, Math.round(r.japCount))),
+    reason: r.reason.trim(),
   };
 }
 
@@ -945,6 +1028,20 @@ ${JSON.stringify(translatable, null, 2)}`;
   // merge a half-translated `structured` over the known-good English one.
   if (parsed.structured && !isCompleteCategories(parsed.structured.categories)) {
     delete parsed.structured;
+  }
+
+  // Same failure class hasRawJargon/restoreNonTranslatableFields exist for:
+  // "slug" reads as ordinary words to the model (e.g. "gayatri-mantra") and
+  // it translates them anyway often enough to matter, which would silently
+  // break the frontend's shloka lookup. slug/japCount aren't translatable
+  // content, so always restore them from the known-good original — only
+  // `reason` is real translated text. If the model dropped `remedy` entirely
+  // this leaves it absent, same best-effort behavior as categoryHooks above.
+  if (parsed.structured?.remedy && original.structured?.remedy) {
+    parsed.structured.remedy = {
+      ...original.structured.remedy,
+      reason: parsed.structured.remedy.reason,
+    };
   }
 
   return parsed;

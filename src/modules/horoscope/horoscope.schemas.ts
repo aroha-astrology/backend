@@ -31,6 +31,15 @@ export const CategoryReadingSchema = z
   })
   .openapi('CategoryReading');
 
+/** The day's suggested mantra — see StructuredHoroscope's `remedy` field (db/schema.ts). */
+export const HoroscopeRemedySchema = z
+  .object({
+    slug: z.string(),
+    japCount: z.number().int().min(1).max(108),
+    reason: z.string(),
+  })
+  .openapi('HoroscopeRemedy');
+
 export const StructuredHoroscopeSchema = z
   .object({
     hook: z.string(),
@@ -48,6 +57,8 @@ export const StructuredHoroscopeSchema = z
       finance: CategoryReadingSchema,
       education: CategoryReadingSchema,
     }),
+    /** Only present for daily/tomorrow — see REMEDY_RULE in llm/horoscope.ts. */
+    remedy: HoroscopeRemedySchema.optional(),
   })
   .openapi('StructuredHoroscope');
 

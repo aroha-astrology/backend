@@ -136,6 +136,18 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'home',
     defaultEnabled: false,
   },
+  // Gates the AI-picked remedy mantra card inside the daily/tomorrow
+  // personalized horoscope detail sheet (see StructuredHoroscope.remedy in
+  // db/schema.ts, REMEDY_RULE in lib/llm/horoscope.ts). Also requires
+  // nav.shlokas on — the card's CTA links into the shloka library, which is
+  // itself dark by default. Free, no paid.* key, same as the library it
+  // links into. Ships dark per the standing rule.
+  {
+    key: 'home.horoscopeRemedy',
+    label: 'Remedy mantra in horoscope',
+    group: 'home',
+    defaultEnabled: false,
+  },
   // Home entry point for the Bhagavad Gita library. Free, no paid.* key.
   // Ships dark per the standing rule; turn on from Admin -> Features once the
   // 701-verse render has been spot-checked on a real device.

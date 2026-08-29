@@ -1091,6 +1091,11 @@ export type StructuredHoroscope = {
   luckyColor: string;
   luckyNumber: number;
   categories: Record<Category, CategoryReading>;
+  /** The day's suggested mantra: a slug from the frontend's shloka library, how many
+   *  repetitions, and one line naming the pressure it answers. Optional — rows generated
+   *  before this shipped have none, and a reading with no mantra attached is still valid.
+   *  Only ever populated for period 'daily'/'tomorrow' (see REMEDY_RULE in llm/horoscope.ts). */
+  remedy?: { slug: string; japCount: number; reason: string };
 };
 
 export const dailyHoroscopes = pgTable(
