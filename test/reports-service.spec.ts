@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../src/config/env.js';
+import { getReportDef } from '../src/config/reports.js';
 import type { ReportRow, UserRow } from '../src/db/schema.js';
 import type * as ReportGeneratorTypesModule from '../src/modules/reports/report-generator.types.js';
 import type * as WindowSummaryModule from '../src/lib/llm/reports/window-summary.js';
@@ -125,6 +126,7 @@ vi.mock('../src/modules/reports/report-generator.types.js', async () => {
 
 const {
   purchaseReport,
+  purchaseReportShapeCheck,
   previewReport,
   getReportCatalogueForUser,
   getReportForUser,
@@ -271,7 +273,7 @@ describe('purchaseReport — validation', () => {
   it('throws BAD_REQUEST when a non-partner report includes partner details', async () => {
     await expect(
       purchaseReport(makeUser(), {
-        reportKey: 'marriage',
+        reportKey: 'wealth',
         partner: {
           dateOfBirth: '1990-01-01',
           timeOfBirth: '10:00',
@@ -1306,6 +1308,50 @@ describe('reapStaleReports', () => {
 
     await expect(reapStaleReports()).resolves.toEqual({ reaped: 0, retried: 0 });
     expect(state.markReportFailed).not.toHaveBeenCalled();
+  });
+});
+
+describe('purchaseReportShapeCheck — optional partner (marriage)', () => {
+  it('allows marriage purchase with no partner', () => {
+    const def = getReportDef('marriage')!;
+    expect(() => purchaseReportShapeCheck(def, { reportKey: 'marriage' })).not.toThrow();
+  });
+
+  it('allows marriage purchase WITH a partner (unlike today, where it 400s)', () => {
+    const def = getReportDef('marriage')!;
+    expect(() =>
+      purchaseReportShapeCheck(def, {
+        reportKey: 'marriage',
+        partner: {
+          dateOfBirth: '1990-01-01',
+          timeOfBirth: '10:00',
+          latitude: 12.9,
+          longitude: 77.6,
+          timezone: 'Asia/Kolkata',
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it('still rejects a partner on a report with neither flag set (e.g. wealth)', () => {
+    const def = getReportDef('wealth')!;
+    expect(() =>
+      purchaseReportShapeCheck(def, {
+        reportKey: 'wealth',
+        partner: {
+          dateOfBirth: '1990-01-01',
+          timeOfBirth: '10:00',
+          latitude: 12.9,
+          longitude: 77.6,
+          timezone: 'Asia/Kolkata',
+        },
+      }),
+    ).toThrow();
+  });
+
+  it('still requires a partner on kundli_milan (requiresPartner, unaffected by this change)', () => {
+    const def = getReportDef('kundli_milan')!;
+    expect(() => purchaseReportShapeCheck(def, { reportKey: 'kundli_milan' })).toThrow();
   });
 });
 

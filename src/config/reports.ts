@@ -42,7 +42,7 @@ export interface ReportDef {
    * yearly; the two are mutually exclusive purchase shapes, never combined).
    *
    * A yearly purchase is still a SINGLE flat-price row, structurally identical to a
-   * one-time purchase (`validatePurchaseShape`/`computeRowPrices` both key off `isMonthly`
+   * one-time purchase (`purchaseReportShapeCheck`/`computeRowPrices` both key off `isMonthly`
    * alone and are untouched by this flag) — the only two differences are (1) `periodMonth`
    * is set to the PURCHASE date instead of staying null (see `purchaseReport`'s
    * `periodMonths` construction — deliberately reusing the `period_month` column as a
@@ -55,6 +55,14 @@ export interface ReportDef {
   isYearly?: boolean;
   /** True for kundli_milan and match_report — the two reports that take a second person's birth details. */
   requiresPartner: boolean;
+  /**
+   * True ONLY for marriage: a partner is optional, not required, and only shown to a user whose
+   * own relationshipStatus is 'married' (see frontend's ReportPurchaseDrawer). Deliberately a
+   * SEPARATE flag from requiresPartner rather than reusing it — requiresPartner blocks purchase
+   * without a partner (correct for kundli_milan/match_report, wrong for marriage, whose majority
+   * of buyers are unmarried people asking about a future spouse they cannot supply details for).
+   */
+  acceptsOptionalPartner?: boolean;
   /** Fallback price if the feature flag has no admin price override. For monthly reports this
    * is the PER-MONTH base price — see monthlyBundlePricePaise for the multi-month bundle curve. */
   basePricePaise: number;
@@ -68,6 +76,7 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     isMonthly: false,
     isYearly: true,
     requiresPartner: false,
+    acceptsOptionalPartner: true,
     basePricePaise: 9900,
   },
   {

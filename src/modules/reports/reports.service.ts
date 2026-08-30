@@ -195,7 +195,7 @@ function reasonForRow(reportKey: string, periodMonth: string | null): string {
   return `report_unlock:${reportKey}:${dateToMonthKey(periodMonth)}`;
 }
 
-function validatePurchaseShape(def: ReportDef, body: PurchaseReportBody): void {
+export function purchaseReportShapeCheck(def: ReportDef, body: PurchaseReportBody): void {
   const months = body.months ?? [];
   if (def.isMonthly && months.length === 0) {
     throw Errors.badRequest(`${def.key} is a monthly report — "months" (YYYY-MM[]) is required`);
@@ -208,10 +208,11 @@ function validatePurchaseShape(def: ReportDef, body: PurchaseReportBody): void {
       throw Errors.badRequest(`Invalid month "${m}" in "months" — expected YYYY-MM`);
     }
   }
+  const partnerAllowed = def.requiresPartner || def.acceptsOptionalPartner === true;
   if (def.requiresPartner && !body.partner) {
     throw Errors.badRequest(`${def.key} requires "partner" birth details`);
   }
-  if (!def.requiresPartner && body.partner) {
+  if (!partnerAllowed && body.partner) {
     throw Errors.badRequest(`${def.key} does not accept "partner" birth details`);
   }
 }
@@ -926,7 +927,7 @@ export async function purchaseReport(
     throw Errors.forbidden('FEATURE_DISABLED');
   }
 
-  validatePurchaseShape(def, body);
+  purchaseReportShapeCheck(def, body);
 
   // strict: body.birthProfileId is client-supplied for THIS request — a
   // non-owned/deleted id must 404, not silently substitute the caller's
@@ -946,9 +947,10 @@ export async function purchaseReport(
     : [def.isYearly ? todayForApp() : null];
   const rowPrices = computeRowPrices(def, perUnitPricePaise, periodMonths.length);
   const totalPricePaise = rowPrices.reduce((a, b) => a + b, 0);
-  const partnerInput = def.requiresPartner
-    ? ((body.partner as unknown as Record<string, unknown>) ?? null)
-    : null;
+  const partnerInput =
+    def.requiresPartner || def.acceptsOptionalPartner
+      ? ((body.partner as unknown as Record<string, unknown>) ?? null)
+      : null;
   const purchaseReason = reasonForPurchase(def.key, months);
   const answers = body.answers && Object.keys(body.answers).length > 0 ? body.answers : null;
 
