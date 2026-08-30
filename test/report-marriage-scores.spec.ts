@@ -443,3 +443,24 @@ describe('computeMarriageScores — loveOrArrange', () => {
     expect(scores.loveOrArrange).toBe('arrange');
   });
 });
+
+describe('computeMarriageScores — spouse synastry', () => {
+  it('spouseSynastry is null when ctx.partnerChart is absent (unchanged existing behavior)', () => {
+    const chart = makeChart({ moon: { sign: 'Cancer', house: 4 } });
+    const scores = computeMarriageScores({ chart, partnerChart: null }, null);
+    expect(scores.spouseSynastry).toBeNull();
+    expect(scores.spouseName).toBeNull();
+  });
+
+  it('spouseSynastry is populated when ctx.partnerChart is present', () => {
+    const chart = makeChart({ moon: { sign: 'Cancer', house: 4 } });
+    const partnerChart = makeChart({ moon: { sign: 'Taurus', house: 4 } });
+    const scores = computeMarriageScores(
+      { chart, partnerChart, partnerName: 'Priya' },
+      null,
+    );
+    expect(scores.spouseSynastry).not.toBeNull();
+    expect(scores.spouseSynastry!.riskFactors.length).toBe(8);
+    expect(scores.spouseName).toBe('Priya');
+  });
+});

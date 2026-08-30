@@ -41,6 +41,7 @@ import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { buildReportRemedies } from './report-remedy-slots.js';
 import { computeReportVargas } from './report-vargas.js';
+import { computeSpouseSynastry, type SpouseSynastry } from './marriage-spouse-synastry.js';
 import { ashtakavargaFacts } from '../../chat-grounding.js';
 import type { ReportSharedFactsWithRemedies } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
@@ -122,6 +123,15 @@ export interface MarriageScores extends Record<string, unknown>, ReportSharedFac
      * than 2 is classically read as a busier/more complex marriage-house signature. */
     seventhHousePlanetCount: number;
   };
+
+  /** Present only when the purchaser supplied real spouse birth details (married users,
+   * optional — see config/reports.ts's acceptsOptionalPartner). Null for every report
+   * generated without spouse data, including every report generated before this feature
+   * existed — narrative modules must treat null exactly like "no spouse data given". */
+  spouseSynastry: SpouseSynastry | null;
+  /** The spouse's given name, if supplied — same additive-only, null-safe contract as
+   * spouseSynastry above. */
+  spouseName: string | null;
 }
 
 // SIGN_TEMPERAMENT (classical sign-quality lore for the 7th house sign — deliberately
@@ -386,6 +396,8 @@ export function computeMarriageScores(
     getAscendantSignIndex(chart),
   );
 
+  const spouseSynastry = computeSpouseSynastry(chart, ctx.partnerChart ?? null, ctx.dashaData ?? null);
+
   return {
     header,
     lifeContext,
@@ -418,5 +430,7 @@ export function computeMarriageScores(
     inLaws,
     moneyAfterMarriage,
     modernRealities,
+    spouseSynastry,
+    spouseName: ctx.partnerName ?? null,
   };
 }
