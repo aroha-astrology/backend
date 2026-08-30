@@ -368,13 +368,13 @@ describe('POST /internal/telegram/webhook', () => {
     const reply = state.sendMessage.mock.calls[0][0];
     expect(reply).toContain('1234');
     expect(reply).toContain('12');
-    expect(reply).toContain('New Users Yesterday: 9');
+    expect(reply).toMatch(/New Users Yesterday \\\(.+?\\\): 9/);
     expect(reply).toContain('58');
     expect(reply).toContain('18');
     expect(reply).toContain('4500');
     expect(reply).toContain('123456');
-    expect(reply).toContain('Active Users \\(today\\): 41');
-    expect(reply).toContain('Active Users \\(yesterday\\): 37');
+    expect(reply).toMatch(/Active Users \\\(today, .+?\\\): 41/);
+    expect(reply).toMatch(/Active Users \\\(yesterday, .+?\\\): 37/);
   });
 
   it('grants money with /money +phone amount', async () => {

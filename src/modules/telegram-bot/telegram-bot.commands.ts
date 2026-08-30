@@ -148,6 +148,20 @@ const peakBetween = (preset: string) => {
   return maxOnlineCountBetween(from, to);
 };
 
+const IST_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Kolkata',
+  day: '2-digit',
+  month: 'short',
+});
+
+/** IST calendar-date label for a `resolveDateRangePreset` range, e.g. "31 Jul – 30 Aug" (`to` is exclusive, so the label shows the last *included* day). */
+function rangeLabel(preset: string): string {
+  const { from, to } = resolveDateRangePreset(preset);
+  const start = IST_DATE_FMT.format(from);
+  const end = IST_DATE_FMT.format(new Date(to.getTime() - 1));
+  return escapeMarkdown(start === end ? start : `${start}–${end}`);
+}
+
 export async function cmdStats(): Promise<string> {
   const [
     totalUsers,
@@ -185,16 +199,16 @@ export async function cmdStats(): Promise<string> {
     `*App Stats*\n\n` +
     `Total Users: ${totalUsers}\n` +
     `New Users Today: ${newUsersToday}\n` +
-    `New Users Yesterday: ${newUsersYesterday}\n` +
+    `New Users Yesterday \\(${rangeLabel('yesterday')}\\): ${newUsersYesterday}\n` +
     `New Users This Week: ${newUsersWeek}\n\n` +
-    `Active Users \\(today\\): ${activeToday}\n` +
-    `Active Users \\(yesterday\\): ${activeYesterday}\n\n` +
+    `Active Users \\(today, ${rangeLabel('today')}\\): ${activeToday}\n` +
+    `Active Users \\(yesterday, ${rangeLabel('yesterday')}\\): ${activeYesterday}\n\n` +
     `Concurrent Users \\(Online Now\\): ${concurrentNow}\n` +
-    `Concurrent Users \\(today\\): ${peakToday}\n` +
-    `Concurrent Users \\(yesterday\\): ${peakYesterday}\n` +
-    `Concurrent Users \\(weekly\\): ${peakThisWeek}\n` +
-    `Concurrent Users \\(monthly\\): ${peakThisMonth}\n` +
-    `Concurrent Users \\(yearly\\): ${peakThisYear}\n\n` +
+    `Concurrent Users \\(today, ${rangeLabel('today')}\\): ${peakToday}\n` +
+    `Concurrent Users \\(yesterday, ${rangeLabel('yesterday')}\\): ${peakYesterday}\n` +
+    `Concurrent Users \\(weekly, ${rangeLabel('last7d')}\\): ${peakThisWeek}\n` +
+    `Concurrent Users \\(monthly, ${rangeLabel('last30d')}\\): ${peakThisMonth}\n` +
+    `Concurrent Users \\(yearly, ${rangeLabel('this_year')}\\): ${peakThisYear}\n\n` +
     `Revenue Today: ${escapeMarkdown(formatRupees(revenue.totalPaise))} \\(${revenue.count} order${revenue.count === 1 ? '' : 's'}\\)\n` +
     `Outstanding Wallet Balance: ${escapeMarkdown(formatRupees(outstanding))}`
   );
