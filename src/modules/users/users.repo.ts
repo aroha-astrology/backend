@@ -885,8 +885,8 @@ const USER_SORT_COLUMNS = {
   lastActiveAt: users.lastActiveAt,
   walletBalancePaise: users.walletBalancePaise,
 } as const;
-/** `claimedAt` isn't a real column (see below), so it can't live in USER_SORT_COLUMNS — handled as a separate branch in listUsersPage's orderBy. */
-export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt';
+/** `claimedAt`/`totalPaidPaise` aren't real columns (see below), so they can't live in USER_SORT_COLUMNS — handled as separate branches in listUsersPage's orderBy. */
+export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt' | 'totalPaidPaise';
 
 /** Most recent one-time claim-campaign grant — see config/campaigns.ts and
  * gift-campaigns.repo.ts. Same idea as hasClaimedIndependenceBonus's sibling
@@ -942,6 +942,18 @@ const claimedAtExpr = () => sql<string | null>`(
   limit 1
 )`;
 
+/** Lifetime paid-order total and most recent payment date — same hand-aliased-subquery
+ * style as claimedAmountExpr above, for the same reason (bare `${orders.userId}` would
+ * resolve inside the subquery's own scope, not the outer correlated row). */
+const totalPaidExpr = () => sql<number>`(
+  select coalesce(sum(o.final_amount_paise), 0) from orders o
+  where o.user_id = users.id and o.status = 'paid'
+)`;
+const lastPaidAtExpr = () => sql<string | null>`(
+  select max(o.paid_at) from orders o
+  where o.user_id = users.id and o.status = 'paid'
+)`;
+
 /** Sum of `user_activity_daily.seconds_active` for this user over an inclusive IST date range.
  * Same hand-aliased-subquery style as claimedAmountExpr above, for the same reason: interpolating
  * the `userActivityDaily` column objects directly would render unqualified inside the subquery. */
@@ -972,7 +984,12 @@ export async function listUsersPage(
   sortDir: 'asc' | 'desc' = 'desc',
   contactType: ContactTypeFilter = 'all',
 ) {
-  const orderExpr = sortBy === 'claimedAt' ? claimedAtExpr() : USER_SORT_COLUMNS[sortBy];
+  const orderExpr =
+    sortBy === 'claimedAt'
+      ? claimedAtExpr()
+      : sortBy === 'totalPaidPaise'
+        ? totalPaidExpr()
+        : USER_SORT_COLUMNS[sortBy];
   const w = timeSpentWindows();
   const rows = await db
     .select({
@@ -986,6 +1003,8 @@ export async function listUsersPage(
       lastActiveAt: users.lastActiveAt,
       claimedAmountPaise: claimedAmountExpr(),
       claimedAt: claimedAtExpr(),
+      totalPaidPaise: totalPaidExpr(),
+      lastPaidAt: lastPaidAtExpr(),
       country: users.geoCountry,
       city: users.geoCity,
       timeSpentTodaySec: activitySecondsExpr(w.today, w.today),

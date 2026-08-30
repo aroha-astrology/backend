@@ -131,7 +131,7 @@ export const AdminUsersQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   sortBy: z
-    .enum(['createdAt', 'lastActiveAt', 'walletBalancePaise', 'claimedAt'])
+    .enum(['createdAt', 'lastActiveAt', 'walletBalancePaise', 'claimedAt', 'totalPaidPaise'])
     .default('createdAt'),
   sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
@@ -147,6 +147,8 @@ const AdminUserRowSchema = z.object({
   lastActiveAt: z.string().nullable(),
   claimedAmountPaise: z.number().nullable(),
   claimedAt: z.string().nullable(),
+  totalPaidPaise: z.number(),
+  lastPaidAt: z.string().nullable(),
   country: z.string().nullable(),
   city: z.string().nullable(),
   timeSpentTodaySec: z.number(),
@@ -265,13 +267,10 @@ export const AdminRecurringUsersResponseSchema = z
 /* -------------------------------------------------------------------------- */
 
 export const AdminActiveUsersByLocationQuerySchema = z.object({
-  preset: z
-    .string()
-    .default('today')
-    .openapi({
-      example: 'today',
-      description: 'today | yesterday | last7d | this_month | this_year',
-    }),
+  preset: z.string().default('today').openapi({
+    example: 'today',
+    description: 'today | yesterday | last7d | this_month | this_year',
+  }),
 });
 
 const AdminLocationCountRowSchema = z.object({
