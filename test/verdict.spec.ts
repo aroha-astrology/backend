@@ -1,6 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { VERDICT_TOPIC, factsForVerdict } from '../src/lib/llm/reports/verdict.js';
 import { REPORT_CATALOGUE } from '../src/config/reports.js';
+
+const state = vi.hoisted(() => ({ generate: vi.fn() }));
+vi.mock('../src/lib/llm/gemini-client.js', () => ({ generate: state.generate }));
+const { generateReportVerdict } = await import('../src/lib/llm/reports/verdict.js');
+
+function mockVerdictResponse() {
+  state.generate.mockResolvedValueOnce(
+    JSON.stringify({
+      headline: 'Test headline',
+      bullets: ['b1', 'b2', 'b3'],
+      nextStep: 'Do something.',
+    }),
+  );
+}
 
 describe('VERDICT_TOPIC', () => {
   it('covers every catalogue key with a non-empty topic', () => {
@@ -43,5 +57,39 @@ describe('factsForVerdict', () => {
   it('leaves a scores object with no grounding fields untouched', () => {
     const scores = { marriageScore: 82, band: 'strong' };
     expect(factsForVerdict(scores)).toEqual(scores);
+  });
+});
+
+describe('generateReportVerdict — marriage relationship-status framing', () => {
+  it('does not describe an already-married reader\'s topic as a "future" spouse, and explicitly forbids it', async () => {
+    mockVerdictResponse();
+    await generateReportVerdict(
+      { marriageScore: 70, band: 'steady', relationshipStatus: 'married' },
+      'marriage',
+    );
+    const prompt = state.generate.mock.calls[0]![0].messages[0].content as string;
+    // The default (unmarried) topic phrase must be gone...
+    expect(prompt.toLowerCase()).not.toContain('timing, and future spouse/in-laws');
+    // ...replaced by an explicit instruction forbidding that exact framing (which necessarily
+    // has to name the forbidden phrase to forbid it).
+    expect(prompt.toLowerCase()).toContain('never write about a "future spouse"');
+    expect(prompt.toLowerCase()).toContain('already married');
+  });
+
+  it('keeps the original future-spouse framing for a single/unmarried reader', async () => {
+    mockVerdictResponse();
+    await generateReportVerdict(
+      { marriageScore: 70, band: 'steady', relationshipStatus: 'single' },
+      'marriage',
+    );
+    const prompt = state.generate.mock.calls[0]![0].messages[0].content as string;
+    expect(prompt.toLowerCase()).toContain('future spouse');
+  });
+
+  it('keeps the original future-spouse framing when relationshipStatus is absent (non-marriage reports, or older data)', async () => {
+    mockVerdictResponse();
+    await generateReportVerdict({ marriageScore: 70, band: 'steady' }, 'marriage');
+    const prompt = state.generate.mock.calls[0]![0].messages[0].content as string;
+    expect(prompt.toLowerCase()).toContain('future spouse');
   });
 });

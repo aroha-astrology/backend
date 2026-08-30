@@ -89,8 +89,39 @@ export interface VerdictYearWindow {
   end: string; // 'YYYY-MM-DD', exclusive
 }
 
-function systemPrompt(reportKey: ReportKey, yearWindow: VerdictYearWindow | null): string {
-  const topic = VERDICT_TOPIC[reportKey];
+/** Same "already married/divorced/widowed" statuses the marriage narrative's own call1 prompt
+ * (src/lib/llm/reports/marriage.ts) already special-cases — this generic verdict generator had
+ * no equivalent, so it kept writing "future spouse" bullets for a reader who supplied their own
+ * relationshipStatus as already married. Reusing the same 3 statuses keeps the two prompts from
+ * disagreeing about who counts as "already married" for framing purposes. */
+const ALREADY_MARRIED_STATUSES = new Set(['married', 'divorced', 'widowed']);
+
+/** For marriage only: the topic line changes when the reader is already married/divorced/
+ * widowed, so the model doesn't describe an already-married reader's existing spouse as a
+ * "future" one. Every other report key's topic is unaffected — this is not a generic mechanism,
+ * it exists because marriage is the one VERDICT_TOPIC entry whose default wording ("future
+ * spouse") is actively wrong for that subset of readers. */
+function verdictTopic(reportKey: ReportKey, relationshipStatus: string | null): string {
+  if (
+    reportKey === 'marriage' &&
+    relationshipStatus &&
+    ALREADY_MARRIED_STATUSES.has(relationshipStatus)
+  ) {
+    return "the reader's marriage — its dynamics, strengths, and things to stay mindful of — NOT a future or upcoming spouse";
+  }
+  return VERDICT_TOPIC[reportKey];
+}
+
+function systemPrompt(
+  reportKey: ReportKey,
+  yearWindow: VerdictYearWindow | null,
+  relationshipStatus: string | null,
+): string {
+  const topic = verdictTopic(reportKey, relationshipStatus);
+  const alreadyMarried =
+    reportKey === 'marriage' &&
+    !!relationshipStatus &&
+    ALREADY_MARRIED_STATUSES.has(relationshipStatus);
   // Reinforcement, not the actual guarantee: every timing-window fact in the JSON given below
   // was ALREADY clamped to this same window before this prompt was built (see
   // reports.service.ts's clampWindowsToYear) — the model literally cannot see a date outside
@@ -98,8 +129,11 @@ function systemPrompt(reportKey: ReportKey, yearWindow: VerdictYearWindow | null
   const yearScopeLine = yearWindow
     ? `\nThis report covers the 12 months from ${yearWindow.start} to ${yearWindow.end}. Every timing claim must fall inside that window.\n`
     : '';
+  const relationshipStatusLine = alreadyMarried
+    ? '\nCRITICAL: this reader is already married (or was previously married) — never write about a "future spouse" or "when they will get married". Frame every bullet around their existing marriage\'s own dynamics, strengths, and cautions instead.\n'
+    : '';
   return `You are writing the closing "Final Verdict" card for a paid Vedic astrology report in a mobile app. This report is specifically about ${topic}. You are given the report's own deterministic facts as JSON.
-${yearScopeLine}
+${yearScopeLine}${relationshipStatusLine}
 ${GROUNDING_RULE}
 ${SAFETY_RULE}
 
@@ -146,11 +180,13 @@ export async function generateReportVerdict(
   reportKey: ReportKey,
   yearWindow: VerdictYearWindow | null = null,
 ): Promise<ReportVerdict> {
+  const relationshipStatus =
+    typeof scores.relationshipStatus === 'string' ? scores.relationshipStatus : null;
   const raw = await generate({
     profile: REPORT_PROFILE,
     responseSchema: VERDICT_SCHEMA,
     messages: [
-      { role: 'system', content: systemPrompt(reportKey, yearWindow) },
+      { role: 'system', content: systemPrompt(reportKey, yearWindow, relationshipStatus) },
       // No explicit condition argument: `planetCondition` is one of the excluded keys
       // above (it's grounding, not this report's topic) — passing it again would just
       // reintroduce the cross-domain drift this function exists to remove.
