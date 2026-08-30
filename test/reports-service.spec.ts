@@ -1418,6 +1418,53 @@ describe('getReportCatalogueForUser', () => {
     expect(marriage.originalPricePaise).toBeNull();
     expect(wealth.originalPricePaise).toBeNull();
   });
+
+  it("surfaces the most recent marriage purchase's stored partner input as lastSpouseDetails", async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({});
+    state.listReportsForUser.mockResolvedValue([
+      makeReportRow({
+        id: 'older',
+        reportKey: 'marriage',
+        input: { dateOfBirth: '1988-02-02', timeOfBirth: '06:00', latitude: 1, longitude: 1, timezone: 'UTC' },
+        createdAt: new Date('2025-01-01T00:00:00Z'),
+      }),
+      makeReportRow({
+        id: 'newer',
+        reportKey: 'marriage',
+        input: {
+          dateOfBirth: '1991-05-04',
+          timeOfBirth: '08:30',
+          latitude: 19.07,
+          longitude: 72.87,
+          timezone: 'Asia/Kolkata',
+          name: 'Priya',
+          placeLabel: 'Mumbai, India',
+        },
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      }),
+    ]);
+
+    const catalogue = await getReportCatalogueForUser(makeUser(), null);
+    const marriage = catalogue.find((c) => c.key === 'marriage')!;
+    expect(marriage.lastSpouseDetails).toEqual({
+      dateOfBirth: '1991-05-04',
+      timeOfBirth: '08:30',
+      latitude: 19.07,
+      longitude: 72.87,
+      timezone: 'Asia/Kolkata',
+      name: 'Priya',
+      placeLabel: 'Mumbai, India',
+    });
+  });
+
+  it('is null for every other report key, and for marriage with no partner input on file', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({});
+    state.listReportsForUser.mockResolvedValue([makeReportRow({ reportKey: 'marriage', input: null })]);
+
+    const catalogue = await getReportCatalogueForUser(makeUser(), null);
+    expect(catalogue.find((c) => c.key === 'marriage')!.lastSpouseDetails).toBeNull();
+    expect(catalogue.find((c) => c.key === 'wealth')!.lastSpouseDetails).toBeNull();
+  });
 });
 
 describe('getReportForUser', () => {

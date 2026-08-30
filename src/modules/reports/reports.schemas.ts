@@ -24,6 +24,8 @@ export const PartnerBirthDetailsSchema = z
   })
   .openapi('PartnerBirthDetails');
 
+export const LastSpouseDetailsSchema = PartnerBirthDetailsSchema.nullable();
+
 export const PurchaseReportBodySchema = z
   .object({
     reportKey: z.string(),
@@ -100,6 +102,10 @@ export const ReportCatalogueEntrySchema = z
      * is configured — never a fabricated value derived from pricePaise. */
     originalPricePaise: z.number().int().nullable(),
     purchases: z.array(ReportCataloguePurchaseSchema),
+    /** marriage only — the most recently purchased marriage report's own stored spouse birth
+     * details, for pre-filling the optional spouse-details section on a later purchase. Always
+     * null for every other report key. */
+    lastSpouseDetails: LastSpouseDetailsSchema,
   })
   .openapi('ReportCatalogueEntry');
 

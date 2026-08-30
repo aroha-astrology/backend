@@ -1174,6 +1174,13 @@ export async function getReportCatalogueForUser(
 
   return REPORT_CATALOGUE.map((def) => {
     const resolved = features[def.featureFlagKey];
+    const ownRows = rows.filter((r) => r.reportKey === def.key);
+    const lastPartnerRow =
+      def.key === 'marriage'
+        ? [...ownRows]
+            .filter((r) => hasPartnerBirthInput(r.input))
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
+        : undefined;
     return {
       key: def.key,
       label: def.label,
@@ -1185,9 +1192,18 @@ export async function getReportCatalogueForUser(
       // No fallback to basePricePaise here — an unconfigured original price
       // means there's no discount to show, not a fabricated one.
       originalPricePaise: resolved?.originalPricePaise ?? null,
-      purchases: rows
-        .filter((r) => r.reportKey === def.key)
-        .map((r) => ({ id: r.id, periodMonth: r.periodMonth, status: publicStatus(r.status) })),
+      purchases: ownRows.map((r) => ({ id: r.id, periodMonth: r.periodMonth, status: publicStatus(r.status) })),
+      lastSpouseDetails: lastPartnerRow
+        ? {
+            dateOfBirth: lastPartnerRow.input!.dateOfBirth as string,
+            timeOfBirth: lastPartnerRow.input!.timeOfBirth as string,
+            latitude: lastPartnerRow.input!.latitude as number,
+            longitude: lastPartnerRow.input!.longitude as number,
+            timezone: lastPartnerRow.input!.timezone as string,
+            name: (lastPartnerRow.input!.name as string | undefined) ?? undefined,
+            placeLabel: (lastPartnerRow.input!.placeLabel as string | undefined) ?? undefined,
+          }
+        : null,
     };
   });
 }
