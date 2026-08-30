@@ -88,8 +88,59 @@ function makeScores(overrides: Partial<MarriageScores> = {}): MarriageScores {
       note: 'The 2nd house is in Leo, and the 11th house is in Aquarius.',
     },
     modernRealities: { lateMarriageLeaning: false, rahuHouse: 9, seventhHousePlanetCount: 1 },
+    spouseSynastry: null,
+    spouseName: null,
     ...overrides,
   } as unknown as MarriageScores;
+}
+
+function makeSpouseSynastry(): NonNullable<MarriageScores['spouseSynastry']> {
+  return {
+    gunaMilanScore: 24,
+    gunaMaxScore: 36,
+    gunaBreakdown: [{ name: 'Nadi', score: 8, maxScore: 8, description: 'No Nadi dosha.' }],
+    compatibilityBand: 'good',
+    dashakootaScore: 60,
+    dashakootaMaxScore: 72,
+    dashakootaCompatibility: 'good',
+    manglikStatus: { self: false, spouse: false, cancelled: false },
+    riskFactors: [
+      {
+        key: 'wealth',
+        severity: 'benefit',
+        score: 80,
+        evidence: ['2nd lords are mutually well placed.'],
+      },
+      { key: 'health', severity: 'neutral', score: 55, evidence: ['No major flags.'] },
+      {
+        key: 'children',
+        severity: 'benefit',
+        score: 80,
+        evidence: ['5th house synastry is supportive.'],
+      },
+      {
+        key: 'harmony',
+        severity: 'caution',
+        score: 40,
+        evidence: ['Bhakoot koota is weak.'],
+      },
+      { key: 'career', severity: 'neutral', score: 55, evidence: ['No major flags.'] },
+      {
+        key: 'timing',
+        severity: 'benefit',
+        score: 80,
+        evidence: ['Current dashas favor stability.'],
+      },
+      {
+        key: 'intimacy',
+        severity: 'benefit',
+        score: 80,
+        evidence: ['Venus-Mars synastry is supportive.'],
+      },
+      { key: 'inlaws', severity: 'neutral', score: 55, evidence: ['No major flags.'] },
+    ],
+    spouseNavamsa: [],
+  } as unknown as NonNullable<MarriageScores['spouseSynastry']>;
 }
 
 function jsonSections(...headings: string[]): string {
@@ -267,6 +318,77 @@ describe('generateMarriageNarrative', () => {
       .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
       .mockResolvedValueOnce('garbage');
     await expect(generateMarriageNarrative(makeScores())).rejects.toThrow();
+  });
+});
+
+describe('generateMarriageNarrative — spouse synastry woven in', () => {
+  it('embeds guna milan + spouse manglik in call 1 only when spouseSynastry is given', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(
+      makeScores({ spouseSynastry: makeSpouseSynastry(), spouseName: 'Priya' }),
+    );
+
+    const content = JSON.stringify(state.generate.mock.calls[0]![0]);
+    expect(content).toContain('24');
+    expect(content).toContain('Priya');
+  });
+
+  it('omits spouse facts entirely when spouseSynastry is null (unchanged existing behavior)', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(makeScores({ spouseSynastry: null, spouseName: null }));
+
+    const content = JSON.stringify(state.generate.mock.calls[0]![0]);
+    expect(content).not.toContain('SPOUSE DATA PROVIDED');
+  });
+
+  it('embeds spouse navamsa + harmony/inlaws risk factors in call 2', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(makeScores({ spouseSynastry: makeSpouseSynastry() }));
+
+    const content = JSON.stringify(state.generate.mock.calls[1]![0]);
+    expect(content).toContain('Bhakoot koota is weak');
+  });
+
+  it('embeds wealth/career risk factors in call 3', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(makeScores({ spouseSynastry: makeSpouseSynastry() }));
+
+    const content = JSON.stringify(state.generate.mock.calls[2]![0]);
+    expect(content).toContain('2nd lords are mutually well placed');
+  });
+
+  it('embeds children/timing/intimacy/health risk factors in call 4', async () => {
+    state.generate
+      .mockResolvedValueOnce(jsonSections('H1a', 'H1b'))
+      .mockResolvedValueOnce(jsonSections('H2a', 'H2b'))
+      .mockResolvedValueOnce(jsonSections('H3a', 'H3b'))
+      .mockResolvedValueOnce(jsonSections('H4a', 'H4b'));
+
+    await generateMarriageNarrative(makeScores({ spouseSynastry: makeSpouseSynastry() }));
+
+    const content = JSON.stringify(state.generate.mock.calls[3]![0]);
+    expect(content).toContain('5th house synastry is supportive');
+    expect(content).toContain('Current dashas favor stability');
   });
 });
 

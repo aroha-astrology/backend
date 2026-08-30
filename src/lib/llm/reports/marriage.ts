@@ -85,6 +85,8 @@ ${TONE_RULE}
 
 CRITICAL — check the given relationship status before writing anything about timing: if it is "married", "divorced", or "widowed", this person already has (or had) a marriage — do NOT predict if/when they "will" get married. Instead frame the score/band/timing windows as describing the marriage-relevant period(s) this chart's own patterns highlight (useful for understanding the relationship's ups and downs, not a first-marriage countdown); if "divorced" or "widowed", also do not imply their current status is temporary. If the status is "single", "in_relationship", "engaged", or not given at all, write normally about if/when marriage may happen, as before.
 
+If facts about the reader's real spouse (a Guna Milan compatibility score and the spouse's own Manglik status) are given below, this reader is already married and supplied their spouse's chart — weave those facts into section 1 as an added, corroborating layer on top of the existing band/Manglik discussion (use the spouse's name if given, instead of the generic "your spouse"), rather than a separate topic.
+
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
@@ -101,6 +103,8 @@ function narrativeSystemPromptCall2(): string {
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
+
+If facts about the reader's real spouse (their own Navamsa and synastry reads for harmony/in-laws) are given below, reframe section 1 from "who you will marry" speculation to "who your spouse is" — weave in the spouse's own Navamsa and the given harmony synastry read as corroborating, real-chart evidence rather than generic archetype lore, and weave the given in-laws synastry read into section 2 alongside the existing 4th-lord fact. Use the spouse's name if given.
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
@@ -119,6 +123,8 @@ ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
 
+If wealth and/or career synastry reads for the reader's real spouse are given below, weave them into the "Money After Marriage" section as real-couple evidence, alongside the existing 2nd/11th house facts.
+
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
@@ -135,6 +141,8 @@ function narrativeSystemPromptCall4(): string {
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${SAFETY_RULE}
+
+If additional synastry reads for the reader's real spouse (children, timing, intimacy, health) are given below, weave them into the "Modern Realities" section as a closing, real-couple layer alongside the existing tendencies.
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
@@ -174,6 +182,11 @@ function buildFactsCall1(scores: MarriageScoresWithStrength): string {
   lines.push(
     `Jupiter's own separate dasha window (supplementary dharma/marriage-karaka color only — NOT a second, competing timing answer): ${formatWindow(scores.jupiterDharmaWindow)}.`,
   );
+  if (scores.spouseSynastry) {
+    lines.push(
+      `SPOUSE DATA PROVIDED — this reader is married and supplied their real spouse's birth details. Guna Milan compatibility: ${scores.spouseSynastry.gunaMilanScore}/${scores.spouseSynastry.gunaMaxScore} (${scores.spouseSynastry.compatibilityBand}). Spouse's own Manglik status: ${scores.spouseSynastry.manglikStatus.spouse ? 'present' : 'not present'}${scores.spouseSynastry.manglikStatus.spouse ? `, classically cancelled: ${scores.spouseSynastry.manglikStatus.cancelled ? 'yes' : 'no'}` : ''}.${scores.spouseName ? ` Spouse's name: ${scores.spouseName}.` : ''}`,
+    );
+  }
   if (scores.planetStrength && scores.planetStrength.length > 0) {
     lines.push(
       `Planet Strength table (Shadbala, whole-chart, not marriage-specific): ${scores.planetStrength
@@ -217,6 +230,16 @@ function buildFactsCall2(scores: MarriageScores): string {
   lines.push(
     `In-laws note (4th house sign: ${scores.inLaws.fourthHouseSign ?? 'unavailable'}): ${scores.inLaws.note}`,
   );
+  if (scores.spouseSynastry) {
+    const spouseNavamsa = scores.spouseSynastry.spouseNavamsa[0];
+    lines.push(
+      `SPOUSE DATA PROVIDED. Spouse's Navamsa (D9): ${spouseNavamsa ? formatReportVarga(spouseNavamsa) : 'unavailable on the spouse chart'}.`,
+    );
+    const harmony = scores.spouseSynastry.riskFactors.find((f) => f.key === 'harmony');
+    const inlaws = scores.spouseSynastry.riskFactors.find((f) => f.key === 'inlaws');
+    if (harmony) lines.push(`Harmony synastry read (GIVEN): ${harmony.severity} — ${harmony.evidence.join('; ')}`);
+    if (inlaws) lines.push(`In-laws synastry read (GIVEN): ${inlaws.severity} — ${inlaws.evidence.join('; ')}`);
+  }
   if (scores.ashtakavargaSummary && scores.ashtakavargaSummary.length > 0) {
     lines.push(
       "Ashtakavarga house-strength summary (GIVEN — mention the 7th house's own reading only if it stands out as notably strong or weak, otherwise skip):",
@@ -241,6 +264,12 @@ function buildFactsCall3(scores: MarriageScores): string {
       : 'none of the specifically checked doshas are present';
   lines.push(`What's going for you (present favorable yogas): ${positives}.`);
   lines.push(`What to hold carefully (present doshas needing awareness): ${cautions}.`);
+  if (scores.spouseSynastry) {
+    const wealth = scores.spouseSynastry.riskFactors.find((f) => f.key === 'wealth');
+    const career = scores.spouseSynastry.riskFactors.find((f) => f.key === 'career');
+    if (wealth) lines.push(`SPOUSE DATA PROVIDED. Wealth synastry read (GIVEN): ${wealth.severity} — ${wealth.evidence.join('; ')}`);
+    if (career) lines.push(`Career synastry read (GIVEN): ${career.severity} — ${career.evidence.join('; ')}`);
+  }
   if (scores.planetRemedies && scores.planetRemedies.length > 0) {
     lines.push(
       `Remedies already recommended elsewhere on this report (one per planet — explain effect+duration for THIS exact remedy in uiData, do not invent a different one): ${scores.planetRemedies
@@ -260,6 +289,19 @@ function buildFactsCall4(scores: MarriageScores): string {
   lines.push(
     `Number of natal planets occupying the 7th house: ${scores.modernRealities.seventhHousePlanetCount}.`,
   );
+  if (scores.spouseSynastry) {
+    const remainingKeys: ReadonlyArray<(typeof scores.spouseSynastry.riskFactors)[number]['key']> = [
+      'children',
+      'timing',
+      'intimacy',
+      'health',
+    ];
+    const rest = scores.spouseSynastry.riskFactors.filter((f) => remainingKeys.includes(f.key));
+    if (rest.length > 0) {
+      lines.push('SPOUSE DATA PROVIDED. Additional synastry reads (GIVEN):');
+      for (const f of rest) lines.push(`- ${f.key}: ${f.severity} — ${f.evidence.join('; ')}`);
+    }
+  }
   return lines.join('\n');
 }
 
