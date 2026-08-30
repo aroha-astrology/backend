@@ -174,7 +174,7 @@ export async function cmdStats(): Promise<string> {
     peakBetween('today'),
     peakBetween('yesterday'),
     peakBetween('last7d'),
-    peakBetween('this_month'),
+    peakBetween('last30d'),
     peakBetween('this_year'),
     countUsersActiveSince(new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS)),
     usersActiveBetween(resolveDateRangePreset('today')),
