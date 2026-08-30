@@ -14,7 +14,11 @@ import {
 } from './billing.repo.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { logger } from '../../lib/logger.js';
-import { verifyGooglePlayPurchase, consumeGooglePlayPurchase } from './google-play-verifier.js';
+import {
+  verifyGooglePlayPurchase,
+  consumeGooglePlayPurchase,
+  fetchGooglePlayPurchase,
+} from './google-play-verifier.js';
 import {
   createRazorpayOrder,
   getRazorpayKeyId,
@@ -354,6 +358,65 @@ export async function confirmGooglePlayPurchase(
   await notifyTopUp(userId, order.finalAmountPaise, result.walletBalancePaise);
 
   return result;
+}
+
+/** RTDN's `oneTimeProductNotification.notificationType` values that matter here — the rest
+ * (expired, etc.) don't apply to one-time consumable top-ups. */
+const ONE_TIME_PRODUCT_PURCHASED = 1;
+
+/**
+ * Reconciles a Google Play Real-time Developer Notification for a one-time product purchase —
+ * the server-side backstop `confirmGooglePlayPurchase` never had. That function only ever runs
+ * when the app itself calls us after a purchase; if the app is killed, crashes, or the user
+ * never reopens it again, Google has the money and we never find out. RTDN pushes us a
+ * notification the instant the purchase happens, independent of the app.
+ *
+ * The notification itself only carries the purchase token + product id, not who bought it, so
+ * this fetches the full purchase from Google first — which echoes back `obfuscatedAccountId`
+ * (set by PlayBillingPlugin.purchaseProduct when the purchase was launched) as
+ * `obfuscatedExternalAccountId`. Purchases made before that field existed on the client have no
+ * account id and can't be reconciled this way; they still fall back to the existing client-side
+ * reconciler (GooglePlayPurchaseReconciler) or a manual admin fix.
+ *
+ * Deliberately swallows errors rather than throwing — the route handler acks every notification
+ * it's authenticated regardless of outcome, so Google doesn't retry-storm us over a purchase we
+ * can't resolve (missing account id, order already actioned, etc.). Failures are logged for
+ * follow-up, same as reconcileStaleRazorpayOrders above.
+ */
+export async function reconcileGooglePlayNotification(notification: {
+  notificationType: number;
+  purchaseToken: string;
+  sku: string;
+}): Promise<void> {
+  if (notification.notificationType !== ONE_TIME_PRODUCT_PURCHASED) return;
+
+  const productId = notification.sku;
+  const { purchaseToken } = notification;
+
+  try {
+    const purchase = await fetchGooglePlayPurchase({ productId, purchaseToken });
+    if (purchase.purchaseState !== 0) return; // canceled/pending — nothing to confirm yet.
+
+    const userId = purchase.obfuscatedExternalAccountId;
+    if (!userId) {
+      logger.warn(
+        { purchaseTokenSuffix: purchaseToken.slice(-8), productId },
+        'billing: RTDN purchase has no obfuscatedAccountId, cannot reconcile server-side',
+      );
+      return;
+    }
+
+    await confirmGooglePlayPurchase(userId, { purchaseToken, productId });
+    logger.warn(
+      { userId, productId },
+      'billing: RTDN reconciled a Google Play purchase the app never confirmed',
+    );
+  } catch (err) {
+    logger.error(
+      { err, purchaseTokenSuffix: purchaseToken.slice(-8), productId },
+      'billing: RTDN-triggered reconcile failed',
+    );
+  }
 }
 
 /**

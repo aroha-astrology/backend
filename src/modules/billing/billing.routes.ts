@@ -1,5 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
+import { requireGooglePlayRtdnSecret } from '../../middleware/cron-auth.js';
+import { logger } from '../../lib/logger.js';
 import {
   BillingPlanResponseSchema,
   BillingBalanceResponseSchema,
@@ -21,6 +23,7 @@ import {
   checkout,
   confirmPayment,
   confirmGooglePlayPurchase,
+  reconcileGooglePlayNotification,
   startRazorpayCheckout,
   verifyRazorpayPayment,
   listTransactions,
@@ -346,6 +349,71 @@ billingRouter.openapi(razorpayVerifyRoute, async (c) => {
   const user = c.get('user');
   const { order, walletBalancePaise } = await verifyRazorpayPayment(user.id, c.req.valid('json'));
   return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /billing/google-play-rtdn  (Google Play → Cloud Pub/Sub push webhook)  */
+/*                                                                              */
+/* Separate router from billingRouter above: that one requires a logged-in    */
+/* user on every route ('*' -> requireUser), but Google's push has no bearer  */
+/* token — only the `?secret=` query param requireGooglePlayRtdnSecret        */
+/* checks. Mounted at /internal alongside cronRouter/telegramBotRouter (see   */
+/* app.ts) since this is another machine calling us, not a user session.      */
+/* -------------------------------------------------------------------------- */
+
+export const billingWebhooksRouter = new OpenAPIHono();
+billingWebhooksRouter.use('/billing/google-play-rtdn', requireGooglePlayRtdnSecret);
+
+const GooglePlayRtdnBodySchema = z
+  .object({
+    message: z.object({
+      data: z.string().openapi({ description: 'Base64-encoded JSON RTDN payload' }),
+      messageId: z.string().optional(),
+    }),
+    subscription: z.string().optional(),
+  })
+  .openapi('GooglePlayRtdnPush');
+
+const googlePlayRtdnRoute = createRoute({
+  method: 'post',
+  path: '/billing/google-play-rtdn',
+  tags: ['Billing'],
+  summary: 'Google Play Real-time Developer Notifications push endpoint (Cloud Pub/Sub)',
+  request: {
+    query: z.object({ secret: z.string().optional() }),
+    body: {
+      required: true,
+      content: { 'application/json': { schema: GooglePlayRtdnBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Acknowledged (Pub/Sub retries on anything else)',
+      content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
+    },
+    403: errorResponse('Invalid or missing secret'),
+  },
+});
+
+billingWebhooksRouter.openapi(googlePlayRtdnRoute, async (c) => {
+  const { message } = c.req.valid('json');
+
+  // Ack (200) even on a parse/processing failure — the only thing worth ever
+  // rejecting is a bad secret (handled by the middleware above). Anything else
+  // is already logged for follow-up inside reconcileGooglePlayNotification;
+  // making Pub/Sub retry-storm us over the same payload wouldn't fix it.
+  try {
+    const payload = JSON.parse(Buffer.from(message.data, 'base64').toString('utf8')) as {
+      oneTimeProductNotification?: { notificationType: number; purchaseToken: string; sku: string };
+    };
+    if (payload.oneTimeProductNotification) {
+      await reconcileGooglePlayNotification(payload.oneTimeProductNotification);
+    }
+  } catch (err) {
+    logger.error({ err }, 'billing: failed to parse Google Play RTDN push body');
+  }
+
+  return c.json({ ok: true }, 200);
 });
 
 type TopUpAmount = z.infer<typeof TopUpAmountsResponseSchema>['amounts'][number];

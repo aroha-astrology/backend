@@ -192,6 +192,11 @@ const EnvSchema = z
 
     // --- Operations --------------------------------------------------------
     CRON_SECRET: z.string().min(1).optional(),
+    // Shared secret appended as a query param on the Pub/Sub push endpoint URL
+    // registered in Play Console (RTDN) — push subscriptions can't send custom
+    // headers without full OIDC verification, so this is the same fail-closed
+    // shared-secret pattern as CRON_SECRET, just carried in the URL instead.
+    GOOGLE_PLAY_RTDN_SECRET: z.string().min(1).optional(),
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
     TELEGRAM_ALERT_CHAT_ID: z.string().min(1).optional(),
     // Extra admin chat IDs allowed to use the /internal/telegram/webhook commands,

@@ -12,7 +12,7 @@ import { deviceTokensRouter } from './modules/device-tokens/device-tokens.routes
 import { astroRouter } from './modules/astro/astro.routes.js';
 import { publicRouter } from './modules/public/public.routes.js';
 import { legalRouter } from './modules/legal/legal.routes.js';
-import { billingRouter } from './modules/billing/billing.routes.js';
+import { billingRouter, billingWebhooksRouter } from './modules/billing/billing.routes.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
 import { adminGroupsRouter } from './modules/admin/admin-groups.routes.js';
 import { adminGiftCampaignsRouter } from './modules/admin/admin-gift-campaigns.routes.js';
@@ -136,6 +136,7 @@ export function createApp(): OpenAPIHono {
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
   app.route('/internal', cronRouter);
   app.route('/internal', telegramBotRouter);
+  app.route('/internal', billingWebhooksRouter);
 
   // API docs expose the full route surface (including cron/Telegram internal
   // route shapes) — only serve them outside production. A production request

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../src/modules/billing/google-play-verifier.js', () => ({
   verifyGooglePlayPurchase: vi.fn(),
   consumeGooglePlayPurchase: vi.fn(),
+  fetchGooglePlayPurchase: vi.fn(),
 }));
 vi.mock('../src/modules/billing/billing.repo.js', () => ({
   findLatestOrderForPack: vi.fn(),
@@ -16,13 +17,17 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
 import {
   verifyGooglePlayPurchase,
   consumeGooglePlayPurchase,
+  fetchGooglePlayPurchase,
 } from '../src/modules/billing/google-play-verifier.js';
 import {
   findLatestOrderForPack,
   confirmOrderAndGrantCredits,
 } from '../src/modules/billing/billing.repo.js';
 import { findActiveUserById } from '../src/modules/users/users.repo.js';
-import { confirmGooglePlayPurchase } from '../src/modules/billing/billing.service.js';
+import {
+  confirmGooglePlayPurchase,
+  reconcileGooglePlayNotification,
+} from '../src/modules/billing/billing.service.js';
 
 const baseOrder = {
   id: 'order-1',
@@ -189,5 +194,62 @@ describe('confirmGooglePlayPurchase', () => {
     await expect(
       confirmGooglePlayPurchase('user-1', { purchaseToken: 'tok', productId: 'starter' }),
     ).resolves.toMatchObject({ walletBalancePaise: 6000 });
+  });
+});
+
+describe('reconcileGooglePlayNotification', () => {
+  const purchased = { notificationType: 1, purchaseToken: 'tok', sku: 'starter' };
+
+  it('ignores notification types other than ONE_TIME_PRODUCT_PURCHASED', async () => {
+    await reconcileGooglePlayNotification({ ...purchased, notificationType: 2 });
+
+    expect(fetchGooglePlayPurchase).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when Google reports the purchase as not yet completed', async () => {
+    vi.mocked(fetchGooglePlayPurchase).mockResolvedValue({
+      purchaseState: 2,
+      obfuscatedExternalAccountId: 'user-1',
+    });
+
+    await reconcileGooglePlayNotification(purchased);
+
+    expect(findLatestOrderForPack).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the purchase carries no account id (made before this fix existed)', async () => {
+    vi.mocked(fetchGooglePlayPurchase).mockResolvedValue({
+      purchaseState: 0,
+      obfuscatedExternalAccountId: null,
+    });
+
+    await reconcileGooglePlayNotification(purchased);
+
+    expect(findLatestOrderForPack).not.toHaveBeenCalled();
+  });
+
+  it('confirms the order for the account id Google echoes back', async () => {
+    vi.mocked(fetchGooglePlayPurchase).mockResolvedValue({
+      purchaseState: 0,
+      obfuscatedExternalAccountId: 'user-1',
+    });
+    vi.mocked(findLatestOrderForPack).mockResolvedValue(baseOrder);
+    vi.mocked(verifyGooglePlayPurchase).mockResolvedValue(true);
+    vi.mocked(confirmOrderAndGrantCredits).mockResolvedValue({
+      order: { ...baseOrder, status: 'paid', gatewayPaymentId: 'tok' },
+      walletBalancePaise: 6000,
+    });
+    vi.mocked(consumeGooglePlayPurchase).mockResolvedValue(undefined);
+
+    await reconcileGooglePlayNotification(purchased);
+
+    expect(findLatestOrderForPack).toHaveBeenCalledWith('user-1', 'starter');
+    expect(confirmOrderAndGrantCredits).toHaveBeenCalledWith('order-1', 'user-1', 'tok');
+  });
+
+  it('swallows errors instead of throwing, so the webhook can still ack', async () => {
+    vi.mocked(fetchGooglePlayPurchase).mockRejectedValue(new Error('Google API down'));
+
+    await expect(reconcileGooglePlayNotification(purchased)).resolves.toBeUndefined();
   });
 });
