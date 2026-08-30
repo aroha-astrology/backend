@@ -127,6 +127,7 @@ vi.mock('../src/modules/reports/report-generator.types.js', async () => {
 const {
   purchaseReport,
   purchaseReportShapeCheck,
+  buildReportScoreContext,
   previewReport,
   getReportCatalogueForUser,
   getReportForUser,
@@ -1352,6 +1353,22 @@ describe('purchaseReportShapeCheck — optional partner (marriage)', () => {
   it('still requires a partner on kundli_milan (requiresPartner, unaffected by this change)', () => {
     const def = getReportDef('kundli_milan')!;
     expect(() => purchaseReportShapeCheck(def, { reportKey: 'kundli_milan' })).toThrow();
+  });
+});
+
+describe('buildReportScoreContext — partnerName', () => {
+  it('reads partnerName off row.input.name when present', async () => {
+    const ctx = await buildReportScoreContext(
+      { userId: 'u1', birthProfileId: null, input: { dateOfBirth: '1990-01-01', name: 'Priya' } },
+      null,
+      null,
+    );
+    expect(ctx.partnerName).toBe('Priya');
+  });
+
+  it('is null when input has no name', async () => {
+    const ctx = await buildReportScoreContext({ userId: 'u1', birthProfileId: null, input: null }, null, null);
+    expect(ctx.partnerName).toBeNull();
   });
 });
 

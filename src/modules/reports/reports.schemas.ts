@@ -14,6 +14,13 @@ export const PartnerBirthDetailsSchema = z
     latitude: z.number(),
     longitude: z.number(),
     timezone: z.string(),
+    /** Optional — marriage only (kundli_milan/match_report don't collect this). Used purely for
+     * narrative personalization ("your spouse, Priya") and pre-fill display, never for chart math. */
+    name: z.string().optional(),
+    /** Optional — marriage only. Display label for the resolved place (e.g. "Mumbai, India"),
+     * used purely to pre-fill the place-autocomplete input on a later purchase; never used for
+     * chart computation (latitude/longitude/timezone already carry that). */
+    placeLabel: z.string().optional(),
   })
   .openapi('PartnerBirthDetails');
 

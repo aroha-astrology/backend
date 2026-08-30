@@ -6,6 +6,11 @@ export interface ReportScoreContext {
   chart: Record<string, unknown> | null;
   /** Partner's computed chart — kundli_milan only, undefined/null for every other report key. */
   partnerChart?: Record<string, unknown> | null;
+  /** The partner's given name, if the purchaser supplied one — marriage only (optional there),
+   * never present for kundli_milan/match_report today. Sourced from `row.input.name` inside
+   * `buildReportScoreContext`, never from `partnerInputToBirthRecord` (which only reads the 5
+   * chart-math fields). Used purely for narrative personalization, never chart computation. */
+  partnerName?: string | null;
   /**
    * kundli.doshaData — DoshaAnalysis (mangal, kaalSarp, sadeSati, pitra, kemDruma, grahan,
    * guruChandal), same shape chat-grounding.ts's GroundingSource.doshas reads.

@@ -544,9 +544,11 @@ export async function buildReportScoreContext(
   partnerChart: Record<string, unknown> | null,
 ): Promise<ReportScoreContext> {
   const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
+  const partnerName = typeof row.input?.name === 'string' ? row.input.name : null;
   return {
     chart: kundli?.chartData ?? null,
     partnerChart,
+    partnerName,
     doshaData: kundli?.doshaData ?? null,
     yogaData: kundli?.yogaData ?? null,
     ashtakavargaData: kundli?.ashtakavargaData ?? null,
