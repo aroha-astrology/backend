@@ -57,7 +57,7 @@ export function getMoonPlacement(chart: Record<string, unknown> | null): MoonPla
 export type CompatibilityBand = 'poor' | 'average' | 'good' | 'excellent';
 
 /** Standard classical Ashtakoota convention (out of 36): <18 poor, 18-24 average, 25-32 good, 33-36 excellent. */
-function compatibilityBandFromGunaScore(score: number): CompatibilityBand {
+export function compatibilityBandFromGunaScore(score: number): CompatibilityBand {
   if (score < 18) return 'poor';
   if (score < 25) return 'average';
   if (score < 33) return 'good';
