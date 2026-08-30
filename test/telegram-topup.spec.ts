@@ -6,6 +6,7 @@ const fakeEnv = {
   TELEGRAM_ALERT_CHAT_ID: '123',
   TELEGRAM_DOWNVOTE_EXTRA_CHAT_IDS: [],
   TELEGRAM_SUPPORT_EXTRA_CHAT_IDS: [],
+  TELEGRAM_SIGNUP_EXTRA_CHAT_IDS: ['456'],
 };
 vi.mock('../src/config/env.js', () => ({ env: fakeEnv, isProduction: false, isTest: true }));
 vi.mock('../src/lib/notifications/support-email.js', () => ({
@@ -13,7 +14,7 @@ vi.mock('../src/lib/notifications/support-email.js', () => ({
   emailDeletionRequest: vi.fn(),
 }));
 
-const { notifyWalletTopUp } = await import('../src/lib/notifications/telegram.js');
+const { notifyWalletTopUp, notifyNewSignup } = await import('../src/lib/notifications/telegram.js');
 
 /** Every char MarkdownV2 reserves; unescaped, any one of them 400s the message. */
 const RESERVED = /[-.!()#+=|{}]/;
@@ -62,5 +63,22 @@ describe('notifyWalletTopUp', () => {
     expect(sent).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(sentBody(fetchMock, 1).parse_mode).toBeUndefined();
+  });
+});
+
+describe('notifyNewSignup', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends to both the default chat and TELEGRAM_SIGNUP_EXTRA_CHAT_IDS', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(ok));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await notifyNewSignup({ id: 'u-1', email: 'a@b.com', phone: null });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const chatIds = [sentBody(fetchMock, 0), sentBody(fetchMock, 1)].map(
+      (b) => (b as unknown as { chat_id: string }).chat_id,
+    );
+    expect(chatIds.sort()).toEqual(['123', '456']);
   });
 });

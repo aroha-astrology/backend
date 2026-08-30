@@ -28,13 +28,24 @@ export async function sendHealthReport(report: HealthReportData): Promise<boolea
   return sendMessage(text);
 }
 
+/** Every recipient for the new-signup alert — the default ops chat plus any extra recipients configured just for this alert. Mirrors downvoteRecipients() above. */
+function signupRecipients(): (string | number)[] {
+  const ids = [env.TELEGRAM_ALERT_CHAT_ID, ...env.TELEGRAM_SIGNUP_EXTRA_CHAT_IDS].filter(
+    (id): id is string => Boolean(id),
+  );
+  return [...new Set(ids)];
+}
+
 export async function notifyNewSignup(fields: {
   id: string;
   email?: string | null;
   phone?: string | null;
 }): Promise<boolean> {
   const text = `🎉 *New User Signup*\n\nID: \`${fields.id}\`\nContact: ${escapeMarkdown(fields.email || fields.phone || 'Unknown')}`;
-  return sendMessage(text);
+  const recipients = signupRecipients();
+  if (recipients.length === 0) return sendMessage(text);
+  const results = await Promise.all(recipients.map((chatId) => sendMessage(text, chatId)));
+  return results.some(Boolean);
 }
 
 function formatRupees(paise: number): string {

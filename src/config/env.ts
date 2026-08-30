@@ -249,6 +249,17 @@ const EnvSchema = z
           .map((id) => id.trim())
           .filter(Boolean),
       ),
+    // Extra recipients for the new-signup alert specifically — same reasoning
+    // as TELEGRAM_DOWNVOTE_EXTRA_CHAT_IDS/TELEGRAM_SUPPORT_EXTRA_CHAT_IDS.
+    TELEGRAM_SIGNUP_EXTRA_CHAT_IDS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
 
     // Support mailbox — the SAME Gmail account is used in both directions:
