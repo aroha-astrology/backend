@@ -1423,12 +1423,6 @@ describe('getReportCatalogueForUser', () => {
     state.resolveFeaturesForUser.mockResolvedValue({});
     state.listReportsForUser.mockResolvedValue([
       makeReportRow({
-        id: 'older',
-        reportKey: 'marriage',
-        input: { dateOfBirth: '1988-02-02', timeOfBirth: '06:00', latitude: 1, longitude: 1, timezone: 'UTC' },
-        createdAt: new Date('2025-01-01T00:00:00Z'),
-      }),
-      makeReportRow({
         id: 'newer',
         reportKey: 'marriage',
         input: {
@@ -1441,6 +1435,12 @@ describe('getReportCatalogueForUser', () => {
           placeLabel: 'Mumbai, India',
         },
         createdAt: new Date('2026-01-01T00:00:00Z'),
+      }),
+      makeReportRow({
+        id: 'older',
+        reportKey: 'marriage',
+        input: { dateOfBirth: '1988-02-02', timeOfBirth: '06:00', latitude: 1, longitude: 1, timezone: 'UTC' },
+        createdAt: new Date('2025-01-01T00:00:00Z'),
       }),
     ]);
 

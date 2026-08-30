@@ -1175,9 +1175,11 @@ export async function getReportCatalogueForUser(
   return REPORT_CATALOGUE.map((def) => {
     const resolved = features[def.featureFlagKey];
     const ownRows = rows.filter((r) => r.reportKey === def.key);
+    // Only marriage reports collect partner birth details, so this is the sole
+    // catalogue entry that has a "last spouse details" concept to surface.
     const lastPartnerRow =
       def.key === 'marriage'
-        ? [...ownRows]
+        ? ownRows
             .filter((r) => hasPartnerBirthInput(r.input))
             .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
         : undefined;
