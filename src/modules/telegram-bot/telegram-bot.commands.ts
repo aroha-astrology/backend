@@ -14,6 +14,7 @@ import {
   clearDeletionRequest,
   listPendingDeletionRequestsBefore,
   usersActiveBetween,
+  usersCreatedBetween,
   countUsersActiveSince,
 } from '../users/users.repo.js';
 import { CONCURRENT_ACTIVE_WINDOW_MS } from '../admin-alerts/admin-alerts.service.js';
@@ -151,6 +152,7 @@ export async function cmdStats(): Promise<string> {
   const [
     totalUsers,
     newUsersToday,
+    newUsersYesterday,
     newUsersWeek,
     revenue,
     outstanding,
@@ -160,9 +162,12 @@ export async function cmdStats(): Promise<string> {
     peakThisMonth,
     peakThisYear,
     concurrentNow,
+    activeToday,
+    activeYesterday,
   ] = await Promise.all([
     countUsers(),
     countNewUsersToday(),
+    usersCreatedBetween(resolveDateRangePreset('yesterday')),
     countNewUsersThisWeek(),
     sumPaidOrdersToday(),
     sumWalletBalanceOutstanding(),
@@ -172,13 +177,18 @@ export async function cmdStats(): Promise<string> {
     peakBetween('this_month'),
     peakBetween('this_year'),
     countUsersActiveSince(new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS)),
+    usersActiveBetween(resolveDateRangePreset('today')),
+    usersActiveBetween(resolveDateRangePreset('yesterday')),
   ]);
 
   return (
     `*App Stats*\n\n` +
     `Total Users: ${totalUsers}\n` +
     `New Users Today: ${newUsersToday}\n` +
+    `New Users Yesterday: ${newUsersYesterday}\n` +
     `New Users This Week: ${newUsersWeek}\n\n` +
+    `Active Users \\(today\\): ${activeToday}\n` +
+    `Active Users \\(yesterday\\): ${activeYesterday}\n\n` +
     `Concurrent Users \\(Online Now\\): ${concurrentNow}\n` +
     `Concurrent Users \\(today\\): ${peakToday}\n` +
     `Concurrent Users \\(yesterday\\): ${peakYesterday}\n` +

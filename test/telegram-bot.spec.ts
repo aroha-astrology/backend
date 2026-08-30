@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
   getFeedbackVoteCountsByUser: vi.fn(),
   listRefundsBetween: vi.fn().mockResolvedValue([]),
   usersActiveBetween: vi.fn().mockResolvedValue(0),
+  usersCreatedBetween: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('../src/modules/astro/feedback.repo.js', () => ({
@@ -37,6 +38,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   deductWalletBalance: state.deductWalletBalance,
   listRefundsBetween: state.listRefundsBetween,
   usersActiveBetween: state.usersActiveBetween,
+  usersCreatedBetween: state.usersCreatedBetween,
 }));
 
 vi.mock('../src/modules/telegram-bot/telegram-bot.repo.js', () => ({
@@ -348,13 +350,13 @@ describe('POST /internal/telegram/webhook', () => {
   it('handles /stats with the full metric set', async () => {
     state.countUsers.mockResolvedValue(1234);
     state.countNewUsersToday.mockResolvedValue(12);
+    state.usersCreatedBetween.mockResolvedValue(9);
     state.countNewUsersThisWeek.mockResolvedValue(58);
     state.sumPaidOrdersToday.mockResolvedValue({ totalPaise: 450000, count: 18 });
     state.sumWalletBalanceOutstanding.mockResolvedValue(12345600);
     state.usersActiveBetween
-      .mockResolvedValueOnce(41) // today
-      .mockResolvedValueOnce(37) // yesterday
-      .mockResolvedValueOnce(96); // last 7d
+      .mockResolvedValueOnce(41) // active today
+      .mockResolvedValueOnce(37); // active yesterday
 
     const app = createApp();
     const res = await app.request('/internal/telegram/webhook', {
@@ -366,13 +368,13 @@ describe('POST /internal/telegram/webhook', () => {
     const reply = state.sendMessage.mock.calls[0][0];
     expect(reply).toContain('1234');
     expect(reply).toContain('12');
+    expect(reply).toContain('New Users Yesterday: 9');
     expect(reply).toContain('58');
     expect(reply).toContain('18');
     expect(reply).toContain('4500');
     expect(reply).toContain('123456');
-    expect(reply).toContain('41');
-    expect(reply).toContain('37');
-    expect(reply).toContain('96');
+    expect(reply).toContain('Active Users \\(today\\): 41');
+    expect(reply).toContain('Active Users \\(yesterday\\): 37');
   });
 
   it('grants money with /money +phone amount', async () => {
