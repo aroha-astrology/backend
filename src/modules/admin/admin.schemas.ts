@@ -282,3 +282,13 @@ const AdminLocationCountRowSchema = z.object({
 export const AdminActiveUsersByLocationResponseSchema = z
   .object({ locations: z.array(AdminLocationCountRowSchema) })
   .openapi('AdminActiveUsersByLocationResponse');
+
+const AdminDemographicsBucketSchema = z.object({ label: z.string(), count: z.number().int() });
+
+export const AdminUserDemographicsResponseSchema = z
+  .object({
+    ageBrackets: z.array(AdminDemographicsBucketSchema),
+    gender: z.array(AdminDemographicsBucketSchema),
+    relationshipStatus: z.array(AdminDemographicsBucketSchema),
+  })
+  .openapi('AdminUserDemographicsResponse');

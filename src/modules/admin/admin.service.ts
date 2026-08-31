@@ -31,7 +31,9 @@ import {
   recurringUserWeeks,
   recurringUsersForWeek,
   timeSpentHoursForWeek,
+  userDemographics,
   type DateRange,
+  type UserDemographics,
 } from './admin.repo.js';
 
 /**
@@ -339,6 +341,11 @@ export async function getRecurringUsers(): Promise<RecurringUsersWeekDto[]> {
       };
     }),
   );
+}
+
+/** Age-bracket, gender, and relationship-status breakdown across all (non-deleted) users, for the admin "User Demographics" card. */
+export async function getUserDemographics(): Promise<UserDemographics> {
+  return userDemographics();
 }
 
 /* -------------------------------------------------------------------------- */

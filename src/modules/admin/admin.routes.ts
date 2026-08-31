@@ -17,6 +17,7 @@ import {
   AdminReportsResponseSchema,
   AdminReferralsResponseSchema,
   AdminRecurringUsersResponseSchema,
+  AdminUserDemographicsResponseSchema,
   AdminDeletionRequestsResponseSchema,
   AdminDeletionActionResponseSchema,
   AdminActiveUsersByLocationQuerySchema,
@@ -33,6 +34,7 @@ import {
   getReportsBreakdown,
   getReferrals,
   getRecurringUsers,
+  getUserDemographics,
   listDeletionRequests,
   flagUserForDeletion,
   rejectDeletionRequest,
@@ -387,6 +389,33 @@ adminRouter.openapi(activeUsersByLocationRoute, async (c) => {
   const locations = await activeUsersByLocation(range);
   await auditRead(c, 'GET /v1/admin/active-users/by-location', { preset });
   return c.json({ locations }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/user-demographics                                               */
+/* -------------------------------------------------------------------------- */
+
+const userDemographicsRoute = createRoute({
+  method: 'get',
+  path: '/admin/user-demographics',
+  tags: ['Admin'],
+  summary: 'Age-bracket, gender, and relationship-status breakdown across all users',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: {
+      description: 'User demographics breakdown',
+      content: { 'application/json': { schema: AdminUserDemographicsResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(userDemographicsRoute, async (c) => {
+  const demographics = await getUserDemographics();
+  await auditRead(c, 'GET /v1/admin/user-demographics', {});
+  return c.json(demographics, 200);
 });
 
 /* -------------------------------------------------------------------------- */

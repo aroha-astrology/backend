@@ -1,6 +1,7 @@
-import { and, count, desc, eq, gte, like, lt, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, like, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { Errors } from '../../lib/errors.js';
+import { decryptField } from '../../lib/crypto/field-encryption.js';
 import {
   orders,
   walletTransactions,
@@ -9,6 +10,7 @@ import {
   chatSessions,
   voiceSessions,
   reports,
+  users,
 } from '../../db/schema.js';
 
 /* -------------------------------------------------------------------------- */
@@ -382,6 +384,80 @@ export async function payingUserCount(range: DateRange): Promise<number> {
       and(eq(orders.status, 'paid'), gte(orders.paidAt, range.from), lt(orders.paidAt, range.to)),
     );
   return Number(res?.count ?? 0);
+}
+
+/* -------------------------------------------------------------------------- */
+/* User demographics                                                           */
+/* -------------------------------------------------------------------------- */
+
+const AGE_BRACKETS = ['<18', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'] as const;
+
+function ageBracket(age: number): (typeof AGE_BRACKETS)[number] {
+  if (age < 18) return '<18';
+  if (age < 25) return '18-24';
+  if (age < 35) return '25-34';
+  if (age < 45) return '35-44';
+  if (age < 55) return '45-54';
+  if (age < 65) return '55-64';
+  return '65+';
+}
+
+export interface DemographicsBucket {
+  label: string;
+  count: number;
+}
+
+export interface UserDemographics {
+  ageBrackets: DemographicsBucket[];
+  gender: DemographicsBucket[];
+  relationshipStatus: DemographicsBucket[];
+}
+
+/**
+ * Gender and relationship_status are plain enum columns, counted directly in
+ * SQL. date_of_birth is field-level encrypted (see field-encryption.ts), so
+ * it can't be bucketed in SQL — fetched and decrypted per row instead.
+ */
+export async function userDemographics(): Promise<UserDemographics> {
+  const [genderRows, statusRows, dobRows] = await Promise.all([
+    db
+      .select({ label: sql<string>`coalesce(${users.gender}::text, 'unknown')`, count: count() })
+      .from(users)
+      .where(isNull(users.deletedAt))
+      .groupBy(users.gender),
+    db
+      .select({
+        label: sql<string>`coalesce(${users.relationshipStatus}::text, 'unknown')`,
+        count: count(),
+      })
+      .from(users)
+      .where(isNull(users.deletedAt))
+      .groupBy(users.relationshipStatus),
+    db.select({ dateOfBirth: users.dateOfBirth }).from(users).where(isNull(users.deletedAt)),
+  ]);
+
+  const bracketCounts = new Map<string, number>(AGE_BRACKETS.map((b) => [b, 0]));
+  let unknownAge = 0;
+  for (const row of dobRows) {
+    const dob = decryptField(row.dateOfBirth);
+    const parsed = dob ? new Date(dob) : null;
+    if (!parsed || Number.isNaN(parsed.getTime())) {
+      unknownAge++;
+      continue;
+    }
+    const ageYears = Math.floor((Date.now() - parsed.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    const bracket = ageBracket(ageYears);
+    bracketCounts.set(bracket, (bracketCounts.get(bracket) ?? 0) + 1);
+  }
+
+  return {
+    ageBrackets: [
+      ...AGE_BRACKETS.map((label) => ({ label, count: bracketCounts.get(label) ?? 0 })),
+      { label: 'unknown', count: unknownAge },
+    ],
+    gender: genderRows,
+    relationshipStatus: statusRows,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
