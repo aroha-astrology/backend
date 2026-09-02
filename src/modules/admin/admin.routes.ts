@@ -15,6 +15,12 @@ import {
   AdjustWalletBodySchema,
   AdjustWalletResponseSchema,
   AdminReportsResponseSchema,
+  AdminReportGenerationsQuerySchema,
+  AdminReportGenerationsResponseSchema,
+  AdminReportGenerationIdParamSchema,
+  AdminReportGenerationResetResponseSchema,
+  AdminReportGenerationsBulkBodySchema,
+  AdminReportGenerationsBulkResponseSchema,
   AdminReferralsResponseSchema,
   AdminRecurringUsersResponseSchema,
   AdminUserDemographicsResponseSchema,
@@ -32,6 +38,11 @@ import {
   searchUsers,
   adjustWallet,
   getReportsBreakdown,
+  getReportGenerations,
+  resetReportGeneration,
+  deleteReportGeneration,
+  resetReportGenerationsBulk,
+  deleteReportGenerationsBulk,
   getReferrals,
   getRecurringUsers,
   getUserDemographics,
@@ -303,6 +314,158 @@ adminRouter.openapi(reportsRoute, async (c) => {
   const reports = await getReportsBreakdown(range);
   await auditRead(c, 'GET /v1/admin/reports', { preset, from, to });
   return c.json({ reports }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/report-generations — who generated which report                 */
+/* -------------------------------------------------------------------------- */
+
+const reportGenerationsRoute = createRoute({
+  method: 'get',
+  path: '/admin/report-generations',
+  tags: ['Admin'],
+  summary:
+    'Every generated report row across all users, newest first, optionally filtered to one report key',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { query: AdminReportGenerationsQuerySchema },
+  responses: {
+    200: {
+      description: 'Report generation rows',
+      content: { 'application/json': { schema: AdminReportGenerationsResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(reportGenerationsRoute, async (c) => {
+  const { reportKey, offset, limit } = c.req.valid('query');
+  const page = await getReportGenerations(reportKey, limit, offset);
+  await auditRead(c, 'GET /v1/admin/report-generations', { reportKey, offset, limit });
+  return c.json(page, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /admin/report-generations/{id}/reset                                  */
+/* -------------------------------------------------------------------------- */
+
+const resetReportGenerationRoute = createRoute({
+  method: 'post',
+  path: '/admin/report-generations/{id}/reset',
+  tags: ['Admin'],
+  summary:
+    "Unstick one report row (status -> 'failed') so its owner can regenerate it — content and paid record survive",
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { params: AdminReportGenerationIdParamSchema },
+  responses: {
+    200: {
+      description: 'Reset report',
+      content: { 'application/json': { schema: AdminReportGenerationResetResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+    404: errorResponse('Report not found'),
+  },
+});
+
+adminRouter.openapi(resetReportGenerationRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const result = await resetReportGeneration(id, adminPhoneOf(c));
+  return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* DELETE /admin/report-generations/{id}                                      */
+/* -------------------------------------------------------------------------- */
+
+const deleteReportGenerationRoute = createRoute({
+  method: 'delete',
+  path: '/admin/report-generations/{id}',
+  tags: ['Admin'],
+  summary: 'Permanently delete one report row — irreversible',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { params: AdminReportGenerationIdParamSchema },
+  responses: {
+    204: { description: 'Deleted' },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+    404: errorResponse('Report not found'),
+  },
+});
+
+adminRouter.openapi(deleteReportGenerationRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  await deleteReportGeneration(id, adminPhoneOf(c));
+  return c.body(null, 204);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /admin/report-generations/reset-all                                   */
+/* -------------------------------------------------------------------------- */
+
+const resetReportGenerationsBulkRoute = createRoute({
+  method: 'post',
+  path: '/admin/report-generations/reset-all',
+  tags: ['Admin'],
+  summary: "Reset every non-failed row for one report key (status -> 'failed')",
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: AdminReportGenerationsBulkBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Rows reset',
+      content: { 'application/json': { schema: AdminReportGenerationsBulkResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(resetReportGenerationsBulkRoute, async (c) => {
+  const { reportKey } = c.req.valid('json');
+  const result = await resetReportGenerationsBulk(reportKey, adminPhoneOf(c));
+  return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /admin/report-generations/delete-all                                  */
+/* -------------------------------------------------------------------------- */
+
+const deleteReportGenerationsBulkRoute = createRoute({
+  method: 'post',
+  path: '/admin/report-generations/delete-all',
+  tags: ['Admin'],
+  summary: 'Permanently delete every row for one report key — irreversible',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: AdminReportGenerationsBulkBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Rows deleted',
+      content: { 'application/json': { schema: AdminReportGenerationsBulkResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(deleteReportGenerationsBulkRoute, async (c) => {
+  const { reportKey } = c.req.valid('json');
+  const result = await deleteReportGenerationsBulk(reportKey, adminPhoneOf(c));
+  return c.json(result, 200);
 });
 
 /* -------------------------------------------------------------------------- */

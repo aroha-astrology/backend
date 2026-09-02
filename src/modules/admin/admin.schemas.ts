@@ -205,6 +205,57 @@ export const AdminReportsResponseSchema = z
   .openapi('AdminReportsResponse');
 
 /* -------------------------------------------------------------------------- */
+/* GET/DELETE /admin/report-generations — who generated which report          */
+/* -------------------------------------------------------------------------- */
+
+export const AdminReportGenerationsQuerySchema = z.object({
+  reportKey: z.string().optional().openapi({ description: 'Omit to list every report key' }),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+const AdminReportGenerationRowSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  displayName: z.string().nullable(),
+  phoneE164: z.string().nullable(),
+  reportKey: z.string(),
+  status: z.enum(['queued', 'generating', 'ready', 'failed']),
+  periodMonth: z.string().nullable(),
+  pricePaidPaise: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const AdminReportGenerationsResponseSchema = z
+  .object({
+    reports: z.array(AdminReportGenerationRowSchema),
+    total: z.number(),
+    offset: z.number(),
+    limit: z.number(),
+  })
+  .openapi('AdminReportGenerationsResponse');
+
+export const AdminReportGenerationIdParamSchema = z.object({
+  id: z
+    .string()
+    .uuid()
+    .openapi({ param: { name: 'id', in: 'path' } }),
+});
+
+export const AdminReportGenerationResetResponseSchema = z
+  .object({ id: z.string(), status: z.literal('failed') })
+  .openapi('AdminReportGenerationResetResponse');
+
+export const AdminReportGenerationsBulkBodySchema = z
+  .object({ reportKey: z.string().min(1) })
+  .openapi('AdminReportGenerationsBulkBody');
+
+export const AdminReportGenerationsBulkResponseSchema = z
+  .object({ count: z.number() })
+  .openapi('AdminReportGenerationsBulkResponse');
+
+/* -------------------------------------------------------------------------- */
 /* GET /admin/referrals                                                        */
 /* -------------------------------------------------------------------------- */
 
