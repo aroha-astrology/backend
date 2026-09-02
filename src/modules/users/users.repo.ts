@@ -17,7 +17,7 @@ import {
 import type { DateRange } from '../admin/admin.repo.js';
 import crypto from 'crypto';
 import { db } from '../../config/db.js';
-import { CLAIM_CAMPAIGN_KEYS } from '../../config/campaigns.js';
+import { CLAIM_CAMPAIGNS } from '../../config/campaigns.js';
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { resolveGeoForIp } from '../../lib/geo-lookup.js';
 import {
@@ -908,19 +908,21 @@ const USER_SORT_COLUMNS = {
 /** `claimedAt`/`totalPaidPaise` aren't real columns (see below), so they can't live in USER_SORT_COLUMNS — handled as separate branches in listUsersPage's orderBy. */
 export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt' | 'totalPaidPaise';
 
-/** Most recent one-time claim-campaign grant — see config/campaigns.ts and
- * gift-campaigns.repo.ts. Same idea as hasClaimedIndependenceBonus's sibling
- * `getClaimedCampaignKeys`, inlined here because this is a paginated admin
- * list rather than a single-user lookup. A fresh call per use (rather than a
- * shared constant) since it's referenced in both the select list and, when
- * sorted on, the orderBy clause.
+/** Whichever claim-campaign (static config or admin-created `gift_campaigns`
+ * row) was launched most recently, system-wide — see config/campaigns.ts and
+ * gift-campaigns.repo.ts. A fresh call per use (rather than a shared constant)
+ * since it's referenced in both the select list and, when sorted on, the
+ * orderBy clause.
  *
- * Matches EITHER a static CLAIM_CAMPAIGN_KEYS reason or any admin-created
- * `gift_campaigns.key` — this used to hardcode `reason = 'independence_day_2026'`
- * only, which meant the "🇮🇳 Gift claimed" column silently went blank for every
- * campaign shipped after that one (the top-up bonuses, and every admin-created
- * gift_campaigns send). ORDER BY + LIMIT 1 picks the latest grant when a user
- * has claimed more than one campaign over time.
+ * 2026-09-02: this used to be "this user's own most-recently-CLAIMED campaign,
+ * across all campaigns ever" (ORDER BY wt.created_at DESC) — which meant a
+ * user who claimed an old campaign but never touched the brand-new one just
+ * launched still showed the OLD campaign's amount/date here, making a
+ * freshly-sent campaign look like it had zero uptake. The admin's actual
+ * question is "did this user claim the campaign I just ran", so the LATEST
+ * CAMPAIGN is picked first (by istDate / sentAt, not by claim time), and each
+ * user is checked against that one specific reason only — no claim of it
+ * means a blank cell, even if they claimed something older.
  *
  * Deliberately hand-aliases the inner table and references the outer `users`
  * table by its literal name, rather than interpolating `walletTransactions`/
@@ -931,33 +933,33 @@ export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt' | 'totalPa
  * silently made this always evaluate false. Explicit aliasing removes the
  * ambiguity entirely.
  */
-const staticCampaignKeysList =
-  CLAIM_CAMPAIGN_KEYS.length > 0
+const staticCampaignDatesList =
+  CLAIM_CAMPAIGNS.length > 0
     ? sql.join(
-        CLAIM_CAMPAIGN_KEYS.map((k) => sql`${k}`),
+        CLAIM_CAMPAIGNS.map((c) => sql`(${c.key}, ${c.istDate}::date)`),
         sql`, `,
       )
     : null;
-// `= any(${array})` with a plain JS array is NOT a proven binding in this
-// codebase's postgres.js setup (prepare: false) — every other dynamic-list
-// filter here (claimPalmGeneration in palm.repo.ts) uses `IN (${sql.join(...)})`
-// instead. An earlier version of this used `= any()` directly and it 500'd
-// GET /v1/admin/users in production the moment it shipped.
-const claimedCampaignReasonFilter = sql`(
-  ${staticCampaignKeysList ? sql`wt.reason in (${staticCampaignKeysList})` : sql`false`}
-  or exists (select 1 from gift_campaigns gc where gc.key = wt.reason)
+const latestCampaignKeyExpr = sql`(
+  select key from (
+    ${staticCampaignDatesList ? sql`select * from (values ${staticCampaignDatesList}) as t(key, d)` : sql`select null::text as key, null::date as d where false`}
+    union all
+    select key, sent_at::date as d from gift_campaigns where status = 'sent' and sent_at is not null
+  ) all_campaigns
+  order by d desc
+  limit 1
 )`;
 const claimedAmountExpr = () => sql<number | null>`(
   select wt.delta from wallet_transactions wt
   where wt.user_id = users.id
-    and ${claimedCampaignReasonFilter}
+    and wt.reason = ${latestCampaignKeyExpr}
   order by wt.created_at desc
   limit 1
 )`;
 const claimedAtExpr = () => sql<string | null>`(
   select wt.created_at from wallet_transactions wt
   where wt.user_id = users.id
-    and ${claimedCampaignReasonFilter}
+    and wt.reason = ${latestCampaignKeyExpr}
   order by wt.created_at desc
   limit 1
 )`;
