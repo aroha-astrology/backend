@@ -137,6 +137,8 @@ export const TransactionSchema = z
       amountPaise: z.number(),
       balanceAfterPaise: z.number(),
       isRefund: z.boolean(),
+      isCredit: z.boolean(),
+      expiresAt: z.string().optional(),
     }),
     z.object({
       id: z.string(),
@@ -145,6 +147,8 @@ export const TransactionSchema = z
       amountPaise: z.number(),
       balanceAfterPaise: z.number(),
       isRefund: z.boolean(),
+      isCredit: z.boolean(),
+      expiresAt: z.string().optional(),
       houseNumber: z.number(),
     }),
     z.object({
@@ -154,6 +158,8 @@ export const TransactionSchema = z
       amountPaise: z.number(),
       balanceAfterPaise: z.number(),
       isRefund: z.boolean(),
+      isCredit: z.boolean(),
+      expiresAt: z.string().optional(),
       reportKey: z.string(),
       periodMonth: z.string().optional(),
       bundleMonths: z.number().optional(),
