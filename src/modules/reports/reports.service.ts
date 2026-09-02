@@ -11,6 +11,7 @@
 import '../reports/generators/index.js';
 import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
+import { unknownBirthTimeGuidance } from '../../lib/birth-time-window.js';
 import { Errors } from '../../lib/errors.js';
 import { runWithRequestContext } from '../../lib/request-context.js';
 import { MODEL } from '../../config/llm.js';
@@ -356,7 +357,13 @@ async function fetchPersonContext(
 ): Promise<
   Pick<
     ReportScoreContext,
-    'personName' | 'personDob' | 'personGender' | 'personRelationshipStatus' | 'personPhone'
+    | 'personName'
+    | 'personDob'
+    | 'personGender'
+    | 'personRelationshipStatus'
+    | 'personPhone'
+    | 'personTimeOfBirth'
+    | 'personBirthTimeAccuracy'
   >
 > {
   try {
@@ -368,6 +375,8 @@ async function fetchPersonContext(
         personGender: null,
         personRelationshipStatus: null,
         personPhone: null,
+        personTimeOfBirth: null,
+        personBirthTimeAccuracy: null,
       };
     }
     const profile = await resolveProfileContext(user, birthProfileId);
@@ -382,6 +391,8 @@ async function fetchPersonContext(
       // comment for why this is safe to source here (numerology's phone block computes FROM
       // it, never echoes it back raw).
       personPhone: user.phoneE164 ?? null,
+      personTimeOfBirth: profile.timeOfBirth ?? null,
+      personBirthTimeAccuracy: profile.birthTimeAccuracy ?? null,
     };
   } catch (err) {
     logger.warn(
@@ -394,6 +405,8 @@ async function fetchPersonContext(
       personGender: null,
       personRelationshipStatus: null,
       personPhone: null,
+      personTimeOfBirth: null,
+      personBirthTimeAccuracy: null,
     };
   }
 }
@@ -527,9 +540,35 @@ function computeScoresWithCondition(
   } catch (err) {
     logger.warn({ err }, 'vakri facts failed for report; continuing without them');
   }
+  // A profile with 'unknown' accuracy holds the midpoint of a part-of-day window,
+  // not a time the reader gave, so the Ascendant and every house/varga/dasha date in
+  // the facts below is guesswork (see lib/birth-time-window.ts). Reports are the most
+  // expensive thing users buy and must not narrate that as certainty. Pushed onto
+  // `planetCondition` because that is the one fact channel every narrative call already
+  // forwards to reportFactsMessage, and set as its own score key so the separate
+  // verdict call — which serialises whatever is on `scores` — picks it up too, without
+  // touching all 16 report modules.
+  const birthTimeCaveat =
+    ctx.personBirthTimeAccuracy === 'unknown'
+      ? unknownBirthTimeGuidance(ctx.personTimeOfBirth)
+      : null;
+  if (birthTimeCaveat) planetCondition = [...planetCondition, birthTimeCaveat];
+
+  // Same treatment for the other person on a compatibility purchase — their unknown
+  // time degrades exactly the same results (their ascendant, their houses, their dasha
+  // dates), and a matching report that hedges one chart but not the other is worse than
+  // one that hedges neither.
+  const partnerCaveat =
+    ctx.partnerBirthTimeAccuracy === 'unknown'
+      ? `PARTNER — ${unknownBirthTimeGuidance(ctx.partnerTimeOfBirth)}`
+      : null;
+  if (partnerCaveat) planetCondition = [...planetCondition, partnerCaveat];
+
   return clampWindowsToYear(
     {
       ...scores,
+      ...(birthTimeCaveat ? { birthTimeCaveat } : {}),
+      ...(partnerCaveat ? { partnerBirthTimeCaveat: partnerCaveat } : {}),
       ...(planetCondition.length > 0 ? { planetCondition } : {}),
       ...(planetStrength.length > 0 ? { planetStrength } : {}),
       ...(vakriFacts.length > 0 ? { vakriFacts } : {}),
@@ -549,6 +588,9 @@ export async function buildReportScoreContext(
     chart: kundli?.chartData ?? null,
     partnerChart,
     partnerName,
+    partnerTimeOfBirth: typeof row.input?.timeOfBirth === 'string' ? row.input.timeOfBirth : null,
+    partnerBirthTimeAccuracy:
+      typeof row.input?.timeAccuracy === 'string' ? row.input.timeAccuracy : null,
     doshaData: kundli?.doshaData ?? null,
     yogaData: kundli?.yogaData ?? null,
     ashtakavargaData: kundli?.ashtakavargaData ?? null,
@@ -1194,7 +1236,11 @@ export async function getReportCatalogueForUser(
       // No fallback to basePricePaise here — an unconfigured original price
       // means there's no discount to show, not a fabricated one.
       originalPricePaise: resolved?.originalPricePaise ?? null,
-      purchases: ownRows.map((r) => ({ id: r.id, periodMonth: r.periodMonth, status: publicStatus(r.status) })),
+      purchases: ownRows.map((r) => ({
+        id: r.id,
+        periodMonth: r.periodMonth,
+        status: publicStatus(r.status),
+      })),
       lastSpouseDetails: lastPartnerRow
         ? {
             dateOfBirth: lastPartnerRow.input!.dateOfBirth as string,

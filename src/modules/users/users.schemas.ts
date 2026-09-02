@@ -214,6 +214,11 @@ export const UserSchema = z
     canEditBirthDetails: z
       .boolean()
       .describe('False once the user has used their one lifetime birth-detail edit'),
+    canSetExactBirthTime: z
+      .boolean()
+      .describe(
+        'True while the stored birth time is only a part-of-day window midpoint; upgrading it to a real clock time does not consume the one lifetime birth-detail edit',
+      ),
     gotra: z.string().nullable(),
     sankalpaName: z.string().nullable(),
 

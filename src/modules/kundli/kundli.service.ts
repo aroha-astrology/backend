@@ -44,6 +44,7 @@ import {
   saveHouseInsightTranslation,
 } from './house-insight.repo.js';
 import type { HouseInsightRow } from '../../db/schema.js';
+import { birthTimeWindowFor } from '../../lib/birth-time-window.js';
 
 type EngineAyanamsa =
   | 'lahiri'
@@ -120,8 +121,21 @@ export function birthTimeQuality(profile: ProfileContext): BirthTimeQuality {
  * caveat; missingKundliParams already blocks it). Ascendant, house cusps, and dasha timing
  * are the results sensitive to a few minutes of birth-time error; planet SIGN placements
  * are not. */
-export function chartWarning(quality: BirthTimeQuality): string | null {
+export function chartWarning(
+  quality: BirthTimeQuality,
+  profile?: { birthTimeAccuracy?: string | null; timeOfBirth?: string | null },
+): string | null {
   if (quality !== 'approximate') return null;
+  // A self-rated 'unknown' is a much weaker claim than 'approximate': there is no
+  // clock time behind it at all, only the midpoint of the part-of-day window the
+  // reader picked during onboarding (see lib/birth-time-window.ts). Naming that
+  // window back to them is what makes the caveat legible — "approximate" reads as
+  // "a few minutes out" when it is really up to three hours.
+  if (profile?.birthTimeAccuracy === 'unknown') {
+    const w = birthTimeWindowFor(profile.timeOfBirth);
+    const window = w ? `the ${w.label} (${w.range})` : 'the part of the day you gave';
+    return `Your birth time isn't known — this chart is built from the middle of ${window}. Your Moon sign, planet positions and daily readings stay accurate; the ascendant, house placements and exact dasha dates are the parts that can shift. Add your exact time in Profile whenever you find it.`;
+  }
   return 'Your birth time is approximate. Ascendant, house placements, and dasha timing may shift with a more exact time — planet positions by sign are still accurate.';
 }
 

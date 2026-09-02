@@ -68,6 +68,16 @@ export interface ReportScoreContext {
    * Optional for the same additive-only reason as `personName`/`personDob`.
    */
   personGender?: 'male' | 'female' | 'other' | null;
+  /** The profile's stored birth time, and how much it can be trusted. Only ever read to
+   *  decide whether the narrative must drop to a Moon-sign reading — a profile whose
+   *  accuracy is 'unknown' holds the MIDPOINT of a part-of-day window, not a clock time
+   *  the reader gave (see lib/birth-time-window.ts). Optional for the same reason as
+   *  `doshaData` above: purely additive, so no existing report-type spec needs editing. */
+  personTimeOfBirth?: string | null;
+  personBirthTimeAccuracy?: string | null;
+  /** Same two fields for the partner on a kundli_milan/match_report/marriage purchase. */
+  partnerTimeOfBirth?: string | null;
+  partnerBirthTimeAccuracy?: string | null;
   /**
    * The account-level `users.relationship_status` enum value (single/in_relationship/engaged/
    * married/divorced/widowed) — has no per-profile equivalent (not on `ProfileContext`), same

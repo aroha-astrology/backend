@@ -14,6 +14,11 @@ export const PartnerBirthDetailsSchema = z
     latitude: z.number(),
     longitude: z.number(),
     timezone: z.string(),
+    /** How much the partner's `timeOfBirth` can be trusted. 'unknown' means the purchaser
+     * only knew a part of the day and `timeOfBirth` holds that window's midpoint (see
+     * lib/birth-time-window.ts) — the narrative must then drop to a sign-level reading for
+     * the partner. Optional: absent on rows purchased before this was collected. */
+    timeAccuracy: z.enum(['exact', 'approximate', 'unknown']).optional(),
     /** Optional — marriage only (kundli_milan/match_report don't collect this). Used purely for
      * narrative personalization ("your spouse, Priya") and pre-fill display, never for chart math. */
     name: z.string().optional(),

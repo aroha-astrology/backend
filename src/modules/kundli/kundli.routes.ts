@@ -69,7 +69,7 @@ function withAccuracy<T extends object>(
   return {
     ...dto,
     birthTimeAccuracy: quality === 'unknown' ? 'exact' : quality,
-    warning: chartWarning(quality),
+    warning: chartWarning(quality, profile),
   };
 }
 

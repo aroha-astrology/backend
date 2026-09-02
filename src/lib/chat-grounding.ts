@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { dashaLordTransitQuality, detectDoubleTransit, SIGNS } from './astro-tools/index.js';
+import { unknownBirthTimeGuidance } from './birth-time-window.js';
 import { findPeriodAsOf, type RawDashaPeriod } from './astro-tools/dasha-reading.js';
 import {
   dateToJulianDay,
@@ -526,7 +527,11 @@ export function bhinnashtakavargaFacts(
  * from the account-level `user` row regardless of which profile is active.
  */
 export function buildProfileFacts(
-  profile: { gender?: string | null; birthTimeAccuracy?: string | null },
+  profile: {
+    gender?: string | null;
+    birthTimeAccuracy?: string | null;
+    timeOfBirth?: string | null;
+  },
   user: {
     relationshipStatus?: string | null;
     interestAreas?: string[] | null;
@@ -549,6 +554,20 @@ export function buildProfileFacts(
     facts.push(
       'BIRTH TIME CONFIDENCE: approximate (remembered, not from a record). Sign placements, dashas and yogas stay reliable, but the Ascendant, the house numbers, the divisional charts and exact dasha dates all depend on the precise minute. When the answer turns on any of THOSE, add a brief natural caveat once (e.g. "if your birth time is accurate to the minute") and prefer month/season-level timing over exact dates. Do not caveat every sentence, and never say the chart is unreliable.',
     );
+  }
+
+  // 'unknown' is a different situation from 'approximate', and a much weaker
+  // one. These readers never gave a clock time at all — onboarding only got a
+  // part-of-day window out of them and stored its midpoint, so the stored time
+  // can be up to three hours off. The Lagna moves a whole sign every ~2h, which
+  // leaves the ascendant right only about a third of the time and the varga
+  // lagnas effectively random; dasha dates drift by a year or two. Hedging that
+  // with "if your birth time is accurate" would be dishonest, so the model is
+  // told to switch to the classical treatment for an unknown birth time — read
+  // it as a Chandra Lagna (Moon-sign) chart — rather than to caveat house talk
+  // it should not be doing in the first place.
+  if (profile.birthTimeAccuracy === 'unknown') {
+    facts.push(unknownBirthTimeGuidance(profile.timeOfBirth));
   }
 
   if (user.relationshipStatus) {

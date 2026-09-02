@@ -151,6 +151,11 @@ export function toUserDto(
     birthTimeRectificationConfidence: row.birthTimeRectificationConfidence,
     birthLocationAccuracy: row.birthLocationAccuracy,
     canEditBirthDetails: row.birthDetailsEditedAt === null,
+    // Separate from canEditBirthDetails on purpose: that flag still (correctly) gates
+    // the date and the place. This one only says the stored time is a window midpoint
+    // rather than a real answer, so the profile screen can offer a time-only upgrade
+    // even to someone who has already spent their one edit.
+    canSetExactBirthTime: row.birthTimeAccuracy === 'unknown',
     gotra: row.gotra,
     sankalpaName: row.sankalpaName,
 
@@ -445,7 +450,23 @@ export async function updateMe(
     body.dateOfBirth !== undefined ||
     body.timeOfBirth !== undefined ||
     body.placeOfBirth !== undefined;
-  const isPostOnboardingBirthEdit = touchedBirthEvent && current.profileCompletedAt !== null;
+  // Replacing a window-derived time with a real clock time is the completion of
+  // onboarding, not a correction of it: a profile whose accuracy is 'unknown' never
+  // held a time the reader gave us, only the midpoint of the part-of-day window they
+  // picked (see lib/birth-time-window.ts). Charging their one lifetime edit for that
+  // would punish the honest answer and leave them stuck with a ~33%-accurate ascendant
+  // forever. Narrow on purpose: the date and place must be untouched, so the exemption
+  // can't be used to smuggle through a free DOB or birthplace change.
+  const isBirthTimeUpgrade =
+    current.birthTimeAccuracy === 'unknown' &&
+    body.timeOfBirth != null &&
+    body.birthTimeAccuracy != null &&
+    body.birthTimeAccuracy !== 'unknown' &&
+    body.dateOfBirth === undefined &&
+    body.placeOfBirth === undefined;
+
+  const isPostOnboardingBirthEdit =
+    touchedBirthEvent && current.profileCompletedAt !== null && !isBirthTimeUpgrade;
 
   if (isPostOnboardingBirthEdit) {
     const claimed = await claimBirthDetailsEdit(userId);
