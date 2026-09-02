@@ -12,7 +12,7 @@
 export interface FeatureDef {
   key: string;
   label: string;
-  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral' | 'ai' | 'rewards';
+  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral' | 'ai' | 'rewards' | 'chat';
   defaultEnabled: boolean;
   /**
    * For `paid`/`reports` keys this is a PRICE the user is charged. For
@@ -75,6 +75,17 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // one key hides the entry point, the other closes the page itself. Ships
   // dark per the standing rule.
   { key: 'nav.shlokas', label: 'Shlokas & Japs page', group: 'nav', defaultEnabled: false },
+  // Lets the astrologer ask, once, for the user's income range as a set of
+  // tappable options when a money question needs a scale to read against (see
+  // lib/chat-income.ts). Off means the prompt never raises income at all —
+  // the gate is a single fact line, so flipping this needs no deploy. Ships
+  // dark per the standing rule; the answers feed Admin -> User Demographics.
+  {
+    key: 'chat.incomeAsk',
+    label: 'Ask income range in chat',
+    group: 'chat',
+    defaultEnabled: false,
+  },
   // Gates the /gita library page (701 verses, category+need-tag browse, per-
   // verse detail + chant audio). Deliberately a SEPARATE feature from
   // nav.shlokas/home.shlokas above, not folded into that grid — different

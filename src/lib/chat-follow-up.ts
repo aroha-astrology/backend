@@ -26,8 +26,10 @@ function extractFollowUp(content: string): string | null {
 /** Loose equality: trims, collapses whitespace, drops trailing punctuation, case-insensitive —
  * a real tap on the chip sends the exact suggested text verbatim, but normalizing this cheaply
  * absorbs whitespace-only client differences without opening the door to unrelated free chat
- * (still requires a near-exact match, not just "any question"). */
-function normalize(s: string): string {
+ * (still requires a near-exact match, not just "any question").
+ * Exported because chat-income.ts matches a tapped income range the same way, and two
+ * near-identical normalizers would drift apart the first time either is tweaked. */
+export function normalizeFollowUp(s: string): string {
   return s
     .trim()
     .toLowerCase()
@@ -50,5 +52,10 @@ export function isFreeFollowUp(
   const suggested = extractFollowUp(lastAssistantTurn.content);
   if (!suggested) return false;
 
-  return normalize(suggested) === normalize(incomingMessage);
+  // One "Ask next:" line can offer several tappable answers separated by " | "
+  // (see scholar.ts's OUTPUT_STYLE and chat-income.ts's range options) — the
+  // user still taps exactly one of them, so any of them is the free follow-up.
+  return suggested
+    .split('|')
+    .some((option) => normalizeFollowUp(option) === normalizeFollowUp(incomingMessage));
 }

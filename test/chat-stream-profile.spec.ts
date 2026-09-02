@@ -38,6 +38,14 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   findActiveUserById: state.findActiveUserById,
 }));
 
+// chatStream reads the `chat.incomeAsk` flag to decide whether the astrologer may
+// ask for an income range. Unmocked that is a real db.select() with no Postgres
+// behind it, which hangs rather than rejecting (same trap as the purchase-facts
+// lookups noted above). Off is the shipped default and out of scope here.
+vi.mock('../src/modules/features/features.service.js', () => ({
+  resolveFeaturesForUser: vi.fn(() => Promise.resolve({})),
+}));
+
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   getKundliForUser: state.getKundliForUser,
   withLiveSadeSati: state.withLiveSadeSati,

@@ -44,6 +44,18 @@ describe('isFreeFollowUp', () => {
     expect(isFreeFollowUp('The current suggestion?', history)).toBe(true);
   });
 
+  it('makes every option on a multi-choice suggestion line free, not just the first', () => {
+    // One "Ask next:" line can offer several tappable answers separated by " | "
+    // (income ranges, timeframes). The user still taps exactly one, so charging
+    // for all but the first would recreate the very problem the free tap fixed.
+    const history = withAssistantTurn(
+      'Your chart shows steady growth.\nAsk next: Under ₹25,000 a month | ₹25,000 – 75,000 | Prefer not to say',
+    );
+    expect(isFreeFollowUp('Under ₹25,000 a month', history)).toBe(true);
+    expect(isFreeFollowUp('Prefer not to say', history)).toBe(true);
+    expect(isFreeFollowUp('What about my career?', history)).toBe(false);
+  });
+
   it('does not treat an arbitrary question as free just because it is a question', () => {
     // Guards against the mechanism being read as "any follow-up question is
     // free" — it must be THE suggested one, not merely question-shaped.

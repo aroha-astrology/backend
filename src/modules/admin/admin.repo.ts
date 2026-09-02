@@ -2,6 +2,7 @@ import { and, count, desc, eq, gte, isNull, like, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { Errors } from '../../lib/errors.js';
 import { decryptField } from '../../lib/crypto/field-encryption.js';
+import { FAMILY_BRACKET_CODES, INCOME_BRACKET_CODES } from '../../lib/chat-income.js';
 import {
   orders,
   walletTransactions,
@@ -411,6 +412,18 @@ export interface UserDemographics {
   ageBrackets: DemographicsBucket[];
   gender: DemographicsBucket[];
   relationshipStatus: DemographicsBucket[];
+  incomeBrackets: DemographicsBucket[];
+  familyIncomeBrackets: DemographicsBucket[];
+}
+
+/** Every bracket shows, including the ones nobody picked — a zero row is a real finding
+ *  ("nobody is above ₹2 lakh"), and a card whose rows appear and vanish is unreadable. */
+function orderedBrackets(
+  rows: DemographicsBucket[],
+  codes: readonly string[],
+): DemographicsBucket[] {
+  const counts = new Map(rows.map((r) => [r.label, r.count]));
+  return [...codes, 'not_asked'].map((label) => ({ label, count: counts.get(label) ?? 0 }));
 }
 
 /**
@@ -419,7 +432,7 @@ export interface UserDemographics {
  * it can't be bucketed in SQL — fetched and decrypted per row instead.
  */
 export async function userDemographics(): Promise<UserDemographics> {
-  const [genderRows, statusRows, dobRows] = await Promise.all([
+  const [genderRows, statusRows, dobRows, incomeRows, familyIncomeRows] = await Promise.all([
     db
       .select({ label: sql<string>`coalesce(${users.gender}::text, 'unknown')`, count: count() })
       .from(users)
@@ -434,6 +447,22 @@ export async function userDemographics(): Promise<UserDemographics> {
       .where(isNull(users.deletedAt))
       .groupBy(users.relationshipStatus),
     db.select({ dateOfBirth: users.dateOfBirth }).from(users).where(isNull(users.deletedAt)),
+    db
+      .select({
+        label: sql<string>`coalesce(${users.incomeBracket}, 'not_asked')`,
+        count: count(),
+      })
+      .from(users)
+      .where(isNull(users.deletedAt))
+      .groupBy(users.incomeBracket),
+    db
+      .select({
+        label: sql<string>`coalesce(${users.familyIncomeBracket}, 'not_asked')`,
+        count: count(),
+      })
+      .from(users)
+      .where(isNull(users.deletedAt))
+      .groupBy(users.familyIncomeBracket),
   ]);
 
   const bracketCounts = new Map<string, number>(AGE_BRACKETS.map((b) => [b, 0]));
@@ -457,6 +486,8 @@ export async function userDemographics(): Promise<UserDemographics> {
     ],
     gender: genderRows,
     relationshipStatus: statusRows,
+    incomeBrackets: orderedBrackets(incomeRows, INCOME_BRACKET_CODES),
+    familyIncomeBrackets: orderedBrackets(familyIncomeRows, FAMILY_BRACKET_CODES),
   };
 }
 

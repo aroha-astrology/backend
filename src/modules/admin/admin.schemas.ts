@@ -290,5 +290,7 @@ export const AdminUserDemographicsResponseSchema = z
     ageBrackets: z.array(AdminDemographicsBucketSchema),
     gender: z.array(AdminDemographicsBucketSchema),
     relationshipStatus: z.array(AdminDemographicsBucketSchema),
+    incomeBrackets: z.array(AdminDemographicsBucketSchema),
+    familyIncomeBrackets: z.array(AdminDemographicsBucketSchema),
   })
   .openapi('AdminUserDemographicsResponse');

@@ -477,6 +477,13 @@
       "when": 1787941900000,
       "tag": "0067_reports_queue_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1787942000000,
+      "tag": "0068_user_income_brackets",
+      "breakpoints": true
     }
   ]
 }

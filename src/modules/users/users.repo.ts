@@ -147,6 +147,26 @@ export async function findActiveUserById(id: string): Promise<UserRow | undefine
 }
 
 /**
+ * Records a self-reported income range (see lib/chat-income.ts for the bracket
+ * table). Written from exactly one place — a tapped range option in chat — so a
+ * value here always came from the user choosing it, never from inference.
+ */
+export async function setIncomeBracket(
+  userId: string,
+  field: 'incomeBracket' | 'familyIncomeBracket',
+  bracket: string,
+): Promise<void> {
+  await db
+    .update(users)
+    .set(
+      field === 'incomeBracket'
+        ? { incomeBracket: bracket, updatedAt: sql`now()` }
+        : { familyIncomeBracket: bracket, updatedAt: sql`now()` },
+    )
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)));
+}
+
+/**
  * File a deletion request, or return the existing one untouched. Idempotent by
  * design: tapping Delete Account a second time must not push the review clock
  * forward, so the `is null` guard is in the WHERE rather than a read-then-write

@@ -320,6 +320,14 @@ export const users = pgTable(
     dailyHoroscopeSendHourLocal: time('daily_horoscope_send_hour_local'),
     interestAreas: text('interest_areas').array().$type<string[]>(),
     relationshipStatus: relationshipStatusEnum('relationship_status'),
+    // Self-reported income ranges, collected as a single tap in chat when a
+    // money question needs a scale to be read against (see lib/chat-income.ts
+    // for the fixed bracket table these codes come from). Plain text, not an
+    // enum: the brackets are a product/market decision that will be retuned,
+    // and re-tuning a pgEnum means a migration dance for a column nothing
+    // joins on. Null means never asked or declined.
+    incomeBracket: text('income_bracket'),
+    familyIncomeBracket: text('family_income_bracket'),
     partnerSeekingIntent: partnerSeekingIntentEnum('partner_seeking_intent'),
     notificationPrefs: jsonb('notification_prefs').$type<NotificationPrefs>(),
     quietHours: jsonb('quiet_hours').$type<QuietHours>(),

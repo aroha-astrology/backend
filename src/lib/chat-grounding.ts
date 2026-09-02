@@ -46,6 +46,7 @@ import {
   calculateAtmakaraka,
   calculateKarakamshaSignIndex,
 } from './astro-engine/charts/jaiminiPoints.js';
+import { FAMILY_BRACKET_LABELS, INCOME_BRACKET_LABELS } from './chat-income.js';
 
 /**
  * IST, not UTC — duplicated (not imported) from
@@ -526,7 +527,12 @@ export function bhinnashtakavargaFacts(
  */
 export function buildProfileFacts(
   profile: { gender?: string | null; birthTimeAccuracy?: string | null },
-  user: { relationshipStatus?: string | null; interestAreas?: string[] | null },
+  user: {
+    relationshipStatus?: string | null;
+    interestAreas?: string[] | null;
+    incomeBracket?: string | null;
+    familyIncomeBracket?: string | null;
+  },
 ): string[] {
   const facts: string[] = [];
   if (profile.gender) facts.push(`User's gender: ${profile.gender}`);
@@ -552,6 +558,25 @@ export function buildProfileFacts(
   }
   if (user.interestAreas && user.interestAreas.length > 0) {
     facts.push(`User's stated areas of interest: ${user.interestAreas.join(', ')}.`);
+  }
+
+  // Self-reported income, collected as a one-tap answer in chat (chat-income.ts).
+  // Stated here so the astrologer reads money questions against the user's real
+  // scale AND — just as important — never asks for it a second time: 'undisclosed'
+  // is a deliberate answer, not a gap to fill.
+  if (user.incomeBracket) {
+    facts.push(
+      user.incomeBracket === 'undisclosed'
+        ? 'User chose not to share their income range. Never ask for it again; read money questions from the chart alone.'
+        : `User's own monthly income bracket: ${INCOME_BRACKET_LABELS[user.incomeBracket] ?? user.incomeBracket}. Already on file — never ask for it again. Scale any money reading to this, and never repeat the figure back as if quoting a record.`,
+    );
+  }
+  if (user.familyIncomeBracket) {
+    facts.push(
+      user.familyIncomeBracket === 'undisclosed'
+        ? 'User chose not to share their household income range. Never ask for it again.'
+        : `User's household monthly income bracket: ${FAMILY_BRACKET_LABELS[user.familyIncomeBracket] ?? user.familyIncomeBracket}. Already on file — never ask for it again.`,
+    );
   }
   return facts;
 }

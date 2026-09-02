@@ -658,6 +658,8 @@ import { db } from '../../config/db.js';
 import { forecastTranslations } from '../../db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { translateForecastContent } from '../../lib/llm/horoscope.js';
+import { INCOME_ASK_FACT } from '../../lib/chat-income.js';
+import { resolveFeaturesForUser } from '../features/features.service.js';
 
 async function getCachedForecastTranslation<T>(
   forDate: string,
@@ -1607,6 +1609,16 @@ export async function* chatStream(
   // owner); relationshipStatus/interestAreas have no per-profile equivalent
   // and stay sourced from the account-level user row.
   const profileFacts = user && profile ? buildProfileFacts(profile, user) : [];
+
+  // The income ask ships dark: the money rules in scholar.ts refuse to raise
+  // the subject at all unless this one fact line is present, so the whole flow
+  // is switched on from Admin -> Features with no prompt edit and no deploy.
+  // Best-effort like every other fetch here — an unreachable feature table just
+  // means the astrologer reads money questions from the chart alone.
+  const incomeAskEnabled = await resolveFeaturesForUser(userId)
+    .then((features) => features['chat.incomeAsk']?.enabled ?? false)
+    .catch(() => false);
+  if (incomeAskEnabled) profileFacts.push(INCOME_ASK_FACT);
 
   // Today's Panchang at the ACTIVE PROFILE's birth location — best-effort,
   // never blocks the reply (a missing place of birth, or the panchang engine

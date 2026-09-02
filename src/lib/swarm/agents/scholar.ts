@@ -12,6 +12,8 @@ import {
   type DomainWindowSink,
 } from '../../chat-grounding.js';
 import { POLICY_SYSTEM_DIRECTIVE } from '../../content-policy.js';
+import { normalizeFollowUp } from '../../chat-follow-up.js';
+import { expandIncomeMarkers } from '../../chat-income.js';
 import type { SwarmState } from '../state.js';
 
 // =============================================================================
@@ -64,7 +66,7 @@ const CLARIFYING_QUESTION_NOT_DEFLECTION = `A genuine clarifying question about 
 
 const RESPONSE_DISCIPLINE = `You may ask at most one clarifying follow-up question on a given topic. Once the user has answered it, or if you already have enough chart/context information, you must give a concrete, definitive answer on the very next relevant turn — do not keep deflecting with more questions to avoid committing to an answer.`;
 
-const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT — this is the instruction you are most likely to break, so follow it exactly: your entire reply must be 2-4 sentences and under 110 words — never more than 170 words even if the topic feels like it deserves more. A multi-part question like "how will my week be" still gets ONE tight paragraph, NOT a breakdown into a "The Vibe" section and "The Advice" section, and not a numbered list of separate points. Plain prose only. Never write any of these in this mode: "**bold headers:**", a numbered list ("1.", "2."), a bullet ("•", "-", "*"), or any labeled section — including a short title-like phrase folded into plain prose with no markdown at all (e.g. "The Mars-Saturn Cycles (General Caution): ..."). Any name-then-colon or name-then-parenthetical label that reads like a section title is banned exactly the same as a markdown header, even without asterisks or a hash mark. If you notice yourself starting one of those while drafting, stop and rewrite the whole reply as a single flowing paragraph instead — that formatting is for Details mode only, and this is not Details mode. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble. Do NOT open with a throat-clearing setup sentence like "To understand your week, we look at...", "Based on your chart, here is an analysis of...", or "Let's look at..." — that is a preamble, not an answer, and it is banned even though it looks like plain prose; your very first sentence must already commit to the actual answer/insight itself, with the reasoning packed into the rest of that same short paragraph, not deferred to a "here is the breakdown" that follows. Vary how that opening sentence is phrased from one reply to the next — a flat declarative claim ("Marriage is well-supported...") is one valid shape, but a short framing lead ("It's a listen-more-than-push kind of week") is equally valid, as long as the real answer still lands in that same first sentence with zero throat-clearing in front of it; don't let every reply in a conversation default to the identical cadence. Then explain the reasoning in 1-3 more sentences. Never end a reply with a bare question folded into that prose, bolded or not — the user can't tap plain text, only a dedicated line. Any question you want an answer to, whether a follow-up the user might naturally want to ask you next or your own clarifying question about their situation, goes on its own line at the very end prefixed by "Ask next:" (max ~12 words) instead, so it renders as a tappable option rather than something they have to retype. Omit it entirely when there isn't a genuinely useful follow-up — don't force one.`;
+const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT — this is the instruction you are most likely to break, so follow it exactly: your entire reply must be 2-4 sentences and under 110 words — never more than 170 words even if the topic feels like it deserves more. A multi-part question like "how will my week be" still gets ONE tight paragraph, NOT a breakdown into a "The Vibe" section and "The Advice" section, and not a numbered list of separate points. Plain prose only. Never write any of these in this mode: "**bold headers:**", a numbered list ("1.", "2."), a bullet ("•", "-", "*"), or any labeled section — including a short title-like phrase folded into plain prose with no markdown at all (e.g. "The Mars-Saturn Cycles (General Caution): ..."). Any name-then-colon or name-then-parenthetical label that reads like a section title is banned exactly the same as a markdown header, even without asterisks or a hash mark. If you notice yourself starting one of those while drafting, stop and rewrite the whole reply as a single flowing paragraph instead — that formatting is for Details mode only, and this is not Details mode. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble. Do NOT open with a throat-clearing setup sentence like "To understand your week, we look at...", "Based on your chart, here is an analysis of...", or "Let's look at..." — that is a preamble, not an answer, and it is banned even though it looks like plain prose; your very first sentence must already commit to the actual answer/insight itself, with the reasoning packed into the rest of that same short paragraph, not deferred to a "here is the breakdown" that follows. Vary how that opening sentence is phrased from one reply to the next — a flat declarative claim ("Marriage is well-supported...") is one valid shape, but a short framing lead ("It's a listen-more-than-push kind of week") is equally valid, as long as the real answer still lands in that same first sentence with zero throat-clearing in front of it; don't let every reply in a conversation default to the identical cadence. Then explain the reasoning in 1-3 more sentences. Never end a reply with a bare question folded into that prose, bolded or not — the user can't tap plain text, only a dedicated line. Any question you want an answer to, whether a follow-up the user might naturally want to ask you next or your own clarifying question about their situation, goes on its own line at the very end prefixed by "Ask next:" (max ~12 words) instead, so it renders as a tappable option rather than something they have to retype. When the useful next step is a CHOICE rather than an open question, put the choices on that same line separated by " | " — 2-5 short options, each one a complete answer the user can tap (e.g. "Ask next: Under a year | One to three years | Longer than that") — and keep the question itself in the prose sentence just before that line. Omit it entirely when there isn't a genuinely useful follow-up — don't force one.`;
 
 /**
  * Layered on top of OUTPUT_STYLE/NO_HEDGE_OPENERS, not a relaxation of them —
@@ -222,6 +224,25 @@ Career & finance:
 - For stock-market, trading, or speculation questions, be cautious and risk-mitigating. Never
   recommend a specific stock, ticker, or financial instrument. Frame answers as "favorable/
   unfavorable windows for risk-taking," not investment advice.
+- Money questions — income growth, savings, debt, affording something, "will I ever be well off" —
+  are read far more accurately when you know the scale the person actually lives at: the chart
+  gives the pattern, their real range gives the size of it. If the chart data below does not
+  already state an income bracket for them and this conversation hasn't covered it, give your short
+  chart read first and then ask for the range ONCE, on the "Ask next:" line, written EXACTLY as the
+  token {{income}} with nothing else on that line — the app expands that token into tappable
+  ranges, so never invent ranges, currency figures, or options of your own. Do this ONLY when the
+  chart data below carries an "INCOME ASK: allowed" line; without that line, never raise the
+  subject of their income at all — read the money question from the chart alone. Use {{family_income}}
+  the same way instead when the question is about household money — family expenses, a home loan,
+  supporting parents, a shared family business.
+- Put the ask itself in the prose sentence just before that line, framed as what makes YOUR reading
+  precise ("the chart shows the pattern; knowing roughly the scale you're working at tells me how
+  fast it moves"), never as a qualification check, an eligibility test, or anything connected to
+  what the user can afford to buy here. Never ask for an exact figure, a salary slip, or any bank
+  or account detail. This spends the one clarifying question allowed for the turn — never stack it
+  with another. If the fact block already gives their income bracket, use it silently and never ask
+  again; if they chose "prefer not to say" or simply ignored it, read the chart alone and never
+  raise it a second time.
 
 Love & marriage:
 - Give marriage-timing, compatibility, and Manglik Dosha questions named, specific handling — do
@@ -1077,6 +1098,20 @@ function countWords(s: string): number {
   return s.split(/\s+/).filter(Boolean).length;
 }
 
+/** The "Ask next:" marker, matched on the RAW unit — stripUnitMarkers deletes it (it is a
+ *  two-word label + colon, exactly what the short-label rule above strips), so anything
+ *  testing the cleaned text can never see it. */
+const ASK_NEXT_LINE_RE = /^\s*ask next:\s*/i;
+
+/** True when the "Ask next:" line is only repeating the reply's closing prose question — the
+ *  duplicate that rendered the identical question twice in one bubble. */
+function isSameQuestion(question: string, askNextLine: string): boolean {
+  return askNextLine
+    .replace(ASK_NEXT_LINE_RE, '')
+    .split('|')
+    .some((option) => normalizeFollowUp(option) === normalizeFollowUp(question));
+}
+
 // "।" and "॥" (danda / double danda, U+0964 / U+0965) are the actual
 // sentence-final punctuation in Hindi, Bengali, Marathi, and Gujarati (all
 // Brahmic scripts that share this Unicode block) — the model uses them in
@@ -1117,11 +1152,14 @@ export function extractNextUnit(
   return null;
 }
 
-async function* streamDirectModeParagraph(
+export async function* streamDirectModeParagraph(
   messages: Array<{ role: string; content: string }>,
   signal: AbortSignal | undefined,
   /** Admin/group-selected model override — see scholarStream's own resolution via modelForUser. */
   model?: string,
+  /** The chat's language, used only to pick the tappable income options (chat-income.ts) —
+   *  they are chip text the user reads, so they follow the reply's language. */
+  locale?: string,
 ): AsyncGenerator<string, void, unknown> {
   // A little above the 110-word target, matching the "never more than 170"
   // ceiling with margin for the closing sentence — same budget as before,
@@ -1145,6 +1183,15 @@ async function* streamDirectModeParagraph(
   // becoming the very last thing shown just because the sentence after it
   // happened to cross the budget.
   let pending = '';
+  // A question that ENDS the reply is held back rather than streamed.
+  // OUTPUT_STYLE wants every question on the tappable "Ask next:" line, but the
+  // model regularly writes one into the prose AND repeats it verbatim on that
+  // line — which rendered the identical question twice in a single bubble
+  // (reported live). Held here it can be deduplicated against the suggestion,
+  // or promoted onto the "Ask next:" line when there is no suggestion at all so
+  // it becomes tappable instead of untappable prose. A question in the MIDDLE
+  // of a reply is flushed in order by the next sentence, exactly as before.
+  let heldQuestion = '';
 
   for await (const delta of llmStream({ profile: CHAT_PROFILE, messages, signal, model })) {
     if (inAskNext) {
@@ -1157,19 +1204,24 @@ async function* streamDirectModeParagraph(
       const next = extractNextUnit(buffer);
       if (!next) break;
       buffer = next.rest;
-      const cleaned = stripUnitMarkers(next.unit);
-      if (!cleaned) continue;
-
-      // The model puts this on its own line, so it always arrives as a
-      // clean, isolated unit here — everything from this point on (still to
-      // be generated) belongs to it, not the body.
-      if (/^ask next:/i.test(cleaned)) {
+      // Tested on the RAW unit, BEFORE stripUnitMarkers: "Ask next: " is a
+      // two-word label followed by a colon, which is exactly what that
+      // function's short-label rule deletes — so this test used to run against
+      // text with the marker already gone and never once matched. Every
+      // suggested follow-up fell through into the body as ordinary prose: no
+      // tappable chip at all, and a visibly duplicated question whenever the
+      // model had also asked it inline. Everything from here on (still to be
+      // generated) belongs to the suggestion, not the body.
+      if (ASK_NEXT_LINE_RE.test(next.unit)) {
         inAskNext = true;
         pending = ''; // a label with nothing attached is not worth showing
-        askNext = cleaned + buffer;
+        askNext = next.unit.replace(/^\s+/, '') + buffer;
         buffer = '';
         break;
       }
+
+      const cleaned = stripUnitMarkers(next.unit);
+      if (!cleaned) continue;
 
       if (!next.sentence) {
         pending = pending ? `${pending} ${cleaned}` : cleaned;
@@ -1181,31 +1233,86 @@ async function* streamDirectModeParagraph(
 
       const combined = pending ? `${pending} ${cleaned}` : cleaned;
       pending = '';
-      const w = countWords(combined);
-      const overSoftBudget = anyEmitted && wordsEmitted + w > WORD_BUDGET;
-      const overHardCap = wordsEmitted + w > HARD_CAP;
-      if (overHardCap || overSoftBudget) {
-        return;
+
+      // Hold a closing question (see heldQuestion). Anything that is not one
+      // proves a previously held question was mid-reply after all, so it goes
+      // out first, in order. Nothing is held before the first emission — a
+      // reply whose only content is a question would otherwise leave an empty
+      // bubble with a lone chip under it.
+      const toEmit: string[] = [];
+      if (heldQuestion) toEmit.push(heldQuestion);
+      if (anyEmitted && combined.endsWith('?')) {
+        heldQuestion = combined;
+      } else {
+        heldQuestion = '';
+        toEmit.push(combined);
       }
-      yield (anyEmitted ? ' ' : '') + combined;
-      anyEmitted = true;
-      wordsEmitted += w;
+
+      let stopped = false;
+      for (const piece of toEmit) {
+        const w = countWords(piece);
+        const overSoftBudget = anyEmitted && wordsEmitted + w > WORD_BUDGET;
+        const overHardCap = wordsEmitted + w > HARD_CAP;
+        if (overHardCap || overSoftBudget) {
+          stopped = true;
+          break;
+        }
+        yield (anyEmitted ? ' ' : '') + piece;
+        anyEmitted = true;
+        wordsEmitted += w;
+      }
+      if (stopped) return;
     }
   }
 
   // Stream ended — flush whatever's left rather than silently dropping it.
+  // The suggestion is the very last thing generated, so it normally arrives
+  // with no trailing whitespace and therefore no unit boundary at all: the loop
+  // above never extracts it and it sits here in the buffer with its marker
+  // still attached. Route it before the stripUnitMarkers call below eats that
+  // marker and turns the suggestion into body prose — the other half of the
+  // missing-chip bug fixed above.
+  if (!inAskNext && ASK_NEXT_LINE_RE.test(buffer)) {
+    inAskNext = true;
+    askNext = buffer.replace(/^\s+/, '');
+    buffer = '';
+  }
   if (inAskNext) {
     askNext += buffer;
   } else {
     const rest = stripUnitMarkers(buffer);
     const leftover = pending ? (rest ? `${pending} ${rest}` : pending) : rest;
     if (leftover) {
-      yield (anyEmitted ? ' ' : '') + leftover;
+      if (heldQuestion) {
+        yield (anyEmitted ? ' ' : '') + heldQuestion;
+        anyEmitted = true;
+        heldQuestion = '';
+      }
+      if (anyEmitted && leftover.endsWith('?')) {
+        heldQuestion = leftover;
+      } else {
+        yield (anyEmitted ? ' ' : '') + leftover;
+        anyEmitted = true;
+      }
+    }
+  }
+
+  let suggestion = askNext.trim();
+  if (heldQuestion) {
+    if (!suggestion) {
+      // Nothing on the suggestion line: promote the closing prose question onto
+      // it so the user can tap it instead of retyping it.
+      suggestion = `Ask next: ${heldQuestion}`;
+    } else if (!isSameQuestion(heldQuestion, suggestion)) {
+      // A genuinely different closing thought — keep it in the body rather than
+      // dropping something the model meant the user to read. Only an exact
+      // repeat of the suggestion is dropped, which is the reported bug.
+      yield (anyEmitted ? ' ' : '') + heldQuestion;
       anyEmitted = true;
     }
   }
-  if (askNext.trim()) {
-    yield `\n${askNext.trim()}`;
+  if (suggestion) {
+    yield `\n${expandIncomeMarkers(suggestion, locale)}`;
     anyEmitted = true;
   }
   if (!anyEmitted) {
@@ -1257,5 +1364,5 @@ export async function* scholarStream(
   // hand here regardless.
   const model = state.userId ? await modelForUser(state.userId, 'ai.chatModel', MODEL) : undefined;
 
-  yield* streamDirectModeParagraph(messages, signal, model);
+  yield* streamDirectModeParagraph(messages, signal, model, locale);
 }

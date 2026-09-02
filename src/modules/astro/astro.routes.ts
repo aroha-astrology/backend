@@ -5,7 +5,8 @@ import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
-import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
+import { deductWalletBalance, addWalletBalance, setIncomeBracket } from '../users/users.repo.js';
+import { matchIncomeReply } from '../../lib/chat-income.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import * as astroService from './astro.service.js';
@@ -593,6 +594,17 @@ astroRouter.openapi(chatRoute, async (c) => {
   // then charged full price for using it, which defeated its own purpose.
   const isFollowUpTap = isFreeFollowUp(body.message, storedHistory);
   const amountToChargePaise = isFollowUpTap ? 0 : chatMessageCostPaise;
+
+  // A tapped income range is a demographic answer, not a question. Recorded
+  // before generation starts so THIS turn's prompt already sees the bracket in
+  // its fact block — otherwise the astrologer answers the money question at the
+  // wrong scale and, worse, has no reason not to ask for the range again.
+  // Best-effort: a failed write must not cost the user their (already charged)
+  // turn, it only means the range gets asked for once more later.
+  const incomeReply = matchIncomeReply(body.message);
+  if (incomeReply) {
+    await setIncomeBracket(user.id, incomeReply.field, incomeReply.bracket).catch(() => {});
+  }
 
   // Charge atomically before any generation starts — same balance-check-and-
   // debit-in-one-UPDATE primitive as unlockHouseForUser, so two concurrent
