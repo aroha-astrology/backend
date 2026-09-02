@@ -140,6 +140,7 @@ describe('listTransactions', () => {
         amountPaise: 2000,
         balanceAfterPaise: 8000,
         isRefund: false,
+        isCredit: false,
       },
       {
         id: 'order-1',
@@ -149,5 +150,36 @@ describe('listTransactions', () => {
         status: 'paid',
       },
     ]);
+  });
+
+  it('reads isCredit off the ledger delta sign, not the reason — and only surfaces a still-live expiry', async () => {
+    // Regression: the wallet history UI used to guess credit-vs-debit from a hardcoded
+    // whitelist of `kind`s, which missed admin grants and every campaign-bonus claim —
+    // rendering them as a red debit with a blank label. isCredit must come from delta.
+    vi.mocked(findOrdersForUser).mockResolvedValue([]);
+    vi.mocked(findDebitsForUser).mockResolvedValue([
+      {
+        ...baseLedgerRow,
+        id: 'credit-live',
+        delta: 5100,
+        reason: 'janmashtami_2026_abc12345',
+        expiresAt: new Date(Date.now() + 86_400_000), // 1 day out — still live
+      },
+      {
+        ...baseLedgerRow,
+        id: 'credit-expired',
+        delta: 5100,
+        reason: 'independence_day_2026',
+        expiresAt: new Date(Date.now() - 86_400_000), // already past — cron just hasn't swept it yet
+      },
+    ]);
+
+    const result = await listTransactions('user-1');
+
+    expect(result).toEqual([
+      expect.objectContaining({ id: 'credit-expired', isCredit: true }),
+      expect.objectContaining({ id: 'credit-live', isCredit: true, expiresAt: expect.any(String) }),
+    ]);
+    expect((result[0] as { expiresAt?: string }).expiresAt).toBeUndefined();
   });
 });

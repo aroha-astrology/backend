@@ -226,7 +226,10 @@ export async function executeSend(campaign: GiftCampaignRow): Promise<boolean> {
           title: copy.title,
           body: copy.body,
           type: 'gift_campaign',
-          link: '/wallet',
+          // There is no /wallet route (it 404'd — the wallet/transaction history page is
+          // /profile/orders); the self-claim modal is mounted globally in layout.tsx and pops
+          // up over whatever page loads regardless, so this only has to be a real route.
+          link: '/profile/orders',
         });
       }),
     ),

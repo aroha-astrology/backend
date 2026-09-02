@@ -182,7 +182,16 @@ const claimCampaignBonusRoute = createRoute({
       description: 'Claim result — `claimed: false` means this user already claimed it before',
       content: {
         'application/json': {
-          schema: z.object({ claimed: z.boolean(), walletBalancePaise: z.number().int() }),
+          schema: z.object({
+            claimed: z.boolean(),
+            walletBalancePaise: z.number().int(),
+            expiresAt: z
+              .string()
+              .nullable()
+              .openapi({
+                description: 'When this bonus itself expires and gets clawed back, if ever.',
+              }),
+          }),
         },
       },
     },
@@ -385,7 +394,10 @@ usersRouter.openapi(claimCampaignBonusRoute, async (c) => {
     campaign.amountPaise,
     campaign.expiresAt,
   );
-  return c.json(result, 200);
+  return c.json(
+    { ...result, expiresAt: campaign.expiresAt ? campaign.expiresAt.toISOString() : null },
+    200,
+  );
 });
 
 usersRouter.openapi(getNotificationsRoute, async (c) => {

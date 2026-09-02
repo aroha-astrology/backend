@@ -526,6 +526,15 @@ interface RechargeTransaction {
   status: OrderRow['status'];
 }
 
+/**
+ * Despite the name, not every row here is a debit — `admin_adjustment` covers
+ * both Telegram /money grants and campaign-bonus claims (positive delta) as
+ * well as deductions and expiry clawbacks (negative delta). `isCredit` is the
+ * authoritative sign, read straight off the ledger's `delta` rather than
+ * guessed from `kind` — see `isCredit()` in app/profile/orders/page.tsx,
+ * which used to whitelist 3 kinds and silently mis-rendered every campaign
+ * claim as a debit with a blank label.
+ */
 interface DebitTransaction {
   id: string;
   kind: Exclude<TransactionKind, 'house_unlock' | 'report_unlock'>;
@@ -533,6 +542,9 @@ interface DebitTransaction {
   amountPaise: number;
   balanceAfterPaise: number;
   isRefund: boolean;
+  isCredit: boolean;
+  /** ISO timestamp — set only when this credit itself expires (and gets clawed back) if unused. */
+  expiresAt?: string;
 }
 
 interface HouseUnlockTransaction {
@@ -542,6 +554,8 @@ interface HouseUnlockTransaction {
   amountPaise: number;
   balanceAfterPaise: number;
   isRefund: boolean;
+  isCredit: boolean;
+  expiresAt?: string;
   houseNumber: number;
 }
 
@@ -552,6 +566,8 @@ interface ReportUnlockTransaction {
   amountPaise: number;
   balanceAfterPaise: number;
   isRefund: boolean;
+  isCredit: boolean;
+  expiresAt?: string;
   reportKey: string;
   periodMonth?: string;
   bundleMonths?: number;
@@ -582,6 +598,12 @@ function toTransactionDto(row: OrderRow | WalletTransactionRow): Transaction {
     amountPaise: Math.abs(row.delta),
     balanceAfterPaise: row.balanceAfter,
     isRefund,
+    isCredit: row.delta > 0,
+    // Only surface a still-live expiry — expiredAt gets set the moment the sweep claws a row
+    // back, and a past expiresAt on an unclawed row is just the cron's polling lag.
+    ...(row.expiresAt && !row.expiredAt && row.expiresAt.getTime() > Date.now()
+      ? { expiresAt: row.expiresAt.toISOString() }
+      : {}),
   };
   if (kind === 'house_unlock') {
     return { ...base, kind, houseNumber: houseNumber as number };
