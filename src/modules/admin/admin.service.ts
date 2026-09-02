@@ -21,6 +21,13 @@ import {
 import { requestAccountDeletion } from '../users/users.service.js';
 import { costByAgent, type AgentCostRow } from './ai-usage.repo.js';
 import {
+  listAllReportRows,
+  adminResetReportRow,
+  adminDeleteReportRow,
+  adminResetReportRowsByKey,
+  adminDeleteReportRowsByKey,
+} from '../reports/reports.repo.js';
+import {
   sumPaidOrdersBetween,
   revenueTimeSeries,
   spendByFeature,
@@ -300,6 +307,56 @@ export async function adjustWallet(
 
 export async function getReportsBreakdown(range: DateRange) {
   return spendByReportKey(range);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Report generations — who generated which report                            */
+/* -------------------------------------------------------------------------- */
+
+export async function getReportGenerations(
+  reportKey: string | undefined,
+  limit: number,
+  offset: number,
+) {
+  const { rows, total } = await listAllReportRows(reportKey, limit, offset);
+  const reportsOut = rows.map((row) => ({
+    ...row,
+    periodMonth: row.periodMonth,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }));
+  return { reports: reportsOut, total, offset, limit };
+}
+
+export async function resetReportGeneration(id: string, adminPhone: string) {
+  const row = await adminResetReportRow(id);
+  if (!row) throw Errors.notFound('Report not found');
+  await logAdminAction(adminPhone, `POST /v1/admin/report-generations/${id}/reset`, {});
+  return { id: row.id, status: 'failed' as const };
+}
+
+export async function deleteReportGeneration(id: string, adminPhone: string) {
+  const deleted = await adminDeleteReportRow(id);
+  if (!deleted) throw Errors.notFound('Report not found');
+  await logAdminAction(adminPhone, `DELETE /v1/admin/report-generations/${id}`, {});
+}
+
+export async function resetReportGenerationsBulk(reportKey: string, adminPhone: string) {
+  const count = await adminResetReportRowsByKey(reportKey);
+  await logAdminAction(adminPhone, 'POST /v1/admin/report-generations/reset-all', {
+    reportKey,
+    count,
+  });
+  return { count };
+}
+
+export async function deleteReportGenerationsBulk(reportKey: string, adminPhone: string) {
+  const count = await adminDeleteReportRowsByKey(reportKey);
+  await logAdminAction(adminPhone, 'POST /v1/admin/report-generations/delete-all', {
+    reportKey,
+    count,
+  });
+  return { count };
 }
 
 /* -------------------------------------------------------------------------- */

@@ -1,7 +1,8 @@
-import { and, count, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import { db } from '../../config/db.js';
-import { reports, type ReportRow, type NewReportRow } from '../../db/schema.js';
+import { reports, users, type ReportRow, type NewReportRow } from '../../db/schema.js';
+import { decryptField } from '../../lib/crypto/field-encryption.js';
 import type { ReportSection } from './report-generator.types.js';
 
 /** Deterministic identity for partner/compatibility input — same JSON.stringify-based
@@ -586,4 +587,100 @@ export async function countReadyReportsByKey(): Promise<{ reportKey: string; cou
     .where(and(eq(reports.status, 'ready'), eq(reports.isPreview, false)))
     .groupBy(reports.reportKey);
   return rows.map((row) => ({ reportKey: row.reportKey, count: row.count }));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Admin — GET/DELETE /admin/report-generations                               */
+/* -------------------------------------------------------------------------- */
+
+export interface AdminReportRow {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  phoneE164: string | null;
+  reportKey: string;
+  status: ReportRow['status'];
+  periodMonth: string | null;
+  pricePaidPaise: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Every generated report row across ALL users, newest first — the admin "who generated
+ * which report" tab. Unlike listReportsForUser this is deliberately NOT scoped to one
+ * user; `reportKey` narrows to one catalogue entry when given, omitted lists every key.
+ */
+export async function listAllReportRows(
+  reportKey: string | undefined,
+  limit: number,
+  offset: number,
+): Promise<{ rows: AdminReportRow[]; total: number }> {
+  const where = reportKey ? eq(reports.reportKey, reportKey) : undefined;
+  const [rows, totalRows] = await Promise.all([
+    db
+      .select({
+        id: reports.id,
+        userId: reports.userId,
+        displayName: users.displayName,
+        phoneE164: users.phoneE164,
+        reportKey: reports.reportKey,
+        status: reports.status,
+        periodMonth: reports.periodMonth,
+        pricePaidPaise: reports.pricePaidPaise,
+        createdAt: reports.createdAt,
+        updatedAt: reports.updatedAt,
+      })
+      .from(reports)
+      .innerJoin(users, eq(users.id, reports.userId))
+      .where(where)
+      .orderBy(desc(reports.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(reports).where(where),
+  ]);
+  return {
+    rows: rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) })),
+    total: totalRows[0]?.total ?? 0,
+  };
+}
+
+/** Admin-only, unconditional by id (unlike markReportFailed's claim-fenced version used
+ * mid-generation) — lets an admin unstick a `ready` row so its owner can regenerate it
+ * (e.g. a purchased-before-a-new-input-field-existed report). Content/paid record survive;
+ * see aroha-report-regeneration-reset memory for why this is preferred over a hard delete. */
+export async function adminResetReportRow(id: string): Promise<ReportRow | undefined> {
+  const [row] = await db
+    .update(reports)
+    .set({ status: 'failed', updatedAt: new Date() })
+    .where(eq(reports.id, id))
+    .returning();
+  return row;
+}
+
+/** Admin-only hard delete of one report row — irreversible, no ledger/refund side effect. */
+export async function adminDeleteReportRow(id: string): Promise<boolean> {
+  const deleted = await db.delete(reports).where(eq(reports.id, id)).returning({ id: reports.id });
+  return deleted.length > 0;
+}
+
+/** Bulk reset every non-`failed` row for one report key — skips rows already reset so a
+ * repeat "Reset all" click doesn't churn `updatedAt` on rows nobody touched. Returns the
+ * count actually flipped. */
+export async function adminResetReportRowsByKey(reportKey: string): Promise<number> {
+  const rows = await db
+    .update(reports)
+    .set({ status: 'failed', updatedAt: new Date() })
+    .where(and(eq(reports.reportKey, reportKey), ne(reports.status, 'failed')))
+    .returning({ id: reports.id });
+  return rows.length;
+}
+
+/** Bulk hard delete of every row for one report key — irreversible. */
+export async function adminDeleteReportRowsByKey(reportKey: string): Promise<number> {
+  const rows = await db
+    .delete(reports)
+    .where(eq(reports.reportKey, reportKey))
+    .returning({ id: reports.id });
+  return rows.length;
 }
