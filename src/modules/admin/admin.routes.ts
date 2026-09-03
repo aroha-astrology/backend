@@ -21,6 +21,8 @@ import {
   AdminReportGenerationResetResponseSchema,
   AdminReportGenerationsBulkBodySchema,
   AdminReportGenerationsBulkResponseSchema,
+  AdminReportRatingsQuerySchema,
+  AdminReportRatingsResponseSchema,
   AdminReferralsResponseSchema,
   AdminRecurringUsersResponseSchema,
   AdminUserDemographicsResponseSchema,
@@ -43,6 +45,7 @@ import {
   deleteReportGeneration,
   resetReportGenerationsBulk,
   deleteReportGenerationsBulk,
+  getReportRatings,
   getReferrals,
   getRecurringUsers,
   getUserDemographics,
@@ -466,6 +469,36 @@ adminRouter.openapi(deleteReportGenerationsBulkRoute, async (c) => {
   const { reportKey } = c.req.valid('json');
   const result = await deleteReportGenerationsBulk(reportKey, adminPhoneOf(c));
   return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/report-ratings — every report rating, newest first              */
+/* -------------------------------------------------------------------------- */
+
+const reportRatingsRoute = createRoute({
+  method: 'get',
+  path: '/admin/report-ratings',
+  tags: ['Admin'],
+  summary:
+    'Every report rating across all users, newest first, optionally filtered to one report key',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { query: AdminReportRatingsQuerySchema },
+  responses: {
+    200: {
+      description: 'Report rating rows',
+      content: { 'application/json': { schema: AdminReportRatingsResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(reportRatingsRoute, async (c) => {
+  const { reportKey, offset, limit } = c.req.valid('query');
+  const page = await getReportRatings(reportKey, limit, offset);
+  await auditRead(c, 'GET /v1/admin/report-ratings', { reportKey, offset, limit });
+  return c.json(page, 200);
 });
 
 /* -------------------------------------------------------------------------- */

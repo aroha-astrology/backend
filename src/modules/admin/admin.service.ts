@@ -27,6 +27,7 @@ import {
   adminResetReportRowsByKey,
   adminDeleteReportRowsByKey,
 } from '../reports/reports.repo.js';
+import { listAllReportRatings } from '../reports/report-ratings.repo.js';
 import {
   sumPaidOrdersBetween,
   revenueTimeSeries,
@@ -357,6 +358,20 @@ export async function deleteReportGenerationsBulk(reportKey: string, adminPhone:
     count,
   });
   return { count };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Report ratings — every rating across all users                             */
+/* -------------------------------------------------------------------------- */
+
+export async function getReportRatings(
+  reportKey: string | undefined,
+  limit: number,
+  offset: number,
+) {
+  const { rows, total } = await listAllReportRatings(reportKey, limit, offset);
+  const ratings = rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+  return { ratings, total, offset, limit };
 }
 
 /* -------------------------------------------------------------------------- */
