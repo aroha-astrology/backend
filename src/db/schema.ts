@@ -2382,6 +2382,45 @@ export type UserFeedbackRow = typeof userFeedback.$inferSelect;
 export type NewUserFeedbackRow = typeof userFeedback.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
+/* report_ratings — per-report star rating; <3 stars auto-refunds 100% of    */
+/* what was paid for that specific report. Distinct from user_feedback       */
+/* (once-ever, app-wide) — this is repeatable, one row per (user, report).   */
+/* -------------------------------------------------------------------------- */
+
+export const reportRatings = pgTable(
+  'report_ratings',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    reportId: uuid('report_id')
+      .notNull()
+      .references(() => reports.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    /** Nullable — the comment box is optional. Encrypted at rest, same convention as user_feedback.comment. */
+    comment: text('comment'),
+    /** Set only when this rating (< 3 stars) triggered the automatic refund. */
+    refundedPaise: integer('refunded_paise'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userReportUnique: uniqueIndex('report_ratings_user_report_unique').on(
+      table.userId,
+      table.reportId,
+    ),
+    reportIdx: index('report_ratings_report_id_idx').on(table.reportId),
+  }),
+);
+
+export type ReportRatingRow = typeof reportRatings.$inferSelect;
+export type NewReportRatingRow = typeof reportRatings.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
 /* palm_readings — Hasta Samudrika palm analysis                              */
 /*                                                                             */
 /* Facts here come from photographs via async vision AI, not from a chart, so */

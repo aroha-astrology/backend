@@ -191,7 +191,7 @@ function reasonForPurchase(reportKey: string, months: string[]): string {
 /** Reason string for a refund tied to ONE specific row (duplicate-purchase reuse, or a
  * background generation failure) — always the single-month/one-time shape, even when that
  * row was originally purchased as part of a multi-month bundle, for precise ledger tracing. */
-function reasonForRow(reportKey: string, periodMonth: string | null): string {
+export function reasonForRow(reportKey: string, periodMonth: string | null): string {
   if (periodMonth === null) return `report_unlock:${reportKey}`;
   return `report_unlock:${reportKey}:${dateToMonthKey(periodMonth)}`;
 }

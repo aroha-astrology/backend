@@ -256,6 +256,37 @@ export const AdminReportGenerationsBulkResponseSchema = z
   .openapi('AdminReportGenerationsBulkResponse');
 
 /* -------------------------------------------------------------------------- */
+/* GET /admin/report-ratings                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const AdminReportRatingsQuerySchema = z.object({
+  reportKey: z.string().optional().openapi({ description: 'Omit to list every report key' }),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+const AdminReportRatingRowSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  displayName: z.string().nullable(),
+  phoneE164: z.string().nullable(),
+  reportKey: z.string(),
+  rating: z.number(),
+  comment: z.string().nullable(),
+  refundedPaise: z.number().nullable(),
+  createdAt: z.string(),
+});
+
+export const AdminReportRatingsResponseSchema = z
+  .object({
+    ratings: z.array(AdminReportRatingRowSchema),
+    total: z.number(),
+    offset: z.number(),
+    limit: z.number(),
+  })
+  .openapi('AdminReportRatingsResponse');
+
+/* -------------------------------------------------------------------------- */
 /* GET /admin/referrals                                                        */
 /* -------------------------------------------------------------------------- */
 

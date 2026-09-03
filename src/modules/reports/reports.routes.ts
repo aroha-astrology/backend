@@ -23,6 +23,8 @@ import {
   previewReport,
   purchaseReport,
 } from './reports.service.js';
+import { RateReportBodySchema, RateReportResponseSchema } from './report-ratings.schemas.js';
+import { rateReport } from './report-ratings.service.js';
 
 const ErrorSchema = z
   .object({
@@ -228,4 +230,48 @@ reportsRouter.openapi(getOneRoute, async (c) => {
   const dto = await getReportForUser(id, user.id, language || 'en');
   if (dto.status === 'generating') return c.json(dto, 202);
   return c.json(dto, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /reports/{id}/rating — rate a finished report                         */
+/* -------------------------------------------------------------------------- */
+
+const rateReportRoute = createRoute({
+  method: 'post',
+  path: '/reports/{id}/rating',
+  tags: ['Reports'],
+  summary:
+    'Rate a finished report; a rating under 3 stars triggers an automatic 100% refund to the wallet',
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: ReportIdParamSchema,
+    body: {
+      required: true,
+      content: { 'application/json': { schema: RateReportBodySchema } },
+    },
+  },
+  responses: {
+    201: {
+      description: 'Rating recorded',
+      content: { 'application/json': { schema: RateReportResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse(
+      'Not found (also returned for a report owned by another user, or one not yet ready to rate)',
+    ),
+    409: errorResponse('Already rated'),
+  },
+});
+
+reportsRouter.openapi(rateReportRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const result = await rateReport({
+    userId: user.id,
+    reportId: id,
+    rating: body.rating,
+    ...(body.comment ? { comment: body.comment } : {}),
+  });
+  return c.json(result, 201);
 });
