@@ -651,6 +651,20 @@ export const walletTransactions = pgTable(
       .default(sql`now()`),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     expiredAt: timestamp('expired_at', { withTimezone: true }),
+    /**
+     * How much of THIS grant is still unspent — set only on credit rows that
+     * carry an `expiresAt`, NULL on everything else (purchases, refunds,
+     * non-expiring bonuses, every debit). Turns an expiring grant into a
+     * spendable lot: a debit drains the soonest-expiring lot first
+     * (`consumeExpiringCredits` in users.repo.ts), so the expiry sweep claws
+     * back only what was never used instead of `min(granted, balance)` —
+     * which used to take a spent bonus back out of the user's paid balance.
+     *
+     * `users.walletBalancePaise` remains the single authoritative spendable
+     * total; this is expiry accounting only. Lots can therefore sum to less
+     * than the balance (paid top-ups have no lot) but never to more.
+     */
+    remainingPaise: integer('remaining_paise'),
   },
   (table) => ({
     userIdx: index('wallet_transactions_user_id_idx').on(table.userId),

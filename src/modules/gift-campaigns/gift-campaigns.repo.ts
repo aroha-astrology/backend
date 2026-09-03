@@ -153,30 +153,51 @@ export async function resolveAudience(maxBalancePaise: number | null): Promise<A
 export interface DueExpiredGrant {
   id: string;
   userId: string;
-  delta: number;
   reason: string;
-  currentBalancePaise: number;
+  /**
+   * The part of this grant that was never spent — the exact clawback amount.
+   * `coalesce`d to the full `delta` only for a grant that somehow predates
+   * `remaining_paise` (migration 0070 backfilled every live one), which is the
+   * old whole-grant behaviour and still floored at the balance by
+   * `applyExpiryClawback`.
+   */
+  remainingPaise: number;
 }
 
+/**
+ * Grants past their expiry that the sweep hasn't collected yet. No join on
+ * `users` any more: the clawback is `remaining_paise`, which is bounded by
+ * what the grant itself still holds, and the balance floor is applied inside
+ * `applyExpiryClawback`'s transaction. Reading the balance out here to clamp
+ * against was the bug — the value went stale the moment anything else spent,
+ * and two grants expiring for the same user in one sweep were both clamped
+ * against the same pre-sweep snapshot, so together they could overdraw.
+ */
 export async function findDueExpiredGrants(now: Date): Promise<DueExpiredGrant[]> {
   return db
     .select({
       id: walletTransactions.id,
       userId: walletTransactions.userId,
-      delta: walletTransactions.delta,
       reason: walletTransactions.reason,
-      currentBalancePaise: users.walletBalancePaise,
+      remainingPaise: sql<number>`coalesce(${walletTransactions.remainingPaise}, ${walletTransactions.delta})`,
     })
     .from(walletTransactions)
-    .innerJoin(users, eq(users.id, walletTransactions.userId))
     .where(and(lt(walletTransactions.expiresAt, now), isNull(walletTransactions.expiredAt)));
 }
 
 /**
- * Deducts `clawbackPaise` from the user's wallet, logs the reversal as its
- * own wallet_transactions row (reason = `${originalReason}_expired`), and
- * marks the original grant `expired_at` so the sweep never revisits it —
- * same lock-then-write shape as claimCampaignBonus, one transaction.
+ * Deducts the unspent remainder of an expired grant from the user's wallet,
+ * logs the reversal as its own wallet_transactions row (reason =
+ * `${originalReason}_expired`), and marks the original grant `expired_at` so
+ * the sweep never revisits it — same lock-then-write shape as
+ * claimCampaignBonus, one transaction.
+ *
+ * The row lock is what makes the floor real: the balance is read and clamped
+ * against inside the same transaction that writes it, so a concurrent spend
+ * (or a second expiring grant swept a moment later) cannot take the wallet
+ * below zero. A wallet balance must never go negative — it is the only thing
+ * gating paid features, and a negative one would silently lock a paying user
+ * out until they topped up past the hole.
  */
 export async function applyExpiryClawback(
   grantId: string,
@@ -185,30 +206,42 @@ export async function applyExpiryClawback(
   reason: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    const [locked] = await tx.execute<{ wallet_balance_paise: number }>(sql`
+      SELECT wallet_balance_paise FROM users WHERE id = ${userId} FOR UPDATE;
+    `);
+    if (!locked) return;
+
+    const deductPaise = Math.max(0, Math.min(clawbackPaise, locked.wallet_balance_paise));
+
+    // Retire the grant either way — a clawback of 0 (already fully spent, or a
+    // balance with nothing left in it) still must not be revisited tomorrow.
+    await tx
+      .update(walletTransactions)
+      .set({ expiredAt: new Date(), remainingPaise: 0 })
+      .where(eq(walletTransactions.id, grantId));
+
+    if (deductPaise === 0) return;
+
     const [updated] = await tx
       .update(users)
-      .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${clawbackPaise}` })
+      .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${deductPaise}` })
       .where(eq(users.id, userId))
       .returning({ walletBalancePaise: users.walletBalancePaise });
     if (!updated) return;
 
     await tx.insert(walletTransactions).values({
       userId,
-      delta: -clawbackPaise,
+      delta: -deductPaise,
       reason,
       balanceAfter: updated.walletBalancePaise,
     });
-    await tx
-      .update(walletTransactions)
-      .set({ expiredAt: new Date() })
-      .where(eq(walletTransactions.id, grantId));
   });
 }
 
-/** Nothing left to claw back (clawback computed as 0) — just stop the sweep from re-checking this grant. */
+/** Nothing left to claw back (the grant was fully spent) — just stop the sweep from re-checking it. */
 export async function markGrantExpired(grantId: string): Promise<void> {
   await db
     .update(walletTransactions)
-    .set({ expiredAt: new Date() })
+    .set({ expiredAt: new Date(), remainingPaise: 0 })
     .where(eq(walletTransactions.id, grantId));
 }

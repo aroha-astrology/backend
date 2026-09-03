@@ -601,7 +601,13 @@ function toTransactionDto(row: OrderRow | WalletTransactionRow): Transaction {
     isCredit: row.delta > 0,
     // Only surface a still-live expiry — expiredAt gets set the moment the sweep claws a row
     // back, and a past expiresAt on an unclawed row is just the cron's polling lag.
-    ...(row.expiresAt && !row.expiredAt && row.expiresAt.getTime() > Date.now()
+    // `remainingPaise === 0` means the user already spent this grant (spends drain expiring
+    // lots first, see consumeExpiringCredits), so there is nothing left for the sweep to take
+    // and telling them it expires would be a warning about money they can no longer lose.
+    ...(row.expiresAt &&
+    !row.expiredAt &&
+    row.remainingPaise !== 0 &&
+    row.expiresAt.getTime() > Date.now()
       ? { expiresAt: row.expiresAt.toISOString() }
       : {}),
   };

@@ -8,6 +8,7 @@ import {
   isNotNull,
   count,
   desc,
+  gt,
   gte,
   lt,
   or,
@@ -255,6 +256,68 @@ export async function updateUserById(
   return row ? decryptUserRow(row) : undefined;
 }
 
+/** The transaction handle drizzle hands a `db.transaction` callback. */
+type WalletTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Spends `amountPaise` out of the user's EXPIRING credit lots, soonest expiry
+ * first, by decrementing each lot's `wallet_transactions.remaining_paise`.
+ *
+ * Call this from every debit site, right after the balance UPDATE and inside
+ * the same transaction. It does not move `users.walletBalancePaise` — that
+ * debit has already happened and stays the authoritative total. All this does
+ * is record WHICH credits the spend consumed, so the expiry sweep claws back
+ * only the untouched remainder of a grant instead of its full face value out
+ * of whatever balance happens to be sitting there (see the `remainingPaise`
+ * note on the schema).
+ *
+ * Spending more than the lots hold is normal and fine: the surplus came from
+ * non-expiring balance (a top-up, a refund, the signup grant), which has no
+ * lot to drain. Nothing here can push a balance negative — it never touches
+ * the balance.
+ *
+ * No extra locking: the caller's balance UPDATE already took the users-row
+ * lock, so two concurrent spends by the same user serialise there and this
+ * read-then-write can't lose an update. Don't call it before that UPDATE.
+ *
+ * Deliberately drains lots whose `expiresAt` is already past but which the
+ * daily sweep hasn't collected yet. Those paise are still in the balance and
+ * still spendable, so letting the spend claim them is both the friendlier
+ * reading of a cron lag and the safe one — skipping them would leave the
+ * sweep clawing back money the user already spent.
+ */
+export async function consumeExpiringCredits(
+  tx: WalletTx,
+  userId: string,
+  amountPaise: number,
+): Promise<void> {
+  let unallocated = amountPaise;
+  if (unallocated <= 0) return;
+
+  const lots = await tx
+    .select({ id: walletTransactions.id, remainingPaise: walletTransactions.remainingPaise })
+    .from(walletTransactions)
+    .where(
+      and(
+        eq(walletTransactions.userId, userId),
+        isNull(walletTransactions.expiredAt),
+        gt(walletTransactions.remainingPaise, 0),
+      ),
+    )
+    .orderBy(asc(walletTransactions.expiresAt), asc(walletTransactions.createdAt));
+
+  for (const lot of lots) {
+    if (unallocated <= 0) break;
+    const take = Math.min(unallocated, lot.remainingPaise ?? 0);
+    if (take <= 0) continue;
+    await tx
+      .update(walletTransactions)
+      .set({ remainingPaise: sql`${walletTransactions.remainingPaise} - ${take}` })
+      .where(eq(walletTransactions.id, lot.id));
+    unallocated -= take;
+  }
+}
+
 /**
  * Atomically deduct `amountPaise` from the wallet if (and only if) the user
  * has enough. Same claim-style primitive as `unlockHouseForUser` — the
@@ -281,6 +344,7 @@ export async function deductWalletBalance(
       reason,
       balanceAfter: charged.walletBalancePaise,
     });
+    await consumeExpiringCredits(tx, userId, amountPaise);
     return true;
   });
 }
@@ -388,6 +452,9 @@ export async function claimCampaignBonus(
       reason: campaignKey,
       balanceAfter: updated.walletBalancePaise,
       expiresAt: expiresAt ?? null,
+      // An expiring grant is a lot: track what's left of it so a later spend
+      // drains this before the user's own money. Non-expiring grants stay NULL.
+      remainingPaise: expiresAt ? amountPaise : null,
     });
 
     return { claimed: true, walletBalancePaise: updated.walletBalancePaise };
@@ -1206,6 +1273,7 @@ export async function unlockHouseForUser(
       reason: `house_unlock:${houseNumber}`,
       balanceAfter: unlocked.walletBalancePaise,
     });
+    await consumeExpiringCredits(tx, userId, pricePaise);
     return true;
   });
 }
@@ -1251,6 +1319,7 @@ export async function unlockGemstoneForUser(
       reason: 'gemstone_unlock',
       balanceAfter: unlocked.walletBalancePaise,
     });
+    await consumeExpiringCredits(tx, userId, pricePaise);
     return true;
   });
 }

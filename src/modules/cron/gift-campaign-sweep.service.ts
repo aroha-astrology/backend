@@ -16,16 +16,27 @@ export async function sweepDueCampaigns(now: Date = new Date()): Promise<{ sent:
 }
 
 /**
- * The credit-expiry half. Clawback is `min(originally granted, currently
- * held)` — see the design spec's note on why this is an approximation, not a
- * per-rupee spend-ordering ledger.
+ * The credit-expiry half. Clawback is whatever the grant still holds
+ * (`remaining_paise`) — spends drain expiring lots soonest-first
+ * (`consumeExpiringCredits` in users.repo.ts), so a bonus the user actually
+ * used is already at 0 here and costs them nothing at expiry. This used to be
+ * `min(originally granted, current balance)`, which took a spent bonus back
+ * out of the user's own paid balance — charging them twice for one bonus.
+ *
+ * No clamping here: `applyExpiryClawback` floors the deduction at the balance
+ * inside its own transaction, which is the only place that can do it without
+ * racing a concurrent spend.
  */
 export async function sweepExpiredGrants(now: Date = new Date()): Promise<{ expired: number }> {
   const due = await findDueExpiredGrants(now);
   for (const grant of due) {
-    const clawbackPaise = Math.max(0, Math.min(grant.delta, grant.currentBalancePaise));
-    if (clawbackPaise > 0) {
-      await applyExpiryClawback(grant.id, grant.userId, clawbackPaise, `${grant.reason}_expired`);
+    if (grant.remainingPaise > 0) {
+      await applyExpiryClawback(
+        grant.id,
+        grant.userId,
+        grant.remainingPaise,
+        `${grant.reason}_expired`,
+      );
     } else {
       await markGrantExpired(grant.id);
     }

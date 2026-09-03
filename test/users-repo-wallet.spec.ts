@@ -60,15 +60,31 @@ function compile(cond: unknown) {
   return dialect.sqlToQuery(cond as Parameters<typeof dialect.sqlToQuery>[0]);
 }
 
-function setupTransaction(updateResult: unknown[]) {
+/**
+ * The expiring-credit lot lookup `consumeExpiringCredits` runs after every
+ * debit. Returns no lots by default, so the debit assertions below see only
+ * the balance UPDATE they care about.
+ */
+function makeSelectChain(lots: unknown[]) {
+  const chain: Record<string, unknown> = {};
+  for (const method of ['from', 'where', 'orderBy']) {
+    chain[method] = vi.fn(() => chain);
+  }
+  // `orderBy` is the last call in the builder chain, so it must resolve.
+  chain.orderBy = vi.fn(() => Promise.resolve(lots));
+  return chain;
+}
+
+function setupTransaction(updateResult: unknown[], lots: unknown[] = []) {
   const updateChain = makeUpdateChain(updateResult);
   const insertChain = makeInsertChain();
   const updateMock = vi.fn(() => updateChain.chain);
   const insertMock = vi.fn(() => insertChain.chain);
+  const selectMock = vi.fn(() => makeSelectChain(lots));
   state.transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
-    cb({ update: updateMock, insert: insertMock }),
+    cb({ update: updateMock, insert: insertMock, select: selectMock }),
   );
-  return { updateChain, insertChain, updateMock, insertMock };
+  return { updateChain, insertChain, updateMock, insertMock, selectMock };
 }
 
 beforeEach(() => {
@@ -103,6 +119,26 @@ describe('deductWalletBalance', () => {
 
     expect(result).toBe(false);
     expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('drains the expiring credit lot so the spend comes out of the bonus, not paid balance', async () => {
+    const { updateMock } = setupTransaction(
+      [{ walletBalancePaise: 8000 }],
+      [{ id: 'bonus-lot', remainingPaise: 2000 }],
+    );
+
+    await deductWalletBalance('user-1', 2000, 'chat_message');
+
+    // Two UPDATEs: the balance debit, then the lot's remaining_paise.
+    expect(updateMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips the lot UPDATE entirely when the balance guard refuses the spend', async () => {
+    const { updateMock } = setupTransaction([], [{ id: 'bonus-lot', remainingPaise: 2000 }]);
+
+    await deductWalletBalance('user-1', 2000, 'chat_message');
+
+    expect(updateMock).toHaveBeenCalledTimes(1);
   });
 });
 

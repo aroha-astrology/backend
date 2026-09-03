@@ -36,9 +36,9 @@ describe('sweepDueCampaigns', () => {
 });
 
 describe('sweepExpiredGrants', () => {
-  it('claws back the lesser of the grant amount and current balance', async () => {
+  it('claws back only the unspent remainder of the grant', async () => {
     state.findDueExpiredGrants.mockResolvedValue([
-      { id: 'g1', userId: 'u1', delta: 5000, reason: 'diwali_2026_abc', currentBalancePaise: 2000 },
+      { id: 'g1', userId: 'u1', reason: 'diwali_2026_abc', remainingPaise: 2000 },
     ]);
     const result = await sweepExpiredGrants(new Date('2026-12-01T00:00:00Z'));
     expect(state.applyExpiryClawback).toHaveBeenCalledWith(
@@ -50,9 +50,9 @@ describe('sweepExpiredGrants', () => {
     expect(result).toEqual({ expired: 1 });
   });
 
-  it('marks a grant expired without a wallet write when nothing is left to claw back', async () => {
+  it('marks a fully-spent grant expired without touching the wallet', async () => {
     state.findDueExpiredGrants.mockResolvedValue([
-      { id: 'g1', userId: 'u1', delta: 5000, reason: 'diwali_2026_abc', currentBalancePaise: 0 },
+      { id: 'g1', userId: 'u1', reason: 'diwali_2026_abc', remainingPaise: 0 },
     ]);
     await sweepExpiredGrants(new Date('2026-12-01T00:00:00Z'));
     expect(state.applyExpiryClawback).not.toHaveBeenCalled();

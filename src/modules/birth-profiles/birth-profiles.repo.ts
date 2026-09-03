@@ -14,7 +14,7 @@ import {
   encryptJson,
   decryptJson,
 } from '../../lib/crypto/field-encryption.js';
-import { GEMSTONE_UNLOCK_FALLBACK_PAISE } from '../users/users.repo.js';
+import { GEMSTONE_UNLOCK_FALLBACK_PAISE, consumeExpiringCredits } from '../users/users.repo.js';
 
 /**
  * dateOfBirth/timeOfBirth/placeOfBirth/gotra are encrypted at rest (third-
@@ -222,6 +222,7 @@ export async function unlockGemstoneForOwnedProfile(
         reason: `gemstone_unlock:profile:${id}`,
         balanceAfter: charged.walletBalancePaise,
       });
+      await consumeExpiringCredits(tx, ownerUserId, pricePaise);
 
       return true;
     });
@@ -365,6 +366,7 @@ export async function unlockHouseForOwnedProfile(
         reason: `house_unlock:${houseNumber}:profile:${id}`,
         balanceAfter: charged.walletBalancePaise,
       });
+      await consumeExpiringCredits(tx, ownerUserId, pricePaise);
 
       return true;
     });

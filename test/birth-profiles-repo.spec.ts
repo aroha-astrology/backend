@@ -91,6 +91,21 @@ function compile(cond: unknown) {
   return dialect.sqlToQuery(cond as Parameters<typeof dialect.sqlToQuery>[0]);
 }
 
+/**
+ * `consumeExpiringCredits` (users.repo.ts) runs inside every debit transaction
+ * and reads the owner's expiring-credit lots. These fakes model an owner with
+ * none, so the drain is a no-op and the charge assertions below are unaffected.
+ * Lot draining itself is covered in wallet-credit-lots.spec.ts.
+ */
+function makeEmptySelect() {
+  const chain: Record<string, unknown> = {
+    from: () => chain,
+    where: () => chain,
+    orderBy: () => Promise.resolve([]),
+  };
+  return vi.fn(() => chain);
+}
+
 describe('softDeleteOwnedBirthProfile', () => {
   beforeEach(() => {
     state.transaction.mockReset();
@@ -209,7 +224,7 @@ describe('unlockGemstoneForOwnedProfile', () => {
       throw new Error(`unexpected table passed to tx.update: ${String(table)}`);
     });
     state.transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
-      cb({ update: updateMock, insert: insertMock }),
+      cb({ update: updateMock, insert: insertMock, select: makeEmptySelect() }),
     );
     return { usersChain, birthProfilesChain, updateMock, insertMock, insertCalls };
   }
@@ -332,7 +347,7 @@ describe('unlockHouseForOwnedProfile', () => {
       throw new Error(`unexpected table passed to tx.update: ${String(table)}`);
     });
     state.transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
-      cb({ update: updateMock, insert: insertMock }),
+      cb({ update: updateMock, insert: insertMock, select: makeEmptySelect() }),
     );
     return { usersChain, birthProfilesChain, updateMock, insertMock, insertCalls };
   }
