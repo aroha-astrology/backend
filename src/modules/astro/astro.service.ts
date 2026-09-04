@@ -80,6 +80,7 @@ import {
   roundCoordToLocationKey,
 } from '../../lib/astro-tools/panchang-reference-points.js';
 import { findCachedPanchang, upsertCachedPanchang } from './panchang-cache.repo.js';
+import { notifyLegalRefusalLeak } from '../../lib/notifications/telegram.js';
 import { logger } from '../../lib/logger.js';
 import type {
   OnboardingRequest,
@@ -1771,6 +1772,9 @@ export async function* chatStream(
   const OPENER_HOLD_CHARS = 140;
 
   let fullText = '';
+  // Tracks whether ANY attempt this turn leaked, so the Telegram alert below
+  // fires once per turn regardless of which attempt it was caught on.
+  let everLeaked = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     fullText = '';
     let released = false;
@@ -1812,6 +1816,8 @@ export async function* chatStream(
       }
     }
 
+    everLeaked = everLeaked || leaked;
+
     if (!leaked) break;
 
     logger.warn(
@@ -1824,6 +1830,16 @@ export async function* chatStream(
       fullText = getNeutralDecline(locale);
       yield { type: 'token', content: fullText };
     }
+  }
+
+  // Telegram visibility into every occurrence, caught or not — `fullText` is
+  // whatever was actually delivered above (the recovered re-roll, or the
+  // neutral decline), never the leaked draft itself. Fire-and-forget: a
+  // Telegram outage must never affect the reply already streamed.
+  if (everLeaked) {
+    void notifyLegalRefusalLeak({ userId, locale, question: message, answer: fullText }).catch(
+      () => {},
+    );
   }
 
   // Fire-and-forget, every turn — no turn-count threshold, so even a user's

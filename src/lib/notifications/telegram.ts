@@ -105,6 +105,30 @@ export async function notifyChatDownvote(fields: {
   return results.some(Boolean);
 }
 
+/**
+ * The AI reused the death policy's "against the law"/"illegal" refusal
+ * framing for a decline unrelated to death (see containsLegalRefusalFraming
+ * in content-policy.ts) — a false legal claim caught before it could ship.
+ * `answer` is the final text actually delivered to the user (the recovered
+ * re-roll, or the neutral decline if a second attempt also leaked), not the
+ * leaked draft itself.
+ */
+export async function notifyLegalRefusalLeak(fields: {
+  userId: string;
+  locale?: string | undefined;
+  question: string;
+  answer: string;
+}): Promise<boolean> {
+  const text =
+    `⚖️ *False "Against The Law" Refusal*\n\n` +
+    `User: \`${escapeMarkdown(fields.userId)}\`\n` +
+    (fields.locale ? `Locale: ${escapeMarkdown(fields.locale)}\n` : '') +
+    `\n*Q:* ${escapeMarkdown(clipForTelegram(fields.question))}\n` +
+    `*A:* ${escapeMarkdown(clipForTelegram(fields.answer))}`;
+
+  return sendMessage(text);
+}
+
 /** Every recipient for the new-support-ticket alert — the default ops chat plus any extra recipients configured just for this alert. Mirrors downvoteRecipients() above. */
 function supportTicketRecipients(): (string | number)[] {
   const ids = [env.TELEGRAM_ALERT_CHAT_ID, ...env.TELEGRAM_SUPPORT_EXTRA_CHAT_IDS].filter(
