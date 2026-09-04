@@ -20,6 +20,12 @@ const state = vi.hoisted(() => ({
   listRefundsBetween: vi.fn().mockResolvedValue([]),
   usersActiveBetween: vi.fn().mockResolvedValue(0),
   usersCreatedBetween: vi.fn().mockResolvedValue(0),
+  countUsersActiveSince: vi.fn().mockResolvedValue(0),
+  maxOnlineCountBetween: vi.fn().mockResolvedValue(0),
+}));
+
+vi.mock('../src/modules/admin-alerts/admin-alerts.repo.js', () => ({
+  maxOnlineCountBetween: state.maxOnlineCountBetween,
 }));
 
 vi.mock('../src/modules/astro/feedback.repo.js', () => ({
@@ -39,6 +45,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   listRefundsBetween: state.listRefundsBetween,
   usersActiveBetween: state.usersActiveBetween,
   usersCreatedBetween: state.usersCreatedBetween,
+  countUsersActiveSince: state.countUsersActiveSince,
 }));
 
 vi.mock('../src/modules/telegram-bot/telegram-bot.repo.js', () => ({
@@ -375,6 +382,10 @@ describe('POST /internal/telegram/webhook', () => {
     expect(reply).toContain('123456');
     expect(reply).toMatch(/Active Users \\\(today, .+?\\\): 41/);
     expect(reply).toMatch(/Active Users \\\(yesterday, .+?\\\): 37/);
+    expect(reply).toMatch(/Concurrent Users \\\(yesterday, .+?\\\): 17/);
+    expect(reply).toMatch(/Concurrent Users \\\(weekly, .+?\\\): 17/);
+    expect(reply).toMatch(/Concurrent Users \\\(monthly, .+?\\\): 17/);
+    expect(reply).toMatch(/Concurrent Users \\\(yearly, .+?\\\): 17/);
   });
 
   it('grants money with /money +phone amount', async () => {
