@@ -211,6 +211,11 @@ export async function updateFeature(
     originalPricePaise === undefined ? (current?.originalPricePaise ?? null) : originalPricePaise;
   const resolvedModel =
     model === undefined ? (current?.model ?? registryEntry.defaultModel ?? null) : model;
+  // Only a false->true transition resets the "New" badge clock (see schema.ts's
+  // featureFlags.enabledAt doc comment) — a price/model-only save while already enabled must
+  // not make an old report look freshly launched again.
+  const wasEnabled = current?.enabled ?? registryEntry.defaultEnabled;
+  const resolvedEnabledAt = enabled && !wasEnabled ? new Date() : (current?.enabledAt ?? null);
 
   const row = await upsertFeatureOverride(
     key,
@@ -219,6 +224,7 @@ export async function updateFeature(
     resolvedOriginalPrice,
     resolvedModel,
     adminPhone,
+    resolvedEnabledAt,
   );
   invalidateFeatureCache();
   await logAdminAction(adminPhone, 'PUT /v1/admin/features', {

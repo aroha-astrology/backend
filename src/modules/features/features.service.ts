@@ -19,6 +19,9 @@ export interface ResolvedFeature {
    * use the global default model — either because the key declares no `modelOptions`, or
    * because its toggle is off (the kill switch). See `modelOf()`. */
   model: string | null;
+  /** When this key was last flipped false->true by an admin — see schema.ts's featureFlags.enabledAt
+   * doc comment. Null for a key still on its registry default (never explicitly enabled). */
+  enabledAt: Date | null;
 }
 
 /** This is on the hot path of GET /v1/me — 30s is enough to spare the DB a
@@ -40,6 +43,7 @@ function registryDefaults(): Record<string, ResolvedFeature> {
       pricePaise: feature.defaultPricePaise ?? null,
       originalPricePaise: null,
       model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
+      enabledAt: null,
     };
   }
   return out;
@@ -74,6 +78,7 @@ export async function resolveFeatures(): Promise<Record<string, ResolvedFeature>
         // the toggle off is a one-click revert that doesn't require remembering which model
         // was the default. See FeatureDef.modelOptions.
         model: row.enabled ? (row.model ?? def?.defaultModel ?? null) : null,
+        enabledAt: row.enabledAt,
       };
     }
     cache = { value: merged, expiresAt: Date.now() + CACHE_TTL_MS };
@@ -258,6 +263,7 @@ export async function resolveFeaturesForUser(
         pricePaise: value.pricePaise,
         originalPricePaise: value.originalPricePaise,
         model: value.model,
+        enabledAt: value.enabledAt,
       };
     } else if (enabledKeys.has(key)) {
       merged[key] = {
@@ -268,6 +274,7 @@ export async function resolveFeaturesForUser(
         // the global model), not "force null" — same convention `modelOf`
         // already uses for the global row.
         model: enabledModelByKey.get(key) ?? value.model,
+        enabledAt: value.enabledAt,
       };
     } else {
       merged[key] = value;

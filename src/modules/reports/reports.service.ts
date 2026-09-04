@@ -19,6 +19,7 @@ import { env } from '../../config/env.js';
 import {
   getReportDef,
   monthlyBundlePricePaise,
+  computeIsNewReport,
   REPORT_CATALOGUE,
   type ReportDef,
   type ReportKey,
@@ -1214,8 +1215,10 @@ export async function getReportCatalogueForUser(
     listReportsForUser(user.id, birthProfileId),
   ]);
 
+  const now = new Date();
   return REPORT_CATALOGUE.map((def) => {
     const resolved = features[def.featureFlagKey];
+    const enabled = resolved?.enabled ?? true;
     const ownRows = rows.filter((r) => r.reportKey === def.key);
     // Only marriage reports collect partner birth details, so this is the sole
     // catalogue entry that has a "last spouse details" concept to surface.
@@ -1231,7 +1234,8 @@ export async function getReportCatalogueForUser(
       isMonthly: def.isMonthly,
       isYearly: def.isYearly ?? false,
       requiresPartner: def.requiresPartner,
-      enabled: resolved?.enabled ?? true,
+      enabled,
+      isNew: computeIsNewReport(enabled, resolved?.enabledAt ?? null, now),
       pricePaise: resolved?.pricePaise ?? def.basePricePaise,
       // No fallback to basePricePaise here — an unconfigured original price
       // means there's no discount to show, not a fabricated one.

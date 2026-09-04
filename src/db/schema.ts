@@ -2198,6 +2198,11 @@ export const featureFlags = pgTable('feature_flags', {
    * kill switch for a model key: disabled resolves back to the global GEMINI_MODEL regardless of
    * what is selected here — see modelOf() in features.service.ts. */
   model: text('model'),
+  /** Set only on a false→true enabled transition (see admin.service.ts's updateFeature) — a
+   * price/model-only edit while already enabled leaves this untouched. Drives the report
+   * catalogue's "New" badge (config/reports.ts's computeIsNewReport); null means "never
+   * explicitly enabled by an admin", not "enabled since the beginning of time". */
+  enabledAt: timestamp('enabled_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),

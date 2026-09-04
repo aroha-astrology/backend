@@ -43,12 +43,15 @@ describe('resolveFeatures — merge behavior', () => {
         // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
         // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
         model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
+        // Never explicitly enabled by an admin (still on its registry default).
+        enabledAt: null,
       });
     }
   });
 
   it('lets a DB override win over the registry default', async () => {
     const target = FEATURE_REGISTRY.find((f) => f.defaultEnabled)!;
+    const enabledAt = new Date('2026-08-15T00:00:00Z');
     state.findAllFeatureOverrides.mockResolvedValue([
       {
         key: target.key,
@@ -57,6 +60,7 @@ describe('resolveFeatures — merge behavior', () => {
         originalPricePaise: 19999,
         updatedAt: new Date(),
         updatedBy: 'admin',
+        enabledAt,
       },
     ]);
 
@@ -67,6 +71,7 @@ describe('resolveFeatures — merge behavior', () => {
       pricePaise: 12345,
       originalPricePaise: 19999,
       model: null,
+      enabledAt,
     });
   });
 
@@ -93,6 +98,8 @@ describe('resolveFeatures — merge behavior', () => {
         // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
         // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
         model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
+        // Never explicitly enabled by an admin (still on its registry default).
+        enabledAt: null,
       });
     }
   });
@@ -131,6 +138,8 @@ describe('resolveFeatures — DB failure fallback', () => {
         // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
         // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
         model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
+        // Never explicitly enabled by an admin (still on its registry default).
+        enabledAt: null,
       });
     }
     expect(logger.error).toHaveBeenCalled();

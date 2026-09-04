@@ -212,6 +212,7 @@ describe('updateFeature', () => {
       null,
       null,
       '+919999111111',
+      null,
     );
     expect(state.invalidateFeatureCache).toHaveBeenCalledTimes(1);
     expect(state.logAdminAction).toHaveBeenCalledWith(
@@ -253,6 +254,7 @@ describe('updateFeature', () => {
       null,
       null,
       '+919999111111',
+      null,
     );
   });
 
@@ -278,6 +280,7 @@ describe('updateFeature', () => {
       null,
       null,
       '+919999111111',
+      null,
     );
   });
 
@@ -303,6 +306,7 @@ describe('updateFeature', () => {
       6000,
       null,
       '+919999111111',
+      null,
     );
   });
 
@@ -326,6 +330,7 @@ describe('updateFeature', () => {
       null,
       null,
       '+919999111111',
+      null,
     );
   });
 
@@ -349,9 +354,111 @@ describe('updateFeature', () => {
       49900,
       null,
       '+919999111111',
+      null,
     );
     expect(result.pricePaise).toBe(14900);
     expect(result.originalPricePaise).toBe(49900);
+  });
+
+  it('sets enabledAt to now on a false->true transition (drives the report catalogue "New" badge)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-04T12:00:00Z'));
+    state.resolveFeatures.mockResolvedValue({
+      'paid.chat': {
+        enabled: false,
+        pricePaise: 3500,
+        originalPricePaise: null,
+        model: null,
+        enabledAt: null,
+      },
+    });
+    state.upsertFeatureOverride.mockResolvedValue({
+      key: 'paid.chat',
+      enabled: true,
+      pricePaise: 3500,
+      originalPricePaise: null,
+      updatedAt: new Date(),
+      updatedBy: '+919999111111',
+    });
+
+    await updateFeature('paid.chat', true, undefined, undefined, undefined, '+919999111111');
+
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      true,
+      3500,
+      null,
+      null,
+      '+919999111111',
+      new Date('2026-09-04T12:00:00Z'),
+    );
+    vi.useRealTimers();
+  });
+
+  it('preserves the existing enabledAt when already enabled and only the price changes', async () => {
+    const originalEnabledAt = new Date('2026-08-01T00:00:00Z');
+    state.resolveFeatures.mockResolvedValue({
+      'paid.chat': {
+        enabled: true,
+        pricePaise: 3500,
+        originalPricePaise: null,
+        model: null,
+        enabledAt: originalEnabledAt,
+      },
+    });
+    state.upsertFeatureOverride.mockResolvedValue({
+      key: 'paid.chat',
+      enabled: true,
+      pricePaise: 4000,
+      originalPricePaise: null,
+      updatedAt: new Date(),
+      updatedBy: '+919999111111',
+    });
+
+    await updateFeature('paid.chat', true, 4000, undefined, undefined, '+919999111111');
+
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      true,
+      4000,
+      null,
+      null,
+      '+919999111111',
+      originalEnabledAt,
+    );
+  });
+
+  it('does not reset enabledAt when disabling a feature (only a false->true transition sets it)', async () => {
+    const originalEnabledAt = new Date('2026-08-01T00:00:00Z');
+    state.resolveFeatures.mockResolvedValue({
+      'paid.chat': {
+        enabled: true,
+        pricePaise: 3500,
+        originalPricePaise: null,
+        model: null,
+        enabledAt: originalEnabledAt,
+      },
+    });
+    state.upsertFeatureOverride.mockResolvedValue({
+      key: 'paid.chat',
+      enabled: false,
+      pricePaise: 3500,
+      originalPricePaise: null,
+      updatedAt: new Date(),
+      updatedBy: '+919999111111',
+    });
+
+    await updateFeature('paid.chat', false, undefined, undefined, undefined, '+919999111111');
+
+    expect(state.upsertFeatureOverride).toHaveBeenCalledWith(
+      'paid.chat',
+      false,
+      3500,
+      null,
+      null,
+      '+919999111111',
+      originalEnabledAt,
+    );
   });
 });
 

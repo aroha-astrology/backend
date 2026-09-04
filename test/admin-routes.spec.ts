@@ -384,6 +384,9 @@ describe('PUT /v1/admin/features', () => {
       // paid.chat declares no modelOptions, so its resolved model is always null.
       null,
       ADMIN_PHONE,
+      // Already enabled by its registry default (no prior override row) — not a false->true
+      // transition, so no fresh enabledAt.
+      null,
     );
     expect(body.pricePaise).toBe(14900);
     expect(body.originalPricePaise).toBe(49900);

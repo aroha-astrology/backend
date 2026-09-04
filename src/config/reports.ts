@@ -214,6 +214,21 @@ export function getReportDef(key: string): ReportDef | undefined {
   return REPORT_BY_KEY.get(key);
 }
 
+/** How long a just-enabled report keeps showing the "New" badge on the catalogue. */
+export const NEW_REPORT_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether a catalogue entry should show the "New" badge: enabled right now, AND an admin
+ * enabled it (or re-enabled it after a prior disable) within the last `NEW_REPORT_WINDOW_MS`.
+ * `enabledAt` is null for a report that's never had an explicit admin override row (e.g. still
+ * on its registry default) — never new in that case, since there's no "just turned on" moment
+ * to measure from.
+ */
+export function computeIsNewReport(enabled: boolean, enabledAt: Date | null, now: Date): boolean {
+  if (!enabled || !enabledAt) return false;
+  return now.getTime() - enabledAt.getTime() < NEW_REPORT_WINDOW_MS;
+}
+
 /**
  * Bundle pricing for N months of ONE monthly report type, in paise. ₹25 for
  * the first month, +₹20 for each additional month, capped at ₹199 total —

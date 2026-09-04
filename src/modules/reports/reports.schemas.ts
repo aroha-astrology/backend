@@ -101,6 +101,9 @@ export const ReportCatalogueEntrySchema = z
     isYearly: z.boolean(),
     requiresPartner: z.boolean(),
     enabled: z.boolean(),
+    /** Shows the catalogue's "New" badge — an admin enabled this report within the last
+     * NEW_REPORT_WINDOW_MS (config/reports.ts's computeIsNewReport). */
+    isNew: z.boolean(),
     /** Never hardcode a price client-side — always read it from here. */
     pricePaise: z.number().int(),
     /** "Strikethrough" MRP for the discount treatment. Null means no discount
