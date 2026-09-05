@@ -32,3 +32,4 @@ import './match-report.generator.js';
 import './numerology.generator.js';
 import './name-change.generator.js';
 import './remedies.generator.js';
+import './progeny.generator.js';

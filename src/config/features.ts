@@ -367,6 +367,18 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     defaultPricePaise: 9900,
   },
+  // New report type, ships dark per the standing rule -- turn on from
+  // Admin -> Features once checked end-to-end. Requires spouse birth details
+  // (requiresPartner, like kundli_milan) and reads both charts' D7 Saptamsha,
+  // Beeja/Kshetra sphutas and a dual-school child sequence. Its age-gated
+  // children card (35+) is the specific thing to eyeball before enabling.
+  {
+    key: 'reports.progeny',
+    label: 'Progeny Report',
+    group: 'reports',
+    defaultEnabled: false,
+    defaultPricePaise: 9900,
+  },
   // panchang
   {
     key: 'panchang.purchasePlan',

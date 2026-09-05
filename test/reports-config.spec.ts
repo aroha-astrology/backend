@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getReportDef, monthlyBundlePricePaise, REPORT_CATALOGUE } from '../src/config/reports.js';
 
 describe('REPORT_CATALOGUE', () => {
-  it('has exactly the 14 documented report keys', () => {
+  it('has exactly the 15 documented report keys', () => {
     const keys = REPORT_CATALOGUE.map((r) => r.key).sort();
     expect(keys).toEqual(
       [
@@ -16,6 +16,7 @@ describe('REPORT_CATALOGUE', () => {
         'name_change',
         'numerology',
         'past_life',
+        'progeny',
         'relationship_monthly',
         'remedies',
         'true_love',
@@ -24,9 +25,11 @@ describe('REPORT_CATALOGUE', () => {
     );
   });
 
-  it('only kundli_milan and match_report require a partner', () => {
+  it('only kundli_milan, match_report and progeny require a partner', () => {
     for (const def of REPORT_CATALOGUE) {
-      expect(def.requiresPartner).toBe(def.key === 'kundli_milan' || def.key === 'match_report');
+      expect(def.requiresPartner).toBe(
+        def.key === 'kundli_milan' || def.key === 'match_report' || def.key === 'progeny',
+      );
     }
   });
 

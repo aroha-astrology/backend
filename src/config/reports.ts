@@ -27,7 +27,8 @@ export type ReportKey =
   | 'match_report'
   | 'numerology'
   | 'name_change'
-  | 'remedies';
+  | 'remedies'
+  | 'progeny';
 
 export interface ReportDef {
   key: ReportKey;
@@ -202,6 +203,20 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     // debts + Pakka Ghar + blind planets + a natal Lal Kitab remedy per classical planet).
     // Distinct from the free /remedies page (app/remedies/page.tsx), which live-fetches a
     // thinner "weak planets only" list via GET /v1/remedies and isn't part of this catalogue.
+    basePricePaise: 9900,
+  },
+  {
+    key: 'progeny',
+    featureFlagKey: 'reports.progeny',
+    label: 'Progeny Report',
+    isMonthly: false,
+    // Deliberately NOT isYearly, unlike marriage. A yearly row dedupes on `periodMonth`
+    // (findActiveYearlyReportRow) while a partner row dedupes on `inputHash` — combining the two
+    // is an interaction marriage only survives because its partner is OPTIONAL. This report always
+    // has partner input, so it stays a plain one-time purchase.
+    requiresPartner: true,
+    // Same tier as kundli_milan/marriage/wealth: a full cross-chart pipeline (both charts' D7,
+    // Beeja/Kshetra sphutas, dual-school child sequence, couple timing overlap) over 3 LLM calls.
     basePricePaise: 9900,
   },
 ] as const;

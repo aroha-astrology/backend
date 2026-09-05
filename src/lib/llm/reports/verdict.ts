@@ -57,6 +57,8 @@ export const VERDICT_TOPIC: Record<ReportKey, string> = {
   name_change:
     "whether the reader's current name is numerologically aligned, and the suggested spelling/name changes",
   remedies: "the reader's Lal Kitab remedies — karmic debts, blind planets, and planet placements",
+  progeny:
+    "the reader's and their spouse's prospects for children — classical progeny indications, the likely child sequence and its timing, NOT fertility as a medical matter",
 };
 
 /** `lifeContext` and `planetCondition` are cross-domain grounding attached to EVERY report

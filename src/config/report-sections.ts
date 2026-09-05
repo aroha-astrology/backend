@@ -28,6 +28,21 @@
 import type { ReportKey } from './reports.js';
 
 export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> = {
+  // 9 sections over 3 LLM calls (3 each) — see lib/llm/reports/progeny.ts. The count here MUST
+  // stay in lockstep with what that file emits; assignSectionIds zips by position and silently
+  // labels nothing on a mismatch. NOT in APPEND_ONLY_SECTION_IDS: every section is
+  // unconditionally generated, so a short list means one was dropped mid-sequence.
+  progeny: [
+    'progeny_promise',
+    'saptamsa_reading',
+    'reproductive_capacity',
+    'couple_synthesis',
+    'child_sequence',
+    'progeny_timing',
+    'obstructions',
+    'progeny_remedies',
+    'progeny_outlook',
+  ],
   marriage: [
     'at_a_glance',
     'marriage_timing',

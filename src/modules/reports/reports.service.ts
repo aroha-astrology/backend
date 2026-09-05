@@ -1220,10 +1220,10 @@ export async function getReportCatalogueForUser(
     const resolved = features[def.featureFlagKey];
     const enabled = resolved?.enabled ?? true;
     const ownRows = rows.filter((r) => r.reportKey === def.key);
-    // Only marriage reports collect partner birth details, so this is the sole
-    // catalogue entry that has a "last spouse details" concept to surface.
+    // Any report that can carry partner birth details has a "last spouse details" concept to
+    // pre-fill the purchase form with — marriage (optional) and progeny (required) today.
     const lastPartnerRow =
-      def.key === 'marriage'
+      def.acceptsOptionalPartner || def.requiresPartner
         ? ownRows
             .filter((r) => hasPartnerBirthInput(r.input))
             .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
