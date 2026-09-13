@@ -72,8 +72,9 @@ Each paragraph should be 2-4 sentences. Second person ("you").`;
 
 function buildFacts(scores: TrueLoveScores): string {
   const lines: string[] = [];
-  lines.push(`Romance score: ${scores.romanceScore} out of 100.`);
-  lines.push(`Partnership score: ${scores.partnershipScore} out of 100.`);
+  const strengthWord = (s: number) => (s > 70 ? 'strong' : s >= 40 ? 'moderate' : 'soft');
+  lines.push(`Romance potential: ${strengthWord(scores.romanceScore)}.`);
+  lines.push(`Partnership potential: ${strengthWord(scores.partnershipScore)}.`);
   lines.push(`Venus in a key house (5th or 7th): ${scores.venusInKeyHouse ? 'yes' : 'no'}.`);
   lines.push(
     `Love-vs-arranged tilt: ${scores.loveVsArrangedTilt} out of 10 (higher = more love-marriage-leaning).`,
@@ -158,7 +159,7 @@ function formatWindowForFacts(window: RankedWindow): string {
 
 function formatRomanceArc(romanceArc: DecadeBand[]): string {
   if (romanceArc.length === 0) return 'unavailable.';
-  return romanceArc.map((b) => `${b.label}: ${b.score}/100 (${b.tone}).`).join(' ');
+  return romanceArc.map((b) => `${b.label}: ${b.tone}.`).join(' ');
 }
 
 function buildFactsCall2(scores: TrueLoveScores): string {

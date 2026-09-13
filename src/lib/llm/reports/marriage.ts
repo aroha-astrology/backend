@@ -164,7 +164,6 @@ function buildFactsCall1(scores: MarriageScoresWithStrength): string {
   lines.push(
     `Route to marriage this chart leans toward (GIVEN, do not contradict): ${scores.loveOrArrange ?? 'mixed'} (love = self-chosen, arrange = family-introduced, mixed = a blend).`,
   );
-  lines.push(`Marriage score: ${scores.marriageScore} out of 100.`);
   lines.push(`Band: ${scores.band}.`);
   lines.push(
     `Manglik (Mangal Dosha): ${scores.manglik.isManglik ? 'present' : 'not present'}` +
@@ -237,8 +236,14 @@ function buildFactsCall2(scores: MarriageScores): string {
     );
     const harmony = scores.spouseSynastry.riskFactors.find((f) => f.key === 'harmony');
     const inlaws = scores.spouseSynastry.riskFactors.find((f) => f.key === 'inlaws');
-    if (harmony) lines.push(`Harmony synastry read (GIVEN): ${harmony.severity} — ${harmony.evidence.join('; ')}`);
-    if (inlaws) lines.push(`In-laws synastry read (GIVEN): ${inlaws.severity} — ${inlaws.evidence.join('; ')}`);
+    if (harmony)
+      lines.push(
+        `Harmony synastry read (GIVEN): ${harmony.severity} — ${harmony.evidence.join('; ')}`,
+      );
+    if (inlaws)
+      lines.push(
+        `In-laws synastry read (GIVEN): ${inlaws.severity} — ${inlaws.evidence.join('; ')}`,
+      );
   }
   if (scores.ashtakavargaSummary && scores.ashtakavargaSummary.length > 0) {
     lines.push(
@@ -267,8 +272,14 @@ function buildFactsCall3(scores: MarriageScores): string {
   if (scores.spouseSynastry) {
     const wealth = scores.spouseSynastry.riskFactors.find((f) => f.key === 'wealth');
     const career = scores.spouseSynastry.riskFactors.find((f) => f.key === 'career');
-    if (wealth) lines.push(`SPOUSE DATA PROVIDED. Wealth synastry read (GIVEN): ${wealth.severity} — ${wealth.evidence.join('; ')}`);
-    if (career) lines.push(`Career synastry read (GIVEN): ${career.severity} — ${career.evidence.join('; ')}`);
+    if (wealth)
+      lines.push(
+        `SPOUSE DATA PROVIDED. Wealth synastry read (GIVEN): ${wealth.severity} — ${wealth.evidence.join('; ')}`,
+      );
+    if (career)
+      lines.push(
+        `Career synastry read (GIVEN): ${career.severity} — ${career.evidence.join('; ')}`,
+      );
   }
   if (scores.planetRemedies && scores.planetRemedies.length > 0) {
     lines.push(
@@ -290,12 +301,8 @@ function buildFactsCall4(scores: MarriageScores): string {
     `Number of natal planets occupying the 7th house: ${scores.modernRealities.seventhHousePlanetCount}.`,
   );
   if (scores.spouseSynastry) {
-    const remainingKeys: ReadonlyArray<(typeof scores.spouseSynastry.riskFactors)[number]['key']> = [
-      'children',
-      'timing',
-      'intimacy',
-      'health',
-    ];
+    const remainingKeys: ReadonlyArray<(typeof scores.spouseSynastry.riskFactors)[number]['key']> =
+      ['children', 'timing', 'intimacy', 'health'];
     const rest = scores.spouseSynastry.riskFactors.filter((f) => remainingKeys.includes(f.key));
     if (rest.length > 0) {
       lines.push('SPOUSE DATA PROVIDED. Additional synastry reads (GIVEN):');

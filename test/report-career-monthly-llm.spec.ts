@@ -152,8 +152,8 @@ describe('generateCareerMonthlyNarrative', () => {
     await generateCareerMonthlyNarrative(makeScores());
     const call = state.generate.mock.calls[0]?.[0];
     const content = call.messages.map((m: { content: string }) => m.content).join('\n');
-    expect(content).toContain('Venus');
-    expect(content).toContain('82');
+    expect(content).toContain('Venus, favorable.');
+    expect(content).not.toContain('Month score');
     expect(content.toLowerCase()).toContain('specific dates');
   });
 

@@ -117,7 +117,12 @@ function buildFacts(scores: PastLifeScores): string {
   lines.push(
     scores.lifeSoFar.length > 0
       ? `Your Life So Far — the already-lived chapters of THIS life (each is a Vimshottari Mahadasha, clipped to birth..today), in order:\n${scores.lifeSoFar
-          .map((b) => `  - ${b.label}: ${b.tone}.`)
+          .map((b) => {
+            const subs = (b.subPeriods ?? [])
+              .map((s) => `\n      · ${s.label}: ${s.tone}.`)
+              .join('');
+            return `  - ${b.label}: ${b.tone}.${subs}`;
+          })
           .join('\n')}`
       : 'Your Life So Far: unavailable on this chart — OMIT the "Your Life So Far" section entirely.',
   );

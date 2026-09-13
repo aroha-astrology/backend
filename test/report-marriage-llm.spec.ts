@@ -192,7 +192,8 @@ describe('generateMarriageNarrative', () => {
 
     const firstCall = state.generate.mock.calls[0]?.[0];
     const content = firstCall.messages.map((m: { content: string }) => m.content).join('\n');
-    expect(content).toContain('82');
+    // The numeric marriage score is never handed to the model — only the band.
+    expect(content).not.toContain('Marriage score');
     expect(content).toContain('accelerated');
     expect(content.toUpperCase()).toContain('GIVEN FACT');
     expect(content).toContain('2027-01');

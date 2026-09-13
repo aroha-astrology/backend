@@ -22,6 +22,7 @@ import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE, HOUSE_SIGNIFICATIONS } from '../house-insight.js';
 import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
+import { toneFromMonthScore } from '../../astro-engine/reports/monthly-dasha-context.js';
 import type { RelationshipMonthlyScores } from '../../astro-engine/reports/relationship-monthly.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
@@ -61,7 +62,6 @@ function buildFacts(scores: RelationshipMonthlyScores): string {
     `Period: ${scores.periodMonth}.`,
     `Active Mahadasha lord: ${scores.activeMahadashaLord}.`,
     `Active Antardasha lord: ${scores.activeAntardashaLord}.`,
-    `Month score: ${scores.monthScore} out of 100.`,
     `Tone: ${scores.tone}.`,
     `Reader's current relationship status: ${scores.relationshipStatus ?? 'not provided'}.`,
   ];
@@ -87,10 +87,10 @@ function buildFacts(scores: RelationshipMonthlyScores): string {
   }
 
   if (scores.subPeriods.length > 0) {
-    lines.push('Within-month sub-periods (specific dates, ruling lord, 0-100 score):');
+    lines.push('Within-month sub-periods (specific dates, ruling lord, tone):');
     for (const p of scores.subPeriods) {
       lines.push(
-        `- ${p.startDate.toISOString().slice(0, 10)} to ${p.endDate.toISOString().slice(0, 10)}: ${p.lord}, score ${p.score}.`,
+        `- ${p.startDate.toISOString().slice(0, 10)} to ${p.endDate.toISOString().slice(0, 10)}: ${p.lord}, ${toneFromMonthScore(p.score)}.`,
       );
     }
   } else {

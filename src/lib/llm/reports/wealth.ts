@@ -78,7 +78,6 @@ Each paragraph should be 2-4 sentences. Second person ("you").`;
 
 function buildFacts(scores: WealthScores): string {
   const lines: string[] = [];
-  lines.push(`Wealth score: ${scores.wealthScore} out of 100.`);
   lines.push(`2nd-house lord strength: ${scores.secondLordStrength}.`);
   lines.push(`11th-house lord strength: ${scores.eleventhLordStrength}.`);
   lines.push(
@@ -126,7 +125,7 @@ function formatArchetype(archetype: Archetype): string {
 
 function formatWealthArc(wealthArc: DecadeBand[]): string {
   if (wealthArc.length === 0) return 'unavailable.';
-  return wealthArc.map((b) => `${b.label}: ${b.score}/100 (${b.tone}).`).join(' ');
+  return wealthArc.map((b) => `${b.label}: ${b.tone}.`).join(' ');
 }
 
 function formatDoshaYoga(doshaYoga: DoshaYogaSummary): string {

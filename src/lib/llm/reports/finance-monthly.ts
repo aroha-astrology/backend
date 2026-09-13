@@ -9,6 +9,7 @@ import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE, HOUSE_SIGNIFICATIONS } from '../house-insight.js';
 import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
+import { toneFromMonthScore } from '../../astro-engine/reports/monthly-dasha-context.js';
 import type { FinanceMonthlyScores } from '../../astro-engine/reports/finance-monthly.js';
 import type { DoshaYogaSummary } from '../../astro-engine/reports/report-dosha-yoga-summary.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
@@ -57,10 +58,10 @@ function formatDoshaYoga(doshaYoga: DoshaYogaSummary): string {
 
 function formatSubPeriods(subPeriods: FinanceMonthlyScores['subPeriods']): string {
   if (subPeriods.length === 0) return 'Within-month sub-periods: none available.';
-  const lines = ['Within-month sub-periods (specific dates, ruling lord, 0-100 score):'];
+  const lines = ['Within-month sub-periods (specific dates, ruling lord, tone):'];
   for (const p of subPeriods) {
     lines.push(
-      `- ${p.startDate.toISOString().slice(0, 10)} to ${p.endDate.toISOString().slice(0, 10)}: ${p.lord}, score ${p.score}.`,
+      `- ${p.startDate.toISOString().slice(0, 10)} to ${p.endDate.toISOString().slice(0, 10)}: ${p.lord}, ${toneFromMonthScore(p.score)}.`,
     );
   }
   return lines.join('\n');
@@ -86,7 +87,6 @@ function buildFacts(scores: FinanceMonthlyScores): string {
     `Period: ${scores.periodMonth}.`,
     `Active Mahadasha lord: ${scores.activeMahadashaLord}.`,
     `Active Antardasha lord: ${scores.activeAntardashaLord}.`,
-    `Month score: ${scores.monthScore} out of 100.`,
     `Tone: ${scores.tone}.`,
     formatHora(scores.vargas),
     formatAshtakavarga(scores.ashtakavargaSummary),

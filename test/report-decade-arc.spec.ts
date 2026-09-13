@@ -152,17 +152,35 @@ describe('computeLifeSoFarArc — the already-lived chapters', () => {
     expect(bands[0]!.label).toMatch(/^Age 0–/);
   });
 
-  it("scores a chapter by its lord's bare natal strength when keyHouses is empty", () => {
+  it('breaks every chapter into its lived Antardashas, clipped to the chapter', () => {
     const chart = makeChart();
     const now = new Date('2026-01-01T00:00:00Z');
-    const analyses = analyzePlanetStrengths(chart);
     const bands = computeLifeSoFarArc(chart, BIRTH, [], now);
 
     for (const b of bands) {
       const lord = b.label.split(' · ')[1]!;
-      expect(b.score).toBe(computeMonthlyReportScore(lord, [], chart, analyses));
+      const subs = b.subPeriods ?? [];
+      expect(subs.length).toBeGreaterThan(0);
+      expect(subs[0]!.startDate).toBe(b.startDate);
+      expect(subs[subs.length - 1]!.endDate).toBe(b.endDate);
+      for (const s of subs) {
+        expect(s.label).toContain(`· ${lord}–${s.lord}`);
+        expect(s.tone).toBe(toneFromMonthScore(s.score));
+        expect(new Date(s.endDate).getTime()).toBeGreaterThan(new Date(s.startDate).getTime());
+      }
+      // The chapter score is the time-weighted average of its slices.
+      const scores = subs.map((s) => s.score);
+      expect(b.score).toBeGreaterThanOrEqual(Math.min(...scores));
+      expect(b.score).toBeLessThanOrEqual(Math.max(...scores));
       expect(b.tone).toBe(toneFromMonthScore(b.score));
     }
+  });
+
+  it('gives a 20-year chapter varied sub-period scores instead of one flat value', () => {
+    const chart = makeChart();
+    const bands = computeLifeSoFarArc(chart, BIRTH, [], new Date('2026-01-01T00:00:00Z'));
+    const all = bands.flatMap((b) => (b.subPeriods ?? []).map((s) => s.score));
+    expect(new Set(all).size).toBeGreaterThan(1);
   });
 
   it('returns [] rather than inventing a lived past when the birth date is missing or unusable', () => {

@@ -166,7 +166,8 @@ describe('generateTrueLoveNarrative', () => {
     const call = state.generate.mock.calls[0]?.[0];
     const content = call.messages.map((m: { content: string }) => m.content).join('\n');
     expect(content).toContain('9');
-    expect(content).toContain('88');
+    expect(content).toContain('Romance potential: strong.');
+    expect(content).not.toContain('Romance score');
     expect(content.toUpperCase()).toContain('GIVEN FACT');
   });
 
@@ -208,7 +209,8 @@ describe('generateTrueLoveNarrative', () => {
     );
     const call = state.generate.mock.calls[1]?.[0];
     const content = call.messages.map((m: { content: string }) => m.content).join('\n');
-    expect(content).toContain('Years 1-10: 72/100 (favorable)');
+    expect(content).toContain('Years 1-10: favorable.');
+    expect(content).not.toContain('72/100');
     expect(content.toLowerCase()).toContain('decade by decade');
   });
 

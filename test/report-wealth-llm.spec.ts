@@ -167,7 +167,8 @@ describe('generateWealthNarrative', () => {
     const firstCallContent = state.generate.mock.calls[0]?.[0].messages
       .map((m: { content: string }) => m.content)
       .join('\n');
-    expect(firstCallContent).toContain('82');
+    // The numeric score is never handed to the model — reports show no scores.
+    expect(firstCallContent).not.toContain('Wealth score');
     expect(firstCallContent).toContain('steady_accumulation');
   });
 
@@ -185,7 +186,8 @@ describe('generateWealthNarrative', () => {
     expect(secondCallContent).toContain('Dhana Yoga');
     expect(secondCallContent).toContain('Kemdruma Dosha');
     expect(secondCallContent).toContain('3 out of 10');
-    expect(secondCallContent).toContain('Years 1-10: 60/100 (mixed)');
+    expect(secondCallContent).toContain('Years 1-10: mixed.');
+    expect(secondCallContent).not.toContain('60/100');
     expect(secondCallContent).toContain('decade by decade');
     expect(secondCallContent.toLowerCase()).toContain('given fact');
   });

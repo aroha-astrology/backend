@@ -119,8 +119,8 @@ describe('generateFinanceMonthlyNarrative', () => {
     await generateFinanceMonthlyNarrative(makeScores());
     const call = state.generate.mock.calls[0]?.[0];
     const content = call.messages.map((m: { content: string }) => m.content).join('\n');
-    expect(content).toContain('Jupiter');
-    expect(content).toContain('85');
+    expect(content).toContain('Jupiter, favorable.');
+    expect(content).not.toContain('Month score');
     expect(content.toLowerCase()).toContain('investments or big purchases');
   });
 
