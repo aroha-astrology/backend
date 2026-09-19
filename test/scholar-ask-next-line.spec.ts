@@ -58,8 +58,35 @@ describe('direct-mode "Ask next:" handling', () => {
       'That craving often stems from pressure on your fourth house. Are you currently receiving any professional support for this?\nAsk next: Are you currently receiving any professional support for this?',
     );
     const { body, followUp } = splitFollowUp(out);
-    expect(followUp).toBe('Are you currently receiving any professional support for this?');
-    expect(body).toBe('That craving often stems from pressure on your fourth house.');
+    // It is the astrologer's question, so it stays in the body for the user to answer —
+    // as a chip, a tap would send that question back as if the user had asked it.
+    expect(followUp).toBeNull();
+    expect(body).toBe(
+      'That craving often stems from pressure on your fourth house. Are you currently receiving any professional support for this?',
+    );
+  });
+
+  it("moves the astrologer's own question off the chip line and into the body", async () => {
+    // Reported live: tapping "What is your partner's name?" sent it as the user's message.
+    const out = await render(
+      "Today is a supportive day for opening up to your partner.\nAsk next: What is your partner's name?",
+    );
+    const { body, followUp } = splitFollowUp(out);
+    expect(followUp).toBeNull();
+    expect(body).toBe(
+      "Today is a supportive day for opening up to your partner. What is your partner's name?",
+    );
+  });
+
+  it('keeps user-voiced chips, including several on one line', async () => {
+    const out = await render(
+      'A productive day with steady progress.\nAsk next: Is today auspicious for a new task?| Should I focus on my current projects?',
+    );
+    const { body, followUp } = splitFollowUp(out);
+    expect(followUp).toBe(
+      'Is today auspicious for a new task? | Should I focus on my current projects?',
+    );
+    expect(body).toBe('A productive day with steady progress.');
   });
 
   it('keeps a closing question that is NOT a repeat of the suggestion', async () => {
@@ -71,11 +98,11 @@ describe('direct-mode "Ask next:" handling', () => {
     expect(body).toContain('Are you weighing a specific offer?');
   });
 
-  it('promotes a closing prose question onto the suggestion line when there is no "Ask next:"', async () => {
+  it('leaves a closing prose question in the body instead of turning it into a chip', async () => {
     const out = await render('Marriage is well supported after March. Are you seeing someone now?');
     const { body, followUp } = splitFollowUp(out);
-    expect(followUp).toBe('Are you seeing someone now?');
-    expect(body).toBe('Marriage is well supported after March.');
+    expect(followUp).toBeNull();
+    expect(body).toBe('Marriage is well supported after March. Are you seeing someone now?');
   });
 
   it('leaves a mid-reply question in the body, in order', async () => {

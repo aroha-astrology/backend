@@ -66,7 +66,7 @@ const CLARIFYING_QUESTION_NOT_DEFLECTION = `A genuine clarifying question about 
 
 const RESPONSE_DISCIPLINE = `You may ask at most one clarifying follow-up question on a given topic. Once the user has answered it, or if you already have enough chart/context information, you must give a concrete, definitive answer on the very next relevant turn — do not keep deflecting with more questions to avoid committing to an answer.`;
 
-const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT — this is the instruction you are most likely to break, so follow it exactly: your entire reply must be 2-4 sentences and under 110 words — never more than 170 words even if the topic feels like it deserves more. A multi-part question like "how will my week be" still gets ONE tight paragraph, NOT a breakdown into a "The Vibe" section and "The Advice" section, and not a numbered list of separate points. Plain prose only. Never write any of these in this mode: "**bold headers:**", a numbered list ("1.", "2."), a bullet ("•", "-", "*"), or any labeled section — including a short title-like phrase folded into plain prose with no markdown at all (e.g. "The Mars-Saturn Cycles (General Caution): ..."). Any name-then-colon or name-then-parenthetical label that reads like a section title is banned exactly the same as a markdown header, even without asterisks or a hash mark. If you notice yourself starting one of those while drafting, stop and rewrite the whole reply as a single flowing paragraph instead — that formatting is for Details mode only, and this is not Details mode. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble. Do NOT open with a throat-clearing setup sentence like "To understand your week, we look at...", "Based on your chart, here is an analysis of...", or "Let's look at..." — that is a preamble, not an answer, and it is banned even though it looks like plain prose; your very first sentence must already commit to the actual answer/insight itself, with the reasoning packed into the rest of that same short paragraph, not deferred to a "here is the breakdown" that follows. Vary how that opening sentence is phrased from one reply to the next — a flat declarative claim ("Marriage is well-supported...") is one valid shape, but a short framing lead ("It's a listen-more-than-push kind of week") is equally valid, as long as the real answer still lands in that same first sentence with zero throat-clearing in front of it; don't let every reply in a conversation default to the identical cadence. Then explain the reasoning in 1-3 more sentences. Never end a reply with a bare question folded into that prose, bolded or not — the user can't tap plain text, only a dedicated line. Any question you want an answer to, whether a follow-up the user might naturally want to ask you next or your own clarifying question about their situation, goes on its own line at the very end prefixed by "Ask next:" (max ~12 words) instead, so it renders as a tappable option rather than something they have to retype. When the useful next step is a CHOICE rather than an open question, put the choices on that same line separated by " | " — 2-5 short options, each one a complete answer the user can tap (e.g. "Ask next: Under a year | One to three years | Longer than that") — and keep the question itself in the prose sentence just before that line. Omit it entirely when there isn't a genuinely useful follow-up — don't force one.`;
+const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT — this is the instruction you are most likely to break, so follow it exactly: your entire reply must be 2-4 sentences and under 110 words — never more than 170 words even if the topic feels like it deserves more. A multi-part question like "how will my week be" still gets ONE tight paragraph, NOT a breakdown into a "The Vibe" section and "The Advice" section, and not a numbered list of separate points. Plain prose only. Never write any of these in this mode: "**bold headers:**", a numbered list ("1.", "2."), a bullet ("•", "-", "*"), or any labeled section — including a short title-like phrase folded into plain prose with no markdown at all (e.g. "The Mars-Saturn Cycles (General Caution): ..."). Any name-then-colon or name-then-parenthetical label that reads like a section title is banned exactly the same as a markdown header, even without asterisks or a hash mark. If you notice yourself starting one of those while drafting, stop and rewrite the whole reply as a single flowing paragraph instead — that formatting is for Details mode only, and this is not Details mode. Every reply must open with the hook — the single most relevant insight, stated in the first sentence with no preamble. Do NOT open with a throat-clearing setup sentence like "To understand your week, we look at...", "Based on your chart, here is an analysis of...", or "Let's look at..." — that is a preamble, not an answer, and it is banned even though it looks like plain prose; your very first sentence must already commit to the actual answer/insight itself, with the reasoning packed into the rest of that same short paragraph, not deferred to a "here is the breakdown" that follows. Vary how that opening sentence is phrased from one reply to the next — a flat declarative claim ("Marriage is well-supported...") is one valid shape, but a short framing lead ("It's a listen-more-than-push kind of week") is equally valid, as long as the real answer still lands in that same first sentence with zero throat-clearing in front of it; don't let every reply in a conversation default to the identical cadence. Then explain the reasoning in 1-3 more sentences. A reply may end with one optional line of its own, prefixed "Ask next:", which renders as tappable chips — and a tap sends that chip's exact text AS THE USER'S OWN MESSAGE. So everything on that line must be in the user's voice, words they would say to you: either a follow-up they might naturally ask you next, phrased in the first person (e.g. "Ask next: Which remedy helps me most right now?"), or, when you have just asked them something with a few fixed answers, those answers separated by " | " — 2-5 short options, each one a complete answer the user can tap (e.g. "Ask next: Under a year | One to three years | Longer than that") — with the question itself in the prose sentence just before that line. Never put your own question to the user on that line: "Ask next: What is your partner's name?" or "Ask next: Are you seeing someone now?" makes the user send your question straight back to you. A question of yours belongs in the prose as the reply's closing sentence, and when its answer is something only they can type (a name, a date, a detail of their situation), ask it there and leave the "Ask next:" line off. Keep that line under ~12 words per option, and omit it entirely when there isn't a genuinely useful follow-up — don't force one.`;
 
 /**
  * Layered on top of OUTPUT_STYLE/NO_HEDGE_OPENERS, not a relaxation of them —
@@ -1103,14 +1103,13 @@ function countWords(s: string): number {
  *  testing the cleaned text can never see it. */
 const ASK_NEXT_LINE_RE = /^\s*ask next:\s*/i;
 
-/** True when the "Ask next:" line is only repeating the reply's closing prose question — the
- *  duplicate that rendered the identical question twice in one bubble. */
-function isSameQuestion(question: string, askNextLine: string): boolean {
-  return askNextLine
-    .replace(ASK_NEXT_LINE_RE, '')
-    .split('|')
-    .some((option) => normalizeFollowUp(option) === normalizeFollowUp(question));
-}
+/** An "Ask next:" option written as the astrologer asking the USER something ("What is your
+ *  partner's name?", "Are you seeing someone now?") instead of in the user's own voice. A
+ *  chip tap sends its text verbatim as the user's message, so a chip like that makes the user
+ *  send the astrologer's question straight back to it (reported live). English-only on
+ *  purpose: OUTPUT_STYLE carries the rule for every language, this only backstops the
+ *  English slip that actually happened. */
+const ASTROLOGER_VOICE_RE = /\b(?:your|yours|yourself|you['’]re)\b|^(?:are|have|did|were) you\b/i;
 
 // "।" and "॥" (danda / double danda, U+0964 / U+0965) are the actual
 // sentence-final punctuation in Hindi, Bengali, Marathi, and Gujarati (all
@@ -1183,14 +1182,12 @@ export async function* streamDirectModeParagraph(
   // becoming the very last thing shown just because the sentence after it
   // happened to cross the budget.
   let pending = '';
-  // A question that ENDS the reply is held back rather than streamed.
-  // OUTPUT_STYLE wants every question on the tappable "Ask next:" line, but the
-  // model regularly writes one into the prose AND repeats it verbatim on that
-  // line — which rendered the identical question twice in a single bubble
-  // (reported live). Held here it can be deduplicated against the suggestion,
-  // or promoted onto the "Ask next:" line when there is no suggestion at all so
-  // it becomes tappable instead of untappable prose. A question in the MIDDLE
-  // of a reply is flushed in order by the next sentence, exactly as before.
+  // A question that ENDS the reply is held back rather than streamed. The model
+  // sometimes writes one into the prose AND repeats it verbatim on the "Ask
+  // next:" line — which rendered the identical question twice in a single
+  // bubble (reported live). Held here, it goes out last and its chip copy is
+  // dropped. A question in the MIDDLE of a reply is flushed in order by the
+  // next sentence, exactly as before.
   let heldQuestion = '';
 
   for await (const delta of llmStream({ profile: CHAT_PROFILE, messages, signal, model })) {
@@ -1297,19 +1294,29 @@ export async function* streamDirectModeParagraph(
     }
   }
 
-  let suggestion = askNext.trim();
-  if (heldQuestion) {
-    if (!suggestion) {
-      // Nothing on the suggestion line: promote the closing prose question onto
-      // it so the user can tap it instead of retyping it.
-      suggestion = `Ask next: ${heldQuestion}`;
-    } else if (!isSameQuestion(heldQuestion, suggestion)) {
-      // A genuinely different closing thought — keep it in the body rather than
-      // dropping something the model meant the user to read. Only an exact
-      // repeat of the suggestion is dropped, which is the reported bug.
-      yield (anyEmitted ? ' ' : '') + heldQuestion;
-      anyEmitted = true;
-    }
+  // A chip tap sends the chip's text as the user's own message, so the
+  // astrologer's question to the user must never be a chip — neither a repeat
+  // of the closing prose question nor one written in its voice (ASTROLOGER_VOICE_RE).
+  // It stays in the body instead, where the user answers it by typing; when the
+  // body has no closing question yet, the first such chip becomes that question.
+  let closingQuestion = heldQuestion;
+  let suggestion = '';
+  const options = askNext
+    .replace(ASK_NEXT_LINE_RE, '')
+    .split('|')
+    .map((option) => option.trim())
+    .filter(Boolean);
+  const userVoiced = options.filter((option) => {
+    const astrologersQuestion =
+      ASTROLOGER_VOICE_RE.test(option) ||
+      (!!heldQuestion && normalizeFollowUp(option) === normalizeFollowUp(heldQuestion));
+    if (astrologersQuestion && !closingQuestion) closingQuestion = option;
+    return !astrologersQuestion;
+  });
+  if (userVoiced.length > 0) suggestion = `Ask next: ${userVoiced.join(' | ')}`;
+  if (closingQuestion) {
+    yield (anyEmitted ? ' ' : '') + closingQuestion;
+    anyEmitted = true;
   }
   if (suggestion) {
     yield `\n${expandIncomeMarkers(suggestion, locale)}`;
