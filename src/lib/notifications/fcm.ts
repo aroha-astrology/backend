@@ -14,6 +14,16 @@ const PERMANENT_FAILURE_CODES = new Set([
   'messaging/mismatched-credential',
 ]);
 
+/**
+ * Android notification channel every push is posted to. The web app creates it
+ * with HIGH importance on launch (frontend components/PushNotificationListener.tsx,
+ * same id) so pushes pop up on screen instead of landing silently in Android's
+ * generic "Miscellaneous" fallback channel. On a device where the app has not
+ * created it yet, FCM falls back to that default channel — never dropped.
+ */
+export const ANDROID_CHANNEL_ID = 'aroha_alerts';
+const ANDROID_CONFIG = { notification: { channelId: ANDROID_CHANNEL_ID } };
+
 export async function sendPush(
   deviceToken: string,
   title: string,
@@ -26,6 +36,7 @@ export async function sendPush(
     await messaging.send({
       token: deviceToken,
       notification: { title, body },
+      android: ANDROID_CONFIG,
       ...(data !== undefined ? { data } : {}),
     });
     return true;
@@ -71,6 +82,7 @@ export async function sendPushBatch(
     const messages = tokenChunk.map((token) => ({
       token,
       notification: { title, body },
+      android: ANDROID_CONFIG,
       ...(data !== undefined ? { data } : {}),
     }));
     try {
