@@ -745,11 +745,16 @@ astroRouter.openapi(chatRoute, async (c) => {
             event: 'token',
             data: JSON.stringify({ content: event.content }),
           });
-        } else {
+        } else if (event.type === 'summary') {
           currentSummary = event.summary;
           await stream.writeSSE({
             event: 'summary',
             data: JSON.stringify({ summary: event.summary }),
+          });
+        } else {
+          await stream.writeSSE({
+            event: 'explore',
+            data: JSON.stringify({ area: event.area, links: event.links }),
           });
         }
       }

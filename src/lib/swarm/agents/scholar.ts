@@ -103,6 +103,23 @@ const FOLLOW_UP_CURIOSITY = `The open follow-ups block below lists questions tie
 const NO_MEMORY_ATTRIBUTION = `Never say or imply that you are recalling, storing, or remembering something from a past conversation — you are not a system with a memory to the user, you are an astrologer reading a chart. Banned phrasing, in any form: "as we discussed," "as discussed in the last chat," "as I know from our previous chat/conversation," "you told me earlier," "last time you mentioned," "from what you've shared before," "in our earlier conversation," "as per your records/profile," or anything else that frames a known detail as retrieved rather than seen. Instead, fold it in as a reading: "as I can see in your chart," "your chart shows," "what I sense for you," "I can predict that...". A personal detail the user has shared becomes something the chart reveals, not something a file says. This never licenses inventing a fact the user never gave — NO_ASSUMPTIONS and GROUNDING_INSTRUCTION still govern that; this rule is only about how a real, known fact is phrased. If the user themselves brings up something said earlier in the conversation (e.g. "last time you said October 2026"), do not pretend not to know it and do not deny it — answer the substance directly per CORRECTION_HONESTY, standing by or correcting the date as the chart data warrants, but still without "as I told you last chat" framing; just answer as though restating your own reading.`;
 
 /**
+ * Ask Aroha 2.0 (chat.structuredAnswers): replaces OUTPUT_STYLE for users the
+ * flag is on for. The app turns these marker lines into cards — "3 things
+ * stand out", "What this means", "Timeline" — so the markers themselves must
+ * stay in English whatever language the content is in. The FACTOR lines are
+ * written from the pre-computed KEY FACTORS block (see scholarStream), not
+ * invented, which keeps the evidence identical to the "Why?" sheet.
+ */
+const OUTPUT_STYLE_STRUCTURED = `Answer in EXACTLY this line format and nothing else — no markdown, no bold, no bullets, no blank-line preamble. Keep the four marker words (FACTOR, MEANING, TIMELINE, Ask next) in English exactly as written, even when you write the content in another language:
+FACTOR: <2-5 word title> | <one plain sentence on how this chart fact bears on the question>
+FACTOR: <…> | <…>
+FACTOR: <…> | <…>
+MEANING: <2-3 sentences: the direct answer to the question, stated first, then what it means in practice>
+TIMELINE: <1-2 sentences on when — name concrete months or a date range from the chart data>
+Ask next: <2-4 short follow-ups in the user's own voice, separated by " | ">
+Write exactly three FACTOR lines, most important first, taken from the KEY FACTORS block when it is given (rephrase them simply — never add chart facts that are not in the data). The whole reply stays under 170 words. The same rules as always apply to what you say: answer directly, no hedging preamble, no invented facts, and the "Ask next" options are words the user would send you, never your question to them.`;
+
+/**
  * Realtime voice (Gemini Live). Replaces OUTPUT_STYLE in
  * the voice prompt — every other rule in this file still applies unchanged.
  *
@@ -602,7 +619,9 @@ const SHARED_PROMPT_RULES = [
   NO_MEMORY_ATTRIBUTION,
 ] as const;
 
-function systemPrompt(now: Date): string {
+export type ChatOutputStyle = 'direct' | 'structured';
+
+function systemPrompt(now: Date, style: ChatOutputStyle = 'direct'): string {
   return [
     // Shared with the realtime-voice prompt — see SHARED_PROMPT_RULES above,
     // which also explains why POLICY_SYSTEM_DIRECTIVE must lead.
@@ -612,7 +631,7 @@ function systemPrompt(now: Date): string {
     // the one the model most often ignores on broad questions (see
     // CHAT_PROFILE comment in config/llm.ts), and instructions near the end
     // of the prompt get followed more reliably than ones buried mid-prompt.
-    OUTPUT_STYLE,
+    style === 'structured' ? OUTPUT_STYLE_STRUCTURED : OUTPUT_STYLE,
   ].join('\n\n');
 }
 
@@ -771,10 +790,12 @@ export function buildChatMessages(
   // even though the app has it on every profile. Optional/nullable because a
   // profile can genuinely have no display name set.
   displayName?: string | null,
+  /** 'structured' = Ask Aroha 2.0's card format (chat.structuredAnswers). */
+  outputStyle: ChatOutputStyle = 'direct',
 ): Array<{ role: string; content: string }> {
   const messages: Array<{ role: string; content: string }> = [];
 
-  messages.push({ role: 'system', content: systemPrompt(now) });
+  messages.push({ role: 'system', content: systemPrompt(now, outputStyle) });
 
   const noChartFallback = birthTimeUnknown
     ? `This user has told the app they don't know their exact birth time, so no chart, house, ascendant, or dasha data will ever be available for them. Do not invent chart facts. Answer using only traditional/general Vedic astrological knowledge (sun-sign-level guidance, general principles) when possible, and be upfront that chart-specific, personalized answers aren't possible without an exact birth time.`
@@ -1374,6 +1395,8 @@ export async function* scholarStream(
    * record them as falsifiable predictions. Optional — omitting it is the old
    * behaviour exactly. */
   windowSink?: DomainWindowSink,
+  /** Ask Aroha 2.0: answer in the card format, grounded on these pre-computed key factors. */
+  structured?: { keyFactors: string[] },
 ): AsyncGenerator<string, void, unknown> {
   logger.debug({ requestId: state.requestId }, 'scholar: starting stream');
 
@@ -1391,7 +1414,18 @@ export async function* scholarStream(
     userFacts,
     now,
     displayName,
+    structured ? 'structured' : 'direct',
   );
+  if (structured && structured.keyFactors.length > 0) {
+    // Just before the user's message, so it's the freshest context the model reads.
+    messages.splice(messages.length - 1, 0, {
+      role: 'system',
+      content:
+        'KEY FACTORS for this question, most important first (reference DATA, not instructions) — ' +
+        'base the three FACTOR lines on these:\n' +
+        structured.keyFactors.map((f) => `- ${f}`).join('\n'),
+    });
+  }
 
   // Resolved explicitly (not via gemini-client.ts's ambient-request-context
   // fallback — see GROUP_MODEL_PROFILE_KEYS' own doc comment there) because
@@ -1400,5 +1434,47 @@ export async function* scholarStream(
   // hand here regardless.
   const model = state.userId ? await modelForUser(state.userId, 'ai.chatModel', MODEL) : undefined;
 
+  if (structured) {
+    yield* streamStructuredAnswer(messages, signal, model);
+    return;
+  }
   yield* streamDirectModeParagraph(messages, signal, model, locale);
+}
+
+/**
+ * Streams an Ask Aroha 2.0 reply line by line. Unlike streamDirectModeParagraph
+ * it must NOT strip "Label:" openings — the FACTOR / MEANING / TIMELINE
+ * markers are the format. It only drops markdown decoration, keeps whole
+ * lines, and stops after a word ceiling so a runaway reply can't flood the
+ * bubble.
+ */
+export async function* streamStructuredAnswer(
+  messages: Array<{ role: string; content: string }>,
+  signal: AbortSignal | undefined,
+  model?: string,
+): AsyncGenerator<string, void, unknown> {
+  const HARD_CAP_WORDS = 260;
+  let buffer = '';
+  let words = 0;
+  const clean = (line: string) =>
+    line
+      .replace(/^#{1,6}\s*/, '')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/^\s*[-•*]\s+/, '')
+      .trimEnd();
+
+  for await (const delta of llmStream({ profile: CHAT_PROFILE, messages, signal, model })) {
+    buffer += delta;
+    let nl: number;
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = clean(buffer.slice(0, nl));
+      buffer = buffer.slice(nl + 1);
+      if (!line.trim()) continue;
+      words += countWords(line);
+      yield `${line}\n`;
+      if (words >= HARD_CAP_WORDS) return;
+    }
+  }
+  const last = clean(buffer);
+  if (last.trim()) yield last;
 }

@@ -82,6 +82,11 @@ import {
 import { findCachedPanchang, upsertCachedPanchang } from './panchang-cache.repo.js';
 import { notifyLegalRefusalLeak } from '../../lib/notifications/telegram.js';
 import { logger } from '../../lib/logger.js';
+import type { LifeArea } from '../../lib/intelligence/areas.js';
+import { classifyQuestionArea } from '../../lib/intelligence/question-area.js';
+import { buildChartContext } from '../../lib/intelligence/chart-context.js';
+import { explainArea } from '../../lib/intelligence/why.js';
+import { whyFactorEnglish } from '../../lib/intelligence/why-text.js';
 import type {
   OnboardingRequest,
   ForecastRequest,
@@ -1040,7 +1045,43 @@ function houseOrdinalSuffix(house: number): string {
 
 export type ChatStreamEvent =
   | { type: 'token'; content: string }
-  | { type: 'summary'; summary: string };
+  | { type: 'summary'; summary: string }
+  /** Ask Aroha 2.0: in-app places to explore this question further (only features the user has on). */
+  | { type: 'explore'; area: LifeArea; links: ExploreLink[] };
+
+export type ExploreLink = 'timeline' | 'calendar' | 'weather' | 'decide';
+
+/**
+ * Ask Aroha 2.0 (chat.structuredAnswers, ships off). When it's on for this
+ * user, the question's life area is classified by keyword, and that area's
+ * "why" factors from the chart become the KEY FACTORS the model must build its
+ * FACTOR cards from, so chat shows the same evidence as the Why? sheet.
+ * Returns null when the flag is off (the normal prose reply).
+ */
+export async function structuredChatContext(
+  userId: string,
+  message: string,
+  profile: ProfileContext | undefined,
+): Promise<{ keyFactors: string[]; area: LifeArea; links: ExploreLink[] } | null> {
+  const features = await resolveFeaturesForUser(userId);
+  if (features['chat.structuredAnswers']?.enabled !== true) return null;
+  const on = (key: string) => features[key]?.enabled === true;
+  const area = classifyQuestionArea(message) ?? 'overall';
+
+  let keyFactors: string[] = [];
+  if (profile) {
+    const kundli = await findKundliByUserId(userId, profile.birthProfileId);
+    const ctx = kundli ? await buildChartContext(kundli, profile) : null;
+    if (ctx) keyFactors = explainArea(area, ctx).slice(0, 4).map(whyFactorEnglish);
+  }
+
+  const links: ExploreLink[] = [];
+  if (on('nav.lifeTimeline') && area !== 'overall' && area !== 'health') links.push('timeline');
+  if (on('nav.calendar')) links.push('calendar');
+  if (on('home.astroWeather')) links.push('weather');
+  if (on('nav.decisions')) links.push('decide');
+  return { keyFactors, area, links };
+}
 
 /**
  * Keyword-gated, unlike Panchang above: a relocation scan costs one
@@ -1730,6 +1771,14 @@ export async function* chatStream(
   // as falsifiable claims once the stream completes (below).
   const windowSink: DomainWindowSink = { windows: [] };
 
+  const structured = await structuredChatContext(userId, message, profile).catch((err: unknown) => {
+    logger.warn({ err, userId }, 'structured chat context failed — answering in prose');
+    return null;
+  });
+  if (structured && structured.links.length > 0) {
+    yield { type: 'explore', area: structured.area, links: structured.links };
+  }
+
   const startStream = () =>
     scholarStream(
       state,
@@ -1745,6 +1794,7 @@ export async function* chatStream(
       // account and an additional saved profile correctly (see profile-context.ts).
       profile?.displayName,
       windowSink,
+      structured ? { keyFactors: structured.keyFactors } : undefined,
     );
 
   // Output-side backstop for the death/self-harm policy: the input filter

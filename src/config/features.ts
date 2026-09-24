@@ -666,6 +666,31 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultPricePaise: 9900,
     tag: 'new',
   },
+
+  // Step 5 — Ask Aroha 2.0 and Talk to Aroha (same chat price as today).
+  // Chat answers as cards built from the chart's own why factors, plus links to explore further.
+  {
+    key: 'chat.structuredAnswers',
+    label: 'Ask Aroha 2.0 — card answers (factors, meaning, timeline, explore)',
+    group: 'chat',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'home.askAroha',
+    label: 'Ask Aroha card on Home (type or tap the mic)',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // Hands-free chat: dictation in, reply read aloud in the language it was written in. Uses the normal per-question price.
+  {
+    key: 'chat.voiceMode',
+    label: 'Talk to Aroha — speak a question, hear the reply',
+    group: 'chat',
+    defaultEnabled: false,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));
