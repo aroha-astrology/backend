@@ -73,6 +73,10 @@ describe('roadmap features (tag "new")', () => {
       'chat.structuredAnswers',
       'home.askAroha',
       'chat.voiceMode',
+      'nav.decisions',
+      'paid.decisionWindow',
+      'panchang.findMyDate',
+      'paid.findMyDate',
     ];
     const tagged = new Set(NEW.map((f) => f.key));
     for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);

@@ -134,6 +134,8 @@ export const TransactionSchema = z
         'voice_call',
         'birth_time_check',
         'life_timeline',
+        'decision_window',
+        'find_my_date',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),

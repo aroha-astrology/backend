@@ -691,6 +691,42 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+
+  // Step 6 — Decision Astrology and Find My Date (both free with the Aroha Pass).
+  // A /decide page: pick a decision, get favourable and caution windows plus the strongest dates, with the chart reasons. Rule-based, no AI cost.
+  {
+    key: 'nav.decisions',
+    label: 'Decision Astrology — when to act on a big choice',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // Price only: the page itself is switched by nav.decisions. Free with the Aroha Pass.
+  {
+    key: 'paid.decisionWindow',
+    label: 'Decision Astrology — price per result',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 4900,
+    tag: 'new',
+  },
+  // A /find-date page: category, place and range give the best dates with the best time of day, in that place's own timezone. Rule-based, no AI cost.
+  {
+    key: 'panchang.findMyDate',
+    label: 'Find My Date — best day and time for a beginning',
+    group: 'panchang',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // Price only: the page itself is switched by panchang.findMyDate. Free with the Aroha Pass.
+  {
+    key: 'paid.findMyDate',
+    label: 'Find My Date — price per result',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 4900,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

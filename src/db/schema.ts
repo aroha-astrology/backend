@@ -2848,3 +2848,43 @@ export const birthTimeRectifications = pgTable(
 
 export type BirthTimeRectificationRow = typeof birthTimeRectifications.$inferSelect;
 export type NewBirthTimeRectificationRow = typeof birthTimeRectifications.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* decision_queries — Decision Astrology and Find My Date results             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One paid Decision or Find My Date result, kept so reopening it never
+ * charges again. `input` is encrypted JSON (the user's question and the
+ * place — personal data); `result` is the scored days, windows and best
+ * dates (see lib/astro-tools/decision-engine.ts).
+ */
+export const decisionQueries = pgTable(
+  'decision_queries',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /** 'decision' | 'muhurta'. */
+    kind: text('kind').notNull(),
+    category: text('category').notNull(),
+    input: text('input').notNull(),
+    result: jsonb('result').notNull(),
+    pricePaidPaise: integer('price_paid_paise').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userCreatedIdx: index('decision_queries_user_created_idx').on(table.userId, table.createdAt),
+  }),
+);
+
+export type DecisionQueryRow = typeof decisionQueries.$inferSelect;

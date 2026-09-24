@@ -145,3 +145,30 @@ describe('roadmap step 4 routes ship dark', () => {
     expect((await post('/v1/timeline/unlock')).status).toBe(403);
   });
 });
+
+describe('roadmap step 6 routes ship dark', () => {
+  it('POST /v1/decisions, POST /v1/find-date and GET /v1/decisions → 403 while their flags are off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.decisions': off,
+      'panchang.findMyDate': off,
+    });
+    expect(
+      (await post('/v1/decisions', { category: 'careerChange', from: '2026-10-01', days: 30 }))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await post('/v1/find-date', {
+          category: 'vehicle',
+          place: { name: 'Pune', lat: 18.52, lon: 73.85, tz: 'Asia/Kolkata' },
+          from: '2026-10-01',
+          days: 30,
+        })
+      ).status,
+    ).toBe(403);
+    const list = await createApp().request('/v1/decisions', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(list.status).toBe(403);
+  });
+});

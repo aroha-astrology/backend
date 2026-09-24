@@ -5,7 +5,7 @@ import { buildChartContext } from '../src/lib/intelligence/chart-context.js';
 import { makeProfileContext, makeUserRow } from './helpers/mocks.js';
 import type { KundliRow } from '../src/db/schema.js';
 
-const state = vi.hoisted(() => ({ kundli: null }));
+const state = vi.hoisted((): { kundli: unknown } => ({ kundli: null }));
 
 vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
   findKundliByUserId: () => Promise.resolve(state.kundli),
