@@ -132,6 +132,7 @@ export const TransactionSchema = z
         'daily_reward',
         'palm_reading',
         'voice_call',
+        'birth_time_check',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),

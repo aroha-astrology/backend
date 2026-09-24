@@ -2797,3 +2797,54 @@ export const featureUnlocks = pgTable(
 
 export type FeatureUnlockRow = typeof featureUnlocks.$inferSelect;
 export type NewFeatureUnlockRow = typeof featureUnlocks.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* birth_time_rectifications — Birth Time Confidence runs                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One paid birth-time check for a profile: the life events the user gave, the
+ * time the engine suggests, and how confident it is. Birth times and life
+ * events are personal data, so they're stored encrypted (lib/crypto/
+ * field-encryption.ts), like the birth fields on users/birth_profiles.
+ * `appliedAt` is set when the user chose to move their stored birth time to
+ * the suggestion.
+ */
+export const birthTimeRectifications = pgTable(
+  'birth_time_rectifications',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /** Encrypted 'HH:MM' the check started from. */
+    statedTime: text('stated_time').notNull(),
+    /** Encrypted 'HH:MM' the engine suggests. */
+    suggestedTime: text('suggested_time').notNull(),
+    /** Encrypted JSON: { events, eventMatches, reasoning, offsetMinutes }. */
+    detail: text('detail').notNull(),
+    confidence: birthTimeRectificationConfidenceEnum('confidence').notNull(),
+    confidencePct: integer('confidence_pct').notNull(),
+    pricePaidPaise: integer('price_paid_paise').notNull().default(0),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userProfileIdx: index('birth_time_rectifications_user_profile_idx').on(
+      table.userId,
+      table.birthProfileId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export type BirthTimeRectificationRow = typeof birthTimeRectifications.$inferSelect;
+export type NewBirthTimeRectificationRow = typeof birthTimeRectifications.$inferInsert;

@@ -29,31 +29,37 @@ import { calculateChart } from './planetPositions.js';
 import { calculateVimshottariDasha } from '../dashas/vimshottari.js';
 import type { Ayanamsa, HouseSystem } from '@aroha-astrology/shared';
 
+/** Every kind of life event rectification (and the Astro Journal) understands. */
+export const LIFE_EVENT_DOMAINS = [
+  'job_started',
+  'promotion',
+  'job_loss',
+  'business_started',
+  'retirement',
+  'engagement',
+  'marriage',
+  'divorce',
+  'childbirth',
+  'bereavement',
+  'property_bought',
+  'vehicle_bought',
+  'big_financial_gain',
+  'relocation',
+  'health_crisis',
+  'accident_injury',
+  'legal_case',
+  'foreign_travel',
+  'education_milestone',
+] as const;
+
+export type LifeEventDomain = (typeof LIFE_EVENT_DOMAINS)[number];
+
 /** A dated thing that actually happened, used as evidence. */
 export interface LifeEvent {
   /** 'YYYY-MM-DD'. */
   date: string;
   /** Which life area it belongs to — maps to the houses below. */
-  domain:
-    | 'job_started'
-    | 'promotion'
-    | 'job_loss'
-    | 'business_started'
-    | 'retirement'
-    | 'engagement'
-    | 'marriage'
-    | 'divorce'
-    | 'childbirth'
-    | 'bereavement'
-    | 'property_bought'
-    | 'vehicle_bought'
-    | 'big_financial_gain'
-    | 'relocation'
-    | 'health_crisis'
-    | 'accident_injury'
-    | 'legal_case'
-    | 'foreign_travel'
-    | 'education_milestone';
+  domain: LifeEventDomain;
 }
 
 /**
@@ -108,8 +114,27 @@ export interface RectificationCandidate {
   score: number;
 }
 
+/**
+ * How well the winning candidate's dasha explains one event: 'strong' when both
+ * the Mahadasha and Antardasha lords are tied to the event's houses, 'weak'
+ * when only one is, 'none' when neither is.
+ */
+export type EventMatchStrength = 'strong' | 'weak' | 'none';
+
+export interface EventMatch extends LifeEvent {
+  strength: EventMatchStrength;
+}
+
 export interface RectificationResult {
   best: RectificationCandidate;
+  /** Per-event evidence for `best`, in the order the events were given. */
+  eventMatches: EventMatch[];
+  /**
+   * 0-100 — how much to trust `best`: mostly how many events it explains,
+   * then how narrow the band of equally good times is, then how much evidence
+   * there was. Always consistent with `confidence` (high >= 75, medium >= 50).
+   */
+  confidencePct: number;
   candidates: RectificationCandidate[];
   /** LOW unless the evidence is genuinely strong — see the thresholds below. */
   confidence: 'low' | 'medium' | 'high';
@@ -154,14 +179,21 @@ function activeLords(mahadashas: PeriodLike[], at: number): string[] {
   return lords;
 }
 
-function dashaExplainsEvent(
-  chart: {
-    planets: Array<{ planet: string; house: number }>;
-    houses: Array<{ house: number; lord: string }>;
-  },
+interface ChartLike {
+  planets: Array<{ planet: string; house: number }>;
+  houses: Array<{ house: number; lord: string }>;
+}
+
+function dashaExplainsEvent(chart: ChartLike, mahadashas: PeriodLike[], event: LifeEvent): boolean {
+  return eventStrength(chart, mahadashas, event) !== 'none';
+}
+
+/** How many of the active (Maha, Antar) lords tie to the event's houses: 2 strong, 1 weak, 0 none. */
+function eventStrength(
+  chart: ChartLike,
   mahadashas: PeriodLike[],
   event: LifeEvent,
-): boolean {
+): EventMatchStrength {
   const wantedHouses = new Set(DOMAIN_HOUSES[event.domain]);
 
   const lordsOfWantedHouses = new Set(
@@ -172,12 +204,36 @@ function dashaExplainsEvent(
   );
 
   const at = new Date(`${event.date}T12:00:00Z`).getTime();
-  if (!Number.isFinite(at)) return false;
+  if (!Number.isFinite(at)) return 'none';
 
   const active = activeLords(mahadashas, at);
-  if (active.length === 0) return false;
+  const tied = active.filter(
+    (lord) => lordsOfWantedHouses.has(lord) || occupantsOfWantedHouses.has(lord),
+  ).length;
+  if (tied >= 2) return 'strong';
+  return tied === 1 ? 'weak' : 'none';
+}
 
-  return active.some((lord) => lordsOfWantedHouses.has(lord) || occupantsOfWantedHouses.has(lord));
+/**
+ * The 0-100 figure shown to users. Weighted toward how many events the winner
+ * explains (60%), then how decisive it is — how narrow the band of equally
+ * good minutes (25%) — then how much evidence there was, saturating at 8
+ * events (15%). Clamped into the band its `confidence` label implies, so the
+ * number and the word never disagree.
+ */
+export function rectificationConfidencePct(opts: {
+  score: number;
+  spreadMinutes: number;
+  windowMinutes: number;
+  eventCount: number;
+  confidence: RectificationResult['confidence'];
+}): number {
+  const decisiveness = Math.max(0, 1 - opts.spreadMinutes / (2 * opts.windowMinutes));
+  const evidence = Math.min(opts.eventCount / 8, 1);
+  const raw = Math.round(100 * (0.6 * opts.score + 0.25 * decisiveness + 0.15 * evidence));
+  const [lo, hi] =
+    opts.confidence === 'high' ? [75, 95] : opts.confidence === 'medium' ? [50, 74] : [10, 49];
+  return Math.min(hi, Math.max(lo, raw));
 }
 
 export interface RectifyInput {
@@ -218,6 +274,9 @@ export async function rectifyBirthTime(input: RectifyInput): Promise<Rectificati
   const houseSystem = input.houseSystem ?? 'W';
 
   const candidates: RectificationCandidate[] = [];
+  // Chart + dasha per candidate offset, so the winner's per-event evidence can
+  // be reported without casting it a second time.
+  const evidence = new Map<number, { chart: ChartLike; mahadashas: PeriodLike[] }>();
 
   for (let offset = -windowMinutes; offset <= windowMinutes; offset += stepMinutes) {
     const totalMinutes = input.hour * 60 + input.minute + offset;
@@ -256,6 +315,7 @@ export async function rectifyBirthTime(input: RectifyInput): Promise<Rectificati
       if (dashaExplainsEvent(chart, mahadashas, event)) matched++;
     }
 
+    evidence.set(offset, { chart, mahadashas });
     candidates.push({
       offsetMinutes: offset,
       time: toHHMM(hour, minute),
@@ -291,5 +351,18 @@ export async function rectifyBirthTime(input: RectifyInput): Promise<Rectificati
     reasoning = `Only ${best.matched} of ${events.length} events line up, and a ${spreadMinutes}-minute band scores equally well — not enough to move the stated time.`;
   }
 
-  return { best, candidates, confidence, reasoning };
+  const winner = evidence.get(best.offsetMinutes)!;
+  const eventMatches: EventMatch[] = events.map((event) => ({
+    ...event,
+    strength: eventStrength(winner.chart, winner.mahadashas, event),
+  }));
+  const confidencePct = rectificationConfidencePct({
+    score: best.score,
+    spreadMinutes,
+    windowMinutes,
+    eventCount: events.length,
+    confidence,
+  });
+
+  return { best, eventMatches, confidencePct, candidates, confidence, reasoning };
 }

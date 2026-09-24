@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   rectifyBirthTime,
   MIN_EVENTS_FOR_RECTIFICATION,
+  rectificationConfidencePct,
   type LifeEvent,
 } from '../src/lib/astro-engine/calculations/rectification.js';
 
@@ -97,4 +98,48 @@ describe('rectifyBirthTime: searching', () => {
     expect(['low', 'medium', 'high']).toContain(out!.confidence);
     expect(out!.reasoning).toMatch(/events line up/);
   }, 120_000);
+});
+
+describe('rectifyBirthTime: evidence and confidence reporting', () => {
+  it('reports a strength for every event, consistent with the winner’s match count', async () => {
+    const out = await rectifyBirthTime({
+      ...BASE,
+      events: EVENTS,
+      windowMinutes: 20,
+      stepMinutes: 10,
+    });
+    expect(out).not.toBeNull();
+    expect(out!.eventMatches).toHaveLength(EVENTS.length);
+    expect(out!.eventMatches.map((m) => m.date)).toEqual(EVENTS.map((e) => e.date));
+    const explained = out!.eventMatches.filter((m) => m.strength !== 'none').length;
+    expect(explained).toBe(out!.best.matched);
+  }, 120_000);
+
+  it('keeps the percentage inside the band its confidence word implies', async () => {
+    const out = await rectifyBirthTime({
+      ...BASE,
+      events: EVENTS,
+      windowMinutes: 20,
+      stepMinutes: 10,
+    });
+    const pct = out!.confidencePct;
+    if (out!.confidence === 'high') expect(pct).toBeGreaterThanOrEqual(75);
+    else if (out!.confidence === 'medium') expect(pct).toBeGreaterThanOrEqual(50);
+    else expect(pct).toBeLessThan(50);
+  }, 120_000);
+});
+
+describe('rectificationConfidencePct', () => {
+  it('rises with score and decisiveness, and never leaves its band', () => {
+    const base = { spreadMinutes: 8, windowMinutes: 60, eventCount: 6 } as const;
+    const weak = rectificationConfidencePct({ ...base, score: 0.5, confidence: 'low' });
+    const strong = rectificationConfidencePct({ ...base, score: 1, confidence: 'high' });
+    expect(strong).toBeGreaterThan(weak);
+    expect(
+      rectificationConfidencePct({ ...base, score: 1, confidence: 'low' }),
+    ).toBeLessThanOrEqual(49);
+    expect(
+      rectificationConfidencePct({ ...base, score: 0, confidence: 'high' }),
+    ).toBeGreaterThanOrEqual(75);
+  });
 });

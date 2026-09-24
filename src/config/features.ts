@@ -573,6 +573,39 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     // silent behavior change; see modelForReportProfile() in gemini-client.ts.
     defaultModel: 'gemini-3.1-pro',
   },
+
+  // ---------------------------------------------------------------------------
+  // 2026-09 roadmap. Every key ships OFF and carries tag 'new' (NEW badge +
+  // filter on Admin -> Features). Try one by switching it on for a user group.
+  // ---------------------------------------------------------------------------
+
+  // Step 1 — Why Aroha is saying this, and Birth Time Confidence.
+  // The 'Why?' button on Today's Reading and the horoscope areas (GET /v1/why).
+  {
+    key: 'home.whyAroha',
+    label: 'Why? — chart evidence behind readings',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // The Birth Time Confidence card (GET /v1/birth-time). Replaces the older
+  // home.birthTimeRectify card wherever both are on.
+  {
+    key: 'home.birthTimeConfidence',
+    label: 'Birth Time Confidence card',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // Price of one birth-time check (POST /v1/birth-time/check). Free with the Aroha Pass.
+  {
+    key: 'paid.birthTimeRectify',
+    label: 'Birth-time check',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 9900,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

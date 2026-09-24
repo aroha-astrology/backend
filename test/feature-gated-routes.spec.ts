@@ -74,3 +74,29 @@ describe('flag-gated routes refuse direct calls while their flag is off', () => 
     expect(res.status).toBe(403);
   });
 });
+
+describe('roadmap step 1 routes ship dark', () => {
+  it('GET /v1/why → 403 while home.whyAroha is off (its registry default)', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({ 'home.whyAroha': off });
+    const res = await createApp().request('/v1/why?area=career', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /v1/birth-time and POST /v1/birth-time/check → 403 while home.birthTimeConfidence is off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({ 'home.birthTimeConfidence': off });
+    const status = await createApp().request('/v1/birth-time', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(status.status).toBe(403);
+    const check = await post('/v1/birth-time/check', {
+      events: [
+        { date: '2015-06-01', domain: 'job_started' },
+        { date: '2018-02-10', domain: 'marriage' },
+        { date: '2020-09-15', domain: 'childbirth' },
+      ],
+    });
+    expect(check.status).toBe(403);
+  });
+});

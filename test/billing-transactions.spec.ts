@@ -18,6 +18,10 @@ describe('parseReason', () => {
     expect(parseReason('palm_unlock')).toEqual({ kind: 'palm_reading', isRefund: false });
     expect(parseReason('voice_minute')).toEqual({ kind: 'voice_call', isRefund: false });
     expect(parseReason('refund:voice_minute')).toEqual({ kind: 'voice_call', isRefund: true });
+    expect(parseReason('birth_time_rectify')).toEqual({
+      kind: 'birth_time_check',
+      isRefund: false,
+    });
     expect(parseReason('gemstone_unlock:profile:abc')).toEqual({
       kind: 'gemstone_unlock',
       isRefund: false,
