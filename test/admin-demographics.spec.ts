@@ -11,6 +11,7 @@ vi.mock('../src/config/db.js', () => {
 
 import { users } from '../src/db/schema.js';
 import { userDemographics } from '../src/modules/admin/admin.repo.js';
+import { FAMILY_BRACKET_CODES, INCOME_BRACKET_CODES } from '../src/lib/chat-income.js';
 
 const dialect = new PgDialect();
 function compile(cond: unknown) {
@@ -78,10 +79,17 @@ describe('userDemographics', () => {
     const genderChain = makeSelectChain(genderRows);
     const statusChain = makeSelectChain(statusRows);
     const dobChain = makeSelectChain(dobRows);
+    const incomeChain = makeSelectChain([
+      { label: INCOME_BRACKET_CODES[0], count: 4 },
+      { label: 'not_asked', count: 7 },
+    ]);
+    const familyChain = makeSelectChain([{ label: 'not_asked', count: 11 }]);
     state.select
       .mockReturnValueOnce(genderChain.chain)
       .mockReturnValueOnce(statusChain.chain)
-      .mockReturnValueOnce(dobChain.chain);
+      .mockReturnValueOnce(dobChain.chain)
+      .mockReturnValueOnce(incomeChain.chain)
+      .mockReturnValueOnce(familyChain.chain);
 
     const result = await userDemographics();
 
@@ -104,5 +112,20 @@ describe('userDemographics', () => {
       { label: '65+', count: 0 },
       { label: 'unknown', count: 2 },
     ]);
+
+    // Income brackets come back in the fixed code order with not_asked last,
+    // zero-filled for codes nobody picked.
+    expect(compile(incomeChain.calls.where).sql).toMatch(/deleted_at/);
+    expect(result.incomeBrackets.map((b) => b.label)).toEqual([
+      ...INCOME_BRACKET_CODES,
+      'not_asked',
+    ]);
+    expect(result.incomeBrackets[0]).toEqual({ label: INCOME_BRACKET_CODES[0], count: 4 });
+    expect(result.incomeBrackets.at(-1)).toEqual({ label: 'not_asked', count: 7 });
+    expect(result.familyIncomeBrackets.map((b) => b.label)).toEqual([
+      ...FAMILY_BRACKET_CODES,
+      'not_asked',
+    ]);
+    expect(result.familyIncomeBrackets.at(-1)).toEqual({ label: 'not_asked', count: 11 });
   });
 });

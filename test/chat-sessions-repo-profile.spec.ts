@@ -142,7 +142,7 @@ describe('getChatSessions — profile-scoped list', () => {
 
     const query = compile(calls.where);
     expect(query.sql).toBe(
-      '("chat_sessions"."user_id" = $1 and "chat_sessions"."birth_profile_id" is null)',
+      '("chat_sessions"."user_id" = $1 and "chat_sessions"."birth_profile_id" is null and "chat_sessions"."deleted_at" is null)',
     );
     expect(query.params).toEqual(['user-1']);
   });
@@ -155,7 +155,7 @@ describe('getChatSessions — profile-scoped list', () => {
 
     const query = compile(calls.where);
     expect(query.sql).toBe(
-      '("chat_sessions"."user_id" = $1 and "chat_sessions"."birth_profile_id" = $2)',
+      '("chat_sessions"."user_id" = $1 and "chat_sessions"."birth_profile_id" = $2 and "chat_sessions"."deleted_at" is null)',
     );
     expect(query.params).toEqual(['user-1', 'profile-a']);
   });
