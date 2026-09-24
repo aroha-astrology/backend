@@ -22,6 +22,7 @@ describe('parseReason', () => {
       kind: 'birth_time_check',
       isRefund: false,
     });
+    expect(parseReason('life_timeline_full')).toEqual({ kind: 'life_timeline', isRefund: false });
     expect(parseReason('gemstone_unlock:profile:abc')).toEqual({
       kind: 'gemstone_unlock',
       isRefund: false,

@@ -131,3 +131,17 @@ describe('roadmap step 3 routes ship dark', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('roadmap step 4 routes ship dark', () => {
+  it('GET /v1/timeline and POST /v1/timeline/unlock → 403 while nav.lifeTimeline is off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.lifeTimeline': off,
+      'paid.lifeTimelineFull': off,
+    });
+    const get = await createApp().request('/v1/timeline', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(get.status).toBe(403);
+    expect((await post('/v1/timeline/unlock')).status).toBe(403);
+  });
+});

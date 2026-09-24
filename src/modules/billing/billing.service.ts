@@ -276,7 +276,8 @@ type TransactionKind =
   | 'daily_reward'
   | 'palm_reading'
   | 'voice_call'
-  | 'birth_time_check';
+  | 'birth_time_check'
+  | 'life_timeline';
 
 const REPORT_UNLOCK_RE = /^report_unlock:([a-z_]+)(?::(\d{4}-\d{2}))?(?::bundle:(\d+))?$/;
 
@@ -313,6 +314,7 @@ export function parseReason(reason: string): {
   if (base === 'palm_unlock') return { kind: 'palm_reading', isRefund };
   if (base === 'voice_minute') return { kind: 'voice_call', isRefund };
   if (base === 'birth_time_rectify') return { kind: 'birth_time_check', isRefund };
+  if (base === 'life_timeline_full') return { kind: 'life_timeline', isRefund };
   if (base === 'gemstone_unlock' || base.startsWith('gemstone_unlock:profile:')) {
     return { kind: 'gemstone_unlock', isRefund };
   }

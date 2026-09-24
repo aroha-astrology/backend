@@ -17,6 +17,7 @@ import {
 } from './insights.service.js';
 import { getAstroWeather } from './weather.service.js';
 import { getCalendar, MAX_CALENDAR_DAYS } from './calendar.service.js';
+import { getTimeline, unlockFullTimeline } from './timeline.service.js';
 
 const ErrorSchema = z
   .object({
@@ -227,4 +228,53 @@ insightsRouter.openapi(calendarRoute, async (c) => {
   const { from, days } = c.req.valid('query');
   const calendar = await getCalendar(c.get('user'), from ?? istToday(), days);
   return c.json(calendar as unknown as Record<string, unknown>, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Life Timeline                                                               */
+/* -------------------------------------------------------------------------- */
+
+const timelineRoute = createRoute({
+  method: 'get',
+  path: '/timeline',
+  tags: ['Insights'],
+  summary:
+    'Life Timeline: dasha-scored bands per life area (±3 years free, whole life when unlocked)',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireFeature('nav.lifeTimeline')] as const,
+  responses: {
+    200: { description: 'Timeline', content: { 'application/json': { schema: Json } } },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled for this user'),
+    409: errorResponse('CHART_NOT_READY'),
+  },
+});
+
+insightsRouter.openapi(timelineRoute, async (c) => {
+  const timeline = await getTimeline(c.get('user'));
+  return c.json(timeline as unknown as Record<string, unknown>, 200);
+});
+
+const timelineUnlockRoute = createRoute({
+  method: 'post',
+  path: '/timeline/unlock',
+  tags: ['Insights'],
+  summary: 'Unlock the whole-life timeline for the active profile (wallet; free with the Pass)',
+  security: [{ bearerAuth: [] }],
+  middleware: [
+    requireUser,
+    requireFeature('nav.lifeTimeline'),
+    requireFeature('paid.lifeTimelineFull'),
+  ] as const,
+  responses: {
+    200: { description: 'Unlock state', content: { 'application/json': { schema: Json } } },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled for this user'),
+    409: errorResponse('INSUFFICIENT_CREDITS or CHART_NOT_READY'),
+  },
+});
+
+insightsRouter.openapi(timelineUnlockRoute, async (c) => {
+  const state = await unlockFullTimeline(c.get('user'));
+  return c.json(state as unknown as Record<string, unknown>, 200);
 });

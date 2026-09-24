@@ -648,6 +648,24 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+
+  // Step 4 — Life Timeline (GET /v1/timeline; no AI cost).
+  {
+    key: 'nav.lifeTimeline',
+    label: 'Life Timeline page',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // One-off unlock of the whole-life view per profile (the free view is ±3 years). Free with the Pass.
+  {
+    key: 'paid.lifeTimelineFull',
+    label: 'Life Timeline — whole-life unlock',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 9900,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));
