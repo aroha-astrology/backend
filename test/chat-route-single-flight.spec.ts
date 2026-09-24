@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
   touchUserLastActive: vi.fn(),
   deductWalletBalance: vi.fn(),
   addWalletBalance: vi.fn(),
+  claimFreeFollowUp: vi.fn(),
+  releaseFreeFollowUp: vi.fn(),
   resolveActiveProfileContext: vi.fn(),
   getChatSession: vi.fn(),
   createChatSession: vi.fn(),
@@ -45,6 +47,8 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   touchUserLastActive: state.touchUserLastActive,
   deductWalletBalance: state.deductWalletBalance,
   addWalletBalance: state.addWalletBalance,
+  claimFreeFollowUp: state.claimFreeFollowUp,
+  releaseFreeFollowUp: state.releaseFreeFollowUp,
 }));
 
 vi.mock('../src/modules/birth-profiles/profile-context.js', () => ({
@@ -94,6 +98,8 @@ beforeEach(() => {
   state.touchUserLastActive.mockReset().mockResolvedValue(undefined);
   state.deductWalletBalance.mockReset().mockResolvedValue(true);
   state.addWalletBalance.mockReset().mockResolvedValue(undefined);
+  state.claimFreeFollowUp.mockReset().mockResolvedValue(true);
+  state.releaseFreeFollowUp.mockReset().mockResolvedValue(undefined);
   state.resolveActiveProfileContext
     .mockReset()
     .mockResolvedValue(makeProfileContext({ birthProfileId: null }));
@@ -165,90 +171,101 @@ describe('POST /v1/chat — charges the resolved paid.chat price, not a hardcode
   });
 });
 
-describe("POST /v1/chat — the model's own suggested follow-up is free", () => {
-  // The chip existed for months and every tap cost the full price — the exact
-  // mechanism built to keep a conversation going was the reason it didn't.
-  // Verified against the server's OWN stored transcript (chatSessionsRepo
-  // .getChatSession), never a client-supplied flag.
-  const storedSessionWithFollowUp = {
+describe("POST /v1/chat — tapping an answer to the astrologer's question is free", () => {
+  // Only a tapped ANSWER to the astrologer's own question about the user is
+  // free (it yields a user fact), and only once per account per 3 days —
+  // claimed atomically via claimFreeFollowUp. Verified against the server's
+  // OWN stored transcript (chatSessionsRepo.getChatSession), never a
+  // client-supplied flag.
+  const sessionWith = (askNext: string) => ({
     history: [
-      { role: 'user' as const, content: 'How will my week be?' },
+      { role: 'user' as const, content: 'How is my career looking?' },
       {
         role: 'assistant' as const,
-        content: 'Steady progress ahead.\nAsk next: What about my finances this month?',
+        content: `Steady progress ahead. What field do you work in?\nAsk next: ${askNext}`,
       },
     ],
     summary: null,
     updatedAt: new Date('2026-08-01T00:00:00Z'),
-  };
+  });
+  const answerSession = sessionWith('IT or software | Business | Government job');
+  const paidPrice = { 'paid.chat': { enabled: true, pricePaise: 800, originalPricePaise: null } };
+  const sessionId = '11111111-1111-1111-1111-111111111111';
 
-  it('does not charge when the message matches the suggested follow-up', async () => {
-    state.getChatSession.mockResolvedValue(storedSessionWithFollowUp);
-    state.resolveFeaturesForUser.mockResolvedValue({
-      'paid.chat': { enabled: true, pricePaise: 800, originalPricePaise: null },
-    });
+  it('does not charge when the message is one of the offered answers and the claim succeeds', async () => {
+    state.getChatSession.mockResolvedValue(answerSession);
+    state.resolveFeaturesForUser.mockResolvedValue(paidPrice);
 
-    const res = await callChat({
-      message: 'What about my finances this month?',
-      sessionId: '11111111-1111-1111-1111-111111111111',
-    });
+    const res = await callChat({ message: 'Business', sessionId });
     await res.text();
 
+    expect(state.claimFreeFollowUp).toHaveBeenCalledWith('user-1', 3 * 24 * 60 * 60 * 1000);
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
   });
 
   it('is tolerant of whitespace/punctuation/case differences in the tap', async () => {
-    state.getChatSession.mockResolvedValue(storedSessionWithFollowUp);
+    state.getChatSession.mockResolvedValue(answerSession);
     state.resolveFeaturesForUser.mockResolvedValue({});
 
-    const res = await callChat({
-      message: '  WHAT about my finances this month?  ',
-      sessionId: '11111111-1111-1111-1111-111111111111',
-    });
+    const res = await callChat({ message: '  GOVERNMENT job.  ', sessionId });
     await res.text();
 
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
   });
 
-  it('still charges full price for an unrelated message in the same session', async () => {
-    state.getChatSession.mockResolvedValue(storedSessionWithFollowUp);
-    state.resolveFeaturesForUser.mockResolvedValue({
-      'paid.chat': { enabled: true, pricePaise: 800, originalPricePaise: null },
-    });
+  it('charges full price once the free tap was already used in the last 3 days', async () => {
+    state.getChatSession.mockResolvedValue(answerSession);
+    state.resolveFeaturesForUser.mockResolvedValue(paidPrice);
+    state.claimFreeFollowUp.mockResolvedValue(false);
 
-    const res = await callChat({
-      message: 'What about my health?',
-      sessionId: '11111111-1111-1111-1111-111111111111',
-    });
+    const res = await callChat({ message: 'Business', sessionId });
     await res.text();
 
     expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 800, 'chat_message');
   });
 
-  it('never refunds a free follow-up even when generation fails (nothing was charged)', async () => {
-    state.getChatSession.mockResolvedValue(storedSessionWithFollowUp);
+  it('charges a suggested follow-up QUESTION and never spends the free tap on it', async () => {
+    state.getChatSession.mockResolvedValue(sessionWith('What about my finances this month?'));
+    state.resolveFeaturesForUser.mockResolvedValue(paidPrice);
+
+    const res = await callChat({ message: 'What about my finances this month?', sessionId });
+    await res.text();
+
+    expect(state.claimFreeFollowUp).not.toHaveBeenCalled();
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 800, 'chat_message');
+  });
+
+  it('still charges full price for an unrelated message in the same session', async () => {
+    state.getChatSession.mockResolvedValue(answerSession);
+    state.resolveFeaturesForUser.mockResolvedValue(paidPrice);
+
+    const res = await callChat({ message: 'What about my health?', sessionId });
+    await res.text();
+
+    expect(state.claimFreeFollowUp).not.toHaveBeenCalled();
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 800, 'chat_message');
+  });
+
+  it('hands the free tap back (no wallet refund) when generation fails', async () => {
+    state.getChatSession.mockResolvedValue(answerSession);
     state.resolveFeaturesForUser.mockResolvedValue({});
     state.chatStream.mockImplementation(function* () {
       yield { type: 'token', content: 'partial' };
       throw new Error('gemini exploded');
     });
 
-    const res = await callChat({
-      message: 'What about my finances this month?',
-      sessionId: '11111111-1111-1111-1111-111111111111',
-    });
+    const res = await callChat({ message: 'Business', sessionId });
     await res.text();
 
     expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(state.releaseFreeFollowUp).toHaveBeenCalledWith('user-1');
   });
 
   it('charges normally for a brand-new session with no prior assistant turn to match against', async () => {
     state.getChatSession.mockResolvedValue(undefined);
-    state.resolveFeaturesForUser.mockResolvedValue({
-      'paid.chat': { enabled: true, pricePaise: 800, originalPricePaise: null },
-    });
+    state.resolveFeaturesForUser.mockResolvedValue(paidPrice);
 
-    const res = await callChat({ message: 'What about my finances this month?' });
+    const res = await callChat({ message: 'Business' });
     await res.text();
 
     expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 800, 'chat_message');

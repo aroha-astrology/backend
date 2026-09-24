@@ -512,6 +512,13 @@
       "when": 1788700000000,
       "tag": "0072_next_report_vote",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1788800000000,
+      "tag": "0073_free_follow_up",
+      "breakpoints": true
     }
   ]
 }

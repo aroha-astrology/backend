@@ -1350,6 +1350,34 @@ export async function recordNextReportVote(userId: string, reportKey: string): P
 }
 
 /**
+ * Atomically spends this account's free chat follow-up iff the last one was
+ * used at least `cooldownMs` ago (or never). A single conditional UPDATE, so
+ * two concurrent taps can't both come out free.
+ */
+export async function claimFreeFollowUp(userId: string, cooldownMs: number): Promise<boolean> {
+  const cutoff = new Date(Date.now() - cooldownMs);
+  const [row] = await db
+    .update(users)
+    .set({ lastFreeFollowUpAt: sql`now()` })
+    .where(
+      and(
+        eq(users.id, userId),
+        isNull(users.deletedAt),
+        or(isNull(users.lastFreeFollowUpAt), lt(users.lastFreeFollowUpAt, cutoff)),
+      ),
+    )
+    .returning({ id: users.id });
+  return !!row;
+}
+
+/** Hands a claimed free follow-up back when the reply failed. Null rather than
+ * the replaced value: a claim only succeeds when that value already meant
+ * "available", so null restores the same state without having to carry it. */
+export async function releaseFreeFollowUp(userId: string): Promise<void> {
+  await db.update(users).set({ lastFreeFollowUpAt: null }).where(eq(users.id, userId));
+}
+
+/**
  * Reverts an unlock when background generation fails.
  * Refunds the balance and sets gemstoneUnlockedAt back to null.
  *

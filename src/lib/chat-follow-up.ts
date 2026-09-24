@@ -13,7 +13,19 @@
 // Verified against the SERVER'S OWN stored transcript, not a client-supplied
 // flag — a client claiming "this is the free follow-up" would be trivially
 // spoofable into free chat for anyone who reads the network tab.
+//
+// Narrowed since: only a tap that ANSWERS the astrologer's own question about
+// the user (a multi-option "A | B | C" line — income range, timeframe, field
+// of work) is free, because that turn feeds chat-fact-extraction.ts a durable
+// user fact. A plain "Ask next: <question>" chip is just another paid
+// question. The free tap itself is rationed to one per account per
+// FREE_FOLLOW_UP_COOLDOWN_MS (users.last_free_follow_up_at, claimed atomically
+// by claimFreeFollowUp in users.repo.ts) — so also at most once per session.
 // =============================================================================
+
+/** One free follow-up per account per 3 days. The frontend never re-derives
+ * this — it reads `nextFreeFollowUpAt` off the user DTO. */
+export const FREE_FOLLOW_UP_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 
 /** Mirrors ChatConversation.tsx's splitFollowUp regex exactly — same suggestion, same syntax. */
 const ASK_NEXT_RE = /\n *Ask next:\s*(.+?)\s*$/i;
@@ -38,8 +50,12 @@ export function normalizeFollowUp(s: string): string {
 }
 
 /**
- * True when `incomingMessage` is the free follow-up the assistant's last turn
- * in `history` suggested. `history` is the STORED transcript (loaded from
+ * True when `incomingMessage` is one of the tappable ANSWERS the assistant's
+ * last turn in `history` offered to its own question about the user (a
+ * " | "-separated line with at least two options). A single-option line is a
+ * suggested follow-up question, not an answer — tapping it shares nothing
+ * about the user — so it is never free. Eligibility only: whether the account
+ * still has its free tap left is claimFreeFollowUp's call. `history` is the STORED transcript (loaded from
  * chat_sessions, never client-supplied) — see chatRoute in astro.routes.ts.
  */
 export function isFreeFollowUp(
@@ -55,7 +71,10 @@ export function isFreeFollowUp(
   // One "Ask next:" line can offer several tappable answers separated by " | "
   // (see scholar.ts's OUTPUT_STYLE and chat-income.ts's range options) — the
   // user still taps exactly one of them, so any of them is the free follow-up.
-  return suggested
+  const options = suggested
     .split('|')
-    .some((option) => normalizeFollowUp(option) === normalizeFollowUp(incomingMessage));
+    .map((option) => option.trim())
+    .filter(Boolean);
+  if (options.length < 2) return false;
+  return options.some((option) => normalizeFollowUp(option) === normalizeFollowUp(incomingMessage));
 }

@@ -6,21 +6,26 @@ const withAssistantTurn = (content: string) => [
   { role: 'assistant' as const, content },
 ];
 
+const ANSWERS = 'What field do you work in?\nAsk next: IT or software | Business | Government job';
+
 describe('isFreeFollowUp', () => {
-  it('matches the exact suggested follow-up', () => {
-    const history = withAssistantTurn('Answer.\nAsk next: What about my finances this month?');
-    expect(isFreeFollowUp('What about my finances this month?', history)).toBe(true);
+  it("matches a tapped answer to the astrologer's own question", () => {
+    expect(isFreeFollowUp('Business', withAssistantTurn(ANSWERS))).toBe(true);
+    expect(isFreeFollowUp('Government job', withAssistantTurn(ANSWERS))).toBe(true);
   });
 
   it('is case- and whitespace-insensitive, and ignores trailing punctuation', () => {
-    const history = withAssistantTurn('Answer.\nAsk next: What about my finances this month?');
-    expect(isFreeFollowUp('  WHAT about my finances this month  ', history)).toBe(true);
+    expect(isFreeFollowUp('  it OR software.  ', withAssistantTurn(ANSWERS))).toBe(true);
   });
 
-  it('rejects a message that only loosely resembles the suggestion', () => {
+  it('never makes a single suggested follow-up QUESTION free — it yields no user fact', () => {
     const history = withAssistantTurn('Answer.\nAsk next: What about my finances this month?');
-    expect(isFreeFollowUp('What about my finances', history)).toBe(false);
-    expect(isFreeFollowUp('Tell me about my finances this month', history)).toBe(false);
+    expect(isFreeFollowUp('What about my finances this month?', history)).toBe(false);
+  });
+
+  it('rejects a message that only loosely resembles an option', () => {
+    expect(isFreeFollowUp('Business owner', withAssistantTurn(ANSWERS))).toBe(false);
+    expect(isFreeFollowUp('IT', withAssistantTurn(ANSWERS))).toBe(false);
   });
 
   it('returns false when the last reply had no "Ask next:" line', () => {
@@ -36,30 +41,20 @@ describe('isFreeFollowUp', () => {
   it('matches only against the LAST assistant turn, not an earlier one', () => {
     const history = [
       { role: 'user' as const, content: 'q1' },
-      { role: 'assistant' as const, content: 'a1.\nAsk next: An old suggestion?' },
+      { role: 'assistant' as const, content: 'a1.\nAsk next: Old one | Old two' },
       { role: 'user' as const, content: 'q2' },
-      { role: 'assistant' as const, content: 'a2.\nAsk next: The current suggestion?' },
+      { role: 'assistant' as const, content: 'a2.\nAsk next: New one | New two' },
     ];
-    expect(isFreeFollowUp('An old suggestion?', history)).toBe(false);
-    expect(isFreeFollowUp('The current suggestion?', history)).toBe(true);
+    expect(isFreeFollowUp('Old one', history)).toBe(false);
+    expect(isFreeFollowUp('New two', history)).toBe(true);
   });
 
-  it('makes every option on a multi-choice suggestion line free, not just the first', () => {
-    // One "Ask next:" line can offer several tappable answers separated by " | "
-    // (income ranges, timeframes). The user still taps exactly one, so charging
-    // for all but the first would recreate the very problem the free tap fixed.
+  it('makes every option on a multi-choice answer line eligible, not just the first', () => {
     const history = withAssistantTurn(
       'Your chart shows steady growth.\nAsk next: Under ₹25,000 a month | ₹25,000 – 75,000 | Prefer not to say',
     );
     expect(isFreeFollowUp('Under ₹25,000 a month', history)).toBe(true);
     expect(isFreeFollowUp('Prefer not to say', history)).toBe(true);
     expect(isFreeFollowUp('What about my career?', history)).toBe(false);
-  });
-
-  it('does not treat an arbitrary question as free just because it is a question', () => {
-    // Guards against the mechanism being read as "any follow-up question is
-    // free" — it must be THE suggested one, not merely question-shaped.
-    const history = withAssistantTurn('Answer.\nAsk next: What about my finances this month?');
-    expect(isFreeFollowUp('What is my lucky color?', history)).toBe(false);
   });
 });

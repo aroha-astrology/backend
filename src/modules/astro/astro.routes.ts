@@ -5,7 +5,13 @@ import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
-import { deductWalletBalance, addWalletBalance, setIncomeBracket } from '../users/users.repo.js';
+import {
+  deductWalletBalance,
+  addWalletBalance,
+  setIncomeBracket,
+  claimFreeFollowUp,
+  releaseFreeFollowUp,
+} from '../users/users.repo.js';
 import { matchIncomeReply } from '../../lib/chat-income.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
@@ -26,7 +32,7 @@ import {
   remedyInsightForLanguage,
   requestRemedyInsightGeneration,
 } from './remedy-insight.service.js';
-import { isFreeFollowUp } from '../../lib/chat-follow-up.js';
+import { isFreeFollowUp, FREE_FOLLOW_UP_COOLDOWN_MS } from '../../lib/chat-follow-up.js';
 
 /** Fallback cost per chat question if the `paid.chat` feature has no resolved
  * price (registry/DB lookup failure) — matches FEATURE_REGISTRY's
@@ -592,8 +598,24 @@ astroRouter.openapi(chatRoute, async (c) => {
   // which would be trivially spoofable into free chat. See chat-follow-up.ts
   // for why this exists: the chip was built to keep a conversation going and
   // then charged full price for using it, which defeated its own purpose.
-  const isFollowUpTap = isFreeFollowUp(body.message, storedHistory);
+  // Only an ANSWER to the astrologer's question about the user qualifies (it
+  // yields a user fact), and only once per account per 3 days — the claim is
+  // an atomic UPDATE, so it's checked last, after eligibility. A failed claim
+  // (cooldown, or a DB error) just means a normally-charged turn.
+  const isFollowUpTap =
+    isFreeFollowUp(body.message, storedHistory) &&
+    (await claimFreeFollowUp(user.id, FREE_FOLLOW_UP_COOLDOWN_MS).catch(() => false));
   const amountToChargePaise = isFollowUpTap ? 0 : chatMessageCostPaise;
+
+  /** Undoes this turn's cost when it produced no answer: the wallet debit, or
+   * for a free tap, the claimed free follow-up so the user can use it again. */
+  const refundTurn = async (): Promise<void> => {
+    if (amountToChargePaise > 0) {
+      await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
+    } else if (isFollowUpTap) {
+      await releaseFreeFollowUp(user.id).catch(() => {});
+    }
+  };
 
   // A tapped income range is a demographic answer, not a question. Recorded
   // before generation starts so THIS turn's prompt already sees the bracket in
@@ -668,9 +690,7 @@ astroRouter.openapi(chatRoute, async (c) => {
     }
   } catch (err) {
     await releaseInflightLock();
-    if (amountToChargePaise > 0) {
-      await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
-    }
+    await refundTurn();
     throw err;
   }
 
@@ -733,12 +753,12 @@ astroRouter.openapi(chatRoute, async (c) => {
         }
       }
 
-      if (!fullContent.trim() && amountToChargePaise > 0) {
+      if (!fullContent.trim()) {
         // Generation "succeeded" with nothing to show (e.g. hit the
         // token ceiling before any content could be flushed) — don't
         // charge for a question that got no answer.
         refunded = true;
-        await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
+        await refundTurn();
       }
 
       // Persisted unconditionally now — no longer gated on the client still
@@ -768,9 +788,9 @@ astroRouter.openapi(chatRoute, async (c) => {
       // persist below can throw, which would otherwise credit the same charge
       // twice for one question (pre-existing, but reachable more often now that
       // the persist runs unconditionally rather than only for connected clients).
-      if (amountToChargePaise > 0 && !refunded) {
+      if (!refunded) {
         refunded = true;
-        await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
+        await refundTurn();
       }
       await stream.writeSSE({
         event: 'error',

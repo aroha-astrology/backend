@@ -12,6 +12,7 @@ import { type ProfileContext } from '../birth-profiles/profile-context.js';
 import { priceOf, payoutOf, type ResolvedFeature } from '../features/features.service.js';
 import { formatPaise } from '../../lib/money.js';
 import { CLAIM_CAMPAIGNS } from '../../config/campaigns.js';
+import { FREE_FOLLOW_UP_COOLDOWN_MS } from '../../lib/chat-follow-up.js';
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { findLiveSelfClaimCampaign } from '../gift-campaigns/gift-campaigns.repo.js';
 import {
@@ -205,6 +206,13 @@ export function toUserDto(
     platform: row.platform,
     walletBalancePaise: row.walletBalancePaise,
     nextReportVote: row.nextReportVote,
+    // When the free chat follow-up is next usable; null = usable now. See
+    // lib/chat-follow-up.ts — the server re-checks atomically on the tap itself.
+    nextFreeFollowUpAt:
+      row.lastFreeFollowUpAt &&
+      row.lastFreeFollowUpAt.getTime() + FREE_FOLLOW_UP_COOLDOWN_MS > Date.now()
+        ? new Date(row.lastFreeFollowUpAt.getTime() + FREE_FOLLOW_UP_COOLDOWN_MS).toISOString()
+        : null,
     // `profile.unlockedHouses` is already normalized to `[]` (never null) by
     // resolveProfileContext — no separate null-fallback needed here.
     unlockedHouses: profile.unlockedHouses,

@@ -375,6 +375,12 @@ export const users = pgTable(
     nextReportVote: text('next_report_vote'),
     nextReportVotedAt: timestamp('next_report_voted_at', { withTimezone: true }),
 
+    // --- free chat follow-up (2026-09-24) ------------------------------------
+    // When this account last used its free "Ask next:" answer tap (see
+    // lib/chat-follow-up.ts). One per FREE_FOLLOW_UP_COOLDOWN_MS, enforced by
+    // claimFreeFollowUp's conditional UPDATE, not by the client. Null = never used.
+    lastFreeFollowUpAt: timestamp('last_free_follow_up_at', { withTimezone: true }),
+
     // --- multi-profile (2026-07-18) ----------------------------------------
     // NULL = the primary/self profile (this users row) is currently active;
     // a non-null id points at a row in birth_profiles. birthProfiles is
