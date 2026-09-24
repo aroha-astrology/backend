@@ -1,15 +1,12 @@
 import { Errors } from '../../lib/errors.js';
 import type { OrderRow, WalletTransactionRow } from '../../db/schema.js';
 import {
-  findActiveCouponByCode,
   insertOrder,
   findOrderByIdForUser,
   findOrdersForUser,
   findDebitsForUser,
   findLatestOrderForPack,
-  findStalePendingRazorpayOrders,
   confirmOrderAndGrantCredits,
-  setOrderGatewayOrderId,
   refundOrder as refundOrderRepo,
 } from './billing.repo.js';
 import { findActiveUserById } from '../users/users.repo.js';
@@ -19,12 +16,6 @@ import {
   consumeGooglePlayPurchase,
   fetchGooglePlayPurchase,
 } from './google-play-verifier.js';
-import {
-  createRazorpayOrder,
-  getRazorpayKeyId,
-  verifyRazorpaySignature,
-  fetchRazorpayOrderPayments,
-} from './razorpay.js';
 import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
 
 /**
@@ -54,211 +45,41 @@ function findTopUpAmount(id: string) {
   return amount;
 }
 
-/** Discount amount in paise a coupon would apply to a given order amount, 0 if inapplicable. */
-function computeDiscountPaise(
-  coupon: { discountType: string; discountValue: number },
-  amountPaise: number,
-): number {
-  if (coupon.discountType === 'percent') {
-    return Math.round((amountPaise * coupon.discountValue) / 100);
-  }
-  return Math.min(coupon.discountValue, amountPaise);
+/**
+ * Coupons are switched off (2026-09-24). Google Play is now the only way to
+ * pay, and Play always charges a product's fixed price — a coupon could only
+ * ever shrink the wallet credit for the same payment, which is what it was
+ * silently doing. Kept as an endpoint so older app builds that still show a
+ * coupon box get a clean "not available" instead of an error.
+ */
+export function validateCoupon(code: string, packId: string) {
+  findTopUpAmount(packId);
+  return { valid: false, code, message: 'Coupons are not available right now' };
 }
 
-async function resolveCoupon(code: string, amountPaise: number) {
-  const coupon = await findActiveCouponByCode(code);
-  if (!coupon) return { coupon: null, error: 'Invalid coupon code' as const };
-  if (coupon.expiresAt && coupon.expiresAt.getTime() < Date.now()) {
-    return { coupon: null, error: 'This coupon has expired' as const };
-  }
-  if (coupon.maxRedemptions != null && coupon.redemptionCount >= coupon.maxRedemptions) {
-    return { coupon: null, error: 'This coupon has reached its redemption limit' as const };
-  }
-  if (coupon.minAmountPaise != null && amountPaise < coupon.minAmountPaise) {
-    const minRupees = (coupon.minAmountPaise / 100).toFixed(0);
-    return { coupon: null, error: `This coupon needs a minimum order of ₹${minRupees}` as const };
-  }
-  return { coupon, error: null };
-}
-
-export async function validateCoupon(code: string, packId: string) {
+/**
+ * Records the pending order a Google Play purchase is matched against (see
+ * confirmGooglePlayPurchase). `couponCode` is accepted for older clients and
+ * ignored: the order always credits exactly what Play charges.
+ */
+export async function checkout(userId: string, packId: string, _couponCode?: string) {
   const amount = findTopUpAmount(packId);
-  const { coupon, error } = await resolveCoupon(code, amount.amountPaise);
-  if (!coupon) {
-    return { valid: false, code, message: error ?? 'Invalid coupon code' };
-  }
-  const discountPaise = computeDiscountPaise(coupon, amount.amountPaise);
-  return {
-    valid: true,
-    code: coupon.code,
-    discountType: coupon.discountType,
-    discountValue: coupon.discountValue,
-    discountPaise,
-    finalAmountPaise: Math.max(amount.amountPaise - discountPaise, 0),
-  };
-}
-
-async function createPendingOrder(
-  userId: string,
-  packId: string,
-  couponCode: string | undefined,
-  gatewayProvider: string,
-) {
-  const amount = findTopUpAmount(packId);
-  let discountPaise = 0;
-  let couponId: string | null = null;
-  let resolvedCouponCode: string | null = null;
-
-  if (couponCode) {
-    const { coupon, error } = await resolveCoupon(couponCode, amount.amountPaise);
-    if (!coupon) throw Errors.badRequest(error ?? 'Invalid coupon code');
-    discountPaise = computeDiscountPaise(coupon, amount.amountPaise);
-    couponId = coupon.id;
-    resolvedCouponCode = coupon.code;
-  }
-
-  const order = await insertOrder({
+  return insertOrder({
     userId,
     packId: amount.id,
     amountPaise: amount.amountPaise,
-    discountPaise,
-    finalAmountPaise: Math.max(amount.amountPaise - discountPaise, 0),
+    discountPaise: 0,
+    finalAmountPaise: amount.amountPaise,
     currency: amount.currency,
-    couponId,
-    couponCode: resolvedCouponCode,
+    couponId: null,
+    couponCode: null,
     status: 'pending',
-    gatewayProvider,
+    gatewayProvider: 'mock',
   });
-
-  return order;
-}
-
-export async function checkout(userId: string, packId: string, couponCode: string | undefined) {
-  return createPendingOrder(userId, packId, couponCode, 'mock');
 }
 
 /**
- * Creates our pending order AND its Razorpay counterpart, and hands the
- * browser everything Razorpay's checkout.js needs to open the payment modal.
- * The key SECRET stays here — only the publishable key id goes out.
- */
-export async function startRazorpayCheckout(
-  userId: string,
-  packId: string,
-  couponCode: string | undefined,
-): Promise<{ order: OrderRow; razorpayOrderId: string; razorpayKeyId: string }> {
-  const razorpayKeyId = getRazorpayKeyId();
-  const order = await createPendingOrder(userId, packId, couponCode, 'razorpay');
-  const razorpayOrderId = await createRazorpayOrder({
-    amountPaise: order.finalAmountPaise,
-    currency: order.currency,
-    receipt: order.id,
-  });
-  await setOrderGatewayOrderId(order.id, razorpayOrderId);
-  return { order: { ...order, gatewayOrderId: razorpayOrderId }, razorpayOrderId, razorpayKeyId };
-}
-
-/**
- * Confirms a Razorpay payment and grants its wallet balance. Trusts nothing
- * from the client except the ids: the amount granted comes from OUR stored
- * order, and the payment is only accepted if Razorpay's signature over
- * (their order id | payment id) checks out AND their order id is the one we
- * created for this order — otherwise a cheap payment could be replayed
- * against an expensive order.
- */
-export async function verifyRazorpayPayment(
-  userId: string,
-  params: {
-    orderId: string;
-    razorpayOrderId: string;
-    razorpayPaymentId: string;
-    razorpaySignature: string;
-  },
-): Promise<{ order: OrderRow; walletBalancePaise: number }> {
-  const order = await findOrderByIdForUser(params.orderId, userId);
-  if (!order) throw Errors.notFound('Order not found');
-  if (order.gatewayOrderId !== params.razorpayOrderId) {
-    throw Errors.badRequest('This payment does not belong to that order');
-  }
-  if (
-    !verifyRazorpaySignature({
-      razorpayOrderId: params.razorpayOrderId,
-      razorpayPaymentId: params.razorpayPaymentId,
-      signature: params.razorpaySignature,
-    })
-  ) {
-    logger.warn({ userId, orderId: order.id }, 'Razorpay signature verification failed');
-    throw Errors.badRequest('Payment could not be verified');
-  }
-
-  // Idempotent replay (double-submit, or a retry after a dropped response).
-  if (order.status === 'paid') {
-    if (order.gatewayPaymentId === params.razorpayPaymentId) {
-      return { order, walletBalancePaise: await getUserWalletBalance(userId) };
-    }
-    throw Errors.conflict('Order already confirmed with a different payment');
-  }
-  if (order.status !== 'pending') throw Errors.conflict(`Order is ${order.status}, not payable`);
-
-  const result = await confirmOrderAndGrantCredits(order.id, userId, params.razorpayPaymentId);
-  if (!result) {
-    // Lost a race with a concurrent confirm of the same order — re-read rather
-    // than failing a payment the user genuinely made.
-    const nowPaid = await findOrderByIdForUser(order.id, userId);
-    if (!nowPaid || nowPaid.status !== 'paid') throw Errors.internal('Failed to confirm order');
-    return { order: nowPaid, walletBalancePaise: await getUserWalletBalance(userId) };
-  }
-
-  await notifyTopUp(userId, order.finalAmountPaise, result.walletBalancePaise);
-  return result;
-}
-
-/**
- * Reconciles orders that reached Razorpay but were never confirmed client-side — the only path
- * that normally turns an order `paid` is the browser calling POST /billing/razorpay/verify
- * after checkout.js closes, and if the browser dies (closed tab, lost connectivity, OS-killed
- * app) between Razorpay capturing the payment and that call landing, the order is stuck at
- * `pending` with real money already moved. Run every ~10 minutes via
- * POST /cron/billing-razorpay-reconcile.
- *
- * Deliberately conservative: only acts when Razorpay reports an actually `captured` payment for
- * the order. An order with no captured payment (abandoned checkout, failed card) is left
- * `pending` — there's nothing to reconcile, and eventually granting one would be the actual bug
- * this whole feature exists to prevent.
- */
-export async function reconcileStaleRazorpayOrders(): Promise<{
-  checked: number;
-  reconciled: number;
-}> {
-  const stale = await findStalePendingRazorpayOrders();
-  let reconciled = 0;
-
-  for (const order of stale) {
-    if (!order.gatewayOrderId) continue; // findStalePendingRazorpayOrders already filters this; narrows the type.
-    try {
-      const payments = await fetchRazorpayOrderPayments(order.gatewayOrderId);
-      const captured = payments.find((p) => p.status === 'captured');
-      if (!captured) continue;
-
-      const result = await confirmOrderAndGrantCredits(order.id, order.userId, captured.id);
-      if (!result) continue; // Confirmed by a concurrent path (e.g. a very late verify call) in the meantime.
-
-      logger.warn(
-        { orderId: order.id, userId: order.userId, razorpayPaymentId: captured.id },
-        'billing: reconciled an order whose client-side verify call never arrived',
-      );
-      await notifyTopUp(order.userId, order.finalAmountPaise, result.walletBalancePaise);
-      reconciled++;
-    } catch (err) {
-      logger.error({ err, orderId: order.id }, 'billing: reconcile failed for order');
-    }
-  }
-
-  return { checked: stale.length, reconciled };
-}
-
-/**
- * No real payment gateway (Razorpay/Stripe) is wired up yet — this used to be
+ * No real payment gateway backs this endpoint — this used to be
  * a MOCK that always "succeeded" and granted credits for any pending order,
  * which meant any signed-in user could get free credits by hitting this
  * endpoint with no actual payment involved. Refuse until a real gateway's
@@ -355,7 +176,7 @@ export async function confirmGooglePlayPurchase(
 
   // Fresh grant only (not the idempotent-replay/already-paid branches above) —
   // avoids sending a duplicate admin notification if this call gets retried.
-  await notifyTopUp(userId, order.finalAmountPaise, result.walletBalancePaise);
+  await notifyTopUp(userId, order.amountPaise, result.walletBalancePaise);
 
   return result;
 }
@@ -381,7 +202,7 @@ const ONE_TIME_PRODUCT_PURCHASED = 1;
  * Deliberately swallows errors rather than throwing — the route handler acks every notification
  * it's authenticated regardless of outcome, so Google doesn't retry-storm us over a purchase we
  * can't resolve (missing account id, order already actioned, etc.). Failures are logged for
- * follow-up, same as reconcileStaleRazorpayOrders above.
+ * follow-up rather than thrown.
  */
 export async function reconcileGooglePlayNotification(notification: {
   notificationType: number;
@@ -452,7 +273,9 @@ type TransactionKind =
   | 'referral_bonus'
   | 'admin_adjustment'
   | 'report_unlock'
-  | 'daily_reward';
+  | 'daily_reward'
+  | 'palm_reading'
+  | 'voice_call';
 
 const REPORT_UNLOCK_RE = /^report_unlock:([a-z_]+)(?::(\d{4}-\d{2}))?(?::bundle:(\d+))?$/;
 
@@ -486,6 +309,8 @@ export function parseReason(reason: string): {
   if (base === 'chat_message') return { kind: 'chat', isRefund };
   if (base === 'vastu_report') return { kind: 'vastu_report', isRefund };
   if (base === 'profile_creation') return { kind: 'profile_creation', isRefund };
+  if (base === 'palm_unlock') return { kind: 'palm_reading', isRefund };
+  if (base === 'voice_minute') return { kind: 'voice_call', isRefund };
   if (base === 'gemstone_unlock' || base.startsWith('gemstone_unlock:profile:')) {
     return { kind: 'gemstone_unlock', isRefund };
   }

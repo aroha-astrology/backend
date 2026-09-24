@@ -36,7 +36,6 @@ import { reapStaleReports } from '../reports/reports.service.js';
 import { reapStalePalmReadings } from '../palm/palm.service.js';
 import { reapStaleVastuPlans } from '../vastu/vastu.service.js';
 import { reapStaleProcessingPlans } from '../purchase-plan/purchase-plan.service.js';
-import { reconcileStaleRazorpayOrders } from '../billing/billing.service.js';
 import { runLowBalanceAlert } from './low-balance-alert.service.js';
 import { purgeOldDeletedChatSessions } from '../astro/chat-sessions.repo.js';
 import { sweepDueCampaigns, sweepExpiredGrants } from './gift-campaign-sweep.service.js';
@@ -692,43 +691,6 @@ const purchasePlanReapStaleRoute = createRoute({
 
 cronRouter.openapi(purchasePlanReapStaleRoute, async (c) => {
   const result = await reapStaleProcessingPlans();
-  return c.json(result, 200);
-});
-
-// ---------------------------------------------------------------------------
-// Razorpay stale-pending reconciler — self-heals orders where the payment was captured on
-// Razorpay's side but the client never called POST /billing/razorpay/verify to confirm it
-// (browser killed/lost connectivity between capture and that call). Keyed to
-// RAZORPAY_RECONCILE_STALE_MS in billing.repo.ts.
-// ---------------------------------------------------------------------------
-
-const billingRazorpayReconcileRoute = createRoute({
-  method: 'post',
-  path: '/cron/billing-razorpay-reconcile',
-  tags: ['Cron'],
-  summary: 'Grant credits for Razorpay orders captured but never confirmed client-side',
-  description:
-    'Machine-to-machine endpoint, meant to run every 10 minutes via the OS crontab. For each ' +
-    "order still 'pending' past RAZORPAY_RECONCILE_STALE_MS with a Razorpay order id, checks " +
-    "Razorpay's Orders API for a captured payment and, if found, grants credits exactly as " +
-    'POST /billing/razorpay/verify would have. An order with no captured payment is left ' +
-    'pending — most ticks are expected to reconcile zero orders. Authenticated via the ' +
-    'X-Cron-Secret header.',
-  responses: {
-    200: {
-      description: 'Sweep completed',
-      content: {
-        'application/json': {
-          schema: z.object({ checked: z.number(), reconciled: z.number() }),
-        },
-      },
-    },
-    403: errorResponse('Invalid or missing cron secret'),
-  },
-});
-
-cronRouter.openapi(billingRazorpayReconcileRoute, async (c) => {
-  const result = await reconcileStaleRazorpayOrders();
   return c.json(result, 200);
 });
 

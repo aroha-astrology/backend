@@ -8,7 +8,7 @@ export const CreateTicketBodySchema = z
   .object({
     category: z.string().min(1).max(100).openapi({ example: 'billing' }),
     message: z.string().min(1).max(5000).openapi({
-      example: 'My wallet top-up succeeded on Razorpay but the balance never updated.',
+      example: 'My wallet top-up succeeded on Google Play but the balance never updated.',
     }),
     // Not read from any HTTP header today (this codebase has no
     // Accept-Language-style convention) — optional body fields, falling back

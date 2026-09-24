@@ -40,8 +40,6 @@ export const TopUpAmountSchema = z
 export const TopUpAmountsResponseSchema = z
   .object({
     amounts: z.array(TopUpAmountSchema),
-    /** False when this server has no Razorpay keys — the client hides that payment option. */
-    razorpayEnabled: z.boolean().default(false),
   })
   .openapi('TopUpAmountsResponse');
 
@@ -132,6 +130,8 @@ export const TransactionSchema = z
         'referral_bonus',
         'admin_adjustment',
         'daily_reward',
+        'palm_reading',
+        'voice_call',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),
@@ -170,29 +170,6 @@ export const TransactionSchema = z
 export const TransactionsResponseSchema = z
   .object({ transactions: z.array(TransactionSchema) })
   .openapi('TransactionsResponse');
-
-/* -------------------------------------------------------------------------- */
-/* Razorpay                                                                    */
-/* -------------------------------------------------------------------------- */
-
-export const RazorpayCheckoutResponseSchema = z
-  .object({
-    order: OrderSchema,
-    razorpayOrderId: z.string().openapi({ example: 'order_Nq1v2w3x4y5z6a' }),
-    razorpayKeyId: z
-      .string()
-      .openapi({ description: 'Publishable key id for checkout.js', example: 'rzp_test_xxx' }),
-  })
-  .openapi('RazorpayCheckoutResponse');
-
-export const VerifyRazorpayBodySchema = z
-  .object({
-    orderId: z.string().uuid(),
-    razorpayOrderId: z.string().min(1),
-    razorpayPaymentId: z.string().min(1),
-    razorpaySignature: z.string().min(1),
-  })
-  .openapi('VerifyRazorpayBody');
 
 export const ConfirmGooglePlayBodySchema = z
   .object({

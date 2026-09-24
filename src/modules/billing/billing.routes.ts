@@ -14,8 +14,6 @@ import {
   TransactionsResponseSchema,
   ConfirmOrderResponseSchema,
   ConfirmGooglePlayBodySchema,
-  RazorpayCheckoutResponseSchema,
-  VerifyRazorpayBodySchema,
 } from './billing.schemas.js';
 import {
   getTopUpAmounts,
@@ -24,12 +22,9 @@ import {
   confirmPayment,
   confirmGooglePlayPurchase,
   reconcileGooglePlayNotification,
-  startRazorpayCheckout,
-  verifyRazorpayPayment,
   listTransactions,
   toOrderDto,
 } from './billing.service.js';
-import { isRazorpayConfigured } from './razorpay.js';
 
 const ErrorSchema = z
   .object({
@@ -122,7 +117,6 @@ billingRouter.openapi(packsRoute, async (c) => {
   return c.json(
     {
       amounts: getTopUpAmounts() as unknown as TopUpAmount[],
-      razorpayEnabled: isRazorpayConfigured(),
     },
     200,
   );
@@ -153,7 +147,7 @@ const validateCouponRoute = createRoute({
 
 billingRouter.openapi(validateCouponRoute, async (c) => {
   const { code, packId } = c.req.valid('json');
-  const result = await validateCoupon(code, packId);
+  const result = validateCoupon(code, packId);
   return c.json(result, 200);
 });
 
@@ -223,7 +217,7 @@ const confirmRoute = createRoute({
   tags: ['Billing'],
   summary:
     'Confirm payment for a pending order and grant its wallet balance. Currently always refuses — no ' +
-    'real payment gateway (Razorpay/Stripe) is wired up yet, so this cannot verify a real payment.',
+    'payment gateway backs this endpoint, so this cannot verify a real payment.',
   security: [{ bearerAuth: [] }],
   request: { params: OrderIdParamSchema },
   responses: {
@@ -281,73 +275,6 @@ billingRouter.openapi(confirmGooglePlayRoute, async (c) => {
     purchaseToken,
     productId,
   });
-  return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
-});
-
-/* -------------------------------------------------------------------------- */
-/* POST /billing/razorpay/order                                                */
-/* -------------------------------------------------------------------------- */
-
-const razorpayOrderRoute = createRoute({
-  method: 'post',
-  path: '/billing/razorpay/order',
-  tags: ['Billing'],
-  summary: 'Create a pending order plus its Razorpay order, ready for checkout.js',
-  security: [{ bearerAuth: [] }],
-  request: {
-    body: { required: true, content: { 'application/json': { schema: CheckoutBodySchema } } },
-  },
-  responses: {
-    200: {
-      description: 'Order created on both sides',
-      content: { 'application/json': { schema: RazorpayCheckoutResponseSchema } },
-    },
-    401: errorResponse('Unauthorized'),
-    400: errorResponse('Unknown pack or invalid coupon'),
-    403: errorResponse('Razorpay is not configured on this server'),
-    500: errorResponse('Payment gateway error'),
-  },
-});
-
-billingRouter.openapi(razorpayOrderRoute, async (c) => {
-  const user = c.get('user');
-  const { packId, couponCode } = c.req.valid('json');
-  const { order, razorpayOrderId, razorpayKeyId } = await startRazorpayCheckout(
-    user.id,
-    packId,
-    couponCode,
-  );
-  return c.json({ order: toOrderDto(order), razorpayOrderId, razorpayKeyId }, 200);
-});
-
-/* -------------------------------------------------------------------------- */
-/* POST /billing/razorpay/verify                                               */
-/* -------------------------------------------------------------------------- */
-
-const razorpayVerifyRoute = createRoute({
-  method: 'post',
-  path: '/billing/razorpay/verify',
-  tags: ['Billing'],
-  summary: "Verify a Razorpay payment's signature and grant its wallet balance",
-  security: [{ bearerAuth: [] }],
-  request: {
-    body: { required: true, content: { 'application/json': { schema: VerifyRazorpayBodySchema } } },
-  },
-  responses: {
-    200: {
-      description: 'Payment verified, wallet balance granted',
-      content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
-    },
-    401: errorResponse('Unauthorized'),
-    400: errorResponse('Signature mismatch or payment/order mismatch'),
-    404: errorResponse('Order not found'),
-    409: errorResponse('Order already processed or not payable'),
-  },
-});
-
-billingRouter.openapi(razorpayVerifyRoute, async (c) => {
-  const user = c.get('user');
-  const { order, walletBalancePaise } = await verifyRazorpayPayment(user.id, c.req.valid('json'));
   return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
 });
 

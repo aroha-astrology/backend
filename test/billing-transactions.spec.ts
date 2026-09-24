@@ -14,6 +14,10 @@ describe('parseReason', () => {
     expect(parseReason('vastu_report')).toEqual({ kind: 'vastu_report', isRefund: false });
     expect(parseReason('profile_creation')).toEqual({ kind: 'profile_creation', isRefund: false });
     expect(parseReason('gemstone_unlock')).toEqual({ kind: 'gemstone_unlock', isRefund: false });
+    // These two used to fall through to 'admin_adjustment' in a user's payment history.
+    expect(parseReason('palm_unlock')).toEqual({ kind: 'palm_reading', isRefund: false });
+    expect(parseReason('voice_minute')).toEqual({ kind: 'voice_call', isRefund: false });
+    expect(parseReason('refund:voice_minute')).toEqual({ kind: 'voice_call', isRefund: true });
     expect(parseReason('gemstone_unlock:profile:abc')).toEqual({
       kind: 'gemstone_unlock',
       isRefund: false,

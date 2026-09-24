@@ -1,4 +1,4 @@
-import { and, desc, eq, not, like, isNull, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, not, like, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -12,7 +12,6 @@ import {
   type WalletTransactionRow,
 } from '../../db/schema.js';
 import { resolveDateRangePreset, sumPaidOrdersBetween } from '../admin/admin.repo.js';
-import { logger } from '../../lib/logger.js';
 
 export async function findActiveCouponByCode(code: string): Promise<CouponRow | undefined> {
   const rows = await db
@@ -112,45 +111,9 @@ export async function findLatestOrderForPack(
   return rows[0];
 }
 
-/** Records the gateway's own order id against ours (Razorpay orders are created after our row exists). */
-export async function setOrderGatewayOrderId(
-  orderId: string,
-  gatewayOrderId: string,
-): Promise<void> {
-  await db.update(orders).set({ gatewayOrderId }).where(eq(orders.id, orderId));
-}
-
-/** Same self-heal window as the vastu/reports/palm stale-generating reapers. Long enough that
- *  a slow-but-legitimate checkout.js flow (OTP entry, bank redirect) never gets swept mid-pay. */
-export const RAZORPAY_RECONCILE_STALE_MS = 15 * 60_000;
-
 /**
- * Orders that reached Razorpay (a `gatewayOrderId` exists — checkout.js actually opened) but
- * never got confirmed client-side, past the point a legitimate in-progress payment could still
- * be running. The only way an order becomes `paid` today is the client calling
- * POST /billing/razorpay/verify — if the browser is killed, loses connectivity, or the tab is
- * closed between Razorpay capturing the payment and that call landing, the order sits at
- * `pending` forever despite real money having moved. Swept by
- * reconcileStaleRazorpayOrders (billing.service.ts) against Razorpay's own Orders API.
- */
-export async function findStalePendingRazorpayOrders(): Promise<OrderRow[]> {
-  const cutoff = new Date(Date.now() - RAZORPAY_RECONCILE_STALE_MS);
-  return db
-    .select()
-    .from(orders)
-    .where(
-      and(
-        eq(orders.status, 'pending'),
-        eq(orders.gatewayProvider, 'razorpay'),
-        isNotNull(orders.gatewayOrderId),
-        lt(orders.createdAt, cutoff),
-      ),
-    );
-}
-
-/**
- * Marks a pending order paid, grants its credits, bumps the coupon's
- * redemption count, and appends a credit-ledger row — all atomically. Returns
+ * Marks a pending order paid, grants its credits, and appends a credit-ledger
+ * row — all atomically. Returns
  * undefined if the order wasn't found, didn't belong to the user, or was
  * already confirmed/cancelled (the `status = 'pending'` guard makes this
  * safe to call more than once, e.g. a retried gateway webhook later).
@@ -170,36 +133,13 @@ export async function confirmOrderAndGrantCredits(
 
     if (!order) return undefined;
 
-    // Grant the discount unless the coupon's redemption cap was exhausted between order
-    // creation (validateCoupon/checkout — advisory only, since creating a pending order is
-    // free and unlimited) and this confirm. The increment and the ceiling check are one
-    // conditional UPDATE, so two concurrent confirms against the last remaining redemption
-    // can't both win it.
-    let grantPaise = order.finalAmountPaise;
-    if (order.couponId) {
-      const [bumped] = await tx
-        .update(coupons)
-        .set({ redemptionCount: sql`${coupons.redemptionCount} + 1` })
-        .where(
-          and(
-            eq(coupons.id, order.couponId),
-            or(isNull(coupons.maxRedemptions), lt(coupons.redemptionCount, coupons.maxRedemptions)),
-          ),
-        )
-        .returning({ id: coupons.id });
-
-      if (!bumped) {
-        // The payment already happened on Razorpay's/Google Play's side — refusing it now
-        // would capture real money and grant nothing, which is strictly worse than the
-        // over-redemption this closes. Grant the full undiscounted price instead and log it
-        // for finance visibility; only the discount is refused, never the payment itself.
-        grantPaise = order.amountPaise;
-        logger.warn(
-          { orderId: order.id, userId, couponId: order.couponId },
-          'billing: coupon redemption cap hit at confirm time, granting undiscounted amount',
-        );
-      }
-    }
+    // Google Play is the only way to pay and always charges the product's full
+    // price, so the wallet gets the full pack amount. This used to grant
+    // `finalAmountPaise` (price minus a coupon discount), which on Play meant a
+    // coupon user paid ₹500 and was credited ₹400. Coupons are switched off
+    // (see validateCoupon); using amountPaise also covers any coupon order
+    // still pending from before that.
+    const grantPaise = order.amountPaise;
 
     const [userRow] = await tx
       .update(users)
@@ -234,7 +174,7 @@ export async function confirmOrderAndGrantCredits(
  * here: there is no gateway-side refund call in this codebase yet (every
  * refund anywhere is a wallet credit), so there is no async step for an
  * intermediate state to usefully represent. It's reserved for when a real
- * Razorpay refund call exists to occupy it — until then `paid` transitions
+ * gateway-side refund call exists to occupy it — until then `paid` transitions
  * straight to the terminal `refunded`, atomically, exactly like `paid` itself
  * already skips a separate `PAYMENT_PENDING` row today.
  */

@@ -30,8 +30,8 @@ function buildAuth() {
 export function getAndroidPublisher(): androidpublisher_v3.Androidpublisher {
   if (client) return client;
   if (!isGooglePlayConfigured()) {
-    // Missing server config, not a client fault — 403 (same shape Razorpay's
-    // unconfigured path uses) instead of a 500 that leaks env var names.
+    // Missing server config, not a client fault — 403 instead of a 500 that
+    // leaks env var names.
     logger.error(
       'Google Play is not configured — set GOOGLE_PLAY_SERVICE_ACCOUNT_PATH or ' +
         'GOOGLE_PLAY_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY',

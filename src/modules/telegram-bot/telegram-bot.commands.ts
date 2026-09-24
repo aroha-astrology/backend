@@ -457,10 +457,21 @@ export async function cmdCoupons(): Promise<string> {
     return `• *${escapeMarkdown(c.code)}* \\| ${escapeMarkdown(discount)} \\| ${escapeMarkdown(usage)} \\| ${expiry}`;
   });
 
-  return `*Active Coupons \\(${activeCoupons.length}\\)*\n\n${lines.join('\n')}`;
+  return `*Active Coupons \\(${activeCoupons.length}\\)*\n\n${lines.join('\n')}\n\n${couponsOffNote()}`;
 }
 
 const NEWCOUPON_USAGE = 'Usage: /newcoupon CODE percent VALUE [maxRedemptions] [expiresInDays]';
+
+/**
+ * Appended to coupon replies. The app stopped applying coupons on 2026-09-24:
+ * Google Play always charges full price, so a coupon could only shrink the
+ * wallet credit (see billing.service.ts's validateCoupon).
+ */
+function couponsOffNote(): string {
+  return escapeMarkdown(
+    '⚠️ Coupons are switched off in the app — no coupon applies to a top-up right now.',
+  );
+}
 
 export async function cmdNewCoupon(args: string[]): Promise<string> {
   const [code, type, valueArg, maxRedemptionsArg, expiresInDaysArg] = args;
@@ -513,7 +524,7 @@ export async function cmdNewCoupon(args: string[]): Promise<string> {
     const expiry = coupon.expiresAt
       ? escapeMarkdown(coupon.expiresAt.toISOString().split('T')[0] as string)
       : 'no expiry';
-    return `Coupon *${escapeMarkdown(coupon.code)}* created \\| ${escapeMarkdown(`${value}% off`)} \\| ${escapeMarkdown(usage)} \\| ${expiry}`;
+    return `Coupon *${escapeMarkdown(coupon.code)}* created \\| ${escapeMarkdown(`${value}% off`)} \\| ${escapeMarkdown(usage)} \\| ${expiry}\n\n${couponsOffNote()}`;
   } catch (error) {
     if (isUniqueViolation(error)) {
       return escapeMarkdown(`Coupon code ${normalizedCode} already exists.`);
