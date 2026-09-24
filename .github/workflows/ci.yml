@@ -15,7 +15,10 @@ jobs:
       # committed pnpm-lock.yaml lags package.json, so it can't be used frozen.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # 24, same as local dev: on 22 the ephemeris worker thread's tsx/esm
+          # loader doesn't resolve .js→.ts (test/ephemeris-pool-integration).
+          # Production runs compiled JS, so this only affects tests.
+          node-version: 24
           cache: npm
       - name: Install
         run: npm ci --ignore-scripts

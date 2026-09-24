@@ -25,6 +25,12 @@ vi.mock('../src/lib/notifications/telegram.js', () => ({
   sendAlert: state.sendAlert,
 }));
 
+// Unmocked, this ran a real INSERT against localhost:5432 — an unhandled
+// ECONNREFUSED that fails the whole run on Linux CI.
+vi.mock('../src/modules/admin-alerts/admin-alerts.repo.js', () => ({
+  insertOnlineSample: vi.fn().mockResolvedValue(undefined),
+}));
+
 const redisData = new Map<string, string>();
 vi.mock('../src/config/redis.js', () => ({
   getRedis: () => ({

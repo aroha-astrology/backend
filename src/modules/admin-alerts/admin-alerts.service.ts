@@ -3,6 +3,7 @@ import { alertThrottled } from '../../lib/notifications/alerts.js';
 import { sendAlert } from '../../lib/notifications/telegram.js';
 import { countUsersActiveSince, countNewUsersSince, countUsers } from '../users/users.repo.js';
 import { insertOnlineSample } from './admin-alerts.repo.js';
+import { logger } from '../../lib/logger.js';
 
 export const MILESTONE_THRESHOLDS = [50, 100, 250, 500];
 
@@ -74,7 +75,11 @@ export async function checkConcurrentActivity(): Promise<{
   const activeCount = await countUsersActiveSince(
     new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS),
   );
-  void insertOnlineSample(activeCount);
+  // Fire-and-forget, but never unhandled: a bare `void` on a rejecting insert
+  // (DB blip) is an unhandled rejection, which kills the Node process.
+  insertOnlineSample(activeCount).catch((err: unknown) =>
+    logger.warn({ err }, 'admin-alerts: failed to record online sample'),
+  );
 
   if (activeCount > CONCURRENT_ACTIVE_THRESHOLD) {
     void alertThrottled(
