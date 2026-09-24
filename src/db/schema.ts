@@ -356,7 +356,9 @@ export const users = pgTable(
     geoCountry: text('geo_country'),
     geoCity: text('geo_city'),
     geoResolvedAt: timestamp('geo_resolved_at', { withTimezone: true }),
-    walletBalancePaise: integer('wallet_balance_paise').notNull().default(50000),
+    /** Safety-net default only — insertUser() sets the real opening balance from the admin
+     * `rewards.signupBonus` key (see config/features.ts). Kept equal to that key's default. */
+    walletBalancePaise: integer('wallet_balance_paise').notNull().default(20100),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
@@ -808,7 +810,7 @@ export const orders = pgTable(
     couponId: uuid('coupon_id').references(() => coupons.id),
     couponCode: text('coupon_code'),
     status: orderStatusEnum('status').notNull().default('pending'),
-    /** 'mock' until a real gateway (Razorpay/Stripe) is wired up. */
+    /** 'mock' = a Google Play top-up order; 'razorpay' = historical (Razorpay was removed 2026-09-24). */
     gatewayProvider: text('gateway_provider').notNull().default('mock'),
     gatewayOrderId: text('gateway_order_id'),
     gatewayPaymentId: text('gateway_payment_id'),
@@ -2751,3 +2753,47 @@ export type OnlineUserSampleRow = typeof onlineUserSamples.$inferSelect;
 export type NewOnlineUserSampleRow = typeof onlineUserSamples.$inferInsert;
 
 export type PredictionOutcomeRow = typeof predictionOutcomes.$inferSelect;
+
+/* -------------------------------------------------------------------------- */
+/* feature_unlocks — one-off paid unlocks of a feature for a profile           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A generic "this user paid to open feature X for profile Y" record, so each
+ * new paid unlock (full life timeline, a bond's detailed insight, …) doesn't
+ * need its own `*_unlocked_at` column on users/birth_profiles the way
+ * gemstone/house unlocks did. `expiresAt` NULL = permanent.
+ */
+export const featureUnlocks = pgTable(
+  'feature_unlocks',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile; non-null = an additional profile in birth_profiles. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /** A FEATURE_REGISTRY key, e.g. `paid.lifeTimelineFull`. */
+    featureKey: text('feature_key').notNull(),
+    pricePaidPaise: integer('price_paid_paise').notNull().default(0),
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+  },
+  (table) => ({
+    userPrimaryUnique: uniqueIndex('feature_unlocks_user_primary_unique')
+      .on(table.userId, table.featureKey)
+      .where(sql`${table.birthProfileId} is null`),
+    userProfileUnique: uniqueIndex('feature_unlocks_user_profile_unique')
+      .on(table.userId, table.birthProfileId, table.featureKey)
+      .where(sql`${table.birthProfileId} is not null`),
+  }),
+);
+
+export type FeatureUnlockRow = typeof featureUnlocks.$inferSelect;
+export type NewFeatureUnlockRow = typeof featureUnlocks.$inferInsert;

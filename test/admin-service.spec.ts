@@ -150,6 +150,7 @@ describe('listFeaturesForAdmin', () => {
       originalPricePaise: 2500,
       model: null,
       modelOptions: [],
+      tag: null,
     });
     // A key with no override falls back to its registry default.
     const navHome = result.find((f) => f.key === 'nav.home');
@@ -162,6 +163,7 @@ describe('listFeaturesForAdmin', () => {
       originalPricePaise: null,
       model: null,
       modelOptions: [],
+      tag: null,
     });
   });
 
@@ -229,6 +231,7 @@ describe('updateFeature', () => {
       originalPricePaise: null,
       model: null,
       modelOptions: [],
+      tag: null,
     });
   });
 

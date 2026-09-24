@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import * as publicService from './public.service.js';
+import { signupBonusPaise } from '../auth/auth.service.js';
 import {
   MoonSignRequestSchema,
   MoonSignResponseSchema,
@@ -143,3 +144,34 @@ publicRouter.openapi(
   },
   validationFailureHandler,
 );
+
+/* -------------------------------------------------------------------------- */
+/* GET /public/signup-bonus                                                   */
+/* -------------------------------------------------------------------------- */
+
+const SignupBonusResponseSchema = z
+  .object({
+    /** What a new account starts with, in paise. 0 when the bonus is switched off. */
+    amountPaise: z.number().int().nonnegative(),
+  })
+  .openapi('SignupBonusResponse');
+
+const signupBonusRoute = createRoute({
+  method: 'get',
+  path: '/public/signup-bonus',
+  tags: ['Public'],
+  summary: 'The new-user wallet bonus shown on the sign-in screen (admin `rewards.signupBonus`)',
+  responses: {
+    200: {
+      description: 'Current signup bonus',
+      content: { 'application/json': { schema: SignupBonusResponseSchema } },
+    },
+  },
+});
+
+// Public because the sign-in screen runs before there is a session. Reads the
+// same cached global resolver insertUser()'s caller does, so the advertised
+// amount and the credited amount can't drift apart.
+publicRouter.openapi(signupBonusRoute, async (c) => {
+  return c.json({ amountPaise: await signupBonusPaise() }, 200);
+});

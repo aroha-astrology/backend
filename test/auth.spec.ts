@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   checkNewUserBurst: vi.fn().mockResolvedValue(undefined),
   checkTotalUserMilestone: vi.fn().mockResolvedValue(undefined),
   resolveFeaturesForUser: vi.fn(),
+  globalPayoutOf: vi.fn(),
   hasGivenFeedback: vi.fn(),
   getClaimedCampaignKeys: vi.fn(),
   findLiveSelfClaimCampaign: vi.fn(),
@@ -63,6 +64,8 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
 
 vi.mock('../src/modules/features/features.service.js', () => ({
   resolveFeaturesForUser: state.resolveFeaturesForUser,
+  // The opening wallet balance a new account gets (admin `rewards.signupBonus`).
+  globalPayoutOf: state.globalPayoutOf,
 }));
 
 vi.mock('../src/modules/feedback/feedback.repo.js', () => ({
@@ -91,6 +94,7 @@ describe('POST /v1/auth/session', () => {
     state.checkNewUserBurst.mockReset().mockResolvedValue(undefined);
     state.checkTotalUserMilestone.mockReset().mockResolvedValue(undefined);
     state.resolveFeaturesForUser.mockReset().mockResolvedValue({});
+    state.globalPayoutOf.mockReset().mockResolvedValue(20100);
     state.hasGivenFeedback.mockReset().mockResolvedValue(false);
     state.getClaimedCampaignKeys.mockReset().mockResolvedValue([]);
     state.findLiveSelfClaimCampaign.mockReset().mockResolvedValue(undefined);
@@ -132,7 +136,9 @@ describe('POST /v1/auth/session', () => {
       firebaseUid: 'uid-new',
       phoneE164: '+911111111111',
       email: null,
+      walletBalancePaise: 20100,
     });
+    expect(state.globalPayoutOf).toHaveBeenCalledWith('rewards.signupBonus', 20100);
     // Notification fires without awaiting, but in vitest it'll synchronously trigger the mock call
     expect(state.notifyNewSignup).toHaveBeenCalledWith({
       id: 'id-new',
@@ -265,6 +271,7 @@ describe('POST /v1/auth/session', () => {
         firebaseUid: 'uid-google-new',
         phoneE164: null,
         email: 'newuser@example.com',
+        walletBalancePaise: 20100,
       });
     });
 
@@ -377,10 +384,12 @@ describe('POST /v1/auth/session', () => {
       // Never looked up the row — an unverified claim must not hand over an account.
       expect(state.findUserByEmail).not.toHaveBeenCalled();
       expect(state.updateUserById).not.toHaveBeenCalled();
+      // The email-less fallback account still gets the signup bonus.
       expect(state.insertUser).toHaveBeenNthCalledWith(2, {
         firebaseUid: 'uid-unverified',
         phoneE164: null,
         email: null,
+        walletBalancePaise: 20100,
       });
     });
 
@@ -458,6 +467,28 @@ describe('POST /v1/auth/session', () => {
       firebaseUid: 'uid-phone-only',
       phoneE164: '+911111119999',
       email: null,
+      walletBalancePaise: 20100,
     });
+  });
+
+  it('opens a new account with ₹0 when the admin has switched the signup bonus off', async () => {
+    // globalPayoutOf returns 0 for a disabled key — see features-service.spec.ts.
+    state.globalPayoutOf.mockResolvedValue(0);
+    state.verifyIdToken.mockResolvedValueOnce(makeDecodedToken('uid-no-bonus', '+911111118888'));
+    state.findUserByFirebaseUid.mockResolvedValueOnce(undefined);
+    state.insertUser.mockResolvedValueOnce(
+      makeUserRow({ id: 'id-no-bonus', firebaseUid: 'uid-no-bonus', phoneE164: '+911111118888' }),
+    );
+
+    const app = createApp();
+    const res = await app.request('/v1/auth/session', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer good-token' },
+    });
+
+    expect(res.status).toBe(201);
+    expect(state.insertUser).toHaveBeenCalledWith(
+      expect.objectContaining({ firebaseUid: 'uid-no-bonus', walletBalancePaise: 0 }),
+    );
   });
 });

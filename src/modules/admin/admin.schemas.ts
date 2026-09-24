@@ -102,6 +102,7 @@ export const AdminFeatureRowSchema = z
     originalPricePaise: z.number().int().nullable(),
     model: z.string().nullable(),
     modelOptions: z.array(z.string()),
+    tag: z.string().nullable(),
   })
   .openapi('AdminFeatureRow');
 

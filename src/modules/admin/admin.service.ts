@@ -154,6 +154,8 @@ export interface AdminFeatureRow {
   /** Non-empty only for model-picker keys — the dashboard renders a dropdown of these instead
    * of a price box. Sent from the registry so the options live in exactly one place. */
   modelOptions: string[];
+  /** Registry `tag` (e.g. `new` for roadmap features) — drives the admin board NEW badge/filter. */
+  tag: string | null;
 }
 
 /** Merges FEATURE_REGISTRY (the source of truth for what features exist) with resolveFeatures()'s admin overrides. */
@@ -170,6 +172,7 @@ export async function listFeaturesForAdmin(): Promise<AdminFeatureRow[]> {
     originalPricePaise: resolved[feature.key]?.originalPricePaise ?? null,
     model: resolved[feature.key]?.model ?? feature.defaultModel ?? null,
     modelOptions: [...(feature.modelOptions ?? [])],
+    tag: feature.tag ?? null,
   }));
 }
 
@@ -249,6 +252,7 @@ export async function updateFeature(
     originalPricePaise: row.originalPricePaise,
     model: row.enabled ? row.model : null,
     modelOptions: [...(registryEntry.modelOptions ?? [])],
+    tag: registryEntry.tag ?? null,
   };
 }
 

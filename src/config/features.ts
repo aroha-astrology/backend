@@ -37,6 +37,12 @@ export interface FeatureDef {
   modelOptions?: readonly string[];
   /** The option pre-selected when no admin override row exists yet. */
   defaultModel?: string;
+  /**
+   * `'new'` marks a feature from the current roadmap build: Admin -> Features
+   * shows a NEW badge and a "New only" filter for it. An admin-board hint only;
+   * it changes nothing about how the feature resolves.
+   */
+  tag?: 'new';
 }
 
 /**
@@ -499,6 +505,18 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'rewards',
     defaultEnabled: false,
     defaultPricePaise: 2500,
+  },
+  // Wallet credit every new account starts with. Read once, at account
+  // creation, by users.repo.ts's insertUser() through the GLOBAL resolver (a
+  // brand-new account belongs to no group yet), and shown on the sign-in
+  // screen via GET /v1/public/signup-bonus. `enabled: false` means new accounts
+  // start at ₹0. Until 2026-09-24 this was a hard-coded ₹500 column default.
+  {
+    key: 'rewards.signupBonus',
+    label: 'New-user signup bonus',
+    group: 'rewards',
+    defaultEnabled: true,
+    defaultPricePaise: 20100,
   },
   // ai — model pickers, not toggleable product surface. See `modelOptions` on FeatureDef for
   // what the enabled toggle means on these rows (off = fall back to the global GEMINI_MODEL).

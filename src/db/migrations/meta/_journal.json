@@ -519,6 +519,13 @@
       "when": 1788800000000,
       "tag": "0073_free_follow_up",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1788900000000,
+      "tag": "0074_feature_unlocks_and_signup_bonus",
+      "breakpoints": true
     }
   ]
 }

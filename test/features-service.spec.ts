@@ -17,6 +17,7 @@ import { FEATURE_REGISTRY } from '../src/config/features.js';
 import {
   resolveFeatures,
   invalidateFeatureCache,
+  globalPayoutOf,
 } from '../src/modules/features/features.service.js';
 
 beforeEach(() => {
@@ -190,5 +191,41 @@ describe('invalidateFeatureCache', () => {
     await resolveFeatures();
 
     expect(state.findAllFeatureOverrides).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('globalPayoutOf', () => {
+  it("returns the registry default for rewards.signupBonus (₹201) when there's no override", async () => {
+    state.findAllFeatureOverrides.mockResolvedValue([]);
+    expect(await globalPayoutOf('rewards.signupBonus', 999)).toBe(20100);
+  });
+
+  it('returns the admin price when set, and 0 when the key is switched off', async () => {
+    state.findAllFeatureOverrides.mockResolvedValue([
+      {
+        key: 'rewards.signupBonus',
+        enabled: true,
+        pricePaise: 5100,
+        originalPricePaise: null,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+        enabledAt: null,
+      },
+    ]);
+    expect(await globalPayoutOf('rewards.signupBonus', 999)).toBe(5100);
+
+    invalidateFeatureCache();
+    state.findAllFeatureOverrides.mockResolvedValue([
+      {
+        key: 'rewards.signupBonus',
+        enabled: false,
+        pricePaise: 5100,
+        originalPricePaise: null,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+        enabledAt: null,
+      },
+    ]);
+    expect(await globalPayoutOf('rewards.signupBonus', 999)).toBe(0);
   });
 });

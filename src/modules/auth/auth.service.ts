@@ -10,6 +10,16 @@ import {
   touchUserLastActive,
   updateUserById,
 } from '../users/users.repo.js';
+import { globalPayoutOf } from '../features/features.service.js';
+
+/** Only used if the feature registry somehow has no price for the key — see config/features.ts. */
+export const SIGNUP_BONUS_FALLBACK_PAISE = 20100;
+export const SIGNUP_BONUS_KEY = 'rewards.signupBonus';
+
+/** A new account's opening wallet balance — the admin `rewards.signupBonus` amount, 0 when that key is off. */
+export function signupBonusPaise(): Promise<number> {
+  return globalPayoutOf(SIGNUP_BONUS_KEY, SIGNUP_BONUS_FALLBACK_PAISE);
+}
 
 export type EstablishSessionResult = {
   user: UserRow;
@@ -67,8 +77,14 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
   }
 
   const phoneE164 = typeof token.phone_number === 'string' ? token.phone_number : null;
+  const walletBalancePaise = await signupBonusPaise();
   try {
-    const created = await insertUser({ firebaseUid: token.uid, phoneE164, email });
+    const created = await insertUser({
+      firebaseUid: token.uid,
+      phoneE164,
+      email,
+      walletBalancePaise,
+    });
     return finish(created, true);
   } catch (err) {
     // A row already holds this phone (Firebase reissued the UID for the same
@@ -110,7 +126,12 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
       }
       // Unverified email: don't 500, just create an email-less account —
       // a real merge is a separate account-linking flow.
-      const created = await insertUser({ firebaseUid: token.uid, phoneE164, email: null });
+      const created = await insertUser({
+        firebaseUid: token.uid,
+        phoneE164,
+        email: null,
+        walletBalancePaise,
+      });
       return finish(created, true);
     }
     throw err;

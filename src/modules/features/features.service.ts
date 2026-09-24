@@ -159,6 +159,18 @@ export async function payoutOf(userId: string, key: string, fallback: number): P
   return resolved?.pricePaise ?? fallback;
 }
 
+/**
+ * `payoutOf` for callers with no user yet — account creation, and the
+ * signed-out sign-in screen. Same disabled-pays-nothing rule, but resolved
+ * globally: a not-yet-created account belongs to no group.
+ */
+export async function globalPayoutOf(key: string, fallback: number): Promise<number> {
+  const features = await resolveFeatures();
+  const resolved = features[key];
+  if (resolved && !resolved.enabled) return 0;
+  return resolved?.pricePaise ?? fallback;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Per-user (group-aware) resolution                                          */
 /* -------------------------------------------------------------------------- */
