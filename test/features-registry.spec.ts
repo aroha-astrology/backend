@@ -23,7 +23,7 @@ describe('FEATURE_REGISTRY', () => {
     }
   });
 
-  it('every key\'s group prefix matches its declared `group` field', () => {
+  it("every key's group prefix matches its declared `group` field", () => {
     for (const feature of FEATURE_REGISTRY) {
       expect(feature.key.split('.')[0]).toBe(feature.group);
     }
@@ -47,5 +47,31 @@ describe('isKnownFeatureKey', () => {
 
   it('returns false for an empty string', () => {
     expect(isKnownFeatureKey('')).toBe(false);
+  });
+});
+
+describe('roadmap features (tag "new")', () => {
+  const NEW = FEATURE_REGISTRY.filter((f) => f.tag === 'new');
+
+  it('every NEW feature ships switched off, so nothing reaches users until an admin turns it on', () => {
+    expect(NEW.length).toBeGreaterThan(0);
+    for (const f of NEW) expect(f.defaultEnabled, f.key).toBe(false);
+  });
+
+  it('every roadmap key is tagged NEW so the admin board can pick it out', () => {
+    const roadmapKeys = [
+      'home.whyAroha',
+      'home.birthTimeConfidence',
+      'paid.birthTimeRectify',
+      'home.astroWeather',
+      'home.astroWeatherListen',
+      'home.yourDay',
+      'nav.calendar',
+      'home.nextWindow',
+      'nav.lifeTimeline',
+      'paid.lifeTimelineFull',
+    ];
+    const tagged = new Set(NEW.map((f) => f.key));
+    for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);
   });
 });

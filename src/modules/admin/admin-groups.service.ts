@@ -138,6 +138,8 @@ export interface AdminGroupFeatureRow {
   model: string | null;
   /** Non-empty only for model-picker keys. */
   modelOptions: string[];
+  /** Registry tag (`new` = roadmap feature) — the group page shows a NEW badge for it too. */
+  tag: string | null;
 }
 
 /** Every FEATURE_REGISTRY entry, annotated with this group's own override (or 'inherit' if it has none). */
@@ -160,6 +162,7 @@ export async function listGroupFeaturesForAdmin(groupId: string): Promise<AdminG
       // pre-selected option, not an empty dropdown.
       model: override?.enabled ? (override.model ?? feature.defaultModel ?? null) : null,
       modelOptions: [...(feature.modelOptions ?? [])],
+      tag: feature.tag ?? null,
     };
   });
 }
@@ -210,5 +213,6 @@ export async function updateGroupFeatureForAdmin(
     state: enabled === null ? 'inherit' : enabled,
     model: enabled === true ? model : null,
     modelOptions: [...(registryEntry.modelOptions ?? [])],
+    tag: registryEntry.tag ?? null,
   };
 }

@@ -92,6 +92,7 @@ export const AdminGroupFeatureRowSchema = z
     /** Non-empty only for model-picker keys — same registry-sourced list AdminFeatureRow carries,
      * repeated here so the group page's dropdown doesn't need a second fetch to render it. */
     modelOptions: z.array(z.string()),
+    tag: z.string().nullable(),
   })
   .openapi('AdminGroupFeatureRow');
 

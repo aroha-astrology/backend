@@ -224,6 +224,7 @@ describe('listGroupFeaturesForAdmin', () => {
       state: false,
       model: null,
       modelOptions: [],
+      tag: null,
     });
     const navHome = result.find((f) => f.key === 'nav.home');
     expect(navHome).toEqual({
@@ -233,6 +234,7 @@ describe('listGroupFeaturesForAdmin', () => {
       state: 'inherit',
       model: null,
       modelOptions: [],
+      tag: null,
     });
   });
 
@@ -304,6 +306,7 @@ describe('updateGroupFeatureForAdmin', () => {
       state: false,
       model: null,
       modelOptions: [],
+      tag: null,
     });
   });
 
@@ -320,6 +323,7 @@ describe('updateGroupFeatureForAdmin', () => {
       state: 'inherit',
       model: null,
       modelOptions: [],
+      tag: null,
     });
   });
 
