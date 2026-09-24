@@ -137,7 +137,7 @@ export async function runFactNudge(
         title: copy.title,
         body: copy.body,
         type: FACT_NUDGE_NOTIFICATION_TYPE,
-        link: '/chat',
+        link: '/ai-chat',
       });
       sent++;
     }
