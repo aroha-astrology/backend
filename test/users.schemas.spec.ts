@@ -1,5 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DateString } from '../src/modules/users/users.schemas.js';
+import { DateString, UpdateMeBodySchema } from '../src/modules/users/users.schemas.js';
+
+describe('UpdateMeBodySchema notification settings', () => {
+  it('accepts per-category push toggles and a quiet-hours window', () => {
+    const parsed = UpdateMeBodySchema.safeParse({
+      notificationPrefs: { marketing: { push: false }, transitAlerts: { push: true } },
+      quietHours: { start: '22:00', end: '07:00' },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts null to turn quiet hours off', () => {
+    expect(UpdateMeBodySchema.safeParse({ quietHours: null }).success).toBe(true);
+  });
+
+  it('rejects an unknown category', () => {
+    expect(
+      UpdateMeBodySchema.safeParse({ notificationPrefs: { spam: { push: true } } }).success,
+    ).toBe(false);
+  });
+});
 
 describe('DateString', () => {
   afterEach(() => {

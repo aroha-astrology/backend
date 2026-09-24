@@ -465,7 +465,8 @@ export const UpdateMeBodySchema = z
     relationshipStatus: RelationshipStatusSchema.optional(),
     partnerSeekingIntent: PartnerSeekingIntentSchema.optional(),
     notificationPrefs: NotificationPrefsSchema.optional(),
-    quietHours: QuietHoursSchema.optional(),
+    // null turns quiet hours off (Settings → Notifications) — an object sets them.
+    quietHours: QuietHoursSchema.nullable().optional(),
 
     // onboarding funnel
     onboardingStatus: OnboardingStatusSchema.optional(),
