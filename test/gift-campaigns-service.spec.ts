@@ -41,6 +41,10 @@ vi.mock('../src/lib/notifications/notify-user.js', () => ({
 vi.mock('../src/modules/admin/admin.repo.js', () => ({
   logAdminAction: state.logAdminAction,
 }));
+// No saved notification settings — every recipient stays eligible for the push.
+vi.mock('../src/modules/preferences/preferences.repo.js', () => ({
+  findNotificationSettings: vi.fn().mockResolvedValue([]),
+}));
 
 const { createCampaign, previewAudience, cancelCampaign, executeSend, sendCampaignNow } =
   await import('../src/modules/gift-campaigns/gift-campaigns.service.js');

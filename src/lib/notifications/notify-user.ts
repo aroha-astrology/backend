@@ -18,6 +18,7 @@ import { sendPushBatch } from './fcm.js';
 import { findActiveTokensForUser } from '../../modules/device-tokens/device-tokens.repo.js';
 import { insertNotification, insertNotifications } from '../../modules/users/users.repo.js';
 import { logger } from '../logger.js';
+import { pushAllowedUserIds } from './notification-prefs.js';
 
 export interface NotifyPayload {
   title: string;
@@ -49,6 +50,9 @@ export async function notifyUser(userId: string, payload: NotifyPayload): Promis
   }
 
   try {
+    // Settings → Notifications (category off / quiet hours) only suppresses the
+    // OS push; the inbox row above is already written.
+    if (!(await pushAllowedUserIds([userId], payload.type)).has(userId)) return;
     const tokens = await findActiveTokensForUser(userId);
     if (tokens.length === 0) return;
     await sendPushBatch(
@@ -91,8 +95,15 @@ export async function notifyUsersBatch(
     );
   }
 
+  const allowed = await pushAllowedUserIds(
+    recipients.map((r) => r.userId),
+    payload.type,
+  );
+  const pushRecipients = recipients.filter((r) => allowed.has(r.userId));
+  if (pushRecipients.length === 0) return { success: 0, failure: 0 };
+
   return sendPushBatch(
-    recipients.map((r) => r.token),
+    pushRecipients.map((r) => r.token),
     payload.title,
     payload.body,
     { type: payload.type, ...(payload.link ? { navigate: payload.link } : {}) },

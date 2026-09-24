@@ -37,6 +37,7 @@ import {
   type KundliMoonSign,
 } from './saturn-phase.repo.js';
 import type { SaturnPhaseRow } from '../../db/schema.js';
+import { pushAllowedUserIds } from '../../lib/notifications/notification-prefs.js';
 
 export const SATURN_PHASE_NOTIFICATION_TYPE = 'saturn_phase_alert';
 
@@ -232,7 +233,10 @@ export async function sendSaturnPhaseAlerts(transitions: SaturnPhaseTransition[]
     if (!copy) continue;
 
     try {
-      const tokenRows = await findActiveTokensForUser(t.userId);
+      const pushAllowed = (
+        await pushAllowedUserIds([t.userId], SATURN_PHASE_NOTIFICATION_TYPE)
+      ).has(t.userId);
+      const tokenRows = pushAllowed ? await findActiveTokensForUser(t.userId) : [];
       const tokens = tokenRows.map((r) => r.token);
       if (tokens.length > 0) {
         await sendPushBatch(tokens, copy.title, copy.body, {

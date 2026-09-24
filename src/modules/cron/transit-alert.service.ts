@@ -43,6 +43,7 @@ import {
   type TransitRecipient,
 } from './transit-alert.repo.js';
 import type { TransitEventRow } from '../../db/schema.js';
+import { pushAllowedUserIds } from '../../lib/notifications/notification-prefs.js';
 
 const TRANSIT_JOB_NAME = 'transit-alert';
 
@@ -326,6 +327,12 @@ async function sendDueEvents(
 ): Promise<SendResult> {
   let success = 0;
   let failure = 0;
+  // Users who switched off planet alerts (or are in quiet hours) still get the
+  // inbox row below — only their devices are left out of the push.
+  const pushAllowed = await pushAllowedUserIds(
+    recipients.map((r) => r.userId),
+    'transit_alert',
+  );
 
   for (const event of events) {
     const sign = eventSign(event);
@@ -343,14 +350,15 @@ async function sendDueEvents(
       const lang = normalizeLang(r.locale);
       const key = `${r.moonSign ?? '-'}|${lang}`;
       const group = groups.get(key);
+      const tokens = pushAllowed.has(r.userId) ? [r.token] : [];
       if (group) {
-        group.tokens.push(r.token);
+        group.tokens.push(...tokens);
         group.userIds.add(r.userId);
       } else {
         groups.set(key, {
           moonSign: r.moonSign,
           lang,
-          tokens: [r.token],
+          tokens,
           userIds: new Set([r.userId]),
         });
       }

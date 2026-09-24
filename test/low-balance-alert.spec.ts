@@ -16,6 +16,10 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
 vi.mock('../src/lib/notifications/notify-user.js', () => ({
   notifyUser: state.notifyUser,
 }));
+// No saved notification settings — every recipient stays eligible for the push.
+vi.mock('../src/modules/preferences/preferences.repo.js', () => ({
+  findNotificationSettings: vi.fn().mockResolvedValue([]),
+}));
 
 import {
   runLowBalanceAlert,

@@ -19,6 +19,10 @@ vi.mock('../src/modules/horoscope/horoscope.repo.js', () => ({
   completeBatchRun: state.completeBatchRun,
   failBatchRun: state.failBatchRun,
 }));
+// No saved notification settings — every recipient stays eligible for the push.
+vi.mock('../src/modules/preferences/preferences.repo.js', () => ({
+  findNotificationSettings: vi.fn().mockResolvedValue([]),
+}));
 
 import { broadcastPeriodReading } from '../src/modules/cron/broadcast.service.js';
 

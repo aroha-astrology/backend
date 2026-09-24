@@ -38,6 +38,10 @@ vi.mock('../src/modules/horoscope/horoscope.repo.js', () => ({
   completeBatchRun: state.completeBatchRun,
   failBatchRun: state.failBatchRun,
 }));
+// No saved notification settings — every recipient stays eligible for the push.
+vi.mock('../src/modules/preferences/preferences.repo.js', () => ({
+  findNotificationSettings: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('../src/lib/llm/transit-alert.js', async (importOriginal) => {
   // Keep the real validator and house maths; only the network call is faked.
   const actual = await importOriginal<typeof TransitAlertModule>();
