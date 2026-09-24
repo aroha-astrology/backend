@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
-import { requireFeature } from '../../middleware/feature.js';
+import { requireAnyFeature, requireFeature } from '../../middleware/feature.js';
 import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { LIFE_AREAS } from '../../lib/intelligence/areas.js';
@@ -15,6 +15,7 @@ import {
   istNoon,
   runBirthTimeCheck,
 } from './insights.service.js';
+import { getAstroWeather } from './weather.service.js';
 
 const ErrorSchema = z
   .object({
@@ -161,4 +162,36 @@ insightsRouter.openapi(applyRoute, async (c) => {
   const { id } = c.req.valid('param');
   const result = await applyBirthTimeCheck(c.get('user'), id);
   return c.json(result as unknown as Record<string, unknown>, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /astro-weather — the daily view (Astro Weather + Your Day)              */
+/* -------------------------------------------------------------------------- */
+
+/** Today in IST, as YYYY-MM-DD. */
+function istToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+}
+
+const weatherRoute = createRoute({
+  method: 'get',
+  path: '/astro-weather',
+  tags: ['Insights'],
+  summary:
+    "The day's astro weather: overall trend, area scores, Moon changes and the day's windows",
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireAnyFeature(['home.astroWeather', 'home.yourDay'])] as const,
+  request: { query: z.object({ date: DateSchema.optional() }) },
+  responses: {
+    200: { description: 'Astro weather', content: { 'application/json': { schema: Json } } },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled for this user'),
+    409: errorResponse('CHART_NOT_READY'),
+  },
+});
+
+insightsRouter.openapi(weatherRoute, async (c) => {
+  const { date } = c.req.valid('query');
+  const weather = await getAstroWeather(c.get('user'), date ?? istToday());
+  return c.json(weather as unknown as Record<string, unknown>, 200);
 });

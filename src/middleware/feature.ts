@@ -35,3 +35,21 @@ export function requireFeature(key: string): MiddlewareHandler {
     await next();
   };
 }
+
+/**
+ * Like `requireFeature`, but passes when ANY of the keys is on — for one
+ * endpoint that feeds several independently switchable cards (e.g. Astro
+ * Weather and Your Day both read GET /v1/astro-weather). Unlike
+ * `requireFeature`, a key missing from the resolved map counts as OFF: these
+ * are new, ship-dark keys.
+ */
+export function requireAnyFeature(keys: readonly string[]): MiddlewareHandler {
+  return async (c, next) => {
+    const user = c.get('user');
+    const features = await resolveFeaturesForUser(user.id);
+    if (!keys.some((key) => features[key]?.enabled === true)) {
+      throw Errors.forbidden('FEATURE_DISABLED');
+    }
+    await next();
+  };
+}

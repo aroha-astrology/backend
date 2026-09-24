@@ -100,3 +100,24 @@ describe('roadmap step 1 routes ship dark', () => {
     expect(check.status).toBe(403);
   });
 });
+
+describe('roadmap step 2 routes ship dark', () => {
+  it('GET /v1/astro-weather → 403 unless Astro Weather or Your Day is on', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'home.astroWeather': off,
+      'home.yourDay': off,
+    });
+    const res = await createApp().request('/v1/astro-weather', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('treats a key missing from the resolved map as off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({});
+    const res = await createApp().request('/v1/astro-weather', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(res.status).toBe(403);
+  });
+});

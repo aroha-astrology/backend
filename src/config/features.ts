@@ -606,6 +606,31 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultPricePaise: 9900,
     tag: 'new',
   },
+
+  // Step 2 — Astro Weather (GET /v1/astro-weather; no AI cost).
+  {
+    key: 'home.astroWeather',
+    label: 'Astro Weather card + /weather page',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // The Listen button: a 10-second summary read by on-device TTS (no server audio).
+  {
+    key: 'home.astroWeatherListen',
+    label: 'Astro Weather — Listen (spoken summary)',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // Your Day: the day's good and caution windows on Home.
+  {
+    key: 'home.yourDay',
+    label: 'Your Day timeline card',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));
