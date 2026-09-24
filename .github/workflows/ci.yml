@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # package-lock.json is the lockfile the EC2 deploy installs from; the
+      # committed pnpm-lock.yaml lags package.json, so it can't be used frozen.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci --ignore-scripts
+      # test/setup.ts supplies dummy values for every required env var and
+      # strips outward-facing secrets, so no .env is needed here.
+      - name: Test
+        run: npm test
