@@ -19,10 +19,11 @@ import {
   deletePlanForUser,
   savePurchasePlanTranslation,
 } from './purchase-plan.repo.js';
-import type { PurchasePlanRow } from '../../db/schema.js';
+import type { PlaceOfBirth, PurchasePlanRow } from '../../db/schema.js';
 import type { AnalyzePurchasePlanBody, PurchasePlanDto } from './purchase-plan.schemas.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 
+/** Last-resort panchang location (New Delhi), for a user with neither a current location nor a birth place. */
 const REFERENCE_LAT = 28.6139;
 const REFERENCE_LON = 77.209;
 const DAILY_PLAN_LIMIT = 3;
@@ -54,15 +55,41 @@ export async function notifyPurchasePlanReady(
   logger.info({ userId, category }, 'purchase-plan:push sent');
 }
 
+/**
+ * Where to compute the panchang for a purchase: where the user is now, else
+ * where they were born, else New Delhi. Sunrise, Rahu Kaal and every
+ * Choghadiya window move with the location, so this used to hand a Kolkata
+ * buyer Delhi's timings.
+ */
+export function panchangLocationFor(user: {
+  currentLocation?: Pick<PlaceOfBirth, 'lat' | 'lon'> | null;
+  placeOfBirth?: Pick<PlaceOfBirth, 'lat' | 'lon'> | null;
+}): { lat: number; lon: number } {
+  for (const loc of [user.currentLocation, user.placeOfBirth]) {
+    if (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon)) {
+      return { lat: loc.lat, lon: loc.lon };
+    }
+  }
+  return { lat: REFERENCE_LAT, lon: REFERENCE_LON };
+}
+
 /** Best-effort extraction from the loosely-typed kundli jsonb blobs — falls back to a generic line if fields are absent. */
-function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>>): string {
+export function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>>): string {
   if (!kundli || kundli.status !== 'ready') {
     return 'No birth chart is available for this user yet — analyze based on panchang timing alone.';
   }
-  const dasha = kundli.dashaData as {
-    currentMahadasha?: { lord?: string };
-    currentAntardasha?: { lord?: string };
-  } | null;
+  // kundli.service.ts stores dashaData as { vimshottari, yogini }, and a
+  // period names its lord `planet`. This used to read a top-level
+  // `currentMahadasha.lord` that never existed, so the current dasha silently
+  // never reached the prompt.
+  const dasha = (
+    kundli.dashaData as {
+      vimshottari?: {
+        currentMahadasha?: { planet?: string };
+        currentAntardasha?: { planet?: string };
+      };
+    } | null
+  )?.vimshottari;
   const chart = kundli.chartData as {
     ascendant?: { sign?: string };
     planets?: Array<{ planet: string; sign: string; house?: number }>;
@@ -70,10 +97,10 @@ function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>
 
   const lines: string[] = [];
   if (chart?.ascendant?.sign) lines.push(`Ascendant: ${chart.ascendant.sign}`);
-  if (dasha?.currentMahadasha?.lord)
-    lines.push(`Current Mahadasha: ${dasha.currentMahadasha.lord}`);
-  if (dasha?.currentAntardasha?.lord)
-    lines.push(`Current Antardasha: ${dasha.currentAntardasha.lord}`);
+  if (dasha?.currentMahadasha?.planet)
+    lines.push(`Current Mahadasha: ${dasha.currentMahadasha.planet}`);
+  if (dasha?.currentAntardasha?.planet)
+    lines.push(`Current Antardasha: ${dasha.currentAntardasha.planet}`);
   if (chart?.planets?.length) {
     lines.push(
       'Planet placements: ' +
@@ -90,6 +117,7 @@ function buildChartContext(kundli: Awaited<ReturnType<typeof findKundliByUserId>
 export async function requestPurchasePlanAnalysis(
   userId: string,
   body: AnalyzePurchasePlanBody,
+  location: { lat: number; lon: number } = { lat: REFERENCE_LAT, lon: REFERENCE_LON },
 ): Promise<{ planId: string }> {
   const recentCount = await countRecentPlansForUser(userId, 24);
   if (recentCount >= DAILY_PLAN_LIMIT) {
@@ -135,6 +163,7 @@ export async function requestPurchasePlanAnalysis(
     deliveryDateProvided: !!body.deliveryDate,
     language: body.language,
     chartContext: buildChartContext(kundli),
+    location,
   }).catch((err) => {
     logger.error({ err, planId: row.id }, 'purchase plan background processing failed');
   });
@@ -155,17 +184,19 @@ async function processAnalysis(
     deliveryDateProvided: boolean;
     language: string;
     chartContext: string;
+    location: { lat: number; lon: number };
   },
 ): Promise<void> {
   await markProcessing(planId);
   try {
+    const { location, ...analysisInput } = input;
     const [bookingPanchang, deliveryPanchang] = await Promise.all([
-      getPanchang(REFERENCE_LAT, REFERENCE_LON, input.resolvedBookingDate),
-      getPanchang(REFERENCE_LAT, REFERENCE_LON, input.resolvedDeliveryDate),
+      getPanchang(location.lat, location.lon, input.resolvedBookingDate),
+      getPanchang(location.lat, location.lon, input.resolvedDeliveryDate),
     ]);
 
     const { analysis } = await generatePurchasePlanAnalysis({
-      ...input,
+      ...analysisInput,
       bookingPanchang: bookingPanchang,
       deliveryPanchang: deliveryPanchang,
     });

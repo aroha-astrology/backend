@@ -1,5 +1,6 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
+import { requireFeature } from '../../middleware/feature.js';
 import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
@@ -198,7 +199,10 @@ const analyzeRoute = createRoute({
     'annotated line/mount overlay. Poll GET /palm/readings/{id} until status is "observed", ' +
     'then call POST /palm/readings/{id}/unlock for the full interpretation.',
   security: [{ bearerAuth: [] }],
-  middleware: [analyzeRateLimit, requireConsent] as const,
+  // The free scan still runs the vision model, so it follows the same
+  // home.palmReading key that shows/hides the /palm page. requireUser is
+  // router-wide (palmRouter.use above), so the user is already on the context.
+  middleware: [analyzeRateLimit, requireFeature('home.palmReading'), requireConsent] as const,
   request: { params: PalmReadingIdParamSchema },
   responses: {
     200: {

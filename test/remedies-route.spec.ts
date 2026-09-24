@@ -19,7 +19,15 @@ const state = vi.hoisted(() => ({
   findRemedyInsight: vi.fn(),
   remedyInsightForLanguage: vi.fn(),
   requestRemedyInsightGeneration: vi.fn(),
+  resolveFeaturesForUser: vi.fn(),
 }));
+
+// The route is gated by requireFeature('nav.remedies'), which ships off —
+// every test below runs with it switched on unless it says otherwise.
+vi.mock('../src/modules/features/features.service.js', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return { ...actual, resolveFeaturesForUser: state.resolveFeaturesForUser };
+});
 
 vi.mock('firebase-admin/app', () => ({
   cert: vi.fn(() => ({})),
@@ -112,9 +120,37 @@ beforeEach(() => {
   state.findRemedyInsight.mockReset().mockResolvedValue(undefined);
   state.remedyInsightForLanguage.mockReset();
   state.requestRemedyInsightGeneration.mockReset().mockResolvedValue('generated');
+  state.resolveFeaturesForUser.mockReset().mockResolvedValue({
+    'nav.remedies': {
+      enabled: true,
+      pricePaise: null,
+      originalPricePaise: null,
+      model: null,
+      enabledAt: null,
+    },
+  });
 });
 
 describe('GET /v1/remedies', () => {
+  it('returns 403 FEATURE_DISABLED while nav.remedies is off, without computing anything', async () => {
+    state.findUserByFirebaseUid.mockResolvedValue(makeUserRow({ id: 'user-1' }));
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.remedies': {
+        enabled: false,
+        pricePaise: null,
+        originalPricePaise: null,
+        model: null,
+        enabledAt: null,
+      },
+    });
+
+    const res = await callRemedies();
+
+    expect(res.status).toBe(403);
+    expect(state.getRemedies).not.toHaveBeenCalled();
+    expect(state.requestRemedyInsightGeneration).not.toHaveBeenCalled();
+  });
+
   it('returns 401 when the Authorization header is missing', async () => {
     const app = createApp();
     const res = await app.request('/v1/remedies', { method: 'GET' });

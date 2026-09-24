@@ -434,7 +434,9 @@ async function runGeneration(
       nodeType: inputs.lunarNode ?? null,
       calculationVersion: inputs.calculationVersion,
       ephemerisVersion: inputs.ephemerisVersion,
-      timeKnown: true,
+      // False for a self-rated 'unknown' time: the chart is then built from the
+      // midpoint of a part-of-day window (lib/birth-time-window.ts), not a clock time.
+      timeKnown: profile.birthTimeAccuracy !== 'unknown',
       birthHash: inputs.birthHash,
       chartData: { ...chart, shadbala, divisionalCharts },
       dashaData: { vimshottari: dasha, yogini },

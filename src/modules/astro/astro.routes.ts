@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import { requireUser } from '../../middleware/auth.js';
+import { requireFeature } from '../../middleware/feature.js';
 import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
@@ -995,7 +996,9 @@ const remediesRoute = createRoute({
   tags: ['Astro'],
   summary: 'Get the full Lal Kitab remedy reading for the active profile — free',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser] as const,
+  // Same key as the /remedies page's FeatureGuard: a hidden page must not stay
+  // reachable (and keep spending on the AI remedy-insight layer) via the API.
+  middleware: [requireUser, requireFeature('nav.remedies')] as const,
   request: {
     query: z.object({
       language: z.string().optional().openapi({ example: 'hi' }),
@@ -1192,7 +1195,8 @@ const rectifyRoute = createRoute({
   tags: ['Astro'],
   summary: 'Suggest a corrected birth time from dated life events',
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireConsent] as const,
+  // Same key that shows/hides BirthTimeRectifyCard, the route's only caller.
+  middleware: [requireUser, requireFeature('home.birthTimeRectify'), requireConsent] as const,
   request: {
     body: {
       required: true,

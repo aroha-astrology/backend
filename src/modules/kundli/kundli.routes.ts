@@ -61,13 +61,17 @@ const FIELD_LABELS: Record<KundliRequiredField, string> = {
  * route handler where `profile` is already resolved, not inside kundli.service.ts's DTO
  * builders. A 'ready' chart is never from an 'unknown' time (missingKundliParams blocks
  * that), so the quality here is always 'exact' or 'approximate'. */
-function withAccuracy<T extends object>(
+function withAccuracy<T extends { timeKnown: boolean | null }>(
   dto: T,
   profile: Parameters<typeof birthTimeQuality>[0],
 ): T & { birthTimeAccuracy: 'exact' | 'approximate'; warning: string | null } {
   const quality = birthTimeQuality(profile);
   return {
     ...dto,
+    // Rows generated before 2026-09-24 stored time_known = true unconditionally,
+    // so the profile (not the row) is the authority for older kundlis too. This
+    // is what KundliCard reads to show its "birth time unknown" note.
+    timeKnown: profile.birthTimeAccuracy === 'unknown' ? false : dto.timeKnown,
     birthTimeAccuracy: quality === 'unknown' ? 'exact' : quality,
     warning: chartWarning(quality, profile),
   };

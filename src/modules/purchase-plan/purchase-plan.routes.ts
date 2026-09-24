@@ -9,6 +9,7 @@ import {
 } from './purchase-plan.schemas.js';
 import {
   requestPurchasePlanAnalysis,
+  panchangLocationFor,
   getPlansForUser,
   getPlanForUser,
   removePlanForUser,
@@ -65,7 +66,7 @@ const analyzeRoute = createRoute({
 purchasePlanRouter.openapi(analyzeRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
-  const result = await requestPurchasePlanAnalysis(user.id, body);
+  const result = await requestPurchasePlanAnalysis(user.id, body, panchangLocationFor(user));
   return c.json(result, 200);
 });
 
