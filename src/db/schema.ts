@@ -160,6 +160,7 @@ export const birthProfileRelationshipEnum = pgEnum('birth_profile_relationship',
   'sibling',
   'friend',
   'other',
+  'business_partner',
 ]);
 
 export const consentTypeEnum = pgEnum('consent_type', [

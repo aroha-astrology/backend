@@ -10,7 +10,17 @@ import {
 } from '../users/users.schemas.js';
 
 export const BirthProfileRelationshipSchema = z
-  .enum(['partner', 'prospective_match', 'spouse', 'child', 'parent', 'sibling', 'friend', 'other'])
+  .enum([
+    'partner',
+    'prospective_match',
+    'spouse',
+    'child',
+    'parent',
+    'sibling',
+    'friend',
+    'other',
+    'business_partner',
+  ])
   .openapi('BirthProfileRelationship');
 
 export const BirthProfileSchema = z

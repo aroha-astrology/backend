@@ -727,6 +727,32 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultPricePaise: 4900,
     tag: 'new',
   },
+
+  // Step 7 — Aroha Bonds (detailed insight free with the Aroha Pass).
+  // A /bonds page: Guna Milan for partners, a harmony score for family and friends, and where each bond stands now from both people's dashas. Also shows the Business partner relationship when adding a profile. Rule-based, no AI cost.
+  {
+    key: 'nav.bonds',
+    label: 'Aroha Bonds — compatibility and phase with each saved person',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'home.bondsCard',
+    label: 'Aroha Bonds card on Home',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // One-off unlock per saved person: the next sub-periods for this bond, how you communicate, dates to keep in mind. Free with the Aroha Pass.
+  {
+    key: 'paid.bondInsight',
+    label: 'Aroha Bonds — detailed insight per person',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 4900,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

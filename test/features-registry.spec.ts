@@ -77,6 +77,9 @@ describe('roadmap features (tag "new")', () => {
       'paid.decisionWindow',
       'panchang.findMyDate',
       'paid.findMyDate',
+      'nav.bonds',
+      'home.bondsCard',
+      'paid.bondInsight',
     ];
     const tagged = new Set(NEW.map((f) => f.key));
     for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);

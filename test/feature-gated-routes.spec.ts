@@ -172,3 +172,21 @@ describe('roadmap step 6 routes ship dark', () => {
     expect(list.status).toBe(403);
   });
 });
+
+describe('roadmap step 7 routes ship dark', () => {
+  it('GET /v1/bonds, GET /v1/bonds/{id} and POST /v1/bonds/{id}/unlock → 403 while their flags are off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.bonds': off,
+      'home.bondsCard': off,
+      'paid.bondInsight': off,
+    });
+    const id = '11111111-1111-4111-8111-111111111111';
+    for (const path of ['/v1/bonds', `/v1/bonds/${id}`]) {
+      const res = await createApp().request(path, {
+        headers: { Authorization: 'Bearer good-token' },
+      });
+      expect(res.status, path).toBe(403);
+    }
+    expect((await post(`/v1/bonds/${id}/unlock`)).status).toBe(403);
+  });
+});

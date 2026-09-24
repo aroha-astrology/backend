@@ -136,6 +136,7 @@ export const TransactionSchema = z
         'life_timeline',
         'decision_window',
         'find_my_date',
+        'bond_insight',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),

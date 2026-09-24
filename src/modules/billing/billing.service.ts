@@ -279,7 +279,8 @@ type TransactionKind =
   | 'birth_time_check'
   | 'life_timeline'
   | 'decision_window'
-  | 'find_my_date';
+  | 'find_my_date'
+  | 'bond_insight';
 
 const REPORT_UNLOCK_RE = /^report_unlock:([a-z_]+)(?::(\d{4}-\d{2}))?(?::bundle:(\d+))?$/;
 
@@ -319,6 +320,7 @@ export function parseReason(reason: string): {
   if (base === 'life_timeline_full') return { kind: 'life_timeline', isRefund };
   if (base === 'decision_window') return { kind: 'decision_window', isRefund };
   if (base === 'find_my_date') return { kind: 'find_my_date', isRefund };
+  if (base === 'bond_insight') return { kind: 'bond_insight', isRefund };
   if (base === 'gemstone_unlock' || base.startsWith('gemstone_unlock:profile:')) {
     return { kind: 'gemstone_unlock', isRefund };
   }
