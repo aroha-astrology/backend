@@ -273,11 +273,14 @@ export function mahadashaBand(mdQuality: DashaTranistDetail | undefined): [numbe
  * still a real narrowing relative to the Mahadasha band's 2.0 (the BPHS
  * hierarchy this function exists to enforce), but wide enough for gochara's
  * genuine day-to-day movement to cross a rounding boundary within a single
- * Antardasha instead of only at its edges. ponytail: 0.75 was picked to make
- * the empirical 30-day test above pass (>=3 distinct scores) on the fixture
- * chart, not derived from a formal bound — if a wider real-world sample ever
- * shows it still under-varies, raise this before touching anything else in
- * the pipeline.
+ * Antardasha instead of only at its edges.
+ *
+ * 2026-09-24: the window used to be clamped at the MD band's edges, so a very
+ * weak or very strong AD lord (centre near floor/ceiling) got a window cut to
+ * as little as 0.75 wide — back to the frozen-score case above. The centre now
+ * SLIDES inward instead, so the window is always the full 1.5 wide and still
+ * inside the MD band. Paired with gocharaFraction's stretch below; see the
+ * multi-chart, multi-window test in daily-synthesis-score-variation.spec.ts.
  */
 export function narrowByAntardasha(
   mdBand: [number, number],
@@ -287,13 +290,25 @@ export function narrowByAntardasha(
   const [floor, ceiling] = mdBand;
   const width = ceiling - floor;
   const adPosition = adQuality.qualityScore / 5; // 0 (debilitated) .. 1 (exalted)
-  const adCenter = floor + adPosition * width;
   const narrowedHalfWidth = (width / 2) * 0.75;
-  return [
-    clamp(adCenter - narrowedHalfWidth, floor, ceiling),
-    clamp(adCenter + narrowedHalfWidth, floor, ceiling),
-  ];
+  const adCenter = clamp(
+    floor + adPosition * width,
+    floor + narrowedHalfWidth,
+    ceiling - narrowedHalfWidth,
+  );
+  return [adCenter - narrowedHalfWidth, adCenter + narrowedHalfWidth];
 }
+
+/**
+ * Real days cluster in the middle of gocharaFraction's theoretical [0,1]
+ * range: over 6 charts × 4 thirty-day windows (2026-09-24) the raw fraction
+ * sat mostly between 0.30 and 0.60, median ≈0.45 — so the day moved under
+ * half a point inside the band and rounded to the same score for weeks.
+ * Stretching around that median by 3× lets ordinary transit swings reach the
+ * band's ends (a clearly good or hard day) while an average day stays mid-band.
+ */
+const GOCHARA_TYPICAL_MEDIAN = 0.45;
+const GOCHARA_STRETCH = 3;
 
 /**
  * Gochara (transits) never set the band — they only decide where within it a
@@ -327,7 +342,8 @@ export function gocharaFraction(
   // unusually large Vedha block count can push raw further negative, which
   // the final clamp below simply saturates to fraction 0 rather than going
   // out of range.
-  return clamp((raw + 2.5) / 4.5, 0, 1);
+  const fraction = clamp((raw + 2.5) / 4.5, 0, 1);
+  return clamp(0.5 + (fraction - GOCHARA_TYPICAL_MEDIAN) * GOCHARA_STRETCH, 0, 1);
 }
 
 export interface AggregateScoreResult {
