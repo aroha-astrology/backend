@@ -16,6 +16,7 @@ import {
   runBirthTimeCheck,
 } from './insights.service.js';
 import { getAstroWeather } from './weather.service.js';
+import { getCalendar, MAX_CALENDAR_DAYS } from './calendar.service.js';
 
 const ErrorSchema = z
   .object({
@@ -194,4 +195,36 @@ insightsRouter.openapi(weatherRoute, async (c) => {
   const { date } = c.req.valid('query');
   const weather = await getAstroWeather(c.get('user'), date ?? istToday());
   return c.json(weather as unknown as Record<string, unknown>, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /calendar — the Aroha Calendar                                          */
+/* -------------------------------------------------------------------------- */
+
+const calendarRoute = createRoute({
+  method: 'get',
+  path: '/calendar',
+  tags: ['Insights'],
+  summary:
+    'Personal calendar: transits in your houses, dasha changes, area windows, Saturn phases, eclipses, festivals',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireAnyFeature(['nav.calendar', 'home.nextWindow'])] as const,
+  request: {
+    query: z.object({
+      from: DateSchema.optional(),
+      days: z.coerce.number().int().min(1).max(MAX_CALENDAR_DAYS).default(90),
+    }),
+  },
+  responses: {
+    200: { description: 'Calendar events', content: { 'application/json': { schema: Json } } },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled for this user'),
+    409: errorResponse('CHART_NOT_READY'),
+  },
+});
+
+insightsRouter.openapi(calendarRoute, async (c) => {
+  const { from, days } = c.req.valid('query');
+  const calendar = await getCalendar(c.get('user'), from ?? istToday(), days);
+  return c.json(calendar as unknown as Record<string, unknown>, 200);
 });

@@ -631,6 +631,23 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+
+  // Step 3 — Aroha Calendar (GET /v1/calendar; no AI cost).
+  {
+    key: 'nav.calendar',
+    label: 'Aroha Calendar page + menu entry',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // Home card showing the next important window from the calendar.
+  {
+    key: 'home.nextWindow',
+    label: 'Next important window card',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

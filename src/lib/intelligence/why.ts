@@ -21,7 +21,7 @@ const DUSTHANA = new Set([6, 8, 12]);
  * Classical gochara: houses from the natal Moon where each planet's transit
  * is favourable. Anything else is treated as a strain for that planet.
  */
-const GOCHARA_FAVOURABLE: Record<string, readonly number[]> = {
+export const GOCHARA_FAVOURABLE: Record<string, readonly number[]> = {
   Sun: [3, 6, 10, 11],
   Moon: [1, 3, 6, 7, 10, 11],
   Mars: [3, 6, 11],
@@ -51,14 +51,14 @@ function natalHouseOf(ctx: ChartContext, planet: Planet): number | undefined {
 }
 
 /** Houses (from the Ascendant) a planet rules. */
-function housesRuledBy(ctx: ChartContext, planet: Planet): number[] {
+export function housesRuledBy(ctx: ChartContext, planet: Planet): number[] {
   return Object.entries(ctx.houseLords)
     .filter(([, lord]) => lord === planet)
     .map(([h]) => Number(h));
 }
 
 /** +1 in a kendra/trikona, -1 in a dusthana, 0 otherwise. */
-function placementEffect(house: number | undefined): -1 | 0 | 1 {
+export function placementEffect(house: number | undefined): -1 | 0 | 1 {
   if (house == null) return 0;
   if (KENDRA_TRIKONA.has(house)) return 1;
   if (DUSTHANA.has(house)) return -1;
@@ -219,4 +219,52 @@ export function explainArea(area: LifeArea, ctx: ChartContext): WhyFactor[] {
 /** Net lean of a factor list: sum of effects, for callers that need a direction. */
 export function netEffect(factors: readonly WhyFactor[]): number {
   return factors.reduce((sum, f) => sum + f.effect, 0);
+}
+
+/** Is `planet` transiting house `houseFromMoon` favourable by classical gochara? */
+export function isFavourableTransit(planet: string, houseFromMoon: number): boolean {
+  return GOCHARA_FAVOURABLE[planet]?.includes(houseFromMoon) ?? false;
+}
+
+/**
+ * The life areas a planet speaks for in this chart: it rules or occupies the
+ * area's primary house, or is the area's natural karaka. Used to say "a
+ * career window begins" when that planet's dasha period starts.
+ */
+export function planetAreas(ctx: ChartContext, planet: Planet): LifeArea[] {
+  const ruled = housesRuledBy(ctx, planet);
+  const placed = natalHouseOf(ctx, planet);
+  return (Object.keys(AREA_CONFIG) as LifeArea[]).filter((area) => {
+    if (area === 'overall') return false;
+    const primary = AREA_CONFIG[area].houses[0]!;
+    return (
+      ruled.includes(primary) || placed === primary || AREA_CONFIG[area].karakas.includes(planet)
+    );
+  });
+}
+
+/** The life area a house (counted from Moon or Lagna) mostly speaks for. */
+export function areaOfHouse(house: number): LifeArea {
+  switch (house) {
+    case 10:
+    case 6:
+      return 'career';
+    case 7:
+      return 'relationships';
+    case 2:
+    case 11:
+      return 'money';
+    case 4:
+      return 'family';
+    case 5:
+    case 9:
+      return 'education';
+    case 12:
+    case 3:
+      return 'relocation';
+    case 8:
+      return 'health';
+    default:
+      return 'overall';
+  }
 }

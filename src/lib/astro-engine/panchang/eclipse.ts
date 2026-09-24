@@ -228,3 +228,42 @@ export function nextEclipses(): Promise<NextEclipses> {
   }
   return cache.value;
 }
+
+export interface EclipseEvent {
+  kind: 'solar' | 'lunar';
+  /** UTC instant of maximum eclipse (a global event). */
+  at: Date;
+}
+
+/**
+ * Every solar and lunar eclipse whose maximum falls in `[from, to)`, in time
+ * order — the Calendar's eclipse source. Walks forward with the same
+ * swe_*_eclipse_when search `nextEclipses()` uses, one eclipse at a time.
+ */
+export async function eclipsesBetween(from: Date, to: Date): Promise<EclipseEvent[]> {
+  const out: EclipseEvent[] = [];
+  const endMs = to.getTime();
+  for (const [kind, fn] of [
+    ['solar', 'swe_sol_eclipse_when_glob'],
+    ['lunar', 'swe_lun_eclipse_when'],
+  ] as const) {
+    let cursor = await dateToJulianDay(
+      from.getUTCFullYear(),
+      from.getUTCMonth() + 1,
+      from.getUTCDate(),
+      from.getUTCHours(),
+      from.getUTCMinutes(),
+      0,
+    );
+    // Eclipses of one kind are at least ~5 months apart; a year never holds more than a handful.
+    for (let i = 0; i < 8; i++) {
+      const jd = await eclipseMaxJd(fn, cursor);
+      if (jd == null) break;
+      const at = jdToDate(jd);
+      if (at.getTime() >= endMs) break;
+      if (at.getTime() >= from.getTime()) out.push({ kind, at });
+      cursor = jd + 1;
+    }
+  }
+  return out.sort((a, b) => a.at.getTime() - b.at.getTime());
+}

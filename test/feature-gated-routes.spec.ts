@@ -121,3 +121,13 @@ describe('roadmap step 2 routes ship dark', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('roadmap step 3 routes ship dark', () => {
+  it('GET /v1/calendar → 403 unless the calendar or its Home card is on', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({ 'nav.calendar': off, 'home.nextWindow': off });
+    const res = await createApp().request('/v1/calendar', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(res.status).toBe(403);
+  });
+});
