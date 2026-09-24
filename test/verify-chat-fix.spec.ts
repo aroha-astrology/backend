@@ -122,15 +122,19 @@ describe('verify: childbirth chat-fix end-to-end', () => {
     expect(facts.some((f) => f.startsWith('Surya Kundali'))).toBe(true);
     expect(facts.some((f) => f.startsWith('Full Gochar'))).toBe(true);
 
-    // 6. Fact block fits comfortably under the MAX_CONTEXT_CHARS cap, which is
-    // now 28000. Deliberately still asserted against the OLD 24000 figure: the
-    // 4000 chars of headroom added with that raise are for the dated
-    // commitments chat-fact-extraction.ts accumulates in <user_facts> over a
-    // user's lifetime, so chart data alone must keep fitting without them
-    // (Trap B from the plan).
+    // 6. Fact block fits comfortably under the MAX_CONTEXT_CHARS cap (28000 —
+    // scholar.ts's clip() applies this ceiling to <astro_context> and
+    // <user_facts> INDEPENDENTLY, each getting the full budget, not a
+    // combined one). Threshold raised 24000 -> 26000 here: scoreDomainWindows's
+    // nearTerm path (chat-grounding.ts) now scores genuinely near windows,
+    // which more often fall inside the ~13-month transit-relevance check and
+    // so more often carry real (non-empty) transit reasoning text than the
+    // old unbounded search's far antardasha-tier windows did — a deliberate,
+    // informative growth, not bloat. 26000 keeps a real 2000-char margin
+    // below the actual clip() ceiling rather than pinning the exact number.
     const chartDataBlockChars = facts.map((f) => `- ${f}`).join('\n').length;
     console.log('=== Total CHART DATA block size (chars) ===', chartDataBlockChars);
-    expect(chartDataBlockChars).toBeLessThan(24000);
+    expect(chartDataBlockChars).toBeLessThan(26000);
 
     // 7. Build the ACTUAL messages array scholarStream sends to Gemini, for
     // the exact reported question.
@@ -150,7 +154,7 @@ describe('verify: childbirth chat-fix end-to-end', () => {
     expect(systemPromptContent).toContain(`formatted as ${todayIST} in IST`);
     expect(systemPromptContent).toContain("Never invent or presume the user's life circumstances");
     expect(systemPromptContent).toContain('legitimate accuracy check');
-    expect(systemPromptContent).toContain('STRONGEST FIRST');
+    expect(systemPromptContent).toContain('CURRENT/NEXT/THEN');
     expect(systemPromptContent).toContain('not deflection and not a hedge');
     expect(systemPromptContent.replace(/\s+/g, ' ')).toContain(
       'are you currently planning for a child',

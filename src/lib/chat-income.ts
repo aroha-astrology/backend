@@ -141,6 +141,49 @@ function langOf(locale: string | undefined): LangCode {
   return code in PERSONAL_LABELS ? (code as LangCode) : 'en';
 }
 
+/**
+ * The question that belongs ABOVE the chips. Without this, the chips land under
+ * whatever vague sentence the model wrote ("knowing the scale you're working at
+ * helps me see...") and the user has no idea "₹25,000 – 75,000" means their own
+ * monthly income — a real support ticket. The app owns this wording (not the
+ * model) for the same reason it owns the ranges themselves: a fixed, always-
+ * clear ask, in the chat's own language, that never drifts into euphemism.
+ */
+const INCOME_QUESTION: Record<LangCode, string> = {
+  en: 'Which range is your monthly income in?',
+  hi: 'आपकी मासिक आय किस दायरे में है?',
+  bn: 'আপনার মাসিক আয় কোন পরিসরে?',
+  mr: 'तुमचे मासिक उत्पन्न कोणत्या श्रेणीत आहे?',
+  te: 'మీ నెలవారీ ఆదాయం ఏ పరిధిలో ఉంది?',
+  ta: 'உங்கள் மாத வருமானம் எந்த வரம்பில் உள்ளது?',
+  gu: 'તમારી માસિક આવક કયા દાયરામાં છે?',
+};
+
+const FAMILY_INCOME_QUESTION: Record<LangCode, string> = {
+  en: "Which range is your household's monthly income in?",
+  hi: 'आपके परिवार की मासिक आय किस दायरे में है?',
+  bn: 'আপনার পরিবারের মাসিক আয় কোন পরিসরে?',
+  mr: 'तुमच्या कुटुंबाचे मासिक उत्पन्न कोणत्या श्रेणीत आहे?',
+  te: 'మీ కుటుంబ నెలవారీ ఆదాయం ఏ పరిధిలో ఉంది?',
+  ta: 'உங்கள் குடும்ப மாத வருமானம் எந்த வரம்பில் உள்ளது?',
+  gu: 'તમારા કુટુંબની માસિક આવક કયા દાયરામાં છે?',
+};
+
+/**
+ * The localized question to show above the chips, if `line` (the raw "Ask
+ * next:" suggestion, marker still unexpanded) is an income ask — null
+ * otherwise. Called BEFORE expandIncomeMarkers so the marker is still intact
+ * to test against. The caller (scholar.ts) uses this in place of whatever
+ * closing question the model wrote, so the ask is never left to the model's
+ * own vaguer phrasing.
+ */
+export function incomeQuestionFor(line: string, locale?: string): string | null {
+  const lang = langOf(locale);
+  if (line.includes(FAMILY_INCOME_MARKER)) return FAMILY_INCOME_QUESTION[lang];
+  if (line.includes(INCOME_MARKER)) return INCOME_QUESTION[lang];
+  return null;
+}
+
 /** Codes in display order — the admin card shows every bracket, including ones nobody picked. */
 export const INCOME_BRACKET_CODES: readonly string[] = PERSONAL_CODES;
 export const FAMILY_BRACKET_CODES: readonly string[] = FAMILY_CODES;

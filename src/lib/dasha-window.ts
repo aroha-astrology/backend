@@ -35,6 +35,13 @@ const MS_PER_YEAR = 365.25 * 86_400_000;
  * the same dasha reuse one already-built sub-period tree per mahadasha
  * instead of rebuilding it (an expensive `forceFullDepth` computation) once
  * per domain — see dasha-confidence.ts's `buildSharedDashaTree`.
+ *
+ * `horizonEnd`, if provided, drops any candidate whose START date is after
+ * it — applied BEFORE the antardasha-first sort/truncate below, so a
+ * near-term pratyantardasha is no longer crowded out of the `maxWindows` cut
+ * by a far-future antardasha that a caller never wanted considered at all
+ * (see dasha-confidence.ts's `nearTerm` option). A window already running
+ * when the horizon closes is kept — only its start, not its end, is checked.
  */
 export function findFavorableWindows(
   dasha: Record<string, unknown> | null,
@@ -43,6 +50,7 @@ export function findFavorableWindows(
   maxMahadashas = 3,
   maxWindows = 8,
   sharedSubPeriods?: Map<string, ReturnType<typeof buildSubPeriods>>,
+  horizonEnd?: Date,
 ): FavorableWindow[] {
   const v = (dasha?.vimshottari ?? {}) as Record<string, unknown>;
   const mahadashas = (v.mahadashas ?? []) as DashaPeriod[];
@@ -51,6 +59,7 @@ export function findFavorableWindows(
     .slice(0, maxMahadashas);
 
   const windows: FavorableWindow[] = [];
+  const horizonMs = horizonEnd?.getTime();
 
   for (const maha of upcoming) {
     const mahaStart = new Date(maha.startDate);
@@ -62,6 +71,11 @@ export function findFavorableWindows(
       buildSubPeriods(maha.planet, mahaStart, durationYears, 1, now, 2, true);
 
     for (const antar of antardashas) {
+      // A horizon cuts off by START date, not end — a window already running
+      // when the horizon closes still counts (it's the "currently open"
+      // window a near-term search most needs), only windows that haven't
+      // begun by the cutoff are excluded.
+      if (horizonMs != null && new Date(antar.startDate).getTime() > horizonMs) continue;
       if (
         new Date(antar.endDate).getTime() > now.getTime() &&
         significatorLords.includes(antar.planet)
@@ -76,6 +90,7 @@ export function findFavorableWindows(
       }
 
       for (const praty of antar.subPeriods) {
+        if (horizonMs != null && new Date(praty.startDate).getTime() > horizonMs) continue;
         if (
           new Date(praty.endDate).getTime() > now.getTime() &&
           significatorLords.includes(praty.planet)

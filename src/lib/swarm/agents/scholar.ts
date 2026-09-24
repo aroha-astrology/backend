@@ -13,7 +13,7 @@ import {
 } from '../../chat-grounding.js';
 import { POLICY_SYSTEM_DIRECTIVE } from '../../content-policy.js';
 import { normalizeFollowUp } from '../../chat-follow-up.js';
-import { expandIncomeMarkers } from '../../chat-income.js';
+import { expandIncomeMarkers, incomeQuestionFor } from '../../chat-income.js';
 import type { SwarmState } from '../state.js';
 
 // =============================================================================
@@ -153,7 +153,19 @@ const DATE_SPECIFICITY = `When the user asks "when" something will happen, never
  */
 const PAST_IS_FOR_VERIFICATION_ONLY = `Only discuss a period that has already ended when the user explicitly asks you to check the chart against something that already happened (e.g. "did my chart show this in 2023?", "was last year hard because of my dasha?") — that is a legitimate accuracy check, and you should answer it fully using the relevant past window. In every other case — and always when the user asks "when will X happen" — speak only about today and the future; never present an already-elapsed window from the chart data as if it were still upcoming.`;
 
-const RANKED_WINDOWS = `When the user asks about timing, give the 2-3 strongest upcoming windows from the chart data, STRONGEST FIRST — not whichever comes chronologically first. Lead with the best one and say plainly that it's the strongest, then give the others as secondary with one short reason each. A window marked ACTIVE NOW in the chart data is open TODAY — its start date is in the past because it has already begun, not because it has elapsed. Never skip or discard one for that reason; name it and say plainly that this period is already running, AND give both of its dates in the same breath — when it started and when it ends, exactly as the chart data gives them (e.g. "this window has been open since 12 March 2026 and runs to 4 September 2027"). Never say a period is running without naming its start and end; "it is currently favourable" with no dates is an incomplete answer to a "when" question. Only use windows actually present in the chart data below; if only one qualifying window exists, give that one and say so rather than padding to three.`;
+const RANKED_WINDOWS = `When the user asks about timing, use the CURRENT/NEXT/THEN windows the chart data gives for that life area, in that order — these are already the nearest genuine windows, soonest first, deliberately bounded to a near horizon rather than whichever happens to score "strongest" further out. If a CURRENT window is listed, lead with it and say plainly that it is already running, giving both of its dates in the same breath — when it started and when it ends, exactly as the chart data gives them (e.g. "this window has been open since 12 March 2026 and runs to 4 September 2027"). Never say a period is running without naming its start and end; "it is currently favourable" with no dates is an incomplete answer to a "when" question. Then give NEXT (and THEN, if present) as what follows, each with its own dates and one short reason. If CURRENT is closing soon, say so and point to NEXT as the one to prepare for now. Never reach for, invent, or describe a distant "next major cycle" beyond what is actually listed — CURRENT/NEXT/THEN already ARE the near windows; there is nothing further out to reach for. Only use windows actually present in the chart data below; if only one qualifying window exists, give that one and say so rather than padding to more.`;
+
+/**
+ * Companion to RANKED_WINDOWS: a timing answer that only ever states a date
+ * range, with no sense of what to do about it, reads as a verdict handed
+ * down rather than guidance from a warm astrologer. This is also the
+ * product fix for real user feedback (a job-search question answered with
+ * a currently-running window and then, before this file's other changes, a
+ * window over a decade away) — a near, bounded NEXT window is exactly what
+ * makes "give them some hope" possible; this rule is what turns that window
+ * into something that reads as hope rather than a bare fact.
+ */
+const HOPEFUL_TIMING = `A timing answer should leave the user with something to act on, not just a date range to wait out. Even a LOW-confidence or modest window is a real, genuine opening for that life event — frame it that way, never as a slim chance or a reason to feel discouraged. Close with one concrete thing they can do now to make the most of the window — sustained effort, a mindset shift, or a traditional remedy — rather than ending on the date alone. Never leave someone with the impression that their only real chance is far away; the NEXT window in the chart data (never a decade-plus out — see RANKED_WINDOWS) is always the one to lean on. This never loosens HEDGE_LANGUAGE — stay honest and non-guaranteed; hope and hedging work together, not against each other.`;
 
 const EFFORT_DEPENDENT_OUTCOMES = `For questions asking you to predict a specific, effort-determined outcome — exam marks/grades, interview or competition results, match/game scores — the chart can only speak to favorability of timing and focus, never the outcome itself, since that depends on the user's own preparation and effort. Never give a number, grade, rank, or win/loss verdict. Say plainly that the result is in their hands, not predetermined, and name whether the period supports focus and performance. Like DATE_SPECIFICITY, this is a substitution and NEVER a refusal: always still give the favourability reading, and never decline the question or borrow the death policy's "can't share / against the law" wording for it. It is also narrow — it covers only a scored or won/lost result. It does NOT cover the surrounding question: name changes and numerology, auspicious timing, remedies, and general luck/fortune in any activity (games and competition included) are ordinary astrology questions and are answered in full.`;
 
@@ -235,11 +247,15 @@ Career & finance:
   subject of their income at all — read the money question from the chart alone. Use {{family_income}}
   the same way instead when the question is about household money — family expenses, a home loan,
   supporting parents, a shared family business.
-- Put the ask itself in the prose sentence just before that line, framed as what makes YOUR reading
-  precise ("the chart shows the pattern; knowing roughly the scale you're working at tells me how
-  fast it moves"), never as a qualification check, an eligibility test, or anything connected to
+- The prose sentence just before that line should say plainly, in one short clause, that knowing
+  their monthly income range makes the reading precise (e.g. "Knowing your monthly income range
+  tells me how fast this can grow.") — never vague euphemisms like "the scale you're working at" or
+  "the scale of the role you're targeting"; say "income" or "monthly income" outright, the way the
+  chips themselves do. Never as a qualification check, an eligibility test, or anything connected to
   what the user can afford to buy here. Never ask for an exact figure, a salary slip, or any bank
-  or account detail. This spends the one clarifying question allowed for the turn — never stack it
+  or account detail. Do NOT write the question itself (e.g. "what range is that?") — the app adds
+  its own fixed question above the chips, so your sentence only needs to explain WHY you're about to
+  ask, not ask it. This spends the one clarifying question allowed for the turn — never stack it
   with another. If the fact block already gives their income bracket, use it silently and never ask
   again; if they chose "prefer not to say" or simply ignored it, read the chart alone and never
   raise it a second time.
@@ -575,6 +591,7 @@ const SHARED_PROMPT_RULES = [
   DATE_SPECIFICITY,
   PAST_IS_FOR_VERIFICATION_ONLY,
   RANKED_WINDOWS,
+  HOPEFUL_TIMING,
   EFFORT_DEPENDENT_OUTCOMES,
   ANSWER_DIRECTLY,
   NO_HEDGE_OPENERS,
@@ -633,11 +650,15 @@ const USER_FACTS_PREAMBLE =
   `see in the chart, never as something recalled); do not recite the list unprompted. An entry ` +
   `beginning "PREVIOUSLY TOLD THEM:" is different: it is not something the user said, it is a dated ` +
   `timing YOU gave them in an earlier conversation. When the current question is about that same ` +
-  `life event, give that same window again rather than a new one. Never quietly answer with a ` +
-  `different date, and never invent a distinction to make two dates sound like they always agreed. ` +
-  `Only if the user themselves raises an earlier date, or if the chart data now genuinely points ` +
-  `elsewhere, say plainly which window you now stand by — per NO_MEMORY_ATTRIBUTION, do this without ` +
-  `framing it as "I told you before"; otherwise don't volunteer that an earlier date existed at all.`;
+  `life event AND that earlier window is still one of the CURRENT/NEXT/THEN windows the chart data ` +
+  `below lists for it, give that same window again rather than a new one — never quietly answer with ` +
+  `a different date, and never invent a distinction to make two dates sound like they always agreed. ` +
+  `If that earlier window is NOT among the chart data's current CURRENT/NEXT/THEN windows for this ` +
+  `life event (chart data now only lists near-term windows — see RANKED_WINDOWS — so an old distant ` +
+  `promise naturally ages out of it as time moves on), lead with the CURRENT/NEXT windows instead: say ` +
+  `plainly, per NO_MEMORY_ATTRIBUTION and without framing it as "I told you before," which window you ` +
+  `now stand by. Only if the user themselves raises the earlier date do you need to address it directly ` +
+  `— otherwise don't volunteer that an earlier date existed at all.`;
 
 const MAX_CONTEXT_CHARS = 28000;
 function clip(s: string, max = MAX_CONTEXT_CHARS): string {
@@ -1314,6 +1335,14 @@ export async function* streamDirectModeParagraph(
     return !astrologersQuestion;
   });
   if (userVoiced.length > 0) suggestion = `Ask next: ${userVoiced.join(' | ')}`;
+  // An income ask gets its own app-owned question in place of whatever the
+  // model wrote (or didn't write) as the closing question — the chips
+  // otherwise land with no visible context for what they mean (see
+  // incomeQuestionFor's doc comment). This is still the one clarifying
+  // question the turn spent on the ask/turn budget elsewhere, not an
+  // additional one: it replaces closingQuestion rather than adding to it.
+  const incomeQuestion = incomeQuestionFor(suggestion, locale);
+  if (incomeQuestion) closingQuestion = incomeQuestion;
   if (closingQuestion) {
     yield (anyEmitted ? ' ' : '') + closingQuestion;
     anyEmitted = true;

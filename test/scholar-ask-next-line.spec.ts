@@ -117,12 +117,28 @@ describe('direct-mode "Ask next:" handling', () => {
 
   it('expands the income marker into the fixed tappable ranges', async () => {
     const out = await render(
-      'The chart shows steady growth; the scale you are at sets the pace.\nAsk next: {{income}}',
+      'The chart shows steady growth; knowing your monthly income range tells me how fast it moves.\nAsk next: {{income}}',
     );
-    const { followUp } = splitFollowUp(out);
+    const { body, followUp } = splitFollowUp(out);
     expect(followUp).toContain('Under ₹25,000 a month');
     expect(followUp).toContain('Prefer not to say');
     expect(followUp!.split('|')).toHaveLength(5);
     expect(out).not.toContain('{{income}}');
+    // The app's own question renders right above the chips, regardless of
+    // whether — or how — the model phrased its own closing question.
+    expect(body).toContain('Which range is your monthly income in?');
+  });
+
+  it("replaces the model's own closing question with the app-owned income question, without duplicating it", async () => {
+    const out = await render(
+      'Your finances are steadying. What is your rough monthly income?\nAsk next: {{income}}',
+    );
+    const { body, followUp } = splitFollowUp(out);
+    expect(followUp).toContain('Under ₹25,000 a month');
+    // Only the app's fixed question appears — the model's own phrasing of the
+    // ask is dropped, not appended alongside it.
+    const occurrences = body.split('income').length - 1;
+    expect(body).toContain('Which range is your monthly income in?');
+    expect(occurrences).toBe(1);
   });
 });

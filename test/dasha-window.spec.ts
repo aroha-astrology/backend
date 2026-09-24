@@ -124,6 +124,47 @@ describe('findFavorableWindows', () => {
     expect(results[0]).toBe(ownAntardasha);
   });
 
+  it('horizonEnd drops a far-future match by START date, keeping a near-term one', () => {
+    // Same fixture as the "collects a match at BOTH ... depth" test above:
+    // Venus's antardasha-level match starts 5 years out (within Sun's
+    // mahadasha), but Venus also matches at pratyantardasha depth just
+    // ~0.3 years out, nested in Sun's own first antardasha. A 2-year
+    // horizon should keep the near pratyantardasha and drop the far
+    // antardasha entirely, rather than the antardasha crowding it out of
+    // the maxWindows cut as it does with no horizon at all.
+    const now = new Date('2026-01-01T00:00:00Z');
+    const dasha = makeDasha(now);
+    const horizonEnd = new Date(now.getTime() + 2 * 365.25 * 86_400_000);
+
+    const unbounded = findFavorableWindows(dasha, ['Venus'], now, 3, 8);
+    expect(unbounded.some((r) => r.level === 'antardasha')).toBe(true);
+
+    const bounded = findFavorableWindows(dasha, ['Venus'], now, 3, 8, undefined, horizonEnd);
+    expect(bounded.length).toBeGreaterThan(0);
+    expect(bounded.every((r) => new Date(r.startDate).getTime() <= horizonEnd.getTime())).toBe(
+      true,
+    );
+    expect(bounded.some((r) => r.level === 'pratyantardasha')).toBe(true);
+    expect(bounded.some((r) => r.level === 'antardasha')).toBe(false);
+  });
+
+  it('horizonEnd keeps a window that is already running, even with a zero-length horizon', () => {
+    // Sun's mahadasha opens with Sun's own antardasha (Vimshottari sub-period
+    // order always starts with the mahadasha lord itself), so its start date
+    // is exactly `now`. A horizon of `now` itself (as far forward as
+    // possible without excluding it) must still keep it -- documents that
+    // the cutoff is a START-date check, not a "days remaining" one.
+    const now = new Date('2026-01-01T00:00:00Z');
+    const dasha = makeDasha(now);
+
+    const results = findFavorableWindows(dasha, ['Sun'], now, 3, 8, undefined, now);
+    const ownOpening = results.find(
+      (r) => r.level === 'antardasha' && r.withinMahadasha === 'Sun' && r.lord === 'Sun',
+    );
+    expect(ownOpening).toBeDefined();
+    expect(ownOpening!.startDate).toBe(now.toISOString().slice(0, 10));
+  });
+
   it('finds a match in a later mahadasha once the current one is exhausted', () => {
     const now = new Date('2026-01-01T00:00:00Z');
     const dasha = makeDasha(now);

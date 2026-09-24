@@ -54,13 +54,18 @@ describe('buildGroundingFacts forward-looking favorable windows', () => {
     };
     const facts = await buildGroundingFacts(src);
     // Current fact wording (see DOMAIN_CONFIG.love in dasha-confidence.ts):
-    // "Relationship Window Confidence (cross-read with D9): STRONGEST ...".
-    // This test predates the ranked-windows rewrite and pinned an older,
-    // never-actually-shipped wording -- updated to check the real contract
-    // (a ranked, non-NONE relationship window fact appears) rather than
-    // exact prose that was never correct to begin with.
+    // "Relationship Window Confidence (cross-read with D9, nearest windows
+    // soonest-first): CURRENT/NEXT ...". Chat/voice now scores near-term
+    // windows only (scoreDomainWindows's nearTerm option) -- the leading
+    // window is tagged CURRENT if it's already running, otherwise NEXT, never
+    // STRONGEST (that tag belonged to the old tier/score-ranked search, which
+    // could surface a match years away as the "strongest" one).
     expect(
-      facts.some((f) => f.startsWith('Relationship Window Confidence') && f.includes('STRONGEST')),
+      facts.some(
+        (f) =>
+          f.startsWith('Relationship Window Confidence') &&
+          (f.includes('CURRENT') || f.includes('NEXT')),
+      ),
     ).toBe(true);
   });
 
@@ -79,6 +84,7 @@ describe('buildGroundingFacts forward-looking favorable windows', () => {
     const loveFact = facts.find((f) => f.startsWith('Relationship Window Confidence'));
     expect(loveFact).toBeDefined();
     expect(loveFact).toContain('NONE');
-    expect(loveFact).not.toContain('STRONGEST');
+    expect(loveFact).not.toContain('CURRENT');
+    expect(loveFact).not.toContain('NEXT');
   });
 });

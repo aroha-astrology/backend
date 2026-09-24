@@ -1,5 +1,5 @@
 import { FRIENDS, ENEMIES, OWN_SIGNS } from '../astro-tools/transit.js';
-import { findFavorableWindows } from '../dasha-window.js';
+import { findFavorableWindows, type FavorableWindow } from '../dasha-window.js';
 import { buildSubPeriods } from './index.js';
 import { buildYoginiAntardashas } from './dashas/yogini.js';
 import { YOGINI_PLANETS } from '@aroha-astrology/shared';
@@ -41,6 +41,16 @@ export interface DomainConfigEntry {
   /** Divisional chart traditionally cross-read alongside this domain, named
    * in the reasoning text so the model knows which varga fact to cite. */
   varga: string;
+  /** How many years ahead a NEAR-TERM search (see `scoreDomainWindows`'s
+   * `nearTerm` option) is allowed to look for an upcoming window, beyond
+   * whichever window is already running. Chat needs an answer to "when will
+   * I get a job" to stay hopeful and near, never a decade-plus out -- this is
+   * the per-domain cap that enforces that. Most life questions get a tight
+   * 2-year horizon; marriage and children (traditionally slower-moving, and
+   * ones people are willing to wait longer for) get 5; property/vehicle
+   * purchases sit in between at 3. This field is ONLY read by the `nearTerm`
+   * path -- reports and any other non-nearTerm caller are unaffected by it. */
+  horizonYears: number;
 }
 
 /**
@@ -64,6 +74,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Saturn',
     triggerHouses: [10, 11],
     varga: 'D10',
+    horizonYears: 2,
   },
   love: {
     label: 'Relationship Window Confidence',
@@ -72,6 +83,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [2, 5, 7, 9, 11],
     varga: 'D9',
+    horizonYears: 5,
   },
   health: {
     label: 'Health Vigilance Required',
@@ -80,6 +92,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Saturn',
     triggerHouses: [6, 8, 12],
     varga: 'D30',
+    horizonYears: 2,
   },
   children: {
     label: 'Progeny Window Confidence',
@@ -88,6 +101,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [5, 9, 11],
     varga: 'D7',
+    horizonYears: 5,
   },
   wealth: {
     label: 'Wealth Window Confidence',
@@ -96,6 +110,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [2, 11],
     varga: 'D2',
+    horizonYears: 2,
   },
   education: {
     label: 'Education Window Confidence',
@@ -104,6 +119,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [4, 5, 9],
     varga: 'D24',
+    horizonYears: 2,
   },
   property: {
     label: 'Property/Home Window Confidence',
@@ -112,6 +128,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Saturn',
     triggerHouses: [4],
     varga: 'D4',
+    horizonYears: 3,
   },
   vehicle: {
     label: 'Vehicle Window Confidence',
@@ -120,6 +137,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [4, 11],
     varga: 'D16',
+    horizonYears: 2,
   },
   siblings: {
     label: 'Siblings Window Confidence',
@@ -128,6 +146,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [3, 11],
     varga: 'D3',
+    horizonYears: 2,
   },
   parents: {
     label: 'Parents Window Confidence',
@@ -136,6 +155,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [4, 9, 10],
     varga: 'D12',
+    horizonYears: 2,
   },
   legal: {
     label: 'Legal/Dispute Window Confidence',
@@ -144,6 +164,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Saturn',
     triggerHouses: [6, 8, 12],
     varga: 'D1',
+    horizonYears: 2,
   },
   foreign: {
     label: 'Foreign Travel/Relocation Window Confidence',
@@ -152,6 +173,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Saturn',
     triggerHouses: [9, 12],
     varga: 'D1',
+    horizonYears: 2,
   },
   spirituality: {
     label: 'Spirituality Window Confidence',
@@ -160,6 +182,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [5, 9, 12],
     varga: 'D20',
+    horizonYears: 2,
   },
   business: {
     label: 'Business/Partnership Window Confidence',
@@ -168,6 +191,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Saturn',
     triggerHouses: [7, 10, 11],
     varga: 'D10',
+    horizonYears: 2,
   },
   friends: {
     label: 'Friendships/Community Window Confidence',
@@ -176,6 +200,7 @@ export const DOMAIN_CONFIG: Record<Domain, DomainConfigEntry> = {
     transitPlanet: 'Jupiter',
     triggerHouses: [3, 11],
     varga: 'D1',
+    horizonYears: 2,
   },
 };
 
@@ -331,19 +356,74 @@ function transitAlignment(
   };
 }
 
+const MS_PER_YEAR = 365.25 * 86_400_000;
+
+/** Score one candidate window: Vimshottari anchor (always 1, for a candidate that
+ * exists at all) + Yogini alignment at THAT window's own start date (0/1) + transit
+ * alignment, only meaningfully checked for windows within ~13 months (0/1, see
+ * TRANSIT_RELEVANCE_DAYS). Shared by both the tier/score-ranked path and the
+ * near-term path below so scoring itself never diverges between them — only how
+ * the resulting candidates get SELECTED differs. */
+function scoreCandidate(
+  domain: Domain,
+  config: DomainConfigEntry,
+  window: FavorableWindow,
+  significatorLords: string[],
+  dasha: Record<string, unknown> | null,
+  ascSignIndex: number | null,
+  now: Date,
+  transits: { saturnSignIndex: number | null; jupiterSignIndex: number | null },
+): RankedWindow {
+  const windowStart = new Date(window.startDate);
+  const reasoning = [
+    `Vimshottari anchor: ${window.lord} ${window.level} (within ${window.withinMahadasha} major period).`,
+  ];
+  let score = 1;
+
+  const yogini = yoginiAlignment(dasha, windowStart, significatorLords, window.lord);
+  reasoning.push(yogini.reason);
+  if (yogini.aligned) score += 1;
+
+  const transit = transitAlignment(
+    domain,
+    config.natalHouses,
+    windowStart,
+    now,
+    ascSignIndex,
+    transits,
+  );
+  if (transit.reason) reasoning.push(transit.reason);
+  if (transit.aligned) score += 1;
+
+  const level: ConfidenceLevel = score >= 3 ? 'HIGH' : score === 2 ? 'MEDIUM' : 'LOW';
+  return {
+    startDate: window.startDate,
+    endDate: window.endDate,
+    score,
+    level,
+    dashaLevel: window.level,
+    reasoning,
+  };
+}
+
 /**
  * Score and rank every favorable window found for a domain, strongest first
  * (was: return only the single chronologically-nearest window). Each
- * candidate window gets its own score — Vimshottari anchor (always 1 for a
- * candidate that exists) + Yogini alignment at THAT window's own start date
- * (0/1) + transit alignment, only meaningfully checked for windows within
- * ~13 months (0/1, see TRANSIT_RELEVANCE_DAYS) — then windows are ranked
- * antardasha-level before ANY pratyantardasha-level match (a bigger period
- * always outranks a nested sub-blip, regardless of score — see the sort
- * below), score desc within that tier, chronologically on a further tie.
- * Returns an empty `windows` array (not a fabricated LOW-confidence guess)
- * when nothing qualifies at all — the caller should surface that absence as
- * its own explicit fact.
+ * candidate window gets its own score (see `scoreCandidate`) — then windows
+ * are ranked antardasha-level before ANY pratyantardasha-level match (a
+ * bigger period always outranks a nested sub-blip, regardless of score — see
+ * the sort below), score desc within that tier, chronologically on a further
+ * tie. Returns an empty `windows` array (not a fabricated LOW-confidence
+ * guess) when nothing qualifies at all — the caller should surface that
+ * absence as its own explicit fact.
+ *
+ * `opts.nearTerm`, when true, switches to `scoreNearTermWindows` below
+ * instead — chat/voice's "when will X happen" needs current + genuinely
+ * NEAR upcoming windows (bounded per-domain by `DOMAIN_CONFIG[domain]
+ * .horizonYears`), never a technically-"stronger" match that happens to be
+ * a decade away. Reports (via report-timing.ts) and every other existing
+ * caller omit `opts`, so their tier/score-ranked, unbounded behavior is
+ * completely unchanged by this option's existence.
  */
 export function scoreDomainWindows(
   domain: Domain,
@@ -353,42 +433,25 @@ export function scoreDomainWindows(
   now: Date,
   transits: { saturnSignIndex: number | null; jupiterSignIndex: number | null },
   sharedSubPeriods?: Map<string, ReturnType<typeof buildSubPeriods>>,
+  opts?: { nearTerm?: boolean },
 ): DomainWindowResult {
+  if (opts?.nearTerm) {
+    return scoreNearTermWindows(
+      domain,
+      significatorLords,
+      dasha,
+      ascSignIndex,
+      now,
+      transits,
+      sharedSubPeriods,
+    );
+  }
+
   const config = DOMAIN_CONFIG[domain];
   const candidates = findFavorableWindows(dasha, significatorLords, now, 3, 8, sharedSubPeriods);
-
-  const scored: RankedWindow[] = candidates.map((window) => {
-    const windowStart = new Date(window.startDate);
-    const reasoning = [
-      `Vimshottari anchor: ${window.lord} ${window.level} (within ${window.withinMahadasha} major period).`,
-    ];
-    let score = 1;
-
-    const yogini = yoginiAlignment(dasha, windowStart, significatorLords, window.lord);
-    reasoning.push(yogini.reason);
-    if (yogini.aligned) score += 1;
-
-    const transit = transitAlignment(
-      domain,
-      config.natalHouses,
-      windowStart,
-      now,
-      ascSignIndex,
-      transits,
-    );
-    if (transit.reason) reasoning.push(transit.reason);
-    if (transit.aligned) score += 1;
-
-    const level: ConfidenceLevel = score >= 3 ? 'HIGH' : score === 2 ? 'MEDIUM' : 'LOW';
-    return {
-      startDate: window.startDate,
-      endDate: window.endDate,
-      score,
-      level,
-      dashaLevel: window.level,
-      reasoning,
-    };
-  });
+  const scored: RankedWindow[] = candidates.map((window) =>
+    scoreCandidate(domain, config, window, significatorLords, dasha, ascSignIndex, now, transits),
+  );
 
   // Primary key: dasha depth — an antardasha is a classically bigger, more
   // enduring period than any pratyantardasha nested inside it, so ANY
@@ -420,6 +483,118 @@ export function scoreDomainWindows(
   if (anchor && !top3.includes(anchor)) top3[top3.length - 1] = anchor;
 
   return { domain, windows: top3 };
+}
+
+/**
+ * Chat/voice's timing search: current + genuinely NEAR upcoming windows only,
+ * soonest first — never the far-future "technically strongest" antardasha
+ * that `scoreDomainWindows`'s tier-first ranking can otherwise surface (the
+ * actual production bug this fixes: "when will I get a job" answering with a
+ * window 14 years out because an antardasha-tier match always outranks a
+ * near pratyantardasha one regardless of distance).
+ *
+ * 1. Candidates are bounded to `DOMAIN_CONFIG[domain].horizonYears` ahead via
+ *    `findFavorableWindows`'s `horizonEnd` — a near pratyantardasha is no
+ *    longer competing against (and losing the `maxWindows` cut to) far
+ *    antardashas the caller never wanted considered in the first place.
+ * 2. Each surviving candidate is scored exactly as the tier/score path does
+ *    (`scoreCandidate`) — near-term does not mean lower-confidence.
+ * 3. Selection is purely chronological, not tier-first: the window running
+ *    right now sorts first (ties broken by whichever ends latest), then
+ *    upcoming windows by start date. Up to 3.
+ * 4. Hope fallback: if literally nothing falls inside the horizon (rare —
+ *    most domains' karakas recur as a pratyantardasha inside every
+ *    antardasha), this still never returns NONE just because of the cap —
+ *    it falls back to the single nearest real window beyond the horizon,
+ *    exactly as `scoreDomainWindows` would have found it unbounded. A user
+ *    always gets a real, chart-grounded window to hold onto, never silence.
+ */
+function scoreNearTermWindows(
+  domain: Domain,
+  significatorLords: string[],
+  dasha: Record<string, unknown> | null,
+  ascSignIndex: number | null,
+  now: Date,
+  transits: { saturnSignIndex: number | null; jupiterSignIndex: number | null },
+  sharedSubPeriods?: Map<string, ReturnType<typeof buildSubPeriods>>,
+): DomainWindowResult {
+  const config = DOMAIN_CONFIG[domain];
+  const horizonEnd = new Date(now.getTime() + config.horizonYears * MS_PER_YEAR);
+  const nowMs = now.getTime();
+
+  const nearCandidates = findFavorableWindows(
+    dasha,
+    significatorLords,
+    now,
+    3,
+    8,
+    sharedSubPeriods,
+    horizonEnd,
+  );
+
+  if (nearCandidates.length === 0) {
+    // Hope fallback — re-search unbounded and take only the single nearest
+    // real match, rather than surfacing NONE (which the prompt would read as
+    // "the chart data doesn't support a timing answer for this" — false;
+    // there IS a window, it's just further out than this domain's horizon).
+    const unbounded = findFavorableWindows(dasha, significatorLords, now, 3, 8, sharedSubPeriods);
+    const nearest = nearestFavorableToNow(unbounded, now);
+    if (!nearest) return { domain, windows: [] };
+    return {
+      domain,
+      windows: [
+        scoreCandidate(
+          domain,
+          config,
+          nearest,
+          significatorLords,
+          dasha,
+          ascSignIndex,
+          now,
+          transits,
+        ),
+      ],
+    };
+  }
+
+  const scored = nearCandidates.map((window) =>
+    scoreCandidate(domain, config, window, significatorLords, dasha, ascSignIndex, now, transits),
+  );
+
+  // Soonest first: a window already running today sorts before every
+  // upcoming one, regardless of its tier or score (ties among several
+  // simultaneously-running matches broken by whichever ends latest); every
+  // other window sorts purely by start date. Deliberately NOT the
+  // antardasha-before-pratyantardasha tiering `scoreDomainWindows` uses —
+  // that tiering is exactly what let a decade-plus-away match outrank a
+  // near one in the first place.
+  scored.sort((a, b) => {
+    const aRunning =
+      new Date(a.startDate).getTime() <= nowMs && new Date(a.endDate).getTime() > nowMs;
+    const bRunning =
+      new Date(b.startDate).getTime() <= nowMs && new Date(b.endDate).getTime() > nowMs;
+    if (aRunning !== bRunning) return aRunning ? -1 : 1;
+    if (aRunning && bRunning) return new Date(b.endDate).getTime() - new Date(a.endDate).getTime();
+    return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+  });
+
+  return { domain, windows: scored.slice(0, 3) };
+}
+
+/** Same rationale as `nearestToNow` below, over `FavorableWindow`s (pre-scoring) instead of
+ * `RankedWindow`s — used only by the near-term hope fallback, which needs the nearest RAW
+ * candidate before scoring even runs. */
+function nearestFavorableToNow(windows: FavorableWindow[], now: Date): FavorableWindow | undefined {
+  const nowMs = now.getTime();
+  const containing = windows.find(
+    (w) => new Date(w.startDate).getTime() <= nowMs && new Date(w.endDate).getTime() > nowMs,
+  );
+  if (containing) return containing;
+  return windows.reduce<{ window: FavorableWindow; distance: number } | undefined>((best, w) => {
+    const distance = Math.abs(new Date(w.startDate).getTime() - nowMs);
+    if (!best || distance < best.distance) return { window: w, distance };
+    return best;
+  }, undefined)?.window;
 }
 
 /** The window containing `now`, or failing that, the one whose start date is closest to it — see

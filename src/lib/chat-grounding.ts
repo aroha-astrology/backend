@@ -1619,6 +1619,13 @@ export async function buildGroundingFacts(
     const houseOccupants = config.natalHouses.flatMap((h) => houseOccupantsMap[h] ?? []);
     const significators = [...new Set([...houseLords, ...config.staticKarakas, ...houseOccupants])];
 
+    // nearTerm: true -- chat/voice needs current + genuinely NEAR upcoming
+    // windows (bounded per-domain by DOMAIN_CONFIG's horizonYears), never a
+    // technically-"stronger" match that happens to be a decade away. This is
+    // the fix for the "when will I get a job" -> 2040 production bug: see
+    // scoreNearTermWindows's doc comment in dasha-confidence.ts. Reports
+    // (report-timing.ts) deliberately omit this and keep the older
+    // unbounded, tier/score-ranked search.
     const result = scoreDomainWindows(
       domain,
       significators,
@@ -1627,19 +1634,20 @@ export async function buildGroundingFacts(
       now,
       transits,
       sharedDashaTree,
+      { nearTerm: true },
     );
 
-    // Only the STRONGEST window per domain is recorded. Capturing every ranked
-    // window would multiply rows by 15 domains on every single chat turn, and
-    // the top-ranked one is the claim the narration actually leans on.
-    const strongest = result.windows[0];
-    if (sink && strongest) {
+    // Only the leading (soonest/current) window per domain is recorded. Capturing every window
+    // would multiply rows by 15 domains on every single chat turn, and the lead one is the claim
+    // the narration actually leans on.
+    const leading = result.windows[0];
+    if (sink && leading) {
       sink.windows.push({
         domain,
-        level: strongest.level,
-        startDate: strongest.startDate,
-        endDate: strongest.endDate,
-        dashaLevel: strongest.dashaLevel,
+        level: leading.level,
+        startDate: leading.startDate,
+        endDate: leading.endDate,
+        dashaLevel: leading.dashaLevel,
       });
     }
 
@@ -1650,21 +1658,42 @@ export async function buildGroundingFacts(
       continue;
     }
 
+    // Tags are CURRENT/NEXT/THEN, not STRONGEST/#n — result.windows is already
+    // sorted soonest-first by scoreDomainWindows's nearTerm path (see its doc
+    // comment in dasha-confidence.ts), never a technically-"stronger" match
+    // years further out. This is the fix for the production bug where chat
+    // answered "when will I get a job" with a window 14 years away: that far
+    // antardasha-tier match no longer even reaches this list, bounded as it
+    // now is by each domain's own DOMAIN_CONFIG.horizonYears.
+    let nextTagged = false; // NEXT goes to the first NON-running window encountered, not index 1 —
+    // a CURRENT window can occupy slot 0 and still be followed by a genuine NEXT in slot 1.
     const rankedText = result.windows
-      .map((w, i) => {
-        const tag = i === 0 ? 'STRONGEST' : `#${i + 1}`;
+      .map((w) => {
         // A window that is running RIGHT NOW has a start date in the past, and the model is
         // separately (and correctly) told never to present an elapsed window as upcoming
         // (scholar.ts PAST_IS_FOR_VERIFICATION_ONLY / TEMPORAL_ANCHOR). Without this marker it
         // reads the past start date, discards the live window, and answers with the next one —
         // years out. Say plainly that it is open today.
-        const dates =
-          new Date(w.startDate) <= now
-            ? `ACTIVE NOW, open since ${w.startDate} and running to ${w.endDate}`
-            : `approx ${w.startDate} to ${w.endDate}`;
+        const isRunning = new Date(w.startDate) <= now;
+        let tag: string;
+        if (isRunning) {
+          tag = 'CURRENT';
+        } else if (!nextTagged) {
+          tag = 'NEXT';
+          nextTagged = true;
+        } else {
+          tag = 'THEN';
+        }
+        const dates = isRunning
+          ? `ACTIVE NOW, open since ${w.startDate} and running to ${w.endDate}`
+          : `approx ${w.startDate} to ${w.endDate}`;
         return `${tag} ${w.level} (${w.reasoning.join(' ')}) ${dates}`;
       })
       .join(' | ');
+    // No "soonest-first" note repeated per domain here — RANKED_WINDOWS
+    // already explains the CURRENT/NEXT/THEN convention once, globally, and
+    // repeating it across 15 domain lines was pure char-budget waste against
+    // MAX_CONTEXT_CHARS (test/verify-chat-fix.spec.ts's size-ceiling check).
     facts.push(`${config.label} (cross-read with ${config.varga}): ${rankedText}`);
   }
 

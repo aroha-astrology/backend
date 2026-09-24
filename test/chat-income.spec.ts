@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   expandIncomeMarkers,
   matchIncomeReply,
+  incomeQuestionFor,
   INCOME_LABEL_TABLES,
 } from '../src/lib/chat-income.js';
 
@@ -71,6 +72,32 @@ describe('chat income brackets', () => {
   it('leaves a suggestion line without markers untouched', () => {
     expect(expandIncomeMarkers('Ask next: What remedy helps?')).toBe(
       'Ask next: What remedy helps?',
+    );
+  });
+});
+
+describe('incomeQuestionFor', () => {
+  it('returns the localized question for a personal-income ask', () => {
+    expect(incomeQuestionFor('Ask next: {{income}}')).toBe(
+      'Which range is your monthly income in?',
+    );
+    expect(incomeQuestionFor('Ask next: {{income}}', 'hi')).toBe('आपकी मासिक आय किस दायरे में है?');
+  });
+
+  it('returns the localized question for a household-income ask, distinct from the personal one', () => {
+    const personal = incomeQuestionFor('Ask next: {{income}}');
+    const family = incomeQuestionFor('Ask next: {{family_income}}');
+    expect(family).toBe("Which range is your household's monthly income in?");
+    expect(family).not.toBe(personal);
+  });
+
+  it('returns null when the line has no income marker', () => {
+    expect(incomeQuestionFor('Ask next: What remedy helps?')).toBeNull();
+  });
+
+  it('falls back to English for an unknown locale', () => {
+    expect(incomeQuestionFor('Ask next: {{income}}', 'fr')).toBe(
+      incomeQuestionFor('Ask next: {{income}}', 'en'),
     );
   });
 });
