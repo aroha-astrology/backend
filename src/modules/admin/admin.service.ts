@@ -1,4 +1,5 @@
 import { FEATURE_REGISTRY, isKnownFeatureKey } from '../../config/features.js';
+import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { getReportDef } from '../../config/reports.js';
 import { Errors } from '../../lib/errors.js';
 import { resolveFeatures, invalidateFeatureCache } from '../features/features.service.js';
@@ -42,7 +43,9 @@ import {
   recurringUsersForWeek,
   timeSpentHoursForWeek,
   userDemographics,
+  retentionSnapshot,
   type DateRange,
+  type RetentionCohort,
   type UserDemographics,
 } from './admin.repo.js';
 
@@ -433,6 +436,45 @@ export async function getRecurringUsers(): Promise<RecurringUsersWeekDto[]> {
       };
     }),
   );
+}
+
+export interface RetentionRateDto extends RetentionCohort {
+  /** retained / cohort, 0-1; null when the cohort is empty. */
+  rate: number | null;
+}
+
+export interface RetentionDto {
+  /** The last complete IST day the numbers are measured up to (YYYY-MM-DD). */
+  asOfDate: string;
+  dau: number;
+  wau: number;
+  mau: number;
+  /** DAU / MAU — how many monthly users show up on a given day. */
+  stickiness: number | null;
+  d1: RetentionRateDto;
+  d7: RetentionRateDto;
+  d30: RetentionRateDto;
+}
+
+const withRate = (c: RetentionCohort): RetentionRateDto => ({
+  ...c,
+  rate: c.cohort > 0 ? c.retained / c.cohort : null,
+});
+
+/** DAU/WAU/MAU + D1/D7/D30 for the admin Retention card and Telegram /stats — see retentionSnapshot(). */
+export async function getRetention(now: Date = new Date()): Promise<RetentionDto> {
+  const asOfDate = istDateString(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  const snap = await retentionSnapshot(asOfDate);
+  return {
+    asOfDate,
+    dau: snap.dau,
+    wau: snap.wau,
+    mau: snap.mau,
+    stickiness: snap.mau > 0 ? snap.dau / snap.mau : null,
+    d1: withRate(snap.d1),
+    d7: withRate(snap.d7),
+    d30: withRate(snap.d30),
+  };
 }
 
 /** Age-bracket, gender, and relationship-status breakdown across all (non-deleted) users, for the admin "User Demographics" card. */

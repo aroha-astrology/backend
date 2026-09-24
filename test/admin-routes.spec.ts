@@ -30,6 +30,7 @@ const state = vi.hoisted(() => ({
   costByAgent: vi.fn(),
   recurringUsersForWeek: vi.fn(),
   timeSpentHoursForWeek: vi.fn(),
+  retentionSnapshot: vi.fn(),
   resolveFeatures: vi.fn(),
   invalidateFeatureCache: vi.fn(),
   upsertFeatureOverride: vi.fn(),
@@ -88,6 +89,7 @@ vi.mock('../src/modules/admin/admin.repo.js', async (importOriginal) => {
     logAdminAction: state.logAdminAction,
     recurringUsersForWeek: state.recurringUsersForWeek,
     timeSpentHoursForWeek: state.timeSpentHoursForWeek,
+    retentionSnapshot: state.retentionSnapshot,
   };
 });
 
@@ -255,6 +257,47 @@ describe('GET /v1/admin/recurring-users', () => {
       expect.stringContaining('/v1/admin/recurring-users'),
       expect.anything(),
     );
+  });
+});
+
+describe('GET /v1/admin/retention', () => {
+  it('returns DAU/WAU/MAU and D1/D7/D30 with rates, measured up to the last full IST day', async () => {
+    signInAs(ADMIN_PHONE);
+    state.retentionSnapshot.mockResolvedValue({
+      dau: 30,
+      wau: 90,
+      mau: 200,
+      d1: { cohort: 50, retained: 20 },
+      d7: { cohort: 100, retained: 15 },
+      d30: { cohort: 0, retained: 0 },
+    });
+    const app = createApp();
+
+    const res = await app.request('/v1/admin/retention', { headers: authHeader() });
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      dau: 30,
+      wau: 90,
+      mau: 200,
+      stickiness: 0.15,
+      d1: { cohort: 50, retained: 20, rate: 0.4 },
+      d7: { cohort: 100, retained: 15, rate: 0.15 },
+      d30: { cohort: 0, retained: 0, rate: null },
+    });
+    expect(body.asOfDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // asOfDate is yesterday in IST, and the repo is asked for exactly that day.
+    expect(state.retentionSnapshot).toHaveBeenCalledWith(body.asOfDate);
+  });
+
+  it('returns 403 for a non-admin phone', async () => {
+    signInAs(NON_ADMIN_PHONE);
+    const app = createApp();
+
+    const res = await app.request('/v1/admin/retention', { headers: authHeader() });
+
+    expect(res.status).toBe(403);
   });
 });
 

@@ -12,6 +12,7 @@ import {
   voiceSessions,
   reports,
   users,
+  userActivityDaily,
 } from '../../db/schema.js';
 
 /* -------------------------------------------------------------------------- */
@@ -224,6 +225,76 @@ export async function recurringUsersForWeek(
   return {
     activeCount: Number(row?.activeCount ?? 0),
     recurringCount: Number(row?.recurringCount ?? 0),
+  };
+}
+
+export interface RetentionCohort {
+  /** Users who finished onboarding on a day old enough to be measured. */
+  cohort: number;
+  /** Of those, how many were active exactly N IST days later. */
+  retained: number;
+}
+
+export interface RetentionSnapshot {
+  dau: number;
+  wau: number;
+  mau: number;
+  d1: RetentionCohort;
+  d7: RetentionCohort;
+  d30: RetentionCohort;
+}
+
+/**
+ * DAU/WAU/MAU and classic D1/D7/D30 retention from user_activity_daily (one
+ * row per user per IST day, written by the 60-second client heartbeat).
+ *
+ * `lastFullDay` is the most recent COMPLETE IST day (yesterday) so a
+ * half-finished today never drags the numbers down. A user's day 0 is the IST
+ * day they finished onboarding (profile_completed_at); "retained on DN" means
+ * a heartbeat row exactly N days later. Each DN pools several daily cohorts
+ * (D1: last 14 days, D7: last 28, D30: last 60) so one quiet day doesn't swing
+ * the number, and only includes cohorts whose day N has already fully passed.
+ */
+export async function retentionSnapshot(lastFullDay: string): Promise<RetentionSnapshot> {
+  const result = await db.execute<Record<string, string>>(sql`
+    WITH cohort AS (
+      SELECT id AS user_id, (profile_completed_at AT TIME ZONE 'Asia/Kolkata')::date AS d0
+      FROM ${users}
+      WHERE profile_completed_at IS NOT NULL
+        AND deleted_at IS NULL
+        AND (profile_completed_at AT TIME ZONE 'Asia/Kolkata')::date > ${lastFullDay}::date - 91
+    ),
+    marked AS (
+      SELECT
+        c.d0,
+        EXISTS (SELECT 1 FROM ${userActivityDaily} a WHERE a.user_id = c.user_id AND a.activity_date = c.d0 + 1) AS r1,
+        EXISTS (SELECT 1 FROM ${userActivityDaily} a WHERE a.user_id = c.user_id AND a.activity_date = c.d0 + 7) AS r7,
+        EXISTS (SELECT 1 FROM ${userActivityDaily} a WHERE a.user_id = c.user_id AND a.activity_date = c.d0 + 30) AS r30
+      FROM cohort c
+    )
+    SELECT
+      (SELECT count(DISTINCT user_id) FROM ${userActivityDaily} WHERE activity_date = ${lastFullDay}::date) AS "dau",
+      (SELECT count(DISTINCT user_id) FROM ${userActivityDaily}
+        WHERE activity_date > ${lastFullDay}::date - 7 AND activity_date <= ${lastFullDay}::date) AS "wau",
+      (SELECT count(DISTINCT user_id) FROM ${userActivityDaily}
+        WHERE activity_date > ${lastFullDay}::date - 30 AND activity_date <= ${lastFullDay}::date) AS "mau",
+      count(*) FILTER (WHERE d0 + 1 <= ${lastFullDay}::date AND d0 > ${lastFullDay}::date - 15) AS "d1Cohort",
+      count(*) FILTER (WHERE d0 + 1 <= ${lastFullDay}::date AND d0 > ${lastFullDay}::date - 15 AND r1) AS "d1Retained",
+      count(*) FILTER (WHERE d0 + 7 <= ${lastFullDay}::date AND d0 > ${lastFullDay}::date - 35) AS "d7Cohort",
+      count(*) FILTER (WHERE d0 + 7 <= ${lastFullDay}::date AND d0 > ${lastFullDay}::date - 35 AND r7) AS "d7Retained",
+      count(*) FILTER (WHERE d0 + 30 <= ${lastFullDay}::date AND d0 > ${lastFullDay}::date - 90) AS "d30Cohort",
+      count(*) FILTER (WHERE d0 + 30 <= ${lastFullDay}::date AND d0 > ${lastFullDay}::date - 90 AND r30) AS "d30Retained"
+    FROM marked
+  `);
+  const row = result[0] ?? {};
+  const n = (key: string) => Number(row[key] ?? 0);
+  return {
+    dau: n('dau'),
+    wau: n('wau'),
+    mau: n('mau'),
+    d1: { cohort: n('d1Cohort'), retained: n('d1Retained') },
+    d7: { cohort: n('d7Cohort'), retained: n('d7Retained') },
+    d30: { cohort: n('d30Cohort'), retained: n('d30Retained') },
   };
 }
 

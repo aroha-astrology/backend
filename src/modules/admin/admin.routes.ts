@@ -26,6 +26,7 @@ import {
   AdminNextReportVotesResponseSchema,
   AdminReferralsResponseSchema,
   AdminRecurringUsersResponseSchema,
+  AdminRetentionResponseSchema,
   AdminUserDemographicsResponseSchema,
   AdminDeletionRequestsResponseSchema,
   AdminDeletionActionResponseSchema,
@@ -50,6 +51,7 @@ import {
   getNextReportVoteCounts,
   getReferrals,
   getRecurringUsers,
+  getRetention,
   getUserDemographics,
   listDeletionRequests,
   flagUserForDeletion,
@@ -584,6 +586,34 @@ adminRouter.openapi(recurringUsersRoute, async (c) => {
   const weeks = await getRecurringUsers();
   await auditRead(c, 'GET /v1/admin/recurring-users', {});
   return c.json({ weeks }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/retention                                                        */
+/* -------------------------------------------------------------------------- */
+
+const retentionRoute = createRoute({
+  method: 'get',
+  path: '/admin/retention',
+  tags: ['Admin'],
+  summary:
+    'DAU/WAU/MAU and D1/D7/D30 retention up to the last complete IST day, from the per-user daily activity heartbeat',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: {
+      description: 'Retention snapshot',
+      content: { 'application/json': { schema: AdminRetentionResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(retentionRoute, async (c) => {
+  const retention = await getRetention();
+  await auditRead(c, 'GET /v1/admin/retention', {});
+  return c.json(retention, 200);
 });
 
 /* -------------------------------------------------------------------------- */

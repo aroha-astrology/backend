@@ -21,6 +21,7 @@ import { CONCURRENT_ACTIVE_WINDOW_MS } from '../admin-alerts/admin-alerts.servic
 import { maxOnlineCountBetween } from '../admin-alerts/admin-alerts.repo.js';
 import { deleteMe } from '../users/users.service.js';
 import { resolveDateRangePreset } from '../admin/admin.repo.js';
+import { getRetention, type RetentionDto } from '../admin/admin.service.js';
 import { countFailedKundlis } from '../kundli/kundli.repo.js';
 import { getFeedbackVoteCountsByUser } from '../astro/feedback.repo.js';
 import { getAllActiveTokens } from '../device-tokens/device-tokens.repo.js';
@@ -171,6 +172,18 @@ function rangeLabel(preset: string): string {
   return escapeMarkdown(start === end ? start : `${start}–${end}`);
 }
 
+const pct = (rate: number | null): string => (rate === null ? '–' : `${Math.round(rate * 100)}%`);
+
+/** DAU/WAU/MAU + D1/D7/D30 block for /stats — same heartbeat-based numbers as the admin Retention card. */
+function retentionLines(r: RetentionDto | null): string {
+  if (!r) return '';
+  return escapeMarkdown(
+    `DAU / WAU / MAU (to ${r.asOfDate}): ${r.dau} / ${r.wau} / ${r.mau}\n` +
+      `Retention D1 / D7 / D30: ${pct(r.d1.rate)} / ${pct(r.d7.rate)} / ${pct(r.d30.rate)} ` +
+      `(of ${r.d1.cohort} / ${r.d7.cohort} / ${r.d30.cohort} new users)\n\n`,
+  );
+}
+
 export async function cmdStats(): Promise<string> {
   const [
     totalUsers,
@@ -187,6 +200,7 @@ export async function cmdStats(): Promise<string> {
     concurrentNow,
     activeToday,
     activeYesterday,
+    retention,
   ] = await Promise.all([
     countUsers(),
     countNewUsersToday(),
@@ -202,6 +216,8 @@ export async function cmdStats(): Promise<string> {
     countUsersActiveSince(new Date(Date.now() - CONCURRENT_ACTIVE_WINDOW_MS)),
     usersActiveBetween(resolveDateRangePreset('today')),
     usersActiveBetween(resolveDateRangePreset('yesterday')),
+    // A retention query failure must not take the whole /stats reply down.
+    getRetention().catch(() => null),
   ]);
 
   return (
@@ -212,6 +228,7 @@ export async function cmdStats(): Promise<string> {
     `New Users This Week: ${newUsersWeek}\n\n` +
     `Active Users \\(today, ${rangeLabel('today')}\\): ${activeToday}\n` +
     `Active Users \\(yesterday, ${rangeLabel('yesterday')}\\): ${activeYesterday}\n\n` +
+    retentionLines(retention) +
     `Concurrent Users \\(Online Now\\): ${concurrentNow}\n` +
     `Concurrent Users \\(today, ${rangeLabel('today')}\\): ${peakToday}\n` +
     `Concurrent Users \\(yesterday, ${rangeLabel('yesterday')}\\): ${peakYesterday}\n` +

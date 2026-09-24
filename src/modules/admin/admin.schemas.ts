@@ -354,6 +354,25 @@ export const AdminRecurringUsersResponseSchema = z
   .object({ weeks: z.array(AdminRecurringUsersWeekSchema) })
   .openapi('AdminRecurringUsersResponse');
 
+const AdminRetentionRateSchema = z.object({
+  cohort: z.number().int(),
+  retained: z.number().int(),
+  rate: z.number().nullable(),
+});
+
+export const AdminRetentionResponseSchema = z
+  .object({
+    asOfDate: z.string(),
+    dau: z.number().int(),
+    wau: z.number().int(),
+    mau: z.number().int(),
+    stickiness: z.number().nullable(),
+    d1: AdminRetentionRateSchema,
+    d7: AdminRetentionRateSchema,
+    d30: AdminRetentionRateSchema,
+  })
+  .openapi('AdminRetentionResponse');
+
 /* -------------------------------------------------------------------------- */
 /* GET /admin/active-users/by-location                                       */
 /* -------------------------------------------------------------------------- */
