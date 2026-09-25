@@ -37,6 +37,9 @@ import {
   orders,
   reports,
   userActivityDaily,
+  journalEntries,
+  birthTimeRectifications,
+  decisionQueries,
   type NewUserRow,
   type NewUserConsentLogRow,
   type UserRow,
@@ -706,6 +709,11 @@ export async function anonymizeUserById(id: string): Promise<void> {
     await tx.delete(chatSessions).where(eq(chatSessions.userId, id));
     await tx.delete(userFacts).where(eq(userFacts.userId, id));
     await tx.delete(chatFeedbackReports).where(eq(chatFeedbackReports.userId, id));
+    // Roadmap tables holding the user's own words and birth data: journal
+    // notes and life events, birth-time checks, decision questions and places.
+    await tx.delete(journalEntries).where(eq(journalEntries.userId, id));
+    await tx.delete(birthTimeRectifications).where(eq(birthTimeRectifications.userId, id));
+    await tx.delete(decisionQueries).where(eq(decisionQueries.userId, id));
 
     // Revoked tokens are useless for push, but the token string is still a
     // device credential — scrub it too rather than leaving it at rest.
@@ -1445,7 +1453,18 @@ export async function collectUserExport(userId: string) {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) return null;
 
-  const [profiles, sessions, facts, transactions, consents, notifs, palms] = await Promise.all([
+  const [
+    profiles,
+    sessions,
+    facts,
+    transactions,
+    consents,
+    notifs,
+    palms,
+    journal,
+    rectifications,
+    decisions,
+  ] = await Promise.all([
     db.select().from(birthProfiles).where(eq(birthProfiles.ownerUserId, userId)),
     db.select().from(chatSessions).where(eq(chatSessions.userId, userId)),
     db.select().from(userFacts).where(eq(userFacts.userId, userId)),
@@ -1469,6 +1488,13 @@ export async function collectUserExport(userId: string) {
       })
       .from(palmReadings)
       .where(eq(palmReadings.userId, userId)),
+    db
+      .select()
+      .from(journalEntries)
+      .where(eq(journalEntries.userId, userId))
+      .orderBy(desc(journalEntries.entryDate)),
+    db.select().from(birthTimeRectifications).where(eq(birthTimeRectifications.userId, userId)),
+    db.select().from(decisionQueries).where(eq(decisionQueries.userId, userId)),
   ]);
 
   const decrypted = decryptUserRow(user);
@@ -1502,5 +1528,13 @@ export async function collectUserExport(userId: string) {
     consentHistory: consents,
     notifications: notifs,
     palmReadings: palms,
+    journalEntries: journal.map((j) => ({ ...j, body: decryptJson<unknown>(j.body) })),
+    birthTimeChecks: rectifications.map((r) => ({
+      ...r,
+      statedTime: decryptField(r.statedTime),
+      suggestedTime: decryptField(r.suggestedTime),
+      detail: decryptJson<unknown>(r.detail),
+    })),
+    decisionResults: decisions.map((d) => ({ ...d, input: decryptJson<unknown>(d.input) })),
   };
 }

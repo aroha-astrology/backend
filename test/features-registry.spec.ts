@@ -80,6 +80,8 @@ describe('roadmap features (tag "new")', () => {
       'nav.bonds',
       'home.bondsCard',
       'paid.bondInsight',
+      'nav.journal',
+      'home.journalPrompt',
     ];
     const tagged = new Set(NEW.map((f) => f.key));
     for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);

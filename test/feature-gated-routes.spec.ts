@@ -190,3 +190,24 @@ describe('roadmap step 7 routes ship dark', () => {
     expect((await post(`/v1/bonds/${id}/unlock`)).status).toBe(403);
   });
 });
+
+describe('roadmap step 8 routes ship dark', () => {
+  it('the journal routes → 403 while nav.journal and home.journalPrompt are off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.journal': off,
+      'home.journalPrompt': off,
+    });
+    for (const path of ['/v1/journal', '/v1/journal/insights', '/v1/journal/life-events']) {
+      const res = await createApp().request(path, {
+        headers: { Authorization: 'Bearer good-token' },
+      });
+      expect(res.status, path).toBe(403);
+    }
+    const put = await createApp().request('/v1/journal/2026-09-25', {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer good-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mood: 4 }),
+    });
+    expect(put.status).toBe(403);
+  });
+});

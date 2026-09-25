@@ -753,6 +753,23 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultPricePaise: 4900,
     tag: 'new',
   },
+
+  // Step 8 — Astro Journal (free; notes and life events stored encrypted).
+  // A /journal page: rate mood, energy, career, relationships and money, add a note and big life events; see your own patterns by dasha period and by the day's tara. Life events can feed Birth Time Confidence. Free, no AI cost.
+  {
+    key: 'nav.journal',
+    label: 'Astro Journal — daily check-in with patterns by dasha and star',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'home.journalPrompt',
+    label: 'Astro Journal — "How was today?" card on Home',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

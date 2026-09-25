@@ -2889,3 +2889,48 @@ export const decisionQueries = pgTable(
 );
 
 export type DecisionQueryRow = typeof decisionQueries.$inferSelect;
+
+/* -------------------------------------------------------------------------- */
+/* journal_entries — Astro Journal daily check-ins                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One Astro Journal check-in per user per day. `body` is encrypted JSON
+ * ({ note, events }) — the free text and the life-event tags are personal.
+ * The 1-5 ratings and `snapshot` (the owner's Maha/Antar lords and the
+ * Moon's sign, nakshatra and tara that day) stay plain so insights can group
+ * them. See modules/journal.
+ */
+export const journalEntries = pgTable(
+  'journal_entries',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    entryDate: date('entry_date').notNull(),
+    mood: smallint('mood'),
+    energy: smallint('energy'),
+    career: smallint('career'),
+    relationship: smallint('relationship'),
+    money: smallint('money'),
+    body: text('body').notNull(),
+    snapshot: jsonb('snapshot'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userDateUnique: uniqueIndex('journal_entries_user_date_unique').on(
+      table.userId,
+      table.entryDate,
+    ),
+  }),
+);
+
+export type JournalEntryRow = typeof journalEntries.$inferSelect;
