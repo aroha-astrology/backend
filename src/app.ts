@@ -34,6 +34,7 @@ import { insightsRouter } from './modules/insights/insights.routes.js';
 import { decisionsRouter } from './modules/decisions/decisions.routes.js';
 import { bondsRouter } from './modules/bonds/bonds.routes.js';
 import { journalRouter } from './modules/journal/journal.routes.js';
+import { practiceRouter } from './modules/practice/practice.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -139,6 +140,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', decisionsRouter);
   app.route('/v1', bondsRouter);
   app.route('/v1', journalRouter);
+  app.route('/v1', practiceRouter);
 
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.

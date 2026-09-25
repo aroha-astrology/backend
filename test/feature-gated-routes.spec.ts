@@ -211,3 +211,17 @@ describe('roadmap step 8 routes ship dark', () => {
     expect(put.status).toBe(403);
   });
 });
+
+describe('roadmap step 9 routes ship dark', () => {
+  it("GET /v1/practice/today and POST /v1/practice/complete → 403 while Today's Practice is off", async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.dailyPractice': off,
+      'home.dailyPractice': off,
+    });
+    const get = await createApp().request('/v1/practice/today', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(get.status).toBe(403);
+    expect((await post('/v1/practice/complete', { itemId: 'weekday' })).status).toBe(403);
+  });
+});

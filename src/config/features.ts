@@ -770,6 +770,23 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+
+  // Step 9 — Today's Practice (free).
+  {
+    key: 'home.dailyPractice',
+    label: "Today's Practice card on Home",
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // A /practice page: today's horoscope mantra, 108 japs for your running dasha lord, the weekday's prayer, and a Lal Kitab remedy on hard Moon days, each with its reason, chanted on the app's mala. A plain streak, no points. Free, no AI cost.
+  {
+    key: 'nav.dailyPractice',
+    label: "Today's Practice — daily mantras and remedy with reasons",
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

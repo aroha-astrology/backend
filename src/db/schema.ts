@@ -2934,3 +2934,35 @@ export const journalEntries = pgTable(
 );
 
 export type JournalEntryRow = typeof journalEntries.$inferSelect;
+
+/* -------------------------------------------------------------------------- */
+/* practice_log — Today's Practice completions                                */
+/* -------------------------------------------------------------------------- */
+
+/** One practice item marked done on a day (see modules/practice). Unique, so "done" is idempotent. */
+export const practiceLog = pgTable(
+  'practice_log',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    practiceDate: date('practice_date').notNull(),
+    /** 'remedy' | 'dasha' | 'weekday' | 'lalKitab'. */
+    itemId: text('item_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userDateItemUnique: uniqueIndex('practice_log_user_date_item_unique').on(
+      table.userId,
+      table.practiceDate,
+      table.itemId,
+    ),
+  }),
+);
+
+export type PracticeLogRow = typeof practiceLog.$inferSelect;
