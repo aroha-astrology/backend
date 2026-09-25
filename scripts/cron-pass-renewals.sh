@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Aroha Pass renewals: renews wallet Passes that are due from the user's
-# balance, ends the ones the balance can't cover, sends the "ends in 3 days"
+# Aroha Pass renewals: ends wallet Passes from before the Pass went
+# Google-Play-only (they never renew from the wallet), sends their "ends in 3 days"
 # reminders, and expires lapsed Passes. Play Store Passes are kept in step by
 # the RTDN webhook instead; this only expires them if Google went quiet.
 #

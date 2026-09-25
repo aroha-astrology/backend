@@ -1,15 +1,13 @@
 // =============================================================================
 // Aroha Pass + Question Packs (roadmap step 10, all switched off)
 // =============================================================================
-// The Pass: 30 days of 30 chat questions, the "free with the Pass" unlocks
-// (Life Timeline, Bonds, Decisions, Find My Date, birth-time checks) and 20%
-// off reports. Two ways to pay, each behind its own switch:
-//   wallet       paid from the wallet on any platform (nav.arohaPass + a
-//                price variant); optional auto-renew from the balance, run by
-//                the pass-renewals cron, with a reminder 3 days before the end;
-//   google_play  an auto-renewing Play subscription on Android
-//                (paid.arohaPassPlay), kept in step by the RTDN webhook — see
-//                pass-play.service.ts.
+// The Pass: 30 days of 30 chat questions, the Pass-only features (Life
+// Timeline, Bonds, Decisions, Find My Date, the birth-time check, Relocation —
+// see lib/entitlements.ts) and 20% off reports. It is a Google Play
+// subscription only (nav.arohaPass + a price variant): an auto-renewing Play
+// subscription on Android, kept in step by the RTDN webhook — see
+// pass-play.service.ts. It is never paid from the wallet. Rows with source
+// 'wallet' are from before that rule: they run to their end and never renew.
 // The price test: a user sees one of the variant keys that are on, picked by
 // a stable hash of their id. Question Packs: prepaid chat questions bought
 // from the wallet; chat spends Pass quota, then pack credits, then the wallet
@@ -39,17 +37,12 @@ import {
   expireLapsedPasses,
   expirePass,
   findActivePass,
-  insertPass,
   listWalletRemindersDue,
   listWalletRenewalsDue,
   markPassReminded,
-  renewPass,
-  setPassAutoRenew,
 } from './pass.repo.js';
 
 const MS_PER_DAY = 86_400_000;
-export const PASS_REASON = 'aroha_pass';
-export const PASS_RENEWAL_REASON = 'aroha_pass_renewal';
 export const PASS_NOTIFICATION_TYPE = 'aroha_pass';
 
 /** Stable A/B/C assignment: the same user always lands on the same variant among those switched on. */
@@ -62,9 +55,10 @@ export function assignVariant(userId: string, enabled: readonly PassVariant[]): 
 
 export interface PassOffer {
   variant: PassVariant;
+  /** Shown price. Google Play charges the base plan's own price, set in Play Console to match. */
   pricePaise: number;
-  /** Buy through Google Play (Android) — needs paid.arohaPassPlay. */
-  play: { productId: string; basePlanId: string } | null;
+  /** The Play subscription to buy (Android only). */
+  play: { productId: string; basePlanId: string };
 }
 
 export interface PassStatus {
@@ -98,10 +92,7 @@ function offerFor(userId: string, features: Features): PassOffer | null {
   return {
     variant,
     pricePaise: features[def.key]?.pricePaise ?? def.fallbackPaise,
-    play:
-      features['paid.arohaPassPlay']?.enabled === true
-        ? { productId: PASS_PLAY_PRODUCT_ID, basePlanId: def.playBasePlan }
-        : null,
+    play: { productId: PASS_PLAY_PRODUCT_ID, basePlanId: def.playBasePlan },
   };
 }
 
@@ -141,47 +132,6 @@ export async function getPassStatus(user: UserRow): Promise<PassStatus> {
   };
 }
 
-/** Buys 30 days of the Pass from the wallet at the user's variant price. */
-export async function buyWalletPass(
-  user: UserRow,
-  opts: { autoRenew: boolean },
-): Promise<PassStatus> {
-  const features = await resolveFeaturesForUser(user.id);
-  const offer = offerFor(user.id, features);
-  if (!offer) throw Errors.conflict('PASS_NOT_AVAILABLE');
-  if (await findActivePass(user.id)) throw Errors.conflict('PASS_ALREADY_ACTIVE');
-
-  const charged = await deductWalletBalance(user.id, offer.pricePaise, PASS_REASON);
-  if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
-  const now = new Date();
-  try {
-    await insertPass({
-      userId: user.id,
-      source: 'wallet',
-      priceVariant: offer.variant,
-      pricePaise: offer.pricePaise,
-      autoRenew: opts.autoRenew,
-      periodStart: now,
-      periodEnd: new Date(now.getTime() + PASS_PERIOD_DAYS * MS_PER_DAY),
-    });
-  } catch (err) {
-    await addWalletBalance(user.id, offer.pricePaise, `refund:${PASS_REASON}`).catch((e: unknown) =>
-      logger.error({ err: e, userId: user.id }, 'pass: refund after failed insert failed'),
-    );
-    throw err;
-  }
-  return getPassStatus(user);
-}
-
-/** Turns wallet auto-renew on or off. A Play Pass is managed in the Play Store. */
-export async function setAutoRenew(user: UserRow, on: boolean): Promise<PassStatus> {
-  const active = await findActivePass(user.id);
-  if (!active) throw Errors.notFound('PASS_NOT_FOUND');
-  if (active.source !== 'wallet') throw Errors.conflict('PASS_MANAGED_BY_PLAY');
-  await setPassAutoRenew(active.id, on);
-  return getPassStatus(user);
-}
-
 export async function buyQuestionPack(user: UserRow, pack: QuestionPack): Promise<PassStatus> {
   const def = QUESTION_PACKS.find((p) => p.pack === pack)!;
   const features = await resolveFeaturesForUser(user.id);
@@ -208,13 +158,12 @@ export async function buyQuestionPack(user: UserRow, pack: QuestionPack): Promis
 /* -------------------------------------------------------------------------- */
 
 export interface RenewalRun {
-  renewed: number;
+  /** Wallet Passes (from before the Pass went Play-only) that reached their end. */
   lapsed: number;
   reminded: number;
   expired: number;
 }
 
-const rupees = (paise: number) => `₹${Math.round(paise / 100)}`;
 const day = (d: Date) =>
   new Intl.DateTimeFormat('en-IN', {
     day: 'numeric',
@@ -223,42 +172,28 @@ const day = (d: Date) =>
   }).format(d);
 
 /**
- * The daily Pass job: renews wallet Passes due today from the balance (at the
- * price the user signed up at), ends the ones the balance can't cover, sends
- * the "ends in 3 days" reminders, and expires everything else that's over.
+ * The daily Pass job. The wallet never pays for the Pass: a wallet Pass from
+ * before that rule ends at its period end (even with auto-renew on), with a
+ * reminder 3 days before, both pointing at the Google Play subscription.
+ * Then everything else that's over is expired (Play Passes only if Google
+ * went quiet — the RTDN webhook normally ends them).
  */
 export async function runPassRenewals(
   now: Date = new Date(),
   opts: { dryRun?: boolean } = {},
 ): Promise<RenewalRun> {
-  const run: RenewalRun = { renewed: 0, lapsed: 0, reminded: 0, expired: 0 };
+  const run: RenewalRun = { lapsed: 0, reminded: 0, expired: 0 };
 
   for (const row of await listWalletRenewalsDue(now)) {
     if (opts.dryRun) continue;
-    // A long-missed renewal restarts from today rather than back-dating a period nobody used.
-    const start =
-      row.periodEnd && now.getTime() - row.periodEnd.getTime() < MS_PER_DAY ? row.periodEnd : now;
-    const charged = await deductWalletBalance(
-      row.userId,
-      row.pricePaise,
-      PASS_RENEWAL_REASON,
-    ).catch(() => false);
-    if (charged) {
-      await renewPass(row.id, {
-        start,
-        end: new Date(start.getTime() + PASS_PERIOD_DAYS * MS_PER_DAY),
-      });
-      run.renewed += 1;
-    } else {
-      await expirePass(row.id);
-      await notifyUser(row.userId, {
-        title: 'Your Aroha Pass has ended',
-        body: `There wasn't enough in your wallet to renew it (${rupees(row.pricePaise)}). Add money and restart it any time.`,
-        type: PASS_NOTIFICATION_TYPE,
-        link: '/pass',
-      });
-      run.lapsed += 1;
-    }
+    await expirePass(row.id);
+    await notifyUser(row.userId, {
+      title: 'Your Aroha Pass has ended',
+      body: 'Subscribe through Google Play in the Aroha app to keep your questions and Pass features.',
+      type: PASS_NOTIFICATION_TYPE,
+      link: '/pass',
+    });
+    run.lapsed += 1;
   }
 
   for (const row of await listWalletRemindersDue(
@@ -266,12 +201,9 @@ export async function runPassRenewals(
     new Date(now.getTime() + PASS_REMINDER_DAYS * MS_PER_DAY),
   )) {
     if (opts.dryRun) continue;
-    const end = row.periodEnd!;
     await notifyUser(row.userId, {
-      title: row.autoRenew ? 'Your Aroha Pass renews soon' : 'Your Aroha Pass ends soon',
-      body: row.autoRenew
-        ? `It renews on ${day(end)} for ${rupees(row.pricePaise)} from your wallet. Keep enough balance, or turn off auto-renew.`
-        : `It ends on ${day(end)}. Renew to keep your questions and unlocks.`,
+      title: 'Your Aroha Pass ends soon',
+      body: `It ends on ${day(row.periodEnd!)}. Subscribe through Google Play in the Aroha app to keep it.`,
       type: PASS_NOTIFICATION_TYPE,
       link: '/pass',
     });

@@ -896,8 +896,8 @@ cronRouter.openapi(dailyUserReportRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Aroha Pass renewals (roadmap step 10) — renews wallet Passes from the
-// balance, ends the ones it can't cover, sends the 3-day reminders, and
+// Aroha Pass renewals (roadmap step 10) — ends wallet Passes from before the
+// Pass went Google-Play-only (they never renew), sends their 3-day reminders, and
 // expires lapsed Passes. A no-op while nobody has a Pass. Wired to run daily
 // (see scripts/cron-pass-renewals.sh) — only needed once the Pass is on.
 // ---------------------------------------------------------------------------
@@ -906,14 +906,14 @@ const PassRenewalsBodySchema = z
   .object({ dryRun: z.boolean().optional() })
   .openapi('PassRenewalsBody');
 const PassRenewalsResultSchema = z
-  .object({ renewed: z.number(), lapsed: z.number(), reminded: z.number(), expired: z.number() })
+  .object({ lapsed: z.number(), reminded: z.number(), expired: z.number() })
   .openapi('PassRenewalsResult');
 
 const passRenewalsRoute = createRoute({
   method: 'post',
   path: '/cron/pass-renewals',
   tags: ['Cron'],
-  summary: 'Renew, remind about and expire Aroha Passes',
+  summary: 'Remind about and expire Aroha Passes (never charges the wallet)',
   description: 'Authenticated via the X-Cron-Secret header.',
   request: {
     body: { content: { 'application/json': { schema: PassRenewalsBodySchema } } },

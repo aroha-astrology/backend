@@ -51,8 +51,7 @@ const decisionRoute = createRoute({
   method: 'post',
   path: '/decisions',
   tags: ['Decisions'],
-  summary:
-    'Decision Astrology: favourable and caution windows for a choice (wallet; free with the Pass)',
+  summary: 'Decision Astrology: favourable and caution windows for a choice (Aroha Pass only)',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireFeature('nav.decisions'), runLimit] as const,
   request: {
@@ -73,8 +72,8 @@ const decisionRoute = createRoute({
   responses: {
     200: { description: 'The stored result', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
-    409: errorResponse('INSUFFICIENT_CREDITS or CHART_NOT_READY'),
+    403: errorResponse('Feature disabled for this user, or PASS_REQUIRED'),
+    409: errorResponse('CHART_NOT_READY'),
   },
 });
 
@@ -87,8 +86,7 @@ const findDateRoute = createRoute({
   method: 'post',
   path: '/find-date',
   tags: ['Decisions'],
-  summary:
-    'Find My Date: the best days and times for a beginning at a place (wallet; free with the Pass)',
+  summary: 'Find My Date: the best days and times for a beginning at a place (Aroha Pass only)',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireFeature('panchang.findMyDate'), runLimit] as const,
   request: {
@@ -109,8 +107,7 @@ const findDateRoute = createRoute({
   responses: {
     200: { description: 'The stored result', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
-    409: errorResponse('INSUFFICIENT_CREDITS'),
+    403: errorResponse('Feature disabled for this user, or PASS_REQUIRED'),
   },
 });
 
@@ -123,7 +120,7 @@ const listRoute = createRoute({
   method: 'get',
   path: '/decisions',
   tags: ['Decisions'],
-  summary: "The user's saved Decision and Find My Date results, with today's prices",
+  summary: "The user's saved Decision and Find My Date results (Aroha Pass only)",
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireAnyFeature(['nav.decisions', 'panchang.findMyDate'])] as const,
   request: {
@@ -132,7 +129,7 @@ const listRoute = createRoute({
   responses: {
     200: { description: 'Saved results', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
+    403: errorResponse('Feature disabled for this user, or PASS_REQUIRED'),
   },
 });
 
@@ -146,14 +143,14 @@ const getRoute = createRoute({
   method: 'get',
   path: '/decisions/{id}',
   tags: ['Decisions'],
-  summary: 'One saved result (reopening is free)',
+  summary: 'One saved result (Aroha Pass only)',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireAnyFeature(['nav.decisions', 'panchang.findMyDate'])] as const,
   request: { params: z.object({ id: z.string().uuid() }) },
   responses: {
     200: { description: 'The result', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
+    403: errorResponse('Feature disabled for this user, or PASS_REQUIRED'),
     404: errorResponse('Not found'),
   },
 });

@@ -17,7 +17,7 @@ import {
 } from './insights.service.js';
 import { getAstroWeather } from './weather.service.js';
 import { getCalendar, MAX_CALENDAR_DAYS } from './calendar.service.js';
-import { getTimeline, unlockFullTimeline } from './timeline.service.js';
+import { getTimeline } from './timeline.service.js';
 
 const ErrorSchema = z
   .object({
@@ -82,13 +82,14 @@ const statusRoute = createRoute({
   method: 'get',
   path: '/birth-time',
   tags: ['Insights'],
-  summary: "The active profile's birth time, how much Aroha trusts it, and the latest check",
+  summary:
+    "The active profile's birth time, how much Aroha trusts it, and the latest check (Aroha Pass only)",
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireFeature('home.birthTimeConfidence')] as const,
   responses: {
     200: { description: 'Birth time status', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
+    403: errorResponse('Feature disabled for this user, or PASS_REQUIRED'),
   },
 });
 
@@ -104,8 +105,7 @@ const checkRoute = createRoute({
   method: 'post',
   path: '/birth-time/check',
   tags: ['Insights'],
-  summary:
-    'Run a paid birth-time check from dated life events (charged only when it finds an answer)',
+  summary: 'Run a birth-time check from dated life events (Aroha Pass only)',
   security: [{ bearerAuth: [] }],
   middleware: [
     requireUser,
@@ -131,9 +131,8 @@ const checkRoute = createRoute({
   responses: {
     200: { description: 'The check result', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled / consent required'),
-    409: errorResponse('INSUFFICIENT_CREDITS'),
-    422: errorResponse('MISSING_BIRTH_DATA or NOT_ENOUGH_EVIDENCE (nothing is charged)'),
+    403: errorResponse('Feature disabled / consent required / PASS_REQUIRED'),
+    422: errorResponse('MISSING_BIRTH_DATA or NOT_ENOUGH_EVIDENCE'),
   },
 });
 
@@ -154,7 +153,7 @@ const applyRoute = createRoute({
   responses: {
     200: { description: 'The applied check', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled / consent required'),
+    403: errorResponse('Feature disabled / consent required / PASS_REQUIRED'),
     404: errorResponse('Not found'),
     409: errorResponse('ALREADY_APPLIED or NOT_CONFIDENT_ENOUGH'),
   },
@@ -238,14 +237,13 @@ const timelineRoute = createRoute({
   method: 'get',
   path: '/timeline',
   tags: ['Insights'],
-  summary:
-    'Life Timeline: dasha-scored bands per life area (±3 years free, whole life when unlocked)',
+  summary: 'Life Timeline: dasha-scored bands per life area, birth to 80 (Aroha Pass only)',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireFeature('nav.lifeTimeline')] as const,
   responses: {
     200: { description: 'Timeline', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
+    403: errorResponse('Feature disabled for this user, or PASS_REQUIRED'),
     409: errorResponse('CHART_NOT_READY'),
   },
 });
@@ -253,28 +251,4 @@ const timelineRoute = createRoute({
 insightsRouter.openapi(timelineRoute, async (c) => {
   const timeline = await getTimeline(c.get('user'));
   return c.json(timeline as unknown as Record<string, unknown>, 200);
-});
-
-const timelineUnlockRoute = createRoute({
-  method: 'post',
-  path: '/timeline/unlock',
-  tags: ['Insights'],
-  summary: 'Unlock the whole-life timeline for the active profile (wallet; free with the Pass)',
-  security: [{ bearerAuth: [] }],
-  middleware: [
-    requireUser,
-    requireFeature('nav.lifeTimeline'),
-    requireFeature('paid.lifeTimelineFull'),
-  ] as const,
-  responses: {
-    200: { description: 'Unlock state', content: { 'application/json': { schema: Json } } },
-    401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
-    409: errorResponse('INSUFFICIENT_CREDITS or CHART_NOT_READY'),
-  },
-});
-
-insightsRouter.openapi(timelineUnlockRoute, async (c) => {
-  const state = await unlockFullTimeline(c.get('user'));
-  return c.json(state as unknown as Record<string, unknown>, 200);
 });

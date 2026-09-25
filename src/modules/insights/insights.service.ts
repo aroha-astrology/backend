@@ -1,7 +1,7 @@
 import type { UserRow } from '../../db/schema.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
-import { hasPass } from '../../lib/entitlements.js';
+import { requirePass } from '../../lib/entitlements.js';
 import { buildChartContext, type ChartContext } from '../../lib/intelligence/chart-context.js';
 import { explainArea } from '../../lib/intelligence/why.js';
 import type { LifeArea } from '../../lib/intelligence/areas.js';
@@ -21,13 +21,7 @@ import {
 } from '../birth-profiles/profile-context.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { requestKundliGeneration, tzOffsetHours } from '../kundli/kundli.service.js';
-import { priceOf } from '../features/features.service.js';
-import {
-  addWalletBalance,
-  deductWalletBalance,
-  findActiveUserById,
-  updateUserById,
-} from '../users/users.repo.js';
+import { findActiveUserById, updateUserById } from '../users/users.repo.js';
 import { updateOwnedBirthProfile } from '../birth-profiles/birth-profiles.repo.js';
 import {
   findLatestAppliedRectification,
@@ -37,11 +31,6 @@ import {
   markRectificationApplied,
   type Rectification,
 } from './birth-time.repo.js';
-
-export const BIRTH_TIME_RECTIFY_KEY = 'paid.birthTimeRectify';
-/** Only used if the feature registry has no price for the key — see config/features.ts. */
-export const BIRTH_TIME_RECTIFY_FALLBACK_PAISE = 9900;
-export const BIRTH_TIME_RECTIFY_REASON = 'birth_time_rectify';
 
 /* -------------------------------------------------------------------------- */
 /* Chart context — shared by every roadmap feature                             */
@@ -106,7 +95,7 @@ export async function getWhy(user: UserRow, area: LifeArea, asOf: Date): Promise
 /* Birth Time Confidence                                                       */
 /* -------------------------------------------------------------------------- */
 
-async function confidenceFor(
+export async function confidenceFor(
   userId: string,
   profile: ProfileContext,
 ): Promise<BirthTimeConfidence> {
@@ -167,17 +156,15 @@ export interface BirthTimeStatus {
   source: ProfileContext['birthTimeSource'];
   confidence: BirthTimeConfidence;
   latest: RectificationDto | null;
-  pricePaise: number;
-  freeWithPass: boolean;
 }
 
+/** Aroha Pass only, like the check itself. */
 export async function getBirthTimeStatus(user: UserRow): Promise<BirthTimeStatus> {
+  await requirePass(user.id);
   const profile = await resolveActiveProfileContext(user);
-  const [latest, confidence, pass, price] = await Promise.all([
+  const [latest, confidence] = await Promise.all([
     findLatestRectification(user.id, profile.birthProfileId),
     confidenceFor(user.id, profile),
-    hasPass(user.id),
-    priceOf(user.id, BIRTH_TIME_RECTIFY_KEY, BIRTH_TIME_RECTIFY_FALLBACK_PAISE),
   ]);
   return {
     time: profile.timeOfBirth,
@@ -185,8 +172,6 @@ export async function getBirthTimeStatus(user: UserRow): Promise<BirthTimeStatus
     source: profile.birthTimeSource,
     confidence,
     latest: latest ? toRectificationDto(latest) : null,
-    pricePaise: pass ? 0 : price,
-    freeWithPass: pass,
   };
 }
 
@@ -202,14 +187,13 @@ export function searchWindowMinutes(accuracy: ProfileContext['birthTimeAccuracy'
 }
 
 /**
- * Runs a paid birth-time check for the active profile. The search runs first
- * and the wallet is only charged once it has produced a result, so "not
- * enough evidence" never costs anything.
+ * Runs a birth-time check for the active profile (Aroha Pass only).
  */
 export async function runBirthTimeCheck(
   user: UserRow,
   events: LifeEvent[],
 ): Promise<RectificationDto> {
+  await requirePass(user.id);
   const profile = await resolveActiveProfileContext(user);
   const place = profile.placeOfBirth;
   if (!profile.dateOfBirth || !profile.timeOfBirth || place?.lat == null || place?.lon == null) {
@@ -233,40 +217,22 @@ export async function runBirthTimeCheck(
   });
   if (!result) throw Errors.unprocessable('NOT_ENOUGH_EVIDENCE');
 
-  const pricePaise = (await hasPass(user.id))
-    ? 0
-    : await priceOf(user.id, BIRTH_TIME_RECTIFY_KEY, BIRTH_TIME_RECTIFY_FALLBACK_PAISE);
-  if (pricePaise > 0) {
-    const charged = await deductWalletBalance(user.id, pricePaise, BIRTH_TIME_RECTIFY_REASON);
-    if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
-  }
-
-  try {
-    const row = await insertRectification({
-      userId: user.id,
-      birthProfileId: profile.birthProfileId,
-      statedTime: profile.timeOfBirth.slice(0, 5),
-      suggestedTime: result.best.time,
-      detail: {
-        events,
-        eventMatches: result.eventMatches,
-        reasoning: result.reasoning,
-        offsetMinutes: result.best.offsetMinutes,
-      },
-      confidence: result.confidence,
-      confidencePct: result.confidencePct,
-      pricePaidPaise: pricePaise,
-    });
-    return toRectificationDto(row);
-  } catch (err) {
-    if (pricePaise > 0) {
-      await addWalletBalance(user.id, pricePaise, `refund:${BIRTH_TIME_RECTIFY_REASON}`).catch(
-        (refundErr: unknown) =>
-          logger.error({ err: refundErr, userId: user.id }, 'birth-time check refund failed'),
-      );
-    }
-    throw err;
-  }
+  const row = await insertRectification({
+    userId: user.id,
+    birthProfileId: profile.birthProfileId,
+    statedTime: profile.timeOfBirth.slice(0, 5),
+    suggestedTime: result.best.time,
+    detail: {
+      events,
+      eventMatches: result.eventMatches,
+      reasoning: result.reasoning,
+      offsetMinutes: result.best.offsetMinutes,
+    },
+    confidence: result.confidence,
+    confidencePct: result.confidencePct,
+    pricePaidPaise: 0,
+  });
+  return toRectificationDto(row);
 }
 
 /**
@@ -278,6 +244,7 @@ export async function applyBirthTimeCheck(
   user: UserRow,
   rectificationId: string,
 ): Promise<RectificationDto> {
+  await requirePass(user.id);
   const row = await findRectificationForUser(rectificationId, user.id);
   if (!row) throw Errors.notFound('Birth-time check not found');
   const dto = toRectificationDto(row);

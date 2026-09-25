@@ -133,16 +133,13 @@ describe('roadmap step 3 routes ship dark', () => {
 });
 
 describe('roadmap step 4 routes ship dark', () => {
-  it('GET /v1/timeline and POST /v1/timeline/unlock → 403 while nav.lifeTimeline is off', async () => {
-    state.resolveFeaturesForUser.mockResolvedValue({
-      'nav.lifeTimeline': off,
-      'paid.lifeTimelineFull': off,
-    });
+  it('GET /v1/timeline → 403 while nav.lifeTimeline is off; the wallet unlock is gone', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({ 'nav.lifeTimeline': off });
     const get = await createApp().request('/v1/timeline', {
       headers: { Authorization: 'Bearer good-token' },
     });
     expect(get.status).toBe(403);
-    expect((await post('/v1/timeline/unlock')).status).toBe(403);
+    expect((await post('/v1/timeline/unlock')).status).toBe(404);
   });
 });
 
@@ -174,11 +171,10 @@ describe('roadmap step 6 routes ship dark', () => {
 });
 
 describe('roadmap step 7 routes ship dark', () => {
-  it('GET /v1/bonds, GET /v1/bonds/{id} and POST /v1/bonds/{id}/unlock → 403 while their flags are off', async () => {
+  it('GET /v1/bonds and GET /v1/bonds/{id} → 403 while their flags are off; the wallet unlock is gone', async () => {
     state.resolveFeaturesForUser.mockResolvedValue({
       'nav.bonds': off,
       'home.bondsCard': off,
-      'paid.bondInsight': off,
     });
     const id = '11111111-1111-4111-8111-111111111111';
     for (const path of ['/v1/bonds', `/v1/bonds/${id}`]) {
@@ -187,7 +183,7 @@ describe('roadmap step 7 routes ship dark', () => {
       });
       expect(res.status, path).toBe(403);
     }
-    expect((await post(`/v1/bonds/${id}/unlock`)).status).toBe(403);
+    expect((await post(`/v1/bonds/${id}/unlock`)).status).toBe(404);
   });
 });
 
@@ -240,7 +236,6 @@ describe('roadmap step 10 routes ship dark', () => {
   it('the Pass and Question Pack routes → 403 while their flags are off', async () => {
     state.resolveFeaturesForUser.mockResolvedValue({
       'nav.arohaPass': off,
-      'paid.arohaPassPlay': off,
       'paid.questionPackSmall': off,
       'paid.questionPackMedium': off,
       'paid.questionPackLarge': off,
@@ -249,13 +244,17 @@ describe('roadmap step 10 routes ship dark', () => {
       headers: { Authorization: 'Bearer good-token' },
     });
     expect(get.status).toBe(403);
-    expect((await post('/v1/pass/wallet', { autoRenew: false })).status).toBe(403);
-    expect((await post('/v1/pass/auto-renew', { on: false })).status).toBe(403);
     expect(
       (await post('/v1/pass/google-play', { productId: 'aroha_pass_monthly', purchaseToken: 't' }))
         .status,
     ).toBe(403);
     expect((await post('/v1/question-packs/small/buy')).status).toBe(403);
+  });
+
+  it('the Pass can never be bought or renewed from the wallet', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({ 'nav.arohaPass': { ...off, enabled: true } });
+    expect((await post('/v1/pass/wallet', { autoRenew: false })).status).toBe(404);
+    expect((await post('/v1/pass/auto-renew', { on: false })).status).toBe(404);
   });
 });
 
@@ -271,16 +270,13 @@ describe('roadmap step 11 routes ship dark', () => {
 });
 
 describe('roadmap step 12 routes ship dark', () => {
-  it('the relocation routes → 403 while nav.relocation is off', async () => {
-    state.resolveFeaturesForUser.mockResolvedValue({
-      'nav.relocation': off,
-      'paid.relocation': off,
-    });
+  it('the relocation routes → 403 while nav.relocation is off; the wallet unlock is gone', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({ 'nav.relocation': off });
     const get = await createApp().request('/v1/relocation', {
       headers: { Authorization: 'Bearer good-token' },
     });
     expect(get.status).toBe(403);
-    expect((await post('/v1/relocation/unlock')).status).toBe(403);
+    expect((await post('/v1/relocation/unlock')).status).toBe(404);
     expect(
       (await post('/v1/relocation/compare', { places: [{ name: 'London', lat: 51.5, lon: -0.1 }] }))
         .status,

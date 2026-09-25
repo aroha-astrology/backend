@@ -11,14 +11,15 @@
 //                  mother/father, 5th child, 3rd sibling, 11th friend, 7th and
 //                  10th business partner), plus Saturn/Rahu/Ketu/Jupiter moving
 //                  through it (from the owner's Moon).
-// The overview is free. The detail (the next few sub-periods for this bond,
-// how the two of you communicate, dates to keep in mind) is a one-off unlock
-// per person (paid.bondInsight, free with the Aroha Pass). Rule-based, no AI.
+// Each bond also carries the detail: the next few sub-periods for it, how the
+// two of you communicate, dates to keep in mind. Aroha Pass only: without a
+// live Pass both routes answer PASS_REQUIRED. Rule-based, no AI.
 // =============================================================================
 
 import type { Planet } from '@aroha-astrology/shared';
 import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import type { BirthProfileRow, KundliRow, UserRow } from '../../db/schema.js';
+import { requirePass } from '../../lib/entitlements.js';
 import { Errors } from '../../lib/errors.js';
 import { calculateChart } from '../../lib/astro-engine/calculations/planetPositions.js';
 import { calculateVimshottariDasha } from '../../lib/astro-engine/dashas/vimshottari.js';
@@ -41,12 +42,6 @@ import {
 import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { birthInputsForProfile } from '../kundli/kundli.service.js';
-import { purchaseUnlock, unlockState, type UnlockState } from '../unlocks/unlocks.service.js';
-
-export const BOND_INSIGHT_KEY = 'paid.bondInsight';
-/** Only used if the feature registry has no price for the key — see config/features.ts. */
-export const BOND_INSIGHT_FALLBACK_PAISE = 4900;
-export const BOND_INSIGHT_REASON = 'bond_insight';
 
 const MAX_BONDS = 12;
 const MS_PER_DAY = 86_400_000;
@@ -533,8 +528,7 @@ export interface BondSummary {
 
 export interface BondDetail extends BondSummary {
   phaseDetail: BondPhase | null;
-  unlock: UnlockState;
-  /** Present once unlocked (or with the Pass). */
+  /** Null while the other person's chart isn't ready. */
   detail: {
     upcoming: BondWindow[];
     communication: WhyFactor[];
@@ -590,6 +584,7 @@ async function summarize(
 
 /** Everyone saved on the account, each with a compatibility score and where the bond stands now. */
 export async function listBonds(user: UserRow): Promise<{ bonds: BondSummary[] }> {
+  await requirePass(user.id);
   const now = new Date();
   const owner = await ownerChart(user, now);
   const rows = (await listBirthProfilesByOwner(user.id)).slice(0, MAX_BONDS);
@@ -600,15 +595,15 @@ export async function listBonds(user: UserRow): Promise<{ bonds: BondSummary[] }
 }
 
 export async function getBond(user: UserRow, profileId: string): Promise<BondDetail> {
+  await requirePass(user.id);
   const now = new Date();
   const row = await findOwnedBirthProfile(profileId, user.id);
   if (!row) throw Errors.notFound('BOND_NOT_FOUND');
   const owner = await ownerChart(user, now);
   const { summary, them, spec, phase } = await summarize(user, row, owner, now);
-  const unlock = await unlockState(user.id, row.id, BOND_INSIGHT_KEY, BOND_INSIGHT_FALLBACK_PAISE);
 
   let detail: BondDetail['detail'] = null;
-  if (them && unlock.unlocked) {
+  if (them) {
     const upcoming = upcomingWindows(owner.chart.ctx, owner.chart.mahadashas, spec, now);
     const dates: NonNullable<BondDetail['detail']>['dates'] = upcoming.map((w) => ({
       date: w.start,
@@ -623,17 +618,5 @@ export async function getBond(user: UserRow, profileId: string): Promise<BondDet
       dates,
     };
   }
-  return { ...summary, phaseDetail: phase, unlock, detail };
-}
-
-export async function unlockBond(user: UserRow, profileId: string): Promise<UnlockState> {
-  const row = await findOwnedBirthProfile(profileId, user.id);
-  if (!row) throw Errors.notFound('BOND_NOT_FOUND');
-  return purchaseUnlock({
-    userId: user.id,
-    birthProfileId: row.id,
-    featureKey: BOND_INSIGHT_KEY,
-    fallbackPaise: BOND_INSIGHT_FALLBACK_PAISE,
-    reason: BOND_INSIGHT_REASON,
-  });
+  return { ...summary, phaseDetail: phase, detail };
 }
