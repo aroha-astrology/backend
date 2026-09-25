@@ -7,10 +7,10 @@ import { makeUserRow } from './helpers/mocks.js';
 const chart = vi.hoisted((): { kundli: unknown } => ({ kundli: null }));
 const state = vi.hoisted(() => ({
   chartReady: true,
-  pass: false,
-  deductWalletBalance: vi.fn(),
-  addWalletBalance: vi.fn(),
+  pass: true,
   insertDecisionQuery: vi.fn(),
+  findDecisionQuery: vi.fn(),
+  listDecisionQueries: vi.fn(),
 }));
 
 vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
@@ -35,29 +35,30 @@ vi.mock('../src/modules/birth-profiles/profile-context.js', async () => {
   const { makeProfileContext: profile } = await import('./helpers/mocks.js');
   return { resolveActiveProfileContext: () => Promise.resolve(profile()) };
 });
-vi.mock('../src/modules/features/features.service.js', () => ({
-  priceOf: (_userId: string, _key: string, fallback: number) => Promise.resolve(fallback),
-}));
-vi.mock('../src/lib/entitlements.js', () => ({ hasPass: () => Promise.resolve(state.pass) }));
-vi.mock('../src/modules/users/users.repo.js', () => ({
-  deductWalletBalance: state.deductWalletBalance,
-  addWalletBalance: state.addWalletBalance,
+vi.mock('../src/modules/pass/pass.repo.js', () => ({
+  findActivePass: () => Promise.resolve(state.pass ? { id: 'pass-1' } : null),
 }));
 vi.mock('../src/modules/decisions/decisions.repo.js', () => ({
   insertDecisionQuery: state.insertDecisionQuery,
-  findDecisionQuery: vi.fn(),
-  listDecisionQueries: vi.fn(),
+  findDecisionQuery: state.findDecisionQuery,
+  listDecisionQueries: state.listDecisionQueries,
 }));
 
-import { daySkies, runDecision, runFindDate } from '../src/modules/decisions/decisions.service.js';
+import {
+  daySkies,
+  getDecision,
+  listDecisions,
+  runDecision,
+  runFindDate,
+} from '../src/modules/decisions/decisions.service.js';
 
 const PUNE = { name: 'Pune', lat: 18.5204, lon: 73.8567, tz: 'Asia/Kolkata' };
 
 beforeEach(async () => {
   state.chartReady = true;
-  state.pass = false;
-  state.deductWalletBalance.mockReset().mockResolvedValue(true);
-  state.addWalletBalance.mockReset().mockResolvedValue(undefined);
+  state.pass = true;
+  state.findDecisionQuery.mockReset().mockResolvedValue(undefined);
+  state.listDecisionQueries.mockReset().mockResolvedValue([]);
   state.insertDecisionQuery
     .mockReset()
     .mockImplementation((v: Record<string, unknown>) =>
@@ -105,13 +106,11 @@ describe('daySkies', () => {
 describe('runFindDate', () => {
   const input = { category: 'vehicle' as const, place: PUNE, from: '2026-10-01', days: 30 };
 
-  it('charges the find-my-date price once and stores the scored result', async () => {
-    const user = makeUserRow({ walletBalancePaise: 50_000 });
-    const res = await runFindDate(user, input);
+  it('stores the scored result', async () => {
+    const res = await runFindDate(makeUserRow({ walletBalancePaise: 0 }), input);
 
-    expect(state.deductWalletBalance).toHaveBeenCalledWith(user.id, 4900, 'find_my_date');
     expect(state.insertDecisionQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'muhurta', category: 'vehicle', pricePaidPaise: 4900 }),
+      expect.objectContaining({ kind: 'muhurta', category: 'vehicle', pricePaidPaise: 0 }),
     );
     expect(res.days).toHaveLength(30);
     expect(res.from).toBe('2026-10-01');
@@ -133,26 +132,27 @@ describe('runFindDate', () => {
     expect(res.days).toHaveLength(30);
   }, 60_000);
 
-  it('refuses up front, without charging, when the wallet is short', async () => {
-    await expect(runFindDate(makeUserRow({ walletBalancePaise: 1000 }), input)).rejects.toThrow(
-      'INSUFFICIENT_CREDITS',
+  it('is Aroha Pass only, and never touches the wallet', async () => {
+    state.pass = false;
+    await expect(runFindDate(makeUserRow({ walletBalancePaise: 50_000 }), input)).rejects.toThrow(
+      'PASS_REQUIRED',
     );
-    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.insertDecisionQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe('saved results', () => {
+  it('are Aroha Pass only', async () => {
+    state.pass = false;
+    await expect(listDecisions(makeUserRow(), undefined)).rejects.toThrow('PASS_REQUIRED');
+    await expect(
+      getDecision(makeUserRow(), '11111111-1111-4111-8111-111111111111'),
+    ).rejects.toThrow('PASS_REQUIRED');
   });
 
-  it('refunds when the result cannot be saved', async () => {
-    state.insertDecisionQuery.mockRejectedValue(new Error('db down'));
-    const user = makeUserRow({ walletBalancePaise: 50_000 });
-    await expect(runFindDate(user, input)).rejects.toThrow('db down');
-    expect(state.addWalletBalance).toHaveBeenCalledWith(user.id, 4900, 'refund:find_my_date');
-  }, 60_000);
-
-  it('is free with the Aroha Pass', async () => {
-    state.pass = true;
-    const res = await runFindDate(makeUserRow({ walletBalancePaise: 0 }), input);
-    expect(state.deductWalletBalance).not.toHaveBeenCalled();
-    expect(res.pricePaidPaise).toBe(0);
-  }, 60_000);
+  it('list with the Pass', async () => {
+    await expect(listDecisions(makeUserRow(), 'muhurta')).resolves.toEqual({ items: [] });
+  });
 });
 
 describe('runDecision', () => {
@@ -165,18 +165,30 @@ describe('runDecision', () => {
         days: 30,
       }),
     ).rejects.toThrow('CHART_NOT_READY');
-    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.insertDecisionQuery).not.toHaveBeenCalled();
   });
 
-  it('scores the range with the dasha behind it and charges the decision price', async () => {
-    const user = makeUserRow({ walletBalancePaise: 50_000 });
-    const res = await runDecision(user, {
+  it('is Aroha Pass only', async () => {
+    state.pass = false;
+    await expect(
+      runDecision(makeUserRow({ walletBalancePaise: 50_000 }), {
+        category: 'careerChange',
+        from: '2026-10-01',
+        days: 30,
+      }),
+    ).rejects.toThrow('PASS_REQUIRED');
+  });
+
+  it('scores the range with the dasha behind it and stores it', async () => {
+    const res = await runDecision(makeUserRow(), {
       category: 'careerChange',
       question: '  Should I switch jobs?  ',
       from: '2026-10-01',
       days: 60,
     });
-    expect(state.deductWalletBalance).toHaveBeenCalledWith(user.id, 4900, 'decision_window');
+    expect(state.insertDecisionQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'decision', pricePaidPaise: 0 }),
+    );
     expect(res.question).toBe('Should I switch jobs?');
     expect(res.days).toHaveLength(60);
     expect(res.personal).toBe(true);

@@ -1,5 +1,5 @@
 // =============================================================================
-// Aroha Pass on Google Play (paid.arohaPassPlay, ships off)
+// Aroha Pass on Google Play — the only way to get the Pass (ships off)
 // =============================================================================
 // The Android app buys the `aroha_pass_monthly` subscription (base plan per
 // price variant) and posts the purchase token here; we check it with Google

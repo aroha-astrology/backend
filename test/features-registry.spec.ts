@@ -62,23 +62,18 @@ describe('roadmap features (tag "new")', () => {
     const roadmapKeys = [
       'home.whyAroha',
       'home.birthTimeConfidence',
-      'paid.birthTimeRectify',
       'home.astroWeather',
       'home.astroWeatherListen',
       'home.yourDay',
       'nav.calendar',
       'home.nextWindow',
       'nav.lifeTimeline',
-      'paid.lifeTimelineFull',
       'chat.structuredAnswers',
       'chat.voiceMode',
       'nav.decisions',
-      'paid.decisionWindow',
       'panchang.findMyDate',
-      'paid.findMyDate',
       'nav.bonds',
       'home.bondsCard',
-      'paid.bondInsight',
       'nav.journal',
       'home.journalPrompt',
       'nav.dailyPractice',
@@ -89,14 +84,26 @@ describe('roadmap features (tag "new")', () => {
       'paid.arohaPassA',
       'paid.arohaPassB',
       'paid.arohaPassC',
-      'paid.arohaPassPlay',
       'nav.digitalYantra',
       'paid.digitalYantra',
       'paid.digitalWallpaper',
       'nav.relocation',
-      'paid.relocation',
     ];
     const tagged = new Set(NEW.map((f) => f.key));
     for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);
+  });
+
+  it('the Aroha Pass features have no one-off wallet price, and the Pass has no separate Play switch', () => {
+    const keys = new Set(FEATURE_REGISTRY.map((f) => f.key));
+    for (const key of [
+      'paid.birthTimeRectify',
+      'paid.lifeTimelineFull',
+      'paid.decisionWindow',
+      'paid.findMyDate',
+      'paid.bondInsight',
+      'paid.relocation',
+      'paid.arohaPassPlay',
+    ])
+      expect(keys.has(key), key).toBe(false);
   });
 });

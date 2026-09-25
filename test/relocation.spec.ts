@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { calculateChart } from '../src/lib/astro-engine/calculations/planetPositions.js';
 import { calculateAshtakavarga } from '../src/lib/astro-engine/calculations/ashtakavarga.js';
-import { makeProfileContext, makeUserRow } from './helpers/mocks.js';
+import { makeUserRow } from './helpers/mocks.js';
 
-const held = vi.hoisted((): { kundli: unknown; level: string; unlocked: boolean } => ({
+const held = vi.hoisted((): { kundli: unknown; level: string; pass: boolean } => ({
   kundli: undefined,
   level: 'high',
-  unlocked: true,
+  pass: true,
 }));
-const state = vi.hoisted(() => ({ purchaseUnlock: vi.fn() }));
 
 vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
   findKundliByUserId: () => Promise.resolve(held.kundli),
@@ -23,19 +22,15 @@ vi.mock('../src/modules/birth-profiles/profile-context.js', async () => {
   };
 });
 vi.mock('../src/modules/insights/insights.service.js', () => ({
-  getBirthTimeStatus: () =>
+  confidenceFor: () =>
     Promise.resolve({
-      confidence: { pct: held.level === 'low' ? 30 : 85, level: held.level, basis: 'stated_exact' },
+      pct: held.level === 'low' ? 30 : 85,
+      level: held.level,
+      basis: 'stated_exact',
     }),
 }));
-vi.mock('../src/modules/unlocks/unlocks.service.js', () => ({
-  unlockState: () =>
-    Promise.resolve(
-      held.unlocked
-        ? { unlocked: true, via: 'purchase', pricePaise: 0 }
-        : { unlocked: false, via: null, pricePaise: 9900 },
-    ),
-  purchaseUnlock: state.purchaseUnlock,
+vi.mock('../src/modules/pass/pass.repo.js', () => ({
+  findActivePass: () => Promise.resolve(held.pass ? { id: 'pass-1' } : null),
 }));
 
 import {
@@ -46,7 +41,6 @@ import {
 import {
   compareRelocation,
   getRelocationStatus,
-  unlockRelocation,
 } from '../src/modules/relocation/relocation.service.js';
 
 async function natal() {
@@ -55,10 +49,7 @@ async function natal() {
 
 beforeEach(async () => {
   held.level = 'high';
-  held.unlocked = true;
-  state.purchaseUnlock
-    .mockReset()
-    .mockResolvedValue({ unlocked: true, via: 'purchase', pricePaise: 0 });
+  held.pass = true;
   if (!held.kundli)
     held.kundli = {
       status: 'ready',
@@ -111,7 +102,7 @@ describe('relocating a real chart', () => {
 });
 
 describe('relocation service', () => {
-  it('reports the gate and the unlock', async () => {
+  it('reports the birth-time gate', async () => {
     held.level = 'low';
     const s = await getRelocationStatus(makeUserRow());
     expect(s.blocked).toBe(true);
@@ -131,27 +122,16 @@ describe('relocation service', () => {
     for (const p of res.places) expect(p.overall).toBeGreaterThanOrEqual(0);
   }, 60_000);
 
-  it('refuses while locked or while the birth time is too uncertain', async () => {
-    held.unlocked = false;
+  it('refuses without the Aroha Pass or while the birth time is too uncertain', async () => {
+    held.pass = false;
+    await expect(getRelocationStatus(makeUserRow())).rejects.toThrow('PASS_REQUIRED');
     await expect(compareRelocation(makeUserRow(), [{ name: 'X', lat: 0, lon: 0 }])).rejects.toThrow(
-      'RELOCATION_LOCKED',
+      'PASS_REQUIRED',
     );
-    held.unlocked = true;
+    held.pass = true;
     held.level = 'low';
     await expect(compareRelocation(makeUserRow(), [{ name: 'X', lat: 0, lon: 0 }])).rejects.toThrow(
       'BIRTH_TIME_TOO_UNCERTAIN',
     );
-  });
-
-  it('unlocks per profile with the relocation reason', async () => {
-    const user = makeUserRow({ id: 'user-9' });
-    await unlockRelocation(user);
-    expect(state.purchaseUnlock).toHaveBeenCalledWith({
-      userId: 'user-9',
-      birthProfileId: makeProfileContext().birthProfileId,
-      featureKey: 'paid.relocation',
-      fallbackPaise: 9900,
-      reason: 'relocation',
-    });
   });
 });

@@ -2837,6 +2837,7 @@ export type PredictionOutcomeRow = typeof predictionOutcomes.$inferSelect;
  * new paid unlock (full life timeline, a bond's detailed insight, …) doesn't
  * need its own `*_unlocked_at` column on users/birth_profiles the way
  * gemstone/house unlocks did. `expiresAt` NULL = permanent.
+ * Nothing writes it any more: those features became Aroha Pass only.
  */
 export const featureUnlocks = pgTable(
   'feature_unlocks',
@@ -2851,7 +2852,7 @@ export const featureUnlocks = pgTable(
     birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
       onDelete: 'cascade',
     }),
-    /** A FEATURE_REGISTRY key, e.g. `paid.lifeTimelineFull`. */
+    /** A FEATURE_REGISTRY key (was e.g. `paid.lifeTimelineFull`). */
     featureKey: text('feature_key').notNull(),
     pricePaidPaise: integer('price_paid_paise').notNull().default(0),
     unlockedAt: timestamp('unlocked_at', { withTimezone: true })

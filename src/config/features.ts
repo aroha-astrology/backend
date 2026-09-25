@@ -600,22 +600,14 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
-  // The Birth Time Confidence card (GET /v1/birth-time). Replaces the older
-  // home.birthTimeRectify card wherever both are on.
+  // The Birth Time Confidence card (GET /v1/birth-time) and its birth-time check.
+  // Aroha Pass only: without the Pass the card shows a subscribe lock. Replaces
+  // the older home.birthTimeRectify card wherever both are on.
   {
     key: 'home.birthTimeConfidence',
-    label: 'Birth Time Confidence card',
+    label: 'Birth Time Confidence card (Aroha Pass only)',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
-  },
-  // Price of one birth-time check (POST /v1/birth-time/check). Free with the Aroha Pass.
-  {
-    key: 'paid.birthTimeRectify',
-    label: 'Birth-time check',
-    group: 'paid',
-    defaultEnabled: false,
-    defaultPricePaise: 9900,
     tag: 'new',
   },
 
@@ -665,21 +657,13 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     tag: 'new',
   },
 
-  // Step 4 — Life Timeline (GET /v1/timeline; no AI cost).
+  // Step 4 — Life Timeline (GET /v1/timeline; no AI cost). Aroha Pass only:
+  // without the Pass the page shows a subscribe lock.
   {
     key: 'nav.lifeTimeline',
-    label: 'Life Timeline page',
+    label: 'Life Timeline page (Aroha Pass only)',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
-  },
-  // One-off unlock of the whole-life view per profile (the free view is ±3 years). Free with the Pass.
-  {
-    key: 'paid.lifeTimelineFull',
-    label: 'Life Timeline — whole-life unlock',
-    group: 'paid',
-    defaultEnabled: false,
-    defaultPricePaise: 9900,
     tag: 'new',
   },
 
@@ -701,47 +685,31 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     tag: 'new',
   },
 
-  // Step 6 — Decision Astrology and Find My Date (both free with the Aroha Pass).
+  // Step 6 — Decision Astrology and Find My Date (both Aroha Pass only: without
+  // the Pass each page shows a subscribe lock).
   // A /decide page: pick a decision, get favourable and caution windows plus the strongest dates, with the chart reasons. Rule-based, no AI cost.
   {
     key: 'nav.decisions',
-    label: 'Decision Astrology — when to act on a big choice',
+    label: 'Decision Astrology — when to act on a big choice (Aroha Pass only)',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
-  },
-  // Price only: the page itself is switched by nav.decisions. Free with the Aroha Pass.
-  {
-    key: 'paid.decisionWindow',
-    label: 'Decision Astrology — price per result',
-    group: 'paid',
-    defaultEnabled: false,
-    defaultPricePaise: 4900,
     tag: 'new',
   },
   // A /find-date page: category, place and range give the best dates with the best time of day, in that place's own timezone. Rule-based, no AI cost.
   {
     key: 'panchang.findMyDate',
-    label: 'Find My Date — best day and time for a beginning',
+    label: 'Find My Date — best day and time for a beginning (Aroha Pass only)',
     group: 'panchang',
     defaultEnabled: false,
     tag: 'new',
   },
-  // Price only: the page itself is switched by panchang.findMyDate. Free with the Aroha Pass.
-  {
-    key: 'paid.findMyDate',
-    label: 'Find My Date — price per result',
-    group: 'paid',
-    defaultEnabled: false,
-    defaultPricePaise: 4900,
-    tag: 'new',
-  },
 
-  // Step 7 — Aroha Bonds (detailed insight free with the Aroha Pass).
-  // A /bonds page: Guna Milan for partners, a harmony score for family and friends, and where each bond stands now from both people's dashas. Also shows the Business partner relationship when adding a profile. Rule-based, no AI cost.
+  // Step 7 — Aroha Bonds (Aroha Pass only: without the Pass the page and the
+  // Home card show a subscribe lock).
+  // A /bonds page: Guna Milan for partners, a harmony score for family and friends, where each bond stands now from both people's dashas, and each bond's periods ahead, communication and dates. Also shows the Business partner relationship when adding a profile. Rule-based, no AI cost.
   {
     key: 'nav.bonds',
-    label: 'Aroha Bonds — compatibility and phase with each saved person',
+    label: 'Aroha Bonds — compatibility and phase with each saved person (Aroha Pass only)',
     group: 'nav',
     defaultEnabled: false,
     tag: 'new',
@@ -751,15 +719,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Aroha Bonds card on Home',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
-  },
-  // One-off unlock per saved person: the next sub-periods for this bond, how you communicate, dates to keep in mind. Free with the Aroha Pass.
-  {
-    key: 'paid.bondInsight',
-    label: 'Aroha Bonds — detailed insight per person',
-    group: 'paid',
-    defaultEnabled: false,
-    defaultPricePaise: 4900,
     tag: 'new',
   },
 
@@ -816,15 +775,15 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultPricePaise: 19900,
     tag: 'new',
   },
-  // A /pass page. The Pass gives 30 chat questions per 30 days, Life Timeline, Bond insights, Decisions and Find My Date, birth-time checks and 20% off reports. Needs at least one price variant (paid.arohaPassA/B/C) on too.
+  // A /pass page. The Pass gives 30 chat questions per 30 days, Life Timeline, Bonds, Decisions and Find My Date, the birth-time check, Relocation and 20% off reports. Google Play subscription only (Android, app 1.13+) — never paid from the wallet. Needs at least one price variant (paid.arohaPassA/B/C) on too, and the aroha_pass_monthly subscription set up in Play Console.
   {
     key: 'nav.arohaPass',
-    label: 'Aroha Pass — monthly membership page',
+    label: 'Aroha Pass — monthly Google Play subscription',
     group: 'nav',
     defaultEnabled: false,
     tag: 'new',
   },
-  // Each user sees one of the variants that are ON, picked by a stable hash of their id. Wallet price; the Play price is set in Play Console (base plan pass-199).
+  // Each user sees one of the variants that are ON, picked by a stable hash of their id. The price here is only what the app shows; Google Play charges the base plan's own price, set in Play Console (base plan pass-199) — keep them the same.
   {
     key: 'paid.arohaPassA',
     label: 'Aroha Pass price test — variant A',
@@ -849,14 +808,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 39900,
-    tag: 'new',
-  },
-  // Needs the aroha_pass_monthly subscription in Play Console and an app release with the subscription-ready billing plugin.
-  {
-    key: 'paid.arohaPassPlay',
-    label: 'Aroha Pass — pay through Google Play (auto-renewing, Android)',
-    group: 'paid',
-    defaultEnabled: false,
     tag: 'new',
   },
 
@@ -886,22 +837,13 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     tag: 'new',
   },
 
-  // Step 12 — Aroha Relocation (free with the Aroha Pass).
+  // Step 12 — Aroha Relocation (Aroha Pass only: without the Pass the page shows a subscribe lock).
   // A /relocation page: pick up to five places anywhere in the world and compare them with your birth place across career, relationships, finance, education, family and lifestyle, with the reasons. Blocked while birth-time confidence is low. Rule-based, no AI cost.
   {
     key: 'nav.relocation',
-    label: 'Aroha Relocation — compare cities for career, love, money and more',
+    label: 'Aroha Relocation — compare cities for career, love, money and more (Aroha Pass only)',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
-  },
-  // One-off unlock per profile, then unlimited comparisons. Free with the Aroha Pass.
-  {
-    key: 'paid.relocation',
-    label: 'Aroha Relocation — unlock per profile',
-    group: 'paid',
-    defaultEnabled: false,
-    defaultPricePaise: 9900,
     tag: 'new',
   },
 ] as const;

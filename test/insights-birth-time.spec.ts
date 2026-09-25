@@ -4,10 +4,7 @@ import { makeProfileContext, makeUserRow } from './helpers/mocks.js';
 const state = vi.hoisted(() => ({
   resolveActiveProfileContext: vi.fn(),
   rectifyBirthTime: vi.fn(),
-  hasPass: vi.fn(),
-  priceOf: vi.fn(),
-  deductWalletBalance: vi.fn(),
-  addWalletBalance: vi.fn(),
+  findActivePass: vi.fn(),
   updateUserById: vi.fn(),
   findActiveUserById: vi.fn(),
   updateOwnedBirthProfile: vi.fn(),
@@ -25,11 +22,8 @@ vi.mock('../src/modules/birth-profiles/profile-context.js', () => ({
 vi.mock('../src/lib/astro-engine/calculations/rectification.js', () => ({
   rectifyBirthTime: state.rectifyBirthTime,
 }));
-vi.mock('../src/lib/entitlements.js', () => ({ hasPass: state.hasPass }));
-vi.mock('../src/modules/features/features.service.js', () => ({ priceOf: state.priceOf }));
+vi.mock('../src/modules/pass/pass.repo.js', () => ({ findActivePass: state.findActivePass }));
 vi.mock('../src/modules/users/users.repo.js', () => ({
-  deductWalletBalance: state.deductWalletBalance,
-  addWalletBalance: state.addWalletBalance,
   updateUserById: state.updateUserById,
   findActiveUserById: state.findActiveUserById,
 }));
@@ -89,7 +83,7 @@ function rowFrom(overrides: Record<string, unknown> = {}) {
     },
     confidence: 'high',
     confidencePct: 78,
-    pricePaidPaise: 9900,
+    pricePaidPaise: 0,
     appliedAt: null,
     createdAt: new Date('2026-09-24T10:00:00Z'),
     ...overrides,
@@ -106,9 +100,7 @@ beforeEach(() => {
       placeOfBirth: { name: 'Kolkata', lat: 22.57, lon: 88.36, tz: 'Asia/Kolkata' },
     }),
   );
-  state.hasPass.mockResolvedValue(false);
-  state.priceOf.mockResolvedValue(9900);
-  state.deductWalletBalance.mockResolvedValue(true);
+  state.findActivePass.mockResolvedValue({ id: 'pass-1' });
   state.insertRectification.mockImplementation((v: Record<string, unknown>) =>
     Promise.resolve(rowFrom({ ...v, id: 'rect-1', appliedAt: null, createdAt: new Date() })),
   );
@@ -116,7 +108,7 @@ beforeEach(() => {
 });
 
 describe('runBirthTimeCheck', () => {
-  it('searches a window sized to how sure the user was, then charges and stores the result', async () => {
+  it('searches a window sized to how sure the user was, then stores the result', async () => {
     state.rectifyBirthTime.mockResolvedValue(RESULT);
 
     const dto = await runBirthTimeCheck(user, EVENTS);
@@ -124,7 +116,9 @@ describe('runBirthTimeCheck', () => {
     expect(state.rectifyBirthTime).toHaveBeenCalledWith(
       expect.objectContaining({ hour: 8, minute: 26, windowMinutes: 90, events: EVENTS }),
     );
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 9900, 'birth_time_rectify');
+    expect(state.insertRectification).toHaveBeenCalledWith(
+      expect.objectContaining({ pricePaidPaise: 0 }),
+    );
     expect(dto).toMatchObject({
       suggestedTime: '08:18',
       confidencePct: 78,
@@ -133,39 +127,16 @@ describe('runBirthTimeCheck', () => {
     });
   });
 
-  it('charges nothing when there is not enough evidence', async () => {
+  it('says so when there is not enough evidence', async () => {
     state.rectifyBirthTime.mockResolvedValue(null);
     await expect(runBirthTimeCheck(user, EVENTS)).rejects.toMatchObject({ status: 422 });
-    expect(state.deductWalletBalance).not.toHaveBeenCalled();
-  });
-
-  it('is free with the Aroha Pass', async () => {
-    state.rectifyBirthTime.mockResolvedValue(RESULT);
-    state.hasPass.mockResolvedValue(true);
-    await runBirthTimeCheck(user, EVENTS);
-    expect(state.deductWalletBalance).not.toHaveBeenCalled();
-    expect(state.insertRectification).toHaveBeenCalledWith(
-      expect.objectContaining({ pricePaidPaise: 0 }),
-    );
-  });
-
-  it('refunds if the result cannot be saved', async () => {
-    state.rectifyBirthTime.mockResolvedValue(RESULT);
-    state.insertRectification.mockRejectedValue(new Error('db down'));
-    state.addWalletBalance.mockResolvedValue(undefined);
-    await expect(runBirthTimeCheck(user, EVENTS)).rejects.toThrow('db down');
-    expect(state.addWalletBalance).toHaveBeenCalledWith(
-      'user-1',
-      9900,
-      'refund:birth_time_rectify',
-    );
-  });
-
-  it('refuses without a charge when the wallet is short', async () => {
-    state.rectifyBirthTime.mockResolvedValue(RESULT);
-    state.deductWalletBalance.mockResolvedValue(false);
-    await expect(runBirthTimeCheck(user, EVENTS)).rejects.toMatchObject({ status: 409 });
     expect(state.insertRectification).not.toHaveBeenCalled();
+  });
+
+  it('is Aroha Pass only', async () => {
+    state.findActivePass.mockResolvedValue(null);
+    await expect(runBirthTimeCheck(user, EVENTS)).rejects.toThrow('PASS_REQUIRED');
+    expect(state.rectifyBirthTime).not.toHaveBeenCalled();
   });
 });
 
@@ -216,6 +187,12 @@ describe('applyBirthTimeCheck', () => {
     expect(state.requestKundliGeneration).toHaveBeenCalledWith('user-1', 'profile-2');
   });
 
+  it('is Aroha Pass only', async () => {
+    state.findActivePass.mockResolvedValue(null);
+    await expect(applyBirthTimeCheck(user, 'rect-1')).rejects.toThrow('PASS_REQUIRED');
+    expect(state.findRectificationForUser).not.toHaveBeenCalled();
+  });
+
   it('refuses low-confidence checks and checks already applied', async () => {
     state.findRectificationForUser.mockResolvedValue(
       rowFrom({ confidence: 'low', confidencePct: 30 }),
@@ -244,6 +221,10 @@ describe('getBirthTimeStatus', () => {
 
     expect(status.confidence).toEqual({ pct: 78, level: 'high', basis: 'rectified' });
     expect(status.latest?.canApply).toBe(false);
-    expect(status.pricePaise).toBe(9900);
+  });
+
+  it('is Aroha Pass only', async () => {
+    state.findActivePass.mockResolvedValue(null);
+    await expect(getBirthTimeStatus(user)).rejects.toThrow('PASS_REQUIRED');
   });
 });

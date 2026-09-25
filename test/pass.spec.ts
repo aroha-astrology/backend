@@ -15,7 +15,6 @@ const state = vi.hoisted(() => ({
   insertPass: vi.fn(),
   renewPass: vi.fn(),
   expirePass: vi.fn(),
-  setPassAutoRenew: vi.fn(),
   markPassReminded: vi.fn(),
   listWalletRenewalsDue: vi.fn(),
   listWalletRemindersDue: vi.fn(),
@@ -38,7 +37,6 @@ vi.mock('../src/modules/pass/pass.repo.js', () => ({
   insertPass: state.insertPass,
   renewPass: state.renewPass,
   expirePass: state.expirePass,
-  setPassAutoRenew: state.setPassAutoRenew,
   markPassReminded: state.markPassReminded,
   listWalletRenewalsDue: state.listWalletRenewalsDue,
   listWalletRemindersDue: state.listWalletRemindersDue,
@@ -68,10 +66,8 @@ import { chargeQuestion, refundQuestion } from '../src/modules/pass/question-bil
 import {
   assignVariant,
   buyQuestionPack,
-  buyWalletPass,
   getPassStatus,
   runPassRenewals,
-  setAutoRenew,
 } from '../src/modules/pass/pass.service.js';
 import { confirmPlayPass, syncPlayPass } from '../src/modules/pass/pass-play.service.js';
 
@@ -114,7 +110,6 @@ beforeEach(() => {
     state.insertPass,
     state.renewPass,
     state.expirePass,
-    state.setPassAutoRenew,
     state.markPassReminded,
     state.listWalletRenewalsDue,
     state.listWalletRemindersDue,
@@ -186,8 +181,8 @@ describe('getPassStatus', () => {
     expect(s.packs).toEqual([{ pack: 'small', questions: 5, pricePaise: 4900 }]);
   });
 
-  it("shows the user's variant price, the Play base plan when Play is on, and questions left", async () => {
-    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassB': on(24900), 'paid.arohaPassPlay': ON };
+  it("shows the user's variant price, its Play base plan, and questions left", async () => {
+    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassB': on(24900) };
     held.active = passRow();
     const s = await getPassStatus(makeUserRow({ id: 'user-1' }));
     expect(s.offer).toEqual({
@@ -197,51 +192,6 @@ describe('getPassStatus', () => {
     });
     expect(s.pass).toMatchObject({ source: 'wallet', autoRenew: true, questionsLeft: 26 });
     expect(s.benefits).toEqual({ questionsPerPeriod: 30, periodDays: 30, reportDiscountPct: 20 });
-  });
-});
-
-describe('buyWalletPass', () => {
-  const user = makeUserRow({ id: 'user-1' });
-
-  it('needs an offer and no Pass already running', async () => {
-    await expect(buyWalletPass(user, { autoRenew: false })).rejects.toThrow('PASS_NOT_AVAILABLE');
-    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassA': on(19900) };
-    held.active = passRow();
-    await expect(buyWalletPass(user, { autoRenew: false })).rejects.toThrow('PASS_ALREADY_ACTIVE');
-    expect(state.deductWalletBalance).not.toHaveBeenCalled();
-  });
-
-  it('charges the variant price and starts a 30-day wallet Pass', async () => {
-    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassA': on(19900) };
-    await buyWalletPass(user, { autoRenew: true });
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 19900, 'aroha_pass');
-    const values = state.insertPass.mock.calls[0]![0] as { periodStart: Date; periodEnd: Date };
-    expect(state.insertPass.mock.calls[0]![0]).toMatchObject({
-      userId: 'user-1',
-      source: 'wallet',
-      priceVariant: 'A',
-      pricePaise: 19900,
-      autoRenew: true,
-    });
-    expect(values.periodEnd.getTime() - values.periodStart.getTime()).toBe(30 * DAY);
-  });
-
-  it('refunds when the Pass cannot be saved, and refuses a short wallet', async () => {
-    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassA': on(19900) };
-    state.insertPass.mockRejectedValueOnce(new Error('db down'));
-    await expect(buyWalletPass(user, { autoRenew: false })).rejects.toThrow('db down');
-    expect(state.addWalletBalance).toHaveBeenCalledWith('user-1', 19900, 'refund:aroha_pass');
-    state.deductWalletBalance.mockResolvedValueOnce(false);
-    await expect(buyWalletPass(user, { autoRenew: false })).rejects.toThrow('INSUFFICIENT_CREDITS');
-  });
-});
-
-describe('setAutoRenew', () => {
-  it('leaves a Play Pass to the Play Store', async () => {
-    held.active = passRow({ source: 'google_play' });
-    await expect(setAutoRenew(makeUserRow({ id: 'user-1' }), false)).rejects.toThrow(
-      'PASS_MANAGED_BY_PLAY',
-    );
   });
 });
 
@@ -258,32 +208,30 @@ describe('buyQuestionPack', () => {
 });
 
 describe('runPassRenewals', () => {
-  it('renews what the wallet covers, ends what it cannot, reminds, and expires the rest', async () => {
+  it('never charges the wallet: ends due wallet Passes, reminds, and expires the rest', async () => {
     state.listWalletRenewalsDue.mockResolvedValue([
-      passRow({ id: 'paid', userId: 'u-rich', periodEnd: new Date(NOW.getTime() - 3600_000) }),
-      passRow({ id: 'broke', userId: 'u-broke', periodEnd: new Date(NOW.getTime() - 3600_000) }),
+      passRow({ id: 'due', userId: 'u-due', periodEnd: new Date(NOW.getTime() - 3600_000) }),
     ]);
-    state.deductWalletBalance.mockImplementation((userId: string) =>
-      Promise.resolve(userId === 'u-rich'),
-    );
     state.listWalletRemindersDue.mockResolvedValue([
-      passRow({ id: 'soon', userId: 'u-soon', autoRenew: false }),
+      passRow({ id: 'soon', userId: 'u-soon', autoRenew: true }),
     ]);
     state.expireLapsedPasses.mockResolvedValue(2);
 
     const run = await runPassRenewals(NOW);
-    expect(run).toEqual({ renewed: 1, lapsed: 1, reminded: 1, expired: 2 });
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('u-rich', 29900, 'aroha_pass_renewal');
-    const [, period] = state.renewPass.mock.calls[0]! as [string, { start: Date; end: Date }];
-    expect(period.end.getTime() - period.start.getTime()).toBe(30 * DAY);
-    expect(state.expirePass).toHaveBeenCalledWith('broke');
+    expect(run).toEqual({ lapsed: 1, reminded: 1, expired: 2 });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.renewPass).not.toHaveBeenCalled();
+    expect(state.expirePass).toHaveBeenCalledWith('due');
     expect(state.notifyUser).toHaveBeenCalledWith(
-      'u-broke',
-      expect.objectContaining({ link: '/pass' }),
+      'u-due',
+      expect.objectContaining({ title: 'Your Aroha Pass has ended', link: '/pass' }),
     );
     expect(state.notifyUser).toHaveBeenCalledWith(
       'u-soon',
-      expect.objectContaining({ title: 'Your Aroha Pass ends soon' }),
+      expect.objectContaining({
+        title: 'Your Aroha Pass ends soon',
+        body: expect.stringContaining('Google Play'),
+      }),
     );
     expect(state.markPassReminded).toHaveBeenCalledWith('soon');
   });
@@ -291,7 +239,7 @@ describe('runPassRenewals', () => {
   it('a dry run changes nothing', async () => {
     state.listWalletRenewalsDue.mockResolvedValue([passRow()]);
     await runPassRenewals(NOW, { dryRun: true });
-    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.expirePass).not.toHaveBeenCalled();
     expect(state.expireLapsedPasses).not.toHaveBeenCalled();
   });
 });

@@ -4,9 +4,7 @@ import { makeUserRow } from './helpers/mocks.js';
 
 const state = vi.hoisted(() => ({
   profiles: [] as unknown[],
-  unlocked: false,
-  unlockState: vi.fn(),
-  purchaseUnlock: vi.fn(),
+  pass: true,
 }));
 
 vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
@@ -17,9 +15,8 @@ vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
 vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
   findKundliByUserId: () => Promise.resolve(undefined),
 }));
-vi.mock('../src/modules/unlocks/unlocks.service.js', () => ({
-  unlockState: state.unlockState,
-  purchaseUnlock: state.purchaseUnlock,
+vi.mock('../src/modules/pass/pass.repo.js', () => ({
+  findActivePass: () => Promise.resolve(state.pass ? { id: 'pass-1' } : null),
 }));
 
 import {
@@ -29,7 +26,6 @@ import {
   listBonds,
   loadBondChart,
   nextBirthday,
-  unlockBond,
 } from '../src/modules/bonds/bonds.service.js';
 import { makeProfileContext } from './helpers/mocks.js';
 
@@ -71,19 +67,7 @@ function profile(overrides: Partial<BirthProfileRow>): BirthProfileRow {
 
 beforeEach(() => {
   state.profiles = [];
-  state.unlocked = false;
-  state.unlockState
-    .mockReset()
-    .mockImplementation(() =>
-      Promise.resolve(
-        state.unlocked
-          ? { unlocked: true, via: 'purchase', pricePaise: 0 }
-          : { unlocked: false, via: null, pricePaise: 4900 },
-      ),
-    );
-  state.purchaseUnlock
-    .mockReset()
-    .mockResolvedValue({ unlocked: true, via: 'purchase', pricePaise: 0 });
+  state.pass = true;
 });
 
 describe('bondSpec', () => {
@@ -168,7 +152,16 @@ describe('bondCompatibility on real charts', () => {
   }, 60_000);
 });
 
-describe('listBonds / getBond / unlockBond', () => {
+describe('listBonds / getBond', () => {
+  it('are Aroha Pass only', async () => {
+    state.pass = false;
+    state.profiles = [profile({})];
+    await expect(listBonds(OWNER)).rejects.toThrow('PASS_REQUIRED');
+    await expect(getBond(OWNER, '11111111-1111-4111-8111-111111111111')).rejects.toThrow(
+      'PASS_REQUIRED',
+    );
+  });
+
   it('lists each saved person with a score and phase; one without a birth time is not ready yet', async () => {
     state.profiles = [
       profile({}),
@@ -192,21 +185,10 @@ describe('listBonds / getBond / unlockBond', () => {
     await expect(listBonds(makeUserRow())).rejects.toThrow('CHART_NOT_READY');
   });
 
-  it('keeps the detail locked until the bond is unlocked, then adds windows, themes and the birthday', async () => {
+  it('gives the phase and the detail: windows, themes and the birthday', async () => {
     state.profiles = [profile({})];
-    const locked = await getBond(OWNER, '11111111-1111-4111-8111-111111111111');
-    expect(locked.detail).toBeNull();
-    expect(locked.unlock.pricePaise).toBe(4900);
-    expect(locked.phaseDetail?.lords).toHaveLength(2);
-    expect(state.unlockState).toHaveBeenCalledWith(
-      OWNER.id,
-      '11111111-1111-4111-8111-111111111111',
-      'paid.bondInsight',
-      4900,
-    );
-
-    state.unlocked = true;
     const open = await getBond(OWNER, '11111111-1111-4111-8111-111111111111');
+    expect(open.phaseDetail?.lords).toHaveLength(2);
     expect(open.detail).not.toBeNull();
     expect(open.detail!.communication.length).toBeGreaterThanOrEqual(1);
     expect(open.detail!.communication[0]!.textKey).toMatch(/^bonds\.comm\.moon/);
@@ -216,17 +198,9 @@ describe('listBonds / getBond / unlockBond', () => {
     for (const w of open.detail!.upcoming) expect(w.start <= w.end).toBe(true);
   }, 60_000);
 
-  it('unlocks per person, and 404s for a profile that is not yours', async () => {
+  it('404s for a profile that is not yours', async () => {
     state.profiles = [profile({})];
-    await unlockBond(OWNER, '11111111-1111-4111-8111-111111111111');
-    expect(state.purchaseUnlock).toHaveBeenCalledWith({
-      userId: OWNER.id,
-      birthProfileId: '11111111-1111-4111-8111-111111111111',
-      featureKey: 'paid.bondInsight',
-      fallbackPaise: 4900,
-      reason: 'bond_insight',
-    });
-    await expect(unlockBond(OWNER, '99999999-9999-4999-8999-999999999999')).rejects.toThrow(
+    await expect(getBond(OWNER, '99999999-9999-4999-8999-999999999999')).rejects.toThrow(
       'BOND_NOT_FOUND',
     );
   });

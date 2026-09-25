@@ -9,13 +9,13 @@
 //   natal placement: kendra/trikona +1, dusthana -1.
 // Deterministic, Vimshottari-only (no AI call). Periods scoring MEDIUM or
 // HIGH become bands on the area's lane; adjacent bands of the same level
-// merge. The free view covers ±3 years around today; the whole life is a
-// one-off unlock (paid.lifeTimelineFull) or included in the Aroha Pass.
+// merge. Aroha Pass only: without a live Pass the route answers PASS_REQUIRED.
 // =============================================================================
 
 import type { Planet } from '@aroha-astrology/shared';
 import { NAKSHATRA_LORDS } from '@aroha-astrology/shared';
 import type { UserRow } from '../../db/schema.js';
+import { requirePass } from '../../lib/entitlements.js';
 import { Errors } from '../../lib/errors.js';
 import {
   dashaPeriodsInRange,
@@ -26,7 +26,6 @@ import type { ChartContext } from '../../lib/intelligence/chart-context.js';
 import { housesRuledBy, placementEffect } from '../../lib/intelligence/why.js';
 import type { WhyFactor } from '../../lib/intelligence/types.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
-import { purchaseUnlock, unlockState, type UnlockState } from '../unlocks/unlocks.service.js';
 import { loadChartContext } from './insights.service.js';
 
 export const TIMELINE_AREAS = [
@@ -40,11 +39,6 @@ export const TIMELINE_AREAS = [
 ] as const satisfies readonly LifeArea[];
 export type TimelineArea = (typeof TIMELINE_AREAS)[number];
 
-export const TIMELINE_FULL_KEY = 'paid.lifeTimelineFull';
-/** Only used if the feature registry has no price for the key. */
-export const TIMELINE_FULL_FALLBACK_PAISE = 9900;
-export const TIMELINE_FULL_REASON = 'life_timeline_full';
-const FREE_WINDOW_YEARS = 3;
 const MAX_AGE_YEARS = 80;
 const MS_PER_YEAR = 365.25 * 86_400_000;
 
@@ -64,10 +58,8 @@ export interface TimelineBand {
 export interface TimelineResponse {
   birthDate: string;
   today: string;
-  /** Span the response covers; narrower than the whole life until unlocked. */
+  /** Span the response covers: birth to age 80. */
   range: { from: string; to: string };
-  full: boolean;
-  unlock: UnlockState;
   /** True when the birth time is approximate or unknown — dasha dates can shift. */
   approximateBirthTime: boolean;
   mahadashas: Array<{ planet: Planet; start: string; end: string }>;
@@ -211,6 +203,7 @@ function birthMoment(dateOfBirth: string, mahadashas: StoredMahadasha[]): Date {
 }
 
 export async function getTimeline(user: UserRow): Promise<TimelineResponse> {
+  await requirePass(user.id);
   const now = new Date();
   const loaded = await loadChartContext(user, now);
   if (!loaded) throw Errors.conflict('CHART_NOT_READY');
@@ -221,25 +214,13 @@ export async function getTimeline(user: UserRow): Promise<TimelineResponse> {
       ?.mahadashas ?? [];
   if (mahadashas.length === 0 || !profile.dateOfBirth) throw Errors.conflict('CHART_NOT_READY');
 
-  const unlock = await unlockState(
-    user.id,
-    profile.birthProfileId,
-    TIMELINE_FULL_KEY,
-    TIMELINE_FULL_FALLBACK_PAISE,
-  );
   const birth = birthMoment(profile.dateOfBirth, mahadashas);
   const lifeEnd = new Date(birth.getTime() + MAX_AGE_YEARS * MS_PER_YEAR);
-  const from = unlock.unlocked
-    ? birth
-    : new Date(Math.max(birth.getTime(), now.getTime() - FREE_WINDOW_YEARS * MS_PER_YEAR));
-  const to = unlock.unlocked ? lifeEnd : new Date(now.getTime() + FREE_WINDOW_YEARS * MS_PER_YEAR);
 
   return {
     birthDate: profile.dateOfBirth,
     today: isoDate(now),
-    range: { from: isoDate(from), to: isoDate(to) },
-    full: unlock.unlocked,
-    unlock,
+    range: { from: isoDate(birth), to: isoDate(lifeEnd) },
     approximateBirthTime: profile.birthTimeAccuracy !== 'exact',
     mahadashas: dashaPeriodsInRange(mahadashas, birth, lifeEnd, 0).map((m) => ({
       planet: m.planet,
@@ -248,19 +229,7 @@ export async function getTimeline(user: UserRow): Promise<TimelineResponse> {
     })),
     lanes: TIMELINE_AREAS.map((area) => ({
       area,
-      bands: laneBands(ctx, mahadashas, area, from, to),
+      bands: laneBands(ctx, mahadashas, area, birth, lifeEnd),
     })),
   };
-}
-
-export async function unlockFullTimeline(user: UserRow): Promise<UnlockState> {
-  const loaded = await loadChartContext(user);
-  if (!loaded) throw Errors.conflict('CHART_NOT_READY');
-  return purchaseUnlock({
-    userId: user.id,
-    birthProfileId: loaded.profile.birthProfileId,
-    featureKey: TIMELINE_FULL_KEY,
-    fallbackPaise: TIMELINE_FULL_FALLBACK_PAISE,
-    reason: TIMELINE_FULL_REASON,
-  });
 }

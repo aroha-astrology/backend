@@ -1,14 +1,21 @@
 /**
  * Entitlements — what a user has paid for beyond one-off wallet charges.
  *
- * `hasPass()` is the single check every "free with Aroha Pass" feature calls
- * (Life Timeline, Bonds, Decisions, Find My Date, birth-time checks, report
- * discount). A Pass counts while its current period hasn't ended — the
- * Aroha Pass itself ships switched off (nav.arohaPass), so until an admin
- * turns it on nobody has one and every feature charges its normal price.
+ * The Aroha Pass is a Google Play subscription (never paid from the wallet).
+ * Life Timeline, Bonds, Decisions, Find My Date, the birth-time check and
+ * Relocation are Pass-only: each calls `requirePass()` before doing anything,
+ * and the app shows a "subscribe" lock on PASS_REQUIRED. `hasPass()` is also
+ * read for the Pass's other benefits (chat quota, report discount). A Pass
+ * counts while its current period hasn't ended.
  */
+import { Errors } from './errors.js';
 import { findActivePass } from '../modules/pass/pass.repo.js';
 
 export async function hasPass(userId: string): Promise<boolean> {
   return (await findActivePass(userId)) !== null;
+}
+
+/** Throws 403 PASS_REQUIRED unless the user has a live Aroha Pass. */
+export async function requirePass(userId: string): Promise<void> {
+  if (!(await hasPass(userId))) throw Errors.forbidden('PASS_REQUIRED');
 }

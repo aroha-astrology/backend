@@ -9,16 +9,15 @@
 //     panchang leads (category nakshatra/tithi/weekday rules), at the place the
 //     user picks, in that place's own timezone; tara and chandra bala are added
 //     when the chart is ready.
-// Each result is a wallet charge (paid.decisionWindow / paid.findMyDate, free
-// with the Aroha Pass), computed BEFORE charging so a failure never costs
-// anything, then stored so reopening it is free. No AI call.
+// Aroha Pass only: without a live Pass every route answers PASS_REQUIRED.
+// Each result is stored so it can be reopened. No AI call.
 // =============================================================================
 
 import type { Planet } from '@aroha-astrology/shared';
 import type { PlaceOfBirth, UserRow } from '../../db/schema.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
-import { hasPass } from '../../lib/entitlements.js';
+import { requirePass } from '../../lib/entitlements.js';
 import { calculatePlanetPositions } from '../../lib/astro-engine/calculations/planetPositions.js';
 import { calculateFullPanchang } from '../../lib/astro-engine/panchang/index.js';
 import { eclipsesBetween } from '../../lib/astro-engine/panchang/eclipse.js';
@@ -54,8 +53,6 @@ import type { WhyFactor } from '../../lib/intelligence/types.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { tzOffsetHours } from '../kundli/kundli.service.js';
-import { priceOf } from '../features/features.service.js';
-import { addWalletBalance, deductWalletBalance } from '../users/users.repo.js';
 import { loadChartContext } from '../insights/insights.service.js';
 import { lordScore, periodScore } from '../insights/timeline.service.js';
 import {
@@ -66,14 +63,6 @@ import {
   type DecisionKind,
   type DecisionQuery,
 } from './decisions.repo.js';
-
-export const DECISION_PRICE_KEY = 'paid.decisionWindow';
-export const FIND_DATE_PRICE_KEY = 'paid.findMyDate';
-/** Only used if the feature registry has no price for the key — see config/features.ts. */
-export const DECISION_FALLBACK_PAISE = 4900;
-export const FIND_DATE_FALLBACK_PAISE = 4900;
-export const DECISION_REASON = 'decision_window';
-export const FIND_DATE_REASON = 'find_my_date';
 
 export const MIN_RANGE_DAYS = 7;
 export const MAX_RANGE_DAYS = 90;
@@ -304,54 +293,25 @@ function toDto(row: DecisionQuery<DecisionResult>): DecisionDto {
   };
 }
 
-/** What a new result costs this user right now (0 with the Pass). */
-export async function priceFor(userId: string, kind: DecisionKind): Promise<number> {
-  if (await hasPass(userId)) return 0;
-  return kind === 'decision'
-    ? priceOf(userId, DECISION_PRICE_KEY, DECISION_FALLBACK_PAISE)
-    : priceOf(userId, FIND_DATE_PRICE_KEY, FIND_DATE_FALLBACK_PAISE);
-}
-
-/** Charge, store, and refund if the store fails. The result is already computed. */
-async function chargeAndStore(opts: {
+/** Stores a computed result so it can be reopened. */
+async function store(opts: {
   user: UserRow;
   birthProfileId: string | null;
   kind: DecisionKind;
   category: string;
   input: DecisionInput;
   result: DecisionResult;
-  price: number;
 }): Promise<DecisionDto> {
-  const reason = opts.kind === 'decision' ? DECISION_REASON : FIND_DATE_REASON;
-  if (opts.price > 0) {
-    const charged = await deductWalletBalance(opts.user.id, opts.price, reason);
-    if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
-  }
-  try {
-    const row = await insertDecisionQuery({
-      userId: opts.user.id,
-      birthProfileId: opts.birthProfileId,
-      kind: opts.kind,
-      category: opts.category,
-      input: opts.input,
-      result: opts.result,
-      pricePaidPaise: opts.price,
-    });
-    return toDto(row);
-  } catch (err) {
-    if (opts.price > 0) {
-      await addWalletBalance(opts.user.id, opts.price, `refund:${reason}`).catch((e: unknown) =>
-        logger.error({ err: e, userId: opts.user.id, reason }, 'decision refund failed'),
-      );
-    }
-    throw err;
-  }
-}
-
-function assertAffordable(user: UserRow, price: number): void {
-  if (price > 0 && (user.walletBalancePaise ?? 0) < price) {
-    throw Errors.conflict('INSUFFICIENT_CREDITS');
-  }
+  const row = await insertDecisionQuery({
+    userId: opts.user.id,
+    birthProfileId: opts.birthProfileId,
+    kind: opts.kind,
+    category: opts.category,
+    input: opts.input,
+    result: opts.result,
+    pricePaidPaise: 0,
+  });
+  return toDto(row);
 }
 
 function placeOf(loc: PlaceOfBirth | null | undefined): DecisionInput['place'] {
@@ -377,9 +337,7 @@ export async function runDecision(
   user: UserRow,
   input: { category: DecisionCategory; question?: string; from: string; days: number },
 ): Promise<DecisionDto> {
-  const price = await priceFor(user.id, 'decision');
-  assertAffordable(user, price);
-
+  await requirePass(user.id);
   const loaded = await loadChartContext(user);
   if (!loaded) throw Errors.conflict('CHART_NOT_READY');
   const { profile, ctx } = loaded;
@@ -401,14 +359,13 @@ export async function runDecision(
     approximateBirthTime: profile.birthTimeAccuracy !== 'exact',
   });
 
-  return chargeAndStore({
+  return store({
     user,
     birthProfileId: profile.birthProfileId,
     kind: 'decision',
     category: input.category,
     input: { question: input.question?.trim() || null, place },
     result,
-    price,
   });
 }
 
@@ -417,9 +374,7 @@ export async function runFindDate(
   user: UserRow,
   input: { category: MuhurtaCategory; place: PlaceOfBirth; from: string; days: number },
 ): Promise<DecisionDto> {
-  const price = await priceFor(user.id, 'muhurta');
-  assertAffordable(user, price);
-
+  await requirePass(user.id);
   const loaded = await loadChartContext(user);
   const birthProfileId =
     loaded?.profile.birthProfileId ?? (await resolveActiveProfileContext(user)).birthProfileId;
@@ -441,18 +396,18 @@ export async function runFindDate(
     approximateBirthTime: loaded ? loaded.profile.birthTimeAccuracy !== 'exact' : false,
   });
 
-  return chargeAndStore({
+  return store({
     user,
     birthProfileId,
     kind: 'muhurta',
     category: input.category,
     input: { question: null, place },
     result,
-    price,
   });
 }
 
 export async function getDecision(user: UserRow, id: string): Promise<DecisionDto> {
+  await requirePass(user.id);
   const row = await findDecisionQuery<DecisionResult>(user.id, id);
   if (!row) throw Errors.notFound('DECISION_NOT_FOUND');
   return toDto(row);
@@ -473,17 +428,9 @@ export interface DecisionListItem {
 export async function listDecisions(
   user: UserRow,
   kind: DecisionKind | undefined,
-): Promise<{
-  items: DecisionListItem[];
-  prices: { decision: number; muhurta: number };
-  pass: boolean;
-}> {
-  const [rows, decision, muhurta, pass] = await Promise.all([
-    listDecisionQueries<DecisionResult>(user.id, kind),
-    priceFor(user.id, 'decision'),
-    priceFor(user.id, 'muhurta'),
-    hasPass(user.id),
-  ]);
+): Promise<{ items: DecisionListItem[] }> {
+  await requirePass(user.id);
+  const rows = await listDecisionQueries<DecisionResult>(user.id, kind);
   return {
     items: rows.map((r) => ({
       id: r.id,
@@ -496,7 +443,5 @@ export async function listDecisions(
       topDate: r.result.best[0]?.date ?? null,
       createdAt: r.createdAt.toISOString(),
     })),
-    prices: { decision, muhurta },
-    pass,
   };
 }

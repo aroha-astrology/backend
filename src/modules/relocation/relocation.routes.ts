@@ -1,12 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireFeature } from '../../middleware/feature.js';
-import {
-  MAX_PLACES,
-  compareRelocation,
-  getRelocationStatus,
-  unlockRelocation,
-} from './relocation.service.js';
+import { MAX_PLACES, compareRelocation, getRelocationStatus } from './relocation.service.js';
 
 const ErrorSchema = z
   .object({
@@ -40,43 +35,19 @@ const statusRoute = createRoute({
   method: 'get',
   path: '/relocation',
   tags: ['Relocation'],
-  summary: 'Relocation status: birth-time confidence gate and unlock state',
+  summary: 'Relocation status: the birth-time confidence gate (Aroha Pass only)',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireFeature('nav.relocation')] as const,
   responses: {
     200: { description: 'Status', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
+    403: errorResponse('Feature disabled for this user, or PASS_REQUIRED'),
   },
 });
 
 relocationRouter.openapi(statusRoute, async (c) => {
   const status = await getRelocationStatus(c.get('user'));
   return c.json(status as unknown as Record<string, unknown>, 200);
-});
-
-const unlockRoute = createRoute({
-  method: 'post',
-  path: '/relocation/unlock',
-  tags: ['Relocation'],
-  summary: 'Unlock relocation comparisons for the active profile (wallet; free with the Pass)',
-  security: [{ bearerAuth: [] }],
-  middleware: [
-    requireUser,
-    requireFeature('nav.relocation'),
-    requireFeature('paid.relocation'),
-  ] as const,
-  responses: {
-    200: { description: 'Unlock state', content: { 'application/json': { schema: Json } } },
-    401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
-    409: errorResponse('INSUFFICIENT_CREDITS'),
-  },
-});
-
-relocationRouter.openapi(unlockRoute, async (c) => {
-  const state = await unlockRelocation(c.get('user'));
-  return c.json(state as unknown as Record<string, unknown>, 200);
 });
 
 const compareRoute = createRoute({
@@ -99,8 +70,8 @@ const compareRoute = createRoute({
   responses: {
     200: { description: 'Comparison', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
-    409: errorResponse('RELOCATION_LOCKED, BIRTH_TIME_TOO_UNCERTAIN or CHART_NOT_READY'),
+    403: errorResponse('Feature disabled for this user, or PASS_REQUIRED'),
+    409: errorResponse('BIRTH_TIME_TOO_UNCERTAIN or CHART_NOT_READY'),
   },
 });
 

@@ -2,7 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireAdmin, requireUser } from '../../middleware/auth.js';
 import { requireAnyFeature, requireFeature } from '../../middleware/feature.js';
 import { QUESTION_PACKS } from './pass.config.js';
-import { buyQuestionPack, buyWalletPass, getPassStatus, setAutoRenew } from './pass.service.js';
+import { buyQuestionPack, getPassStatus } from './pass.service.js';
 import { confirmPlayPass } from './pass-play.service.js';
 import { passStats } from './pass.repo.js';
 
@@ -50,73 +50,14 @@ passRouter.openapi(statusRoute, async (c) => {
   return c.json(status as unknown as Record<string, unknown>, 200);
 });
 
-const buyWalletRoute = createRoute({
-  method: 'post',
-  path: '/pass/wallet',
-  tags: ['Pass'],
-  summary: 'Buy 30 days of the Aroha Pass from the wallet',
-  security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireFeature('nav.arohaPass')] as const,
-  request: {
-    body: {
-      required: true,
-      content: {
-        'application/json': { schema: z.object({ autoRenew: z.boolean().default(false) }) },
-      },
-    },
-  },
-  responses: {
-    200: { description: 'Status', content: { 'application/json': { schema: Json } } },
-    401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
-    409: errorResponse('PASS_NOT_AVAILABLE, PASS_ALREADY_ACTIVE or INSUFFICIENT_CREDITS'),
-  },
-});
-
-passRouter.openapi(buyWalletRoute, async (c) => {
-  const status = await buyWalletPass(c.get('user'), c.req.valid('json'));
-  return c.json(status as unknown as Record<string, unknown>, 200);
-});
-
-const autoRenewRoute = createRoute({
-  method: 'post',
-  path: '/pass/auto-renew',
-  tags: ['Pass'],
-  summary: 'Turn wallet auto-renew on or off (a Play Pass is managed in the Play Store)',
-  security: [{ bearerAuth: [] }],
-  middleware: [requireUser, requireFeature('nav.arohaPass')] as const,
-  request: {
-    body: {
-      required: true,
-      content: { 'application/json': { schema: z.object({ on: z.boolean() }) } },
-    },
-  },
-  responses: {
-    200: { description: 'Status', content: { 'application/json': { schema: Json } } },
-    401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled for this user'),
-    404: errorResponse('No active Pass'),
-    409: errorResponse('PASS_MANAGED_BY_PLAY'),
-  },
-});
-
-passRouter.openapi(autoRenewRoute, async (c) => {
-  const status = await setAutoRenew(c.get('user'), c.req.valid('json').on);
-  return c.json(status as unknown as Record<string, unknown>, 200);
-});
-
 const playConfirmRoute = createRoute({
   method: 'post',
   path: '/pass/google-play',
   tags: ['Pass'],
   summary:
-    'Record a Google Play Aroha Pass subscription the app just bought (verified with Google)',
+    'Record a Google Play Aroha Pass subscription the app just bought (verified with Google) — the only way to get the Pass',
   security: [{ bearerAuth: [] }],
-  middleware: [
-    requireUser,
-    requireFeature('nav.arohaPass'),
-    requireFeature('paid.arohaPassPlay'),
-  ] as const,
+  middleware: [requireUser, requireFeature('nav.arohaPass')] as const,
   request: {
     body: {
       required: true,

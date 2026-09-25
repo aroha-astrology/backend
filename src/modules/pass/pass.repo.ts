@@ -107,13 +107,6 @@ export async function renewPass(
     .where(eq(userSubscriptions.id, id));
 }
 
-export async function setPassAutoRenew(id: string, autoRenew: boolean): Promise<void> {
-  await db
-    .update(userSubscriptions)
-    .set({ autoRenew, cancelledAt: autoRenew ? null : new Date(), updatedAt: new Date() })
-    .where(eq(userSubscriptions.id, id));
-}
-
 export async function markPassReminded(id: string): Promise<void> {
   await db
     .update(userSubscriptions)
