@@ -60,6 +60,8 @@ function makePlanRow(overrides: Partial<VastuPlanRow> = {}): VastuPlanRow {
     id: 'plan-1',
     userId: 'user-1',
     birthProfileId: null,
+    homeId: null,
+    ruleSetId: 'aroha-traditional-v1',
     layout: null,
     roomLayout: { kitchen: ['SE'] },
     roomDetails: {},

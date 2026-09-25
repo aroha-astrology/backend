@@ -1,6 +1,13 @@
 import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
-import { vastuPlans, type NewVastuPlanRow, type VastuPlanRow } from '../../db/schema.js';
+import {
+  vastuHomes,
+  vastuPlans,
+  type NewVastuHomeRow,
+  type NewVastuPlanRow,
+  type VastuHomeRow,
+  type VastuPlanRow,
+} from '../../db/schema.js';
 import { SUPPORTED_LANGS } from '../cron/broadcast-copy.js';
 
 /** Same self-heal window as REPORT_STALE_GENERATING_MS / PALM_STALE_GENERATING_MS. */
@@ -142,4 +149,77 @@ export async function saveVastuTranslation(
     )
     WHERE id = ${id}
   `);
+}
+
+/* -------------------------------------------------------------------------- */
+/* vastu_homes                                                                */
+/* -------------------------------------------------------------------------- */
+
+function homeProfileFilter(birthProfileId: string | null) {
+  return birthProfileId === null
+    ? isNull(vastuHomes.birthProfileId)
+    : eq(vastuHomes.birthProfileId, birthProfileId);
+}
+
+export async function insertHome(row: NewVastuHomeRow): Promise<VastuHomeRow> {
+  const [inserted] = await db.insert(vastuHomes).values(row).returning();
+  if (!inserted) throw new Error('Failed to insert vastu home');
+  return inserted;
+}
+
+/** Unarchived homes for one profile, most recently edited first. */
+export async function listHomesForUser(
+  userId: string,
+  birthProfileId: string | null,
+  limit = 20,
+): Promise<VastuHomeRow[]> {
+  return db
+    .select()
+    .from(vastuHomes)
+    .where(
+      and(
+        eq(vastuHomes.userId, userId),
+        homeProfileFilter(birthProfileId),
+        isNull(vastuHomes.archivedAt),
+      ),
+    )
+    .orderBy(desc(vastuHomes.updatedAt))
+    .limit(limit);
+}
+
+export async function countHomesForUser(userId: string): Promise<number> {
+  const rows = await db
+    .select({ id: vastuHomes.id })
+    .from(vastuHomes)
+    .where(eq(vastuHomes.userId, userId));
+  return rows.length;
+}
+
+export async function findHomeForUser(
+  id: string,
+  userId: string,
+): Promise<VastuHomeRow | undefined> {
+  const rows = await db
+    .select()
+    .from(vastuHomes)
+    .where(and(eq(vastuHomes.id, id), eq(vastuHomes.userId, userId)))
+    .limit(1);
+  return rows[0];
+}
+
+export async function updateHomeForUser(
+  id: string,
+  userId: string,
+  patch: Partial<Pick<NewVastuHomeRow, 'name' | 'layout' | 'overallScore' | 'archivedAt'>>,
+): Promise<VastuHomeRow | undefined> {
+  const [updated] = await db
+    .update(vastuHomes)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(and(eq(vastuHomes.id, id), eq(vastuHomes.userId, userId)))
+    .returning();
+  return updated;
+}
+
+export async function deleteHomeForUser(id: string, userId: string): Promise<void> {
+  await db.delete(vastuHomes).where(and(eq(vastuHomes.id, id), eq(vastuHomes.userId, userId)));
 }

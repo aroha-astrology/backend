@@ -1,0 +1,234 @@
+{
+  "ruleSetId": "aroha-traditional-v1",
+  "rules": [
+    {
+      "room": "kitchen",
+      "idealDirections": [
+        "SE"
+      ],
+      "acceptableDirections": [
+        "NW",
+        "E"
+      ],
+      "avoidDirections": [
+        "NE",
+        "SW",
+        "N"
+      ],
+      "weight": 9
+    },
+    {
+      "room": "master_bed",
+      "idealDirections": [
+        "SW"
+      ],
+      "acceptableDirections": [
+        "S",
+        "W"
+      ],
+      "avoidDirections": [
+        "NE",
+        "SE",
+        "N"
+      ],
+      "weight": 9
+    },
+    {
+      "room": "bed_2",
+      "idealDirections": [
+        "NW",
+        "W"
+      ],
+      "acceptableDirections": [
+        "S",
+        "N"
+      ],
+      "avoidDirections": [
+        "NE",
+        "SE"
+      ],
+      "weight": 6
+    },
+    {
+      "room": "puja_room",
+      "idealDirections": [
+        "NE"
+      ],
+      "acceptableDirections": [
+        "E",
+        "N"
+      ],
+      "avoidDirections": [
+        "S",
+        "SW",
+        "SE"
+      ],
+      "weight": 10
+    },
+    {
+      "room": "living",
+      "idealDirections": [
+        "N",
+        "NE"
+      ],
+      "acceptableDirections": [
+        "E",
+        "NW"
+      ],
+      "avoidDirections": [
+        "SW",
+        "SE"
+      ],
+      "weight": 7
+    },
+    {
+      "room": "entrance",
+      "idealDirections": [
+        "N",
+        "NE",
+        "E"
+      ],
+      "acceptableDirections": [
+        "NW"
+      ],
+      "avoidDirections": [
+        "S",
+        "SW",
+        "SE",
+        "W"
+      ],
+      "weight": 10
+    },
+    {
+      "room": "bathroom",
+      "idealDirections": [
+        "NW"
+      ],
+      "acceptableDirections": [
+        "W",
+        "N"
+      ],
+      "avoidDirections": [
+        "NE",
+        "E",
+        "SE",
+        "SW"
+      ],
+      "weight": 7
+    },
+    {
+      "room": "store",
+      "idealDirections": [
+        "SW"
+      ],
+      "acceptableDirections": [
+        "S",
+        "W",
+        "NW"
+      ],
+      "avoidDirections": [
+        "NE",
+        "E"
+      ],
+      "weight": 5
+    },
+    {
+      "room": "kids_room",
+      "idealDirections": [
+        "W",
+        "NW"
+      ],
+      "acceptableDirections": [
+        "N",
+        "E"
+      ],
+      "avoidDirections": [
+        "SW",
+        "SE"
+      ],
+      "weight": 7
+    },
+    {
+      "room": "dining",
+      "idealDirections": [
+        "W",
+        "E"
+      ],
+      "acceptableDirections": [
+        "N",
+        "NW"
+      ],
+      "avoidDirections": [
+        "S",
+        "SE"
+      ],
+      "weight": 6
+    },
+    {
+      "room": "parking",
+      "idealDirections": [
+        "NW",
+        "SE"
+      ],
+      "acceptableDirections": [
+        "W",
+        "S"
+      ],
+      "avoidDirections": [
+        "NE",
+        "E"
+      ],
+      "weight": 4
+    },
+    {
+      "room": "stairs",
+      "idealDirections": [
+        "S",
+        "SW",
+        "W"
+      ],
+      "acceptableDirections": [
+        "SE"
+      ],
+      "avoidDirections": [
+        "NE",
+        "N",
+        "E"
+      ],
+      "weight": 6
+    },
+    {
+      "room": "balcony",
+      "idealDirections": [
+        "N",
+        "NE",
+        "E"
+      ],
+      "acceptableDirections": [
+        "NW"
+      ],
+      "avoidDirections": [
+        "SW",
+        "S"
+      ],
+      "weight": 4
+    },
+    {
+      "room": "water_tank",
+      "idealDirections": [
+        "NE",
+        "N"
+      ],
+      "acceptableDirections": [
+        "E",
+        "NW"
+      ],
+      "avoidDirections": [
+        "SE",
+        "S",
+        "SW"
+      ],
+      "weight": 6
+    }
+  ]
+}
