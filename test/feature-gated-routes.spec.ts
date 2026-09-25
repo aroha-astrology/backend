@@ -259,3 +259,21 @@ describe('roadmap step 11 routes ship dark', () => {
     expect((await post('/v1/yantra/yantra/buy')).status).toBe(403);
   });
 });
+
+describe('roadmap step 12 routes ship dark', () => {
+  it('the relocation routes → 403 while nav.relocation is off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.relocation': off,
+      'paid.relocation': off,
+    });
+    const get = await createApp().request('/v1/relocation', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(get.status).toBe(403);
+    expect((await post('/v1/relocation/unlock')).status).toBe(403);
+    expect(
+      (await post('/v1/relocation/compare', { places: [{ name: 'London', lat: 51.5, lon: -0.1 }] }))
+        .status,
+    ).toBe(403);
+  });
+});

@@ -140,6 +140,7 @@ export const TransactionSchema = z
         'question_pack',
         'aroha_pass',
         'digital_yantra',
+        'relocation',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),

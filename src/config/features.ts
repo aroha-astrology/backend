@@ -883,6 +883,25 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultPricePaise: 2900,
     tag: 'new',
   },
+
+  // Step 12 — Aroha Relocation (free with the Aroha Pass).
+  // A /relocation page: pick up to five places anywhere in the world and compare them with your birth place across career, relationships, finance, education, family and lifestyle, with the reasons. Blocked while birth-time confidence is low. Rule-based, no AI cost.
+  {
+    key: 'nav.relocation',
+    label: 'Aroha Relocation — compare cities for career, love, money and more',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // One-off unlock per profile, then unlimited comparisons. Free with the Aroha Pass.
+  {
+    key: 'paid.relocation',
+    label: 'Aroha Relocation — unlock per profile',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 9900,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

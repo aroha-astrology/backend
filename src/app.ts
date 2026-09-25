@@ -37,6 +37,7 @@ import { journalRouter } from './modules/journal/journal.routes.js';
 import { practiceRouter } from './modules/practice/practice.routes.js';
 import { passRouter } from './modules/pass/pass.routes.js';
 import { yantraRouter } from './modules/yantra/yantra.routes.js';
+import { relocationRouter } from './modules/relocation/relocation.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -145,6 +146,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', practiceRouter);
   app.route('/v1', passRouter);
   app.route('/v1', yantraRouter);
+  app.route('/v1', relocationRouter);
 
   // Mounted OUTSIDE /v1: the /v1 routers attach a `requireUser` wildcard that
   // would otherwise intercept the machine-facing (cron-secret) endpoints.
