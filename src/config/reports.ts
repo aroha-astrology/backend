@@ -28,7 +28,8 @@ export type ReportKey =
   | 'numerology'
   | 'name_change'
   | 'remedies'
-  | 'progeny';
+  | 'progeny'
+  | 'kp_annual';
 
 export interface ReportDef {
   key: ReportKey;
@@ -218,6 +219,20 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     // Same tier as kundli_milan/marriage/wealth: a full cross-chart pipeline (both charts' D7,
     // Beeja/Kshetra sphutas, dual-school child sequence, couple timing overlap) over 3 LLM calls.
     basePricePaise: 9900,
+  },
+  {
+    key: 'kp_annual',
+    featureFlagKey: 'reports.kp_annual',
+    label: 'KP Year Ahead Report',
+    isMonthly: false,
+    // Covers the 12 months from the generation date (see computeKpAnnualScores) — the yearly
+    // purchase shape is exactly that: periodMonth = purchase date, valid for one year, one
+    // active copy per profile at a time.
+    isYearly: true,
+    requiresPartner: false,
+    // ₹101 against a ₹251 MRP (the strike-through lives on the feature flag's
+    // defaultOriginalPricePaise so the admin panel can move either number without a deploy).
+    basePricePaise: 10100,
   },
 ] as const;
 

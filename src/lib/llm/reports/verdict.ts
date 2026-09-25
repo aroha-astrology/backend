@@ -59,6 +59,8 @@ export const VERDICT_TOPIC: Record<ReportKey, string> = {
   remedies: "the reader's Lal Kitab remedies — karmic debts, blind planets, and planet placements",
   progeny:
     "the reader's and their spouse's prospects for children — classical progeny indications, the likely child sequence and its timing, NOT fertility as a medical matter",
+  kp_annual:
+    "the reader's next 12 months read through KP — which life areas the cuspal sub lords promise, the peak months and best windows, and the reader's own questions. Name months, never any score",
 };
 
 /** `lifeContext` and `planetCondition` are cross-domain grounding attached to EVERY report
@@ -77,6 +79,12 @@ const VERDICT_EXCLUDED_KEYS = new Set([
   'partnerVargas',
   'ashtakavargaSummary',
   'userAnswers',
+  // kp_annual's raw chart tables — the verdict works from `areas`/`months`/`questions`, and the
+  // per-cusp/per-planet rows only bloat the prompt. No other report type carries these keys.
+  'cusps',
+  'planets',
+  'engine',
+  'sensitiveCusps',
 ]);
 
 export function factsForVerdict(scores: Record<string, unknown>): Record<string, unknown> {

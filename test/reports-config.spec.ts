@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getReportDef, monthlyBundlePricePaise, REPORT_CATALOGUE } from '../src/config/reports.js';
 
 describe('REPORT_CATALOGUE', () => {
-  it('has exactly the 15 documented report keys', () => {
+  it('has exactly the 16 documented report keys', () => {
     const keys = REPORT_CATALOGUE.map((r) => r.key).sort();
     expect(keys).toEqual(
       [
@@ -10,6 +10,7 @@ describe('REPORT_CATALOGUE', () => {
         'career_monthly',
         'finance_monthly',
         'health_monthly',
+        'kp_annual',
         'kundli_milan',
         'marriage',
         'match_report',

@@ -28,6 +28,22 @@
 import type { ReportKey } from './reports.js';
 
 export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> = {
+  // 11 sections over 3 calls, plus a 12th (`your_questions`) only when the reader asked
+  // something — see lib/llm/reports/kp-annual.ts. Append-only for that reason.
+  kp_annual: [
+    'year_at_a_glance',
+    'kp_blueprint',
+    'dasha_story',
+    'transit_triggers',
+    'career_money',
+    'love_family',
+    'health_wellbeing',
+    'home_travel_learning',
+    'month_by_month',
+    'guidance_remedies',
+    'closing_note',
+    'your_questions',
+  ],
   // 9 sections over 3 LLM calls (3 each) — see lib/llm/reports/progeny.ts. The count here MUST
   // stay in lockstep with what that file emits; assignSectionIds zips by position and silently
   // labels nothing on a mismatch. NOT in APPEND_ONLY_SECTION_IDS: every section is
@@ -188,6 +204,8 @@ const APPEND_ONLY_SECTION_IDS: ReadonlySet<string> = new Set([
   // numerology's phone-number section (call4, llm/reports/numerology.ts) only generates for a
   // reader with a phone number on file/given — see its own list above for the full rationale.
   'numerology',
+  // `your_questions` only exists when the reader typed a question at purchase.
+  'kp_annual',
 ]);
 
 /**

@@ -24,6 +24,12 @@ export interface FeatureDef {
    */
   defaultPricePaise?: number;
   /**
+   * The strike-through MRP shown next to `defaultPricePaise` until an admin override row
+   * sets its own `originalPricePaise`. Only meaningful for `paid`/`reports` keys, and only
+   * rendered when it is strictly greater than the price actually charged.
+   */
+  defaultOriginalPricePaise?: number;
+  /**
    * Turns this entry into a MODEL PICKER in Admin -> Features: the dashboard renders a dropdown
    * of these options instead of a price box. Only the `ai` group uses it.
    *
@@ -396,6 +402,18 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'reports',
     defaultEnabled: false,
     defaultPricePaise: 9900,
+  },
+  // KP Year Ahead: a full Krishnamurti Paddhati reading of the 12 months from the day it is
+  // generated — Placidus cuspal sub lords, significators, dasha/bhukti/antara timing and
+  // slow-transit confirmation, plus up to 3 of the reader's own questions (screened for
+  // death/suicide topics before any money moves). ₹101, shown against a ₹251 MRP.
+  {
+    key: 'reports.kp_annual',
+    label: 'KP Year Ahead Report',
+    group: 'reports',
+    defaultEnabled: true,
+    defaultPricePaise: 10100,
+    defaultOriginalPricePaise: 25100,
   },
   // panchang
   {

@@ -320,6 +320,44 @@ describe('purchaseReport — validation', () => {
   });
 });
 
+describe('purchaseReport — kp_annual reader questions', () => {
+  it('refuses a death or self-harm question before touching the wallet', async () => {
+    for (const q of ['When will my husband die?', 'I want to kill myself']) {
+      await expect(
+        purchaseReport(makeUser(), {
+          reportKey: 'kp_annual',
+          answers: { question1: 'Will I get a new job?', question2: q },
+        }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'QUESTION_NOT_ALLOWED' });
+    }
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
+  it('charges ₹101 and persists allowed questions as the yearly row input', async () => {
+    state.claimReportRow.mockResolvedValue({
+      id: 'kp-1',
+      periodMonth: '2026-09-25',
+      status: 'queued',
+    });
+    await purchaseReport(makeUser(), {
+      reportKey: 'kp_annual',
+      answers: { question1: 'Will I get a new job?' },
+    });
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(
+      expect.anything(),
+      10100,
+      expect.any(String),
+    );
+    expect(state.claimReportRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reportKey: 'kp_annual',
+        input: { answers: { question1: 'Will I get a new job?' } },
+      }),
+    );
+  });
+});
+
 describe('purchaseReport — pricing and row shape', () => {
   it('an Aroha Pass holder pays 20% less', async () => {
     state.hasPass.mockResolvedValue(true);
