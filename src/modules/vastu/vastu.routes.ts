@@ -13,6 +13,10 @@ import {
   CreateVastuHomeBodySchema,
   UpdateVastuHomeBodySchema,
   VastuHomeSchema,
+  CreateVastuHomeVersionBodySchema,
+  HomeVersionParamSchema,
+  VastuHomeVersionSchema,
+  VastuHomeVersionSummarySchema,
 } from './vastu.schemas.js';
 import {
   requestVastuAnalysis,
@@ -25,6 +29,10 @@ import {
   getHomeForUser,
   patchHomeForUser,
   removeHomeForUser,
+  createHomeVersion,
+  getHomeVersionsForUser,
+  getHomeVersionForUser,
+  restoreHomeVersion,
 } from './vastu.service.js';
 
 const ErrorSchema = z
@@ -230,6 +238,127 @@ vastuRouter.openapi(deleteHomeRoute, async (c) => {
   const user = c.get('user');
   await removeHomeForUser(c.req.valid('param').id, user.id);
   return c.body(null, 204);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Home versions — snapshots of a home's layout, newest first, capped per home. */
+/* -------------------------------------------------------------------------- */
+
+const createHomeVersionRoute = createRoute({
+  method: 'post',
+  path: '/vastu/homes/{id}/versions',
+  tags: ['Vastu'],
+  summary: "Save the home's current stored layout as a version",
+  description: 'Keeps the newest 30 versions per home; the oldest is pruned past that.',
+  security: [{ bearerAuth: [] }],
+  middleware: [vastuOn, homesRateLimit] as const,
+  request: {
+    params: HomeIdParamSchema,
+    body: {
+      required: true,
+      content: { 'application/json': { schema: CreateVastuHomeVersionBodySchema } },
+    },
+  },
+  responses: {
+    201: {
+      description: 'Created',
+      content: { 'application/json': { schema: VastuHomeVersionSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled'),
+    404: errorResponse('Home not found'),
+    422: errorResponse('Validation failed'),
+  },
+});
+
+vastuRouter.openapi(createHomeVersionRoute, async (c) => {
+  const user = c.get('user');
+  const version = await createHomeVersion(c.req.valid('param').id, user.id, c.req.valid('json'));
+  return c.json(version, 201);
+});
+
+const listHomeVersionsRoute = createRoute({
+  method: 'get',
+  path: '/vastu/homes/{id}/versions',
+  tags: ['Vastu'],
+  summary: "List a home's saved versions (newest first, without layouts)",
+  security: [{ bearerAuth: [] }],
+  middleware: [vastuOn] as const,
+  request: { params: HomeIdParamSchema },
+  responses: {
+    200: {
+      description: 'Saved versions',
+      content: {
+        'application/json': {
+          schema: z.object({ versions: z.array(VastuHomeVersionSummarySchema) }),
+        },
+      },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled'),
+    404: errorResponse('Home not found'),
+  },
+});
+
+vastuRouter.openapi(listHomeVersionsRoute, async (c) => {
+  const user = c.get('user');
+  const versions = await getHomeVersionsForUser(c.req.valid('param').id, user.id);
+  return c.json({ versions }, 200);
+});
+
+const getHomeVersionRoute = createRoute({
+  method: 'get',
+  path: '/vastu/homes/{id}/versions/{versionId}',
+  tags: ['Vastu'],
+  summary: 'Get one saved version, including its layout',
+  security: [{ bearerAuth: [] }],
+  middleware: [vastuOn] as const,
+  request: { params: HomeVersionParamSchema },
+  responses: {
+    200: {
+      description: 'The version',
+      content: { 'application/json': { schema: VastuHomeVersionSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled'),
+    404: errorResponse('Not found'),
+  },
+});
+
+vastuRouter.openapi(getHomeVersionRoute, async (c) => {
+  const user = c.get('user');
+  const { id, versionId } = c.req.valid('param');
+  const version = await getHomeVersionForUser(id, versionId, user.id);
+  return c.json(version, 200);
+});
+
+const restoreHomeVersionRoute = createRoute({
+  method: 'post',
+  path: '/vastu/homes/{id}/versions/{versionId}/restore',
+  tags: ['Vastu'],
+  summary: 'Restore a saved version onto the home',
+  description:
+    'Snapshots the current state first (label "Before restore") so the restore can be ' +
+    'undone, then sets the home layout and score from the version.',
+  security: [{ bearerAuth: [] }],
+  middleware: [vastuOn, homesRateLimit] as const,
+  request: { params: HomeVersionParamSchema },
+  responses: {
+    200: {
+      description: 'The restored home',
+      content: { 'application/json': { schema: VastuHomeSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled'),
+    404: errorResponse('Not found'),
+  },
+});
+
+vastuRouter.openapi(restoreHomeVersionRoute, async (c) => {
+  const user = c.get('user');
+  const { id, versionId } = c.req.valid('param');
+  const home = await restoreHomeVersion(id, versionId, user.id);
+  return c.json(home, 200);
 });
 
 const askRoute = createRoute({

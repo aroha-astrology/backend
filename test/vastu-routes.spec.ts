@@ -54,6 +54,10 @@ vi.mock('../src/modules/vastu/vastu.service.js', () => ({
   getHomeForUser: vi.fn(),
   patchHomeForUser: vi.fn(),
   removeHomeForUser: vi.fn(),
+  createHomeVersion: vi.fn(),
+  getHomeVersionsForUser: vi.fn(),
+  getHomeVersionForUser: vi.fn(),
+  restoreHomeVersion: vi.fn(),
   reapStaleVastuPlans: vi.fn(),
 }));
 

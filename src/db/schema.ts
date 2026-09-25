@@ -1571,6 +1571,42 @@ export const vastuHomes = pgTable(
 export type VastuHomeRow = typeof vastuHomes.$inferSelect;
 export type NewVastuHomeRow = typeof vastuHomes.$inferInsert;
 
+/**
+ * Saved snapshots of a home's layout — the planner's version history. Taken on demand
+ * ("Save version") and automatically before a restore, so a restore is itself undoable.
+ * Capped per home by the service (oldest pruned first).
+ */
+export const vastuHomeVersions = pgTable(
+  'vastu_home_versions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    homeId: uuid('home_id')
+      .notNull()
+      .references(() => vastuHomes.id, { onDelete: 'cascade' }),
+    /** Denormalised owner so every query can scope by user without joining vastu_homes. */
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The home's layout as stored at snapshot time, same shape as vastu_homes.layout. */
+    layout: jsonb('layout').notNull().$type<Record<string, unknown>>(),
+    overallScore: integer('overall_score'),
+    ruleSetId: text('rule_set_id').notNull().default('aroha-traditional-v1'),
+    /** Optional user label ("Before moving the kitchen"); "Before restore" for automatic ones. */
+    label: text('label'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    homeCreatedIdx: index('vastu_home_versions_home_created_idx').on(table.homeId, table.createdAt),
+  }),
+);
+
+export type VastuHomeVersionRow = typeof vastuHomeVersions.$inferSelect;
+export type NewVastuHomeVersionRow = typeof vastuHomeVersions.$inferInsert;
+
 export const vastuPlans = pgTable(
   'vastu_plans',
   {

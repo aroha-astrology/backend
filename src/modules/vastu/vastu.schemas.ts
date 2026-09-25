@@ -144,3 +144,43 @@ export const VastuHomeSchema = z
   .openapi('VastuHome');
 
 export type VastuHomeDto = z.infer<typeof VastuHomeSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* Home versions                                                              */
+/* -------------------------------------------------------------------------- */
+
+export const CreateVastuHomeVersionBodySchema = z
+  .object({ label: z.string().trim().min(1).max(60).optional() })
+  .openapi('CreateVastuHomeVersionBody');
+
+export type CreateVastuHomeVersionBody = z.infer<typeof CreateVastuHomeVersionBodySchema>;
+
+export const HomeVersionParamSchema = z.object({
+  id: z
+    .string()
+    .uuid()
+    .openapi({ param: { name: 'id', in: 'path' } }),
+  versionId: z
+    .string()
+    .uuid()
+    .openapi({ param: { name: 'versionId', in: 'path' } }),
+});
+
+/** A version as listed — no layout, so the history list stays small. */
+export const VastuHomeVersionSummarySchema = z
+  .object({
+    id: z.string(),
+    homeId: z.string(),
+    label: z.string().nullable(),
+    overallScore: z.number().nullable(),
+    ruleSetId: z.string(),
+    createdAt: z.string(),
+  })
+  .openapi('VastuHomeVersionSummary');
+
+export const VastuHomeVersionSchema = VastuHomeVersionSummarySchema.extend({
+  layout: z.record(z.string(), z.unknown()),
+}).openapi('VastuHomeVersion');
+
+export type VastuHomeVersionSummaryDto = z.infer<typeof VastuHomeVersionSummarySchema>;
+export type VastuHomeVersionDto = z.infer<typeof VastuHomeVersionSchema>;

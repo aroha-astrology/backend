@@ -28,19 +28,32 @@ import {
   findHomeForUser,
   updateHomeForUser,
   deleteHomeForUser,
+  insertHomeVersion,
+  listHomeVersionsForUser,
+  listHomeVersionIdsForUser,
+  findHomeVersionForUser,
+  deleteHomeVersionsForUser,
+  type VastuHomeVersionSummaryRow,
 } from './vastu.repo.js';
-import type { VastuHomeRow, VastuPlanRow } from '../../db/schema.js';
+import type { VastuHomeRow, VastuHomeVersionRow, VastuPlanRow } from '../../db/schema.js';
 import type {
   AnalyzeVastuBody,
   CreateVastuHomeBody,
+  CreateVastuHomeVersionBody,
   UpdateVastuHomeBody,
   VastuHomeDto,
+  VastuHomeVersionDto,
+  VastuHomeVersionSummaryDto,
   VastuPlanDto,
 } from './vastu.schemas.js';
 
 const DAILY_LIMIT = 20;
 /** Saved homes per account (all profiles, archived included) — generous, but bounded. */
 export const MAX_HOMES_PER_USER = 50;
+/** Saved versions kept per home — the oldest is pruned once a new one goes past this. */
+export const MAX_VERSIONS_PER_HOME = 30;
+/** Label on the automatic snapshot taken just before a restore, so the restore can be undone. */
+export const BEFORE_RESTORE_LABEL = 'Before restore';
 /**
  * Fail-open fallback only. The charged amount is the admin-set `paid.vastu`
  * price resolved via `priceOf()` — never this constant.
@@ -394,4 +407,98 @@ export async function removeHomeForUser(id: string, userId: string): Promise<voi
   if (!row) throw Errors.notFound('Vastu home not found');
   // Reports taken from this home keep their own layout copy; their home_id is nulled by the FK.
   await deleteHomeForUser(id, userId);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Home versions                                                              */
+/* -------------------------------------------------------------------------- */
+
+export function toVastuHomeVersionSummaryDto(
+  row: VastuHomeVersionSummaryRow,
+): VastuHomeVersionSummaryDto {
+  return {
+    id: row.id,
+    homeId: row.homeId,
+    label: row.label,
+    overallScore: row.overallScore,
+    ruleSetId: row.ruleSetId,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function toVastuHomeVersionDto(row: VastuHomeVersionRow): VastuHomeVersionDto {
+  return { ...toVastuHomeVersionSummaryDto(row), layout: row.layout };
+}
+
+/** Snapshot the home's stored state as a version, then prune past the per-home cap. */
+async function snapshotHome(
+  home: VastuHomeRow,
+  label: string | null,
+): Promise<VastuHomeVersionRow> {
+  const row = await insertHomeVersion({
+    homeId: home.id,
+    userId: home.userId,
+    layout: home.layout,
+    overallScore: home.overallScore,
+    ruleSetId: home.ruleSetId,
+    label,
+  });
+  const ids = await listHomeVersionIdsForUser(home.id, home.userId);
+  await deleteHomeVersionsForUser(ids.slice(MAX_VERSIONS_PER_HOME), home.id, home.userId);
+  return row;
+}
+
+export async function createHomeVersion(
+  homeId: string,
+  userId: string,
+  body: CreateVastuHomeVersionBody,
+): Promise<VastuHomeVersionDto> {
+  const home = await findHomeForUser(homeId, userId);
+  if (!home) throw Errors.notFound('Vastu home not found');
+  const row = await snapshotHome(home, body.label ?? null);
+  return toVastuHomeVersionDto(row);
+}
+
+export async function getHomeVersionsForUser(
+  homeId: string,
+  userId: string,
+): Promise<VastuHomeVersionSummaryDto[]> {
+  if (!(await findHomeForUser(homeId, userId))) throw Errors.notFound('Vastu home not found');
+  const rows = await listHomeVersionsForUser(homeId, userId, MAX_VERSIONS_PER_HOME);
+  return rows.map(toVastuHomeVersionSummaryDto);
+}
+
+export async function getHomeVersionForUser(
+  homeId: string,
+  versionId: string,
+  userId: string,
+): Promise<VastuHomeVersionDto> {
+  const row = await findHomeVersionForUser(versionId, homeId, userId);
+  if (!row) throw Errors.notFound('Vastu home version not found');
+  return toVastuHomeVersionDto(row);
+}
+
+/**
+ * Put a saved version's layout back on the home. The current state is snapshotted first
+ * (labelled "Before restore"), so a restore is itself one click to undo. The version is read
+ * before that snapshot, so even if the snapshot's pruning drops it (it was the oldest at the
+ * cap) the restore still applies its layout.
+ */
+export async function restoreHomeVersion(
+  homeId: string,
+  versionId: string,
+  userId: string,
+): Promise<VastuHomeDto> {
+  const home = await findHomeForUser(homeId, userId);
+  if (!home) throw Errors.notFound('Vastu home not found');
+  const version = await findHomeVersionForUser(versionId, homeId, userId);
+  if (!version) throw Errors.notFound('Vastu home version not found');
+
+  await snapshotHome(home, BEFORE_RESTORE_LABEL);
+  const row = await updateHomeForUser(homeId, userId, {
+    layout: version.layout,
+    overallScore: version.overallScore,
+  });
+  if (!row) throw Errors.notFound('Vastu home not found');
+  return toVastuHomeDto(row);
 }

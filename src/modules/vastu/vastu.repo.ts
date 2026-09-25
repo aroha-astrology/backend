@@ -1,11 +1,14 @@
-import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   vastuHomes,
+  vastuHomeVersions,
   vastuPlans,
   type NewVastuHomeRow,
+  type NewVastuHomeVersionRow,
   type NewVastuPlanRow,
   type VastuHomeRow,
+  type VastuHomeVersionRow,
   type VastuPlanRow,
 } from '../../db/schema.js';
 import { SUPPORTED_LANGS } from '../cron/broadcast-copy.js';
@@ -222,4 +225,85 @@ export async function updateHomeForUser(
 
 export async function deleteHomeForUser(id: string, userId: string): Promise<void> {
   await db.delete(vastuHomes).where(and(eq(vastuHomes.id, id), eq(vastuHomes.userId, userId)));
+}
+
+/* -------------------------------------------------------------------------- */
+/* vastu_home_versions                                                        */
+/* -------------------------------------------------------------------------- */
+
+/** A version as listed — everything but the (large) layout. */
+export type VastuHomeVersionSummaryRow = Omit<VastuHomeVersionRow, 'layout'>;
+
+export async function insertHomeVersion(row: NewVastuHomeVersionRow): Promise<VastuHomeVersionRow> {
+  const [inserted] = await db.insert(vastuHomeVersions).values(row).returning();
+  if (!inserted) throw new Error('Failed to insert vastu home version');
+  return inserted;
+}
+
+/** One home's versions, newest first, without their layouts. */
+export async function listHomeVersionsForUser(
+  homeId: string,
+  userId: string,
+  limit = 30,
+): Promise<VastuHomeVersionSummaryRow[]> {
+  return db
+    .select({
+      id: vastuHomeVersions.id,
+      homeId: vastuHomeVersions.homeId,
+      userId: vastuHomeVersions.userId,
+      overallScore: vastuHomeVersions.overallScore,
+      ruleSetId: vastuHomeVersions.ruleSetId,
+      label: vastuHomeVersions.label,
+      createdAt: vastuHomeVersions.createdAt,
+    })
+    .from(vastuHomeVersions)
+    .where(and(eq(vastuHomeVersions.homeId, homeId), eq(vastuHomeVersions.userId, userId)))
+    .orderBy(desc(vastuHomeVersions.createdAt))
+    .limit(limit);
+}
+
+/** Every version id of one home, newest first — the service prunes past its cap from this. */
+export async function listHomeVersionIdsForUser(homeId: string, userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: vastuHomeVersions.id })
+    .from(vastuHomeVersions)
+    .where(and(eq(vastuHomeVersions.homeId, homeId), eq(vastuHomeVersions.userId, userId)))
+    .orderBy(desc(vastuHomeVersions.createdAt));
+  return rows.map((r) => r.id);
+}
+
+export async function findHomeVersionForUser(
+  versionId: string,
+  homeId: string,
+  userId: string,
+): Promise<VastuHomeVersionRow | undefined> {
+  const rows = await db
+    .select()
+    .from(vastuHomeVersions)
+    .where(
+      and(
+        eq(vastuHomeVersions.id, versionId),
+        eq(vastuHomeVersions.homeId, homeId),
+        eq(vastuHomeVersions.userId, userId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export async function deleteHomeVersionsForUser(
+  ids: string[],
+  homeId: string,
+  userId: string,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .delete(vastuHomeVersions)
+    .where(
+      and(
+        inArray(vastuHomeVersions.id, ids),
+        eq(vastuHomeVersions.homeId, homeId),
+        eq(vastuHomeVersions.userId, userId),
+      ),
+    );
 }
