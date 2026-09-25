@@ -126,6 +126,42 @@ describe('pure helpers', () => {
     expect(windows.find((w) => w.name === 'rahuKaal')!.kind).toBe('caution');
   });
 
+  it('adds the night windows up to midnight, cutting the one that runs past it at 24:00', () => {
+    const windows = dayWindows({
+      choghadiya: {
+        day: [{ name: 'Labh', type: 'good', startTime: '16:30', endTime: '18:00' }],
+        night: [
+          { name: 'Shubh', type: 'good', startTime: '18:00', endTime: '19:30' },
+          { name: 'Char', type: 'neutral', startTime: '19:30', endTime: '21:00' },
+          { name: 'Rog', type: 'bad', startTime: '21:00', endTime: '22:30' },
+          { name: 'Kaal', type: 'bad', startTime: '22:30', endTime: '00:00' },
+          { name: 'Labh', type: 'good', startTime: '00:00', endTime: '01:30' },
+          { name: 'Amrit', type: 'good', startTime: '01:30', endTime: '03:00' },
+        ],
+      },
+    });
+    expect(windows.map((w) => [w.name, w.start, w.end])).toEqual([
+      ['Labh', '16:30', '18:00'],
+      ['Shubh', '18:00', '19:30'],
+      ['Rog', '21:00', '22:30'],
+      ['Kaal', '22:30', '24:00'],
+    ]);
+    const crossing = dayWindows({
+      choghadiya: {
+        day: [],
+        night: [
+          { name: 'Rog', type: 'bad', startTime: '18:10', endTime: '23:40' },
+          { name: 'Amrit', type: 'good', startTime: '23:40', endTime: '01:10' },
+          { name: 'Shubh', type: 'good', startTime: '01:10', endTime: '02:40' },
+        ],
+      },
+    });
+    expect(crossing.map((w) => [w.name, w.end])).toEqual([
+      ['Rog', '23:40'],
+      ['Amrit', '24:00'],
+    ]);
+  });
+
   it('prints IST clock time', () => {
     expect(istTime(new Date('2026-09-24T12:48:00Z'))).toBe('18:18');
   });

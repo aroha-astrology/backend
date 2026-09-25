@@ -57,6 +57,7 @@ export interface WeatherMoment {
 export interface DayWindow {
   /** 'HH:mm' IST. */
   start: string;
+  /** 'HH:mm' IST; '24:00' for the night window that runs into midnight. */
   end: string;
   kind: 'good' | 'caution';
   /** Choghadiya name ("Amrit", "Labh"…), or 'abhijit' / 'rahuKaal'. */
@@ -109,21 +110,38 @@ export function istTime(at: Date): string {
   }).format(at);
 }
 
-/** Good choghadiya, Abhijit and Rahu Kaal for the daytime, in time order. */
+interface ChoghadiyaPeriod {
+  name: string;
+  type: 'good' | 'bad' | 'neutral';
+  startTime: string;
+  endTime: string;
+}
+
+/**
+ * The night choghadiya that start before midnight, the one running past it
+ * cut off at '24:00'. Night runs sunset to the next sunrise, and its times
+ * wrap past '00:00', so a start earlier than sunset means after midnight.
+ */
+function nightBeforeMidnight(night: ChoghadiyaPeriod[]): ChoghadiyaPeriod[] {
+  const sunset = night[0]?.startTime;
+  if (!sunset) return [];
+  return night
+    .filter((c) => c.startTime >= sunset)
+    .map((c) => (c.endTime <= c.startTime ? { ...c, endTime: '24:00' } : c));
+}
+
+/** Good and caution choghadiya from sunrise to midnight, plus Abhijit and Rahu Kaal, in time order. */
 export function dayWindows(panchang: {
-  choghadiya?: {
-    day: Array<{
-      name: string;
-      type: 'good' | 'bad' | 'neutral';
-      startTime: string;
-      endTime: string;
-    }>;
-  };
+  choghadiya?: { day: ChoghadiyaPeriod[]; night?: ChoghadiyaPeriod[] };
   rahuKaal?: { start: string; end: string };
   abhijitMuhurta?: { start: string; end: string };
 }): DayWindow[] {
   const out: DayWindow[] = [];
-  for (const c of panchang.choghadiya?.day ?? []) {
+  const periods = [
+    ...(panchang.choghadiya?.day ?? []),
+    ...nightBeforeMidnight(panchang.choghadiya?.night ?? []),
+  ];
+  for (const c of periods) {
     if (c.type === 'neutral') continue;
     out.push({
       start: c.startTime,
