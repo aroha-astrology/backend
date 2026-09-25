@@ -122,6 +122,53 @@ describe('resolveFeatures — merge behavior', () => {
 
     expect(resolved[target.key]!.originalPricePaise).toBeNull();
   });
+
+  it('keeps an enabled model key on its saved model while that model is still offered', async () => {
+    state.findAllFeatureOverrides.mockResolvedValue([
+      {
+        key: 'ai.chatModel',
+        enabled: true,
+        pricePaise: null,
+        originalPricePaise: null,
+        model: 'gemini-3.5-flash-lite',
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
+    ]);
+
+    expect((await resolveFeatures())['ai.chatModel']!.model).toBe('gemini-3.5-flash-lite');
+  });
+
+  it('drops a saved model that is no longer offered, so the call uses the global model', async () => {
+    state.findAllFeatureOverrides.mockResolvedValue([
+      {
+        key: 'ai.chatModel',
+        enabled: true,
+        pricePaise: null,
+        originalPricePaise: null,
+        model: 'gemini-3.1-flash',
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
+    ]);
+
+    expect((await resolveFeatures())['ai.chatModel']!.model).toBeNull();
+  });
+
+  it('ignores a leftover row for a key removed from the registry', async () => {
+    state.findAllFeatureOverrides.mockResolvedValue([
+      {
+        key: 'home.askAroha',
+        enabled: true,
+        pricePaise: null,
+        originalPricePaise: null,
+        updatedAt: new Date(),
+        updatedBy: 'admin',
+      },
+    ]);
+
+    expect((await resolveFeatures())['home.askAroha']).toBeUndefined();
+  });
 });
 
 describe('resolveFeatures — DB failure fallback', () => {

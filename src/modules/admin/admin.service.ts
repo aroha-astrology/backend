@@ -170,7 +170,12 @@ export async function listFeaturesForAdmin(): Promise<AdminFeatureRow[]> {
     // No registry-level default for this one (unlike pricePaise/basePricePaise)
     // — a feature with no admin override simply has no discount to show.
     originalPricePaise: resolved[feature.key]?.originalPricePaise ?? null,
-    model: resolved[feature.key]?.model ?? feature.defaultModel ?? null,
+    // An enabled model key resolving to null means its saved model is no longer offered (see
+    // offeredModel in features.service.ts): show the blank "Select a model…" state, not a default.
+    model:
+      resolved[feature.key]?.enabled && feature.modelOptions
+        ? (resolved[feature.key]?.model ?? null)
+        : (resolved[feature.key]?.model ?? feature.defaultModel ?? null),
     modelOptions: [...(feature.modelOptions ?? [])],
     tag: feature.tag ?? null,
   }));

@@ -1,4 +1,4 @@
-import { FEATURE_REGISTRY } from '../../config/features.js';
+import { FEATURE_REGISTRY, offeredModel } from '../../config/features.js';
 import { logger } from '../../lib/logger.js';
 import { findAllFeatureOverrides } from './features.repo.js';
 import {
@@ -70,6 +70,8 @@ export async function resolveFeatures(): Promise<Record<string, ResolvedFeature>
     const overrides = await findAllFeatureOverrides();
     for (const row of overrides) {
       const def = FEATURE_REGISTRY.find((f) => f.key === row.key);
+      // A leftover row for a key since removed from the registry (e.g. home.askAroha) is ignored.
+      if (!def) continue;
       merged[row.key] = {
         enabled: row.enabled,
         pricePaise: row.pricePaise,
@@ -77,7 +79,7 @@ export async function resolveFeatures(): Promise<Record<string, ResolvedFeature>
         // A disabled model key resolves to null = "use the global default model", so switching
         // the toggle off is a one-click revert that doesn't require remembering which model
         // was the default. See FeatureDef.modelOptions.
-        model: row.enabled ? (row.model ?? def?.defaultModel ?? null) : null,
+        model: row.enabled ? offeredModel(row.key, row.model ?? def.defaultModel ?? null) : null,
         enabledAt: row.enabledAt,
       };
     }
@@ -258,7 +260,7 @@ export async function resolveFeaturesForUser(
     if (!memberGroupIds.has(row.groupId)) continue;
     if (row.enabled) {
       enabledKeys.add(row.featureKey);
-      enabledModelByKey.set(row.featureKey, row.model);
+      enabledModelByKey.set(row.featureKey, offeredModel(row.featureKey, row.model));
     } else {
       disabledKeys.add(row.featureKey);
     }

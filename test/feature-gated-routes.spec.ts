@@ -216,13 +216,23 @@ describe('roadmap step 9 routes ship dark', () => {
   it("GET /v1/practice/today and POST /v1/practice/complete → 403 while Today's Practice is off", async () => {
     state.resolveFeaturesForUser.mockResolvedValue({
       'nav.dailyPractice': off,
-      'home.dailyPractice': off,
     });
     const get = await createApp().request('/v1/practice/today', {
       headers: { Authorization: 'Bearer good-token' },
     });
     expect(get.status).toBe(403);
     expect((await post('/v1/practice/complete', { itemId: 'weekday' })).status).toBe(403);
+  });
+
+  it('the removed Home card key no longer opens the practice routes', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.dailyPractice': off,
+      'home.dailyPractice': { ...off, enabled: true },
+    });
+    const get = await createApp().request('/v1/practice/today', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(get.status).toBe(403);
   });
 });
 

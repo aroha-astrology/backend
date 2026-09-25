@@ -50,12 +50,24 @@ export interface FeatureDef {
  * free-text box: a typo'd model id fails every request for that feature until someone notices,
  * and per-model free-tier quotas differ (see gemini-key-pool.ts) so the set of models that are
  * actually affordable is a decision, not a text field.
+ *
+ * 2026-09-25: every text model the live key's `GET /v1beta/models` lists, newest first. The old
+ * 'gemini-3.1-flash' and 'gemini-3.1-pro' ids were never real models (both 404), so they're gone;
+ * a saved override still naming one falls back to the global model (see features.service.ts).
+ * Keep frontend lib/admin-format.ts MODEL_PRICING in step with this list.
  */
 export const SELECTABLE_GEMINI_MODELS = [
-  'gemini-3.1-flash-lite',
-  'gemini-3.1-flash',
-  'gemini-3.1-pro',
+  'gemini-3.8-flash',
   'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-pro-preview',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
 ] as const;
 
 export const FEATURE_REGISTRY: readonly FeatureDef[] = [
@@ -528,7 +540,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: false,
     modelOptions: SELECTABLE_GEMINI_MODELS,
-    defaultModel: 'gemini-3.1-pro',
+    defaultModel: 'gemini-3.1-pro-preview',
   },
   {
     key: 'ai.palmInterpretModel',
@@ -536,7 +548,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: false,
     modelOptions: SELECTABLE_GEMINI_MODELS,
-    defaultModel: 'gemini-3.1-flash',
+    defaultModel: 'gemini-3.8-flash',
   },
   // 2026-08-28: the three highest-traffic/most-reasoning-heavy surfaces
   // (personalized horoscope, AI chat, paid reports) previously had NO model
@@ -551,7 +563,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: false,
     modelOptions: SELECTABLE_GEMINI_MODELS,
-    defaultModel: 'gemini-3.1-flash',
+    defaultModel: 'gemini-3.8-flash',
   },
   {
     key: 'ai.chatModel',
@@ -559,7 +571,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: false,
     modelOptions: SELECTABLE_GEMINI_MODELS,
-    defaultModel: 'gemini-3.1-flash',
+    defaultModel: 'gemini-3.8-flash',
   },
   {
     key: 'ai.reportModel',
@@ -568,10 +580,10 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     modelOptions: SELECTABLE_GEMINI_MODELS,
     // REPORT_PROFILE already defaults to REASONING_MODEL (config/llm.ts) when
-    // this key is off/unset — 'gemini-3.1-pro' here is only the option
+    // this key is off/unset — 'gemini-3.1-pro-preview' here is only the option
     // pre-selected the FIRST time an admin opens this key's dropdown, not a
     // silent behavior change; see modelForReportProfile() in gemini-client.ts.
-    defaultModel: 'gemini-3.1-pro',
+    defaultModel: 'gemini-3.1-pro-preview',
   },
 
   // ---------------------------------------------------------------------------
@@ -623,10 +635,12 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
-  // Your Day: the day's good and caution windows on Home.
+  // Your Day: the day's good and caution windows. Moved from Home to the Panchang
+  // page on 2026-09-25; the key (and so its group) keeps its old name so admin and group
+  // overrides carry over.
   {
     key: 'home.yourDay',
-    label: 'Your Day timeline card',
+    label: 'Your Day timeline card on Panchang',
     group: 'home',
     defaultEnabled: false,
     tag: 'new',
@@ -640,10 +654,12 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
-  // Home card showing the next important window from the calendar.
+  // The next important window from the calendar. Moved from Home to the Panchang
+  // page on 2026-09-25; the key (and so its group) keeps its old name so admin and group
+  // overrides carry over.
   {
     key: 'home.nextWindow',
-    label: 'Next important window card',
+    label: 'Next important window card on Panchang',
     group: 'home',
     defaultEnabled: false,
     tag: 'new',
@@ -673,13 +689,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     key: 'chat.structuredAnswers',
     label: 'Ask Aroha 2.0 — card answers (factors, meaning, timeline, explore)',
     group: 'chat',
-    defaultEnabled: false,
-    tag: 'new',
-  },
-  {
-    key: 'home.askAroha',
-    label: 'Ask Aroha card on Home (type or tap the mic)',
-    group: 'home',
     defaultEnabled: false,
     tag: 'new',
   },
@@ -772,13 +781,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   },
 
   // Step 9 — Today's Practice (free).
-  {
-    key: 'home.dailyPractice',
-    label: "Today's Practice card on Home",
-    group: 'home',
-    defaultEnabled: false,
-    tag: 'new',
-  },
   // A /practice page: today's horoscope mantra, 108 japs for your running dasha lord, the weekday's prayer, and a Lal Kitab remedy on hard Moon days, each with its reason, chanted on the app's mala. A plain streak, no points. Free, no AI cost.
   {
     key: 'nav.dailyPractice',
@@ -908,4 +910,15 @@ const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) =>
 
 export function isKnownFeatureKey(key: string): boolean {
   return FEATURE_KEY_SET.has(key);
+}
+
+/**
+ * A saved model only counts while the key still offers it. A row naming a model that was since
+ * dropped from `modelOptions` (e.g. the retired 'gemini-3.1-flash', which never existed) resolves
+ * to null, i.e. the global default model, rather than failing every request for that feature.
+ */
+export function offeredModel(key: string, model: string | null): string | null {
+  if (model == null) return null;
+  const def = FEATURE_REGISTRY.find((f) => f.key === key);
+  return def?.modelOptions?.includes(model) ? model : null;
 }

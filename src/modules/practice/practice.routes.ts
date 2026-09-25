@@ -25,8 +25,9 @@ const Json = z.record(z.string(), z.any());
 
 export const practiceRouter = new OpenAPIHono();
 
-// The Home card and the page both read and tick off today's items.
-const cardOrPage = requireAnyFeature(['nav.dailyPractice', 'home.dailyPractice']);
+// The /practice page reads and ticks off today's items (the Home card was removed 2026-09-25).
+// requireAnyFeature, not requireFeature: a ship-dark key missing from the map must count as off.
+const practicePage = requireAnyFeature(['nav.dailyPractice']);
 
 const todayRoute = createRoute({
   method: 'get',
@@ -34,7 +35,7 @@ const todayRoute = createRoute({
   tags: ['Practice'],
   summary: "Today's practice: 3-4 small items with their reasons, what's done, and the streak",
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, cardOrPage] as const,
+  middleware: [requireUser, practicePage] as const,
   responses: {
     200: { description: "Today's practice", content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
@@ -53,7 +54,7 @@ const completeRoute = createRoute({
   tags: ['Practice'],
   summary: "Mark one of today's items done (idempotent)",
   security: [{ bearerAuth: [] }],
-  middleware: [requireUser, cardOrPage] as const,
+  middleware: [requireUser, practicePage] as const,
   request: {
     body: {
       required: true,

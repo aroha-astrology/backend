@@ -1,4 +1,4 @@
-import { FEATURE_REGISTRY, isKnownFeatureKey } from '../../config/features.js';
+import { FEATURE_REGISTRY, isKnownFeatureKey, offeredModel } from '../../config/features.js';
 import { Errors } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { invalidateGroupOverrideCache } from '../features/features.service.js';
@@ -160,7 +160,13 @@ export async function listGroupFeaturesForAdmin(groupId: string): Promise<AdminG
       // admin.service.ts#listFeaturesForAdmin uses for the global row) so an
       // admin flipping a group's toggle on for the first time sees a sane
       // pre-selected option, not an empty dropdown.
-      model: override?.enabled ? (override.model ?? feature.defaultModel ?? null) : null,
+      // A saved model no longer offered shows as blank ("Select a model…"), matching the
+      // runtime, which ignores it and inherits the global model.
+      model: override?.enabled
+        ? override.model == null
+          ? (feature.defaultModel ?? null)
+          : offeredModel(feature.key, override.model)
+        : null,
       modelOptions: [...(feature.modelOptions ?? [])],
       tag: feature.tag ?? null,
     };

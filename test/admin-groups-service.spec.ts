@@ -257,19 +257,29 @@ describe('listGroupFeaturesForAdmin', () => {
     const result = await listGroupFeaturesForAdmin('g1');
 
     const horoscope = result.find((f) => f.key === 'ai.horoscopeModel');
-    expect(horoscope?.model).toBe('gemini-3.1-flash'); // ai.horoscopeModel's registry defaultModel
+    expect(horoscope?.model).toBe('gemini-3.8-flash'); // ai.horoscopeModel's registry defaultModel
     expect(horoscope?.modelOptions.length).toBeGreaterThan(0);
   });
 
   it('reports model: null for a model-picker key that is disabled or inherited, even if a stale model value is stored', async () => {
     state.listGroupFeatureOverrides.mockResolvedValue([
-      { featureKey: 'ai.horoscopeModel', enabled: false, model: 'gemini-3.1-pro' },
+      { featureKey: 'ai.horoscopeModel', enabled: false, model: 'gemini-3.1-pro-preview' },
     ]);
 
     const result = await listGroupFeaturesForAdmin('g1');
 
     const horoscope = result.find((f) => f.key === 'ai.horoscopeModel');
     expect(horoscope?.model).toBeNull();
+  });
+
+  it('reports model: null for an enabled key whose saved model is no longer offered', async () => {
+    state.listGroupFeatureOverrides.mockResolvedValue([
+      { featureKey: 'ai.horoscopeModel', enabled: true, model: 'gemini-3.1-flash' },
+    ]);
+
+    const result = await listGroupFeaturesForAdmin('g1');
+
+    expect(result.find((f) => f.key === 'ai.horoscopeModel')?.model).toBeNull();
   });
 });
 
@@ -333,7 +343,7 @@ describe('updateGroupFeatureForAdmin', () => {
       'ai.horoscopeModel',
       true,
       ADMIN_PHONE,
-      'gemini-3.1-pro',
+      'gemini-3.1-pro-preview',
     );
 
     expect(state.upsertGroupFeatureOverride).toHaveBeenCalledWith(
@@ -341,9 +351,9 @@ describe('updateGroupFeatureForAdmin', () => {
       'ai.horoscopeModel',
       true,
       ADMIN_PHONE,
-      'gemini-3.1-pro',
+      'gemini-3.1-pro-preview',
     );
-    expect(result.model).toBe('gemini-3.1-pro');
+    expect(result.model).toBe('gemini-3.1-pro-preview');
   });
 
   it("rejects a model not in the key's modelOptions with a 400 and never writes", async () => {
