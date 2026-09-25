@@ -1,11 +1,14 @@
 /**
  * Entitlements — what a user has paid for beyond one-off wallet charges.
  *
- * `hasPass()` is the single check every "free with Aroha Pass" feature calls,
- * wired in from day one so those features never need touching again when the
- * Pass itself ships. Until then it always answers false: nobody has a Pass,
- * so every such feature charges its normal wallet price.
+ * `hasPass()` is the single check every "free with Aroha Pass" feature calls
+ * (Life Timeline, Bonds, Decisions, Find My Date, birth-time checks, report
+ * discount). A Pass counts while its current period hasn't ended — the
+ * Aroha Pass itself ships switched off (nav.arohaPass), so until an admin
+ * turns it on nobody has one and every feature charges its normal price.
  */
-export async function hasPass(_userId: string): Promise<boolean> {
-  return false;
+import { findActivePass } from '../modules/pass/pass.repo.js';
+
+export async function hasPass(userId: string): Promise<boolean> {
+  return (await findActivePass(userId)) !== null;
 }

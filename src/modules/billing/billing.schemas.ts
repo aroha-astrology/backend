@@ -137,6 +137,8 @@ export const TransactionSchema = z
         'decision_window',
         'find_my_date',
         'bond_insight',
+        'question_pack',
+        'aroha_pass',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),

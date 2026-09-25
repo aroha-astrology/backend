@@ -45,6 +45,7 @@ import {
 } from './deletion-reminder.service.js';
 import { runSupportMailPoll } from '../support/support-mail.service.js';
 import { runDailyUserReport } from './daily-user-report.service.js';
+import { runPassRenewals } from '../pass/pass.service.js';
 import { sendFestivalAlert } from './festival-alert.service.js';
 import { FestivalAlertBodySchema, FestivalAlertResultSchema } from './festival-alert.schemas.js';
 
@@ -891,5 +892,43 @@ cronRouter.openapi(dailyUserReportRoute, async (c) => {
   const result = await runDailyUserReport({
     recipientEmails: body?.recipientEmails,
   });
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Aroha Pass renewals (roadmap step 10) — renews wallet Passes from the
+// balance, ends the ones it can't cover, sends the 3-day reminders, and
+// expires lapsed Passes. A no-op while nobody has a Pass. Wired to run daily
+// (see scripts/cron-pass-renewals.sh) — only needed once the Pass is on.
+// ---------------------------------------------------------------------------
+
+const PassRenewalsBodySchema = z
+  .object({ dryRun: z.boolean().optional() })
+  .openapi('PassRenewalsBody');
+const PassRenewalsResultSchema = z
+  .object({ renewed: z.number(), lapsed: z.number(), reminded: z.number(), expired: z.number() })
+  .openapi('PassRenewalsResult');
+
+const passRenewalsRoute = createRoute({
+  method: 'post',
+  path: '/cron/pass-renewals',
+  tags: ['Cron'],
+  summary: 'Renew, remind about and expire Aroha Passes',
+  description: 'Authenticated via the X-Cron-Secret header.',
+  request: {
+    body: { content: { 'application/json': { schema: PassRenewalsBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Renewal run finished',
+      content: { 'application/json': { schema: PassRenewalsResultSchema } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(passRenewalsRoute, async (c) => {
+  const body = c.req.valid('json');
+  const result = await runPassRenewals(new Date(), { dryRun: body?.dryRun });
   return c.json(result, 200);
 });

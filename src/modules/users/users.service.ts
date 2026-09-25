@@ -205,6 +205,7 @@ export function toUserDto(
     appVersion: row.appVersion,
     platform: row.platform,
     walletBalancePaise: row.walletBalancePaise,
+    questionCredits: row.questionCredits,
     nextReportVote: row.nextReportVote,
     // When the free chat follow-up is next usable; null = usable now. See
     // lib/chat-follow-up.ts — the server re-checks atomically on the tap itself.

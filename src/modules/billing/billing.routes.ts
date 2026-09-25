@@ -1,3 +1,4 @@
+import { handlePlaySubscriptionNotification } from '../pass/pass-play.service.js';
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireGooglePlayRtdnSecret } from '../../middleware/cron-auth.js';
@@ -332,9 +333,18 @@ billingWebhooksRouter.openapi(googlePlayRtdnRoute, async (c) => {
   try {
     const payload = JSON.parse(Buffer.from(message.data, 'base64').toString('utf8')) as {
       oneTimeProductNotification?: { notificationType: number; purchaseToken: string; sku: string };
+      subscriptionNotification?: {
+        notificationType: number;
+        purchaseToken: string;
+        subscriptionId: string;
+      };
     };
     if (payload.oneTimeProductNotification) {
       await reconcileGooglePlayNotification(payload.oneTimeProductNotification);
+    }
+    // Aroha Pass on Google Play (roadmap step 10) — see pass-play.service.ts.
+    if (payload.subscriptionNotification) {
+      await handlePlaySubscriptionNotification(payload.subscriptionNotification);
     }
   } catch (err) {
     logger.error({ err }, 'billing: failed to parse Google Play RTDN push body');

@@ -26,6 +26,7 @@ const FRONTEND_ROUTES: RegExp[] = [
   /^\/palm$/,
   /^\/palm\/[^/]+$/,
   /^\/panchang$/,
+  /^\/pass$/,
   /^\/payment$/,
   /^\/profile$/,
   /^\/profile\/orders$/,

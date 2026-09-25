@@ -42,6 +42,7 @@ const state = vi.hoisted(() => {
     sendPushBatch: vi.fn(),
     summarizeTimingWindows: vi.fn(),
     generateReportVerdict: vi.fn(),
+    hasPass: vi.fn(),
     REPORT_GENERATORS,
   };
 });
@@ -72,6 +73,8 @@ vi.mock('../src/lib/notifications/fcm.js', () => ({
   sendPushBatch: state.sendPushBatch,
 }));
 
+// Aroha Pass holders get 20% off reports; nobody has a Pass unless a test says so.
+vi.mock('../src/lib/entitlements.js', () => ({ hasPass: state.hasPass }));
 vi.mock('../src/modules/features/features.service.js', () => ({
   resolveFeaturesForUser: state.resolveFeaturesForUser,
 }));
@@ -205,6 +208,7 @@ async function pullQueuedFromClaims(limit: number): Promise<ReportRow[]> {
 
 beforeEach(() => {
   for (const key of Object.keys(state.REPORT_GENERATORS)) delete state.REPORT_GENERATORS[key];
+  state.hasPass.mockReset().mockResolvedValue(false);
   state.claimReportRow.mockReset();
   state.claimQueuedReports.mockReset().mockImplementation(pullQueuedFromClaims);
   state.requeueReportForRetry
@@ -317,6 +321,24 @@ describe('purchaseReport — validation', () => {
 });
 
 describe('purchaseReport — pricing and row shape', () => {
+  it('an Aroha Pass holder pays 20% less', async () => {
+    state.hasPass.mockResolvedValue(true);
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'r1',
+        reportKey: 'past_life',
+        pricePaidPaise: 2000,
+        status: 'generating',
+      }),
+    );
+    await purchaseReport(makeUser(), { reportKey: 'past_life' });
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      2000,
+      'report_unlock:past_life',
+    );
+  });
+
   it('one-time report: debits basePricePaise under the one-time reason and claims a single null-period row', async () => {
     // past_life, not marriage — marriage is now `isYearly` (see ReportDef.isYearly), which
     // legitimately claims a non-null (today's date) periodMonth; this test is specifically

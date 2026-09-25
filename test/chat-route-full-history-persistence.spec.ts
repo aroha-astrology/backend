@@ -39,6 +39,14 @@ vi.mock('firebase-admin/auth', () => ({
   getAuth: vi.fn(() => ({ verifyIdToken: state.verifyIdToken })),
 }));
 
+// No Aroha Pass and no Question Pack credits — every user today — so chat
+// falls through to the wallet exactly as before (see pass/question-billing.ts).
+vi.mock('../src/modules/pass/pass.repo.js', () => ({
+  consumePassQuestion: vi.fn().mockResolvedValue(false),
+  consumeQuestionCredit: vi.fn().mockResolvedValue(false),
+  refundPassQuestion: vi.fn().mockResolvedValue(undefined),
+  addQuestionCredits: vi.fn().mockResolvedValue(0),
+}));
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findUserByFirebaseUid: state.findUserByFirebaseUid,
   touchUserLastActive: state.touchUserLastActive,

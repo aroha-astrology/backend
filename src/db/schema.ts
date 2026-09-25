@@ -360,6 +360,9 @@ export const users = pgTable(
     /** Safety-net default only — insertUser() sets the real opening balance from the admin
      * `rewards.signupBonus` key (see config/features.ts). Kept equal to that key's default. */
     walletBalancePaise: integer('wallet_balance_paise').notNull().default(20100),
+    /** Prepaid chat questions bought as Question Packs (roadmap step 10). Spent after the
+     * Aroha Pass quota and before the wallet — see modules/pass/question-billing.ts. */
+    questionCredits: integer('question_credits').notNull().default(0),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
@@ -642,11 +645,36 @@ export const userSubscriptions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
+    // --- Aroha Pass (roadmap step 10, migration 0080) -----------------------
+    /** 'wallet' (prepaid 30 days) | 'google_play' (auto-renewing Play subscription). */
+    source: text('source').notNull().default('wallet'),
+    /** The Play purchase token for a google_play Pass. */
+    externalId: text('external_id'),
+    /** 'A' | 'B' | 'C' — which price-test variant this user was shown. */
+    priceVariant: text('price_variant'),
+    pricePaise: integer('price_paise').notNull().default(0),
+    autoRenew: boolean('auto_renew').notNull().default(false),
+    periodStart: timestamp('period_start', { withTimezone: true }),
+    periodEnd: timestamp('period_end', { withTimezone: true }),
+    /** Chat questions spent from this period's quota. */
+    questionsUsed: integer('questions_used').notNull().default(0),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    /** When the "ends in 3 days" reminder went out for the current period. */
+    remindedAt: timestamp('reminded_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => ({
     userIdx: index('user_subscriptions_user_id_idx').on(table.userId),
+    externalIdUnique: uniqueIndex('user_subscriptions_external_id_unique')
+      .on(table.externalId)
+      .where(sql`${table.externalId} is not null`),
+    periodEndIdx: index('user_subscriptions_period_end_idx').on(table.status, table.periodEnd),
   }),
 );
+
+export type UserSubscriptionRow = typeof userSubscriptions.$inferSelect;
 
 /* -------------------------------------------------------------------------- */
 /* credit_transactions — token wallet ledger                                   */

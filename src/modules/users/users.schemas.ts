@@ -272,6 +272,10 @@ export const UserSchema = z
     appVersion: z.string().nullable(),
     platform: PlatformSchema.nullable(),
     walletBalancePaise: z.number().int().describe('Wallet balance in paise (100 paise = Rs 1)'),
+    questionCredits: z
+      .number()
+      .int()
+      .describe('Prepaid chat questions from Question Packs (spent before the wallet)'),
     unlockedHouses: z.array(z.number().int()),
     nextReportVote: z.string().nullable(),
     nextFreeFollowUpAt: z

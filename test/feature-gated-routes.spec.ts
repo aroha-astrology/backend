@@ -225,3 +225,26 @@ describe('roadmap step 9 routes ship dark', () => {
     expect((await post('/v1/practice/complete', { itemId: 'weekday' })).status).toBe(403);
   });
 });
+
+describe('roadmap step 10 routes ship dark', () => {
+  it('the Pass and Question Pack routes → 403 while their flags are off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'nav.arohaPass': off,
+      'paid.arohaPassPlay': off,
+      'paid.questionPackSmall': off,
+      'paid.questionPackMedium': off,
+      'paid.questionPackLarge': off,
+    });
+    const get = await createApp().request('/v1/pass', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(get.status).toBe(403);
+    expect((await post('/v1/pass/wallet', { autoRenew: false })).status).toBe(403);
+    expect((await post('/v1/pass/auto-renew', { on: false })).status).toBe(403);
+    expect(
+      (await post('/v1/pass/google-play', { productId: 'aroha_pass_monthly', purchaseToken: 't' }))
+        .status,
+    ).toBe(403);
+    expect((await post('/v1/question-packs/small/buy')).status).toBe(403);
+  });
+});

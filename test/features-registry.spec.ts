@@ -84,6 +84,14 @@ describe('roadmap features (tag "new")', () => {
       'home.journalPrompt',
       'home.dailyPractice',
       'nav.dailyPractice',
+      'paid.questionPackSmall',
+      'paid.questionPackMedium',
+      'paid.questionPackLarge',
+      'nav.arohaPass',
+      'paid.arohaPassA',
+      'paid.arohaPassB',
+      'paid.arohaPassC',
+      'paid.arohaPassPlay',
     ];
     const tagged = new Set(NEW.map((f) => f.key));
     for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);

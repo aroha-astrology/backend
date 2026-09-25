@@ -6,13 +6,7 @@ import { requireConsent } from '../../middleware/consent.js';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
-import {
-  deductWalletBalance,
-  addWalletBalance,
-  setIncomeBracket,
-  claimFreeFollowUp,
-  releaseFreeFollowUp,
-} from '../users/users.repo.js';
+import { setIncomeBracket, claimFreeFollowUp, releaseFreeFollowUp } from '../users/users.repo.js';
 import { matchIncomeReply } from '../../lib/chat-income.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
@@ -34,6 +28,7 @@ import {
   requestRemedyInsightGeneration,
 } from './remedy-insight.service.js';
 import { isFreeFollowUp, FREE_FOLLOW_UP_COOLDOWN_MS } from '../../lib/chat-follow-up.js';
+import { chargeQuestion, refundQuestion, type QuestionSource } from '../pass/question-billing.js';
 
 /** Fallback cost per chat question if the `paid.chat` feature has no resolved
  * price (registry/DB lookup failure) — matches FEATURE_REGISTRY's
@@ -608,11 +603,16 @@ astroRouter.openapi(chatRoute, async (c) => {
     (await claimFreeFollowUp(user.id, FREE_FOLLOW_UP_COOLDOWN_MS).catch(() => false));
   const amountToChargePaise = isFollowUpTap ? 0 : chatMessageCostPaise;
 
-  /** Undoes this turn's cost when it produced no answer: the wallet debit, or
-   * for a free tap, the claimed free follow-up so the user can use it again. */
+  // Where this question was paid from — the Aroha Pass quota, a Question Pack
+  // credit or the wallet (question-billing.ts). Set by the charge below.
+  let chargeSource: QuestionSource | null = null;
+
+  /** Undoes this turn's cost when it produced no answer: back to wherever it
+   * was paid from, or for a free tap, the claimed free follow-up so the user
+   * can use it again. */
   const refundTurn = async (): Promise<void> => {
-    if (amountToChargePaise > 0) {
-      await addWalletBalance(user.id, amountToChargePaise, 'refund:chat_message').catch(() => {});
+    if (amountToChargePaise > 0 && chargeSource) {
+      await refundQuestion(user.id, chargeSource, amountToChargePaise);
     } else if (isFollowUpTap) {
       await releaseFreeFollowUp(user.id).catch(() => {});
     }
@@ -642,7 +642,8 @@ astroRouter.openapi(chatRoute, async (c) => {
     charged = true;
   } else {
     try {
-      charged = await deductWalletBalance(user.id, amountToChargePaise, 'chat_message');
+      chargeSource = await chargeQuestion(user.id, amountToChargePaise);
+      charged = chargeSource !== null;
     } catch (err) {
       // The lock is held at this point and streamSSE's `finally` (the only other
       // release path) is never reached if we throw here, so it must be released

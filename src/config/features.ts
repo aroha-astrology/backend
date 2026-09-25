@@ -787,6 +787,76 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+
+  // Step 10 — Question Packs and the Aroha Pass (all off; the Pass stays off until you decide).
+  // Prepaid chat questions bought from the wallet. Chat spends Pass questions first, then pack questions, then the wallet.
+  {
+    key: 'paid.questionPackSmall',
+    label: 'Question Pack — 5 chat questions',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 4900,
+    tag: 'new',
+  },
+  {
+    key: 'paid.questionPackMedium',
+    label: 'Question Pack — 12 chat questions',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 9900,
+    tag: 'new',
+  },
+  {
+    key: 'paid.questionPackLarge',
+    label: 'Question Pack — 30 chat questions',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 19900,
+    tag: 'new',
+  },
+  // A /pass page. The Pass gives 30 chat questions per 30 days, Life Timeline, Bond insights, Decisions and Find My Date, birth-time checks and 20% off reports. Needs at least one price variant (paid.arohaPassA/B/C) on too.
+  {
+    key: 'nav.arohaPass',
+    label: 'Aroha Pass — monthly membership page',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // Each user sees one of the variants that are ON, picked by a stable hash of their id. Wallet price; the Play price is set in Play Console (base plan pass-199).
+  {
+    key: 'paid.arohaPassA',
+    label: 'Aroha Pass price test — variant A',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 19900,
+    tag: 'new',
+  },
+  // Play base plan pass-299.
+  {
+    key: 'paid.arohaPassB',
+    label: 'Aroha Pass price test — variant B',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 29900,
+    tag: 'new',
+  },
+  // Play base plan pass-399.
+  {
+    key: 'paid.arohaPassC',
+    label: 'Aroha Pass price test — variant C',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 39900,
+    tag: 'new',
+  },
+  // Needs the aroha_pass_monthly subscription in Play Console and an app release with the subscription-ready billing plugin.
+  {
+    key: 'paid.arohaPassPlay',
+    label: 'Aroha Pass — pay through Google Play (auto-renewing, Android)',
+    group: 'paid',
+    defaultEnabled: false,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));
