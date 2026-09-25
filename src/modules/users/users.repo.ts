@@ -41,6 +41,7 @@ import {
   birthTimeRectifications,
   decisionQueries,
   practiceLog,
+  digitalProducts,
   type NewUserRow,
   type NewUserConsentLogRow,
   type UserRow,
@@ -716,6 +717,7 @@ export async function anonymizeUserById(id: string): Promise<void> {
     await tx.delete(birthTimeRectifications).where(eq(birthTimeRectifications.userId, id));
     await tx.delete(decisionQueries).where(eq(decisionQueries.userId, id));
     await tx.delete(practiceLog).where(eq(practiceLog.userId, id));
+    await tx.delete(digitalProducts).where(eq(digitalProducts.userId, id));
 
     // Revoked tokens are useless for push, but the token string is still a
     // device credential — scrub it too rather than leaving it at rest.
@@ -1467,6 +1469,7 @@ export async function collectUserExport(userId: string) {
     rectifications,
     decisions,
     practice,
+    yantras,
   ] = await Promise.all([
     db.select().from(birthProfiles).where(eq(birthProfiles.ownerUserId, userId)),
     db.select().from(chatSessions).where(eq(chatSessions.userId, userId)),
@@ -1499,6 +1502,7 @@ export async function collectUserExport(userId: string) {
     db.select().from(birthTimeRectifications).where(eq(birthTimeRectifications.userId, userId)),
     db.select().from(decisionQueries).where(eq(decisionQueries.userId, userId)),
     db.select().from(practiceLog).where(eq(practiceLog.userId, userId)),
+    db.select().from(digitalProducts).where(eq(digitalProducts.userId, userId)),
   ]);
 
   const decrypted = decryptUserRow(user);
@@ -1541,5 +1545,6 @@ export async function collectUserExport(userId: string) {
     })),
     decisionResults: decisions.map((d) => ({ ...d, input: decryptJson<unknown>(d.input) })),
     practiceLog: practice,
+    digitalProducts: yantras,
   };
 }

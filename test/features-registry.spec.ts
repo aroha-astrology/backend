@@ -92,6 +92,9 @@ describe('roadmap features (tag "new")', () => {
       'paid.arohaPassB',
       'paid.arohaPassC',
       'paid.arohaPassPlay',
+      'nav.digitalYantra',
+      'paid.digitalYantra',
+      'paid.digitalWallpaper',
     ];
     const tagged = new Set(NEW.map((f) => f.key));
     for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);

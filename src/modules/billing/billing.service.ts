@@ -282,7 +282,8 @@ type TransactionKind =
   | 'find_my_date'
   | 'bond_insight'
   | 'question_pack'
-  | 'aroha_pass';
+  | 'aroha_pass'
+  | 'digital_yantra';
 
 const REPORT_UNLOCK_RE = /^report_unlock:([a-z_]+)(?::(\d{4}-\d{2}))?(?::bundle:(\d+))?$/;
 
@@ -326,6 +327,9 @@ export function parseReason(reason: string): {
   if (base.startsWith('question_pack:')) return { kind: 'question_pack', isRefund };
   if (base === 'aroha_pass' || base === 'aroha_pass_renewal')
     return { kind: 'aroha_pass', isRefund };
+  if (base === 'digital_yantra' || base === 'digital_wallpaper') {
+    return { kind: 'digital_yantra', isRefund };
+  }
   if (base === 'gemstone_unlock' || base.startsWith('gemstone_unlock:profile:')) {
     return { kind: 'gemstone_unlock', isRefund };
   }

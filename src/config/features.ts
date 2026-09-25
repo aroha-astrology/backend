@@ -857,6 +857,32 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+
+  // Step 11 — Digital Yantras & Wallpapers.
+  // A /yantra page: the graha your chart needs now (running Mahadasha lord, or a weak benefic by Shadbala), its classical Navagraha number square, beej mantra, colours and your birth nakshatra. Rule-based, no AI cost.
+  {
+    key: 'nav.digitalYantra',
+    label: 'Digital Yantra — a personal yantra from your chart',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'paid.digitalYantra',
+    label: 'Digital Yantra — print-ready yantra image',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 4900,
+    tag: 'new',
+  },
+  {
+    key: 'paid.digitalWallpaper',
+    label: 'Digital Yantra — phone wallpaper',
+    group: 'paid',
+    defaultEnabled: false,
+    defaultPricePaise: 2900,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

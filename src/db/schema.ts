@@ -2994,3 +2994,45 @@ export const practiceLog = pgTable(
 );
 
 export type PracticeLogRow = typeof practiceLog.$inferSelect;
+
+/* -------------------------------------------------------------------------- */
+/* digital_products — Digital Yantras & Wallpapers                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A yantra or wallpaper bought for a profile, with the design spec built from
+ * the chart at purchase time (lib/astro-tools/yantra.ts). One per profile per
+ * kind; reopening is free.
+ */
+export const digitalProducts = pgTable(
+  'digital_products',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** NULL = the primary/self profile. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    /** 'yantra' | 'wallpaper'. */
+    kind: text('kind').notNull(),
+    spec: jsonb('spec').notNull(),
+    pricePaidPaise: integer('price_paid_paise').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userPrimaryKindUnique: uniqueIndex('digital_products_user_primary_kind_unique')
+      .on(table.userId, table.kind)
+      .where(sql`${table.birthProfileId} is null`),
+    userProfileKindUnique: uniqueIndex('digital_products_user_profile_kind_unique')
+      .on(table.userId, table.birthProfileId, table.kind)
+      .where(sql`${table.birthProfileId} is not null`),
+  }),
+);
+
+export type DigitalProductRow = typeof digitalProducts.$inferSelect;

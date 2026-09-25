@@ -139,6 +139,7 @@ export const TransactionSchema = z
         'bond_insight',
         'question_pack',
         'aroha_pass',
+        'digital_yantra',
       ]),
       createdAt: z.string(),
       amountPaise: z.number(),

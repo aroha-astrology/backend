@@ -568,6 +568,13 @@
       "when": 1789500000000,
       "tag": "0080_question_packs_and_aroha_pass",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1789600000000,
+      "tag": "0081_digital_products",
+      "breakpoints": true
     }
   ]
 }

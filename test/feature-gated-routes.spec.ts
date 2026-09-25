@@ -248,3 +248,14 @@ describe('roadmap step 10 routes ship dark', () => {
     expect((await post('/v1/question-packs/small/buy')).status).toBe(403);
   });
 });
+
+describe('roadmap step 11 routes ship dark', () => {
+  it('GET /v1/yantra and POST /v1/yantra/{kind}/buy → 403 while nav.digitalYantra is off', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({ 'nav.digitalYantra': off });
+    const get = await createApp().request('/v1/yantra', {
+      headers: { Authorization: 'Bearer good-token' },
+    });
+    expect(get.status).toBe(403);
+    expect((await post('/v1/yantra/yantra/buy')).status).toBe(403);
+  });
+});
