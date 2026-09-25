@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, lte, not, or, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   subscriptionPlans,
@@ -231,7 +231,13 @@ export async function expireLapsedPasses(now: Date): Promise<number> {
         lte(userSubscriptions.periodEnd, now),
         // Wallet auto-renewals are the cron's to try first; Play renewals arrive by RTDN.
         sql`not (${userSubscriptions.source} = 'wallet' and ${userSubscriptions.autoRenew})`,
-        sql`not (${userSubscriptions.source} = 'google_play' and ${userSubscriptions.periodEnd} > ${new Date(now.getTime() - 3 * 86_400_000)})`,
+        // Column-bound so the Date is serialised; a bare Date in sql`` crashes postgres-js.
+        not(
+          and(
+            eq(userSubscriptions.source, 'google_play'),
+            gt(userSubscriptions.periodEnd, new Date(now.getTime() - 3 * 86_400_000)),
+          )!,
+        ),
       ),
     )
     .returning({ id: userSubscriptions.id });
@@ -296,7 +302,10 @@ export async function passStats(now: Date = new Date()): Promise<PassStats> {
     .select({ n: sql<number>`count(*)::int` })
     .from(userSubscriptions)
     .where(
-      sql`(${userSubscriptions.cancelledAt} >= ${since}) or (${userSubscriptions.status} = 'expired' and ${userSubscriptions.updatedAt} >= ${since})`,
+      or(
+        gte(userSubscriptions.cancelledAt, since),
+        and(eq(userSubscriptions.status, 'expired'), gte(userSubscriptions.updatedAt, since)),
+      ),
     );
 
   const money = await db
