@@ -8,7 +8,8 @@ import {
 import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { priceOf } from '../features/features.service.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
-import { evaluateRoomPlacement } from './vastu.rules.js';
+import { evaluateRoomPlacement, VASTU_RULE_SET } from './vastu.rules.js';
+import { SUPPORTED_LANGS } from '../cron/broadcast-copy.js';
 import {
   insertPendingPlan,
   listPlansForUser,
@@ -21,11 +22,38 @@ import {
   deletePlanForUser,
   saveFollowUpIfAbsent,
   saveVastuTranslation,
+  insertHome,
+  listHomesForUser,
+  countHomesForUser,
+  findHomeForUser,
+  updateHomeForUser,
+  deleteHomeForUser,
+  insertHomeVersion,
+  listHomeVersionsForUser,
+  listHomeVersionIdsForUser,
+  findHomeVersionForUser,
+  deleteHomeVersionsForUser,
+  type VastuHomeVersionSummaryRow,
 } from './vastu.repo.js';
-import type { VastuPlanRow } from '../../db/schema.js';
-import type { AnalyzeVastuBody, VastuPlanDto } from './vastu.schemas.js';
+import type { VastuHomeRow, VastuHomeVersionRow, VastuPlanRow } from '../../db/schema.js';
+import type {
+  AnalyzeVastuBody,
+  CreateVastuHomeBody,
+  CreateVastuHomeVersionBody,
+  UpdateVastuHomeBody,
+  VastuHomeDto,
+  VastuHomeVersionDto,
+  VastuHomeVersionSummaryDto,
+  VastuPlanDto,
+} from './vastu.schemas.js';
 
 const DAILY_LIMIT = 20;
+/** Saved homes per account (all profiles, archived included) — generous, but bounded. */
+export const MAX_HOMES_PER_USER = 50;
+/** Saved versions kept per home — the oldest is pruned once a new one goes past this. */
+export const MAX_VERSIONS_PER_HOME = 30;
+/** Label on the automatic snapshot taken just before a restore, so the restore can be undone. */
+export const BEFORE_RESTORE_LABEL = 'Before restore';
 /**
  * Fail-open fallback only. The charged amount is the admin-set `paid.vastu`
  * price resolved via `priceOf()` — never this constant.
@@ -70,6 +98,11 @@ export async function requestVastuAnalysis(
   birthProfileId: string | null,
   body: AnalyzeVastuBody,
 ): Promise<{ planId: string }> {
+  // Checked before charging: a report can only be linked to the caller's own home.
+  if (body.homeId && !(await findHomeForUser(body.homeId, userId))) {
+    throw Errors.notFound('Vastu home not found');
+  }
+
   const recentCount = await countRecentPlansForUser(userId, 24);
   if (recentCount >= DAILY_LIMIT) {
     throw Errors.tooManyRequests(
@@ -96,6 +129,8 @@ export async function requestVastuAnalysis(
     const row = await insertPendingPlan({
       userId,
       birthProfileId,
+      homeId: body.homeId ?? null,
+      ruleSetId: VASTU_RULE_SET.id,
       layout: body.layout ?? null,
       roomLayout: body.roomLayout,
       roomDetails,
@@ -223,7 +258,11 @@ export function toVastuPlanDto(row: VastuPlanRow): VastuPlanDto {
     status: row.status,
     overallScore: row.overallScore,
     roomLayout: row.roomLayout,
+    layout: row.layout ?? null,
     analysis: row.analysis,
+    language: row.language,
+    ruleSetId: row.ruleSetId,
+    homeId: row.homeId ?? null,
     // Keep the raw provider error in the DB column for ops/debugging — never
     // echo it verbatim. Return a safe generic message instead when the plan failed.
     errorMessage:
@@ -237,10 +276,18 @@ export function toVastuPlanDto(row: VastuPlanRow): VastuPlanDto {
 
 export async function toVastuPlanDtoForLanguage(
   row: VastuPlanRow,
-  language = 'en',
+  language?: string,
 ): Promise<VastuPlanDto> {
   const baseDto = toVastuPlanDto(row);
-  if (language === 'en' || !baseDto.analysis || baseDto.status !== 'done') {
+  // Compare against the language the report was actually written in — a Hindi report read in
+  // Hindi needs no translation, and an English read of a Hindi report does.
+  if (
+    !language ||
+    language === row.language ||
+    !baseDto.analysis ||
+    baseDto.status !== 'done' ||
+    !(SUPPORTED_LANGS as readonly string[]).includes(language)
+  ) {
     return baseDto;
   }
   if (row.translations && row.translations[language]) {
@@ -256,19 +303,28 @@ export async function toVastuPlanDtoForLanguage(
   }
 }
 
+/**
+ * The history list. Never translates: a list load used to fire one LLM translation per
+ * unfinished-language row. Rows come back in their own language (a cached translation is
+ * used when one exists); the one report the user opens is translated by getPlanForUser.
+ */
 export async function getPlansForUser(
   userId: string,
   birthProfileId: string | null,
-  language = 'en',
+  language?: string,
 ): Promise<VastuPlanDto[]> {
   const rows = await listPlansForUser(userId, birthProfileId);
-  return Promise.all(rows.map((r) => toVastuPlanDtoForLanguage(r, language)));
+  return rows.map((r) => {
+    const dto = toVastuPlanDto(r);
+    const cached = language && language !== r.language ? r.translations?.[language] : undefined;
+    return cached && dto.status === 'done' ? { ...dto, analysis: cached } : dto;
+  });
 }
 
 export async function getPlanForUser(
   id: string,
   userId: string,
-  language = 'en',
+  language?: string,
 ): Promise<VastuPlanDto> {
   const row = await findPlanForUser(id, userId);
   if (!row) throw Errors.notFound('Vastu plan not found');
@@ -279,4 +335,170 @@ export async function removePlanForUser(id: string, userId: string): Promise<voi
   const row = await findPlanForUser(id, userId);
   if (!row) throw Errors.notFound('Vastu plan not found');
   await deletePlanForUser(id, userId);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Homes                                                                      */
+/* -------------------------------------------------------------------------- */
+
+export function toVastuHomeDto(row: VastuHomeRow): VastuHomeDto {
+  return {
+    id: row.id,
+    name: row.name,
+    layout: row.layout,
+    overallScore: row.overallScore,
+    ruleSetId: row.ruleSetId,
+    archived: row.archivedAt !== null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function createHome(
+  userId: string,
+  birthProfileId: string | null,
+  body: CreateVastuHomeBody,
+): Promise<VastuHomeDto> {
+  if ((await countHomesForUser(userId)) >= MAX_HOMES_PER_USER) {
+    throw Errors.conflict('HOME_LIMIT_REACHED');
+  }
+  const row = await insertHome({
+    userId,
+    birthProfileId,
+    name: body.name,
+    layout: body.layout,
+    overallScore: body.overallScore ?? null,
+    ruleSetId: VASTU_RULE_SET.id,
+  });
+  return toVastuHomeDto(row);
+}
+
+export async function getHomesForUser(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<VastuHomeDto[]> {
+  const rows = await listHomesForUser(userId, birthProfileId);
+  return rows.map(toVastuHomeDto);
+}
+
+export async function getHomeForUser(id: string, userId: string): Promise<VastuHomeDto> {
+  const row = await findHomeForUser(id, userId);
+  if (!row) throw Errors.notFound('Vastu home not found');
+  return toVastuHomeDto(row);
+}
+
+export async function patchHomeForUser(
+  id: string,
+  userId: string,
+  body: UpdateVastuHomeBody,
+): Promise<VastuHomeDto> {
+  const patch: Parameters<typeof updateHomeForUser>[2] = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.layout !== undefined) patch.layout = body.layout;
+  if (body.overallScore !== undefined) patch.overallScore = body.overallScore;
+  if (body.archived !== undefined) patch.archivedAt = body.archived ? new Date() : null;
+  const row = await updateHomeForUser(id, userId, patch);
+  if (!row) throw Errors.notFound('Vastu home not found');
+  return toVastuHomeDto(row);
+}
+
+export async function removeHomeForUser(id: string, userId: string): Promise<void> {
+  const row = await findHomeForUser(id, userId);
+  if (!row) throw Errors.notFound('Vastu home not found');
+  // Reports taken from this home keep their own layout copy; their home_id is nulled by the FK.
+  await deleteHomeForUser(id, userId);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Home versions                                                              */
+/* -------------------------------------------------------------------------- */
+
+export function toVastuHomeVersionSummaryDto(
+  row: VastuHomeVersionSummaryRow,
+): VastuHomeVersionSummaryDto {
+  return {
+    id: row.id,
+    homeId: row.homeId,
+    label: row.label,
+    overallScore: row.overallScore,
+    ruleSetId: row.ruleSetId,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function toVastuHomeVersionDto(row: VastuHomeVersionRow): VastuHomeVersionDto {
+  return { ...toVastuHomeVersionSummaryDto(row), layout: row.layout };
+}
+
+/** Snapshot the home's stored state as a version, then prune past the per-home cap. */
+async function snapshotHome(
+  home: VastuHomeRow,
+  label: string | null,
+): Promise<VastuHomeVersionRow> {
+  const row = await insertHomeVersion({
+    homeId: home.id,
+    userId: home.userId,
+    layout: home.layout,
+    overallScore: home.overallScore,
+    ruleSetId: home.ruleSetId,
+    label,
+  });
+  const ids = await listHomeVersionIdsForUser(home.id, home.userId);
+  await deleteHomeVersionsForUser(ids.slice(MAX_VERSIONS_PER_HOME), home.id, home.userId);
+  return row;
+}
+
+export async function createHomeVersion(
+  homeId: string,
+  userId: string,
+  body: CreateVastuHomeVersionBody,
+): Promise<VastuHomeVersionDto> {
+  const home = await findHomeForUser(homeId, userId);
+  if (!home) throw Errors.notFound('Vastu home not found');
+  const row = await snapshotHome(home, body.label ?? null);
+  return toVastuHomeVersionDto(row);
+}
+
+export async function getHomeVersionsForUser(
+  homeId: string,
+  userId: string,
+): Promise<VastuHomeVersionSummaryDto[]> {
+  if (!(await findHomeForUser(homeId, userId))) throw Errors.notFound('Vastu home not found');
+  const rows = await listHomeVersionsForUser(homeId, userId, MAX_VERSIONS_PER_HOME);
+  return rows.map(toVastuHomeVersionSummaryDto);
+}
+
+export async function getHomeVersionForUser(
+  homeId: string,
+  versionId: string,
+  userId: string,
+): Promise<VastuHomeVersionDto> {
+  const row = await findHomeVersionForUser(versionId, homeId, userId);
+  if (!row) throw Errors.notFound('Vastu home version not found');
+  return toVastuHomeVersionDto(row);
+}
+
+/**
+ * Put a saved version's layout back on the home. The current state is snapshotted first
+ * (labelled "Before restore"), so a restore is itself one click to undo. The version is read
+ * before that snapshot, so even if the snapshot's pruning drops it (it was the oldest at the
+ * cap) the restore still applies its layout.
+ */
+export async function restoreHomeVersion(
+  homeId: string,
+  versionId: string,
+  userId: string,
+): Promise<VastuHomeDto> {
+  const home = await findHomeForUser(homeId, userId);
+  if (!home) throw Errors.notFound('Vastu home not found');
+  const version = await findHomeVersionForUser(versionId, homeId, userId);
+  if (!version) throw Errors.notFound('Vastu home version not found');
+
+  await snapshotHome(home, BEFORE_RESTORE_LABEL);
+  const row = await updateHomeForUser(homeId, userId, {
+    layout: version.layout,
+    overallScore: version.overallScore,
+  });
+  if (!row) throw Errors.notFound('Vastu home not found');
+  return toVastuHomeDto(row);
 }

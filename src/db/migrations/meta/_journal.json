@@ -575,6 +575,20 @@
       "when": 1789600000000,
       "tag": "0081_digital_products",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1789700000000,
+      "tag": "0082_vastu_homes",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1789800000000,
+      "tag": "0083_vastu_home_versions",
+      "breakpoints": true
     }
   ]
 }

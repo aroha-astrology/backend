@@ -1530,6 +1530,83 @@ export const vastuPlanStatusEnum = pgEnum('vastu_plan_status', [
   'error',
 ]);
 
+/* -------------------------------------------------------------------------- */
+/* vastu_homes — a user's saved, editable floor plans (the account copy of the  */
+/* planner, synced from the device). vastu_plans rows are paid AI reports taken */
+/* from a home at a point in time.                                               */
+/* -------------------------------------------------------------------------- */
+
+export const vastuHomes = pgTable(
+  'vastu_homes',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** null = primary profile, matching every other profile-scoped table's convention. */
+    birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
+      onDelete: 'cascade',
+    }),
+    name: text('name').notNull(),
+    /** The full editable plan (plot/rooms/fixtures/northOffsetDeg), same shape as vastu_plans.layout. */
+    layout: jsonb('layout').notNull().$type<Record<string, unknown>>(),
+    /** Last deterministic score the client computed — a list-view hint only, never billed on. */
+    overallScore: integer('overall_score'),
+    ruleSetId: text('rule_set_id').notNull().default('aroha-traditional-v1'),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userUpdatedIdx: index('vastu_homes_user_updated_idx').on(table.userId, table.updatedAt),
+  }),
+);
+
+export type VastuHomeRow = typeof vastuHomes.$inferSelect;
+export type NewVastuHomeRow = typeof vastuHomes.$inferInsert;
+
+/**
+ * Saved snapshots of a home's layout — the planner's version history. Taken on demand
+ * ("Save version") and automatically before a restore, so a restore is itself undoable.
+ * Capped per home by the service (oldest pruned first).
+ */
+export const vastuHomeVersions = pgTable(
+  'vastu_home_versions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    homeId: uuid('home_id')
+      .notNull()
+      .references(() => vastuHomes.id, { onDelete: 'cascade' }),
+    /** Denormalised owner so every query can scope by user without joining vastu_homes. */
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The home's layout as stored at snapshot time, same shape as vastu_homes.layout. */
+    layout: jsonb('layout').notNull().$type<Record<string, unknown>>(),
+    overallScore: integer('overall_score'),
+    ruleSetId: text('rule_set_id').notNull().default('aroha-traditional-v1'),
+    /** Optional user label ("Before moving the kitchen"); "Before restore" for automatic ones. */
+    label: text('label'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    homeCreatedIdx: index('vastu_home_versions_home_created_idx').on(table.homeId, table.createdAt),
+  }),
+);
+
+export type VastuHomeVersionRow = typeof vastuHomeVersions.$inferSelect;
+export type NewVastuHomeVersionRow = typeof vastuHomeVersions.$inferInsert;
+
 export const vastuPlans = pgTable(
   'vastu_plans',
   {
@@ -1543,6 +1620,10 @@ export const vastuPlans = pgTable(
     birthProfileId: uuid('birth_profile_id').references(() => birthProfiles.id, {
       onDelete: 'cascade',
     }),
+    /** The saved home this report was taken from; null for reports made before homes existed. */
+    homeId: uuid('home_id').references(() => vastuHomes.id, { onDelete: 'set null' }),
+    /** Which rules table scored this plan — an old report is never re-scored under a newer one. */
+    ruleSetId: text('rule_set_id').notNull().default('aroha-traditional-v1'),
     /** The full editable CAD plan (rooms/doors/windows/orientation) for reload. */
     layout: jsonb('layout').$type<Record<string, unknown>>(),
     /** room type → occupied direction(s), the rules-engine input. */

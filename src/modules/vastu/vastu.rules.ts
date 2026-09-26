@@ -4,6 +4,17 @@
 // on-canvas rating; the backend runs it to seed the AI analysis context and to
 // store the authoritative overall score.
 
+/**
+ * The rules table below, named and versioned. Every stored plan/home records
+ * the id it was scored under; bump the version (and the id) whenever a rule
+ * changes so old reports keep the interpretation they were sold with.
+ */
+export const VASTU_RULE_SET = {
+  id: 'aroha-traditional-v1',
+  name: 'Aroha Traditional Vastu',
+  version: '1.0',
+} as const;
+
 export interface VastuRule {
   room: string;
   idealDirections: string[];

@@ -76,6 +76,10 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // No longer a bottom-tab slot (moved to a Home card, see home.vastuCard
   // below) — still gates the /vastu page itself directly (FeatureGuard).
   { key: 'nav.vastu', label: 'Vastu page', group: 'nav', defaultEnabled: true },
+  // The 3D view inside Vastu Studio (the 2D editor and Vastu Lens don't depend
+  // on it). Client-only — there is no 3D API to gate — so this hides the 3D tab.
+  // Ships dark per the standing rule; turn on from Admin -> Features.
+  { key: 'nav.vastuThreeD', label: 'Vastu Studio 3D view', group: 'nav', defaultEnabled: false },
   { key: 'nav.askAI', label: 'Ask AI tab', group: 'nav', defaultEnabled: true },
   { key: 'nav.horoscope', label: 'Horoscope tab', group: 'nav', defaultEnabled: true },
   // Re-added as a bottom-tab slot (previously reachable only via Home's "See

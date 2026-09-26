@@ -33,7 +33,7 @@ REMEDY (follow strictly): every remedy names an exact object, colour, placement,
 
 ROOM ANALYSIS: include EVERY room from vastuScores; use the EXACT room key; always fill good/impact/remedy and EXACTLY 3 highlights (human-impact first).
 
-DOORS/WINDOWS: roomDetails keys "<room>_doors"/"<room>_windows" are arrays of facing directions — interpret them (main door N/NE/E is best; SW needs remedies).
+DOORS/WINDOWS: roomDetails.rooms (when present) lists every room separately — { id, type, direction, doors, windows } where doors/windows are arrays of facing directions. Two rooms of the same type (e.g. two bathrooms) are separate entries; judge each on its own. Older plans instead use keys "<room>_doors"/"<room>_windows". Interpret the facings (main door N/NE/E is best; SW needs remedies).
 
 The "summary" MUST be an ARRAY OF EXACTLY THREE STRINGS: [0] hook, [1] nuance, [2] action.
 
