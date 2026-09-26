@@ -10,8 +10,15 @@
  */
 import { Errors } from './errors.js';
 import { findActivePass } from '../modules/pass/pass.repo.js';
+import { listGroupIdsForUser } from '../modules/user-groups/user-groups.repo.js';
 
 export async function hasPass(userId: string): Promise<boolean> {
+  try {
+    const groupIds = await listGroupIdsForUser(userId);
+    if (groupIds.length > 0) return true;
+  } catch {
+    // Fail open to standard pass check
+  }
   return (await findActivePass(userId)) !== null;
 }
 

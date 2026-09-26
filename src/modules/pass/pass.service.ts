@@ -41,6 +41,7 @@ import {
   listWalletRenewalsDue,
   markPassReminded,
 } from './pass.repo.js';
+import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
 
 const MS_PER_DAY = 86_400_000;
 export const PASS_NOTIFICATION_TYPE = 'aroha_pass';
@@ -118,10 +119,23 @@ function passDto(row: UserSubscriptionRow): NonNullable<PassStatus['pass']> {
 export async function getPassStatus(user: UserRow): Promise<PassStatus> {
   const features = await resolveFeaturesForUser(user.id);
   const active = await findActivePass(user.id);
+  const inGroup = (await listGroupIdsForUser(user.id).catch(() => [])).length > 0;
+
+  let pass = active ? passDto(active) : null;
+  if (!pass && inGroup) {
+    pass = {
+      variant: null,
+      pricePaise: 0,
+      periodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      autoRenew: true,
+      questionsLeft: PASS_QUESTIONS_PER_PERIOD,
+    };
+  }
+
   return {
-    enabled: features['nav.arohaPass']?.enabled === true,
-    offer: offerFor(user.id, features),
-    pass: active ? passDto(active) : null,
+    enabled: features['nav.arohaPass']?.enabled === true || inGroup,
+    offer: inGroup ? null : offerFor(user.id, features),
+    pass,
     questionCredits: user.questionCredits,
     packs: packsFor(features),
     benefits: {
