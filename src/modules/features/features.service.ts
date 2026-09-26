@@ -41,7 +41,7 @@ function registryDefaults(): Record<string, ResolvedFeature> {
     out[feature.key] = {
       enabled: feature.defaultEnabled,
       pricePaise: feature.defaultPricePaise ?? null,
-      originalPricePaise: null,
+      originalPricePaise: feature.defaultOriginalPricePaise ?? null,
       model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
       enabledAt: null,
     };

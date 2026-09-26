@@ -14,6 +14,8 @@ import {
   ReportIdParamSchema,
   ReportReadySchema,
   ReportStatsResponseSchema,
+  CheckQuestionsBodySchema,
+  CheckQuestionsResponseSchema,
   VoteNextReportBodySchema,
   VoteNextReportResponseSchema,
 } from './reports.schemas.js';
@@ -24,6 +26,7 @@ import {
   getReportStats,
   previewReport,
   purchaseReport,
+  checkKpQuestions,
   voteNextReport,
 } from './reports.service.js';
 import { RateReportBodySchema, RateReportResponseSchema } from './report-ratings.schemas.js';
@@ -164,6 +167,34 @@ reportsRouter.openapi(purchaseRoute, async (c) => {
   const body = c.req.valid('json');
   const result = await purchaseReport(user, body);
   return c.json(result, 200);
+});
+
+const checkQuestionsRoute = createRoute({
+  method: 'post',
+  path: '/reports/questions/check',
+  tags: ['Reports'],
+  summary: "Screen the reader's questions for the KP Year Ahead report before checkout",
+  description:
+    'Runs the same content policy chat uses. Death, lifespan and self-harm questions come back ' +
+    '`allowed: false` with the reader-facing message (a helpline for self-harm). The purchase ' +
+    'route enforces the same check, so this is a UX convenience, never the only guard.',
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { required: true, content: { 'application/json': { schema: CheckQuestionsBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Per-question verdicts',
+      content: { 'application/json': { schema: CheckQuestionsResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+reportsRouter.openapi(checkQuestionsRoute, async (c) => {
+  const user = c.get('user');
+  const { questions, language } = c.req.valid('json');
+  return c.json(checkKpQuestions(questions, language ?? user.contentLanguage), 200);
 });
 
 const previewRoute = createRoute({

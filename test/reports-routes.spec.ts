@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
   getReportCatalogueForUser: vi.fn(),
   getReportForUser: vi.fn(),
   getReportStats: vi.fn(),
+  checkKpQuestions: vi.fn(),
 }));
 
 const fakeEnv = vi.hoisted(() => ({
@@ -58,6 +59,7 @@ vi.mock('../src/modules/reports/reports.service.js', () => ({
   getReportCatalogueForUser: state.getReportCatalogueForUser,
   getReportForUser: state.getReportForUser,
   getReportStats: state.getReportStats,
+  checkKpQuestions: state.checkKpQuestions,
 }));
 
 const { createApp } = await import('../src/app.js');
@@ -373,6 +375,38 @@ describe('GET /v1/reports/:id', () => {
     const app = createApp();
 
     const res = await app.request('/v1/reports/not-a-uuid', { headers: authHeader() });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /v1/reports/questions/check', () => {
+  it('returns the per-question verdicts from the service', async () => {
+    signIn();
+    const verdict = {
+      allowed: false,
+      results: [
+        { index: 0, allowed: true, topic: null, message: '' },
+        { index: 1, allowed: false, topic: 'death', message: 'sorry' },
+      ],
+    };
+    state.checkKpQuestions.mockReturnValue(verdict);
+    const res = await createApp().request('/v1/reports/questions/check', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questions: ['job?', 'when will he die'], language: 'en' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(verdict);
+    expect(state.checkKpQuestions).toHaveBeenCalledWith(['job?', 'when will he die'], 'en');
+  });
+
+  it('rejects more than three questions', async () => {
+    signIn();
+    const res = await createApp().request('/v1/reports/questions/check', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questions: ['a', 'b', 'c', 'd'] }),
+    });
     expect(res.status).toBe(400);
   });
 });

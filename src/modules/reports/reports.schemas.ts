@@ -208,3 +208,24 @@ export const VoteNextReportBodySchema = z
 export const VoteNextReportResponseSchema = z
   .object({ alreadyVoted: z.boolean() })
   .openapi('VoteNextReportResponse');
+
+export const CheckQuestionsBodySchema = z
+  .object({
+    questions: z.array(z.string().max(500)).max(3),
+    language: z.string().optional(),
+  })
+  .openapi('CheckQuestionsBody');
+
+export const CheckQuestionsResponseSchema = z
+  .object({
+    allowed: z.boolean(),
+    results: z.array(
+      z.object({
+        index: z.number().int(),
+        allowed: z.boolean(),
+        topic: z.enum(['death', 'suicide']).nullable(),
+        message: z.string(),
+      }),
+    ),
+  })
+  .openapi('CheckQuestionsResponse');

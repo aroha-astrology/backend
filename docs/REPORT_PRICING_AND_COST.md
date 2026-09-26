@@ -13,18 +13,19 @@ The AI cost to generate any one of our 10 reports is tiny — a few paise, well 
 
 ## 2. Pricing table (all figures estimated — see Section 5 for what's actually measured today)
 
-| Report                 | Price  | Billing  | LLM calls | Est. AI cost/report (English) | Est. AI cost (+1 translation) | Est. margin (cash basis\*) |
-| ---------------------- | ------ | -------- | --------- | ----------------------------- | ----------------------------- | -------------------------- |
-| Marriage               | ₹99    | one-time | **2**     | ₹0.08                         | ₹0.19                         | 99.9%                      |
-| Past Life              | ₹25    | one-time | 1         | ₹0.04                         | ₹0.12                         | 99.8%                      |
-| Kundli Milan           | ₹99    | one-time | 1         | ₹0.06                         | ₹0.15                         | 99.9%                      |
-| True Love              | ₹99    | one-time | 1         | ₹0.04                         | ₹0.12                         | 100.0%                     |
-| Wealth                 | ₹99    | one-time | 1         | ₹0.05                         | ₹0.12                         | 99.9%                      |
-| Baby Name              | ₹99    | one-time | 1         | ₹0.04                         | ₹0.12                         | 100.0%                     |
-| Health (monthly)       | ₹25/mo | monthly  | 1         | ₹0.03                         | ₹0.09                         | 99.9%                      |
-| Career (monthly)       | ₹25/mo | monthly  | 1         | ₹0.03                         | ₹0.09                         | 99.9%                      |
-| Finance (monthly)      | ₹25/mo | monthly  | 1         | ₹0.03                         | ₹0.09                         | 99.9%                      |
-| Relationship (monthly) | ₹25/mo | monthly  | 1         | ₹0.03                         | ₹0.09                         | 99.9%                      |
+| Report                 | Price           | Billing  | LLM calls | Est. AI cost/report (English) | Est. AI cost (+1 translation) | Est. margin (cash basis\*) |
+| ---------------------- | --------------- | -------- | --------- | ----------------------------- | ----------------------------- | -------------------------- |
+| Marriage               | ₹99             | one-time | **2**     | ₹0.08                         | ₹0.19                         | 99.9%                      |
+| Past Life              | ₹25             | one-time | 1         | ₹0.04                         | ₹0.12                         | 99.8%                      |
+| Kundli Milan           | ₹99             | one-time | 1         | ₹0.06                         | ₹0.15                         | 99.9%                      |
+| True Love              | ₹99             | one-time | 1         | ₹0.04                         | ₹0.12                         | 100.0%                     |
+| Wealth                 | ₹99             | one-time | 1         | ₹0.05                         | ₹0.12                         | 99.9%                      |
+| Baby Name              | ₹99             | one-time | 1         | ₹0.04                         | ₹0.12                         | 100.0%                     |
+| Health (monthly)       | ₹25/mo          | monthly  | 1         | ₹0.03                         | ₹0.09                         | 99.9%                      |
+| Career (monthly)       | ₹25/mo          | monthly  | 1         | ₹0.03                         | ₹0.09                         | 99.9%                      |
+| Finance (monthly)      | ₹25/mo          | monthly  | 1         | ₹0.03                         | ₹0.09                         | 99.9%                      |
+| Relationship (monthly) | ₹25/mo          | monthly  | 1         | ₹0.03                         | ₹0.09                         | 99.9%                      |
+| KP Year Ahead          | ₹101 (MRP ₹251) | yearly   | **3-4**   | ~₹0.15 (est., not measured)   | ~₹0.35 (est.)                 | 99.8%+                     |
 
 _\*"Cash basis" = assumes the ₹99/₹25 was actually paid in cash, i.e. ignores the free-grant scenario in Section 3. Margin numbers round to "99.8%+" everywhere — the differences between rows are in the third decimal place and not meaningful given these are estimates, not measurements._
 

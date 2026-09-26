@@ -1,4 +1,5 @@
 import type { ReportKey } from '../../config/reports.js';
+import type { KpRawData } from '../../lib/astro-engine/reports/kp-annual.js';
 
 /** Everything a report generator needs to compute its deterministic facts. */
 export interface ReportScoreContext {
@@ -110,6 +111,19 @@ export interface ReportScoreContext {
    * `personRelationshipStatus` above.
    */
   userAnswers?: Record<string, string> | null;
+  /**
+   * The profile's birth place (already-decrypted `placeOfBirth`), sourced through the same
+   * `resolveProfileContext` call as `personDob`. Only the KP report reads it — KP cusps are
+   * Placidus, which the stored whole-sign chart cannot supply, so they are recomputed from
+   * the birth Julian day plus these coordinates. Optional for the same additive-only reason
+   * as every field above.
+   */
+  personBirthPlace?: { lat: number; lon: number; tz: string } | null;
+  /**
+   * KP-ayanamsa / Placidus ephemeris data for kp_annual, filled in by that generator's own
+   * `prepareContext` hook (see ReportGenerator.prepareContext). Absent for every other report.
+   */
+  kpRaw?: KpRawData | null;
 }
 
 /**
@@ -199,6 +213,15 @@ export interface ReportGenerator {
    * for one-time reports.
    */
   computeScores(ctx: ReportScoreContext, periodMonth: string | null): ReportScores;
+  /**
+   * Optional async step run right before `computeScores`, everywhere it is called from the
+   * reports service (generation, every read, regeneration). For a report whose deterministic
+   * facts need ephemeris work the stored kundli doesn't carry — today only kp_annual, which
+   * needs KP-ayanamsa Placidus cusps and a year of transits — so `computeScores` itself can
+   * stay pure and synchronous. Must not call an LLM or write to the database. A generator
+   * without this hook is unaffected.
+   */
+  prepareContext?(ctx: ReportScoreContext, periodMonth: string | null): Promise<ReportScoreContext>;
   /**
    * One or more bounded LLM calls that turn `scores` into narrative
    * `ReportSection[]`. Split into multiple calls if the combined narrative

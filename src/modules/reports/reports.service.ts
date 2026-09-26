@@ -46,6 +46,14 @@ import {
 import { analyzeAllVakriPlanets } from '../../lib/astro-engine/index.js';
 import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
 import { verifyReportClaims } from '../../lib/llm/reports/verify-claims.js';
+import {
+  KP_MAX_QUESTIONS,
+  KP_QUESTION_KEYS,
+  KP_QUESTION_MAX_CHARS,
+  kpQuestionsFromAnswers,
+  screenKpQuestions,
+  type QuestionScreenResult,
+} from '../../lib/astro-engine/kp/kp-questions.js';
 import type { BirthRecord } from '../../lib/swarm/state.js';
 import {
   claimQueuedReports,
@@ -372,6 +380,7 @@ async function fetchPersonContext(
     | 'personPhone'
     | 'personTimeOfBirth'
     | 'personBirthTimeAccuracy'
+    | 'personBirthPlace'
   >
 > {
   try {
@@ -385,6 +394,7 @@ async function fetchPersonContext(
         personPhone: null,
         personTimeOfBirth: null,
         personBirthTimeAccuracy: null,
+        personBirthPlace: null,
       };
     }
     const profile = await resolveProfileContext(user, birthProfileId);
@@ -401,6 +411,13 @@ async function fetchPersonContext(
       personPhone: user.phoneE164 ?? null,
       personTimeOfBirth: profile.timeOfBirth ?? null,
       personBirthTimeAccuracy: profile.birthTimeAccuracy ?? null,
+      personBirthPlace: profile.placeOfBirth
+        ? {
+            lat: profile.placeOfBirth.lat,
+            lon: profile.placeOfBirth.lon,
+            tz: profile.placeOfBirth.tz,
+          }
+        : null,
     };
   } catch (err) {
     logger.warn(
@@ -415,6 +432,7 @@ async function fetchPersonContext(
       personPhone: null,
       personTimeOfBirth: null,
       personBirthTimeAccuracy: null,
+      personBirthPlace: null,
     };
   }
 }
@@ -586,13 +604,14 @@ function computeScoresWithCondition(
 }
 
 export async function buildReportScoreContext(
-  row: Pick<ReportRow, 'userId' | 'birthProfileId' | 'input'>,
+  row: Pick<ReportRow, 'userId' | 'birthProfileId' | 'input'> &
+    Partial<Pick<ReportRow, 'reportKey' | 'periodMonth'>>,
   kundli: KundliRow | null | undefined,
   partnerChart: Record<string, unknown> | null,
 ): Promise<ReportScoreContext> {
   const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
   const partnerName = typeof row.input?.name === 'string' ? row.input.name : null;
-  return {
+  const ctx: ReportScoreContext = {
     chart: kundli?.chartData ?? null,
     partnerChart,
     partnerName,
@@ -606,6 +625,11 @@ export async function buildReportScoreContext(
     ...personContext,
     userAnswers: answersFromInput(row.input),
   };
+  // A generator that needs extra ephemeris work before its pure computeScores (kp_annual's
+  // KP-ayanamsa Placidus chart) does it here, so all four call sites — generation, every
+  // read, regeneration and chat grounding — see the same facts without each remembering to.
+  const generator = row.reportKey ? REPORT_GENERATORS[row.reportKey as ReportKey] : undefined;
+  return generator?.prepareContext ? generator.prepareContext(ctx, row.periodMonth ?? null) : ctx;
 }
 
 /**
@@ -963,6 +987,45 @@ export function pumpReportQueue(): void {
     });
 }
 
+/**
+ * The reader's questions for kp_annual, checked BEFORE the wallet is touched: a death,
+ * lifespan or self-harm question is refused with the same policy chat uses (and the helpline
+ * for self-harm travels back in `details`), so the report can never be bought to ask what chat
+ * will not answer. Only the three question keys are accepted, each bounded in length.
+ */
+export function assertKpQuestionsAllowed(
+  answers: Record<string, string> | undefined,
+  language?: string | null,
+): void {
+  if (!answers) return;
+  const unknownKeys = Object.keys(answers).filter(
+    (k) => !(KP_QUESTION_KEYS as readonly string[]).includes(k),
+  );
+  if (unknownKeys.length > 0) {
+    throw Errors.badRequest(`Unexpected answer keys for kp_annual: ${unknownKeys.join(', ')}`);
+  }
+  if (Object.values(answers).some((v) => v.length > KP_QUESTION_MAX_CHARS)) {
+    throw Errors.badRequest(`Each question must be at most ${KP_QUESTION_MAX_CHARS} characters`);
+  }
+  const questions = kpQuestionsFromAnswers(answers);
+  const blocked = screenKpQuestions(questions, language ?? undefined).filter((r) => !r.allowed);
+  if (blocked.length > 0) {
+    throw Errors.badRequest('QUESTION_NOT_ALLOWED', { questions: blocked });
+  }
+}
+
+/** POST /reports/questions/check — lets the purchase sheet flag a question before checkout. */
+export function checkKpQuestions(
+  questions: string[],
+  language?: string | null,
+): { allowed: boolean; results: QuestionScreenResult[] } {
+  const trimmed = questions
+    .slice(0, KP_MAX_QUESTIONS)
+    .map((q) => q.trim().slice(0, KP_QUESTION_MAX_CHARS));
+  const results = screenKpQuestions(trimmed, language ?? undefined);
+  return { allowed: results.every((r) => r.allowed), results };
+}
+
 export interface PurchaseReportResult {
   reports: PurchasedReportSummaryDto[];
 }
@@ -985,6 +1048,7 @@ export async function purchaseReport(
   }
 
   purchaseReportShapeCheck(def, body);
+  if (def.key === 'kp_annual') assertKpQuestionsAllowed(body.answers, user.contentLanguage);
 
   // strict: body.birthProfileId is client-supplied for THIS request — a
   // non-owned/deleted id must 404, not silently substitute the caller's
