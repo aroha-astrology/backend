@@ -105,6 +105,13 @@ export interface ProgenyScores extends Record<string, unknown>, ReportSharedFact
 
 const PROGENY_TIMING_KARAKA = 'Jupiter';
 
+/** The Progeny report's timing significators: the 5th lord plus Jupiter. Exported so the palm
+ * reading dates a child with exactly the windows this report shows. */
+export function progenyTimingSignificators(chart: Record<string, unknown> | null): string[] {
+  const fifthLord = getHouseLord(5, chart);
+  return Array.from(new Set([fifthLord, PROGENY_TIMING_KARAKA].filter(Boolean))) as string[];
+}
+
 /**
  * Tiny inline age-from-DOB -- not worth a shared helper for one caller.
  *
@@ -292,10 +299,7 @@ export function computeProgenyScores(
     'male',
   );
 
-  const fifthLord = getHouseLord(5, chart);
-  const significators = Array.from(
-    new Set([fifthLord, PROGENY_TIMING_KARAKA].filter(Boolean)),
-  ) as string[];
+  const significators = progenyTimingSignificators(chart);
   const windows = computeReportTimingWindows(
     'children',
     significators,

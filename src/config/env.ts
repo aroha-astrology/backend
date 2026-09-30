@@ -109,6 +109,18 @@ const EnvSchema = z
     // they are regenerated.
     LUNAR_NODE_TYPE: z.enum(['mean', 'true']).default('mean'),
 
+    // --- Omnirush (OpenAI models via the owner's HomeSpace ask endpoint) -----
+    // Palm reading's vision + interpretation calls can run on OpenAI models
+    // (gpt-6-astra, gpt-6-sol, gpt-5.6-sol) served by the sandboxed Omnirush
+    // runner on the HomeSpace box, reached through its private /ask endpoint.
+    // No token = Omnirush is off: any Omnirush model picked in Admin -> Features
+    // falls back to Gemini instead of failing. See lib/llm/omnirush-client.ts.
+    OMNIRUSH_ASK_URL: z
+      .string()
+      .url()
+      .default('https://api.homespace.arohaastrology.in/api/v1/private/ask'),
+    OMNIRUSH_ASK_TOKEN: z.string().min(1).optional(),
+
     GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
     // Reasoning tier for paid report generation only (see config/llm.ts's
     // REASONING_MODEL + REPORT_PROFILE). Still Gemini — this is a bigger model

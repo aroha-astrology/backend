@@ -48,6 +48,50 @@ export interface PalmMajorLine {
   endingPosition?: string;
   separation?: string;
   polyline?: Array<[number, number]>;
+  /** The vision model's own 0-1 confidence that its path follows the real crease. */
+  confidence?: number;
+  /** Crease-snap verdict on `polyline` (see lib/palm/crease-snap.ts). The overlay draws a line
+   * only when `drawable` is true; a line without a verdict (older readings) is never drawn. */
+  trace?: PalmLineTrace;
+}
+
+export interface PalmLineTrace {
+  /** Share of the snapped path that sits on a visible crease (0-1). */
+  support: number;
+  /** Share of the path that looks like the hand's outline rather than a crease (0-1). */
+  edgeFraction: number;
+  drawable: boolean;
+}
+
+/** Lines the timing marks may sit on — the ones classical palmistry dates events along. */
+export type PalmTimedLine = 'lifeLine' | 'headLine' | 'fateLine' | 'sunLine' | 'heartLine';
+
+export type PalmMarkKind =
+  | 'break'
+  | 'branchUp'
+  | 'branchDown'
+  | 'fork'
+  | 'lineStarts'
+  | 'influenceJoins'
+  | 'island'
+  | 'star'
+  | 'cross';
+
+/** A measured feature at one point along a line — geometry only; what it means is decided in
+ * palm-timing.ts, never by the vision model. `point` is 0-1 on the front photo. */
+export interface PalmTimingMark {
+  line: PalmTimedLine;
+  mark: PalmMarkKind;
+  point: [number, number];
+  confidence: number;
+}
+
+/** One marriage (relationship) line on the percussion edge, as a position between the heart
+ * line (0) and the base of the little finger (1) — read from the side view, where they show. */
+export interface PalmMarriageLine {
+  position: number;
+  length: LineLength;
+  depth: LineDepth;
 }
 
 export interface PalmMajorLines {
@@ -137,4 +181,13 @@ export interface PalmHandObservations {
   fingers?: PalmFingerAnalysis;
   fingerprints: PalmFingerprint[];
   specialMarkings: PalmSpecialMarking[];
+  /** Which hand the vision pass saw in the photograph — compared against the hand the user was
+   * asked to photograph, so a reading of the wrong hand is flagged instead of silently read. */
+  detectedHand?: 'left' | 'right' | 'unknown';
+  /** How the hand lies in the front photo; timing geometry is only computed for fingersUp. */
+  orientation?: 'fingersUp' | 'fingersDown' | 'fingersLeft' | 'fingersRight';
+  /** The palm (not fingers) on the front photo, 0-1: [xMin, yMin, xMax, yMax]. */
+  palmBox?: [number, number, number, number];
+  timingMarks?: PalmTimingMark[];
+  marriageLines?: PalmMarriageLine[];
 }

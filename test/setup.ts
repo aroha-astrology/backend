@@ -44,6 +44,7 @@ for (const key of [
   'NVIDIA_NIM_API_KEY_4',
   'GEMINI_API_KEYS',
   'GEMINI_PAID_API_KEYS',
+  'OMNIRUSH_ASK_TOKEN',
   'REDIS_URL',
 ]) {
   delete process.env[key];

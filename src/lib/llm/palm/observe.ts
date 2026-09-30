@@ -169,6 +169,9 @@ function parseMajorLine(raw: unknown): PalmMajorLine {
   if (typeof obj.chains === 'boolean') line.chains = obj.chains;
   if (typeof obj.endingPosition === 'string') line.endingPosition = obj.endingPosition;
   if (typeof obj.separation === 'string') line.separation = obj.separation;
+  if (typeof obj.confidence === 'number' && Number.isFinite(obj.confidence)) {
+    line.confidence = clamp(obj.confidence, 0, 1);
+  }
   const polyline = parsePolyline(obj.polyline);
   if (polyline) line.polyline = polyline;
   return line;
@@ -232,8 +235,20 @@ export function parseObserveResponse(raw: string): PalmHandObservations | null {
     const th = (data.thumb ?? {}) as Record<string, unknown>;
     const fg = (data.fingers ?? {}) as Record<string, unknown>;
 
+    // Asked for 0-10, but a model sometimes answers every quality field on a 0-1 scale (gpt-6-astra
+    // did on 2026-09-30: score 0.79). Read literally that is "barely visible" and would flag every
+    // reading as low-visibility, so an all-fractional block is rescaled rather than trusted.
+    const qualityValues = [iq.score, iq.lineVisibility, iq.lighting, iq.focus, iq.framing].filter(
+      (v): v is number => typeof v === 'number' && !Number.isNaN(v),
+    );
+    const qualityScale =
+      qualityValues.length > 0 &&
+      qualityValues.every((v) => v <= 1) &&
+      qualityValues.some((v) => v > 0)
+        ? 10
+        : 1;
     const num = (v: unknown, fallback: number) =>
-      typeof v === 'number' && !Number.isNaN(v) ? clamp(v, 0, 10) : fallback;
+      typeof v === 'number' && !Number.isNaN(v) ? clamp(v * qualityScale, 0, 10) : fallback;
 
     return {
       hand: data.hand === 'left' ? 'left' : 'right',

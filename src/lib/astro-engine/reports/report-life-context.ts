@@ -92,7 +92,10 @@ function occupantsOfHouse(houseNumber: number, chart: Record<string, unknown> | 
 /** Same house-lord + house-occupants + static-karaka merge chat-grounding.ts's own per-domain
  * loop performs, driven by DOMAIN_CONFIG — the SAME table chat's timing answers already read,
  * so a life-context window can never disagree with what chat would say about the same domain. */
-function buildDomainSignificators(domain: Domain, chart: Record<string, unknown> | null): string[] {
+export function buildDomainSignificators(
+  domain: Domain,
+  chart: Record<string, unknown> | null,
+): string[] {
   const config = DOMAIN_CONFIG[domain];
   const lords = config.natalHouses
     .map((h) => getHouseLord(h, chart))

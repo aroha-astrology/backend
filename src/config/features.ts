@@ -9,6 +9,8 @@
  * else needs to know about it until it's actually wired to a toggle point.
  */
 
+import { SELECTABLE_OMNIRUSH_MODELS } from './omnirush-models.js';
+
 export interface FeatureDef {
   key: string;
   label: string;
@@ -75,6 +77,12 @@ export const SELECTABLE_GEMINI_MODELS = [
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
 ] as const;
+
+/** Palm reading's model pickers: the OpenAI models (through Omnirush) first, then Gemini. */
+export const SELECTABLE_PALM_MODELS: readonly string[] = [
+  ...SELECTABLE_OMNIRUSH_MODELS,
+  ...SELECTABLE_GEMINI_MODELS,
+];
 
 export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // nav
@@ -554,23 +562,28 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   },
   // ai — model pickers, not toggleable product surface. See `modelOptions` on FeatureDef for
   // what the enabled toggle means on these rows (off = fall back to the global GEMINI_MODEL).
-  // Both ship DISABLED so nothing changes until a model is deliberately picked in the
-  // dashboard — per-model key-pool quotas have to be confirmed against live keys first.
+  //
+  // 2026-09-30: the two palm keys offer the OpenAI models (via Omnirush, see
+  // config/omnirush-models.ts) as well as Gemini, and ship ON with gpt-6-astra at low effort.
+  // Measured that day on a real palm: gpt-6-astra traced the heart/head/life lines onto the
+  // real creases, and its low-effort traces landed within 0.1-0.4% of the frame of its
+  // default-effort ones in half the time (~50 s vs ~100 s); gpt-6-sol drew the life line along
+  // the thumb's outline. Any Omnirush failure falls back to Gemini (GEMINI_MODEL).
   {
     key: 'ai.palmVisionModel',
-    label: 'Palm — vision model (paid re-scan)',
+    label: 'Palm — vision model (free scan: lines, mounts, timing marks)',
     group: 'ai',
-    defaultEnabled: false,
-    modelOptions: SELECTABLE_GEMINI_MODELS,
-    defaultModel: 'gemini-3.1-pro-preview',
+    defaultEnabled: true,
+    modelOptions: SELECTABLE_PALM_MODELS,
+    defaultModel: 'gpt-6-astra:low',
   },
   {
     key: 'ai.palmInterpretModel',
-    label: 'Palm — interpretation model',
+    label: 'Palm — interpretation model (paid report text)',
     group: 'ai',
-    defaultEnabled: false,
-    modelOptions: SELECTABLE_GEMINI_MODELS,
-    defaultModel: 'gemini-3.8-flash',
+    defaultEnabled: true,
+    modelOptions: SELECTABLE_PALM_MODELS,
+    defaultModel: 'gpt-6-astra:low',
   },
   // 2026-08-28: the three highest-traffic/most-reasoning-heavy surfaces
   // (personalized horoscope, AI chat, paid reports) previously had NO model

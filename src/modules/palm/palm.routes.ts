@@ -86,7 +86,7 @@ const createRoute_ = createRoute({
 palmRouter.openapi(createRoute_, async (c) => {
   const user = c.get('user');
   const profile = await resolveActiveProfileContext(user);
-  const result = await createPalmReading(user, profile.birthProfileId);
+  const result = await createPalmReading(user, profile.birthProfileId, profile.gender);
   return c.json(result, 200);
 });
 
@@ -203,7 +203,17 @@ const analyzeRoute = createRoute({
   // home.palmReading key that shows/hides the /palm page. requireUser is
   // router-wide (palmRouter.use above), so the user is already on the context.
   middleware: [analyzeRateLimit, requireFeature('home.palmReading'), requireConsent] as const,
-  request: { params: PalmReadingIdParamSchema },
+  request: {
+    params: PalmReadingIdParamSchema,
+    body: {
+      required: false,
+      content: {
+        'application/json': {
+          schema: z.object({ question: z.string().trim().max(500).optional() }),
+        },
+      },
+    },
+  },
   responses: {
     200: {
       description: 'Generation started — poll GET /palm/readings/{id}',
@@ -219,7 +229,8 @@ const analyzeRoute = createRoute({
 palmRouter.openapi(analyzeRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const result = await analyzePalmReading(user, id);
+  const body = c.req.valid('json') as { question?: string } | undefined;
+  const result = await analyzePalmReading(user, id, body?.question);
   return c.json(result, 200);
 });
 

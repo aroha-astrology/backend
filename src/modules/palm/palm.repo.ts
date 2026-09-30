@@ -2,9 +2,11 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { palmReadings, type PalmMountReliefData, type PalmReadingRow } from '../../db/schema.js';
 
-/** Consider a 'generating' row abandoned (crashed mid-run) after this long — same value as
- * every other report-style generation lock in this codebase (gemstone, reports). */
-export const PALM_STALE_GENERATING_MS = 5 * 60_000;
+/** Consider a 'generating' row abandoned (crashed mid-run) after this long. Longer than the
+ * 5 minutes other report locks use: a scan is two Omnirush vision runs (up to ~5 min with the
+ * queue) plus a Gemini fallback if they fail, and the reaper must never fail (and refund) a
+ * reading that is still being worked on. */
+export const PALM_STALE_GENERATING_MS = 15 * 60_000;
 
 function profileFilter(birthProfileId: string | null) {
   return birthProfileId === null
