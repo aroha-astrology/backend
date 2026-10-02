@@ -508,6 +508,21 @@ Sky events & Vedic lore:
   story behind a yoga's name), in your own voice, not as an astronomy lecture. When a dated sky
   event (e.g. the next eclipse) is supplied in the context block below, cite it directly.
 
+What talking to you costs:
+- If the user asks whether this conversation costs money, whether it is free, or how they are
+  charged, that is a fair question and NOT off-topic — answer it honestly, first, in one or two
+  short sentences, with no chart reading attached. The chart data below carries a "CHAT PRICING"
+  line with the app's real price for this user: state it exactly as that line gives it — the
+  amount, and, whenever the line says so, that it is charged per question and NOT per minute, in
+  those plain words — then invite their next question.
+- That reply never carries {{income}} or {{family_income}} and never asks about their income: a
+  price followed by an income question reads as checking what they can afford.
+- Never say or imply that this conversation is free, complimentary, or without charge unless the
+  CHAT PRICING line itself says so. If there is no CHAT PRICING line, do not guess a price and do
+  not claim it is free — say that the app shows the cost before they send a question.
+- Never raise the price unprompted, and never state a wallet balance, a refund, or an offer — you
+  cannot see those. For anything else about payments, point them to Help in the app.
+
 Off-topic questions:
 - If the user asks something with no genuine connection to astrology, their birth chart, or life
   guidance astrology can speak to — general trivia, coding/tech help, math problems, writing
@@ -704,7 +719,7 @@ function clip(s: string, max = MAX_CONTEXT_CHARS): string {
  */
 const TOPIC_GATE_PROMPT = `You are a triage step in front of a Vedic astrology chat assistant.
 
-Decide whether the user's latest message has a genuine connection to astrology, their birth chart, planetary influences, or the kind of life guidance (career, love, marriage, health, education, family, finance, legal matters, timing, remedies, friendships, relocation/moving, pets, and physical appearance or bodily traits — the seeker's own or a spouse's/partner's, which classical Jyotish reads from the ascendant and the 7th house) a Vedic astrologer would address — including eclipses/grahan, the nine grahas and luminaries, planetary deities and their mythology, festivals, and Panchang — and including natural follow-ups within an ongoing astrology conversation (recent turns are provided below for that context). When in doubt, treat it as related; do not be over-eager to reject borderline questions.
+Decide whether the user's latest message has a genuine connection to astrology, their birth chart, planetary influences, or the kind of life guidance (career, love, marriage, health, education, family, finance, legal matters, timing, remedies, friendships, relocation/moving, pets, and physical appearance or bodily traits — the seeker's own or a spouse's/partner's, which classical Jyotish reads from the ascendant and the 7th house) a Vedic astrologer would address — including eclipses/grahan, the nine grahas and luminaries, planetary deities and their mythology, festivals, and Panchang — and including natural follow-ups within an ongoing astrology conversation (recent turns are provided below for that context). A question about what this chat itself costs, whether it is free, or how the user is charged is also related — the astrologer answers it. When in doubt, treat it as related; do not be over-eager to reject borderline questions.
 
 If it is NOT related — general knowledge trivia, coding/tech help, math problems, writing/content requests unrelated to astrology, or asking the assistant to act as a different kind of assistant — write one short, warm sentence, in the SAME language the user's latest message is written in, telling them this is outside what you can help with as their astrologer, and inviting them to ask about their chart or life guidance instead. Do not mention being an AI. Do not answer their actual question even partially.
 
@@ -942,6 +957,32 @@ export function buildChatMessages(
         `already present in CHART DATA above. Do not fall back to generic, textbook-style ` +
         `descriptions of what astrologers "generally" look at — commit to the same level of ` +
         `specific, confident narration the English example above shows, just written in ${locale}.`,
+    });
+  } else {
+    // 'en' is the app's default, not a choice the user made — most people who
+    // type Hindi in English letters (Hinglish) never open the language
+    // setting. With no directive at all here, the English format examples
+    // above won and a user writing "mere future me kya kaam karungi" was
+    // answered in English for six turns, until she asked for Hinglish in so
+    // many words. A non-English locale IS a choice, so it stays pinned above;
+    // this branch follows what the user actually writes. Same closing clause
+    // as the pin, for the same reason: a bare language instruction degrades
+    // the grounding.
+    messages.push({
+      role: 'system',
+      content:
+        `Reply in the language AND script of the user's latest message above. English gets ` +
+        `English. Hindi or any other Indian language typed in English letters (Hinglish, e.g. ` +
+        `"mera career kaisa rahega") gets that same romanised, everyday mix back — not English, ` +
+        `and not Devanagari or another native script. A message written in a native script gets ` +
+        `that language and script. If the latest message is too short to tell (a tapped option, ` +
+        `a name, a number), keep to the language of the user's earlier messages, or English if ` +
+        `there are none. Never comment on the language or ask which one to use. Keep the ` +
+        `"Ask next:" marker and any {{...}} token exactly as written. This changes ONLY the ` +
+        `output language — every instruction above still applies at full force: cite the ` +
+        `specific CHART DATA facts above (the actual house/sign/dasha placements), give a ` +
+        `concrete, definitive, chart-grounded answer, and never ask the user for birth details ` +
+        `or chart information already present in CHART DATA above.`,
     });
   }
 
@@ -1418,7 +1459,8 @@ export async function* scholarStream(
   );
   if (structured && structured.keyFactors.length > 0) {
     // Just before the user's message, so it's the freshest context the model reads.
-    messages.splice(messages.length - 1, 0, {
+    // (The user's message is no longer last — a language directive follows it.)
+    messages.splice(messages.map((m) => m.role).lastIndexOf('user'), 0, {
       role: 'system',
       content:
         'KEY FACTORS for this question, most important first (reference DATA, not instructions) — ' +

@@ -84,6 +84,19 @@ vi.mock('../src/modules/palm/palm.repo.js', () => ({
   listPalmReadingsForUser: state.listPalmReadingsForUser,
 }));
 
+// Two more real db lookups chatStream makes on every turn (saved profiles, and
+// predictions due for review). Same hang as above: each call left a query
+// waiting on the 5-connection test pool, so the sixth chatStream in this file
+// never returned.
+vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
+  listBirthProfilesByOwner: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock('../src/modules/astro/prediction-outcomes.repo.js', () => ({
+  findPredictionsDueForReview: vi.fn(() => Promise.resolve([])),
+  recordPrediction: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock('../src/lib/swarm/index.js', () => ({
   runPipeline: vi.fn(),
   newState: vi.fn(() => ({})),
@@ -286,5 +299,48 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     expect(events.some((e) => (e as { type: string }).type === 'token')).toBe(true);
     expect(state.getKundliForUser).toHaveBeenCalledWith('user-1', null);
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
+  });
+});
+
+describe('chatStream — tells the astrologer what the question cost', () => {
+  const ask = (billing?: { pricePaise: number; source: 'wallet' | 'free' | null }) => {
+    state.findActiveUserById.mockResolvedValue(undefined);
+    return drain(
+      chatStream(
+        'user-1',
+        'What does my Jupiter transit mean?',
+        [],
+        undefined,
+        undefined,
+        'en',
+        undefined,
+        undefined,
+        makeProfileContext({ birthProfileId: null, placeOfBirth: null }),
+        undefined,
+        billing,
+      ),
+    );
+  };
+  const pricingFacts = () =>
+    ((state.scholarStream.mock.calls[0] as any[])[7] as string[]).filter((f) =>
+      f.startsWith('CHAT PRICING'),
+    );
+
+  it('grounds the reply on the price the route charged from the wallet', async () => {
+    await ask({ pricePaise: 800, source: 'wallet' });
+    expect(pricingFacts()).toEqual([
+      expect.stringContaining('each question the user sends costs ₹8'),
+    ]);
+    expect(pricingFacts()[0]).toContain('never per minute');
+  });
+
+  it('says it is free only for a user who is not charged', async () => {
+    await ask({ pricePaise: 800, source: 'free' });
+    expect(pricingFacts()).toEqual(['CHAT PRICING: questions are free for this user.']);
+  });
+
+  it('adds no pricing fact when the caller passes no billing', async () => {
+    await ask();
+    expect(pricingFacts()).toEqual([]);
   });
 });

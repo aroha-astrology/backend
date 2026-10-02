@@ -665,6 +665,8 @@ import { forecastTranslations } from '../../db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { translateForecastContent } from '../../lib/llm/horoscope.js';
 import { INCOME_ASK_FACT } from '../../lib/chat-income.js';
+import { chatPricingFact } from '../../lib/chat-pricing.js';
+import type { QuestionSource } from '../pass/question-billing.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 
 async function getCachedForecastTranslation<T>(
@@ -1572,6 +1574,10 @@ export async function* chatStream(
   // earlier date (see historyStalenessNote in scholar.ts). Undefined for a
   // brand-new session, which needs no such warning.
   sessionLastActivityAt?: Date,
+  // What the route charged for this turn (see chatPricingFact) — lets the
+  // astrologer answer "does this cost money?" truthfully. Omitted by callers
+  // that don't bill, and then the prompt says only that the app shows the cost.
+  billing?: { pricePaise: number; source: QuestionSource | null },
 ): AsyncGenerator<ChatStreamEvent> {
   // Death/self-harm policy gate — runs before checkTopicGate (and before any
   // chart/grounding work) so a self-harm message never reaches the topic
@@ -1661,6 +1667,7 @@ export async function* chatStream(
     .then((features) => features['chat.incomeAsk']?.enabled ?? false)
     .catch(() => false);
   if (incomeAskEnabled) profileFacts.push(INCOME_ASK_FACT);
+  if (billing) profileFacts.push(chatPricingFact(billing.pricePaise, billing.source));
 
   // Today's Panchang at the ACTIVE PROFILE's birth location — best-effort,
   // never blocks the reply (a missing place of birth, or the panchang engine

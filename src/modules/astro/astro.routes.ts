@@ -731,6 +731,7 @@ astroRouter.openapi(chatRoute, async (c) => {
         // threaded through instead of letting chatStream re-resolve it.
         profile,
         storedLastActivityAt,
+        { pricePaise: chatMessageCostPaise, source: chargeSource },
       );
 
       let fullContent = '';

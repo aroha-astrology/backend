@@ -286,6 +286,56 @@ describe('scholar text-chat memory attribution (NO_MEMORY_ATTRIBUTION)', () => {
   });
 });
 
+describe('scholar text chat — reply language', () => {
+  function lastMessage(locale: string): { role: string; content: string } {
+    const state = newState({ userId: 'u1', intent: 'chat', consent: true });
+    return buildChatMessages(state, 'mera career kaisa rahega', [], false, locale).at(-1)!;
+  }
+
+  it("follows the user's own language and script when the app is left on English", () => {
+    const { role, content } = lastMessage('en');
+    expect(role).toBe('system');
+    expect(content).toContain("language AND script of the user's latest message");
+    expect(content).toContain('Hinglish');
+    expect(content).not.toContain('Respond in language');
+  });
+
+  it('keeps the grounding clause, so matching the language never loosens the chart reading', () => {
+    expect(lastMessage('en').content).toContain('cite the specific CHART DATA facts');
+  });
+
+  it('still pins the reply to a language the user chose in the app', () => {
+    const { content } = lastMessage('hi');
+    expect(content).toContain('Respond in language: hi');
+    expect(content).not.toContain('Hinglish');
+  });
+});
+
+describe('scholar — what a question costs', () => {
+  it('answers a price question from the CHAT PRICING fact instead of deflecting it', () => {
+    const content = systemContent();
+    expect(content).toContain('What talking to you costs');
+    expect(content).toContain('"CHAT PRICING"');
+    expect(content).toContain('NOT off-topic');
+  });
+
+  it('never calls the chat free unless the pricing fact says so', () => {
+    expect(systemContent()).toContain(
+      'Never say or imply that this conversation is free, complimentary, or without charge unless the\n  CHAT PRICING line itself says so',
+    );
+  });
+
+  it('never attaches an income ask to a price answer', () => {
+    expect(systemContent()).toContain('That reply never carries {{income}} or {{family_income}}');
+  });
+
+  it('carries no price of its own, so voice (billed per minute) is never handed the chat price', () => {
+    const content = buildVoiceSystemInstruction({ groundingFacts: [], locale: 'en' });
+    expect(content).toContain('What talking to you costs');
+    expect(content).not.toMatch(/CHAT PRICING:|₹\s?\d/);
+  });
+});
+
 describe('scholar voice call — spoken-language matching', () => {
   it("tells the model to follow the user's spoken language even when locale is en", () => {
     const content = buildVoiceSystemInstruction({ groundingFacts: [], locale: 'en' });
