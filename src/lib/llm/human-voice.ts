@@ -2,10 +2,19 @@
 // Human voice rule
 // =============================================================================
 // One short writing rule shared by the report narrative prompts
-// (lib/llm/reports/*.ts) and the chat/voice prompt (lib/swarm/agents/scholar.ts)
-// so paid reports and Ask replies stop reading as machine-written: fake "not X,
-// it's Y" contrasts, dramatic one-line closers, groups of three, dashes between
-// every clause, and the stock vocabulary ("journey", "profound", "tapestry").
+// (lib/llm/reports/*.ts) so paid reports stop reading as machine-written: fake
+// "not X, it's Y" contrasts, dramatic one-line closers, groups of three, dashes
+// between every clause, and the stock vocabulary ("journey", "profound",
+// "tapestry").
+//
+// Deliberately NOT in the chat prompt (lib/swarm/agents/scholar.ts). Measured on
+// 2026-10-03 over three questions, four runs each on gemini-3.1-flash-lite: with
+// the rule in SHARED_PROMPT_RULES the replies were the same length and carried
+// the same number of filler contrasts as without it, so it would only add input
+// tokens to the highest-volume path. Appended at the very end of the prompt
+// instead, it made the model drop the "Ask next:" prefix from the {{income}}
+// line in 4 runs of 4. On the report calls the same rule cut the written text
+// by 10-20% and the filler contrasts by about half.
 //
 // Condensed from blader/humanizer's pattern list (MIT,
 // https://github.com/blader/humanizer), itself built on Wikipedia's "Signs of AI

@@ -12,7 +12,6 @@ import {
   type DomainWindowSink,
 } from '../../chat-grounding.js';
 import { POLICY_SYSTEM_DIRECTIVE } from '../../content-policy.js';
-import { HUMAN_VOICE_RULE } from '../../llm/human-voice.js';
 import { normalizeFollowUp } from '../../chat-follow-up.js';
 import { expandIncomeMarkers, incomeQuestionFor } from '../../chat-income.js';
 import type { SwarmState } from '../state.js';
@@ -76,7 +75,7 @@ const OUTPUT_STYLE = `CRITICAL LENGTH LIMIT — this is the instruction you are 
  * multi-turn conversation (see the "Making Ask AI Feel Human" review, changes
  * A/B).
  */
-const EMPATHY_BEAT = `When the user's message carries clear emotion — worry, grief, fear, excitement, frustration — you may fold a short, genuine acknowledgement into the SAME opening sentence as the hook (e.g. "I hear the worry in that, and your chart tells a calmer story: ..."). This is not a separate preamble sentence and does not relax the answer-first rule: the acknowledgement and the actual insight must land together in that one opening sentence, never as a throat-clearing sentence before it. Skip this entirely when the message is neutral or purely informational — forcing empathy onto a plain factual question reads as fake.`;
+const EMPATHY_BEAT = `When the user's message carries clear emotion — worry, grief, fear, excitement, frustration — you may fold a short, genuine acknowledgement into the SAME opening sentence as the hook (e.g. "I hear the worry in that — your chart tells a calmer story: ..."). This is not a separate preamble sentence and does not relax the answer-first rule: the acknowledgement and the actual insight must land together in that one opening sentence, never as a throat-clearing sentence before it. Skip this entirely when the message is neutral or purely informational — forcing empathy onto a plain factual question reads as fake.`;
 
 const PERSONAL_TOUCH = `When a durable personal fact the user has shared (see the user facts below) is genuinely relevant to what they just asked, weave it naturally into the reply as something you can see for them, not something you were told — that reads like an astrologer with real insight, not a form. Don't force it into every single reply and never recite the fact list back to them; use a fact only where it makes that specific answer land better. If the user's name is known (see below), you may address them by it sparingly — at most once every several replies, never in every message, and never mid-sentence just to prove you know it. A greeting or a warm moment is a natural place for it; a routine factual answer usually isn't. If no name is given, never invent one or claim to know it. See NO_MEMORY_ATTRIBUTION below for exactly how to phrase this without sounding like you're recalling a record.`;
 
@@ -633,9 +632,6 @@ const SHARED_PROMPT_RULES = [
   PERSONAL_TOUCH,
   FOLLOW_UP_CURIOSITY,
   NO_MEMORY_ATTRIBUTION,
-  // Last of the shared rules: how the reply is worded, for text and voice
-  // alike. See lib/llm/human-voice.ts for where the rule comes from.
-  HUMAN_VOICE_RULE,
 ] as const;
 
 export type ChatOutputStyle = 'direct' | 'structured';
