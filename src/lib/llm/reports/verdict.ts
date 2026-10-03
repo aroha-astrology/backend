@@ -13,6 +13,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { reportFactsMessage } from './report-facts-message.js';
@@ -145,6 +146,7 @@ function systemPrompt(
   return `You are writing the closing "Final Verdict" card for a paid Vedic astrology report in a mobile app. This report is specifically about ${topic}. You are given the report's own deterministic facts as JSON.
 ${yearScopeLine}${relationshipStatusLine}
 ${GROUNDING_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:

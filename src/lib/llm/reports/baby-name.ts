@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import type { BabyNameScores } from '../../astro-engine/reports/baby-name.js';
@@ -54,6 +55,7 @@ ${PADA_RULE}
 ${AVOID_SOUNDS_RULE}
 ${GENTLE_DOSHA_RULE}
 ${PREFERENCE_RULE}
+${HUMAN_VOICE_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}

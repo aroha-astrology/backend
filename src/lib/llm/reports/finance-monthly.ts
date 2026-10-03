@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE, HOUSE_SIGNIFICATIONS } from '../house-insight.js';
@@ -29,6 +30,7 @@ function narrativeSystemPrompt(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${DISCLAIMER_RULE}
 ${SUB_PERIOD_RULE}
 ${CONCERN_RULE}

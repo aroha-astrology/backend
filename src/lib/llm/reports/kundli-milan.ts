@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE, MODEL } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import type { KundliMilanScores } from '../../astro-engine/reports/kundli-milan.js';
@@ -29,6 +30,7 @@ function narrativeSystemPrompt(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -52,6 +54,7 @@ function narrativeSystemPromptCall2(): string {
 
 ${RISK_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:

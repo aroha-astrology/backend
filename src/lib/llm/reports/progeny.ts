@@ -34,6 +34,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { GROUNDING_RULE as HOUSE_GROUNDING_RULE, PLAIN_LANGUAGE_RULE } from '../house-insight.js';
@@ -113,6 +114,7 @@ function narrativeSystemPromptCall1(): string {
 
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${PROVENANCE_RULE}
 ${NO_MEDICAL_CLAIMS_RULE}
@@ -133,6 +135,7 @@ function narrativeSystemPromptCall2(): string {
 
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${PROVENANCE_RULE}
 ${NO_MEDICAL_CLAIMS_RULE}
@@ -154,6 +157,7 @@ function narrativeSystemPromptCall3(): string {
 
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${PROVENANCE_RULE}
 ${NO_MEDICAL_CLAIMS_RULE}

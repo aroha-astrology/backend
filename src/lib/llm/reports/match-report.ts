@@ -15,6 +15,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE, MODEL } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import {
@@ -238,6 +239,7 @@ function cardsSystemPrompt(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -259,6 +261,7 @@ function dosAndDontsSystemPrompt(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:

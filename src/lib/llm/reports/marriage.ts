@@ -16,6 +16,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { GROUNDING_RULE as HOUSE_GROUNDING_RULE, PLAIN_LANGUAGE_RULE } from '../house-insight.js';
@@ -80,6 +81,7 @@ function narrativeSystemPromptCall1(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${TONE_RULE}
 
@@ -102,6 +104,7 @@ function narrativeSystemPromptCall2(): string {
 
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 If facts about the reader's real spouse (their own Navamsa and synastry reads for harmony/in-laws) are given below, reframe section 1 from "who you will marry" speculation to "who your spouse is" — weave in the spouse's own Navamsa and the given harmony synastry read as corroborating, real-chart evidence rather than generic archetype lore, and weave the given in-laws synastry read into section 2 alongside the existing 4th-lord fact. Use the spouse's name if given.
@@ -121,6 +124,7 @@ function narrativeSystemPromptCall3(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 If wealth and/or career synastry reads for the reader's real spouse are given below, weave them into the "Money After Marriage" section as real-couple evidence, alongside the existing 2nd/11th house facts.
@@ -140,6 +144,7 @@ function narrativeSystemPromptCall4(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 If additional synastry reads for the reader's real spouse (children, timing, intimacy, health) are given below, weave them into the "Modern Realities" section as a closing, real-couple layer alongside the existing tendencies.

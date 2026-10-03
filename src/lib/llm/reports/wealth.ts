@@ -19,6 +19,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
@@ -44,6 +45,7 @@ function narrativeSystemPrompt(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${DISCLAIMER_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -61,6 +63,7 @@ function enrichedSystemPrompt(): string {
 
 ${ENRICHED_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${DISCLAIMER_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -148,6 +151,7 @@ function incomeSourceSystemPrompt(): string {
 
 ${INCOME_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${DISCLAIMER_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:

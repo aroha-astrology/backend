@@ -18,6 +18,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
@@ -32,6 +33,7 @@ function systemPrompt(): string {
   return `You are writing short, plain-English one-line explanations for the timing windows in a paid Vedic astrology report. Each window already has a date range and a HIGH/MEDIUM/LOW confidence level, computed by a deterministic algorithm.
 
 ${GROUNDING_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:

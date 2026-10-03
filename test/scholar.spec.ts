@@ -5,6 +5,7 @@ import {
   type UserFact,
 } from '../src/lib/swarm/agents/scholar.js';
 import { newState } from '../src/lib/swarm/state.js';
+import { HUMAN_VOICE_RULE } from '../src/lib/llm/human-voice.js';
 
 function systemContent(groundingFacts: string[] = [], birthTimeUnknown = false): string {
   const state = newState({ userId: 'u1', intent: 'chat', consent: true });
@@ -231,6 +232,11 @@ describe('scholar voice call-connected greeting', () => {
     const content = buildVoiceSystemInstruction({ groundingFacts: [] }).toLowerCase();
     expect(content).toContain('as we discussed');
     expect(content).toContain('as i can see in your chart');
+  });
+
+  it('carries the human-voice wording rule for text and voice, via SHARED_PROMPT_RULES', () => {
+    expect(systemContent()).toContain(HUMAN_VOICE_RULE);
+    expect(buildVoiceSystemInstruction({ groundingFacts: [] })).toContain(HUMAN_VOICE_RULE);
   });
 });
 

@@ -26,6 +26,7 @@
 // =============================================================================
 
 import { generate } from '../gemini-client.js';
+import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
@@ -47,6 +48,7 @@ function narrativeSystemPromptCall1(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -65,6 +67,7 @@ function narrativeSystemPromptCall2(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -82,6 +85,7 @@ function narrativeSystemPromptCall3(): string {
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -164,6 +168,7 @@ function narrativeSystemPromptCall4(): string {
 
 ${PHONE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
+${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${PHONE_SUGGESTION_RULE}
 
