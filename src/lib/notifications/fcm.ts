@@ -24,6 +24,19 @@ const PERMANENT_FAILURE_CODES = new Set([
 export const ANDROID_CHANNEL_ID = 'aroha_alerts';
 const ANDROID_CONFIG = { notification: { channelId: ANDROID_CHANNEL_ID } };
 
+/** Where a browser notification click lands; the Android/iOS apps route off `data.navigate` themselves. */
+const WEB_APP_ORIGIN = 'https://app.arohaastrology.in';
+
+/** Browser (web push) options. Ignored by Android and iOS tokens. */
+export function webPushConfig(data?: Record<string, string>) {
+  const navigate = data?.navigate;
+  const path = navigate && navigate.startsWith('/') ? navigate : '/';
+  return {
+    notification: { icon: `${WEB_APP_ORIGIN}/icon-192.png` },
+    fcmOptions: { link: `${WEB_APP_ORIGIN}${path}` },
+  };
+}
+
 export async function sendPush(
   deviceToken: string,
   title: string,
@@ -37,6 +50,7 @@ export async function sendPush(
       token: deviceToken,
       notification: { title, body },
       android: ANDROID_CONFIG,
+      webpush: webPushConfig(data),
       ...(data !== undefined ? { data } : {}),
     });
     return true;
@@ -83,6 +97,7 @@ export async function sendPushBatch(
       token,
       notification: { title, body },
       android: ANDROID_CONFIG,
+      webpush: webPushConfig(data),
       ...(data !== undefined ? { data } : {}),
     }));
     try {

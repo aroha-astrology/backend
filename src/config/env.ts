@@ -64,6 +64,13 @@ const EnvSchema = z
       .optional(),
     GOOGLE_PLAY_PACKAGE_NAME: z.string().min(1).default('com.aroha.astrology'),
 
+    // --- Razorpay (web checkout) -------------------------------------------
+    // Both optional: with either missing, the Razorpay routes refuse and the
+    // web app falls back to "add money in the Android app". The secret NEVER
+    // leaves the server; only the key id is handed to the browser.
+    RAZORPAY_KEY_ID: z.string().min(1).optional(),
+    RAZORPAY_KEY_SECRET: z.string().min(1).optional(),
+
     // --- Gemini (sole LLM provider) ----------------------------------------
     // Multi-key rotation pool (see lib/llm/gemini-key-pool.ts): comma-separated
     // list of Gemini API keys, same convention as CORS_ORIGINS/

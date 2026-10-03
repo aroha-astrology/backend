@@ -6,6 +6,8 @@ import {
   findOrdersForUser,
   findDebitsForUser,
   findLatestOrderForPack,
+  setOrderGatewayOrderId,
+  findStalePendingRazorpayOrders,
   confirmOrderAndGrantCredits,
   refundOrder as refundOrderRepo,
 } from './billing.repo.js';
@@ -16,6 +18,12 @@ import {
   consumeGooglePlayPurchase,
   fetchGooglePlayPurchase,
 } from './google-play-verifier.js';
+import {
+  createRazorpayOrder,
+  getRazorpayKeyId,
+  verifyRazorpaySignature,
+  fetchRazorpayOrderPayments,
+} from './razorpay.js';
 import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
 
 /**
@@ -76,6 +84,131 @@ export async function checkout(userId: string, packId: string, _couponCode?: str
     status: 'pending',
     gatewayProvider: 'mock',
   });
+}
+
+/**
+ * Creates our pending order AND its Razorpay counterpart for the web checkout.
+ * Coupons are off, so the charge and the wallet credit are both the pack's full
+ * price. Only the publishable key id leaves the server.
+ */
+export async function startRazorpayCheckout(
+  userId: string,
+  packId: string,
+): Promise<{ order: OrderRow; razorpayOrderId: string; razorpayKeyId: string }> {
+  const razorpayKeyId = getRazorpayKeyId();
+  const amount = findTopUpAmount(packId);
+  const order = await insertOrder({
+    userId,
+    packId: amount.id,
+    amountPaise: amount.amountPaise,
+    discountPaise: 0,
+    finalAmountPaise: amount.amountPaise,
+    currency: amount.currency,
+    couponId: null,
+    couponCode: null,
+    status: 'pending',
+    gatewayProvider: 'razorpay',
+  });
+  const razorpayOrderId = await createRazorpayOrder({
+    amountPaise: order.amountPaise,
+    currency: order.currency,
+    receipt: order.id,
+  });
+  await setOrderGatewayOrderId(order.id, razorpayOrderId);
+  return { order: { ...order, gatewayOrderId: razorpayOrderId }, razorpayOrderId, razorpayKeyId };
+}
+
+/**
+ * Confirms a Razorpay payment and grants its wallet balance. Trusts nothing from
+ * the client except the ids: the amount comes from OUR stored order, and the
+ * payment is accepted only if Razorpay's signature over (their order id | payment
+ * id) checks out AND their order id is the one we created for this order.
+ */
+export async function verifyRazorpayPayment(
+  userId: string,
+  params: {
+    orderId: string;
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+  },
+): Promise<{ order: OrderRow; walletBalancePaise: number }> {
+  const order = await findOrderByIdForUser(params.orderId, userId);
+  if (!order) throw Errors.notFound('Order not found');
+  if (order.gatewayOrderId !== params.razorpayOrderId) {
+    throw Errors.badRequest('This payment does not belong to that order');
+  }
+  if (
+    !verifyRazorpaySignature({
+      razorpayOrderId: params.razorpayOrderId,
+      razorpayPaymentId: params.razorpayPaymentId,
+      signature: params.razorpaySignature,
+    })
+  ) {
+    logger.warn({ userId, orderId: order.id }, 'Razorpay signature verification failed');
+    throw Errors.badRequest('Payment could not be verified');
+  }
+
+  // Idempotent replay (double-submit, or a retry after a dropped response).
+  if (order.status === 'paid') {
+    if (order.gatewayPaymentId === params.razorpayPaymentId) {
+      return { order, walletBalancePaise: await currentWalletBalance(userId) };
+    }
+    throw Errors.conflict('Order already confirmed with a different payment');
+  }
+  if (order.status !== 'pending') throw Errors.conflict(`Order is ${order.status}, not payable`);
+
+  const result = await confirmOrderAndGrantCredits(order.id, userId, params.razorpayPaymentId);
+  if (!result) {
+    // Lost a race with a concurrent confirm of the same order.
+    const nowPaid = await findOrderByIdForUser(order.id, userId);
+    if (!nowPaid || nowPaid.status !== 'paid') throw Errors.internal('Failed to confirm order');
+    return { order: nowPaid, walletBalancePaise: await currentWalletBalance(userId) };
+  }
+
+  await notifyTopUp(userId, order.amountPaise, result.walletBalancePaise);
+  return result;
+}
+
+async function currentWalletBalance(userId: string): Promise<number> {
+  const user = await findActiveUserById(userId);
+  return user?.walletBalancePaise ?? 0;
+}
+
+/**
+ * Grants credits for orders Razorpay captured but the browser never confirmed.
+ * Only acts on an actually `captured` payment; an abandoned or failed checkout
+ * stays pending. Run every ~10 minutes via POST /cron/billing-razorpay-reconcile.
+ */
+export async function reconcileStaleRazorpayOrders(): Promise<{
+  checked: number;
+  reconciled: number;
+}> {
+  const stale = await findStalePendingRazorpayOrders();
+  let reconciled = 0;
+
+  for (const order of stale) {
+    if (!order.gatewayOrderId) continue;
+    try {
+      const payments = await fetchRazorpayOrderPayments(order.gatewayOrderId);
+      const captured = payments.find((p) => p.status === 'captured');
+      if (!captured) continue;
+
+      const result = await confirmOrderAndGrantCredits(order.id, order.userId, captured.id);
+      if (!result) continue; // a concurrent path confirmed it first
+
+      logger.warn(
+        { orderId: order.id, userId: order.userId, razorpayPaymentId: captured.id },
+        'billing: reconciled an order whose client-side verify call never arrived',
+      );
+      await notifyTopUp(order.userId, order.amountPaise, result.walletBalancePaise);
+      reconciled++;
+    } catch (err) {
+      logger.error({ err, orderId: order.id }, 'billing: reconcile failed for order');
+    }
+  }
+
+  return { checked: stale.length, reconciled };
 }
 
 /**

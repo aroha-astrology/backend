@@ -1,4 +1,4 @@
-import { and, desc, eq, not, like, sql } from 'drizzle-orm';
+import { and, desc, eq, not, like, sql, isNotNull, lt } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   coupons,
@@ -109,6 +109,38 @@ export async function findLatestOrderForPack(
     .orderBy(desc(orders.createdAt))
     .limit(1);
   return rows[0];
+}
+
+/** Records the gateway's own order id against ours (Razorpay orders are created after our row exists). */
+export async function setOrderGatewayOrderId(
+  orderId: string,
+  gatewayOrderId: string,
+): Promise<void> {
+  await db.update(orders).set({ gatewayOrderId }).where(eq(orders.id, orderId));
+}
+
+/** Long enough that a slow-but-legitimate checkout.js flow (OTP entry, bank redirect) is never swept mid-pay. */
+export const RAZORPAY_RECONCILE_STALE_MS = 15 * 60_000;
+
+/**
+ * Razorpay orders that reached the gateway (a `gatewayOrderId` exists) but were never
+ * confirmed client-side, past the point a payment could still be in progress. The browser
+ * calling POST /billing/razorpay/verify is the only thing that turns one `paid`, so a closed
+ * tab between capture and that call leaves real money against a pending order.
+ */
+export async function findStalePendingRazorpayOrders(): Promise<OrderRow[]> {
+  const cutoff = new Date(Date.now() - RAZORPAY_RECONCILE_STALE_MS);
+  return db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.status, 'pending'),
+        eq(orders.gatewayProvider, 'razorpay'),
+        isNotNull(orders.gatewayOrderId),
+        lt(orders.createdAt, cutoff),
+      ),
+    );
 }
 
 /**

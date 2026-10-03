@@ -3,6 +3,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireGooglePlayRtdnSecret } from '../../middleware/cron-auth.js';
 import { logger } from '../../lib/logger.js';
+import { isRazorpayConfigured } from './razorpay.js';
 import {
   BillingPlanResponseSchema,
   BillingBalanceResponseSchema,
@@ -15,6 +16,9 @@ import {
   TransactionsResponseSchema,
   ConfirmOrderResponseSchema,
   ConfirmGooglePlayBodySchema,
+  RazorpayCheckoutBodySchema,
+  RazorpayCheckoutResponseSchema,
+  VerifyRazorpayBodySchema,
 } from './billing.schemas.js';
 import {
   getTopUpAmounts,
@@ -23,6 +27,8 @@ import {
   confirmPayment,
   confirmGooglePlayPurchase,
   reconcileGooglePlayNotification,
+  startRazorpayCheckout,
+  verifyRazorpayPayment,
   listTransactions,
   toOrderDto,
 } from './billing.service.js';
@@ -118,6 +124,7 @@ billingRouter.openapi(packsRoute, async (c) => {
   return c.json(
     {
       amounts: getTopUpAmounts() as unknown as TopUpAmount[],
+      razorpayEnabled: isRazorpayConfigured(),
     },
     200,
   );
@@ -243,6 +250,64 @@ billingRouter.openapi(confirmRoute, async (c) => {
 /* -------------------------------------------------------------------------- */
 /* POST /billing/confirm-google-play                                          */
 /* -------------------------------------------------------------------------- */
+
+const razorpayOrderRoute = createRoute({
+  method: 'post',
+  path: '/billing/razorpay/order',
+  tags: ['Billing'],
+  summary: 'Create a pending order plus its Razorpay order, ready for checkout.js',
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: RazorpayCheckoutBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Order created on both sides',
+      content: { 'application/json': { schema: RazorpayCheckoutResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    400: errorResponse('Unknown pack'),
+    403: errorResponse('Razorpay is not configured on this server'),
+    500: errorResponse('Payment gateway error'),
+  },
+});
+
+billingRouter.openapi(razorpayOrderRoute, async (c) => {
+  const user = c.get('user');
+  const { packId } = c.req.valid('json');
+  const { order, razorpayOrderId, razorpayKeyId } = await startRazorpayCheckout(user.id, packId);
+  return c.json({ order: toOrderDto(order), razorpayOrderId, razorpayKeyId }, 200);
+});
+
+const razorpayVerifyRoute = createRoute({
+  method: 'post',
+  path: '/billing/razorpay/verify',
+  tags: ['Billing'],
+  summary: "Verify a Razorpay payment's signature and grant its wallet balance",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { required: true, content: { 'application/json': { schema: VerifyRazorpayBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Payment verified, wallet balance granted',
+      content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    400: errorResponse('Signature mismatch or payment/order mismatch'),
+    404: errorResponse('Order not found'),
+    409: errorResponse('Order already processed or not payable'),
+  },
+});
+
+billingRouter.openapi(razorpayVerifyRoute, async (c) => {
+  const user = c.get('user');
+  const { order, walletBalancePaise } = await verifyRazorpayPayment(user.id, c.req.valid('json'));
+  return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
+});
 
 const confirmGooglePlayRoute = createRoute({
   method: 'post',

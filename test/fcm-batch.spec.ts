@@ -135,3 +135,29 @@ describe('sendPushBatch — dead-token pruning', () => {
     expect(state.revokeTokensByValue).not.toHaveBeenCalled();
   });
 });
+
+describe('webPushConfig — where a browser notification click lands', () => {
+  it('opens the in-app route from data.navigate', async () => {
+    const { webPushConfig } = await import('../src/lib/notifications/fcm.js');
+    expect(webPushConfig({ navigate: '/reports/abc' }).fcmOptions.link).toBe(
+      'https://app.arohaastrology.in/reports/abc',
+    );
+  });
+
+  it('falls back to the home screen, and never follows an off-site navigate value', async () => {
+    const { webPushConfig } = await import('../src/lib/notifications/fcm.js');
+    expect(webPushConfig().fcmOptions.link).toBe('https://app.arohaastrology.in/');
+    expect(webPushConfig({ navigate: 'https://evil.example' }).fcmOptions.link).toBe(
+      'https://app.arohaastrology.in/',
+    );
+  });
+
+  it('puts the webpush block on every message of a batch', async () => {
+    state.sendEach.mockReset();
+    state.sendEach.mockResolvedValueOnce({ successCount: 1, failureCount: 0 });
+    await sendPushBatch(['t1'], 'T', 'B', { navigate: '/x' });
+    expect(state.sendEach.mock.calls[0]![0][0].webpush.fcmOptions.link).toBe(
+      'https://app.arohaastrology.in/x',
+    );
+  });
+});
