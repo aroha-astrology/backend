@@ -193,6 +193,12 @@ const EnvSchema = z
       .default('false')
       .transform((value) => value === 'true'),
 
+    // --- ChatGPT plugin (src/modules/mcp) --------------------------------------
+    // The exact token the OpenAI plugin dashboard shows under "Connect MCP
+    // server" → domain verification. Served as plain text at
+    // /.well-known/openai-apps-challenge. Unset = 404.
+    OPENAI_APPS_CHALLENGE_TOKEN: z.string().min(1).optional(),
+
     // --- Field-level encryption ---------------------------------------------
     // Base64-encoded 32-byte keys (`openssl rand -base64 32`). ENCRYPTION_KEY
     // encrypts birth data/gotra/chat transcripts at rest; ENCRYPTION_HASH_KEY

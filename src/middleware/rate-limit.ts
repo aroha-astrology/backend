@@ -44,6 +44,29 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
+ * One hit against a fixed-window counter: the count so far and the window's
+ * remaining time, or null when Redis is unreachable (callers fail open, as
+ * `rateLimiter` does). For callers that bucket by something other than the
+ * HTTP peer — the ChatGPT tools key by the anonymous user id ChatGPT sends,
+ * because every one of those requests arrives from OpenAI's addresses.
+ */
+export async function consumeRateLimit(
+  key: string,
+  windowMs: number,
+): Promise<{ count: number; ttlMs: number } | null> {
+  try {
+    const [count, ttlMs] = await withTimeout(
+      getRedis().eval(RATE_LIMIT_LUA, 1, key, windowMs) as Promise<[number, number]>,
+      REDIS_CALL_TIMEOUT_MS,
+    );
+    return { count, ttlMs };
+  } catch (err) {
+    logger.warn({ err }, 'consumeRateLimit: Redis error, allowing request through');
+    return null;
+  }
+}
+
+/**
  * Identify the caller for bucketing purposes.
  *
  * Order matters. An authenticated user id is the most precise identity we

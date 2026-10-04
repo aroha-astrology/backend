@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Birth chart</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --text: #1f2328;
+    --muted: #5d6673;
+    --line: #9a7b1c;
+    --line-soft: rgba(154, 123, 28, 0.45);
+    --accent: #7a5c00;
+    --retro: #6b3fc4;
+    --button-bg: #1f2328;
+    --button-text: #ffffff;
+    --note-bg: rgba(154, 123, 28, 0.1);
+  }
+  :root[data-theme="dark"] {
+    --text: #ececf1;
+    --muted: #a4a9b3;
+    --line: #d4af37;
+    --line-soft: rgba(212, 175, 55, 0.4);
+    --accent: #e3c458;
+    --retro: #b79bff;
+    --button-bg: #ececf1;
+    --button-text: #1f2328;
+    --note-bg: rgba(212, 175, 55, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    padding: 16px;
+  }
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  .asc { font-size: 14px; color: var(--muted); }
+  .asc b { color: var(--text); font-weight: 600; }
+  svg { display: block; width: 100%; max-width: 380px; height: auto; margin: 12px auto 4px; }
+  .frame { fill: none; stroke: var(--line); stroke-width: 1.6; }
+  .inner { fill: none; stroke: var(--line-soft); stroke-width: 1.1; }
+  .sign { fill: var(--muted); font-size: 11px; font-weight: 600; }
+  .sign.asc-sign { fill: var(--accent); font-weight: 700; }
+  .asc-tag { fill: var(--accent); font-size: 8px; font-weight: 700; letter-spacing: 1px; }
+  .planet { fill: var(--text); font-size: 12px; font-weight: 600; }
+  .planet .r { fill: var(--retro); }
+  .legend { font-size: 12px; color: var(--muted); text-align: center; margin: 0 0 12px; }
+  .legend .r { color: var(--retro); font-weight: 700; }
+  .note { font-size: 13px; line-height: 1.4; background: var(--note-bg); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .more { font-size: 13px; line-height: 1.4; color: var(--muted); margin: 0; flex: 1 1 200px; }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600;
+    background: var(--button-bg); color: var(--button-text);
+    border: 0; border-radius: 999px; padding: 10px 18px; min-height: 44px; cursor: pointer;
+  }
+  button:focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+  .empty { font-size: 14px; color: var(--muted); padding: 24px 0; text-align: center; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div id="card" hidden>
+  <div class="head">
+    <h1>Birth chart</h1>
+    <div class="asc">Ascendant <b id="asc"></b></div>
+  </div>
+  <svg id="chart" viewBox="0 0 400 300" role="img"></svg>
+  <p class="legend" id="legend" hidden><span class="r">*</span> retrograde</p>
+  <p class="note" id="note" hidden></p>
+  <div class="foot">
+    <p class="more" id="more"></p>
+    <button id="open" type="button">Open in Aroha</button>
+  </div>
+</div>
+<div id="empty" class="empty">Preparing the chart</div>
+
+<script>
+(function () {
+  var SIGNS = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'];
+  var ABBR = { Sun: 'Su', Moon: 'Mo', Mars: 'Ma', Mercury: 'Me', Jupiter: 'Ju', Venus: 'Ve', Saturn: 'Sa', Rahu: 'Ra', Ketu: 'Ke' };
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  // North Indian layout: house 1 is the top diamond, houses run anticlockwise.
+  // n = where the sign number sits, p = where the first row of planets sits.
+  var HOUSES = {
+    1:  { n: [200, 138], p: [200, 58] },
+    2:  { n: [110, 70],  p: [110, 28] },
+    3:  { n: [98, 84],   p: [52, 70] },
+    4:  { n: [178, 154], p: [104, 140] },
+    5:  { n: [98, 224],  p: [52, 210] },
+    6:  { n: [110, 238], p: [110, 264] },
+    7:  { n: [200, 172], p: [200, 208] },
+    8:  { n: [290, 238], p: [290, 264] },
+    9:  { n: [302, 224], p: [348, 210] },
+    10: { n: [222, 154], p: [296, 140] },
+    11: { n: [302, 84],  p: [348, 70] },
+    12: { n: [290, 70],  p: [290, 28] }
+  };
+  var DEFAULT_URL = 'https://app.arohaastrology.in';
+  var ALLOWED_HOSTS = ['app.arohaastrology.in', 'play.google.com'];
+
+  var openUrl = DEFAULT_URL;
+  var rendered = false;
+
+  function el(name, attrs, text) {
+    var node = document.createElementNS(SVG_NS, name);
+    for (var key in attrs) node.setAttribute(key, attrs[key]);
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function safeUrl(value) {
+    try {
+      var url = new URL(String(value));
+      if (url.protocol === 'https:' && ALLOWED_HOSTS.indexOf(url.hostname) !== -1) return url.href;
+    } catch (e) { /* fall through */ }
+    return DEFAULT_URL;
+  }
+
+  function render(data) {
+    if (!data || typeof data !== 'object') return;
+    var ascIndex = SIGNS.indexOf(data.ascendant_sign);
+    if (ascIndex === -1 || !Array.isArray(data.planets)) return;
+
+    var svg = document.getElementById('chart');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    svg.appendChild(el('path', { class: 'frame', d: 'M 20 10 L 380 10 L 380 290 L 20 290 Z' }));
+    svg.appendChild(el('path', { class: 'inner', d: 'M 200 10 L 380 150 L 200 290 L 20 150 Z' }));
+    svg.appendChild(el('path', { class: 'inner', d: 'M 20 10 L 380 290 M 380 10 L 20 290' }));
+
+    var byHouse = {};
+    var anyRetro = false;
+    var spoken = [];
+    data.planets.forEach(function (p) {
+      if (!ABBR[p.planet] || !HOUSES[p.house]) return;
+      (byHouse[p.house] = byHouse[p.house] || []).push(p);
+      if (p.retrograde) anyRetro = true;
+      spoken.push(p.planet + ' in house ' + p.house + (p.retrograde ? ' retrograde' : ''));
+    });
+
+    for (var house = 1; house <= 12; house++) {
+      var spot = HOUSES[house];
+      var isAsc = house === 1;
+      if (isAsc) svg.appendChild(el('text', { class: 'asc-tag', x: spot.n[0], y: spot.n[1] - 13, 'text-anchor': 'middle' }, 'ASC'));
+      svg.appendChild(el('text', { class: 'sign' + (isAsc ? ' asc-sign' : ''), x: spot.n[0], y: spot.n[1], 'text-anchor': 'middle' }, String(((ascIndex + house - 1) % 12) + 1)));
+
+      // Two planets to a row so a crowded house still fits.
+      var list = byHouse[house] || [];
+      for (var i = 0; i < list.length; i += 2) {
+        var row = el('text', { class: 'planet', x: spot.p[0], y: spot.p[1] + (i / 2) * 15, 'text-anchor': 'middle' });
+        list.slice(i, i + 2).forEach(function (p, index) {
+          if (index > 0) row.appendChild(el('tspan', {}, ' '));
+          row.appendChild(el('tspan', {}, ABBR[p.planet]));
+          if (p.retrograde) row.appendChild(el('tspan', { class: 'r' }, '*'));
+        });
+        svg.appendChild(row);
+      }
+    }
+
+    svg.setAttribute('aria-label', 'North Indian birth chart. Ascendant ' + data.ascendant_sign + '. ' + spoken.join(', ') + '.');
+    document.getElementById('asc').textContent = data.ascendant_sign;
+    document.getElementById('legend').hidden = !anyRetro;
+
+    var note = document.getElementById('note');
+    note.hidden = !data.caveat;
+    note.textContent = data.caveat || '';
+
+    var more = data.more_in_aroha || {};
+    document.getElementById('more').textContent = more.note || '';
+    openUrl = safeUrl(more.url);
+
+    document.getElementById('empty').hidden = true;
+    document.getElementById('card').hidden = false;
+    rendered = true;
+    reportSize();
+  }
+
+  function setTheme(theme) {
+    if (theme !== 'dark' && theme !== 'light') {
+      theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+
+  // Host bridge: MCP Apps (JSON-RPC over postMessage), with ChatGPT's window.openai as a fallback.
+  var nextId = 1;
+  var pending = {};
+
+  function post(message) {
+    if (window.parent && window.parent !== window) window.parent.postMessage(message, '*');
+  }
+  function request(method, params) {
+    var id = nextId++;
+    post({ jsonrpc: '2.0', id: id, method: method, params: params || {} });
+    return new Promise(function (resolve, reject) { pending[id] = { resolve: resolve, reject: reject }; });
+  }
+  function notify(method, params) {
+    post({ jsonrpc: '2.0', method: method, params: params || {} });
+  }
+
+  function reportSize() {
+    var height = Math.ceil(document.documentElement.getBoundingClientRect().height);
+    notify('ui/notifications/size-changed', { width: Math.ceil(document.documentElement.clientWidth), height: height });
+    if (window.openai && typeof window.openai.notifyIntrinsicHeight === 'function') {
+      try { window.openai.notifyIntrinsicHeight(height); } catch (e) { /* optional */ }
+    }
+  }
+
+  window.addEventListener('message', function (event) {
+    if (event.source !== window.parent) return;
+    var message = event.data;
+    if (!message || message.jsonrpc !== '2.0') return;
+
+    if (message.id !== undefined && pending[message.id]) {
+      var waiter = pending[message.id];
+      delete pending[message.id];
+      if (message.error) waiter.reject(message.error); else waiter.resolve(message.result);
+      return;
+    }
+    if (message.method === 'ui/notifications/tool-result') {
+      render(message.params && message.params.structuredContent);
+    } else if (message.method === 'ui/notifications/host-context-changed') {
+      if (message.params && message.params.theme) setTheme(message.params.theme);
+    }
+  });
+
+  window.addEventListener('openai:set_globals', function () {
+    if (!window.openai) return;
+    if (window.openai.theme) setTheme(window.openai.theme);
+    if (window.openai.toolOutput) render(window.openai.toolOutput);
+  });
+
+  document.getElementById('open').addEventListener('click', function () {
+    if (window.openai && typeof window.openai.openExternal === 'function') {
+      window.openai.openExternal({ href: openUrl });
+      return;
+    }
+    request('ui/open-link', { url: openUrl }).catch(function () {
+      window.open(openUrl, '_blank', 'noopener');
+    });
+  });
+
+  window.addEventListener('resize', function () { if (rendered) reportSize(); });
+
+  setTheme(window.openai && window.openai.theme);
+  if (window.openai && window.openai.toolOutput) render(window.openai.toolOutput);
+
+  request('ui/initialize', {
+    protocolVersion: '2025-06-18',
+    appInfo: { name: 'aroha-birth-chart', version: '1.0.0' },
+    appCapabilities: {}
+  }).then(function (result) {
+    var context = result && result.hostContext;
+    if (context && context.theme) setTheme(context.theme);
+    notify('ui/notifications/initialized');
+  }).catch(function () { /* a host without this handshake still sends the tool result */ });
+})();
+</script>
+</body>
+</html>

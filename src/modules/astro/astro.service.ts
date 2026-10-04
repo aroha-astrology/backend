@@ -441,7 +441,7 @@ export async function getPanchang(
   lat: number,
   lon: number,
   dateStr?: string,
-  opts: { bypassCache?: boolean } = {},
+  opts: { bypassCache?: boolean; timezoneOffsetHours?: number } = {},
 ) {
   const date = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
   const year = date.getFullYear();
@@ -464,9 +464,11 @@ export async function getPanchang(
   // instead of 5.5 for every city west of ~78.75°E — i.e. Delhi, Mumbai, and
   // Bengaluru (3 of the 5 warmed reference points), shifting sunrise/sunset
   // and every derived window (Rahu/Gulika/Yamaganda Kaal, Abhijit Muhurta,
-  // Choghadiya, Hora) ~30min early. This product only serves Indian panchang,
-  // so hardcode the real civil offset instead of re-deriving an approximation.
-  const timezoneOffset = 5.5;
+  // Choghadiya, Hora) ~30min early. The app only serves Indian panchang, so
+  // the real civil offset is the default instead of a re-derived approximation.
+  // A caller that knows the place's timezone (the ChatGPT tools resolve cities
+  // worldwide) passes its offset.
+  const timezoneOffset = opts.timezoneOffsetHours ?? 5.5;
 
   // Calculate Julian Day for noon local time
   const jd = await dateToJulianDay(year, month, day, 12, 0, timezoneOffset);

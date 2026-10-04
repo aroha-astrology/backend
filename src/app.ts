@@ -40,6 +40,7 @@ import { yantraRouter } from './modules/yantra/yantra.routes.js';
 import { relocationRouter } from './modules/relocation/relocation.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
+import { mcpRouter } from './modules/mcp/mcp.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { corsMiddleware } from './middleware/cors.js';
@@ -76,6 +77,9 @@ export function createApp(): OpenAPIHono {
   app.use('/v1/*', rateLimiter({ windowMs: 60_000, max: 300, name: 'baseline' }));
 
   app.route('/', healthRouter);
+  // The ChatGPT plugin endpoint (/mcp) and OpenAI's domain-verification file.
+  // At the root, not under /v1 — see mcp.routes.ts.
+  app.route('/', mcpRouter);
   app.route('/v1/auth', authRouter);
   app.route('/v1', astroRouter);
   app.route('/v1', publicRouter);
