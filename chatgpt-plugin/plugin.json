@@ -104,7 +104,8 @@
           ]
         },
         "commerce": false,
-        "commerce_description": "This plugin does not sell anything and does not take payments. It never shows prices or links to a checkout."
+        "commerce_description": "This plugin does not sell anything and does not take payments. It never shows prices or links to a checkout.",
+        "demo_recording_url": "https://api.arohaastrology.in/v1/gita/audio/chatgpt-plugin/aroha-astrology-plugin-walkthrough.mp4"
       },
       "publication": {
         "release_notes": "First release. Vedic birth chart with a North Indian chart card, moon sign, kundli matching, panchang, auspicious dates, moon sign horoscope and numerology. No sign-in."
