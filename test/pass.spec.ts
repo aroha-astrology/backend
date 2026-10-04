@@ -44,6 +44,10 @@ vi.mock('../src/modules/pass/pass.repo.js', () => ({
   findPassByExternalId: state.findPassByExternalId,
   updatePlayPass: state.updatePlayPass,
 }));
+// Nobody here is in an admin user group (that free Pass has its own spec); unmocked, this waits on a real database.
+vi.mock('../src/modules/user-groups/user-groups.repo.js', () => ({
+  listGroupIdsForUser: () => Promise.resolve([]),
+}));
 vi.mock('../src/modules/features/features.service.js', () => ({
   resolveFeaturesForUser: () => Promise.resolve(held.features),
 }));
@@ -63,8 +67,8 @@ vi.mock('../src/config/google-play.js', () => ({
 }));
 
 import { chargeQuestion, refundQuestion } from '../src/modules/pass/question-billing.js';
+import { passReportDiscountPct, requirePass } from '../src/lib/entitlements.js';
 import {
-  assignVariant,
   buyQuestionPack,
   getPassStatus,
   runPassRenewals,
@@ -135,16 +139,49 @@ beforeEach(() => {
   state.findPassByExternalId.mockResolvedValue(null);
 });
 
-describe('assignVariant', () => {
-  it('is stable per user and only picks from the variants that are on', () => {
-    const a = assignVariant('user-123', ['A', 'B', 'C']);
-    expect(assignVariant('user-123', ['C', 'B', 'A'])).toBe(a);
-    expect(assignVariant('user-123', ['B'])).toBe('B');
-    expect(assignVariant('user-123', [])).toBeNull();
-    const spread = new Set(
-      Array.from({ length: 60 }, (_, i) => assignVariant(`u-${i}`, ['A', 'B', 'C'])),
-    );
-    expect(spread.size).toBe(3);
+describe('Pass tiers', () => {
+  const play = (priceVariant: string | null) => passRow({ source: 'google_play', priceVariant });
+
+  it('Silver opens Life Timeline and Bonds only; Gold adds Decisions, Find My Date and the birth-time check; Platinum adds Relocation', async () => {
+    held.active = play('A');
+    await expect(requirePass('user-1', 'timeline')).resolves.toBeUndefined();
+    await expect(requirePass('user-1', 'bonds')).resolves.toBeUndefined();
+    await expect(requirePass('user-1', 'decisions')).rejects.toThrow('PASS_REQUIRED');
+    await expect(requirePass('user-1', 'relocation')).rejects.toThrow('PASS_REQUIRED');
+
+    held.active = play('B');
+    await expect(requirePass('user-1', 'decisions')).resolves.toBeUndefined();
+    await expect(requirePass('user-1', 'findMyDate')).resolves.toBeUndefined();
+    await expect(requirePass('user-1', 'birthTime')).resolves.toBeUndefined();
+    await expect(requirePass('user-1', 'relocation')).rejects.toThrow('PASS_REQUIRED');
+
+    held.active = play('C');
+    await expect(requirePass('user-1', 'relocation')).resolves.toBeUndefined();
+
+    held.active = null;
+    await expect(requirePass('user-1', 'timeline')).rejects.toThrow('PASS_REQUIRED');
+  });
+
+  it('the report discount steps up with the tier: 10%, 20%, 30%, and nothing without a Pass', async () => {
+    held.active = play('A');
+    expect(await passReportDiscountPct('user-1')).toBe(10);
+    held.active = play('B');
+    expect(await passReportDiscountPct('user-1')).toBe(20);
+    held.active = play('C');
+    expect(await passReportDiscountPct('user-1')).toBe(30);
+    held.active = null;
+    expect(await passReportDiscountPct('user-1')).toBe(0);
+  });
+
+  it('a Pass from before the tiers keeps what it was sold with: every feature, 30 questions, 20% off', async () => {
+    // A wallet Pass, whatever price variant it was on, and a Play Pass on an unknown base plan.
+    for (const row of [passRow({ source: 'wallet', priceVariant: 'A' }), play(null)]) {
+      held.active = row;
+      await expect(requirePass('user-1', 'relocation')).resolves.toBeUndefined();
+      expect(await passReportDiscountPct('user-1')).toBe(20);
+      const s = await getPassStatus(makeUserRow({ id: 'user-1' }));
+      expect(s.pass).toMatchObject({ tier: null, questionsPerPeriod: 30, questionsLeft: 26 });
+    }
   });
 });
 
@@ -176,22 +213,77 @@ describe('getPassStatus', () => {
     held.features = { 'paid.questionPackSmall': on(4900), 'paid.arohaPassA': on(19900) };
     const s = await getPassStatus(makeUserRow({ id: 'user-1', questionCredits: 3 }));
     expect(s.enabled).toBe(false);
-    expect(s.offer).toBeNull();
+    expect(s.offers).toEqual([]);
     expect(s.questionCredits).toBe(3);
     expect(s.packs).toEqual([{ pack: 'small', questions: 5, pricePaise: 4900 }]);
   });
 
-  it("shows the user's variant price, its Play base plan, and questions left", async () => {
-    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassB': on(24900) };
-    held.active = passRow();
+  it('offers every tier that is on, cheapest first, each with its own price, base plan and benefits', async () => {
+    held.features = {
+      'nav.arohaPass': ON,
+      'paid.arohaPassC': on(),
+      'paid.arohaPassA': on(14900),
+      'paid.arohaPassB': on(),
+    };
     const s = await getPassStatus(makeUserRow({ id: 'user-1' }));
-    expect(s.offer).toEqual({
-      variant: 'B',
-      pricePaise: 24900,
-      play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-299' },
+    expect(s.offers).toEqual([
+      {
+        tier: 'silver',
+        variant: 'A',
+        pricePaise: 14900,
+        play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-199' },
+        questionsPerPeriod: 15,
+        reportDiscountPct: 10,
+        features: ['timeline', 'bonds'],
+      },
+      {
+        tier: 'gold',
+        variant: 'B',
+        pricePaise: 29900,
+        play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-299' },
+        questionsPerPeriod: 30,
+        reportDiscountPct: 20,
+        features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime'],
+      },
+      {
+        tier: 'platinum',
+        variant: 'C',
+        pricePaise: 39900,
+        play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-399' },
+        questionsPerPeriod: 60,
+        reportDiscountPct: 30,
+        features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'relocation'],
+      },
+    ]);
+    expect(s.periodDays).toBe(30);
+
+    // A tier that is off is not offered.
+    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassB': on(24900) };
+    const one = await getPassStatus(makeUserRow({ id: 'user-1' }));
+    expect(one.offers.map((o) => [o.tier, o.pricePaise])).toEqual([['gold', 24900]]);
+  });
+
+  it("an active Pass shows its tier, that tier's benefits and the questions left of its quota", async () => {
+    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassA': on() };
+    held.active = passRow({ source: 'google_play', priceVariant: 'A' });
+    const silver = await getPassStatus(makeUserRow({ id: 'user-1' }));
+    expect(silver.pass).toMatchObject({
+      tier: 'silver',
+      source: 'google_play',
+      autoRenew: true,
+      questionsPerPeriod: 15,
+      questionsLeft: 11,
+      reportDiscountPct: 10,
+      features: ['timeline', 'bonds'],
     });
-    expect(s.pass).toMatchObject({ source: 'wallet', autoRenew: true, questionsLeft: 26 });
-    expect(s.benefits).toEqual({ questionsPerPeriod: 30, periodDays: 30, reportDiscountPct: 20 });
+
+    held.active = passRow({ source: 'google_play', priceVariant: 'C', questionsUsed: 70 });
+    const platinum = await getPassStatus(makeUserRow({ id: 'user-1' }));
+    expect(platinum.pass).toMatchObject({
+      tier: 'platinum',
+      questionsPerPeriod: 60,
+      questionsLeft: 0,
+    });
   });
 });
 

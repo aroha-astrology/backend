@@ -44,7 +44,7 @@ export interface PlaceResult {
 }
 
 export async function getRelocationStatus(user: UserRow): Promise<RelocationStatus> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'relocation');
   const profile = await resolveActiveProfileContext(user);
   const confidence = await confidenceFor(user.id, profile);
   return {

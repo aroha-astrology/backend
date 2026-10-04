@@ -127,15 +127,16 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
   });
 
   it('requirePass does not throw for test group members', async () => {
-    await expect(requirePass(testUserId)).resolves.toBeUndefined();
-    await expect(requirePass(normalUserId)).rejects.toThrow('PASS_REQUIRED');
+    // The group Pass is the top tier, so even the Platinum-only feature opens.
+    await expect(requirePass(testUserId, 'relocation')).resolves.toBeUndefined();
+    await expect(requirePass(normalUserId, 'timeline')).rejects.toThrow('PASS_REQUIRED');
   });
 
   it('getPassStatus returns synthetic active pass for test group members', async () => {
     const status = await getPassStatus(mockUser);
     expect(status.enabled).toBe(true);
-    expect(status.offer).toBeNull();
-    expect(status.pass).not.toBeNull();
+    expect(status.offers).toEqual([]);
+    expect(status.pass).toMatchObject({ tier: 'platinum', source: 'group', questionsLeft: 60 });
     expect(status.pass?.questionsLeft).toBeGreaterThan(0);
   });
 

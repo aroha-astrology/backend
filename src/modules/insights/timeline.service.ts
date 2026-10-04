@@ -203,7 +203,7 @@ function birthMoment(dateOfBirth: string, mahadashas: StoredMahadasha[]): Date {
 }
 
 export async function getTimeline(user: UserRow): Promise<TimelineResponse> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'timeline');
   const now = new Date();
   const loaded = await loadChartContext(user, now);
   if (!loaded) throw Errors.conflict('CHART_NOT_READY');

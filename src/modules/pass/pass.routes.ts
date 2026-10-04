@@ -35,7 +35,7 @@ const statusRoute = createRoute({
   method: 'get',
   path: '/pass',
   tags: ['Pass'],
-  summary: 'Aroha Pass status, this user’s offer (price variant), question credits and packs',
+  summary: 'Aroha Pass status, the tiers on offer, question credits and packs',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireAnyFeature(['nav.arohaPass', ...PACK_KEYS])] as const,
   responses: {
@@ -116,8 +116,7 @@ const adminStatsRoute = createRoute({
   method: 'get',
   path: '/admin/pass-stats',
   tags: ['Admin'],
-  summary:
-    'Aroha Pass subscribers (by source and price variant), churn, revenue and Question Pack sales',
+  summary: 'Aroha Pass subscribers (by source and tier), churn, revenue and Question Pack sales',
   security: [{ bearerAuth: [] }],
   middleware: [requireAdmin] as const,
   responses: {

@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, isNull, lte, not, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, lt, lte, not, or, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   subscriptionPlans,
@@ -7,7 +7,7 @@ import {
   walletTransactions,
   type UserSubscriptionRow,
 } from '../../db/schema.js';
-import { PASS_PLAN_NAME, PASS_QUESTIONS_PER_PERIOD } from './pass.config.js';
+import { entitlementForRow, PASS_PLAN_NAME } from './pass.config.js';
 
 export type PassSource = 'wallet' | 'google_play';
 
@@ -122,22 +122,24 @@ export async function expirePass(id: string): Promise<void> {
 }
 
 /**
- * Spends one question from the active Pass's quota, atomically. False when
- * there's no active Pass or its quota is used up.
+ * Spends one question from the active Pass's quota (its tier's), atomically.
+ * False when there's no active Pass or its quota is used up.
  */
 export async function consumePassQuestion(
   userId: string,
   now: Date = new Date(),
 ): Promise<boolean> {
+  const pass = await findActivePass(userId, now);
+  if (!pass) return false;
   const rows = await db
     .update(userSubscriptions)
     .set({ questionsUsed: sql`${userSubscriptions.questionsUsed} + 1`, updatedAt: now })
     .where(
       and(
-        eq(userSubscriptions.userId, userId),
+        eq(userSubscriptions.id, pass.id),
         eq(userSubscriptions.status, 'active'),
         gt(userSubscriptions.periodEnd, now),
-        sql`${userSubscriptions.questionsUsed} < ${PASS_QUESTIONS_PER_PERIOD}`,
+        lt(userSubscriptions.questionsUsed, entitlementForRow(pass).questions),
       ),
     )
     .returning({ id: userSubscriptions.id });

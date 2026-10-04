@@ -8,8 +8,7 @@
 // file does not change.
 // =============================================================================
 
-import { hasPass } from '../../lib/entitlements.js';
-import { PASS_REPORT_DISCOUNT_PCT } from '../pass/pass.config.js';
+import { passReportDiscountPct } from '../../lib/entitlements.js';
 import '../reports/generators/index.js';
 import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
@@ -1030,9 +1029,9 @@ export interface PurchaseReportResult {
   reports: PurchasedReportSummaryDto[];
 }
 
-/** The per-unit report price after the Aroha Pass discount (unchanged without a Pass). */
-export function withPassDiscount(pricePaise: number, pass: boolean): number {
-  return pass ? Math.round((pricePaise * (100 - PASS_REPORT_DISCOUNT_PCT)) / 100) : pricePaise;
+/** The per-unit report price after the user's Aroha Pass discount (`discountPct` is 0 without a Pass). */
+export function withPassDiscount(pricePaise: number, discountPct: number): number {
+  return discountPct > 0 ? Math.round((pricePaise * (100 - discountPct)) / 100) : pricePaise;
 }
 
 export async function purchaseReport(
@@ -1056,10 +1055,10 @@ export async function purchaseReport(
   const profile = await resolveProfileContext(user, body.birthProfileId ?? null, { strict: true });
   const birthProfileId = profile.birthProfileId;
 
-  // Aroha Pass holders get PASS_REPORT_DISCOUNT_PCT off (nobody has a Pass until it's switched on).
+  // Aroha Pass holders get their tier's discount (nobody has a Pass until it's switched on).
   const perUnitPricePaise = withPassDiscount(
     features[def.featureFlagKey]?.pricePaise ?? def.basePricePaise,
-    await hasPass(user.id),
+    await passReportDiscountPct(user.id),
   );
   const months = body.months ?? [];
   // Yearly (isYearly) reports are a single flat-price row like a one-time report — see
@@ -1290,10 +1289,10 @@ export async function getReportCatalogueForUser(
   user: UserRow,
   birthProfileId: string | null,
 ): Promise<ReportCatalogueEntryDto[]> {
-  const [features, rows, pass] = await Promise.all([
+  const [features, rows, passDiscountPct] = await Promise.all([
     resolveFeaturesForUser(user.id),
     listReportsForUser(user.id, birthProfileId),
-    hasPass(user.id),
+    passReportDiscountPct(user.id),
   ]);
 
   const now = new Date();
@@ -1317,13 +1316,14 @@ export async function getReportCatalogueForUser(
       requiresPartner: def.requiresPartner,
       enabled,
       isNew: computeIsNewReport(enabled, resolved?.enabledAt ?? null, now),
-      pricePaise: withPassDiscount(resolved?.pricePaise ?? def.basePricePaise, pass),
+      pricePaise: withPassDiscount(resolved?.pricePaise ?? def.basePricePaise, passDiscountPct),
       // No fallback to basePricePaise here — an unconfigured original price
       // means there's no discount to show, not a fabricated one. A Pass holder's
       // discount is a real one, so it shows the undiscounted price struck out.
-      originalPricePaise: pass
-        ? (resolved?.originalPricePaise ?? resolved?.pricePaise ?? def.basePricePaise)
-        : (resolved?.originalPricePaise ?? null),
+      originalPricePaise:
+        passDiscountPct > 0
+          ? (resolved?.originalPricePaise ?? resolved?.pricePaise ?? def.basePricePaise)
+          : (resolved?.originalPricePaise ?? null),
       purchases: ownRows.map((r) => ({
         id: r.id,
         periodMonth: r.periodMonth,

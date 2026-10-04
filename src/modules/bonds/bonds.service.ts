@@ -584,7 +584,7 @@ async function summarize(
 
 /** Everyone saved on the account, each with a compatibility score and where the bond stands now. */
 export async function listBonds(user: UserRow): Promise<{ bonds: BondSummary[] }> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'bonds');
   const now = new Date();
   const owner = await ownerChart(user, now);
   const rows = (await listBirthProfilesByOwner(user.id)).slice(0, MAX_BONDS);
@@ -595,7 +595,7 @@ export async function listBonds(user: UserRow): Promise<{ bonds: BondSummary[] }
 }
 
 export async function getBond(user: UserRow, profileId: string): Promise<BondDetail> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'bonds');
   const now = new Date();
   const row = await findOwnedBirthProfile(profileId, user.id);
   if (!row) throw Errors.notFound('BOND_NOT_FOUND');

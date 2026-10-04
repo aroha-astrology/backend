@@ -337,7 +337,7 @@ export async function runDecision(
   user: UserRow,
   input: { category: DecisionCategory; question?: string; from: string; days: number },
 ): Promise<DecisionDto> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'decisions');
   const loaded = await loadChartContext(user);
   if (!loaded) throw Errors.conflict('CHART_NOT_READY');
   const { profile, ctx } = loaded;
@@ -374,7 +374,7 @@ export async function runFindDate(
   user: UserRow,
   input: { category: MuhurtaCategory; place: PlaceOfBirth; from: string; days: number },
 ): Promise<DecisionDto> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'findMyDate');
   const loaded = await loadChartContext(user);
   const birthProfileId =
     loaded?.profile.birthProfileId ?? (await resolveActiveProfileContext(user)).birthProfileId;
@@ -407,7 +407,7 @@ export async function runFindDate(
 }
 
 export async function getDecision(user: UserRow, id: string): Promise<DecisionDto> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'decisions');
   const row = await findDecisionQuery<DecisionResult>(user.id, id);
   if (!row) throw Errors.notFound('DECISION_NOT_FOUND');
   return toDto(row);
@@ -429,7 +429,7 @@ export async function listDecisions(
   user: UserRow,
   kind: DecisionKind | undefined,
 ): Promise<{ items: DecisionListItem[] }> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'decisions');
   const rows = await listDecisionQueries<DecisionResult>(user.id, kind);
   return {
     items: rows.map((r) => ({

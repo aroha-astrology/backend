@@ -50,6 +50,10 @@ vi.mock('../src/modules/pass/pass.repo.js', () => ({
   refundPassQuestion: vi.fn().mockResolvedValue(undefined),
   addQuestionCredits: vi.fn().mockResolvedValue(0),
 }));
+// Not in an admin user group (those are never charged); unmocked, this waits on a real database.
+vi.mock('../src/modules/user-groups/user-groups.repo.js', () => ({
+  listGroupIdsForUser: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('../src/modules/users/users.repo.js', () => ({
   findUserByFirebaseUid: state.findUserByFirebaseUid,
   touchUserLastActive: state.touchUserLastActive,

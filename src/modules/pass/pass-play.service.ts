@@ -1,8 +1,8 @@
 // =============================================================================
 // Aroha Pass on Google Play — the only way to get the Pass (ships off)
 // =============================================================================
-// The Android app buys the `aroha_pass_monthly` subscription (base plan per
-// price variant) and posts the purchase token here; we check it with Google
+// The Android app buys the `aroha_pass_monthly` subscription (one base plan
+// per tier) and posts the purchase token here; we check it with Google
 // (purchases.subscriptionsv2), acknowledge it — a subscription must be
 // acknowledged within 3 days or Google refunds it; it is never "consumed"
 // like a top-up — and keep a user_subscriptions row in step. After that,
@@ -15,7 +15,7 @@
 import { getAndroidPublisher, GOOGLE_PLAY_PACKAGE_NAME } from '../../config/google-play.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
-import { PASS_PLAY_PRODUCT_ID, PASS_VARIANTS } from './pass.config.js';
+import { PASS_PLAY_PRODUCT_ID, PASS_TIERS } from './pass.config.js';
 import { findPassByExternalId, insertPass, renewPass, updatePlayPass } from './pass.repo.js';
 
 const MS_PER_DAY = 86_400_000;
@@ -60,8 +60,8 @@ async function acknowledge(purchaseToken: string): Promise<void> {
   });
 }
 
-function variantOf(basePlanId: string | null) {
-  return PASS_VARIANTS.find((v) => v.playBasePlan === basePlanId) ?? null;
+function tierOf(basePlanId: string | null) {
+  return PASS_TIERS.find((t) => t.playBasePlan === basePlanId) ?? null;
 }
 
 /**
@@ -77,7 +77,8 @@ export async function syncPlayPass(
   const live = LIVE_STATES.has(sub.state) && sub.expiry !== null;
   const existing = await findPassByExternalId(purchaseToken);
 
-  // An upgrade/resubscribe replaces an older token: that one stops here.
+  // An upgrade to a higher tier (or a resubscribe) replaces an older token: that one stops
+  // here, and the new token starts its own row below, on the new tier with a fresh quota.
   if (sub.linkedPurchaseToken) {
     const old = await findPassByExternalId(sub.linkedPurchaseToken);
     if (old && old.status === 'active')
@@ -102,13 +103,13 @@ export async function syncPlayPass(
   }
 
   if (!live || !userId) return false;
-  const variant = variantOf(sub.basePlanId);
+  const tier = tierOf(sub.basePlanId);
   await insertPass({
     userId,
     source: 'google_play',
     externalId: purchaseToken,
-    priceVariant: variant?.variant ?? null,
-    pricePaise: variant?.fallbackPaise ?? 0,
+    priceVariant: tier?.variant ?? null,
+    pricePaise: tier?.fallbackPaise ?? 0,
     autoRenew: sub.autoRenew,
     periodStart: new Date(),
     periodEnd: sub.expiry!,

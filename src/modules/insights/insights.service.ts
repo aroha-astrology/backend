@@ -160,7 +160,7 @@ export interface BirthTimeStatus {
 
 /** Aroha Pass only, like the check itself. */
 export async function getBirthTimeStatus(user: UserRow): Promise<BirthTimeStatus> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'birthTime');
   const profile = await resolveActiveProfileContext(user);
   const [latest, confidence] = await Promise.all([
     findLatestRectification(user.id, profile.birthProfileId),
@@ -193,7 +193,7 @@ export async function runBirthTimeCheck(
   user: UserRow,
   events: LifeEvent[],
 ): Promise<RectificationDto> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'birthTime');
   const profile = await resolveActiveProfileContext(user);
   const place = profile.placeOfBirth;
   if (!profile.dateOfBirth || !profile.timeOfBirth || place?.lat == null || place?.lon == null) {
@@ -244,7 +244,7 @@ export async function applyBirthTimeCheck(
   user: UserRow,
   rectificationId: string,
 ): Promise<RectificationDto> {
-  await requirePass(user.id);
+  await requirePass(user.id, 'birthTime');
   const row = await findRectificationForUser(rectificationId, user.id);
   if (!row) throw Errors.notFound('Birth-time check not found');
   const dto = toRectificationDto(row);

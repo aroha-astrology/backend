@@ -42,7 +42,7 @@ const state = vi.hoisted(() => {
     sendPushBatch: vi.fn(),
     summarizeTimingWindows: vi.fn(),
     generateReportVerdict: vi.fn(),
-    hasPass: vi.fn(),
+    passReportDiscountPct: vi.fn(),
     REPORT_GENERATORS,
   };
 });
@@ -74,7 +74,9 @@ vi.mock('../src/lib/notifications/fcm.js', () => ({
 }));
 
 // Aroha Pass holders get 20% off reports; nobody has a Pass unless a test says so.
-vi.mock('../src/lib/entitlements.js', () => ({ hasPass: state.hasPass }));
+vi.mock('../src/lib/entitlements.js', () => ({
+  passReportDiscountPct: state.passReportDiscountPct,
+}));
 vi.mock('../src/modules/features/features.service.js', () => ({
   resolveFeaturesForUser: state.resolveFeaturesForUser,
 }));
@@ -208,7 +210,7 @@ async function pullQueuedFromClaims(limit: number): Promise<ReportRow[]> {
 
 beforeEach(() => {
   for (const key of Object.keys(state.REPORT_GENERATORS)) delete state.REPORT_GENERATORS[key];
-  state.hasPass.mockReset().mockResolvedValue(false);
+  state.passReportDiscountPct.mockReset().mockResolvedValue(0);
   state.claimReportRow.mockReset();
   state.claimQueuedReports.mockReset().mockImplementation(pullQueuedFromClaims);
   state.requeueReportForRetry
@@ -359,8 +361,8 @@ describe('purchaseReport — kp_annual reader questions', () => {
 });
 
 describe('purchaseReport — pricing and row shape', () => {
-  it('an Aroha Pass holder pays 20% less', async () => {
-    state.hasPass.mockResolvedValue(true);
+  it("an Aroha Pass holder pays their tier's discount less", async () => {
+    state.passReportDiscountPct.mockResolvedValue(20);
     state.claimReportRow.mockResolvedValue(
       makeReportRow({
         id: 'r1',
