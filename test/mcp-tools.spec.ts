@@ -226,6 +226,20 @@ describe('ChatGPT plugin endpoint: tools (real ephemeris engine)', () => {
     expect(match.total_score).toBeLessThanOrEqual(36);
     expect(match.kootas).toHaveLength(8);
     expect(match.places.second_person).toContain('Jaipur');
+
+    // 8.5 of 36 for this pair, with Nadi and Bhakoot at zero.
+    expect(match.total_score).toBe(8.5);
+    expect(match.score_band).toBe('low (under 14)');
+    expect(match.nadi_dosha).toBe(true);
+    expect(match.bhakoot_dosha).toBe(true);
+    expect(match.notes).toContain('Nadi koota scored 0 of 8, which the tradition calls Nadi Dosha.');
+    expect(match.about).toContain('not advice on whether two people should marry');
+
+    // The answer describes the tradition; it does not judge the couple, speak of
+    // health or children, or carry the engine's blunt report wording.
+    expect(JSON.stringify(result)).not.toMatch(
+      /red flag|progeny|incompatible|inauspicious|\bboy\b|\bgirl\b|"poor"|\(poor\)/i,
+    );
   }, 30_000);
 
   it('get_panchang uses the named city and its timezone', async () => {

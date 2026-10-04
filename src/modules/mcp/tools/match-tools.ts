@@ -19,6 +19,39 @@ function toEngineBirth(birth: BirthMoment) {
   };
 }
 
+/**
+ * What each of the eight kootas compares, in neutral words. The engine's own
+ * per-koota text is written for the app's match report and speaks in the
+ * tradition's blunt terms ("incompatible", "inauspicious", boy/girl). Here the
+ * points and a plain description of the measure are enough; ChatGPT explains
+ * them under the skill's tone rules.
+ */
+const KOOTAS: Record<string, { name: string; measures: string }> = {
+  Varna: { name: 'Varna', measures: 'Outlook and approach to work' },
+  Vashya: { name: 'Vashya', measures: 'Mutual influence between the two moon signs' },
+  Tara: { name: 'Tara', measures: 'Harmony between the two birth stars' },
+  Yoni: { name: 'Yoni', measures: 'Temperament and closeness' },
+  GrahaMaitri: {
+    name: 'Graha Maitri',
+    measures: 'Friendship between the lords of the two moon signs',
+  },
+  Gana: { name: 'Gana', measures: 'Nature and temperament' },
+  Bhakoot: { name: 'Bhakoot', measures: 'How the two moon signs are placed from each other' },
+  Nadi: { name: 'Nadi', measures: 'Constitution; the koota with the most points' },
+};
+
+/** Where the total falls on the traditional scale, as a description rather than a verdict. */
+const SCORE_BANDS: Record<string, string> = {
+  excellent: 'high (28 to 36)',
+  good: 'good (21 to 27)',
+  average: 'middle (18 to 20)',
+  below_average: 'below the traditional minimum of 18 (14 to 17)',
+  poor: 'low (under 14)',
+};
+
+const ABOUT =
+  'A traditional astrological compatibility score, offered for reflection. It is not advice on whether two people should marry, and it says nothing about health, children or how a relationship will turn out.';
+
 export function registerMatchTools(server: McpServer, base: ToolContext): void {
   registerTool(
     server,
@@ -27,23 +60,28 @@ export function registerMatchTools(server: McpServer, base: ToolContext): void {
       name: 'check_kundli_match',
       title: 'Check kundli match',
       description:
-        'Use this when the user wants a Vedic marriage compatibility check (kundli milan, guna milan) between two people and has given both sets of birth details. ' +
-        'Returns the 36-point Ashtakoota score with each of the eight kootas, Nadi and Bhakoot dosha flags, and Mangal Dosha for both. Nothing is saved. ' +
-        'For a traditional match give the groom as the first person and the bride as the second.',
+        'Use this when the user asks for a kundli match (kundli milan, guna milan), the traditional Vedic astrology compatibility score between two people, and has given the birth date, time and place of both. ' +
+        'Calculates the 36-point Ashtakoota score with its eight parts, and notes whether Nadi, Bhakoot or Mangal Dosha appears in the traditional system. ' +
+        'It only calculates from the details given: nothing is saved and no one is contacted. ' +
+        'The result is a traditional score for reflection, not advice on whether to marry. Use it only with birth details the user is entitled to share.',
       input: {
-        first_person: personShape.describe('Birth details of the first person (the groom in a traditional match)'),
-        second_person: personShape.describe('Birth details of the second person (the bride in a traditional match)'),
+        first_person: personShape.describe(
+          'Birth details of the first person. The traditional method counts from one chart to the other, so the order matters: by convention the groom is first.',
+        ),
+        second_person: personShape.describe(
+          'Birth details of the second person. By convention the bride is second.',
+        ),
       },
       output: {
         total_score: z.number(),
         max_score: z.number(),
-        verdict: z.string(),
+        score_band: z.string().describe('Where the total falls on the traditional scale'),
         kootas: z.array(
           z.object({
             name: z.string(),
             obtained: z.number(),
             maximum: z.number(),
-            meaning: z.string(),
+            measures: z.string().describe('What this part of the score compares'),
           }),
         ),
         nadi_dosha: z.boolean().describe('Nadi koota scored 0 of 8'),
@@ -51,9 +89,10 @@ export function registerMatchTools(server: McpServer, base: ToolContext): void {
         mangal_dosha: z.object({
           first_person: z.string().describe('none, partial, full or cancelled'),
           second_person: z.string().describe('none, partial, full or cancelled'),
-          matched: z.boolean().describe('Both effectively Manglik, or both not'),
+          matched: z.boolean().describe('In effect in both charts, or in neither'),
         }),
-        recommendation: z.string(),
+        notes: z.array(z.string()).describe('What the traditional system notes about this pair'),
+        about: z.string().describe('What this score is and is not'),
         places: z.object({ first_person: z.string(), second_person: z.string() }),
         caveat: z.string().optional(),
         ...appLinkShape,
@@ -74,24 +113,42 @@ export function registerMatchTools(server: McpServer, base: ToolContext): void {
         consent: true,
       });
 
+      const nadi = match.flags?.nadiDosha ?? false;
+      const bhakoot = match.flags?.bhakootDosha ?? false;
+      const mangalMatched = match.mangalDosha?.matched ?? true;
+      const notes = [
+        ...(!nadi && !bhakoot && mangalMatched
+          ? ['No Nadi, Bhakoot or Mangal Dosha mismatch appears.']
+          : []),
+        ...(nadi ? ['Nadi koota scored 0 of 8, which the tradition calls Nadi Dosha.'] : []),
+        ...(bhakoot
+          ? ['Bhakoot koota scored 0 of 7, which the tradition calls Bhakoot Dosha.']
+          : []),
+        mangalMatched
+          ? 'Mangal Dosha is in the same state in both charts, which the tradition treats as balanced.'
+          : 'Mangal Dosha is in effect in one chart and not the other, which the tradition suggests talking over with an astrologer.',
+      ];
+      const band = SCORE_BANDS[match.compatibility] ?? match.compatibility;
+
       const structured = {
         total_score: match.totalScore,
         max_score: match.maxScore,
-        verdict: match.compatibility,
+        score_band: band,
         kootas: match.kutaDetails.map((k) => ({
-          name: k.name,
+          name: KOOTAS[k.name]?.name ?? k.name,
           obtained: k.obtained,
           maximum: k.maximum,
-          meaning: k.description ?? '',
+          measures: KOOTAS[k.name]?.measures ?? '',
         })),
-        nadi_dosha: match.flags?.nadiDosha ?? false,
-        bhakoot_dosha: match.flags?.bhakootDosha ?? false,
+        nadi_dosha: nadi,
+        bhakoot_dosha: bhakoot,
         mangal_dosha: {
           first_person: match.mangalDosha?.type1 ?? 'none',
           second_person: match.mangalDosha?.type2 ?? 'none',
-          matched: match.mangalDosha?.matched ?? true,
+          matched: mangalMatched,
         },
-        recommendation: match.recommendation ?? '',
+        notes,
+        about: ABOUT,
         places: {
           first_person: placeLabel(first.birth.place),
           second_person: placeLabel(second.birth.place),
@@ -104,7 +161,7 @@ export function registerMatchTools(server: McpServer, base: ToolContext): void {
       };
       return textResult(
         structured,
-        `Guna Milan score ${match.totalScore} of ${match.maxScore} (${match.compatibility}). ${match.recommendation ?? ''}`.trim(),
+        `Guna Milan score ${match.totalScore} of ${match.maxScore}, ${band}. ${notes.join(' ')} ${ABOUT}`,
       );
     },
   );

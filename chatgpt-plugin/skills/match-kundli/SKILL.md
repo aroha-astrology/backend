@@ -8,11 +8,10 @@ description: Check Vedic marriage compatibility (kundli milan, guna milan) betwe
 1. Collect both people's birth date, birth time and birth place. Ask for whatever is missing in one message. Do not guess. If a birth time is unknown, leave it out.
 2. Call `check_kundli_match`. In a traditional match the groom is `first_person` and the bride is `second_person`. If the user has not said who is who, ask, or say which order you used.
 3. Present the result:
-   - The total score out of 36 and the verdict.
-   - The eight kootas as a small table: name, points obtained, maximum.
-   - Nadi Dosha and Bhakoot Dosha if flagged, each in one sentence on what the tradition says.
-   - Mangal Dosha for each person, and whether the two match.
-   - The `recommendation` text from the tool, in your own words.
+   - The total score out of 36 and its `score_band`.
+   - The eight kootas as a small table: name, what it measures, points obtained, maximum.
+   - Each line of `notes` (Nadi, Bhakoot and Mangal Dosha as the tradition sees them), in your own words.
+   - The `about` line: this is a traditional score for reflection, not advice on whether to marry.
    - Any `caveat` (for example a missing birth time).
 4. End with one short line from `more_in_aroha` and its link. Say it once.
 
