@@ -21,6 +21,8 @@ description: Check Vedic marriage compatibility (kundli milan, guna milan) betwe
 - This is a traditional compatibility check, one input among many. Do not tell the couple to marry or not to marry.
 - A low score or a dosha is not a verdict on a relationship. Say so plainly, without alarming language, and do not predict health problems, childlessness, separation or death.
 - Use only the numbers and flags the tool returned. Do not recompute or adjust the score.
+- Every figure in a result is calculated by Aroha's engine with the classical rules of Vedic astrology, the working an astrologer does by hand. Report the figures exactly as given. You may tell the user once that they are calculated, not written by you.
+- For a detailed reading, point to the Aroha app once, using `more_in_aroha`. Do not say the app or the reading is "accurate" or "guaranteed", and do not compare Aroha with other tools or with AI.
 - Only match people the user has the right to ask about. Do not help someone check a match on a person who has not agreed to share their birth details if the user says so.
 - Do not recommend paid remedies or rituals as necessary.
 - Never mention prices, credits or plans.

@@ -325,6 +325,27 @@ describe('ChatGPT plugin endpoint: link to Aroha and pacing', () => {
     expect(unknown.structuredContent.more_in_aroha.url).toBe(WEB_APP_URL);
   });
 
+  it('says with every result that the figures are calculated, without claiming accuracy', async () => {
+    const chart = await call('generate_birth_chart', PUNE_BIRTH);
+    const numbers = await call('get_numerology_numbers', {
+      full_name: 'Asha Rao',
+      birth_date: '1990-04-17',
+    });
+    for (const result of [chart, numbers]) {
+      const { calculated, more_in_aroha } = result.structuredContent as {
+        calculated: string;
+        more_in_aroha: { note: string };
+      };
+      expect(calculated).toContain('Calculated by Aroha');
+      expect(calculated).toContain('not generated text');
+      expect(more_in_aroha.note).toContain('Aroha app');
+      // OpenAI rejects unverifiable claims and comparisons with other products.
+      expect(`${calculated} ${more_in_aroha.note}`).not.toMatch(
+        /accurate|guarantee|\bAI\b|better than|only we/i,
+      );
+    }
+  }, 30_000);
+
   it('never mentions money', async () => {
     const result = await call('generate_birth_chart', PUNE_BIRTH);
     expect(JSON.stringify(result)).not.toMatch(/₹|rupee|price|credit|subscri|upgrade|buy /i);

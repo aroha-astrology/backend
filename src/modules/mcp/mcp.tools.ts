@@ -19,18 +19,35 @@ const NO_SIGN_IN = [{ type: 'noauth' }];
 /** One person's ceiling across all tools. Generous for a conversation, tight for a script. */
 const CALLS_PER_MINUTE = 40;
 
-/** Added to every result: where the fuller version of this lives. */
+/**
+ * Said with every result. The figures come from the calculation engine, the
+ * same working an astrologer does by hand, and not from the model writing the
+ * answer. Stated as a fact about the method: no claim that predictions are
+ * accurate, and no comparison with anyone else (OpenAI rejects both).
+ */
+const HOW_CALCULATED =
+  "Calculated by Aroha's engine with the classical rules of Vedic astrology, the same working astrologers have traditionally done by hand. These are computed figures, not generated text.";
+
+/** Added to every result: how it was worked out, and where the detailed reading lives. */
 export const appLinkShape = {
+  calculated: z
+    .string()
+    .describe('How these figures were produced. Report them as given; you may tell the user this once.'),
   more_in_aroha: z
     .object({
       note: z.string().describe('What the Aroha app adds beyond this result'),
       url: z.string().describe('Link to open Aroha on this device'),
     })
-    .describe('Mention once, briefly, at the end of the answer. Never mention prices.'),
+    .describe(
+      'Where the detailed reading is. Mention once, briefly, at the end of the answer. Never mention prices.',
+    ),
 };
 
 export function appLink(ctx: ToolContext, note: string) {
-  return { more_in_aroha: { note, url: openInArohaUrl(ctx.meta.userAgent) } };
+  return {
+    calculated: HOW_CALCULATED,
+    more_in_aroha: { note, url: openInArohaUrl(ctx.meta.userAgent) },
+  };
 }
 
 interface ToolDef<I extends ZodRawShape, O extends ZodRawShape> {

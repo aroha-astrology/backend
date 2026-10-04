@@ -40,7 +40,7 @@ const PLANETS = [
 ] as const;
 
 const CHART_NOTE =
-  'The Aroha app keeps this chart saved and adds the divisional charts, a reading for each house, the full dasha timeline and daily guidance.';
+  'For a detailed reading of this chart, use the Aroha app: it keeps the chart saved and adds the divisional charts, a reading for each house, the full dasha timeline and daily guidance.';
 
 export function registerChartTools(server: McpServer, base: ToolContext): void {
   registerTool(
@@ -115,7 +115,7 @@ export function registerChartTools(server: McpServer, base: ToolContext): void {
           ...(caveat ? { caveat } : {}),
           ...appLink(
             ctx,
-            'The Aroha app gives a daily, weekly, monthly and yearly reading for this moon sign and the full birth chart.',
+            'For a detailed reading, use the Aroha app: it gives the full birth chart and a daily, weekly, monthly and yearly reading.',
           ),
         },
         `Moon sign ${moon.sign}, nakshatra ${spaced(moon.nakshatra)} pada ${moon.pada} (lord ${moon.nakshatraLord}).` +

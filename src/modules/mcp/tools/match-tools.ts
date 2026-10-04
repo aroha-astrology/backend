@@ -99,7 +99,7 @@ export function registerMatchTools(server: McpServer, base: ToolContext): void {
         ...(match.lagnaCaveat ? { caveat: match.lagnaCaveat } : {}),
         ...appLink(
           ctx,
-          'The Aroha app has the detailed Kundli Milan report for a couple, covering each area of married life.',
+          'For a detailed reading of this match, use the Aroha app: its Kundli Milan report covers each area of married life.',
         ),
       };
       return textResult(

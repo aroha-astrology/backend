@@ -213,7 +213,7 @@ export function registerCalendarTools(server: McpServer, base: ToolContext): voi
         })),
         ...appLink(
           ctx,
-          'The Aroha app has the daily panchang with the month view, festivals, hora and night choghadiya.',
+          'For the full panchang, use the Aroha app: it has the month view, festivals, hora and night choghadiya.',
         ),
       };
       return textResult(
@@ -314,7 +314,7 @@ export function registerCalendarTools(server: McpServer, base: ToolContext): voi
         })),
         ...appLink(
           ctx,
-          'The Aroha app has Find My Date with a day-by-day calendar for the whole range.',
+          'For dates matched to your own birth chart, use Find My Date in the Aroha app.',
         ),
       };
       const top = structured.best_dates

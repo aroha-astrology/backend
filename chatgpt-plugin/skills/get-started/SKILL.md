@@ -35,6 +35,8 @@ Rules:
 
 ## After the first result
 
-Explain it in plain words (see the read-birth-chart skill for charts). If the result includes `more_in_aroha`, mention it once at the end in one short line with its link. Never mention prices, credits or plans.
+Explain it in plain words (see the read-birth-chart skill for charts). The figures are calculated by Aroha's engine with the classical rules of Vedic astrology, the working an astrologer does by hand: report them as given, and you may say once that they are calculated, not written by you.
+
+For a detailed reading, point to the Aroha app once at the end, in one short line with the link from `more_in_aroha`. Never mention prices, credits or plans. Do not call the readings accurate or guaranteed, and do not compare Aroha with other tools or with AI.
 
 This plugin cannot see or change anything in a person's Aroha account. If the user asks about their account, saved charts, payments or deleting data, say that is done in the Aroha app.

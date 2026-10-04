@@ -107,7 +107,7 @@ export function registerReadingTools(server: McpServer, base: ToolContext): void
         })),
         ...appLink(
           ctx,
-          'The Aroha app gives a personal reading from your own birth chart, not only your moon sign.',
+          'For a reading from your own birth chart, not only your moon sign, use the Aroha app.',
         ),
       };
       return textResult(
@@ -172,7 +172,7 @@ export function registerReadingTools(server: McpServer, base: ToolContext): void
         },
         ...appLink(
           ctx,
-          'The Aroha app has the full numerology report, including name and phone number checks.',
+          'For a detailed reading, use the Aroha app: it has the full numerology report, including name and phone number checks.',
         ),
       };
       return textResult(

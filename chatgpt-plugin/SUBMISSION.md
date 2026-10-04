@@ -87,7 +87,8 @@ Before recording, run all eight yourself. If any answer differs from the "expect
 - Starter prompts: "Make my Vedic birth chart. I was born on 17 April 1990 at 2:30 pm in Pune." / "What is today's panchang for Varanasi?" / "Find good dates for a housewarming in Pune next month."
 - Countries: all (no restriction set)
 - Commerce: none. The plugin never shows prices, credits or plans and never links to a checkout. OpenAI does not allow selling digital goods through a plugin, so keep it that way in any later change.
-- Link to Aroha: every answer carries one "more in the Aroha app" line. Android devices get the Play Store link, everything else gets `https://app.arohaastrology.in`.
+- Calculated, not generated: every answer says the figures are calculated by Aroha's engine with the classical rules of Vedic astrology, and ChatGPT is told to report them as given. The wording makes no "accurate" or "better than AI" claim, because OpenAI rejects unverifiable claims and comparisons.
+- Link to Aroha: every answer points to the Aroha app for the detailed reading, once. Android devices get the Play Store link, everything else gets `https://app.arohaastrology.in`.
 
 ## Privacy policy: one thing to decide
 
