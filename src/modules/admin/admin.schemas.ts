@@ -404,5 +404,6 @@ export const AdminUserDemographicsResponseSchema = z
     relationshipStatus: z.array(AdminDemographicsBucketSchema),
     incomeBrackets: z.array(AdminDemographicsBucketSchema),
     familyIncomeBrackets: z.array(AdminDemographicsBucketSchema),
+    languages: z.array(AdminDemographicsBucketSchema),
   })
   .openapi('AdminUserDemographicsResponse');

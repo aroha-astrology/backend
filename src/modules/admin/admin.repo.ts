@@ -485,6 +485,7 @@ export interface UserDemographics {
   relationshipStatus: DemographicsBucket[];
   incomeBrackets: DemographicsBucket[];
   familyIncomeBrackets: DemographicsBucket[];
+  languages: DemographicsBucket[];
 }
 
 /** Every bracket shows, including the ones nobody picked — a zero row is a real finding
@@ -503,38 +504,50 @@ function orderedBrackets(
  * it can't be bucketed in SQL — fetched and decrypted per row instead.
  */
 export async function userDemographics(): Promise<UserDemographics> {
-  const [genderRows, statusRows, dobRows, incomeRows, familyIncomeRows] = await Promise.all([
-    db
-      .select({ label: sql<string>`coalesce(${users.gender}::text, 'unknown')`, count: count() })
-      .from(users)
-      .where(isNull(users.deletedAt))
-      .groupBy(users.gender),
-    db
-      .select({
-        label: sql<string>`coalesce(${users.relationshipStatus}::text, 'unknown')`,
-        count: count(),
-      })
-      .from(users)
-      .where(isNull(users.deletedAt))
-      .groupBy(users.relationshipStatus),
-    db.select({ dateOfBirth: users.dateOfBirth }).from(users).where(isNull(users.deletedAt)),
-    db
-      .select({
-        label: sql<string>`coalesce(${users.incomeBracket}, 'not_asked')`,
-        count: count(),
-      })
-      .from(users)
-      .where(isNull(users.deletedAt))
-      .groupBy(users.incomeBracket),
-    db
-      .select({
-        label: sql<string>`coalesce(${users.familyIncomeBracket}, 'not_asked')`,
-        count: count(),
-      })
-      .from(users)
-      .where(isNull(users.deletedAt))
-      .groupBy(users.familyIncomeBracket),
-  ]);
+  const [genderRows, statusRows, dobRows, incomeRows, familyIncomeRows, languageRows] =
+    await Promise.all([
+      db
+        .select({ label: sql<string>`coalesce(${users.gender}::text, 'unknown')`, count: count() })
+        .from(users)
+        .where(isNull(users.deletedAt))
+        .groupBy(users.gender),
+      db
+        .select({
+          label: sql<string>`coalesce(${users.relationshipStatus}::text, 'unknown')`,
+          count: count(),
+        })
+        .from(users)
+        .where(isNull(users.deletedAt))
+        .groupBy(users.relationshipStatus),
+      db.select({ dateOfBirth: users.dateOfBirth }).from(users).where(isNull(users.deletedAt)),
+      db
+        .select({
+          label: sql<string>`coalesce(${users.incomeBracket}, 'not_asked')`,
+          count: count(),
+        })
+        .from(users)
+        .where(isNull(users.deletedAt))
+        .groupBy(users.incomeBracket),
+      db
+        .select({
+          label: sql<string>`coalesce(${users.familyIncomeBracket}, 'not_asked')`,
+          count: count(),
+        })
+        .from(users)
+        .where(isNull(users.deletedAt))
+        .groupBy(users.familyIncomeBracket),
+      // content_language is the language the user picked in the app; users who never
+      // picked one get the English default, so null counts as 'en' rather than unknown.
+      db
+        .select({
+          label: sql<string>`lower(split_part(coalesce(${users.contentLanguage}, 'en'), '-', 1))`,
+          count: count(),
+        })
+        .from(users)
+        .where(isNull(users.deletedAt))
+        .groupBy(sql`1`)
+        .orderBy(desc(count())),
+    ]);
 
   const bracketCounts = new Map<string, number>(AGE_BRACKETS.map((b) => [b, 0]));
   let unknownAge = 0;
@@ -559,6 +572,7 @@ export async function userDemographics(): Promise<UserDemographics> {
     relationshipStatus: statusRows,
     incomeBrackets: orderedBrackets(incomeRows, INCOME_BRACKET_CODES),
     familyIncomeBrackets: orderedBrackets(familyIncomeRows, FAMILY_BRACKET_CODES),
+    languages: languageRows,
   };
 }
 
