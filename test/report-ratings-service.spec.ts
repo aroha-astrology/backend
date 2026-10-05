@@ -53,20 +53,11 @@ describe('rateReport', () => {
     expect(state.stampRefund).not.toHaveBeenCalled();
   });
 
-  it('refunds 100% of the price paid on a 2-star rating', async () => {
+  it('does not refund a 2-star rating, it only records it', async () => {
     const result = await rateReport({ userId: 'user-1', reportId: 'report-1', rating: 2 });
-    expect(result).toEqual({ id: 'rating-1', refundedPaise: 14900 });
-    expect(state.addWalletBalance).toHaveBeenCalledWith(
-      'user-1',
-      14900,
-      'refund:report_unlock:marriage',
-    );
-    expect(state.stampRefund).toHaveBeenCalledWith('rating-1', 14900);
-  });
-
-  it('does not refund a 3-star rating (the boundary)', async () => {
-    await rateReport({ userId: 'user-1', reportId: 'report-1', rating: 3 });
+    expect(result).toEqual({ id: 'rating-1', refundedPaise: null });
     expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(state.stampRefund).not.toHaveBeenCalled();
   });
 
   it('rejects rating a report owned by someone else, as a plain not-found', async () => {

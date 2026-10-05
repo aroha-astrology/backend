@@ -1,21 +1,13 @@
 import { Errors } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { findReportById } from './reports.repo.js';
-import { reasonForRow } from './reports.service.js';
-import { insertReportRating, stampRefund } from './report-ratings.repo.js';
-import { addWalletBalance } from '../users/users.repo.js';
-
-/** Ratings at or above this are just feedback; below it, the user gets a
- * full refund — see docs/superpowers/specs/2026-09-03-report-rating-and-refund-design.md. */
-const REFUND_BELOW_RATING = 3;
+import { insertReportRating } from './report-ratings.repo.js';
 
 /**
- * Records a per-report rating and, for a rating under 3 stars, immediately
- * refunds 100% of what was paid for THIS report row — reusing the exact
- * `refund:report_unlock:<key>[:<month>]` reason format the objective
- * generation-failure refund already uses (see reports.service.ts), so
- * Payment History's existing isRefund/parseReason logic renders it with no
- * frontend changes.
+ * Records a per-report rating. This is feedback only: a low rating no longer
+ * refunds anything (it used to refund 100% under 3 stars). `refundedPaise`
+ * stays in the response, always null, so the client and admin list keep
+ * working and past refunds still show in the admin Refunded column.
  *
  * 404 (not 403) for a report owned by someone else — matches GET
  * /reports/{id}'s own "never confirm another user's report exists" stance.
@@ -38,14 +30,5 @@ export async function rateReport(input: {
     throw err;
   }
 
-  if (input.rating >= REFUND_BELOW_RATING) return { id: row.id, refundedPaise: null };
-
-  const refundedPaise = report.pricePaidPaise;
-  await addWalletBalance(
-    input.userId,
-    refundedPaise,
-    `refund:${reasonForRow(report.reportKey, report.periodMonth)}`,
-  );
-  await stampRefund(row.id, refundedPaise);
-  return { id: row.id, refundedPaise };
+  return { id: row.id, refundedPaise: null };
 }
