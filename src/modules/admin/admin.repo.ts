@@ -536,11 +536,11 @@ export async function userDemographics(): Promise<UserDemographics> {
         .from(users)
         .where(isNull(users.deletedAt))
         .groupBy(users.familyIncomeBracket),
-      // content_language is the language the user picked in the app; users who never
-      // picked one get the English default, so null counts as 'en' rather than unknown.
+      // content_language is saved by the app on open (LanguageSync); users who haven't
+      // opened a build that saves it yet are null and show as unknown.
       db
         .select({
-          label: sql<string>`lower(split_part(coalesce(${users.contentLanguage}, 'en'), '-', 1))`,
+          label: sql<string>`lower(split_part(coalesce(${users.contentLanguage}, 'unknown'), '-', 1))`,
           count: count(),
         })
         .from(users)
