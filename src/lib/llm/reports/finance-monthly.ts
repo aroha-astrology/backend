@@ -15,6 +15,7 @@ import type { FinanceMonthlyScores } from '../../astro-engine/reports/finance-mo
 import type { DoshaYogaSummary } from '../../astro-engine/reports/report-dosha-yoga-summary.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
+import { readerContextLines } from './reader-context.js';
 
 const GROUNDING_RULE =
   'The active Mahadasha/Antardasha lords, the month score, the tone, and the dosha/yoga findings below are GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim. Never recompute or contradict any of these, and never invent a dosha/yoga finding beyond what is given — if none is given, say so plainly.';
@@ -25,6 +26,11 @@ const SUB_PERIOD_RULE =
 const CONCERN_RULE =
   'If the reader gave an optional current financial concern or plan below, weave a direct, practical response to it into "Practical Guidance", tied to the given month score/tone/dosha-yoga facts — the DISCLAIMER_RULE still applies in full: never name a specific investment/product. If no concern was given, skip this entirely rather than asking for one.';
 
+/** Same gap the Wealth report had: this report talked about "your income" growing or dipping
+ * without knowing whether the reader has one, or where it comes from. */
+const INCOME_RULE =
+  'Check the facts for a "What the reader told us — how they earn today" line and write for that real situation. A salary / a job: steady pay, increments, spending and saving. Their own business, or freelance work: uneven inflow, customers or clients, payments due. Rent or property: rent and property matters. Not earning right now: NEVER write as though income is coming in or could "grow or dip" — write about spending, savings, money from family, and what this month supports for starting to earn. If no such line is given, do not assume a particular source of income, and say "any income" rather than "your salary" or "your business".';
+
 function narrativeSystemPrompt(): string {
   return `You are writing this month's Finance Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 2nd house (${HOUSE_SIGNIFICATIONS[2]}) and 11th house (${HOUSE_SIGNIFICATIONS[11]}), the Hora (D2) chart — the classical wealth/financial-stability varga, a corroborating layer alongside those houses, and a dosha/yoga check for any classical wealth-yoga or wealth-related dosha caution currently relevant. Your job is ONLY to write the narrative explanation.
 
@@ -34,6 +40,7 @@ ${HUMAN_VOICE_RULE}
 ${DISCLAIMER_RULE}
 ${SUB_PERIOD_RULE}
 ${CONCERN_RULE}
+${INCOME_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -94,6 +101,7 @@ function buildFacts(scores: FinanceMonthlyScores): string {
     formatAshtakavarga(scores.ashtakavargaSummary),
     formatDoshaYoga(scores.doshaYoga),
     formatSubPeriods(scores.subPeriods),
+    ...readerContextLines(scores.readerSituation),
   ];
   if (scores.userAnswers?.concern) {
     lines.push(

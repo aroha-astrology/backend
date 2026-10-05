@@ -16,6 +16,7 @@ import {
   type MonthSubPeriod,
 } from './monthly-dasha-context.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { readerSituationFromAnswers } from './reader-situation.js';
 import { computeLifeContext, FINANCE_KEY_HOUSES } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { computeReportVargas } from './report-vargas.js';
@@ -85,6 +86,7 @@ export function computeFinanceMonthlyScores(
     vargas,
     ashtakavargaSummary,
     userAnswers: ctx.userAnswers ?? null,
+    readerSituation: readerSituationFromAnswers(ctx.userAnswers),
     periodMonth: periodMonth ?? 'unknown',
     activeMahadashaLord: period?.mahadashaLord ?? 'Unknown',
     activeAntardashaLord: period?.antardashaLord ?? 'Unknown',

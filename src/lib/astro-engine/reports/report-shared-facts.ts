@@ -11,6 +11,7 @@
 // =============================================================================
 
 import type { ReportHeader } from './report-header.js';
+import type { ReaderSituation } from './reader-situation.js';
 import type { LifeContext } from './report-life-context.js';
 import type { ReportRemedyEntry } from './report-remedy-slots.js';
 import type { ReportVarga } from './report-vargas.js';
@@ -22,6 +23,10 @@ export interface ReportSharedFacts {
    * have a configured question set — see `ReportScoreContext.userAnswers`'s doc comment for why
    * this is sourced fresh from the purchase request rather than being a truly deterministic fact. */
   userAnswers?: Record<string, string> | null;
+  /** The validated select answers from that same questionnaire — what the reader told us about
+   * their real life (job, income, relationship, children). See reader-situation.ts. Null when
+   * they answered none, absent on a report type that asks none. */
+  readerSituation?: ReaderSituation | null;
   /** The divisional chart(s) this report domain classically calls for (see report-vargas.ts) —
    * e.g. D9 for marriage, D10 for career. Optional: the 3 name/DOB-only report types (numerology,
    * name_change, remedies) do no chart analysis at all and never set this. */

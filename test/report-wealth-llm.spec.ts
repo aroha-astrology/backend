@@ -211,6 +211,72 @@ describe('generateWealthNarrative', () => {
     expect(thirdCallContent.toLowerCase()).toContain('given fact');
   });
 
+  it('tells every call what the reader said about their own income and property, and to never contradict it', async () => {
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
+    await generateWealthNarrative(
+      makeScores({
+        strongestIncomeSource: 'property',
+        incomeSourceStrengths: { salaried: 'average', business: 'weak', property: 'strong' },
+        readerSituation: { earnsBy: 'salaried', ownsProperty: 'no' },
+        userAnswers: { concern: 'I have a home loan in mind' },
+      }),
+    );
+    expect(state.generate).toHaveBeenCalledTimes(3);
+    for (const call of state.generate.mock.calls) {
+      const content = call[0].messages.map((m: { content: string }) => m.content).join('\n');
+      expect(content).toContain('how they earn today: a salary / a job');
+      expect(content).toContain('do NOT own any house or land');
+      expect(content).toContain('I have a home loan in mind');
+      expect(content).toContain('never contradict them');
+    }
+  });
+
+  it('adds no reader lines when the questions were skipped, but still forbids claiming what the reader owns', async () => {
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
+    await generateWealthNarrative(makeScores());
+    for (const call of state.generate.mock.calls) {
+      const messages = call[0].messages as { content: string }[];
+      // The rule itself names the "What the reader told us" lines, so look for an actual
+      // line: those all carry the dash.
+      expect(messages[1]?.content).not.toContain('What the reader told us —');
+      expect(messages[1]?.content).toContain('never a description of the reader');
+    }
+  });
+
+  it('says so when another path reads as strong as the named one, instead of selling a tiebreak as a winner', async () => {
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
+    await generateWealthNarrative(
+      makeScores({
+        strongestIncomeSource: 'salaried',
+        incomeSourceStrengths: { salaried: 'average', business: 'average', property: 'weak' },
+      }),
+    );
+    const thirdCallContent = state.generate.mock.calls[2]?.[0].messages
+      .map((m: { content: string }) => m.content)
+      .join('\n');
+    expect(thirdCallContent).toContain('business reads just as strong as salaried');
+  });
+
+  it('clips an over-long free-text answer before it reaches the prompt', async () => {
+    state.generate
+      .mockResolvedValueOnce(patternResponse)
+      .mockResolvedValueOnce(enrichedResponse)
+      .mockResolvedValueOnce(incomeResponse);
+    await generateWealthNarrative(makeScores({ userAnswers: { concern: 'x'.repeat(2000) } }));
+    const facts = state.generate.mock.calls[0]?.[0].messages[1].content as string;
+    expect(facts).toContain('x'.repeat(300));
+    expect(facts).not.toContain('x'.repeat(301));
+  });
+
   it('throws when the first call returns unparseable JSON', async () => {
     state.generate
       .mockResolvedValueOnce('not json')

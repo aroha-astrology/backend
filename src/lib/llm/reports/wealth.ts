@@ -24,7 +24,7 @@ import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.
 import { cleanJsonString } from '../horoscope.js';
 import { PLAIN_LANGUAGE_RULE } from '../house-insight.js';
 import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
-import type { WealthScores } from '../../astro-engine/reports/wealth.js';
+import type { IncomeSource, WealthScores } from '../../astro-engine/reports/wealth.js';
 import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import type { AgeBand } from '../../astro-engine/reports/report-age-bands.js';
 import type { Archetype } from '../../astro-engine/reports/report-archetype.js';
@@ -32,6 +32,7 @@ import type { DoshaYogaSummary } from '../../astro-engine/reports/report-dosha-y
 import type { DecadeBand } from '../../astro-engine/reports/report-decade-arc.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
+import { readerContextLines } from './reader-context.js';
 
 const GROUNDING_RULE =
   'The wealth score, 2nd/11th-lord strengths, Jupiter placement, and wealth pattern below are GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim. Never recompute or contradict any of these numbers.';
@@ -39,6 +40,22 @@ const ENRICHED_GROUNDING_RULE =
   'The wealth timing windows, age-band table, money archetype and its 5 trait tilts, dosha/yoga findings, the spending-vs-saving tilt score, and the decade-by-decade wealth arc below are ALSO GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim — never invent a window, a trait score, a dosha/yoga finding, or a decade score, and never recompute the tilt. If no favorable timing window was found, say so plainly rather than inventing one; if no dosha or yoga finding is present, say so plainly rather than inventing one.';
 const DISCLAIMER_RULE =
   'This is NOT financial advice. Frame everything as traditional astrological guidance about tendencies and themes only — never recommend specific investments, products, or financial decisions. If discussing "practical guidance", keep it to general behavioral framing (e.g. "a pattern like this often benefits from consistent habits"), never specific financial instructions.';
+/** The free-text answer is the reader's own words going straight into a prompt, so it is
+ * clipped — the select answers arrive already validated on `readerSituation`. */
+const MAX_CONCERN_CHARS = 300;
+
+/** What the reader said about their own money life, as fact lines for every wealth call. Empty
+ * when they skipped the questions (and for every report bought before the questions existed). */
+function wealthReaderLines(scores: WealthScores): string[] {
+  const lines = readerContextLines(scores.readerSituation);
+  const concern = scores.userAnswers?.concern?.trim();
+  if (concern) {
+    lines.push(
+      `What the reader told us — something about their money to keep in mind and respond to where relevant: ${concern.slice(0, MAX_CONCERN_CHARS)}`,
+    );
+  }
+  return lines;
+}
 
 function narrativeSystemPrompt(): string {
   return `You are writing a Wealth Report for a mobile Vedic astrology app. The app already computed a wealth score, the 2nd-house lord and 11th-house lord strengths, Jupiter's placement, the Hora (D2) chart — the classical wealth/financial-stability/liquid-assets varga, a corroborating layer alongside the 2nd/11th houses, and a wealth pattern classification (steady_accumulation / volatile_gains / late_blooming) using classical rules. Your job is ONLY to write the narrative explanation.
@@ -158,19 +175,35 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Your Strongest Income Path" — 1-2 paragraphs naming the given strongest income source (salaried/business/property) and the given strength of all three, explaining in plain language why that house classically supports this income type. This directly answers "is property, business, or salaried income my strongest wealth path."
+1. Heading close to "Your Strongest Income Path" — 1-2 paragraphs naming the given strongest income source (salaried/business/property) and the given strength of all three, explaining in plain language why that house classically supports this income type. This directly answers "is property, business, or salaried income my strongest wealth path." Write it as where the chart leans, never as how the reader earns today. If a "What the reader told us" line says how they earn today and it is a different path from the chart's strongest one, open with what they actually do and how that path reads on the chart, then present the chart's strongest path as a leaning that has not opened yet. If they told us they own no house or land and property is the strongest path, say plainly that nothing has come from property so far and that the chart only shows a leaning there, not a result. If they are not earning right now, never write as though they have an income.
 2. Heading close to "What to Actively Guard Against" — 1 paragraph of GENERAL, non-prescriptive guidance on financial risks or habits to watch for, grounded in the wealth pattern and spending-vs-saving tilt already given elsewhere in this report (do not invent a new fact) — this directly answers "what financial risks or leaks should I actively guard against." Explicitly NOT financial advice.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
 
+const INCOME_SOURCES: IncomeSource[] = ['salaried', 'business', 'property'];
+
 function buildIncomeSourceFacts(scores: WealthScores): string {
   const lines: string[] = [];
-  lines.push(`Strongest income source: ${scores.strongestIncomeSource}.`);
+  const strongest = scores.strongestIncomeSource;
+  lines.push(`Strongest income source: ${strongest}.`);
   lines.push('Income source strengths (given, state verbatim):');
   lines.push(`- salaried: ${scores.incomeSourceStrengths.salaried}`);
   lines.push(`- business: ${scores.incomeSourceStrengths.business}`);
   lines.push(`- property: ${scores.incomeSourceStrengths.property}`);
+  // The engine always names one winner, breaking a tie in a fixed order (see
+  // strongestIncomeSourceFromScores). Left unsaid, the narrative sold that tiebreak as a clear
+  // result — "salaried is your strongest path" on a chart where all three read the same.
+  const tied = INCOME_SOURCES.filter(
+    (source) =>
+      source !== strongest &&
+      scores.incomeSourceStrengths[source] === scores.incomeSourceStrengths[strongest],
+  );
+  if (tied.length > 0) {
+    lines.push(
+      `Note: ${tied.join(' and ')} read${tied.length === 1 ? 's' : ''} just as strong as ${strongest} on this chart. Say plainly that no single path stands clearly ahead; ${strongest} is only the default lean, not a clear winner.`,
+    );
+  }
   lines.push(`Wealth pattern (already given elsewhere in this report): ${scores.wealthPattern}.`);
   lines.push(
     `Spending vs saving tilt (already given elsewhere in this report): ${scores.spendingVsSavingTilt} out of 10.`,
@@ -267,24 +300,29 @@ async function generateSection(
  * doc comment above for why this is split rather than one call.
  */
 export async function generateWealthNarrative(scores: WealthScores): Promise<ReportSection[]> {
+  // Every call gets the reader's own answers, not just the income one: the pattern, timing and
+  // decade sections can just as easily describe money the reader has never seen.
+  const reader = wealthReaderLines(scores);
+  const withReader = (facts: string): string => [facts, ...reader].join('\n');
+
   const [pattern, enriched, income] = await Promise.all([
     generateSection(
       narrativeSystemPrompt(),
-      buildFacts(scores),
+      withReader(buildFacts(scores)),
       scores.planetCondition,
       scores.vakriFacts,
       'Write the Wealth report narrative.',
     ),
     generateSection(
       enrichedSystemPrompt(),
-      buildEnrichedFacts(scores),
+      withReader(buildEnrichedFacts(scores)),
       scores.planetCondition,
       scores.vakriFacts,
       'Write the additional Wealth report sections.',
     ),
     generateSection(
       incomeSourceSystemPrompt(),
-      buildIncomeSourceFacts(scores),
+      withReader(buildIncomeSourceFacts(scores)),
       scores.planetCondition,
       scores.vakriFacts,
       'Write the final Wealth report sections.',

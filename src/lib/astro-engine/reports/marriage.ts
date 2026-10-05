@@ -32,6 +32,7 @@ import {
   strengthScoreOfPlanet,
 } from './chart-facts.js';
 import { computeArchetype, SIGN_TEMPERAMENT, type Archetype } from './report-archetype.js';
+import { marriageStatusFromAnswer } from './reader-situation.js';
 import { computeReportTimingWindows, type RankedWindow } from './report-timing.js';
 import { computeAgeBandTable, type AgeBand } from './report-age-bands.js';
 import { computeDecadeArc, type DecadeBand } from './report-decade-arc.js';
@@ -396,7 +397,11 @@ export function computeMarriageScores(
     getAscendantSignIndex(chart),
   );
 
-  const spouseSynastry = computeSpouseSynastry(chart, ctx.partnerChart ?? null, ctx.dashaData ?? null);
+  const spouseSynastry = computeSpouseSynastry(
+    chart,
+    ctx.partnerChart ?? null,
+    ctx.dashaData ?? null,
+  );
 
   return {
     header,
@@ -426,7 +431,7 @@ export function computeMarriageScores(
     partnerArchetype,
     marriageQualityArc,
     loveOrArrange,
-    relationshipStatus: ctx.personRelationshipStatus ?? null,
+    relationshipStatus: marriageStatusFromAnswer(ctx.personRelationshipStatus, ctx.userAnswers),
     inLaws,
     moneyAfterMarriage,
     modernRealities,

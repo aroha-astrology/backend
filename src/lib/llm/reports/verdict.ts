@@ -158,6 +158,8 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Every headline, bullet, and next step MUST stay about ${topic} — this report's own subject. Never drift into a different life area (e.g. career or money) unless that IS this report's subject.
 
+If the JSON has a "readerSituation" field, it is what the reader told us about their real life today, not a finding. Treat it as true and never contradict it: never present something the chart leans toward (an income path, property, a business) as something the reader already has or earns from, and never list "readerSituation" itself as a takeaway.
+
 Second person ("you"). Never use words like "Yogini", "Vimshottari", "Antardasha", "Pratyantardasha", "dasha", or "transit" — write for a reader with no astrology background.`;
 }
 

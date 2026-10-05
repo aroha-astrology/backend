@@ -25,6 +25,7 @@
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { getHouseLord, strengthOfPlanet, strengthScoreOfPlanet } from './chart-facts.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { readerSituationFromAnswers } from './reader-situation.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { computeReportVargas, type ReportVarga } from './report-vargas.js';
@@ -320,13 +321,18 @@ export function computeProgenyScores(
 
   const childSequence = computeD7Progeny(selfD7, chart, gender);
   const age = ageFrom(ctx.personDob, new Date());
-  const childrenCard = computeChildrenCard(childSequence, age);
+  const readerSituation = readerSituationFromAnswers(ctx.userAnswers);
+  // The card reads the sequence back as children who already exist. A reader who told us they
+  // have none must never be shown it, whatever their age.
+  const childrenCard =
+    readerSituation?.children === 'none' ? null : computeChildrenCard(childSequence, age);
 
   return {
     header,
     lifeContext,
     vargas: selfVargas,
     userAnswers: ctx.userAnswers ?? null,
+    readerSituation,
     motherPromise,
     fatherPromise,
     coupleConvergence: convergenceFrom(motherPromise, fatherPromise),

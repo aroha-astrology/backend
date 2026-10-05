@@ -17,6 +17,7 @@ import { toneFromMonthScore } from '../../astro-engine/reports/monthly-dasha-con
 import type { CareerMonthlyScores } from '../../astro-engine/reports/career-monthly.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
+import { readerContextLines } from './reader-context.js';
 
 const GROUNDING_RULE =
   'The active Mahadasha/Antardasha lords, the month score, the tone, the work-style trait tilts, the dosha/yoga facts, and the industry list below are GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim. Never recompute, contradict, or add any planetary period, trait score, dosha/yoga, or industry NOT explicitly listed below — in particular, never invent an industry beyond the exact list given in the industry-fit facts.';
@@ -27,6 +28,13 @@ const SUB_PERIOD_RULE =
 const CONCERN_RULE =
   'If the reader gave an optional current career concern below (e.g. facing difficulty at work, or job-hunting), weave a direct, practical response to it into "Support & Obstacles This Month" and "Industries That Fit", tied to the given month score/tone/dosha-yoga facts — do not ignore it. If no concern was given, skip this entirely rather than asking for one.';
 
+/**
+ * This report used to tell every reader whether to ask for a raise and how their boss would
+ * find them this month — including shop owners, students and people not working at all.
+ */
+const WORK_RULE =
+  'Check the facts for a "What the reader told us — work today" line and write for that real situation. Employed in a job: write normally. Runs their own business: write about customers, orders, growth, staff and partners — never a boss, a raise, a promotion or switching jobs. Freelance or self-employed: write about clients, projects and rates. A student: write about studies, exams, internships and the first job ahead — never a current employer, colleagues or a raise. Not working right now: write about finding or returning to work and what this month supports — never a current job, colleagues, superiors or a raise. Wherever the section instructions below mention a raise, switching jobs, colleagues or superiors, replace them with the equivalent for the reader\'s real situation. If no such line is given, do not assume the reader is employed: phrase job-specific points conditionally ("if you are in a job…").';
+
 function narrativeSystemPrompt(): string {
   return `You are writing this month's Career Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 10th house (${HOUSE_SIGNIFICATIONS[10]}) and 6th house (${HOUSE_SIGNIFICATIONS[6]}); the Dashamsha (D10) chart — the classical career/profession/public-status varga, a corroborating layer alongside the 10th house; a "work style" archetype with 5 named trait tilts (0-10 each); whether a Raja Yoga (status/career-elevating combination) is present; whether either of two obstacle-themed doshas (Sade Sati, Kaal Sarp) is currently present; and a short list of classically-associated industries for the 10th-house lord's planet. Your job is ONLY to write the narrative explanation.
 
@@ -36,6 +44,7 @@ ${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${SUB_PERIOD_RULE}
 ${CONCERN_RULE}
+${WORK_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -103,6 +112,7 @@ function buildFacts(scores: CareerMonthlyScores): string {
   } else {
     lines.push('Within-month sub-periods: none available.');
   }
+  lines.push(...readerContextLines(scores.readerSituation));
   if (scores.userAnswers?.concern) {
     lines.push(
       `Reader-provided context — an optional current career concern (facing difficulty, job-hunting, etc.) to directly respond to: ${scores.userAnswers.concern}`,

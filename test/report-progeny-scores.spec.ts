@@ -113,6 +113,20 @@ describe('computeProgenyScores', () => {
     expect(scores.childrenCard).toBeNull();
   });
 
+  it('childrenCard is withheld from a reader 35 or older who told us they have no children', () => {
+    const scores = computeProgenyScores(
+      baseCtx({ personDob: '1980-01-01', userAnswers: { children: 'none' } }),
+      null,
+    );
+    expect(scores.childrenCard).toBeNull();
+    // Saying they have children changes nothing about the age gate.
+    const withChild = computeProgenyScores(
+      baseCtx({ personDob: '1980-01-01', userAnswers: { children: 'one' } }),
+      null,
+    );
+    expect(withChild.childrenCard).not.toBeNull();
+  });
+
   it('childrenCard is populated for a reader 35 or older, with a real D7 behind it', () => {
     const scores = computeProgenyScores(baseCtx({ personDob: '1980-01-01' }), null);
     expect(scores.childSequence).not.toBeNull();

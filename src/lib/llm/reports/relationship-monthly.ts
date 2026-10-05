@@ -27,6 +27,7 @@ import { toneFromMonthScore } from '../../astro-engine/reports/monthly-dasha-con
 import type { RelationshipMonthlyScores } from '../../astro-engine/reports/relationship-monthly.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
+import { readerContextLines } from './reader-context.js';
 
 const GROUNDING_RULE =
   'The active Mahadasha/Antardasha lords, the month score, the tone, and the dosha/yoga facts below are GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim. Never recompute or contradict any of these, and never invent a dosha or yoga that is not listed.';
@@ -35,7 +36,7 @@ const SAFETY_RULE =
 const SUB_PERIOD_RULE =
   'The given within-month sub-periods (if any) break the month into specific date ranges, each with its own ruling planet and 0-100 score — directly answer "are there specific days this month best for important relationship talks" by naming the date range(s) with a notably HIGHER score as the better windows for an important conversation, and any notably LOWER-scored range(s) as ones to avoid for sensitive topics. If no sub-periods are given, say plainly that no date-level breakdown is available for this chart rather than inventing one.';
 const RELATIONSHIP_STATUS_RULE =
-  "The reader's current relationship status is given below — if it is single/not provided, do not assume an existing partner; frame guidance around dating/romance readiness instead of an existing relationship. If it names an existing partner (in a relationship/engaged/married/etc.), frame guidance around that existing partnership.";
+  'The reader\'s current relationship status is given below — if it is single/not provided, do not assume an existing partner; frame guidance around dating/romance readiness instead of an existing relationship. If it names an existing partner (in a relationship/engaged/married/etc.), frame guidance around that existing partnership. That status was saved at sign-up and may be out of date: when a "What the reader told us — relationship status today" line is also given, it is the current truth and overrides the saved status completely. If they are previously married (separated, divorced or widowed), do not assume a current partner and do not assume they are looking for one.';
 
 function narrativeSystemPrompt(): string {
   return `You are writing this month's Relationship Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, and a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 7th house (${HOUSE_SIGNIFICATIONS[7]}) and 5th house (${HOUSE_SIGNIFICATIONS[5]}), plus the Navamsa (D9) chart — the classical marriage/inner-strength varga, a corroborating layer alongside those houses. Your job is ONLY to write the narrative explanation.
@@ -66,6 +67,7 @@ function buildFacts(scores: RelationshipMonthlyScores): string {
     `Active Antardasha lord: ${scores.activeAntardashaLord}.`,
     `Tone: ${scores.tone}.`,
     `Reader's current relationship status: ${scores.relationshipStatus ?? 'not provided'}.`,
+    ...readerContextLines(scores.readerSituation),
   ];
 
   const navamsa = scores.vargas?.[0];

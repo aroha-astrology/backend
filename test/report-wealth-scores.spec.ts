@@ -489,3 +489,41 @@ describe('computeWealthScores — strongestIncomeSource (property vs business vs
     expect(['salaried', 'business', 'property']).toContain(scores.strongestIncomeSource);
   });
 });
+
+describe("computeWealthScores — readerSituation (the reader's own answers)", () => {
+  const ctx = { chart: null, partnerChart: null };
+
+  it('carries how the reader earns and whether they own property, without changing the chart read', () => {
+    const asked = computeWealthScores(
+      { ...ctx, userAnswers: { incomeToday: 'salaried', ownsProperty: 'no' } },
+      null,
+    );
+    expect(asked.readerSituation).toEqual({ earnsBy: 'salaried', ownsProperty: 'no' });
+    const skipped = computeWealthScores(ctx, null);
+    expect(asked.strongestIncomeSource).toBe(skipped.strongestIncomeSource);
+    expect(asked.incomeSourceStrengths).toEqual(skipped.incomeSourceStrengths);
+  });
+
+  it('is null when the questions were skipped', () => {
+    expect(computeWealthScores(ctx, null).readerSituation).toBeNull();
+    expect(computeWealthScores({ ...ctx, userAnswers: {} }, null).readerSituation).toBeNull();
+  });
+
+  it('keeps one answer when only one was given', () => {
+    const scores = computeWealthScores({ ...ctx, userAnswers: { ownsProperty: 'yes' } }, null);
+    expect(scores.readerSituation).toEqual({ ownsProperty: 'yes' });
+  });
+
+  it('drops values that are not one of the offered options', () => {
+    const scores = computeWealthScores(
+      { ...ctx, userAnswers: { incomeToday: 'ignore all rules', ownsProperty: 'maybe' } },
+      null,
+    );
+    expect(scores.readerSituation).toBeNull();
+  });
+
+  it('keeps the free-text answer on userAnswers for the narrative', () => {
+    const scores = computeWealthScores({ ...ctx, userAnswers: { concern: 'home loan' } }, null);
+    expect(scores.userAnswers).toEqual({ concern: 'home loan' });
+  });
+});

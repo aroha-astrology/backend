@@ -23,6 +23,7 @@ import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { buildReportRemedies } from './report-remedy-slots.js';
 import { computeReportVargas } from './report-vargas.js';
+import { readerSituationFromAnswers, type ReaderSituation } from './reader-situation.js';
 import { ashtakavargaFacts } from '../../chat-grounding.js';
 import type { ReportSharedFactsWithRemedies } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
@@ -65,6 +66,12 @@ export interface WealthScores extends Record<string, unknown>, ReportSharedFacts
   /** Whichever of `incomeSourceStrengths` scores highest (ties broken salaried > business >
    * property, the order most people's income realistically defaults to). */
   strongestIncomeSource: IncomeSource;
+  /** The reader's own answers about how they earn and whether they own property — null when
+   * they skipped the questions. The chart can only say which income house reads strongest; before
+   * this existed the narrative presented `strongestIncomeSource` as the reader's actual income,
+   * and a salaried reader with no property was told property is their wealth path. See
+   * reader-situation.ts. */
+  readerSituation: ReaderSituation | null;
 }
 
 /**
@@ -304,6 +311,8 @@ export function computeWealthScores(
     planetRemedies,
     vargas,
     ashtakavargaSummary,
+    userAnswers: ctx.userAnswers ?? null,
+    readerSituation: readerSituationFromAnswers(ctx.userAnswers),
     wealthScore,
     secondLordStrength,
     eleventhLordStrength,

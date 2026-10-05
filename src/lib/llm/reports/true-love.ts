@@ -43,6 +43,7 @@ import type {
   SectionGenerationProgress,
 } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
+import { readerContextLines, savedStatusLine } from './reader-context.js';
 
 const GROUNDING_RULE =
   'The romance score, partnership score, Venus placement, and love-vs-arranged tilt below are GIVEN FACTS, already computed by a deterministic algorithm. State them verbatim. Never recompute or contradict any of these numbers.';
@@ -54,6 +55,25 @@ const GROUNDING_RULE_2 =
 const SAFETY_RULE_2 =
   'This is advisory guidance for reflection, never a guarantee about WHEN or with WHOM romance will happen, and never a substitute for the reader\'s own choices. Use tendency language ("suggests", "classically associated with"). If a caution (e.g. Mangal Dosha) is listed, mention it calmly and factually, never alarmingly, and do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
 
+/**
+ * This report was written for someone still looking for love, and said so to everyone: a
+ * married reader was told how they will "recognize the one". The reader's own answer (and,
+ * failing that, the weaker status saved at sign-up) now decides which of the two reports they
+ * get. Sent with all three calls — every one of them can talk about meeting someone.
+ */
+const STATUS_RULE =
+  'Check the reader\'s relationship status in the facts before writing. If a "What the reader told us — relationship status today" line says they are married or in a relationship, this whole report is about the bond they ALREADY have: never write about meeting someone, a future partner, or "the one" still to come, and never ask whether love or arranged marriage lies ahead. Read the timing windows as periods when the existing relationship deepens or needs care; the partner archetype as the qualities they are drawn to in a partner (their own partner may or may not match it — claim neither); and the "what is blocking you / recognizing the one" section as what tends to get in the way between the two of them and the signs that the bond is on solid ground. If they are previously married (separated, divorced or widowed), never write as though they have not loved before and never assume they want a new partner — write about what love could look like from here. If they are single, or no status is given at all, write normally about finding love, without assuming anything about their past. If only a status saved on their profile is given, it may be out of date: lean on it lightly.';
+
+/** The reader's status lines for every True Love call. */
+function statusLines(scores: TrueLoveScores): string[] {
+  const told = readerContextLines(scores.readerSituation);
+  // The saved status is only worth offering when the reader did not answer at purchase.
+  const saved = scores.readerSituation?.relationship
+    ? null
+    : savedStatusLine(scores.savedRelationshipStatus);
+  return saved ? [...told, saved] : told;
+}
+
 function narrativeSystemPrompt(): string {
   return `You are writing a True Love Report for a mobile Vedic astrology app. The app already computed a romance score, a partnership score, whether Venus sits in a key house, and a love-vs-arranged tilt (0-10, higher = more love-marriage-leaning) using classical rules. Your job is ONLY to write the narrative explanation.
 
@@ -61,6 +81,7 @@ ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
 ${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
+${STATUS_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -91,6 +112,7 @@ ${GROUNDING_RULE_2}
 ${PLAIN_LANGUAGE_RULE}
 ${HUMAN_VOICE_RULE}
 ${SAFETY_RULE_2}
+${STATUS_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -116,6 +138,7 @@ ${GROUNDING_RULE_3}
 ${PLAIN_LANGUAGE_RULE}
 ${HUMAN_VOICE_RULE}
 ${SAFETY_RULE_3}
+${STATUS_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
@@ -301,7 +324,7 @@ export async function generateTrueLoveNarrative(
     if (cached) return cached;
     const group = await callAndParse(
       systemPrompt,
-      facts,
+      [facts, ...statusLines(scores)].join('\n'),
       scores.planetCondition,
       scores.vakriFacts,
       label,

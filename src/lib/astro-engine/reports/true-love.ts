@@ -22,6 +22,7 @@ import { buildReportHeader } from './report-header.js';
 import { buildReportRemedies } from './report-remedy-slots.js';
 import { computeReportVargas } from './report-vargas.js';
 import type { ReportSharedFactsWithRemedies } from './report-shared-facts.js';
+import { readerSituationFromAnswers } from './reader-situation.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
 export interface TrueLoveScores extends Record<string, unknown>, ReportSharedFactsWithRemedies {
@@ -52,6 +53,11 @@ export interface TrueLoveScores extends Record<string, unknown>, ReportSharedFac
    * positive — see the doc comment above `computeTrueLoveScores`'s own dosha/yoga block for
    * why 'dhana' was chosen as the yoga-type filter. */
   doshaYoga: DoshaYogaSummary;
+  /** Account-level `users.relationship_status`, written once at sign-up and never editable
+   * afterwards — so only a weak hint. The reader's own answer at purchase, when given, is on
+   * `readerSituation.relationship` and wins. Before either existed this report assumed every
+   * reader was still looking for a partner, married or not. */
+  savedRelationshipStatus: string | null;
 }
 
 /**
@@ -221,6 +227,9 @@ export function computeTrueLoveScores(
     lifeContext,
     planetRemedies,
     vargas,
+    userAnswers: ctx.userAnswers ?? null,
+    readerSituation: readerSituationFromAnswers(ctx.userAnswers),
+    savedRelationshipStatus: ctx.personRelationshipStatus ?? null,
     romanceScore,
     partnershipScore,
     venusInKeyHouse,

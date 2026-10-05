@@ -46,6 +46,7 @@ import type {
   SectionGenerationProgress,
 } from '../../../modules/reports/report-generator.types.js';
 import { reportFactsMessage } from './report-facts-message.js';
+import { readerContextLines } from './reader-context.js';
 
 const SAFETY_RULE =
   'This is advisory guidance for reflection, never a guarantee about if, when, or how many children a couple will have, and never a substitute for the reader\'s own choices or medical care. Use tendency language ("classically indicates", "tends to support", "the chart leans toward"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases beyond what is already given below.';
@@ -57,7 +58,15 @@ const NO_MEDICAL_CLAIMS_RULE =
   'CRITICAL: Beeja Sphuta and Kshetra Sphuta are astrological reproductive-CAPACITY indicators — NEVER call them a sperm/ovum/fertility test, and never imply they measure a real medical quantity (sperm count, ovarian reserve, uterine health). Likewise, any "obstruction" or node-affliction fact is a traditional indication of progeny obstruction — NEVER call it a miscarriage risk, a stillbirth risk, or any other medical outcome. Never deflect a progeny question to a doctor or fertility specialist, and never say astrology "cannot predict" this — read the chart directly and warmly, just never in clinical language.';
 
 const RETROSPECTIVE_RULE =
-  'The reproductive_capacity/child_sequence facts below may include a "children card" — present ONLY when the reader is 35 or older. When it is present, write about it as the classical chart CONFIRMING or reading back the children the reader most likely already has by this age — never as a prediction of an unborn child\'s sex or a countdown to a future birth.';
+  'The reproductive_capacity/child_sequence facts below may include a "children card" — present ONLY when the reader is 35 or older. When it is present, write about it as the classical chart CONFIRMING or reading back the children the reader most likely already has by this age — never as a prediction of an unborn child\'s sex or a countdown to a future birth. Unless the reader told us they have children, that they already have any is only likely, not known: say "any children you already have", never "your children".';
+
+/**
+ * Until the reader was asked, this report could only guess from age whether children already
+ * exist. A reader with no children was read their "existing" children back; a reader with two
+ * was told about a first child still to come.
+ */
+const CHILDREN_RULE =
+  'Check the facts for a "What the reader told us — children today" line; when given it is true and overrides any guess from age. NO children: never write as though any child exists — read the promise, the child sequence and the timing entirely as what the chart indicates ahead. One child: the first slot of the child sequence is that child, already born — never predict a "first child"; slots after it are further indications. Two or more children: the first slots are the children they already have; never write as though the couple is still waiting for a first child, and treat timing windows as relevant only to a possible further child. If no such line is given, do not assume either way.';
 
 function tendencyLine(t: {
   male: number;
@@ -118,6 +127,7 @@ ${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${PROVENANCE_RULE}
 ${NO_MEDICAL_CLAIMS_RULE}
+${CHILDREN_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
@@ -139,6 +149,7 @@ ${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${PROVENANCE_RULE}
 ${NO_MEDICAL_CLAIMS_RULE}
+${CHILDREN_RULE}
 ${RETROSPECTIVE_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
@@ -161,6 +172,7 @@ ${HUMAN_VOICE_RULE}
 ${SAFETY_RULE}
 ${PROVENANCE_RULE}
 ${NO_MEDICAL_CLAIMS_RULE}
+${CHILDREN_RULE}
 
 Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
@@ -357,7 +369,9 @@ export async function generateProgenyNarrative(
   ): Promise<ReportSection[]> {
     const cached = existing[index];
     if (cached) return cached;
-    const group = await callAndParse(systemPrompt, facts, condition, vakri, label);
+    // Every call can speak of children as born or unborn, so every call gets the reader's answer.
+    const withReader = [facts, ...readerContextLines(scores.readerSituation)].join('\n');
+    const group = await callAndParse(systemPrompt, withReader, condition, vakri, label);
     await progress?.onGroupComplete(group);
     return group;
   }
