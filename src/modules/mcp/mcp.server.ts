@@ -5,6 +5,7 @@ import {
   BIRTH_CHART_WIDGET_URI,
   PLAY_STORE_URL,
   WEB_APP_URL,
+  type McpHost,
   type ToolContext,
 } from './mcp.context.js';
 import { registerCalendarTools } from './tools/calendar-tools.js';
@@ -28,6 +29,20 @@ const INSTRUCTIONS =
   'Do not say the readings are accurate or certain, and do not compare Aroha with other tools or with AI. ' +
   'Do not predict death, serious illness or disaster, and do not present doshas as something to fear.';
 
+/**
+ * What Claude reads. Anthropic's review wants a server to describe itself, not
+ * to steer the answer or point at a product, so this says what the tools need
+ * and return and leaves the wording of the answer to Claude.
+ */
+const CLAUDE_INSTRUCTIONS =
+  'Aroha Astrology calculates Vedic (Jyotish) astrology: birth charts, kundli matching, panchang, auspicious dates, moon sign horoscopes and numerology. ' +
+  'A chart tool needs the birth date, birth time and birth place as the user gave them; a missing birth time is allowed and the result says which parts are then unreliable. ' +
+  'When a place is unclear or not found, the tool returns the places it could mean. ' +
+  'show_birth_chart only draws: it takes the ascendant sign and planet houses that generate_birth_chart returned. ' +
+  'Every figure is calculated by the Aroha engine with classical Jyotish rules (Lahiri ayanamsa, whole-sign houses). ' +
+  'Results are traditional astrology offered for reflection, not statements of fact and not medical, legal or financial advice; the tools do not predict death or illness. ' +
+  'Nothing the user enters is saved.';
+
 const WIDGET_MIME_TYPE = 'text/html;profile=mcp-app';
 /** The origin ChatGPT renders the card under. One per plugin. */
 const WIDGET_DOMAIN = 'https://www.arohaastrology.in';
@@ -39,7 +54,31 @@ function birthChartWidgetHtml(): string {
   return widgetHtml;
 }
 
-function registerBirthChartWidget(server: McpServer): void {
+/**
+ * The card's settings per host. ChatGPT wants its own origin and a list of
+ * sites the card may open. Claude accepts only an origin it derives from the
+ * connector address and shows an error in place of the card for any other, so
+ * none is named there; the card fetches nothing and does not need one.
+ */
+function widgetMeta(host: McpHost): Record<string, unknown> {
+  // The card is self-contained: it fetches nothing and loads nothing.
+  const csp = { connectDomains: [], resourceDomains: [] };
+  if (host === 'claude') return { ui: { prefersBorder: true, csp } };
+  return {
+    ui: { prefersBorder: true, domain: WIDGET_DOMAIN, csp },
+    'openai/widgetDescription':
+      'A North Indian birth chart showing the ascendant sign and each planet in its house, with a button to open Aroha.',
+    'openai/widgetPrefersBorder': true,
+    'openai/widgetDomain': WIDGET_DOMAIN,
+    'openai/widgetCSP': {
+      connect_domains: [],
+      resource_domains: [],
+      redirect_domains: REDIRECT_DOMAINS,
+    },
+  };
+}
+
+function registerBirthChartWidget(server: McpServer, host: McpHost): void {
   server.registerResource(
     'birth-chart-card',
     BIRTH_CHART_WIDGET_URI,
@@ -55,23 +94,7 @@ function registerBirthChartWidget(server: McpServer): void {
           uri: BIRTH_CHART_WIDGET_URI,
           mimeType: WIDGET_MIME_TYPE,
           text: birthChartWidgetHtml(),
-          _meta: {
-            ui: {
-              prefersBorder: true,
-              domain: WIDGET_DOMAIN,
-              // The card is self-contained: it fetches nothing and loads nothing.
-              csp: { connectDomains: [], resourceDomains: [] },
-            },
-            'openai/widgetDescription':
-              'A North Indian birth chart showing the ascendant sign and each planet in its house, with a button to open Aroha.',
-            'openai/widgetPrefersBorder': true,
-            'openai/widgetDomain': WIDGET_DOMAIN,
-            'openai/widgetCSP': {
-              connect_domains: [],
-              resource_domains: [],
-              redirect_domains: REDIRECT_DOMAINS,
-            },
-          },
+          _meta: widgetMeta(host),
         },
       ],
     }),
@@ -86,12 +109,12 @@ function registerBirthChartWidget(server: McpServer): void {
 export function buildMcpServer(base: ToolContext): McpServer {
   const server = new McpServer(
     { name: 'aroha-astrology', title: 'Aroha Astrology', version: '1.0.0' },
-    { instructions: INSTRUCTIONS },
+    { instructions: base.host === 'claude' ? CLAUDE_INSTRUCTIONS : INSTRUCTIONS },
   );
   registerChartTools(server, base);
   registerMatchTools(server, base);
   registerCalendarTools(server, base);
   registerReadingTools(server, base);
-  registerBirthChartWidget(server);
+  registerBirthChartWidget(server, base.host);
   return server;
 }

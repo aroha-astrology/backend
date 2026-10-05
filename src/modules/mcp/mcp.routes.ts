@@ -1,13 +1,16 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Hono, type Context } from 'hono';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { env } from '../../config/env.js';
-import { MCP_PATH, type ToolContext } from './mcp.context.js';
+import { CLAUDE_MCP_PATH, MCP_PATH, type McpHost, type ToolContext } from './mcp.context.js';
 import { buildMcpServer } from './mcp.server.js';
 
 /**
- * The ChatGPT plugin's endpoint (MCP over streamable HTTP) and the OpenAI
- * domain-verification file. Mounted at the app root, outside /v1: the /v1
+ * The ChatGPT plugin's endpoint (MCP over streamable HTTP), the same tools
+ * for Claude on their own path, and the OpenAI domain-verification file.
+ * Mounted at the app root, outside /v1: the /v1
  * baseline limiter buckets by network peer, and every ChatGPT request comes
  * from OpenAI's addresses, so it would pace all ChatGPT users as one. The
  * tools pace per person instead (mcp.tools.ts).
@@ -45,8 +48,8 @@ function liftSecuritySchemes(payload: unknown): void {
   }
 }
 
-mcpRouter.post(MCP_PATH, async (c) => {
-  const base: ToolContext = { meta: {}, peer: peerOf(c) };
+async function handleMcp(c: Context, host: McpHost): Promise<Response> {
+  const base: ToolContext = { host, meta: {}, peer: peerOf(c) };
 
   const server = buildMcpServer(base);
   // No session id and a plain JSON reply: any worker can answer any request.
@@ -66,10 +69,13 @@ mcpRouter.post(MCP_PATH, async (c) => {
     void transport.close();
     void server.close();
   }
-});
+}
+
+mcpRouter.post(MCP_PATH, (c) => handleMcp(c, 'chatgpt'));
+mcpRouter.post(CLAUDE_MCP_PATH, (c) => handleMcp(c, 'claude'));
 
 // Stateless: there is no server-to-client stream to open and no session to end.
-mcpRouter.on(['GET', 'DELETE'], MCP_PATH, (c) =>
+mcpRouter.on(['GET', 'DELETE'], [MCP_PATH, CLAUDE_MCP_PATH], (c) =>
   c.json(
     { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null },
     405,
@@ -84,3 +90,17 @@ mcpRouter.on(['GET', 'DELETE'], MCP_PATH, (c) =>
 mcpRouter.get('/.well-known/openai-apps-challenge', (c) =>
   env.OPENAI_APPS_CHALLENGE_TOKEN ? c.text(env.OPENAI_APPS_CHALLENGE_TOKEN) : c.notFound(),
 );
+
+/**
+ * The public help page for the Claude connector. Anthropic's directory asks
+ * for setup and usage instructions at a public address; it lives here so the
+ * connector needs nothing from the website or the apps.
+ */
+let claudeHelpHtml: string | null = null;
+mcpRouter.get('/connectors/claude', (c) => {
+  claudeHelpHtml ??= readFileSync(
+    join(process.cwd(), 'data', 'chatgpt', 'claude-connector.html'),
+    'utf8',
+  );
+  return c.html(claudeHelpHtml, 200, { 'Cache-Control': 'public, max-age=3600' });
+});

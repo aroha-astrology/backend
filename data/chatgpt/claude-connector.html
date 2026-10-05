@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aroha Astrology connector for Claude</title>
+<meta name="description" content="How to connect Aroha Astrology to Claude and what you can ask it: Vedic birth charts, kundli matching, panchang, auspicious dates, moon sign horoscopes and numerology.">
+<style>
+  :root { --bg: #fbfaf7; --text: #1c1b22; --muted: #5d5c66; --line: #e2dfd6; --card: #ffffff; --accent: #1e3a8a; --code: #f1eee6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14141a; --text: #ececf1; --muted: #a4a9b3; --line: #2a2a33; --card: #1b1b22; --accent: #e3c458; --code: #23232c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 32px; line-height: 1.2; margin: 0 0 8px; }
+  h2 { font-size: 22px; margin: 40px 0 10px; }
+  p { margin: 0 0 14px; }
+  .lead { color: var(--muted); font-size: 19px; }
+  a { color: var(--accent); }
+  ol, ul { padding-left: 22px; margin: 0 0 14px; }
+  li { margin-bottom: 6px; }
+  code { background: var(--code); padding: 2px 6px; border-radius: 6px; font: 15px/1.4 Consolas, "SF Mono", monospace; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 0 0 14px; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; }
+  th, td { text-align: left; padding: 10px 12px 10px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  th { border-top: 0; color: var(--muted); font-weight: 600; font-size: 15px; }
+  footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Aroha Astrology connector for Claude</h1>
+  <p class="lead">Vedic (Jyotish) astrology inside a Claude conversation: birth charts, kundli matching, panchang, auspicious dates, moon sign horoscopes and numerology, calculated by Aroha's own engine.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A Claude account. Connectors work on claude.ai, the Claude desktop app and the Claude mobile apps.</li>
+    <li>No Aroha account. There is nothing to sign in to and nothing to pay for.</li>
+    <li>For a birth chart: the date, time and place of birth. If you do not know the time, a chart is still made, and the result tells you which parts are then unreliable.</li>
+  </ul>
+
+  <h2>Connect it</h2>
+  <p><strong>From the directory.</strong> In Claude, open <strong>Customize &gt; Connectors</strong>, browse the directory, find <strong>Aroha Astrology</strong> and select <strong>Connect</strong>.</p>
+  <p><strong>By address.</strong> In Claude, open <strong>Customize &gt; Connectors</strong>, choose to add a custom connector, and enter this address exactly, with no slash at the end:</p>
+  <div class="card"><code>https://api.arohaastrology.in/mcp/claude</code></div>
+  <p>There is no sign-in step. In a chat, open the <strong>+</strong> menu, choose <strong>Connectors</strong> and turn Aroha Astrology on. The first time Claude uses a tool it asks for your permission.</p>
+
+  <h2>Things to ask</h2>
+  <ul>
+    <li>Make my Vedic birth chart and show it. I was born on 17 April 1990 at 2:30 pm in Pune, India.</li>
+    <li>What is my moon sign and nakshatra? I was born on 3 November 1992 at 6:10 am in Jaipur.</li>
+    <li>Check the kundli match for someone born 17 April 1990 at 2:30 pm in Pune and someone born 3 November 1992 at 6:10 am in Jaipur.</li>
+    <li>What is the panchang for Varanasi on 20 October 2026?</li>
+    <li>Find good dates for a housewarming in Pune between 1 and 30 November 2026.</li>
+    <li>What is this week's horoscope for Sagittarius moon sign?</li>
+    <li>What are the numerology numbers for Asha Rao, born 17 April 1990?</li>
+  </ul>
+
+  <h2>The tools</h2>
+  <p>All eight tools only calculate and read. None of them creates, changes, sends or deletes anything.</p>
+  <div class="scroll">
+  <table>
+    <tr><th>Tool</th><th>What it returns</th><th>What it needs</th></tr>
+    <tr><td>Generate birth chart</td><td>Ascendant, the nine planets by sign, house and nakshatra, the Vimshottari dasha timeline, doshas and yogas</td><td>Birth date, time and place</td></tr>
+    <tr><td>Show birth chart</td><td>The chart drawn as a North Indian diamond chart card</td><td>A chart from the tool above</td></tr>
+    <tr><td>Find moon sign</td><td>Moon sign (rashi), birth star (nakshatra), pada and nakshatra lord</td><td>Birth date, time and place</td></tr>
+    <tr><td>Check kundli match</td><td>The 36-point Ashtakoota score with its eight parts, and whether Nadi, Bhakoot or Mangal Dosha appears</td><td>Birth date, time and place of two people</td></tr>
+    <tr><td>Get panchang</td><td>Tithi, nakshatra, yoga, karana, sunrise and sunset, Rahu Kaal, Abhijit Muhurta and choghadiya</td><td>A date and a city. Without a city it uses New Delhi and says so</td></tr>
+    <tr><td>Find auspicious dates</td><td>The best dates in a range for an occasion, the best time of day, and dates to avoid</td><td>An occasion, a city and a date range</td></tr>
+    <tr><td>Get moon sign horoscope</td><td>The daily, weekly, monthly or yearly reading for a moon sign</td><td>A moon sign and a period</td></tr>
+    <tr><td>Get numerology numbers</td><td>Life path, Mulank, Bhagyank and the name numbers</td><td>A full name and a date of birth</td></tr>
+  </table>
+  </div>
+
+  <h2>How the results are worked out</h2>
+  <p>Every figure is calculated by Aroha's engine from the positions of the planets, with the Lahiri ayanamsa and whole-sign houses. Claude explains the result; it does not work out the chart itself.</p>
+  <p>Places are matched from a built-in list of about 70,000 cities and towns. A very small village may not be on it; give the nearest town instead. When a name could mean more than one place, the tool returns the options so you can pick one.</p>
+  <p>Readings are traditional astrology offered for reflection. They are not statements of fact and not medical, legal or financial advice. A kundli match is a traditional score, not advice on whether two people should marry.</p>
+
+  <h2>Your data</h2>
+  <ul>
+    <li>The connector receives only what a tool needs: birth date, time and place, a name for numerology, or a date and city.</li>
+    <li>These details are used to calculate the answer and are not saved or written to logs. The server records only which tool ran, whether it succeeded and how long it took.</li>
+    <li>A short-lived count of requests per network address is kept to prevent abuse.</li>
+    <li>The connector has no access to an Aroha account. It cannot see, change or delete saved profiles, purchases or anything else in the Aroha app.</li>
+    <li>Place names come from GeoNames, used under the CC BY 4.0 licence. No request leaves Aroha's server to look up a place.</li>
+  </ul>
+  <p>Aroha's full privacy policy is at <a href="https://www.arohaastrology.in/legal/privacy">arohaastrology.in/legal/privacy</a>.</p>
+
+  <h2>If something goes wrong</h2>
+  <ul>
+    <li><strong>The place is not found.</strong> Add the state or country, or use the nearest larger town.</li>
+    <li><strong>Too many requests.</strong> Wait a minute and ask again.</li>
+    <li><strong>The connector will not connect.</strong> Check the address has no slash at the end, then remove the connector and add it again.</li>
+  </ul>
+  <p>For anything else, write to us through <a href="https://www.arohaastrology.in/support">arohaastrology.in/support</a>.</p>
+
+  <footer>Aroha Astrology &middot; <a href="https://www.arohaastrology.in">arohaastrology.in</a> &middot; <a href="https://www.arohaastrology.in/legal/terms">Terms</a> &middot; <a href="https://www.arohaastrology.in/legal/privacy">Privacy</a></footer>
+</main>
+</body>
+</html>

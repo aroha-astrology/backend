@@ -3,7 +3,13 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '../../lib/logger.js';
 import { consumeRateLimit } from '../../middleware/rate-limit.js';
-import { errorResult, openInArohaUrl, readToolCallMeta, type ToolContext } from './mcp.context.js';
+import {
+  errorResult,
+  openInArohaUrl,
+  readToolCallMeta,
+  type McpHost,
+  type ToolContext,
+} from './mcp.context.js';
 
 /** Every tool here only computes: nothing is created, changed, sent or looked up on the open web. */
 export const READ_ONLY_ANNOTATIONS = {
@@ -18,6 +24,11 @@ const NO_SIGN_IN = [{ type: 'noauth' }];
 
 /** One person's ceiling across all tools. Generous for a conversation, tight for a script. */
 const CALLS_PER_MINUTE = 40;
+/**
+ * Claude sends no per-user id and calls from Anthropic's own addresses, so one
+ * address stands for many people. The ceiling there only stops a runaway.
+ */
+const CLAUDE_CALLS_PER_MINUTE = 600;
 
 /**
  * Said with every result. The figures come from the calculation engine, the
@@ -32,7 +43,9 @@ const HOW_CALCULATED =
 export const appLinkShape = {
   calculated: z
     .string()
-    .describe('How these figures were produced. Report them as given; you may tell the user this once.'),
+    .describe(
+      'How these figures were produced. Report them as given; you may tell the user this once.',
+    ),
   more_in_aroha: z
     .object({
       note: z.string().describe('What the Aroha app adds beyond this result'),
@@ -41,6 +54,20 @@ export const appLinkShape = {
     .describe(
       'Where the detailed reading is. Mention once, briefly, at the end of the answer. Never mention prices.',
     ),
+};
+
+/**
+ * The same two fields as Claude sees them. Anthropic's review rejects wording
+ * that tells the model how to behave, so these only say what the field holds.
+ */
+const claudeAppLinkShape = {
+  calculated: z.string().describe('How these figures were produced.'),
+  more_in_aroha: z
+    .object({
+      note: z.string().describe('What the Aroha app adds beyond this result'),
+      url: z.string().describe('Link to open Aroha'),
+    })
+    .describe('Where the same result can be explored in more detail.'),
 };
 
 export function appLink(ctx: ToolContext, note: string) {
@@ -67,10 +94,27 @@ type Args<I extends ZodRawShape> = z.objectOutputType<I, z.ZodTypeAny>;
 type Handler<I extends ZodRawShape> = (args: Args<I>, ctx: ToolContext) => Promise<CallToolResult>;
 
 async function overLimit(ctx: ToolContext): Promise<number | null> {
-  const who = ctx.meta.subject ? `s:${ctx.meta.subject}` : ctx.peer;
+  const claude = ctx.host === 'claude';
+  const who = claude ? `claude:${ctx.peer}` : ctx.meta.subject ? `s:${ctx.meta.subject}` : ctx.peer;
   const hit = await consumeRateLimit(`ratelimit:mcp-tool:${who}`, 60_000);
-  if (!hit || hit.count <= CALLS_PER_MINUTE) return null;
+  if (!hit || hit.count <= (claude ? CLAUDE_CALLS_PER_MINUTE : CALLS_PER_MINUTE)) return null;
   return Math.max(1, Math.ceil(hit.ttlMs / 1000));
+}
+
+/** What ChatGPT reads beside a tool: its sign-in rule, status lines and card. Claude needs only the card. */
+function toolMeta(
+  host: McpHost,
+  def: { invoking: string; invoked: string; widgetUri?: string },
+): Record<string, unknown> {
+  const card = def.widgetUri ? { ui: { resourceUri: def.widgetUri } } : {};
+  if (host === 'claude') return card;
+  return {
+    securitySchemes: NO_SIGN_IN,
+    'openai/toolInvocation/invoking': def.invoking,
+    'openai/toolInvocation/invoked': def.invoked,
+    ...card,
+    ...(def.widgetUri ? { 'openai/outputTemplate': def.widgetUri } : {}),
+  };
 }
 
 export function registerTool<I extends ZodRawShape, O extends ZodRawShape>(
@@ -85,23 +129,13 @@ export function registerTool<I extends ZodRawShape, O extends ZodRawShape>(
       title: def.title,
       description: def.description,
       inputSchema: def.input,
-      outputSchema: def.output,
+      outputSchema: base.host === 'claude' ? { ...def.output, ...claudeAppLinkShape } : def.output,
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        securitySchemes: NO_SIGN_IN,
-        'openai/toolInvocation/invoking': def.invoking,
-        'openai/toolInvocation/invoked': def.invoked,
-        ...(def.widgetUri
-          ? { ui: { resourceUri: def.widgetUri }, 'openai/outputTemplate': def.widgetUri }
-          : {}),
-      },
+      _meta: toolMeta(base.host, def),
     },
     // The SDK's callback type is a conditional over the schema generics that
     // TypeScript cannot resolve inside this generic wrapper.
-    (async (
-      args: Args<I>,
-      extra: { _meta?: Record<string, unknown> },
-    ): Promise<CallToolResult> => {
+    (async (args: Args<I>, extra: { _meta?: Record<string, unknown> }): Promise<CallToolResult> => {
       // The hints (device, coarse location, anonymous id) travel with each call.
       const ctx: ToolContext = { ...base, meta: readToolCallMeta(extra._meta) };
       const started = performance.now();

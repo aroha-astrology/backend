@@ -3,6 +3,17 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 /** The address ChatGPT connects to. Its origin can never change once the plugin is published. */
 export const MCP_PATH = '/mcp';
 
+/**
+ * The address Claude connects to (Anthropic's Connectors Directory). Same
+ * tools as ChatGPT's, on its own path because the two hosts read a server
+ * differently: Claude refuses a chart card that names ChatGPT's sandbox origin,
+ * rejects wording that tells the model what to say, and sends no per-user id.
+ */
+export const CLAUDE_MCP_PATH = '/mcp/claude';
+
+/** Which assistant is on the other end. Decided by the path, never by what the caller claims. */
+export type McpHost = 'chatgpt' | 'claude';
+
 export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.aroha.astrology';
 export const WEB_APP_URL = 'https://app.arohaastrology.in';
 
@@ -46,6 +57,7 @@ export function openInArohaUrl(userAgent: string | undefined): string {
 
 /** What a tool handler knows about the caller. */
 export interface ToolContext {
+  host: McpHost;
   meta: ToolCallMeta;
   /** Bucket for pacing when ChatGPT sent no anonymous user id. */
   peer: string;

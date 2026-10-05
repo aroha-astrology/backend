@@ -36,8 +36,8 @@ interface ToolListing {
 }
 
 let nextId = 1;
-async function rpc(method: string, params: Json = {}): Promise<Json> {
-  const res = await mcpRouter.request('/mcp', {
+async function rpc(method: string, params: Json = {}, path = '/mcp'): Promise<Json> {
+  const res = await mcpRouter.request(path, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -122,8 +122,12 @@ describe('ChatGPT plugin endpoint: tool listing', () => {
       expect(tool.inputSchema.type, tool.name).toBe('object');
       expect(tool.outputSchema.type, tool.name).toBe('object');
       expect(Array.isArray(tool.securitySchemes), tool.name).toBe(true);
-      expect(tool._meta['openai/toolInvocation/invoking']!.length, tool.name).toBeLessThanOrEqual(64);
-      expect(tool._meta['openai/toolInvocation/invoked']!.length, tool.name).toBeLessThanOrEqual(64);
+      expect(tool._meta['openai/toolInvocation/invoking']!.length, tool.name).toBeLessThanOrEqual(
+        64,
+      );
+      expect(tool._meta['openai/toolInvocation/invoked']!.length, tool.name).toBeLessThanOrEqual(
+        64,
+      );
     }
   });
 
@@ -232,7 +236,9 @@ describe('ChatGPT plugin endpoint: tools (real ephemeris engine)', () => {
     expect(match.score_band).toBe('low (under 14)');
     expect(match.nadi_dosha).toBe(true);
     expect(match.bhakoot_dosha).toBe(true);
-    expect(match.notes).toContain('Nadi koota scored 0 of 8, which the tradition calls Nadi Dosha.');
+    expect(match.notes).toContain(
+      'Nadi koota scored 0 of 8, which the tradition calls Nadi Dosha.',
+    );
     expect(match.about).toContain('not advice on whether two people should marry');
 
     // The answer describes the tradition; it does not judge the couple, speak of
@@ -372,5 +378,93 @@ describe('ChatGPT plugin endpoint: link to Aroha and pacing', () => {
     for (let i = 0; i < 45; i++) if ((await as('user-a')).isError) limited++;
     expect(limited).toBe(5);
     expect((await as('user-b')).isError).toBeFalsy();
+  });
+});
+
+describe('Claude connector endpoint', () => {
+  const claude = (method: string, params: Json = {}) => rpc(method, params, '/mcp/claude');
+  const numbers = { full_name: 'Asha Rao', birth_date: '1990-04-17' };
+
+  it('describes the server without telling Claude what to say or pointing at a product', async () => {
+    const body = await claude('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'claude-ai', version: '0' },
+    });
+    const instructions = body.result.instructions as string;
+    expect(instructions).toContain('Vedic');
+    expect(instructions).not.toMatch(/point to|mention|more_in_aroha|aroha app|never|do not say/i);
+  });
+
+  it('lists the same tools, each with a title and a read-only label', async () => {
+    const tools = (await claude('tools/list')).result.tools as ToolListing[];
+    const chatgpt = (await rpc('tools/list')).result.tools as ToolListing[];
+    expect(tools.map((t) => t.name)).toEqual(chatgpt.map((t) => t.name));
+    for (const tool of tools) {
+      expect(tool.title, tool.name).toBeTruthy();
+      expect(tool.name.length, tool.name).toBeLessThanOrEqual(64);
+      expect(tool.annotations.readOnlyHint, tool.name).toBe(true);
+      expect(tool.annotations.destructiveHint, tool.name).toBe(false);
+    }
+  });
+
+  it('keeps instructions to the model out of every tool definition', async () => {
+    const tools = (await claude('tools/list')).result.tools as ToolListing[];
+    for (const tool of tools) {
+      const schema = JSON.stringify(tool.outputSchema);
+      expect(schema, tool.name).toContain('more_in_aroha');
+      expect(schema, tool.name).not.toMatch(/mention|you may tell|never/i);
+      expect(JSON.stringify(tool), tool.name).not.toContain('openai/');
+    }
+  });
+
+  it('links only the drawing tool to the chart card', async () => {
+    const tools = (await claude('tools/list')).result.tools as ToolListing[];
+    const withCard = tools.filter((t) => t._meta?.ui?.resourceUri);
+    expect(withCard.map((t) => t.name)).toEqual(['show_birth_chart']);
+  });
+
+  it('serves the chart card without an origin, which Claude would refuse', async () => {
+    const body = await claude('resources/read', { uri: 'ui://aroha/birth-chart-v1.html' });
+    const [content] = body.result.contents;
+    expect(content.mimeType).toBe('text/html;profile=mcp-app');
+    expect(content._meta.ui).toEqual({
+      prefersBorder: true,
+      csp: { connectDomains: [], resourceDomains: [] },
+    });
+    expect(Object.keys(content._meta as object)).toEqual(['ui']);
+  });
+
+  it('calculates the same chart as the ChatGPT endpoint', async () => {
+    const viaClaude = (
+      await claude('tools/call', { name: 'generate_birth_chart', arguments: PUNE_BIRTH })
+    ).result;
+    const viaChatgpt = await call('generate_birth_chart', PUNE_BIRTH);
+    expect(viaClaude.isError).toBeFalsy();
+    expect(viaClaude.structuredContent.planets).toEqual(viaChatgpt.structuredContent.planets);
+    expect(viaClaude.structuredContent.more_in_aroha.url).toBe(WEB_APP_URL);
+  }, 30_000);
+
+  it("does not hold all Claude users to one person's ceiling", async () => {
+    let limited = 0;
+    for (let i = 0; i < 60; i++) {
+      const result = (
+        await claude('tools/call', { name: 'get_numerology_numbers', arguments: numbers })
+      ).result;
+      if (result.isError) limited++;
+    }
+    expect(limited).toBe(0);
+  });
+
+  it('refuses GET on the endpoint and serves the public help page', async () => {
+    const stream = await mcpRouter.request('/mcp/claude', { method: 'GET' });
+    expect(stream.status).toBe(405);
+
+    const help = await mcpRouter.request('/connectors/claude');
+    expect(help.status).toBe(200);
+    expect(help.headers.get('content-type')).toContain('text/html');
+    const html = await help.text();
+    expect(html).toContain('https://api.arohaastrology.in/mcp/claude');
+    expect(html).not.toMatch(/₹|rupee|price|subscri/i);
   });
 });
