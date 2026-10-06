@@ -36,6 +36,7 @@ import { bondsRouter } from './modules/bonds/bonds.routes.js';
 import { journalRouter } from './modules/journal/journal.routes.js';
 import { practiceRouter } from './modules/practice/practice.routes.js';
 import { passRouter } from './modules/pass/pass.routes.js';
+import { storiesRouter } from './modules/stories/stories.routes.js';
 import { yantraRouter } from './modules/yantra/yantra.routes.js';
 import { relocationRouter } from './modules/relocation/relocation.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
@@ -149,6 +150,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', journalRouter);
   app.route('/v1', practiceRouter);
   app.route('/v1', passRouter);
+  app.route('/v1', storiesRouter);
   app.route('/v1', yantraRouter);
   app.route('/v1', relocationRouter);
 

@@ -3118,3 +3118,52 @@ export const digitalProducts = pgTable(
 );
 
 export type DigitalProductRow = typeof digitalProducts.$inferSelect;
+
+/* -------------------------------------------------------------------------- */
+/* story_events — Daily Stories: who opened a story, who shared it and where   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per user, day, kind, story and share channel, with a running count
+ * (see modules/stories). A story viewed is counted once per user per day, so
+ * its count stays 1; a share option tapped again the same day adds to its
+ * row's count. The admin dashboard reads visitors and share clicks from here.
+ */
+export const storyEvents = pgTable(
+  'story_events',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The IST day the event happened on. */
+    eventDate: date('event_date').notNull(),
+    /** 'view' | 'share'. */
+    kind: text('kind').notNull(),
+    /** 'panchang' | 'hora' | 'deity' | 'gita'. */
+    storyId: text('story_id').notNull(),
+    /** Where a share went ('whatsapp', 'instagramStory', ...); '' for a view. */
+    channel: text('channel').notNull().default(''),
+    count: integer('count').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userDayEventUnique: uniqueIndex('story_events_user_day_event_unique').on(
+      table.userId,
+      table.eventDate,
+      table.kind,
+      table.storyId,
+      table.channel,
+    ),
+    createdAtIdx: index('story_events_created_at_idx').on(table.createdAt),
+  }),
+);
+
+export type StoryEventRow = typeof storyEvents.$inferSelect;
