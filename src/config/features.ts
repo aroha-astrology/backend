@@ -774,6 +774,16 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     tag: 'new',
   },
 
+  // Daily Stories (free; no AI cost, no new route).
+  // The Home avatar gets a story ring that glows until today's stories are seen: today's Panchang, the best Hora, the weekday's deity with its mantra, and a Gita verse, each with a Share button. Built in the frontend from GET /v1/astro/panchang and GET /v1/gita/verses.
+  {
+    key: 'home.dailyStories',
+    label: 'Daily Stories — story ring on the Home avatar (Panchang, Hora, Deity, Gita)',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+
   // Step 9 — Today's Practice (free).
   // A /practice page: today's horoscope mantra, 108 japs for your running dasha lord, the weekday's prayer, and a Lal Kitab remedy on hard Moon days, each with its reason, chanted on the app's mala. A plain streak, no points. Free, no AI cost.
   {
