@@ -4,8 +4,9 @@
 // Where two old traditions genuinely give different rules, the engine names
 // both and states which one it uses here, instead of picking one silently.
 // A field is added only when a real variant has been found in the texts and
-// recorded in docs/engine-audit/D-source-register.md; the values below are
-// what the code computed before the source audit began.
+// recorded in docs/engine-audit/D-source-register.md. A default is what the
+// code computed before the source audit began, except `saptavargajaPoints`,
+// whose default now follows BPHS 27.2-3.
 //
 // Per-user settings (ayanamsa, house system, lunar node) are NOT profile
 // fields: they are stored on each kundli and passed into the calculations.
@@ -27,11 +28,30 @@ export interface AstrologyRuleProfile {
   /** Chara-karaka scheme: seven planets, or eight with Rahu. */
   karakaScheme: 'seven' | 'eight';
   /**
-   * Points per dignity for Saptavargaja Bala. 'raman' is the set the code
-   * shipped with (45/30/22.5/15/7.5/3.75/1.875). The other set usually quoted
-   * (45/30/20/15/10/4/2) is added as a second value once its passage is read.
+   * Points per dignity for Saptavargaja Bala (moolatrikona, own, great
+   * friend, friend, neutral, enemy, great enemy).
+   *  - 'bphs': 45/30/20/15/10/4/2, the figures of BPHS 27.2-3 (register
+   *    BPHS-27.2-3; the Sanskrit gives them in the reversed-digit style).
+   *  - 'raman': 45/30/22.5/15/7.5/3.75/1.875, the set the code shipped with.
+   *    It has no old text behind it.
    */
-  saptavargajaPoints: 'raman';
+  saptavargajaPoints: 'bphs' | 'raman';
+  /**
+   * In the six divisions other than the sign (hora, drekkana, saptamsa,
+   * navamsa, dvadasamsa, trimsamsa) only the sign or the lord is known, not
+   * the degree. 'sign': a planet in its moolatrikona SIGN there counts as
+   * moolatrikona (the literal reading of "svatrikona"). 'rasi-only': the
+   * degree range applies in the sign chart only and elsewhere the sign is
+   * simply its own. BPHS does not say which.
+   */
+  moolatrikonaInVargas: 'sign' | 'rasi-only';
+  /**
+   * Whether the Sun's Ayana Bala and the Moon's Paksha Bala are doubled.
+   * 'none': the verses (BPHS 27.10-11, 27.15-17) do not double them.
+   * 'sun-ayana-moon-paksha': the translator's notes say they are, as other
+   * works do.
+   */
+  kalaDoubling: 'none' | 'sun-ayana-moon-paksha';
   /** How sunrise is defined for day-based rules. */
   sunrise: 'upper-limb-refracted';
 }
@@ -44,7 +64,9 @@ export const DEFAULT_PROFILE: AstrologyRuleProfile = {
   defaultNode: 'mean',
   dashaYearDays: 365.25,
   karakaScheme: 'seven',
-  saptavargajaPoints: 'raman',
+  saptavargajaPoints: 'bphs',
+  moolatrikonaInVargas: 'sign',
+  kalaDoubling: 'none',
   sunrise: 'upper-limb-refracted',
 };
 

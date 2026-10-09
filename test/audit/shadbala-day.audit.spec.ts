@@ -26,6 +26,8 @@ const day = (over: Partial<DayContext>): DayContext => ({
   fraction: 0.5,
   weekday: 0,
   hoursSinceSunrise: 6,
+  hoursFromSolarNoon: 0,
+  civilDate: { year: 2000, month: 1, day: 1 },
   basis: 'ephemeris',
   ...over,
 });
@@ -37,7 +39,7 @@ describe('[S1] weekday lord, hour lord and third of the day come from the real s
   it('Sunday, 2 h 31 min after sunrise, first third of the day: Sun, Mercury, Mercury', () => {
     // Hours from Sunday sunrise: 1 Sun, 2 Venus, 3 Mercury. Day thirds are
     // Mercury, Sun, Saturn.
-    expect(kalaLords(day({ weekday: 0, hoursSinceSunrise: 2.52, fraction: 0.214 }))).toEqual({
+    expect(kalaLords(day({ weekday: 0, hoursSinceSunrise: 2.52, fraction: 0.214 }))).toMatchObject({
       dinaLord: 'Sun',
       horaLord: 'Mercury',
       tribhagaLord: 'Mercury',
@@ -50,7 +52,7 @@ describe('[S1] weekday lord, hour lord and third of the day come from the real s
     // Night thirds are Moon, Venus, Mars.
     expect(
       kalaLords(day({ isDay: false, weekday: 3, hoursSinceSunrise: 16.2, fraction: 0.5 })),
-    ).toEqual({ dinaLord: 'Mercury', horaLord: 'Saturn', tribhagaLord: 'Venus' });
+    ).toMatchObject({ dinaLord: 'Mercury', horaLord: 'Saturn', tribhagaLord: 'Venus' });
   });
 
   it('the 25th hour from any weekday lord is the next weekday lord', () => {
@@ -80,7 +82,7 @@ describe('[S1] weekday lord, hour lord and third of the day come from the real s
     expect(ctx.weekday).toBe(0);
     expect(Math.abs(ctx.hoursSinceSunrise - 151 / 60)).toBeLessThan(0.06);
     expect(Math.abs(ctx.fraction - 151 / 706)).toBeLessThan(0.01);
-    expect(kalaLords(ctx)).toEqual({
+    expect(kalaLords(ctx)).toMatchObject({
       dinaLord: 'Sun',
       horaLord: 'Mercury',
       tribhagaLord: 'Mercury',
