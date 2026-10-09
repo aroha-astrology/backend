@@ -10,6 +10,7 @@ import {
   startVoiceSession,
   extendVoiceSession,
   endVoiceSessionForUser,
+  voiceMembership,
   VOICE_MAX_MINUTES,
 } from './voice.service.js';
 
@@ -146,6 +147,9 @@ const startRoute = createRoute({
 
 voiceRouter.openapi(startRoute, async (c) => {
   const user = c.get('user');
+  // The Pass before consent: someone who cannot call is shown the Pass lock
+  // straight away, not asked to agree to voice recording first and then told.
+  await voiceMembership(user.id);
   requireVoiceConsent(user);
 
   const { locale } = c.req.valid('json');
@@ -205,6 +209,7 @@ const extendRoute = createRoute({
 
 voiceRouter.openapi(extendRoute, async (c) => {
   const user = c.get('user');
+  await voiceMembership(user.id);
   requireVoiceConsent(user);
 
   const { id } = c.req.valid('param');

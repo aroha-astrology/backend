@@ -172,7 +172,7 @@ async function buildSessionInstruction(
  * with no period of their own, their free minutes are counted over the last
  * PASS_PERIOD_DAYS days.
  */
-async function voiceMembership(userId: string): Promise<{ freeSince: Date }> {
+export async function voiceMembership(userId: string): Promise<{ freeSince: Date }> {
   const pass = await passEntitlement(userId);
   if (!pass?.features.includes('voiceCall')) throw Errors.forbidden('PASS_REQUIRED');
 
