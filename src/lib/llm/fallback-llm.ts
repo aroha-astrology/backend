@@ -105,8 +105,14 @@ function cool(id: string, index: number, ms: number): void {
   cooldownUntil.set(`${id}:${index}`, Date.now() + ms);
 }
 
+// SWITCHED OFF 2026-10-09: the owner did not like the Nemotron answers (slower than
+// Gemini, ignored the Baba Ji tone). The code and tests are kept for later; set
+// this to true and un-skip test/gemini-client-fallback.spec.ts to bring it back.
+const FALLBACK_ENABLED = false;
+
 /** True when this call may use the fallback tier at all. Cheap and synchronous. */
 export function fallbackEligible(profile: GenerationProfile, messages: ChatMessage[]): boolean {
+  if (!FALLBACK_ENABLED) return false;
   if (!envList('FALLBACK_LLM_PROFILES').includes(profile.name)) return false;
   if (messages.some((m) => typeof m.content !== 'string')) return false; // images / parts
   return providers().length > 0;

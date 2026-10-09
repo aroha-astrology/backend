@@ -84,7 +84,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('free fallback tier', () => {
+// Skipped while FALLBACK_ENABLED is false in lib/llm/fallback-llm.ts.
+describe.skip('free fallback tier', () => {
   it('serves a chat call from NVIDIA before the paid key is used', async () => {
     const fetchMock = vi.fn().mockResolvedValue(reply('namaste from nemotron'));
     vi.stubGlobal('fetch', fetchMock);
