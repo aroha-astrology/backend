@@ -10,6 +10,7 @@ import type {
 
 import { isCombust } from '../calculations/planet-state.js';
 import { aspectsHouse, houseFrom, isKendraFrom } from '../rules/houses.js';
+import { isDayChart } from '../rules/day.js';
 
 import {
   ZODIAC_SIGNS,
@@ -503,14 +504,10 @@ function detectMahaBhagya(chartData: ChartData): Yoga {
   // MahaBhagya Yoga:
   //   Male: born in daytime, Sun/Moon/Lagna all in odd signs
   //   Female: born at night, Sun/Moon/Lagna all in even signs
-  // We determine day/night from Sun's house: houses 7-12 roughly correspond to day (Sun above horizon)
-  // More accurately: Sun in houses 1-6 = night (below horizon), 7-12 = day. But traditional:
-  // Day birth = Sun above horizon. In whole-sign, Sun in houses 7,8,9,10,11,12 = above. Actually:
-  // Lagna is the rising sign. Sun above horizon = houses 7 through 12 counting from lagna.
-  // Simpler: if Sun is in houses 7-12, it's daytime.
-
-  const sunHouse = getPlanetHouse('Sun', chartData);
-  const isDaytime = sunHouse >= 7 && sunHouse <= 12;
+  // Day birth = Sun above the horizon, read from the Ascendant degree (the
+  // Sun's whole-sign house alone is wrong for up to two hours either side of
+  // sunrise and sunset).
+  const isDaytime = isDayChart(chartData);
 
   const sunSign = getPlanetSign('Sun', chartData);
   const moonSign = getPlanetSign('Moon', chartData);

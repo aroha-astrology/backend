@@ -16,6 +16,7 @@
 //   DSY2 astro-tools/daily-synthesis.ts — weekday from the UTC date
 // =============================================================================
 
+import type { ChartData } from '../../shared/types/astrology.js';
 import { getSunriseSunset } from '../panchang/rise-set.js';
 
 const MS_PER_HOUR = 3_600_000;
@@ -91,4 +92,92 @@ export async function getAstroDay(
 /** Which of `parts` equal slices of the running day or night `at` falls in (0-based). */
 export function partOfSpan(day: AstroDay, parts: number): number {
   return Math.min(parts - 1, Math.floor(day.fraction * parts));
+}
+
+// -----------------------------------------------------------------------------
+// Day context — what the day-based strength rules read
+// -----------------------------------------------------------------------------
+
+export interface DayContext {
+  isDay: boolean;
+  /** 0-1 through the daylight span when `isDay`, through the night otherwise. */
+  fraction: number;
+  /** 0 = Sunday .. 6 = Saturday, of the day that opened at the last sunrise. */
+  weekday: number;
+  /** Hours elapsed since that sunrise. */
+  hoursSinceSunrise: number;
+  /** 'ephemeris': from the real sunrise at the place. 'chart': estimated from the Ascendant. */
+  basis: 'ephemeris' | 'chart';
+}
+
+export function dayContextAt(day: AstroDay, at: Date): DayContext {
+  return {
+    isDay: day.isDay,
+    fraction: day.fraction,
+    weekday: day.weekday,
+    hoursSinceSunrise: Math.max(0, (at.getTime() - day.sunrise.getTime()) / MS_PER_HOUR),
+    basis: 'ephemeris',
+  };
+}
+
+function normalize360(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+/**
+ * The Ascendant is the degree of the ecliptic on the eastern horizon, and the
+ * signs rise in order, so the half of the ecliptic already risen is the 180
+ * degrees BEHIND the Ascendant. The Sun lies on the ecliptic, so it is above
+ * the horizon exactly when it is in that half. (Geometric horizon and the
+ * Sun's centre: a few minutes off the refracted upper-limb sunrise.)
+ */
+export function sunAboveHorizon(ascendantLongitude: number, sunLongitude: number): boolean {
+  return normalize360(ascendantLongitude - sunLongitude) < 180;
+}
+
+/** Degrees of the ecliptic risen since the Sun rose, or null without an Ascendant degree. */
+function risenSinceSunrise(chart: ChartData): number | null {
+  const sun = chart.planets.find((p) => p.planet === 'Sun');
+  const asc = chart.ascendant;
+  if (!sun || !asc || !Number.isFinite(asc.signIndex) || !Number.isFinite(asc.degree)) return null;
+  return normalize360(asc.signIndex * 30 + asc.degree - sun.longitude);
+}
+
+/**
+ * Day or night for a chart whose place is not to hand. Uses the Ascendant
+ * degree; a hand-built chart without one falls back to the Sun's whole-sign
+ * house (7-12 = day), which is the same test at sign precision.
+ */
+export function isDayChart(chart: ChartData): boolean {
+  const risen = risenSinceSunrise(chart);
+  if (risen !== null) return risen < 180;
+  const sun = chart.planets.find((p) => p.planet === 'Sun');
+  return !sun || (sun.house >= 7 && sun.house <= 12);
+}
+
+/**
+ * An ESTIMATE of the day context from the chart alone, for callers that do not
+ * have the birth place. Day/night is exact (see `sunAboveHorizon`); the rest
+ * assumes the ecliptic rises evenly at 15 degrees an hour, which it does not:
+ * for Tokyo on 10 March 2024 at 08:30 it gives 3.7 hours since sunrise where
+ * the truth is 2.5. So the hour lord from this path is a guess and the third
+ * of the day is right only away from its boundaries. The weekday is the UTC
+ * weekday of the estimated local noon, which is the local civil date for any
+ * place within 12 hours of Greenwich. Pass the real context whenever the
+ * place is known.
+ */
+export function estimateDayContext(chart: ChartData, at: Date): DayContext {
+  const sun = chart.planets.find((p) => p.planet === 'Sun');
+  // Without an Ascendant degree only the Sun's house is known: take its middle.
+  const risen = risenSinceSunrise(chart) ?? (sun ? normalize360((1 - sun.house) * 30 + 15) : 0);
+  const isDay = risen < 180;
+  const hoursSinceSunrise = risen / 15;
+  const estimatedNoon = new Date(at.getTime() + (6 - hoursSinceSunrise) * MS_PER_HOUR);
+  return {
+    isDay,
+    fraction: (isDay ? risen : risen - 180) / 180,
+    weekday: estimatedNoon.getUTCDay(),
+    hoursSinceSunrise,
+    basis: 'chart',
+  };
 }

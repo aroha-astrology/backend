@@ -22,6 +22,8 @@ import {
   PLANET_ENEMIES,
 } from '@aroha-astrology/shared';
 
+import { estimateDayContext, type DayContext } from '../rules/day.js';
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -157,23 +159,32 @@ function getCompoundRelation(
   return 'neutral';
 }
 
-/**
- * Get the weekday from Julian Day number.
- * 0=Sunday, 1=Monday, etc.
- */
-function julianDayToWeekday(jd: number): number {
-  return Math.floor(jd + 1.5) % 7;
+/** The instant a chart was cast for, from its Julian Day (UT). */
+function instantOf(chartData: ChartData): Date {
+  return new Date((chartData.julianDay - 2440587.5) * 86_400_000);
 }
 
 /**
- * Approximate whether it's daytime based on Sun's house position.
- * Sun above horizon (houses 7-12 in natural order) = day.
- * Simplified: Sun in houses 7,8,9,10,11,12 = day.
+ * The planets that rule the weekday, the hour and the third of the day or
+ * night at the instant described by `day`.
+ *
+ * The weekday runs from sunrise to sunrise. The hour count keeps what this
+ * file has always done: equal one-hour steps from sunrise, the first hour
+ * belonging to the weekday lord. (The almanac cuts the day and the night into
+ * twelfths instead; which of the two the strength rule means is still to be
+ * read from the text, audit item S1b.)
  */
-function isDaytime(chartData: ChartData): boolean {
-  const sunPos = getPlanetPos(chartData, 'Sun');
-  if (!sunPos) return true;
-  return sunPos.house >= 7 && sunPos.house <= 12;
+export function kalaLords(day: DayContext): {
+  dinaLord: Planet;
+  horaLord: Planet;
+  tribhagaLord: Planet;
+} {
+  const dinaLord = WEEKDAY_LORDS[((day.weekday % 7) + 7) % 7];
+  const horaIndex = Math.min(23, Math.max(0, Math.floor(day.hoursSinceSunrise)));
+  const horaLord = HORA_SEQUENCE[(HORA_SEQUENCE.indexOf(dinaLord) + horaIndex) % 7];
+  const third = Math.min(2, Math.max(0, Math.floor(day.fraction * 3)));
+  const tribhagaLord = (day.isDay ? TRIBHAGA_DAY : TRIBHAGA_NIGHT)[third];
+  return { dinaLord, horaLord, tribhagaLord };
 }
 
 // =============================================================================
@@ -425,41 +436,10 @@ function calculatePakshaBala(planet: Planet, chartData: ChartData): number {
  * Jupiter always gets Tribhaga Bala.
  * Ruler of current third gets 60 Virupas.
  */
-function calculateTribhagaBala(planet: Planet, chartData: ChartData): number {
+function calculateTribhagaBala(planet: Planet, day: DayContext): number {
   // Jupiter always gets tribhaga bala
   if (planet === 'Jupiter') return 60;
-
-  const isDay = isDaytime(chartData);
-
-  // Approximate which third we're in based on Sun's house
-  // Sun in houses 10,11,12 → first third of day; 1,2,3 → last third
-  const sunPos = getPlanetPos(chartData, 'Sun');
-  if (!sunPos) return 0;
-
-  // Simplified: use sun's position to estimate time of day
-  // Houses 12,11,10 = morning; 9,8,7 = afternoon/evening  (reverse, since house 10 is noon)
-  let third: number;
-  if (isDay) {
-    // Day divided into thirds
-    const dayHouses = [12, 11, 10, 9, 8, 7];
-    const idx = dayHouses.indexOf(sunPos.house);
-    if (idx < 2) third = 0;
-    else if (idx < 4) third = 1;
-    else third = 2;
-
-    if (TRIBHAGA_DAY[third] === planet) return 60;
-  } else {
-    // Night divided into thirds
-    const nightHouses = [6, 5, 4, 3, 2, 1];
-    const idx = nightHouses.indexOf(sunPos.house);
-    if (idx < 2) third = 0;
-    else if (idx < 4) third = 1;
-    else third = 2;
-
-    if (TRIBHAGA_NIGHT[third] === planet) return 60;
-  }
-
-  return 0;
+  return kalaLords(day).tribhagaLord === planet ? 60 : 0;
 }
 
 /**
@@ -468,32 +448,23 @@ function calculateTribhagaBala(planet: Planet, chartData: ChartData): number {
  * Hora lord gets 60 Virupas.
  * Simplified: we calculate Dina + Hora bala.
  */
-function calculateVarshaMasaDinaHoraBala(planet: Planet, chartData: ChartData): number {
+function calculateVarshaMasaDinaHoraBala(
+  planet: Planet,
+  chartData: ChartData,
+  day: DayContext,
+): number {
   let total = 0;
   const jd = chartData.julianDay;
-  const weekday = julianDayToWeekday(jd);
+  const { dinaLord, horaLord } = kalaLords(day);
 
-  // Dina Bala: lord of the weekday
-  const dinaLord = WEEKDAY_LORDS[weekday];
+  // Dina Bala: lord of the weekday running since the last sunrise
   if (planet === dinaLord) {
     total += 45;
   }
 
-  // Hora Bala: Planetary hour
-  // The first hora of a day is ruled by the weekday lord.
-  // Each subsequent hora follows the sequence with an interval of 3
-  // (Sun, Venus, Mercury, Moon, Saturn, Jupiter, Mars and repeat).
-  // Simplified: we compute the hora index from JD fractional part.
-  const dayFraction = jd + 0.5 - Math.floor(jd + 0.5); // fraction since midnight UT
-  // Approximate sunrise as 6:00 UT (simplified)
-  const hoursSinceSunrise = (dayFraction - 0.25) * 24;
-  const horaIndex = Math.floor(((hoursSinceSunrise % 24) + 24) % 24);
-
-  // The weekday lord starts at sunrise; the sequence follows HORA_SEQUENCE
-  // Find the weekday lord's index in HORA_SEQUENCE
-  const startIndex = HORA_SEQUENCE.indexOf(dinaLord);
-  const currentHoraLord = HORA_SEQUENCE[(startIndex + horaIndex) % 7];
-  if (planet === currentHoraLord) {
+  // Hora Bala: lord of the hour, counted from that sunrise. The first hour
+  // belongs to the weekday lord and the rest follow HORA_SEQUENCE.
+  if (planet === horaLord) {
     total += 60;
   }
 
@@ -522,13 +493,11 @@ function calculateVarshaMasaDinaHoraBala(planet: Planet, chartData: ChartData): 
 /**
  * Total Kala Bala.
  */
-function calculateKalaBala(planet: Planet, chartData: ChartData): number {
-  const isDay = isDaytime(chartData);
-
-  const natonnata = calculateNatonnataBala(planet, isDay);
+function calculateKalaBala(planet: Planet, chartData: ChartData, day: DayContext): number {
+  const natonnata = calculateNatonnataBala(planet, day.isDay);
   const paksha = calculatePakshaBala(planet, chartData);
-  const tribhaga = calculateTribhagaBala(planet, chartData);
-  const varshEtc = calculateVarshaMasaDinaHoraBala(planet, chartData);
+  const tribhaga = calculateTribhagaBala(planet, day);
+  const varshEtc = calculateVarshaMasaDinaHoraBala(planet, chartData, day);
 
   return natonnata + paksha + tribhaga + varshEtc;
 }
@@ -675,10 +644,14 @@ function calculateDrikBala(planet: Planet, chartData: ChartData): number {
  * Calculate the complete Shadbala (six-fold strength) for all 7 planets.
  *
  * @param chartData - Complete chart data with planet positions and houses
+ * @param day - Day/night, weekday and time since sunrise at the birth place
+ *   (rules/day.ts `getAstroDay` + `dayContextAt`). When the place is not to
+ *   hand it is estimated from the chart's own Ascendant.
  * @returns Array of PlanetShadbala for Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn
  */
-export function calculateShadbala(chartData: ChartData): PlanetShadbala[] {
+export function calculateShadbala(chartData: ChartData, day?: DayContext | null): PlanetShadbala[] {
   const results: PlanetShadbala[] = [];
+  const dayContext = day ?? estimateDayContext(chartData, instantOf(chartData));
 
   for (const planet of SHADBALA_PLANETS) {
     const pos = getPlanetPos(chartData, planet);
@@ -686,7 +659,7 @@ export function calculateShadbala(chartData: ChartData): PlanetShadbala[] {
 
     const sthanaBala = calculateSthanaBala(planet, chartData);
     const digBala = calculateDigBala(planet, pos.house);
-    const kalaBala = calculateKalaBala(planet, chartData);
+    const kalaBala = calculateKalaBala(planet, chartData, dayContext);
     const cheshtaBala = calculateCheshtaBala(planet, chartData);
     const naisargikaBala = calculateNaisargikaBala(planet);
     const drikBala = calculateDrikBala(planet, chartData);

@@ -17,6 +17,7 @@
 import { SIGN_LORDS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import { getAspectedSigns } from '../../astro-tools/transit.js';
 import { calculateShadbala } from '../calculations/shadbala.js';
+import type { DayContext } from '../rules/day.js';
 import type { ChartData } from '@aroha-astrology/shared';
 
 function signLordByIndex(signIndex: number): string {
@@ -73,15 +74,17 @@ export interface VarsheshwaraResult {
  * @param munthaSignIndex the Muntha's sign index (0-11) -- see muntha.ts
  * @param varshaChart the cast Varsha Kundali (see solarReturn.ts)
  * @param isDayReturn whether the solar return is a day or night return (see solarReturn.ts)
+ * @param dayContext weekday, hour and day/night part at the return (see solarReturn.ts); estimated from the chart when absent
  */
 export function selectVarsheshwara(
   natalAscSignIndex: number,
   munthaSignIndex: number,
   varshaChart: ChartData,
   isDayReturn: boolean,
+  dayContext?: DayContext | null,
 ): VarsheshwaraResult {
   const varshaAscSignIndex = varshaChart.ascendant.signIndex;
-  const shadbala = calculateShadbala(varshaChart);
+  const shadbala = calculateShadbala(varshaChart, dayContext);
   const strengthOf = (planet: string): number =>
     shadbala.find((s) => s.planet === planet)?.totalVirupas ?? 0;
 

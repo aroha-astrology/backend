@@ -12,6 +12,7 @@
 import { calculatePlanetPositions, calculateChart } from '../calculations/planetPositions.js';
 import { jdFromDate, dateFromJd } from '../../astro-tools/transit-events.js';
 import type { ChartData, Ayanamsa, HouseSystem } from '@aroha-astrology/shared';
+import { dayContextAt, getAstroDay, isDayChart, type DayContext } from '../rules/day.js';
 
 async function sunLongitudeAt(jd: number, ayanamsa: Ayanamsa): Promise<number> {
   const positions = await calculatePlanetPositions(jd, ayanamsa);
@@ -71,17 +72,19 @@ export interface SolarReturnResult {
   chart: ChartData;
   /** Whether the return instant falls in local daytime (sunrise-sunset) at the birth location — needed for Dina-Ratri Pati and Punya Saham, which use different rules for day vs. night returns. */
   isDayReturn: boolean;
+  /** Weekday, hour and day/night part at the return, from the real sunrise there; null where the Sun does not rise or set that day. */
+  dayContext: DayContext | null;
 }
 
 /**
  * Finds the solar return instant for `targetYear` and casts the Varsha
  * Kundali (annual chart) for it, at the birth location.
  *
- * `isDayReturn` is derived from the annual chart's OWN Sun house placement
- * (houses 7-12 = above the horizon = day; 1-6 = below = night) rather than a
- * separate sunrise/sunset lookup — the Ascendant/Descendant axis IS the
- * horizon in a chart already cast for this exact instant and location, so
- * this needs no additional ephemeris call.
+ * `isDayReturn` comes from the real sunrise and sunset at that place. Where
+ * those do not exist (polar day or night) it falls back to the chart's own
+ * horizon: the Sun is up when it lies in the 180 degrees behind the Ascendant
+ * degree. (The Sun's whole-sign house alone, used before, is wrong for up to
+ * two hours either side of sunrise and sunset.)
  */
 export async function computeSolarReturn(
   natalSunLongitude: number,
@@ -110,9 +113,15 @@ export async function computeSolarReturn(
     houseSystem,
   );
 
-  const sunPlanet = chart.planets.find((p) => p.planet === 'Sun');
-  const sunHouse = sunPlanet?.house ?? 1;
-  const isDayReturn = sunHouse >= 7 && sunHouse <= 12;
+  // Local mean time is enough to pick the civil date the sunrise belongs to.
+  let dayContext: DayContext | null = null;
+  try {
+    const astroDay = await getAstroDay(exactAt, latitude, longitude, longitude / 15);
+    dayContext = astroDay ? dayContextAt(astroDay, exactAt) : null;
+  } catch {
+    dayContext = null;
+  }
+  const isDayReturn = dayContext ? dayContext.isDay : isDayChart(chart);
 
-  return { jd, exactAt, chart, isDayReturn };
+  return { jd, exactAt, chart, isDayReturn, dayContext };
 }

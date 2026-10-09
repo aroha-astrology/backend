@@ -12,6 +12,7 @@ import {
   detectCurrentSadeSati,
 } from '../../lib/astro-engine/index.js';
 import { computeReducedAshtakavarga } from '../../lib/astro-engine/calculations/ashtakavarga-shodhana.js';
+import { dayContextAt, getAstroDay, type DayContext } from '../../lib/astro-engine/rules/day.js';
 import {
   CALCULATION_VERSION,
   EPHEMERIS_VERSION,
@@ -416,7 +417,18 @@ async function runGeneration(
     // yoga narrated identically whether its karaka was strong or collapsing.
     // Persisted here (not recomputed per chat turn) because it is a pure
     // function of the natal chart — it can never change for a given birth.
-    const shadbala = tryCompute('shadbala', () => calculateShadbala(chart));
+    //
+    // The weekday lord, hour lord and day/night parts need the real sunrise at
+    // the birth place. Where the Sun does not rise or set that day (or the
+    // lookup fails) Shadbala estimates them from the chart's own Ascendant.
+    let birthDay: DayContext | null = null;
+    try {
+      const astroDay = await getAstroDay(birthDate, inputs.lat, inputs.lng, inputs.tzOffset);
+      birthDay = astroDay ? dayContextAt(astroDay, birthDate) : null;
+    } catch (err) {
+      logger.warn({ err }, 'birth-day sunrise lookup failed (Shadbala uses its estimate)');
+    }
+    const shadbala = tryCompute('shadbala', () => calculateShadbala(chart, birthDay));
 
     // Divisional charts. The engine always computed these on demand but never
     // stored them, so `chartData.divisionalCharts` arrived undefined and the
