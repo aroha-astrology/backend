@@ -12,8 +12,8 @@ import { calculateKarana } from './karana';
 import { calculateRahuKaal, calculateGulikaKaal, calculateYamagandaKaal } from './rahuKaal';
 import { calculateRegionalMonths } from './regional';
 import { calculateChoghadiya } from './choghadiya';
-import { calculateHora } from './hora';
-import { getMoonriseMoonset } from './rise-set';
+import { buildHoraSchedule } from './hora';
+import { getMoonriseMoonset, getSunriseSunset } from './rise-set';
 import { getTithiBoundary, getNakshatraBoundary } from './boundaries';
 import { dateToJulianDay } from '../calculations/planetPositions.core';
 
@@ -23,7 +23,7 @@ export { calculatePanchangYoga } from './yoga';
 export { calculateKarana } from './karana';
 export { calculateRahuKaal, calculateGulikaKaal, calculateYamagandaKaal } from './rahuKaal';
 export { calculateChoghadiya } from './choghadiya';
-export { calculateHora } from './hora';
+export { calculateHora, buildHoraSchedule } from './hora';
 export { calculateRegionalMonths } from './regional';
 export { getMoonriseMoonset } from './rise-set';
 export { getTithiBoundary, getNakshatraBoundary } from './boundaries';
@@ -119,11 +119,17 @@ export function calculateFullPanchang(
   sunLong: number,
   moonLong: number,
   timezoneOffsetHours: number,
+  /** Real sunrise/sunset ("HH:MM" local) when the caller has them; see calculateFullPanchangAsync. */
+  sunTimes?: { sunrise: string; sunset: string },
 ): PanchangData {
   const dayOfWeek = date.getDay(); // 0=Sunday
 
-  // Estimate sunrise and sunset
-  const { sunrise, sunset } = estimateSunriseSunset(date, latitude, longitude, timezoneOffsetHours);
+  // Rahu Kaal, Gulika, Yamaganda, Abhijit, Choghadiya and Hora are all cut
+  // from these two times. The closed-form estimate is minutes off (no
+  // refraction, rough declination), so it is only the fallback for the
+  // synchronous callers that cannot wait for the ephemeris (audit item PN1).
+  const { sunrise, sunset } =
+    sunTimes ?? estimateSunriseSunset(date, latitude, longitude, timezoneOffsetHours);
 
   // Calculate the five limbs (pancha-anga)
   const tithi = calculateTithi(moonLong, sunLong);
@@ -154,7 +160,7 @@ export function calculateFullPanchang(
   });
 
   const choghadiyaAll = calculateChoghadiya(sunrise, sunset, dayOfWeek);
-  const hora = buildHoraList(sunrise, dayOfWeek);
+  const hora = buildHoraSchedule(sunrise, sunset, dayOfWeek);
 
   return {
     tithi,
@@ -208,6 +214,17 @@ export async function calculateFullPanchangAsync(
   moonLong: number,
   timezoneOffsetHours: number,
 ): Promise<PanchangData> {
+  // The real Swiss Ephemeris sunrise and sunset for this place and day; null
+  // only where the Sun does not rise or set, and then the estimate stands.
+  const real = await getSunriseSunset(date, latitude, longitude, timezoneOffsetHours);
+  const sunTimes =
+    real.sunrise && real.sunset
+      ? {
+          sunrise: localClock(real.sunrise, timezoneOffsetHours),
+          sunset: localClock(real.sunset, timezoneOffsetHours),
+        }
+      : undefined;
+
   const base = calculateFullPanchang(
     date,
     latitude,
@@ -215,6 +232,7 @@ export async function calculateFullPanchangAsync(
     sunLong,
     moonLong,
     timezoneOffsetHours,
+    sunTimes,
   );
 
   // Reference moment for the boundary searches: local noon on `date`, same
@@ -262,13 +280,8 @@ function formatMinToTime(totalMinutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/** All 24 hora slots for the day, one hour each, starting at sunrise. */
-function buildHoraList(sunrise: string, dayOfWeek: number) {
-  const sunriseMin = parseTimeToMin(sunrise);
-  const list = [];
-  for (let i = 0; i < 24; i++) {
-    const slotTime = formatMinToTime(sunriseMin + i * 60);
-    list.push(calculateHora(sunrise, slotTime, dayOfWeek));
-  }
-  return list;
+/** Local "HH:MM" of an instant, rounded to the minute. */
+function localClock(instant: Date, timezoneOffsetHours: number): string {
+  const local = new Date(instant.getTime() + timezoneOffsetHours * 3_600_000 + 30_000);
+  return `${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}`;
 }

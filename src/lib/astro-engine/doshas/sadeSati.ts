@@ -2,6 +2,7 @@
 import type { SadeSati, ZodiacSign } from '@aroha-astrology/shared';
 import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import { dateToJulianDay, calculatePlanetPositions } from '../calculations/planetPositions';
+import { detectRealSadeSati } from './saturnPhaseTimeline';
 
 /**
  * Sade Sati Detection
@@ -32,7 +33,12 @@ function getSignIndexFromLongitude(longitude: number): number {
   return Math.floor(longitude / 30) % 12;
 }
 
-export function detectSadeSati(moonSign: ZodiacSign, saturnLongitude: number): SadeSati {
+export function detectSadeSati(
+  moonSign: ZodiacSign,
+  saturnLongitude: number,
+  /** The real window from Saturn's sign changes, when the caller has it (see detectCurrentSadeSati). */
+  realWindow?: { start: Date; end: Date },
+): SadeSati {
   const moonSignIndex = getSignIndex(moonSign);
   const saturnSignIndex = getSignIndexFromLongitude(saturnLongitude);
   const saturnSign = ZODIAC_SIGNS[saturnSignIndex];
@@ -96,6 +102,13 @@ export function detectSadeSati(moonSign: ZodiacSign, saturnLongitude: number): S
     }
   }
 
+  // The arithmetic above assumes 912 days per sign and no retrograde, and can
+  // be more than a year out (audit item DS6). The real window wins when given.
+  if (active && realWindow) {
+    startDate = realWindow.start;
+    endDate = realWindow.end;
+  }
+
   let description = '';
   if (active) {
     const phaseLabel: Record<'rising' | 'peak' | 'setting', string> = {
@@ -105,7 +118,7 @@ export function detectSadeSati(moonSign: ZodiacSign, saturnLongitude: number): S
     };
     const range =
       startDate && endDate
-        ? ` Estimated to run from ${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)}.`
+        ? ` ${realWindow ? 'It runs' : 'Estimated to run'} from ${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)}.`
         : '';
     description = `Saturn is transiting ${saturnSign}, marking the ${phaseLabel[phase as 'rising' | 'peak' | 'setting']} of Sade Sati for your Moon in ${moonSign}.${range}`;
   }
@@ -144,5 +157,23 @@ export async function getCurrentSaturnLongitude(asOf: Date = new Date()): Promis
 /** Sade Sati detection using Saturn's live transiting position (see `getCurrentSaturnLongitude`). */
 export async function detectCurrentSadeSati(moonSign: ZodiacSign, asOf?: Date): Promise<SadeSati> {
   const saturnLongitude = await getCurrentSaturnLongitude(asOf);
-  return detectSadeSati(moonSign, saturnLongitude);
+  const estimate = detectSadeSati(moonSign, saturnLongitude);
+  if (!estimate.active) return estimate;
+
+  // Scan from the start of the UTC day so every reader on the same day shares
+  // the same ephemeris cache entries. Nine years back covers the longest window.
+  const at = asOf ?? new Date();
+  const day = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
+  try {
+    const real = await detectRealSadeSati(getSignIndex(moonSign), day, 9, 9);
+    if (real.windowStart && real.windowEnd) {
+      return detectSadeSati(moonSign, saturnLongitude, {
+        start: real.windowStart,
+        end: real.windowEnd,
+      });
+    }
+  } catch {
+    // An ephemeris failure leaves the estimate in place rather than no answer.
+  }
+  return estimate;
 }
