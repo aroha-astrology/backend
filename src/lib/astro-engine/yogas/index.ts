@@ -1770,13 +1770,27 @@ function detectKhadrga(chartData: ChartData): Yoga {
 }
 
 function detectKedarNath(chartData: ChartData): Yoga {
-  // Kedara Yoga: All seven planets in four houses
+  // Kedara Yoga: All seven planets in four houses (Bṛhat Jātaka 12.10,
+  // register BJ-12.10). The verse ends "anyān pūrvam uktān vihāya": a chart
+  // that is already one of the figures named before it is that figure and
+  // not Kedara. With four houses those are the four angles (Vajra, Yava,
+  // Kamala), the four succedent or the four cadent houses (Vāpī, 12.5), and
+  // four houses in a row from an angle (Yūpa, Iṣu, Śakti, Daṇḍa, 12.7).
   const housesOccupied = new Set<number>();
   for (const p of SEVEN_PLANETS) {
     const h = getPlanetHouse(p, chartData);
     if (h > 0) housesOccupied.add(h);
   }
-  const present = housesOccupied.size === 4;
+  const isExactly = (houses: number[]) => houses.every((h) => housesOccupied.has(h));
+  const earlierFigure =
+    housesOccupied.size === 4 &&
+    (isExactly([1, 4, 7, 10]) ||
+      isExactly([2, 5, 8, 11]) ||
+      isExactly([3, 6, 9, 12]) ||
+      [1, 4, 7, 10].some((start) =>
+        isExactly([0, 1, 2, 3].map((step) => ((start - 1 + step) % 12) + 1)),
+      ));
+  const present = housesOccupied.size === 4 && !earlierFigure;
 
   let strength = 0;
   if (present) {

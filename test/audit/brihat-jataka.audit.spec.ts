@@ -10,7 +10,13 @@ import {
 } from '@aroha-astrology/shared';
 import { aspectedOrdinals } from '../../src/lib/astro-engine/rules/houses.js';
 import { BENEFIC_POINTS } from '../../src/lib/astro-engine/calculations/ashtakavarga.js';
-import { calculateD30 } from '../../src/lib/astro-engine/charts/divisionalCharts.js';
+import {
+  calculateD2,
+  calculateD3,
+  calculateD9,
+  calculateD12,
+  calculateD30,
+} from '../../src/lib/astro-engine/charts/divisionalCharts.js';
 import { detectAllYogas } from '../../src/lib/astro-engine/yogas/index.js';
 
 // =============================================================================
@@ -113,6 +119,47 @@ describe('[BJ 1.7] the thirtieth-parts and their lords', () => {
     expect(lordAt(1, 16)).toBe('Jupiter');
     expect(lordAt(1, 22)).toBe('Saturn');
     expect(lordAt(1, 27)).toBe('Mars');
+  });
+});
+
+describe('[BJ 1.6, 1.11] halves, thirds, ninths and twelfths of a sign', () => {
+  const at = (signIndex: number, degree: number) => signIndex * 30 + degree;
+  const name = (signIndex: number) => ZODIAC_SIGNS[signIndex];
+
+  it('1.11 horā: Sun then Moon in an odd sign, Moon then Sun in an even sign', () => {
+    // mārtaṇḍa-indvor ayuji sama-bhe candra-bhānvoś ca hore
+    expect(name(calculateD2(at(0, 5)))).toBe('Leo'); // Aries, first half: the Sun
+    expect(name(calculateD2(at(0, 20)))).toBe('Cancer'); // second half: the Moon
+    expect(name(calculateD2(at(1, 5)))).toBe('Cancer'); // Taurus, first half: the Moon
+    expect(name(calculateD2(at(1, 20)))).toBe('Leo');
+  });
+
+  it('1.11 dreṣkāṇa: the sign itself, its 5th and its 9th', () => {
+    // dreṣkāṇāḥ syuḥ sva-bhavana-suta-tri-trikoṇa-adhipānām
+    expect(name(calculateD3(at(0, 5)))).toBe('Aries');
+    expect(name(calculateD3(at(0, 15)))).toBe('Leo');
+    expect(name(calculateD3(at(0, 25)))).toBe('Sagittarius');
+    expect(name(calculateD3(at(1, 25)))).toBe('Capricorn');
+  });
+
+  it('1.6 navāṃśa: the signs begin with Aries, Capricorn, Libra, Cancer, and so their trines', () => {
+    // aja-mṛga-tauli-candrabhavana-ādi nava-aṃśa-vidhiḥ
+    expect(name(calculateD9(at(0, 1)))).toBe('Aries');
+    expect(name(calculateD9(at(1, 1)))).toBe('Capricorn');
+    expect(name(calculateD9(at(2, 1)))).toBe('Libra');
+    expect(name(calculateD9(at(3, 1)))).toBe('Cancer');
+    expect(name(calculateD9(at(4, 1)))).toBe('Aries'); // Leo, a trine of Aries
+    expect(name(calculateD9(at(7, 1)))).toBe('Cancer'); // Scorpio, a trine of Cancer
+    // The second ninth of Aries (3 deg 20 min to 6 deg 40 min) is Taurus.
+    expect(name(calculateD9(at(0, 4)))).toBe('Taurus');
+  });
+
+  it('1.6 dvādaśāṃśa: counted from the sign itself', () => {
+    // bhavana-sama-aṃśaka-adhipatayaḥ sva-gṛhāt kramaśaḥ
+    expect(name(calculateD12(at(0, 1)))).toBe('Aries');
+    expect(name(calculateD12(at(0, 3)))).toBe('Taurus'); // second part of 2.5 degrees
+    expect(name(calculateD12(at(1, 1)))).toBe('Taurus');
+    expect(name(calculateD12(at(4, 29)))).toBe('Cancer'); // Leo, twelfth part
   });
 });
 
@@ -316,6 +363,51 @@ describe('[BJ 12.2] Rajju, Musala and Nala go with movable, fixed and dual signs
     });
     expect(present(chart, 'Nala Yoga')).toBe(true);
     expect(present(chart, 'Rajju Yoga')).toBe(false);
+  });
+});
+
+describe('[BJ 12.10] Kedara: all the planets in four signs, unless it is an earlier figure', () => {
+  // ... pāśaḥ kedāraḥ śūla-yogo yugaṃ ca golaś ca anyān pūrvam uktān vihāya:
+  // seven, six, five, FOUR, three, two, one signs occupied, "leaving aside
+  // the others named before". Aries Lagna, so sign index + 1 is the house.
+
+  it('four scattered houses (2, 3, 6, 9): Kedara', () => {
+    const chart = chartWith({
+      Sun: 1,
+      Moon: 2,
+      Mars: 5,
+      Mercury: 1,
+      Jupiter: 8,
+      Venus: 2,
+      Saturn: 5,
+    });
+    expect(present(chart, 'Kedara Yoga')).toBe(true);
+  });
+
+  it('four houses in a row from the Lagna (1, 2, 3, 4) is Yūpa (12.7), not Kedara', () => {
+    const chart = chartWith({
+      Sun: 0,
+      Moon: 1,
+      Mars: 2,
+      Mercury: 0,
+      Jupiter: 3,
+      Venus: 1,
+      Saturn: 2,
+    });
+    expect(present(chart, 'Kedara Yoga')).toBe(false);
+  });
+
+  it('the four angles (1, 4, 7, 10) are Vajra, Yava or Kamala (12.5), not Kedara', () => {
+    const chart = chartWith({
+      Sun: 0,
+      Moon: 3,
+      Mars: 6,
+      Mercury: 0,
+      Jupiter: 9,
+      Venus: 3,
+      Saturn: 6,
+    });
+    expect(present(chart, 'Kedara Yoga')).toBe(false);
   });
 });
 

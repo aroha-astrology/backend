@@ -45,11 +45,19 @@ read and in agreement.
 - **Does not say:** which SIGN a thirtieth-part falls in. The verse names lords only.
 - **Supports:** VCH-D30 (lords and spans), confidence 92. The sign the engine draws for D30 is ANCIENT SOURCE NOT VERIFIED.
 
+### BJ-1.6 — Navāṃśa and Dvādaśāṃśa
+
+- **Sanskrit (1.06b):** aja-mṛga-tauli-candrabhavana-ādi nava-aṃśa-vidhir bhavana-sama-aṃśaka-adhipatayaḥ sva-gṛhāt kramaśaḥ
+- **Translation:** "… and the several signs (of the Zodiac beginning from Aries) commence respectively with the Navamsas of Mesha, Makara, Tula and Kataka." Translator's note: "the Trikona signs of Mesha, Simha, Dhanus begin with the Navamsa of Mesha. Vrishabha, Kanya, Makara begin with the Navamsa of Makara. Mithuna, Tula, Kumbha begin with the Navamsa of Tula; and Karki, Vrischika, Meena begin with the Navamsa of Kataka."
+- **Says:** the ninths of Aries, Taurus, Gemini, Cancer (and of their trines) begin with Aries, Capricorn, Libra, Cancer; the twelfths are counted from the sign itself, in order.
+- **Supports:** VCH-D9, VCH-D12, confidence 92. The engine's rules are identical.
+
 ### BJ-1.11 — Horā and Dreṣkāṇa
 
 - **Sanskrit (1.11b):** mārtaṇḍa-indvor ayuji sama-bhe candra-bhānvoś ca hore dreṣkāṇāḥ syuḥ sva-bhavana-suta-tri-trikoṇa-adhipānām
-- **Says:** in an odd sign the two horās belong to the Sun then the Moon, in an even sign to the Moon then the Sun; the three dreṣkāṇas belong to the lords of the sign itself, the 5th and the 9th from it. 1.12 records a different scheme held by "some" (horā of the sign lord then the 11th lord; dreṣkāṇa of the sign, 12th and 11th lords).
-- **Supports:** VCH-D2, VCH-D3. Confidence 75 (Sanskrit read; translation of this verse not yet compared).
+- **Translation:** "The two horas of the odd signs are respectively the Solar and Lunar horas, and the two of the even signs are respectively the Lunar and Solar horas. The lords of the Drekkanas (of a particular sign) are respectively the lords of that sign, the 5th sign and the 9th sign."
+- **Says also (1.12):** a different scheme held by "some": horā of the sign's lord then of the 11th lord; dreṣkāṇa of the sign, its 12th and its 11th.
+- **Supports:** VCH-D2, VCH-D3, confidence 92. The engine's rules are identical to 1.11; the 1.12 variant is not offered.
 
 ### BJ-1.13 — exaltation and debilitation
 
@@ -112,6 +120,13 @@ read and in agreement.
 - **Sanskrit (12.04):** āsanna-kendra-bhavana-dvayagair gadā-ākhyas tanu-astageṣu śakaṭaṃ vihagaḥ kha-bandhvoḥ / śṛṅgāṭakaṃ navama-pañcama-lagna-saṃsthair lagna-anyagair halam iti pravadanti taj-jñāḥ
 - **Says:** planets in two neighbouring angles: Gadā; in the 1st and 7th: Śakaṭa; in the 10th and 4th: Vihaga; in the 9th, 5th and 1st: Śṛṅgāṭaka; in such trines away from the Lagna: Hala.
 - **Note:** this is the only Śakaṭa in the Bṛhat Jātaka, and it is a figure of all the planets. The Moon-and-Jupiter "Shakata" the engine reports is not in this text: ANCIENT SOURCE NOT VERIFIED for that rule. Confidence 75.
+
+### BJ-12.10 — yogas by the number of signs occupied (with 12.5 and 12.7)
+
+- **Sanskrit (12.10):** saṃkhyā-yogāḥ syuḥ sapta sapta-ṛkṣa-saṃsthair eka-apāyād vallakī dāminī ca / pāśaḥ kedāraḥ śūla-yogo yugaṃ ca golaś ca anyān pūrvam uktān vihāya
+- **Translation:** "If all the planets occupy any seven signs the yoga is known as Vallaki; if they occupy any six signs, the yoga is known as Damini; if they occupy any five signs it is known as Pasa; if any four signs, it is known as Kedara; if any three signs it is known as Sula; if any two signs, it is known as Yuga; and if they occupy a single sign, the yoga is known as Gola. When any of these Sankhya yogas are at the same time any other Nabhasa yogas, they are to be treated as belonging to the latter class." Translator's note: "the Vajra, Yava, Kamala and Vapi yogas described in stanza 5 as well as the Yupa, Ishu, Sakti and Danda yogas described in stanza 7 shall not be confounded with the Kedara yogas described in this stanza."
+- **12.5 (translation):** "if all the planets occupy the four Kendras the yoga is known as Kamala, and if they occupy the four Panaphara or the four Apoklima houses, the yoga is known as Vapi." **12.7:** all the planets in the four signs from the ascendant: Yupa; likewise from the 4th, 7th and 10th: Ishu, Sakti, Danda.
+- **Supports:** YGA-KED, confidence 92. The engine reported Kedara for any four houses, including those earlier figures. Fixed. Only Kedara of the seven is in the engine; the other six and the figures of 12.4 to 12.9 are not implemented.
 
 ### BJ-13.2 — Adhi Yoga
 
