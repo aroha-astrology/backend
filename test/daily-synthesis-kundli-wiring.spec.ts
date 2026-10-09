@@ -4,8 +4,6 @@ import {
   synthesizeDailyForecastFromKundli,
   synthesizeDailyForecast,
 } from '../src/lib/astro-tools/daily-synthesis.js';
-import { calculateTithi } from '../src/lib/astro-engine/panchang/tithi.js';
-import { dateToJulianDay, calculatePlanetPositions } from '../src/lib/astro-engine/index.js';
 
 const CHART_WITH_MOON = {
   ascendant: { signIndex: 4 },
@@ -110,37 +108,18 @@ describe('daily-synthesis: Ashtakavarga/Kakshya/SAV are no longer silently dead 
   });
 });
 
-describe('daily-synthesis: Panchaka now uses a real tithi, not a nakshatra-derived proxy', () => {
-  it("panchaka's rawSum matches calculateTithi's real tithi number, not the old (nakshatra+1)%30+1 proxy", async () => {
-    const asOf = '2026-08-01T12:00:00.000Z';
-    const jd = await dateToJulianDay(2026, 8, 1, 12, 0, 0);
-    const positions = (await calculatePlanetPositions(jd)) as unknown as Array<
-      Record<string, unknown>
-    >;
-    const sun = positions.find((p) => p.planet === 'Sun')!;
-    const moon = positions.find((p) => p.planet === 'Moon')!;
-    const realTithi = calculateTithi(moon.longitude as number, sun.longitude as number);
-    const transitMoonNakIdx =
-      (moon.nakshatraIndex as number | undefined) ??
-      Math.floor((moon.longitude as number) / (360 / 27));
-    const oldProxyTithi = ((transitMoonNakIdx + 1) % 30) + 1;
-
-    // Sanity: for this fixture date, the real tithi and the old buggy proxy
-    // actually differ — otherwise this test couldn't distinguish the fix.
-    expect(realTithi.number).not.toBe(oldProxyTithi);
-
-    const natalAscSignIdx = 4;
-    const vara = new Date(asOf).getUTCDay() + 1;
+// The Panchaka block that stood here locked a sum built from the BIRTH Lagna.
+// Panchaka needs the sign rising at the moment judged, so the daily reading no
+// longer carries one (audit item DSY2, test/audit/daily-panchaka.audit.spec.ts).
+describe('daily-synthesis: no Panchaka in a whole-day reading', () => {
+  it('reports panchaka as null', async () => {
     const result = await synthesizeDailyForecast({
       natalPlanets: [],
-      natalAscSignIdx,
+      natalAscSignIdx: 4,
       natalMoonSignIdx: 3,
       natalMoonNakIdx: 14,
-      asOf,
+      asOf: '2026-08-01T12:00:00.000Z',
     });
-    const panchaka = result.panchaka as { rawSum: number };
-    const expectedRawSum =
-      realTithi.number + vara + (transitMoonNakIdx + 1) + (natalAscSignIdx + 1);
-    expect(panchaka.rawSum).toBe(expectedRawSum);
+    expect(result.panchaka).toBeNull();
   });
 });

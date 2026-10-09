@@ -26,6 +26,7 @@ import {
   calculateAshtakoota,
   calculateVimshottariDasha,
 } from '../src/lib/astro-engine/index.js';
+import { dayContextAt, getAstroDay } from '../src/lib/astro-engine/rules/day.js';
 
 import type { ZodiacSign } from '../src/lib/shared/types/astrology.js';
 
@@ -152,7 +153,16 @@ async function runEvaluation(births: SyntheticBirth[]): Promise<RunSnapshot> {
       'lahiri',
       'W',
     );
-    const shadbala = calculateShadbala(chart);
+    // As kundli generation does: weekday, hour and day/night from the real
+    // sunrise at the birth place (null where the Sun does not rise that day).
+    const birthInstant = new Date(
+      Date.UTC(b.year, b.month - 1, b.day, b.hour, b.minute) - b.tz * 3_600_000,
+    );
+    const astroDay = await getAstroDay(birthInstant, b.lat, b.lon, b.tz);
+    const shadbala = calculateShadbala(
+      chart,
+      astroDay ? dayContextAt(astroDay, birthInstant) : null,
+    );
     const yogas = detectAllYogas(chart);
     const doshas = analyzeAllDoshas(chart, FROZEN_SATURN_TRANSIT);
 

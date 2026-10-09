@@ -875,17 +875,6 @@ export function synthesisFacts(synthesis: DailySynthesisResult | null | undefine
     );
   }
 
-  const panchaka = synthesis.panchaka as
-    | { isDangerous?: boolean; name?: string | null; danger?: string | null; safe?: string | null }
-    | undefined;
-  if (panchaka?.isDangerous) {
-    facts.push(
-      `Today falls in a Panchaka caution window${panchaka.name ? ` (${panchaka.name})` : ''}${
-        panchaka.danger ? `: ${panchaka.danger}` : ''
-      }${panchaka.safe ? `. Favorable instead for: ${panchaka.safe}` : ''}.`,
-    );
-  }
-
   // Never flag a challenge above without pairing it with a mitigation — see
   // synthesizeDailyForecast's remedies field (astro-tools/daily-synthesis.ts).
   for (const r of synthesis.remedies) {

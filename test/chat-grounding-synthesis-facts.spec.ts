@@ -13,7 +13,7 @@ function baseSynthesis(overrides: Partial<DailySynthesisResult> = {}): DailySynt
     kakshya: undefined,
     lunar: undefined,
     doubleTransit: [],
-    panchaka: undefined,
+    panchaka: null,
     savTransit: {},
     remedies: [],
     ...overrides,
@@ -111,8 +111,8 @@ describe('chat-grounding: synthesisFacts', () => {
     expect(facts.some((f) => f.includes('Jupiter and Saturn') && f.includes('5, 9'))).toBe(true);
   });
 
-  it('surfaces a Panchaka caution only when isDangerous is true', () => {
-    const danger = synthesisFacts(
+  it('never surfaces a Panchaka caution (it was computed from the birth Lagna: audit DSY2)', () => {
+    const stored = synthesisFacts(
       baseSynthesis({
         panchaka: {
           isDangerous: true,
@@ -120,11 +120,8 @@ describe('chat-grounding: synthesisFacts', () => {
           danger: 'fire risk',
           safe: 'indoor work',
         },
-      }),
+      } as never),
     );
-    expect(danger.some((f) => f.includes('Agni Panchaka') && f.includes('fire risk'))).toBe(true);
-
-    const safe = synthesisFacts(baseSynthesis({ panchaka: { isDangerous: false } }));
-    expect(safe.some((f) => f.includes('Panchaka'))).toBe(false);
+    expect(stored.some((f) => f.includes('Panchaka'))).toBe(false);
   });
 });

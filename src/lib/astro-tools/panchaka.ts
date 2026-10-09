@@ -4,6 +4,12 @@
 // Panchaka is computed from the sum of tithi, vara (weekday), nakshatra, and
 // lagna indices, reduced modulo 9. Certain remainders indicate specific
 // dangers traditionally used for muhurta (election) screening.
+//
+// The Lagna here is the sign RISING at the moment being judged, never a birth
+// Lagna. Nothing calls this at present: the daily reading used to, with the
+// birth Lagna, and was taken off it (audit item DSY2). ANCIENT SOURCE NOT
+// VERIFIED for the sum, the divisor and the five remainders; do not wire this
+// to anything user-facing until the passage is in the source register.
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -94,7 +100,7 @@ export function computePanchaka(
   tithiIndex: number,
   varaIndex: number,
   nakshatraIndex: number,
-  lagnaIndex: number
+  lagnaIndex: number,
 ): PanchakaResult {
   const rawSum = tithiIndex + varaIndex + nakshatraIndex + lagnaIndex;
   const remainder = rawSum % 9;
