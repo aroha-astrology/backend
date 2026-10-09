@@ -1,11 +1,10 @@
 import { z } from 'zod';
 import type { ChartData, DoshaAnalysis, VimshottariDasha, Yoga } from '@aroha-astrology/shared';
 import {
-  analyzeAllDoshas,
+  analyzeAllDoshasAt,
   calculateChart,
   calculateVimshottariDasha,
   detectAllYogas,
-  getCurrentSaturnLongitude,
 } from '../../lib/astro-engine/index.js';
 import { logger } from '../../lib/logger.js';
 import { placeLabel, type BirthMoment } from './birth.js';
@@ -130,11 +129,21 @@ function doshasOf(d: DoshaAnalysis): BirthChart['doshas'] {
       d.mangal.description,
     ),
     row('Kaal Sarp Dosha', d.kaalSarp.present, d.kaalSarp.severity, d.kaalSarp.description),
-    row('Sade Sati', d.sadeSati.active, d.sadeSati.active ? d.sadeSati.phase : 'none', d.sadeSati.description),
+    row(
+      'Sade Sati',
+      d.sadeSati.active,
+      d.sadeSati.active ? d.sadeSati.phase : 'none',
+      d.sadeSati.description,
+    ),
     row('Pitra Dosha', d.pitra.present, d.pitra.severity, d.pitra.description),
     row('Kemadruma Dosha', d.kemDruma.present, d.kemDruma.severity, d.kemDruma.description),
     row('Grahan Dosha', d.grahan.present, d.grahan.severity, d.grahan.description),
-    row('Guru Chandal Dosha', d.guruChandal.present, d.guruChandal.severity, d.guruChandal.description),
+    row(
+      'Guru Chandal Dosha',
+      d.guruChandal.present,
+      d.guruChandal.severity,
+      d.guruChandal.description,
+    ),
   ];
 }
 
@@ -162,7 +171,10 @@ function tryCompute<T>(label: string, fn: () => T): T | null {
 
 /** Shapes an engine chart plus its enrichments into the tool output. */
 export function toBirthChart(parts: {
-  birth: Pick<BirthMoment, 'date' | 'time' | 'timeKnown'> & { placeLabel: string; timezone: string };
+  birth: Pick<BirthMoment, 'date' | 'time' | 'timeKnown'> & {
+    placeLabel: string;
+    timezone: string;
+  };
   chart: ChartData;
   dasha: VimshottariDasha | null;
   doshas: DoshaAnalysis | null;
@@ -230,12 +242,13 @@ export async function computeBirthChart(birth: BirthMoment): Promise<BirthChart>
     calculateVimshottariDasha(moon?.longitude ?? 0, birth.instant),
   );
 
-  // Sade Sati needs Saturn's position today, not at birth (see kundli.service.ts).
-  let saturnNow = 0;
+  // Sade Sati is read from Saturn's position today, with its dates from
+  // Saturn's real sign changes (see doshas/index.ts analyzeAllDoshasAt).
+  let doshas: DoshaAnalysis | null = null;
   try {
-    saturnNow = await getCurrentSaturnLongitude();
+    doshas = await analyzeAllDoshasAt(chart);
   } catch (err) {
-    logger.warn({ err }, 'mcp chart: live Saturn lookup failed (Sade Sati skipped)');
+    logger.warn({ err }, 'mcp chart: dosha analysis failed (skipped)');
   }
 
   return toBirthChart({
@@ -248,7 +261,7 @@ export async function computeBirthChart(birth: BirthMoment): Promise<BirthChart>
     },
     chart,
     dasha,
-    doshas: tryCompute('doshas', () => analyzeAllDoshas(chart, saturnNow)),
+    doshas,
     yogas: tryCompute('yogas', () => detectAllYogas(chart)),
   });
 }

@@ -11,7 +11,7 @@ export { detectGuruChandalDosha } from './guruChandal';
 
 import { detectMangalDosha } from './mangalDosha';
 import { detectKaalSarpDosha } from './kaalSarp';
-import { detectSadeSati } from './sadeSati';
+import { detectCurrentSadeSati, detectSadeSati } from './sadeSati';
 import { detectPitraDosha } from './pitraDosha';
 import { detectKemDrumaDosha } from './kemDrumaDosha';
 import { detectGrahanDosha } from './grahanDosha';
@@ -38,4 +38,22 @@ export function analyzeAllDoshas(chartData: ChartData, saturnLongitude: number):
     grahan: detectGrahanDosha(chartData),
     guruChandal: detectGuruChandalDosha(chartData),
   };
+}
+
+/**
+ * `analyzeAllDoshas` for a moment in time (now by default). Sade Sati is a
+ * TRANSIT condition: it is read from where Saturn is at `asOf`, never from
+ * the birth chart's Saturn, and its dates come from Saturn's real sign changes
+ * (`detectCurrentSadeSati`), not the 912-days-a-sign estimate.
+ */
+export async function analyzeAllDoshasAt(
+  chartData: ChartData,
+  asOf?: Date,
+): Promise<DoshaAnalysis> {
+  const moon = chartData.planets.find((p) => p.planet === 'Moon');
+  const moonSign: ZodiacSign = moon ? moon.sign : 'Aries';
+  // Saturn's place is not needed for the six natal doshas; 0 is a placeholder
+  // for the Sade Sati slot, which is replaced on the next line.
+  const natal = analyzeAllDoshas(chartData, 0);
+  return { ...natal, sadeSati: await detectCurrentSadeSati(moonSign, asOf) };
 }

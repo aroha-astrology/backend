@@ -36,3 +36,43 @@ describe("[DS6] Sade Sati dates come from Saturn's real sign changes", () => {
     expect(result.startDate).toBeNull();
   }, 60_000);
 });
+
+describe('[DS6] the combined dosha read takes Sade Sati from the sky at that moment', () => {
+  it('a chart whose birth Saturn sits on its Moon is not in Sade Sati when Saturn is elsewhere', async () => {
+    // Moon and BIRTH Saturn both in Leo. On 1 January 2026 Saturn is in Pisces,
+    // the 8th from Leo: no Sade Sati. Reading the birth Saturn as the transit
+    // (as the swarm profiler did) reports the peak phase for life.
+    const { analyzeAllDoshasAt } = await import('../../src/lib/astro-engine/doshas/index.js');
+    const planet = (name: string, signIndex: number, house: number) => ({
+      planet: name,
+      sign: ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo'][signIndex] ?? 'Aries',
+      signIndex,
+      signDegree: 10,
+      longitude: signIndex * 30 + 10,
+      latitude: 0,
+      speed: 1,
+      isRetrograde: false,
+      house,
+    });
+    const chart = {
+      planets: [
+        planet('Sun', 0, 1),
+        planet('Moon', 4, 5),
+        planet('Mars', 2, 3),
+        planet('Mercury', 0, 1),
+        planet('Jupiter', 1, 2),
+        planet('Venus', 1, 2),
+        planet('Saturn', 4, 5),
+        planet('Rahu', 3, 4),
+        { ...planet('Ketu', 3, 10), sign: 'Capricorn', signIndex: 9, longitude: 280 },
+      ],
+      houses: [],
+      ascendant: { sign: 'Aries', signIndex: 0, degree: 10 },
+      ayanamsa: 'lahiri',
+      ayanamsaValue: 24,
+      julianDay: 2451545,
+    };
+    const doshas = await analyzeAllDoshasAt(chart as never, new Date(Date.UTC(2026, 0, 1)));
+    expect(doshas.sadeSati.active).toBe(false);
+  }, 60_000);
+});

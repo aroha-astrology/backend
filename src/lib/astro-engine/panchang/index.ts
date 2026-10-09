@@ -214,16 +214,7 @@ export async function calculateFullPanchangAsync(
   moonLong: number,
   timezoneOffsetHours: number,
 ): Promise<PanchangData> {
-  // The real Swiss Ephemeris sunrise and sunset for this place and day; null
-  // only where the Sun does not rise or set, and then the estimate stands.
-  const real = await getSunriseSunset(date, latitude, longitude, timezoneOffsetHours);
-  const sunTimes =
-    real.sunrise && real.sunset
-      ? {
-          sunrise: localClock(real.sunrise, timezoneOffsetHours),
-          sunset: localClock(real.sunset, timezoneOffsetHours),
-        }
-      : undefined;
+  const sunTimes = await getLocalSunTimes(date, latitude, longitude, timezoneOffsetHours);
 
   const base = calculateFullPanchang(
     date,
@@ -278,6 +269,25 @@ function formatMinToTime(totalMinutes: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * The real Swiss Ephemeris sunrise and sunset for a place and civil day, as
+ * local "HH:MM". Undefined only where the Sun does not rise or set that day;
+ * `calculateFullPanchang` then falls back to its estimate.
+ */
+export async function getLocalSunTimes(
+  date: Date,
+  latitude: number,
+  longitude: number,
+  timezoneOffsetHours: number,
+): Promise<{ sunrise: string; sunset: string } | undefined> {
+  const real = await getSunriseSunset(date, latitude, longitude, timezoneOffsetHours);
+  if (!real.sunrise || !real.sunset) return undefined;
+  return {
+    sunrise: localClock(real.sunrise, timezoneOffsetHours),
+    sunset: localClock(real.sunset, timezoneOffsetHours),
+  };
 }
 
 /** Local "HH:MM" of an instant, rounded to the minute. */
