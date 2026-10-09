@@ -280,6 +280,13 @@ Read in the translation (E-BPHS-ENG, vol 2, chapter 91, "Remedies from birth in 
 
 The names Kaal Sarp, Grahan Dosha and Pitra Dosha were searched in the BPHS translation (both volumes) and in the Phaladeepika: no occurrence (searched 2026-10-09 in the OCR text). The Bṛhat Jātaka and the Bṛhat Saṃhitā were read earlier and have none.
 
+### Choghadiya and the day's sunrise convention (PN3, PN4): no old text found
+
+- **Searched** (2026-10-09, OCR text of the BPHS translation, both volumes, and of the Phaladeepika): no occurrence of Choghadiya (or Chaughadia). The Bṛhat Jātaka and the Bṛhat Saṃhitā have none (read earlier). A web search for a classical source of the 16-period Choghadiya returned only popular almanac pages, none of them quoting a text, and a page that describes the method gives no table. So the Choghadiya is a regional almanac convention with no old text opened.
+- **Against the engine (PN3).** The day sequence cycles Udveg, Char, Labh, Amrit, Kaal, Shubh, Rog from a per-weekday start; the night sequence uses the same seven-name cycle from a different starting name for each weekday. Whether published almanacs order the night differently (the plan item says three weekdays start wrong) could not be settled from any old text and is not settled here. **Not changed.** The label becomes "ANCIENT SOURCE NOT VERIFIED".
+- **Against the engine (PN4).** The Panchang screen reads the tithi, nakshatra, yoga and karana from the sky at local noon of the date, and the weekday from the civil date; the sunrise (udaya) tithi is the other common convention and is not in a text opened. The Abhijit muhurta is the 8th of 15 daytime parts and the Wednesday exception is not applied on the Panchang screen. **Not changed**: no old text to follow; both are recorded as Aroha conventions.
+- **Supports:** PAN-CHO, PAN-TTH, PAN-NAK, PAN-YOG, PAN-KAR, PAN-ABH: no source (label only).
+
 ### BJ-9.1-9.7 — Aṣṭakavarga: the auspicious places from each contributor
 
 - **Sanskrit:** the seven verses 9.01 to 9.07, e.g. 9.01 "svād arkaḥ prathama-āya-bandhu-nidhana-dvy-ājñā-tapo-dyūnago vakrāt svād iva tadvad eva ravijāc chukrāt smara-antya-ariṣu / jīvād dharma-suta-āya-śatruṣu daśa-try-āya-arigaḥ śītagor eṣv eva antya-tapaḥ-suteṣu ca budhāl lagnāt sa-bandhv-antyagaḥ". Each verse is transcribed, phrase by phrase, beside its numbers in `test/audit/brihat-jataka.audit.spec.ts`. Four places where the e-text's word division or spelling had to be resolved are marked there: 9.03b `karmāny.alābha` read karma-antya-lābha (10, 12, 11); 9.05a `aṣṭama.dāya` read aṣṭa-mada-āya (8, 7, 11); 9.05b `āya.ratha` read āya-artha (11, 2); 9.06b `vyago` read vyayago (12). Each reading gives the verse the count the chapter total needs.

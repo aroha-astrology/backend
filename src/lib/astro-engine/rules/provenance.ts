@@ -408,7 +408,7 @@ const REGISTRY: ProvenanceEntry[] = [
   {
     featureId: 'DOH-PIT',
     featureName: 'Pitra Dosha',
-    tag: 'MODERN_ASTROLOGICAL',
+    tag: 'UNVERIFIED',
     sourceIds: [],
     note: 'Not in any text opened. The BPHS father curse (register BPHS-83.20-30) is eleven sonlessness combinations, none of them these indicators',
   },
@@ -416,7 +416,7 @@ const REGISTRY: ProvenanceEntry[] = [
   {
     featureId: 'DOH-GRH',
     featureName: 'Grahan Dosha',
-    tag: 'MODERN_ASTROLOGICAL',
+    tag: 'UNVERIFIED',
     sourceIds: [],
     note: 'The BPHS rule is birth at an actual eclipse (register BPHS-91); the conjunction with Rahu or Ketu is a later reading',
   },
@@ -613,7 +613,13 @@ const REGISTRY: ProvenanceEntry[] = [
   // -------------------------------------------------------------------------
   // Panchanga
   // -------------------------------------------------------------------------
-  { featureId: 'PAN-TTH', featureName: 'Tithi', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'PAN-TTH',
+    featureName: 'Tithi',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The Panchang screen reads tithi, nakshatra, yoga and karana at local noon, an Aroha convention; the sunrise reading is not in a text opened (PN4)',
+  },
   { featureId: 'PAN-VAR', featureName: 'Vara', tag: 'UNVERIFIED', sourceIds: [] },
   { featureId: 'PAN-NAK', featureName: 'Nakshatra', tag: 'UNVERIFIED', sourceIds: [] },
   {
@@ -640,7 +646,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Choghadiya',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'Uses real day length (correct); DOC entry',
+    note: 'Uses real day length (correct); DOC entry. No old text found for the 16 periods or the night order (register, PN3)',
   },
   { featureId: 'PAN-HOR', featureName: 'Hora', tag: 'UNVERIFIED', sourceIds: [] },
 
