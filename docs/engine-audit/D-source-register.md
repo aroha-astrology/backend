@@ -258,6 +258,28 @@ Read in the translation (E-BPHS-ENG, vol 2, chapter 46). Confidence 80.
 - **Budhaditya, Chandra-Mangala, Lakshmi:** the names do not occur in the BPHS translation or in the Phaladeepika text searched. The rules stay as they are; the provenance entries say so (YG6, label only).
 - **Parivartana types (PD-6.32) and Saraswati (PD-6.26-27):** the Phaladeepika has them; not yet compared with the engine.
 
+### BPHS-83 — the father's curse and the serpent's curse (what the BPHS has instead of Pitra Dosha and Kaal Sarp)
+
+Read in the translation (E-BPHS-ENG, vol 2, chapter 83, "Effects of curses in the previous birth"). Sanskrit not compared (OCR unreadable). Confidence 78.
+
+- **Subject.** The whole chapter is about a man having no son, and the curses (of a serpent, of the father, of the mother, of a brother, of the mother's brother, of a Brahmin, of the wife) said to cause it, each with a list of planetary combinations and a remedy. The translator adds that "childlessness" here means want of a male issue.
+- **83.9-16, the serpent's curse (Sarpa Shapa), eight combinations.** For example: Rahu in the 5th aspected by Mars; the lord of the 5th with Rahu while the Moon is in the 5th aspected by Saturn; Jupiter with Rahu, the lord of the 5th weak and the lord of the Lagna with Mars; the 5th an Aries or Scorpio sign with its lord joined to Rahu or Mercury. Remedy: a golden image of Naga Raja, a cow, land, sesame and gold in charity.
+- **83.20-30, the father's curse (Pitru Shapa), eleven combinations.** For example: the Sun debilitated in the Navamsa of Saturn between malefics in the 5th; the Sun as lord of the 5th in a trikona with a malefic, hemmed in and aspected by a malefic; the lord of the 5th combust with the Lagna and the 5th occupied by malefics; the lords of the 5th and 10th exchanging houses with the Lagna and 5th occupied by malefics; the Sun, Mars and Saturn in the Lagna and 5th with Rahu and Jupiter in the 8th and 12th. Remedy: Shraddha at Gaya, feeding Brahmins, Kanyadana, a cow.
+- **Against the engine.** The engine's Pitra Dosha (Sun with Rahu, malefics in the 9th, the 9th lord debilitated) and its Kaal Sarp (all planets between Rahu and Ketu) are not these rules, and neither name is in the chapter. The BPHS rules are about sonlessness and belong to the fertility safety class (plan item SF2): they are not implemented and not to be shown as a general "ancestral" or "serpent" dosha. `BPHS-83` is recorded so the labels can say what the old text really contains.
+- **Supports:** nothing in the engine. DOH-PIT and DOH-KAL are labelled modern (DS2 and DS4 in the C-doc).
+
+### BPHS-91 — birth at the time of an eclipse (what the BPHS has instead of Grahan Dosha)
+
+Read in the translation (E-BPHS-ENG, vol 2, chapter 91, "Remedies from birth in eclipses"). Confidence 78.
+
+- **91.1-14.** "A person whose birth takes place at the time of solar or lunar eclipse, suffers from ailments, distress and poverty and faces danger of death." Remedies: gold images of the nakshatra's deity and of the Sun (solar eclipse) or silver Moon (lunar eclipse) and a lead Rahu, worship, havana, feeding Brahmins.
+- **Against the engine.** The condition is an actual eclipse happening at the birth moment, not the Sun or Moon standing in a house with Rahu or Ketu. The engine's `grahanDosha.ts` (Sun with Rahu, Moon with Rahu or Ketu in the same house) and its second version, the "Grahan Yoga" in the yoga file, are the later conjunction reading; the document's 12 degrees is in neither. Not changed: a true birth-in-eclipse test needs the eclipse list for the birth moment and carries the text's "danger of death" claim, a health-safety item (Group 4). Label only: modern conjunction reading.
+- **Supports:** nothing in the engine (DOH-GRH labelled modern).
+
+### Kaal Sarp, Grahan and Pitra by name
+
+The names Kaal Sarp, Grahan Dosha and Pitra Dosha were searched in the BPHS translation (both volumes) and in the Phaladeepika: no occurrence (searched 2026-10-09 in the OCR text). The Bṛhat Jātaka and the Bṛhat Saṃhitā were read earlier and have none.
+
 ### BJ-9.1-9.7 — Aṣṭakavarga: the auspicious places from each contributor
 
 - **Sanskrit:** the seven verses 9.01 to 9.07, e.g. 9.01 "svād arkaḥ prathama-āya-bandhu-nidhana-dvy-ājñā-tapo-dyūnago vakrāt svād iva tadvad eva ravijāc chukrāt smara-antya-ariṣu / jīvād dharma-suta-āya-śatruṣu daśa-try-āya-arigaḥ śītagor eṣv eva antya-tapaḥ-suteṣu ca budhāl lagnāt sa-bandhv-antyagaḥ". Each verse is transcribed, phrase by phrase, beside its numbers in `test/audit/brihat-jataka.audit.spec.ts`. Four places where the e-text's word division or spelling had to be resolved are marked there: 9.03b `karmāny.alābha` read karma-antya-lābha (10, 12, 11); 9.05a `aṣṭama.dāya` read aṣṭa-mada-āya (8, 7, 11); 9.05b `āya.ratha` read āya-artha (11, 2); 9.06b `vyago` read vyayago (12). Each reading gives the verse the count the chapter total needs.
