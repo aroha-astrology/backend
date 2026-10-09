@@ -13,6 +13,8 @@ import { aspectsHouse, houseFrom, isKendraFrom } from '../rules/houses.js';
 import { isDayChart } from '../rules/day.js';
 import { beneficsOf, natureOf } from '../rules/nature.js';
 import { assessKemadruma } from '../doshas/kemDrumaDosha.js';
+import { getActiveProfile } from '../rules/profile.js';
+import { signDignity } from '../rules/dignity.js';
 
 import {
   ZODIAC_SIGNS,
@@ -427,16 +429,69 @@ function detectViparitaRaja(chartData: ChartData): Yoga {
   };
 }
 
+/**
+ * Phaladeepika 7.26-29 (register PD-7.26-29, audit YG6): is the debilitation of
+ * `planet` (standing in `sign`) cancelled?
+ *  - the lord of the debilitation sign, or the lord of the exaltation sign, in a
+ *    kendra from the Lagna or from the Moon (26, 29);
+ *  - those two lords in kendras from each other (27);
+ *  - the planet aspected by the lord of its debilitation sign (28).
+ * "From the Moon" is not used for the Moon itself: a lord that is the Moon is
+ * always in its own kendra, which would cancel every debilitated Jupiter.
+ */
+function neechabhangaByPhaladeepika(
+  planet: Planet,
+  sign: ZodiacSign,
+  chartData: ChartData,
+): boolean {
+  const exaltData = PLANET_EXALTATION[planet];
+  if (!exaltData) return false;
+  const debilLord = SIGN_LORDS[sign];
+  const exaltLord = SIGN_LORDS[exaltData.sign];
+  const moonHouse = getPlanetHouse('Moon', chartData);
+
+  const kendraFromLagnaOrMoon = (lord: Planet): boolean => {
+    const h = getPlanetHouse(lord, chartData);
+    if (h === 0) return false;
+    if (isInKendra(h)) return true;
+    return lord !== 'Moon' && moonHouse > 0 && isKendraFrom(moonHouse, h);
+  };
+
+  if (kendraFromLagnaOrMoon(debilLord) || kendraFromLagnaOrMoon(exaltLord)) return true;
+
+  const debilLordHouse = getPlanetHouse(debilLord, chartData);
+  const exaltLordHouse = getPlanetHouse(exaltLord, chartData);
+  if (debilLordHouse > 0 && exaltLordHouse > 0 && isKendraFrom(debilLordHouse, exaltLordHouse)) {
+    return true;
+  }
+
+  return isPlanetAspectedBy(planet, debilLord, chartData);
+}
+
 function detectNeechBhangaRaja(chartData: ChartData): Yoga {
   const involvedPlanets: Planet[] = [];
   const involvedHouses: number[] = [];
   let maxStrength = 0;
+  const byText = getActiveProfile().neechabhangaRules === 'phaladeepika';
 
   for (const pp of chartData.planets) {
     const { planet, sign, house } = pp;
     if (!isPlanetDebilitated(planet, sign)) continue;
+    // The text speaks of planets: the seven, not the nodes.
+    if (byText && (planet === 'Rahu' || planet === 'Ketu')) continue;
 
     let cancelled = false;
+
+    if (byText) {
+      cancelled = neechabhangaByPhaladeepika(planet, sign, chartData);
+      if (cancelled) {
+        involvedPlanets.push(planet);
+        involvedHouses.push(house);
+        const boosted = Math.min(100, computePlanetStrength(planet, chartData) + 30);
+        if (boosted > maxStrength) maxStrength = boosted;
+      }
+      continue;
+    }
 
     // Condition 1: Lord of the sign where the planet is exalted aspects the debilitated planet
     const exaltData = PLANET_EXALTATION[planet];
@@ -725,7 +780,26 @@ function detectGajakesari(chartData: ChartData): Yoga {
   }
 
   const inKendraFromMoon = isKendraFrom(moonHouse, jupiterHouse);
-  const present = inKendraFromMoon;
+  let present = inKendraFromMoon;
+  if (getActiveProfile().gajakesariRule === 'bphs') {
+    // BPHS 36.3: a kendra from the Lagna or the Moon, joined or aspected by a
+    // benefic, and free of debilitation, combustion and an enemy's house.
+    const jupiter = getPlanetPosition('Jupiter', chartData)!;
+    const sun = getPlanetPosition('Sun', chartData);
+    const placed = inKendraFromMoon || isInKendra(jupiterHouse);
+    const supported = beneficsOf(chartData).some(
+      (b) =>
+        b !== 'Jupiter' &&
+        (getPlanetHouse(b, chartData) === jupiterHouse ||
+          doesPlanetAspect(b, jupiterHouse, chartData)),
+    );
+    const dignity = signDignity('Jupiter', jupiter.signIndex);
+    const free =
+      dignity !== 'debilitated' &&
+      dignity !== 'enemy' &&
+      !isCombust('Jupiter', jupiter.longitude, sun?.longitude);
+    present = placed && supported && free;
+  }
 
   let strength = 0;
   if (present) {
@@ -745,7 +819,7 @@ function detectGajakesari(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      'Jupiter in a Kendra (1, 4, 7, 10) from Moon. One of the most celebrated yogas; bestows wisdom, eloquence, lasting fame, and prosperity.',
+      'Jupiter in a Kendra (1, 4, 7, 10) from the Lagna or the Moon, joined or aspected by a benefic, and not debilitated, combust or in an enemy sign (BPHS 36.3). The text promises splendour, wealth, intelligence and favour with rulers.',
     planets: ['Moon', 'Jupiter'],
     houses: [moonHouse, jupiterHouse],
     activationPeriod: 'Jupiter or Moon Mahadasha/Antardasha' ?? undefined,
@@ -2156,16 +2230,16 @@ function detectShakat(chartData: ChartData): Yoga {
     };
   }
 
+  // Phaladeepika 6.14: "if the Moon be in a Kendra house from the Lagna, there is
+  // no Shakata" (register PD-6.14).
   const dist = houseDistance(jupHouse, moonHouse);
-  const present = dist === 6 || dist === 8 || dist === 12;
+  const present = (dist === 6 || dist === 8 || dist === 12) && !isInKendra(moonHouse);
 
   let strength = 0;
   if (present) {
     strength = 45;
     const moonStr = computePlanetStrength('Moon', chartData);
     if (moonStr < 40) strength = 65;
-    // Cancelled if Moon is in kendra
-    if (isInKendra(moonHouse)) strength = Math.max(10, strength - 25);
   }
 
   return {
@@ -2174,7 +2248,7 @@ function detectShakat(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      'Moon in 6th, 8th, or 12th from Jupiter. Indicates fluctuating fortune, periods of poverty followed by prosperity, and instability.',
+      'Moon in the 6th, 8th or 12th from Jupiter, unless the Moon is in a Kendra from the Lagna (Phaladeepika 6.14). A later tradition reads it as fluctuating fortune.',
     planets: ['Moon', 'Jupiter'],
     houses: present ? [moonHouse, jupHouse] : [],
   };

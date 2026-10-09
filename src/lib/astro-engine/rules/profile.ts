@@ -60,6 +60,25 @@ export interface AstrologyRuleProfile {
    * the first of these "not authoritative" and does not have the second.
    */
   kemadrumaExemptions: 'brihat-jataka' | 'later-tradition';
+  /**
+   * What cancels the debilitation of a planet (Neechabhanga).
+   *  - 'phaladeepika': Phaladeepika 7.26-29. The lord of the debilitation sign or
+   *    of the exaltation sign in a kendra from the Lagna or the Moon; those two
+   *    lords in kendras from each other; the planet aspected by the lord of
+   *    its debilitation sign. The seven planets only.
+   *  - 'earlier': what the engine used before the audit. It also let the
+   *    exaltation lord's aspect or conjunction cancel, and counted Rahu and Ketu.
+   *    Those two rules are in no text opened.
+   */
+  neechabhangaRules: 'phaladeepika' | 'earlier';
+  /**
+   * Gajakesari Yoga.
+   *  - 'bphs': BPHS 36.3. Jupiter in a kendra from the Lagna or the Moon, joined
+   *    or aspected by a benefic, and not debilitated, combust or in an enemy's sign.
+   *  - 'moon-kendra': what the engine used before the audit, Jupiter in a kendra
+   *    from the Moon and nothing else (the common later form).
+   */
+  gajakesariRule: 'bphs' | 'moon-kendra';
   /** How sunrise is defined for day-based rules. */
   sunrise: 'upper-limb-refracted';
 }
@@ -76,6 +95,8 @@ export const DEFAULT_PROFILE: AstrologyRuleProfile = {
   moolatrikonaInVargas: 'sign',
   kalaDoubling: 'none',
   kemadrumaExemptions: 'brihat-jataka',
+  neechabhangaRules: 'phaladeepika',
+  gajakesariRule: 'bphs',
   sunrise: 'upper-limb-refracted',
 };
 
