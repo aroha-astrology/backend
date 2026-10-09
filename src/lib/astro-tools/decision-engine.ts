@@ -17,6 +17,8 @@
 // =============================================================================
 
 import { NAKSHATRAS } from '@aroha-astrology/shared';
+import { calculateKarana } from '../astro-engine/panchang/karana.js';
+import { calculatePanchangYoga } from '../astro-engine/panchang/yoga.js';
 import type { WhyFactor } from '../intelligence/types.js';
 import { houseFrom } from '../intelligence/chart-context.js';
 import { isFavourableTransit } from '../intelligence/why.js';
@@ -356,6 +358,34 @@ export function scoreDay(
       textKey: 'decide.why.tithiGood',
       params: { tithi: day.tithi },
     });
+  }
+  // Karana and yoga, read from the Sun and Moon at the same noon as the tithi.
+  // Only a rule that names some (marriage: Bṛhat Saṃhitā 99.8) looks at them.
+  if (rule.unfavorableKaranas?.length || rule.unfavorableYogas?.length) {
+    const sun = day.planets.find((p) => p.planet === 'Sun');
+    const moon = day.planets.find((p) => p.planet === 'Moon');
+    if (sun && moon) {
+      const karana = calculateKarana(moon.longitude, sun.longitude).name;
+      if (rule.unfavorableKaranas?.includes(karana)) {
+        delta -= w.tithiBad;
+        dayWhy.push({
+          kind: 'panchang',
+          effect: -1,
+          textKey: 'decide.why.karanaBad',
+          params: { karana },
+        });
+      }
+      const yoga = calculatePanchangYoga(sun.longitude, moon.longitude).name;
+      if (rule.unfavorableYogas?.includes(yoga)) {
+        delta -= w.tithiBad;
+        dayWhy.push({
+          kind: 'panchang',
+          effect: -1,
+          textKey: 'decide.why.yogaBad',
+          params: { yoga },
+        });
+      }
+    }
   }
   if (
     rule.favorableWeekdays.includes(day.weekday) ||

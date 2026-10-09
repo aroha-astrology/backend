@@ -98,6 +98,10 @@ function reasonText(why: WhyFactor): string | null {
       return `${tithiName(Number(p.tithi))} tithi is favourable`;
     case 'decide.why.tithiBad':
       return `${tithiName(Number(p.tithi))} tithi is avoided for new starts`;
+    case 'decide.why.karanaBad':
+      return `${p.karana} karana is avoided for a marriage`;
+    case 'decide.why.yogaBad':
+      return `${p.yoga} yoga is avoided for a marriage`;
     case 'decide.why.weekdayGood':
       return `${WEEKDAYS[Number(p.weekday)] ?? 'The weekday'} is favourable for this occasion`;
     case 'decide.why.weekdayBad':
