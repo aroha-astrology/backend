@@ -169,8 +169,9 @@ const REGISTRY: ProvenanceEntry[] = [
   {
     featureId: 'AKV-BAV',
     featureName: 'BAV contributor tables (337 total)',
-    tag: 'UNVERIFIED',
-    sourceIds: [],
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-9.1-9.7'],
+    note: 'All 56 lists match Bṛhat Jātaka 9.1-9.7 verse by verse',
   },
   { featureId: 'AKV-TRI', featureName: 'Trikona Shodhana', tag: 'UNVERIFIED', sourceIds: [] },
   {
@@ -196,8 +197,20 @@ const REGISTRY: ProvenanceEntry[] = [
   // Divisional charts
   // -------------------------------------------------------------------------
   { featureId: 'VCH-D1', featureName: 'D1 Rasi', tag: 'UNVERIFIED', sourceIds: [] },
-  { featureId: 'VCH-D2', featureName: 'D2 Hora', tag: 'UNVERIFIED', sourceIds: [] },
-  { featureId: 'VCH-D3', featureName: 'D3 Drekkana', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'VCH-D2',
+    featureName: 'D2 Hora',
+    tag: 'UNVERIFIED',
+    sourceIds: ['BJ-1.11'],
+    note: 'Verse read (Sun/Moon by odd/even sign); code not yet compared',
+  },
+  {
+    featureId: 'VCH-D3',
+    featureName: 'D3 Drekkana',
+    tag: 'UNVERIFIED',
+    sourceIds: ['BJ-1.11'],
+    note: 'Verse read (lords of the sign, its 5th and 9th); code not yet compared',
+  },
   { featureId: 'VCH-D4', featureName: 'D4 Chaturthamsa', tag: 'UNVERIFIED', sourceIds: [] },
   { featureId: 'VCH-D7', featureName: 'D7 Saptamsa', tag: 'UNVERIFIED', sourceIds: [] },
   { featureId: 'VCH-D9', featureName: 'D9 Navamsa', tag: 'UNVERIFIED', sourceIds: [] },
@@ -211,8 +224,8 @@ const REGISTRY: ProvenanceEntry[] = [
     featureId: 'VCH-D30',
     featureName: 'D30 Trimsamsa',
     tag: 'UNVERIFIED',
-    sourceIds: [],
-    note: 'Maps every ruler to odd sign in both odd and even signs — V1 fault',
+    sourceIds: ['BJ-1.7'],
+    note: 'Lords and widths match Bṛhat Jātaka 1.7. The verse names lords only; the sign drawn (always the odd sign of the lord) has no verified source',
   },
   { featureId: 'VCH-D40', featureName: 'D40 Khavedamsa', tag: 'UNVERIFIED', sourceIds: [] },
   { featureId: 'VCH-D45', featureName: 'D45 Akshavedamsa', tag: 'UNVERIFIED', sourceIds: [] },
@@ -294,8 +307,8 @@ const REGISTRY: ProvenanceEntry[] = [
     featureId: 'DOH-KEM',
     featureName: 'Kemadruma Dosha',
     tag: 'UNVERIFIED',
-    sourceIds: [],
-    note: 'Cancellation claims differ from code — D3 fault',
+    sourceIds: ['BJ-13.3'],
+    note: 'Definition and two cancellations are in Bṛhat Jātaka 13.3. The code adds a kendra-from-Moon exemption (reported there as not authoritative) and a Jupiter-aspect cancellation (not there)',
   },
   {
     featureId: 'DOH-SAD',
@@ -335,6 +348,54 @@ const REGISTRY: ProvenanceEntry[] = [
     sourceIds: [],
   },
   { featureId: 'YGA-BUD', featureName: 'Budhaditya Yoga', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'YGA-ASR',
+    featureName: 'Rajju, Musala, Nala (Asraya yogas)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-12.2'],
+  },
+  {
+    featureId: 'YGA-SUN',
+    featureName: 'Sunapha, Anapha, Durudhura',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-13.3'],
+  },
+  {
+    featureId: 'YGA-ADH',
+    featureName: 'Adhi Yoga (from the Moon)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-13.2'],
+  },
+  {
+    featureId: 'YGA-VAS',
+    featureName: 'Vasumati Yoga',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-13.9'],
+  },
+
+  // -------------------------------------------------------------------------
+  // Shared rule tables
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'DIG-EXA',
+    featureName: 'Exaltation and debilitation, seven planets',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-1.13'],
+    note: 'Node entries in the shared table are not in this text',
+  },
+  {
+    featureId: 'DIG-FRD',
+    featureName: 'Natural friends and enemies, seven planets',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-2.16-17'],
+    note: 'Node friendships are not in this text',
+  },
+  {
+    featureId: 'ASP-FUL',
+    featureName: 'Full aspects (7th; Saturn 3/10, Jupiter 5/9, Mars 4/8)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-2.13'],
+  },
 
   // -------------------------------------------------------------------------
   // Matchmaking

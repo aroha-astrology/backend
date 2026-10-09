@@ -344,10 +344,14 @@ export function calculateD27(longitude: number): number {
 // For ODD signs: Mars 0-5, Saturn 5-10, Jupiter 10-18, Mercury 18-25, Venus 25-30
 // For EVEN signs: Venus 0-5, Mercury 5-12, Jupiter 12-20, Saturn 20-25, Mars 25-30
 //
-// The sign assigned corresponds to the sign owned by the ruling planet:
-// Mars -> Aries(0), Saturn -> Aquarius(10), Jupiter -> Sagittarius(8),
-// Mercury -> Gemini(2), Venus -> Libra(6)
-// (Using standard Trimshamsha sign mappings per Parashara)
+//
+// The lords and their widths are Bṛhat Jātaka 1.7 (source register BJ-1.7).
+// That verse names LORDS only. Which of a lord's two signs the part is drawn
+// in is not in it: ANCIENT SOURCE NOT VERIFIED. This function always returns
+// the lord's odd sign (Mars -> Aries, Saturn -> Aquarius, Jupiter ->
+// Sagittarius, Mercury -> Gemini, Venus -> Libra), for even signs too. Read
+// the result as "the lord of this sign" until a text for the sign is found
+// (audit item V1).
 
 export function calculateD30(longitude: number): number {
   const si = signIndex(longitude);

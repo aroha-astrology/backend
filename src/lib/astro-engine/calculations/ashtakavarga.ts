@@ -34,9 +34,11 @@ const AV_PLANETS: Planet[] = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venu
  * Key: target planet. Value: Record of contributor -> array of house offsets (1-12).
  * "Asc" represents the ascendant as a contributor.
  *
- * These are the standard Parashari rules from Brihat Parashara Hora Shastra.
+ * All 56 lists were checked verse by verse against Bṛhat Jātaka 9.1-9.7
+ * (source register BJ-9.1-9.7; pinned in test/audit/brihat-jataka.audit.spec.ts).
+ * Whether Bṛhat Parāśara Horā Śāstra gives the same lists has not been checked.
  */
-const BENEFIC_POINTS: Record<string, Record<string, number[]>> = {
+export const BENEFIC_POINTS: Record<string, Record<string, number[]>> = {
   // Sun's Ashtakavarga: houses from each contributor where Sun gets a bindu
   Sun: {
     Sun: [1, 2, 4, 7, 8, 9, 10, 11],

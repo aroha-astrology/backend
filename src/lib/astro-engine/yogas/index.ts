@@ -30,6 +30,13 @@ import {
 
 const SEVEN_PLANETS: Planet[] = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
 
+/**
+ * The benefics meant in the Moon yogas of Bṛhat Jātaka chapter 13 (Adhi,
+ * Vasumati): Mercury, Jupiter and Venus. The Moon is the point they are
+ * counted from, so it is not one of them.
+ */
+const MOON_YOGA_BENEFICS: Planet[] = ['Mercury', 'Jupiter', 'Venus'];
+
 /** Get a planet's position record from chart data. */
 function getPlanetPosition(planet: Planet, chartData: ChartData): PlanetPosition | undefined {
   return chartData.planets.find((p) => p.planet === planet);
@@ -603,26 +610,27 @@ function detectVasumathi(chartData: ChartData): Yoga {
     };
   }
 
-  const targetPositions = [3, 6, 10, 11];
-  const targetHouses = targetPositions.map((offset) => ((moonHouse + offset - 2) % 12) + 1);
+  // Bṛhat Jātaka 13.9 (register BJ-13.9): "lagnād atīva vasumān vasumāñ
+  // chaśāṅkāt saumyagrahair upacaya-upagataiḥ samastaiḥ" — ALL the benefics
+  // (Mercury, Jupiter, Venus) in the 3rd, 6th, 10th or 11th, counted from the
+  // Lagna (very wealthy) or from the Moon (wealthy). The verse counts the
+  // benefics, not how many of the four houses are filled; with only two it
+  // gives a middling result, which is not flagged as the yoga here.
+  const upachaya = [3, 6, 10, 11];
+  const fromMoonHouses = upachaya.map((offset) => ((moonHouse + offset - 2) % 12) + 1);
 
-  const beneficsFound: Planet[] = [];
-  const housesFound: number[] = [];
+  const inUpachayaFromMoon = MOON_YOGA_BENEFICS.filter((b) =>
+    fromMoonHouses.includes(getPlanetHouse(b, chartData)),
+  );
+  const inUpachayaFromLagna = MOON_YOGA_BENEFICS.filter((b) =>
+    upachaya.includes(getPlanetHouse(b, chartData)),
+  );
+  const fromLagna = inUpachayaFromLagna.length === MOON_YOGA_BENEFICS.length;
+  const fromMoon = inUpachayaFromMoon.length === MOON_YOGA_BENEFICS.length;
 
-  for (const benefic of NATURAL_BENEFICS) {
-    const bHouse = getPlanetHouse(benefic, chartData);
-    if (targetHouses.includes(bHouse)) {
-      beneficsFound.push(benefic);
-      if (!housesFound.includes(bHouse)) housesFound.push(bHouse);
-    }
-  }
-
-  // Need benefics in all four positions for full yoga; partial if at least 3
-  const fullPositionsCovered = targetHouses.filter((th) =>
-    NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th),
-  ).length;
-
-  const present = fullPositionsCovered >= 3;
+  const present = fromLagna || fromMoon;
+  const beneficsFound: Planet[] = present ? [...MOON_YOGA_BENEFICS] : [];
+  const housesFound = [...new Set(beneficsFound.map((b) => getPlanetHouse(b, chartData)))];
 
   let strength = 0;
   if (present) {
@@ -630,7 +638,8 @@ function detectVasumathi(chartData: ChartData): Yoga {
       beneficsFound.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) /
         beneficsFound.length,
     );
-    if (fullPositionsCovered === 4) strength = Math.min(100, strength + 10);
+    // The verse ranks the Lagna form above the Moon form.
+    if (fromLagna) strength = Math.min(100, strength + 10);
   }
 
   return {
@@ -639,7 +648,7 @@ function detectVasumathi(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      "Natural benefics occupy the 3rd, 6th, 10th, and 11th houses from Moon. Bestows great wealth accumulated through one's own efforts.",
+      "Mercury, Jupiter and Venus all occupy the 3rd, 6th, 10th or 11th houses from the Lagna or from the Moon. Bestows great wealth accumulated through one's own efforts.",
     planets: beneficsFound,
     houses: housesFound,
     activationPeriod:
@@ -755,18 +764,16 @@ function detectSunapha(chartData: ChartData): Yoga {
     };
   }
 
+  // Bṛhat Jātaka 13.3-13.4 (register BJ-13.3): planets other than the Sun in
+  // the 2nd from the Moon with the 12th empty. With both sides occupied it is
+  // Durudhura, not Sunapha as well.
   const secondFromMoon = (moonHouse % 12) + 1;
-  const eligible: Planet[] = ['Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
-  // Exclude Moon itself from the check (it's the reference)
-  const found: Planet[] = [];
-  for (const p of eligible) {
-    if (p === 'Moon') continue;
-    if (getPlanetHouse(p, chartData) === secondFromMoon) {
-      found.push(p);
-    }
-  }
+  const twelfthFromMoon = ((moonHouse - 2 + 12) % 12) + 1;
+  const eligible: Planet[] = ['Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
+  const found = eligible.filter((p) => getPlanetHouse(p, chartData) === secondFromMoon);
+  const twelfthOccupied = eligible.some((p) => getPlanetHouse(p, chartData) === twelfthFromMoon);
 
-  const present = found.length > 0;
+  const present = found.length > 0 && !twelfthOccupied;
   let strength = 0;
   if (present) {
     strength = Math.round(
@@ -802,16 +809,16 @@ function detectAnapha(chartData: ChartData): Yoga {
     };
   }
 
+  // Bṛhat Jātaka 13.3-13.4 (register BJ-13.3): planets other than the Sun in
+  // the 12th from the Moon with the 2nd empty. With both sides occupied it is
+  // Durudhura, not Anapha as well.
+  const secondFromMoon = (moonHouse % 12) + 1;
   const twelfthFromMoon = ((moonHouse - 2 + 12) % 12) + 1;
   const eligible: Planet[] = ['Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
-  const found: Planet[] = [];
-  for (const p of eligible) {
-    if (getPlanetHouse(p, chartData) === twelfthFromMoon) {
-      found.push(p);
-    }
-  }
+  const found = eligible.filter((p) => getPlanetHouse(p, chartData) === twelfthFromMoon);
+  const secondOccupied = eligible.some((p) => getPlanetHouse(p, chartData) === secondFromMoon);
 
-  const present = found.length > 0;
+  const present = found.length > 0 && !secondOccupied;
   let strength = 0;
   if (present) {
     strength = Math.round(
@@ -921,33 +928,25 @@ function detectAdhi(chartData: ChartData): Yoga {
     };
   }
 
+  // Bṛhat Jātaka 13.2 (register BJ-13.2): "saumyaiḥ smara-ari-nidhaneṣv
+  // adhiyoga indoḥ" — the benefics (Mercury, Jupiter, Venus) in the 7th, 6th
+  // and 8th from the Moon. They may share one of the three houses or be spread
+  // over them; what the verse asks is that the benefics are there.
   const positions = [6, 7, 8];
   const targetHouses = positions.map((offset) => ((moonHouse + offset - 2) % 12) + 1);
 
-  const found: Planet[] = [];
-  const housesFound: number[] = [];
+  const found = MOON_YOGA_BENEFICS.filter((b) =>
+    targetHouses.includes(getPlanetHouse(b, chartData)),
+  );
+  const housesFound = [...new Set(found.map((b) => getPlanetHouse(b, chartData)))];
 
-  for (const benefic of NATURAL_BENEFICS) {
-    const bHouse = getPlanetHouse(benefic, chartData);
-    if (targetHouses.includes(bHouse)) {
-      found.push(benefic);
-      if (!housesFound.includes(bHouse)) housesFound.push(bHouse);
-    }
-  }
-
-  // Need benefics in at least 2 of these 3 positions
-  const positionsCovered = targetHouses.filter((th) =>
-    NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th),
-  ).length;
-
-  const present = positionsCovered >= 2;
+  const present = found.length === MOON_YOGA_BENEFICS.length;
 
   let strength = 0;
   if (present) {
     strength = Math.round(
       found.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / found.length,
     );
-    if (positionsCovered === 3) strength = Math.min(100, strength + 10);
   }
 
   return {
@@ -956,7 +955,7 @@ function detectAdhi(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      'Natural benefics in 6th, 7th, and 8th from Moon. Grants leadership, ministerial position, affluence, and ability to overcome enemies.',
+      'Mercury, Jupiter and Venus all in the 6th, 7th or 8th from the Moon. Grants leadership, ministerial position, affluence, and ability to overcome enemies.',
     planets: ['Moon', ...found],
     houses: [moonHouse, ...housesFound],
     activationPeriod:
@@ -1822,8 +1821,36 @@ function detectMusala(chartData: ChartData): Yoga {
   };
 }
 
+// Bṛhat Jātaka 12.2 (register BJ-12.2): "rajjur muśalaṃ nalaś cara-ādyaiḥ" —
+// Rajju, Musala and Nala by the movable, fixed and dual signs, in that order.
+// The results are from 12.11. (Nala and Rajju were the other way round here.)
+
 function detectNala(chartData: ChartData): Yoga {
-  // Nala Yoga: All planets in movable signs (Aries, Cancer, Libra, Capricorn)
+  // Nala Yoga: All planets in dual signs (Gemini, Virgo, Sagittarius, Pisces)
+  const dualSigns: ZodiacSign[] = ['Gemini', 'Virgo', 'Sagittarius', 'Pisces'];
+  const allInDual = SEVEN_PLANETS.every((p) => dualSigns.includes(getPlanetSign(p, chartData)));
+
+  let strength = 0;
+  if (allInDual) {
+    const avgStr =
+      SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
+    strength = Math.round(avgStr);
+  }
+
+  return {
+    name: 'Nala Yoga',
+    type: 'benefic',
+    present: allInDual,
+    strength,
+    description:
+      'All planets in dual signs (Gemini, Virgo, Sagittarius, Pisces). Grants a steady mind, means, and skill in work.',
+    planets: SEVEN_PLANETS,
+    houses: allInDual ? SEVEN_PLANETS.map((p) => getPlanetHouse(p, chartData)) : [],
+  };
+}
+
+function detectRajju(chartData: ChartData): Yoga {
+  // Rajju Yoga: All planets in movable signs (Aries, Cancer, Libra, Capricorn)
   const movableSigns: ZodiacSign[] = ['Aries', 'Cancer', 'Libra', 'Capricorn'];
   const allInMovable = SEVEN_PLANETS.every((p) =>
     movableSigns.includes(getPlanetSign(p, chartData)),
@@ -1837,38 +1864,14 @@ function detectNala(chartData: ChartData): Yoga {
   }
 
   return {
-    name: 'Nala Yoga',
+    name: 'Rajju Yoga',
     type: 'benefic',
     present: allInMovable,
     strength,
     description:
-      'All planets in movable signs (Aries, Cancer, Libra, Capricorn). Grants a dynamic, active nature with fluctuating wealth.',
+      'All planets in movable signs (Aries, Cancer, Libra, Capricorn). Grants love of travel and fondness for foreign lands, with an eye on what others have.',
     planets: SEVEN_PLANETS,
     houses: allInMovable ? SEVEN_PLANETS.map((p) => getPlanetHouse(p, chartData)) : [],
-  };
-}
-
-function detectRajju(chartData: ChartData): Yoga {
-  // Rajju Yoga: All planets in dual signs (Gemini, Virgo, Sagittarius, Pisces)
-  const dualSigns: ZodiacSign[] = ['Gemini', 'Virgo', 'Sagittarius', 'Pisces'];
-  const allInDual = SEVEN_PLANETS.every((p) => dualSigns.includes(getPlanetSign(p, chartData)));
-
-  let strength = 0;
-  if (allInDual) {
-    const avgStr =
-      SEVEN_PLANETS.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / 7;
-    strength = Math.round(avgStr);
-  }
-
-  return {
-    name: 'Rajju Yoga',
-    type: 'benefic',
-    present: allInDual,
-    strength,
-    description:
-      'All planets in dual signs (Gemini, Virgo, Sagittarius, Pisces). Grants love of travel, fondness for foreign lands, and a flexible nature.',
-    planets: SEVEN_PLANETS,
-    houses: allInDual ? SEVEN_PLANETS.map((p) => getPlanetHouse(p, chartData)) : [],
   };
 }
 
