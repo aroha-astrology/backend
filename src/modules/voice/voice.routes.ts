@@ -33,7 +33,7 @@ export const voiceRouter = new OpenAPIHono();
 
 /**
  * Caps how often a user can ask for a token, independent of the per-session
- * 3-minute ceiling which resets every time they start a new session. Without
+ * ceiling which resets every time they start a new session. Without
  * this, someone could start-and-abandon sessions in a loop and mint tokens far
  * faster than 1/minute.
  *
@@ -56,15 +56,21 @@ const VoiceGrantSchema = z
     model: z.string(),
     expiresAt: z.number().describe('Epoch ms when this paid minute stops accepting audio'),
     minutesUsed: z.number(),
-    minutesRemaining: z.number(),
+    minutesRemaining: z
+      .number()
+      .describe('Whole minutes the call can still be given: free Pass minutes plus wallet balance'),
     pricePerMinutePaise: z.number(),
+    freeMinute: z.boolean().describe('This minute came from the free Pass allowance'),
+    freeMinutesLeft: z.number().describe('Free Pass minutes left in the current Pass period'),
   })
   .openapi('VoiceGrant');
 
 /**
- * Three gates gate every voice route, and all must pass:
+ * Four gates gate every voice route, and all must pass:
  *   - `GEMINI_LIVE_ENABLED`  — the operational kill switch (checked in the service)
  *   - `paid.voiceChat`       — the admin/product toggle, ships disabled
+ *   - an Aroha Pass          — voice call is a Pass benefit (checked in the service,
+ *                              403 PASS_REQUIRED, the same answer as other Pass features)
  *   - voice consent          — the per-user grant, checked by this function
  *
  * `requireConsent` in the middleware list covers only the general
@@ -104,9 +110,11 @@ const startRoute = createRoute({
   tags: ['Voice'],
   summary: 'Start a realtime voice session',
   description:
-    'Charges one minute and returns a single-use ephemeral token the client uses to open a ' +
-    'WebSocket directly to Gemini Live. Audio never passes through this server. Each minute ' +
-    `must be bought separately via the extend endpoint, up to ${VOICE_MAX_MINUTES} per session.`,
+    'Needs an Aroha Pass. Takes one minute — free while the member has free Pass minutes left ' +
+    'in the period, otherwise charged to the wallet — and returns a single-use ephemeral token ' +
+    'the client uses to open a WebSocket directly to Gemini Live. Audio never passes through ' +
+    'this server. Each further minute is asked for via the extend endpoint, for as long as ' +
+    `there are free minutes or wallet balance, up to a safety ceiling of ${VOICE_MAX_MINUTES}.`,
   security: [{ bearerAuth: [] }],
   middleware: [
     requireUser,
@@ -130,8 +138,8 @@ const startRoute = createRoute({
       content: { 'application/json': { schema: VoiceGrantSchema } },
     },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled, or voice consent not granted'),
-    409: errorResponse('Not enough credits'),
+    403: errorResponse('Feature disabled, no Aroha Pass, or voice consent not granted'),
+    409: errorResponse('Not enough credits (VOICE_OUT_OF_CREDIT)'),
     429: errorResponse('Starting sessions too quickly'),
   },
 });
@@ -157,9 +165,10 @@ const extendRoute = createRoute({
   tags: ['Voice'],
   summary: 'Buy the next minute of an in-progress voice session',
   description:
-    'Charges another minute and mints a fresh token. Pass the sessionResumption handle the ' +
-    'client received from Gemini so the conversation continues rather than restarting. ' +
-    `Returns 409 once ${VOICE_MAX_MINUTES} minutes have been used.`,
+    'Takes another minute (free Pass minute, else wallet) and mints a fresh token. Pass the ' +
+    'sessionResumption handle the client received from Gemini so the conversation continues ' +
+    'rather than restarting. Returns 409 VOICE_OUT_OF_CREDIT when the wallet cannot pay, and ' +
+    `409 VOICE_SESSION_LIMIT at the safety ceiling of ${VOICE_MAX_MINUTES} minutes.`,
   security: [{ bearerAuth: [] }],
   middleware: [
     requireUser,
@@ -187,7 +196,7 @@ const extendRoute = createRoute({
       content: { 'application/json': { schema: VoiceGrantSchema } },
     },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled, or voice consent not granted'),
+    403: errorResponse('Feature disabled, no Aroha Pass, or voice consent not granted'),
     404: errorResponse('Voice session not found'),
     409: errorResponse('Session limit reached, ended, or not enough credits'),
     429: errorResponse('Requesting minutes too quickly'),
@@ -244,7 +253,10 @@ const endRoute = createRoute({
               ),
             transcript: z
               .array(ChatHistoryTurnSchema)
-              .max(60)
+              // Sized for the longest call the safety ceiling allows. At the old
+              // 60, a long call failed validation here, which lost the transcript
+              // AND left the session marked active.
+              .max(1000)
               .optional()
               .describe(
                 'The whole call, assembled client-side from Gemini Live transcription events. ' +

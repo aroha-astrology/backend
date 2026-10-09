@@ -2727,6 +2727,14 @@ export const voiceSessions = pgTable(
      */
     minutesCharged: integer('minutes_charged').notNull().default(0),
     /**
+     * How many of `minutesCharged` were the member's free Pass minutes rather
+     * than wallet charges. A call spends its free minutes first, so the first
+     * `freeMinutes` minutes of a session are the free ones. Summed over a
+     * member's sessions since their Pass period began, this is how much of the
+     * period's free allowance is used (see voice.repo.ts's claimFreeVoiceMinute).
+     */
+    freeMinutes: integer('free_minutes').notNull().default(0),
+    /**
      * Cleared when the session ends (either the client says so, or the ceiling
      * is reached). A session that is still `true` long after `updatedAt` is one
      * whose client vanished without telling us — harmless, since no further

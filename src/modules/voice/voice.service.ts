@@ -11,9 +11,16 @@
 //
 // So metering is built on the one thing the server does control — issuing the
 // short-lived tokens without which no audio can flow at all. One token buys one
-// minute (Google enforces the expiry), one minute costs a fixed price, and the
-// count of tokens issued for a session is capped. A user who wants a fourth
-// minute has to ask this server for it, and this server says no.
+// minute (Google enforces the expiry), and every minute has to be asked for
+// here, which is where it is either taken from the member's free allowance or
+// charged to the wallet — or refused.
+//
+// Voice call is an Aroha Pass benefit (every tier). A member gets
+// PASS_VOICE_FREE_MINUTES free minutes in each Pass period, across all their
+// calls; after those, each minute costs the `paid.voiceChat` price from the
+// wallet, for as long as the wallet can pay. Someone without a Pass cannot
+// start a call at all (403 PASS_REQUIRED, the same answer the other Pass-only
+// features give, so the app shows the same lock).
 
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
@@ -28,25 +35,28 @@ import { findActiveUserById, deductWalletBalance, addWalletBalance } from '../us
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { insertAiUsage } from '../admin/ai-usage.repo.js';
+import { passEntitlement } from '../../lib/entitlements.js';
+import { findActivePass } from '../pass/pass.repo.js';
+import { PASS_PERIOD_DAYS, PASS_VOICE_FREE_MINUTES } from '../pass/pass.config.js';
 import * as voiceRepo from './voice.repo.js';
 import * as chatSessionsRepo from '../astro/chat-sessions.repo.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
 import type { ChatHistoryTurn } from '../astro/astro.schemas.js';
 
 /**
- * Hard ceiling on billable minutes per session. Enforced in SQL
- * (voice.repo.ts's claimVoiceMinute), not here, so concurrent mint requests
- * cannot race past it.
+ * Safety ceiling on minutes per session. Enforced in SQL (voice.repo.ts's
+ * claim functions), not here, so concurrent mint requests cannot race past it.
  *
- * A deliberate product choice rather than a technical limit: voice now mints
- * from the paid reserve (see gemini-live-token.ts's preferPaid), so this
- * ceiling bounds real spend per call rather than shared free-tier quota — 3
- * minutes is ₹60 at the default price.
+ * This is no longer the product limit. A call runs for as long as the member
+ * has free minutes or wallet balance (owner's decision, 2026-10-09); what ends
+ * it is the wallet running out. The ceiling only bounds a call nobody is
+ * attending to — a phone left on the call screen — so it cannot empty a large
+ * wallet on its own: 60 minutes is ₹1,200 at the default price.
  *
- * 15 -> 3 (2026-08-19): tightened once voice started drawing on the paid key
- * on every call instead of only as a free-pool fallback.
+ * 15 -> 3 (2026-08-19): tightened once voice started drawing on the paid key.
+ * 3 -> 60 (2026-10-09): voice became a Pass benefit with no talk-time cap.
  */
-export const VOICE_MAX_MINUTES = 3;
+export const VOICE_MAX_MINUTES = 60;
 
 /** Fallback when the feature registry has no price configured for voice. */
 const DEFAULT_MINUTE_PRICE_PAISE = 2000;
@@ -77,8 +87,18 @@ export interface VoiceSessionGrant {
   /** Epoch ms at which this paid minute's socket stops accepting audio. */
   expiresAt: number;
   minutesUsed: number;
+  /**
+   * Whole minutes this call can still be given after the current one: the free
+   * Pass minutes left plus what the wallet can pay for, up to the safety
+   * ceiling. The app counts down from this and warns the member to recharge
+   * when little is left.
+   */
   minutesRemaining: number;
   pricePerMinutePaise: number;
+  /** True when this minute came from the free Pass allowance, so nothing was charged for it. */
+  freeMinute: boolean;
+  /** Free Pass minutes left in the member's current Pass period, after this one. */
+  freeMinutesLeft: number;
 }
 
 async function minutePricePaise(userId: string): Promise<number> {
@@ -142,14 +162,36 @@ async function buildSessionInstruction(
 }
 
 /**
- * Charges one minute and mints the token for it.
+ * Checks the user's Pass includes voice call, and says where their current Pass
+ * period began — the point their free minutes are counted from.
+ *
+ * Throws 403 PASS_REQUIRED without a live Pass. Checked on every minute, not
+ * only at the start, so a Pass that ends mid-call stops the next minute.
+ *
+ * A member of an admin user group has the top Pass with no subscription row;
+ * with no period of their own, their free minutes are counted over the last
+ * PASS_PERIOD_DAYS days.
+ */
+async function voiceMembership(userId: string): Promise<{ freeSince: Date }> {
+  const pass = await passEntitlement(userId);
+  if (!pass?.features.includes('voiceCall')) throw Errors.forbidden('PASS_REQUIRED');
+
+  const row = await findActivePass(userId).catch(() => null);
+  const freeSince =
+    row?.periodStart ?? row?.startedAt ?? new Date(Date.now() - PASS_PERIOD_DAYS * 86_400_000);
+  return { freeSince };
+}
+
+/**
+ * Takes one minute — free if the member has free Pass minutes left, otherwise
+ * charged to the wallet — and mints the token for it.
  *
  * Ordering is load-bearing and mirrors the chat route's charge-then-refund
- * shape. The minute is claimed first (that is the atomic ceiling check), then
- * the wallet is debited, then the token is minted — and each step undoes the
- * ones before it on failure. Minting last matters because it is the only step
- * that talks to a third party: if Google refuses, the user must end up with
- * both their money and their unused minute back.
+ * shape. The minute is claimed first (that is the atomic allowance and ceiling
+ * check), then the wallet is debited if the minute isn't free, then the token
+ * is minted — and each step undoes the ones before it on failure. Minting last
+ * matters because it is the only step that talks to a third party: if Google
+ * refuses, the user must end up with their money (or free minute) back.
  */
 async function chargeAndMint(
   userId: string,
@@ -157,25 +199,41 @@ async function chargeAndMint(
   systemInstruction: string,
   resumptionHandle: string | undefined,
 ): Promise<VoiceSessionGrant> {
-  const claimed = await voiceRepo.claimVoiceMinute(voiceSessionId, userId, VOICE_MAX_MINUTES);
-  if (!claimed) {
-    // Either the ceiling is reached or the session is over. Both are a refusal
-    // to sell another minute, and neither is an error the user can act on
-    // beyond starting a fresh call.
-    throw Errors.conflict('This voice session has reached its limit');
-  }
-
+  const { freeSince } = await voiceMembership(userId);
   const pricePaise = await minutePricePaise(userId);
 
-  const charged = await deductWalletBalance(userId, pricePaise, WALLET_REASON_CHARGE).catch(
-    (err: unknown) => {
-      logger.error({ err, userId, voiceSessionId }, 'voice: wallet debit threw');
-      return false;
-    },
+  let free = true;
+  let claimed = await voiceRepo.claimFreeVoiceMinute(
+    voiceSessionId,
+    userId,
+    VOICE_MAX_MINUTES,
+    freeSince,
+    PASS_VOICE_FREE_MINUTES,
   );
-  if (!charged) {
-    await voiceRepo.releaseVoiceMinute(voiceSessionId, userId).catch(() => {});
-    throw Errors.conflict('Not enough credits for another minute');
+
+  if (!claimed) {
+    // No free minute to give: the allowance is spent, or the session is over
+    // or at the ceiling. The paid claim re-checks the session and tells the
+    // last two apart from the first.
+    free = false;
+    claimed = await voiceRepo.claimVoiceMinute(voiceSessionId, userId, VOICE_MAX_MINUTES);
+    if (!claimed) {
+      // Either the safety ceiling is reached or the session is over. Neither is
+      // something the user can act on beyond starting a fresh call.
+      throw Errors.conflict('VOICE_SESSION_LIMIT');
+    }
+
+    const charged = await deductWalletBalance(userId, pricePaise, WALLET_REASON_CHARGE).catch(
+      (err: unknown) => {
+        logger.error({ err, userId, voiceSessionId }, 'voice: wallet debit threw');
+        return false;
+      },
+    );
+    if (!charged) {
+      await voiceRepo.releaseVoiceMinute(voiceSessionId, userId).catch(() => {});
+      // The app tells this apart from the ceiling above: here a recharge helps.
+      throw Errors.conflict('VOICE_OUT_OF_CREDIT');
+    }
   }
 
   try {
@@ -198,26 +256,64 @@ async function chargeAndMint(
     }).catch((err: unknown) => {
       logger.warn({ err, userId, voiceSessionId }, 'voice: ai_usage write failed');
     });
+    const { freeMinutesLeft, minutesRemaining } = await minutesAhead(
+      userId,
+      freeSince,
+      pricePaise,
+      claimed.minutesCharged,
+    );
     return {
       voiceSessionId,
       token: minted.token,
       model: minted.model,
       expiresAt: minted.expiresAt,
       minutesUsed: claimed.minutesCharged,
-      minutesRemaining: Math.max(0, VOICE_MAX_MINUTES - claimed.minutesCharged),
+      minutesRemaining,
       pricePerMinutePaise: pricePaise,
+      freeMinute: free,
+      freeMinutesLeft,
     };
   } catch (err) {
-    // Give back both the money and the minute — the user got nothing.
-    await addWalletBalance(userId, pricePaise, WALLET_REASON_REFUND).catch(() => {});
-    await voiceRepo.releaseVoiceMinute(voiceSessionId, userId).catch(() => {});
-    logger.error({ err, userId, voiceSessionId }, 'voice: token mint failed, charge refunded');
+    // Give back the minute, and the money if any was taken — the user got nothing.
+    if (!free) await addWalletBalance(userId, pricePaise, WALLET_REASON_REFUND).catch(() => {});
+    await voiceRepo.releaseVoiceMinute(voiceSessionId, userId, free).catch(() => {});
+    logger.error({ err, userId, voiceSessionId }, 'voice: token mint failed, minute given back');
     throw Errors.internal('Could not start the voice session. Please try again.');
   }
 }
 
 /**
- * Starts a session: creates the ledger row, then charges and mints minute one.
+ * How much more this call can run after the minute just granted: the free Pass
+ * minutes left in the period, plus the minutes the wallet can pay for, held to
+ * the safety ceiling. Read after the charge so it reflects the balance now.
+ *
+ * Reporting only — the next minute is decided by the claim and the debit, not
+ * by this number. So a failed lookup counts as nothing left rather than
+ * failing a minute the user has already been given: the app then shows its
+ * "recharge" notice early, which is the safe side to be wrong on.
+ */
+async function minutesAhead(
+  userId: string,
+  freeSince: Date,
+  pricePaise: number,
+  minutesCharged: number,
+): Promise<{ freeMinutesLeft: number; minutesRemaining: number }> {
+  const [freeUsed, user] = await Promise.all([
+    voiceRepo.countFreeVoiceMinutesUsed(userId, freeSince).catch(() => PASS_VOICE_FREE_MINUTES),
+    findActiveUserById(userId).catch(() => undefined),
+  ]);
+  const freeMinutesLeft = Math.max(0, PASS_VOICE_FREE_MINUTES - freeUsed);
+  const ceilingLeft = Math.max(0, VOICE_MAX_MINUTES - minutesCharged);
+  const walletMinutes =
+    pricePaise > 0 ? Math.floor((user?.walletBalancePaise ?? 0) / pricePaise) : ceilingLeft;
+  return {
+    freeMinutesLeft,
+    minutesRemaining: Math.min(ceilingLeft, freeMinutesLeft + walletMinutes),
+  };
+}
+
+/**
+ * Starts a session: creates the ledger row, then takes and mints minute one.
  *
  * A session row is created even if the first mint then fails, which is
  * deliberate — an abandoned zero-minute row costs nothing and leaves a trace of
@@ -230,6 +326,9 @@ export async function startVoiceSession(
   locale: string,
 ): Promise<VoiceSessionGrant> {
   assertVoiceEnabled();
+  // Before any work or any row: someone without a Pass is told so at once.
+  // chargeAndMint checks again, which is what covers every later minute.
+  await voiceMembership(userId);
 
   const systemInstruction = await buildSessionInstruction(userId, profile, locale);
   const session = await voiceRepo.createVoiceSession({
@@ -297,13 +396,17 @@ export async function endVoiceSessionForUser(
         CONNECT_GRACE_MS,
       );
       if (refund) {
-        const pricePaise = await minutePricePaise(userId);
-        await addWalletBalance(userId, pricePaise, WALLET_REASON_REFUND).catch((err: unknown) => {
-          logger.error(
-            { err, userId, voiceSessionId },
-            'voice: session refund granted but wallet credit failed',
-          );
-        });
+        // A free Pass minute went back to the allowance inside that update;
+        // there was no charge, so there is no money to return for it.
+        if (!refund.free) {
+          const pricePaise = await minutePricePaise(userId);
+          await addWalletBalance(userId, pricePaise, WALLET_REASON_REFUND).catch((err: unknown) => {
+            logger.error(
+              { err, userId, voiceSessionId },
+              'voice: session refund granted but wallet credit failed',
+            );
+          });
+        }
         return;
       }
     } catch (err) {

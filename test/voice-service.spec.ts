@@ -4,10 +4,15 @@ import { makeProfileContext } from './helpers/mocks.js';
 // Realtime voice bills for something this server cannot observe: the audio goes
 // straight from the client to Google. The only lever the backend holds is
 // whether it mints the next short-lived token, so every guarantee below —
-// the 3-minute ceiling, the per-minute price, the refunds — is really a
-// statement about mint behaviour. These specs pin that down.
+// Pass members only, the free minutes, the per-minute price, the refunds, the
+// safety ceiling — is really a statement about mint behaviour. These specs pin
+// that down.
 
 const state = vi.hoisted(() => ({
+  passEntitlement: vi.fn(),
+  findActivePass: vi.fn(),
+  claimFreeVoiceMinute: vi.fn(),
+  countFreeVoiceMinutesUsed: vi.fn(),
   claimVoiceMinute: vi.fn(),
   releaseVoiceMinute: vi.fn(),
   createVoiceSession: vi.fn(),
@@ -43,7 +48,17 @@ vi.mock('../src/config/env.js', () => ({
   isTest: true,
 }));
 
+vi.mock('../src/lib/entitlements.js', () => ({
+  passEntitlement: state.passEntitlement,
+}));
+
+vi.mock('../src/modules/pass/pass.repo.js', () => ({
+  findActivePass: state.findActivePass,
+}));
+
 vi.mock('../src/modules/voice/voice.repo.js', () => ({
+  claimFreeVoiceMinute: state.claimFreeVoiceMinute,
+  countFreeVoiceMinutesUsed: state.countFreeVoiceMinutesUsed,
   claimVoiceMinute: state.claimVoiceMinute,
   releaseVoiceMinute: state.releaseVoiceMinute,
   createVoiceSession: state.createVoiceSession,
@@ -100,9 +115,12 @@ vi.mock('../src/lib/chat-fact-extraction.js', () => ({
 const { startVoiceSession, extendVoiceSession, endVoiceSessionForUser, VOICE_MAX_MINUTES } =
   await import('../src/modules/voice/voice.service.js');
 
+const { PASS_VOICE_FREE_MINUTES } = await import('../src/modules/pass/pass.config.js');
+
 const PRICE = 2000;
 const USER = 'user-1';
 const SESSION = 'session-1';
+const PERIOD_START = new Date('2026-10-01T00:00:00Z');
 const profile = makeProfileContext({ birthProfileId: null });
 
 /** A successful minute claim landing on `minutesCharged`. */
@@ -110,8 +128,23 @@ function claimed(minutesCharged: number) {
   return { id: SESSION, userId: USER, minutesCharged, active: true };
 }
 
+/** The member still has free Pass minutes: the next minute is claimed as a free one. */
+function withFreeMinutes(minutesCharged = 1, usedAfter = minutesCharged) {
+  state.claimFreeVoiceMinute.mockResolvedValue(claimed(minutesCharged));
+  state.countFreeVoiceMinutesUsed.mockResolvedValue(usedAfter);
+}
+
 beforeEach(() => {
   fakeEnv.GEMINI_LIVE_ENABLED = true;
+
+  // A Silver member whose free minutes for this period are already spent, so a
+  // minute is a wallet minute unless a test says otherwise (`withFreeMinutes`).
+  state.passEntitlement
+    .mockReset()
+    .mockResolvedValue({ tier: 'silver', features: ['timeline', 'bonds', 'voiceCall'] });
+  state.findActivePass.mockReset().mockResolvedValue({ periodStart: PERIOD_START });
+  state.claimFreeVoiceMinute.mockReset().mockResolvedValue(null);
+  state.countFreeVoiceMinutesUsed.mockReset().mockResolvedValue(PASS_VOICE_FREE_MINUTES);
 
   state.claimVoiceMinute.mockReset().mockResolvedValue(claimed(1));
   state.releaseVoiceMinute.mockReset().mockResolvedValue(undefined);
@@ -127,7 +160,8 @@ beforeEach(() => {
 
   state.deductWalletBalance.mockReset().mockResolvedValue(true);
   state.addWalletBalance.mockReset().mockResolvedValue(undefined);
-  state.findActiveUserById.mockReset().mockResolvedValue({ id: USER });
+  // ₹100 left after the charge: 5 more minutes at the default price.
+  state.findActiveUserById.mockReset().mockResolvedValue({ id: USER, walletBalancePaise: 10_000 });
   state.resolveFeaturesForUser
     .mockReset()
     .mockResolvedValue({ 'paid.voiceChat': { enabled: true, pricePaise: PRICE } });
@@ -157,7 +191,7 @@ describe('startVoiceSession', () => {
     expect(state.deductWalletBalance).toHaveBeenCalledWith(USER, PRICE, 'voice_minute');
     expect(grant.token).toBe('tok-abc');
     expect(grant.minutesUsed).toBe(1);
-    expect(grant.minutesRemaining).toBe(VOICE_MAX_MINUTES - 1);
+    expect(grant.freeMinute).toBe(false);
   });
 
   it('records the minute in ai_usage — the only point this server can observe voice usage at all', async () => {
@@ -243,7 +277,7 @@ describe('startVoiceSession', () => {
     await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow();
 
     expect(state.addWalletBalance).toHaveBeenCalledWith(USER, PRICE, 'refund:voice_minute');
-    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER);
+    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER, false);
   });
 
   it('uses the admin-configured price rather than the hardcoded default', async () => {
@@ -282,13 +316,185 @@ describe('startVoiceSession', () => {
   });
 });
 
-describe('extendVoiceSession — the 3-minute ceiling', () => {
+describe('voice call is a Pass benefit', () => {
+  it('refuses to start without a Pass, before creating a session or charging', async () => {
+    state.passEntitlement.mockResolvedValue(null);
+
+    await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow('PASS_REQUIRED');
+
+    expect(state.createVoiceSession).not.toHaveBeenCalled();
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.mintLiveToken).not.toHaveBeenCalled();
+  });
+
+  it('refuses a Pass whose tier does not include voice call', async () => {
+    state.passEntitlement.mockResolvedValue({ tier: 'silver', features: ['timeline', 'bonds'] });
+
+    await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow('PASS_REQUIRED');
+  });
+
+  it('stops the next minute when the Pass ends in the middle of a call', async () => {
+    state.passEntitlement.mockResolvedValue(null);
+
+    await expect(extendVoiceSession(USER, SESSION, profile, 'en', 'h')).rejects.toThrow(
+      'PASS_REQUIRED',
+    );
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('every tier includes voice call, with the same free minutes', async () => {
+    const { PASS_TIERS } = await import('../src/modules/pass/pass.config.js');
+    for (const tier of PASS_TIERS) expect(tier.features, tier.tier).toContain('voiceCall');
+  });
+});
+
+describe('free Pass minutes', () => {
+  it('gives a free minute without touching the wallet', async () => {
+    withFreeMinutes(1);
+
+    const grant = await startVoiceSession(USER, profile, 'en');
+
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.claimVoiceMinute).not.toHaveBeenCalled();
+    expect(grant.freeMinute).toBe(true);
+    expect(grant.freeMinutesLeft).toBe(PASS_VOICE_FREE_MINUTES - 1);
+  });
+
+  it('counts the allowance from the start of the Pass period, across all calls', async () => {
+    withFreeMinutes(1);
+
+    await startVoiceSession(USER, profile, 'en');
+
+    expect(state.claimFreeVoiceMinute).toHaveBeenCalledWith(
+      SESSION,
+      USER,
+      VOICE_MAX_MINUTES,
+      PERIOD_START,
+      PASS_VOICE_FREE_MINUTES,
+    );
+  });
+
+  it('counts a group member with no Pass row over the last 30 days', async () => {
+    state.findActivePass.mockResolvedValue(null);
+    withFreeMinutes(1);
+    const before = Date.now();
+
+    await startVoiceSession(USER, profile, 'en');
+
+    const since = state.claimFreeVoiceMinute.mock.calls[0]![3] as Date;
+    expect(before - since.getTime()).toBeGreaterThanOrEqual(30 * 86_400_000 - 5_000);
+    expect(before - since.getTime()).toBeLessThanOrEqual(30 * 86_400_000 + 5_000);
+  });
+
+  it('charges the wallet once the free minutes are spent', async () => {
+    // The default setup: the free claim comes back empty.
+    const grant = await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
+
+    expect(state.claimFreeVoiceMinute).toHaveBeenCalledTimes(1);
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(USER, PRICE, 'voice_minute');
+    expect(grant.freeMinute).toBe(false);
+    expect(grant.freeMinutesLeft).toBe(0);
+  });
+
+  it('a whole call: free minutes first, then one wallet charge per minute', async () => {
+    let minute = 0;
+    state.claimFreeVoiceMinute.mockImplementation(() => {
+      if (minute >= PASS_VOICE_FREE_MINUTES) return Promise.resolve(null);
+      minute += 1;
+      return Promise.resolve(claimed(minute));
+    });
+    state.claimVoiceMinute.mockImplementation(() => {
+      minute += 1;
+      return Promise.resolve(claimed(minute));
+    });
+
+    const grants = [await startVoiceSession(USER, profile, 'en')];
+    for (let i = 0; i < 4; i++) {
+      grants.push(await extendVoiceSession(USER, SESSION, profile, 'en', 'h'));
+    }
+
+    expect(grants.map((g) => g.freeMinute)).toEqual([true, true, true, false, false]);
+    expect(state.deductWalletBalance).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives a free minute back to the allowance, not the wallet, when Google refuses to mint', async () => {
+    withFreeMinutes(1);
+    state.mintLiveToken.mockRejectedValue(new Error('502 from Google'));
+
+    await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow();
+
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER, true);
+  });
+
+  it('refunds no money when the minute that never connected was a free one', async () => {
+    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1, free: true });
+
+    await endVoiceSessionForUser(USER, SESSION, false);
+
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(state.endVoiceSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('how long the call can still run', () => {
+  it('adds the free minutes left to what the wallet can pay for', async () => {
+    // First free minute of three used; ₹100 in the wallet is 5 paid minutes.
+    withFreeMinutes(1);
+
+    const grant = await startVoiceSession(USER, profile, 'en');
+
+    expect(grant.minutesRemaining).toBe(PASS_VOICE_FREE_MINUTES - 1 + 5);
+  });
+
+  it('reports nothing left when the wallet cannot pay for another minute', async () => {
+    state.findActiveUserById.mockResolvedValue({ id: USER, walletBalancePaise: PRICE - 1 });
+
+    const grant = await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
+
+    expect(grant.minutesRemaining).toBe(0);
+  });
+
+  it('is not capped at 3 minutes: a full wallet keeps the call going', async () => {
+    state.claimVoiceMinute.mockResolvedValue(claimed(10));
+    state.findActiveUserById.mockResolvedValue({ id: USER, walletBalancePaise: 40 * PRICE });
+
+    const grant = await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
+
+    expect(grant.minutesUsed).toBe(10);
+    expect(grant.minutesRemaining).toBe(40);
+  });
+
+  it('still grants the minute when the balance lookup fails', async () => {
+    state.findActiveUserById.mockRejectedValue(new Error('db down'));
+    state.countFreeVoiceMinutesUsed.mockRejectedValue(new Error('db down'));
+
+    const grant = await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
+
+    expect(grant.token).toBe('tok-abc');
+    expect(grant.minutesRemaining).toBe(0);
+  });
+});
+
+describe('extendVoiceSession — out of money, and the safety ceiling', () => {
+  it('says the wallet is empty in a way the app can tell from the ceiling', async () => {
+    state.deductWalletBalance.mockResolvedValue(false);
+
+    await expect(extendVoiceSession(USER, SESSION, profile, 'en', 'h')).rejects.toThrow(
+      'VOICE_OUT_OF_CREDIT',
+    );
+    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER);
+    expect(state.mintLiveToken).not.toHaveBeenCalled();
+  });
+
   it('refuses the minute past the ceiling and charges nothing', async () => {
-    // claimVoiceMinute returns null when its `minutes_charged < max` predicate
+    // Both claims return null when their `minutes_charged < max` predicate
     // fails, which is the ceiling being enforced in SQL rather than in JS.
     state.claimVoiceMinute.mockResolvedValue(null);
 
-    await expect(extendVoiceSession(USER, SESSION, profile, 'en', 'handle')).rejects.toThrow();
+    await expect(extendVoiceSession(USER, SESSION, profile, 'en', 'handle')).rejects.toThrow(
+      'VOICE_SESSION_LIMIT',
+    );
 
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
     expect(state.mintLiveToken).not.toHaveBeenCalled();
@@ -371,7 +577,7 @@ describe('endVoiceSessionForUser', () => {
   });
 
   it('refunds the most recent minute when connected:false lands inside the grace window', async () => {
-    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1 });
+    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1, free: false });
 
     await endVoiceSessionForUser(USER, SESSION, false);
 
@@ -383,7 +589,7 @@ describe('endVoiceSessionForUser', () => {
   });
 
   it('refunds at the currently configured price, not a hardcoded one', async () => {
-    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1 });
+    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1, free: false });
     state.resolveFeaturesForUser.mockResolvedValue({
       'paid.voiceChat': { enabled: true, pricePaise: 3500 },
     });
@@ -501,7 +707,7 @@ describe('endVoiceSessionForUser — saving the call as a chat session', () => {
   });
 
   it('does not save anything when connected:false refunds the call (nothing to save)', async () => {
-    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1 });
+    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1, free: false });
 
     await endVoiceSessionForUser(USER, SESSION, false, TRANSCRIPT);
 

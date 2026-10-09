@@ -596,6 +596,13 @@
       "when": 1789900000000,
       "tag": "0084_story_events",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1790000000000,
+      "tag": "0085_voice_free_minutes",
+      "breakpoints": true
     }
   ]
 }
