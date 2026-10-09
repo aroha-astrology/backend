@@ -406,6 +406,20 @@ const REGISTRY: ProvenanceEntry[] = [
     note: 'Node entries in the shared table are not in this text',
   },
   {
+    featureId: 'GOC-AUS',
+    featureName: 'Transit: houses from the birth Moon that are benefic, seven planets',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BS-103.4'],
+    note: 'Rahu and Ketu rows (3, 6, 11) are not in the text. Mars in the 10th is favourable in the per-house verse but outside the summary the engine follows',
+  },
+  {
+    featureId: 'GOC-VED',
+    featureName: 'Transit: vedha (obstruction) pairs and their exemptions',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Not in Bṛhat Saṃhitā chapter 103 or the Bṛhat Jātaka. A later work is needed before this can be called classical',
+  },
+  {
     featureId: 'DIG-NAT',
     featureName: 'Benefic and malefic planets (waning Moon, Mercury by company)',
     tag: 'ANCIENT_CLASSICAL',

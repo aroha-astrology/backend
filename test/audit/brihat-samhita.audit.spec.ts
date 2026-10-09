@@ -3,6 +3,7 @@ import type { ChartData, Planet } from '@aroha-astrology/shared';
 import { SIGN_LORDS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import { detectAllYogas } from '../../src/lib/astro-engine/yogas/index.js';
 import { VASTU_RULES } from '../../src/modules/vastu/vastu.rules.js';
+import { AUSPICIOUS_HOUSES, VEDHA_PAIRS } from '../../src/lib/astro-tools/vedha.js';
 
 // =============================================================================
 // Rules read from the Bṛhat Saṃhitā of Varāhamihira (6th century)
@@ -163,4 +164,47 @@ describe('[BS 52.116-117] where the rooms and the water go', () => {
   it.todo(
     'water in the east and the north-west: the text lists death of sons and poverty, the engine rates both acceptable (NEEDS DECISION: needs rule set v2 in three copies)',
   );
+});
+
+describe('[BS 103.4] the houses from the birth Moon in which a transiting planet is benefic', () => {
+  // sūryaḥ ṣaṭ-tri-daśa-sthitas tri-daśa-ṣaṭ-sapta-ādyagaś candramā
+  // jīvaḥ sapta-nava-dvi-pañcama-gato vakra-arkajau ṣaṭ-trigau
+  // saumyaḥ ṣaḍ-dvi-catur-daśa-aṣṭama-gataḥ sarve api upānte śubhāḥ
+  // śukraḥ saptama-ṣaḍ-daśa-ṛkṣa-sahitaḥ śārdūlavat trāsa-kṛt
+  // Sun 6, 3, 10; Moon 3, 10, 6, 7, 1; Jupiter 7, 9, 2, 5; Mars and Saturn 6, 3;
+  // Mercury 6, 2, 4, 10, 8; Venus bad in 7, 6, 10; every planet good in the
+  // 11th ("upānta"). The per-house verses 103.5-103.45 agree for each.
+  const verse: Record<string, number[]> = {
+    Sun: [3, 6, 10, 11],
+    Moon: [1, 3, 6, 7, 10, 11],
+    Mars: [3, 6, 11],
+    Mercury: [2, 4, 6, 8, 10, 11],
+    Jupiter: [2, 5, 7, 9, 11],
+    Venus: [1, 2, 3, 4, 5, 8, 9, 11, 12],
+    Saturn: [3, 6, 11],
+  };
+
+  it('the engine’s table is the verse’s table for the seven planets', () => {
+    for (const [planet, houses] of Object.entries(verse)) {
+      expect(
+        [...AUSPICIOUS_HOUSES[planet]!].sort((a, b) => a - b),
+        planet,
+      ).toEqual(houses);
+    }
+  });
+
+  it('Rahu and Ketu have a table the text does not give (ANCIENT SOURCE NOT VERIFIED)', () => {
+    expect(AUSPICIOUS_HOUSES.Rahu).toEqual([3, 6, 11]);
+    expect(AUSPICIOUS_HOUSES.Ketu).toEqual([3, 6, 11]);
+  });
+
+  it('every vedha point in the engine’s table belongs to a house the text calls benefic', () => {
+    // A pairing needs an auspicious house to obstruct. This does not verify the
+    // pairs themselves: chapter 103 has no vedha rule (see the register).
+    for (const [planet, pairs] of Object.entries(VEDHA_PAIRS)) {
+      for (const house of Object.keys(pairs).map(Number)) {
+        expect(AUSPICIOUS_HOUSES[planet], `${planet} ${house}`).toContain(house);
+      }
+    }
+  });
 });
