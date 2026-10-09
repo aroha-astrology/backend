@@ -26,7 +26,7 @@ export function registerReadingTools(server: McpServer, base: ToolContext): void
       title: 'Get moon sign horoscope',
       description:
         'Use this when the user asks for a horoscope (rashifal) for today, this week, this month or this year and their Vedic moon sign (rashi) is known. ' +
-        "Returns the reading for that moon sign from the current planetary transits. It is a general reading for everyone with that sign, not a personal one. " +
+        'Returns the reading for that moon sign from the current planetary transits. It is a general reading for everyone with that sign, not a personal one. ' +
         'Vedic readings go by moon sign, not the Western sun sign; if only the sun sign is known, use find_moon_sign first.',
       input: {
         moon_sign: z.enum(SIGNS).describe('The Vedic moon sign (rashi)'),
@@ -46,7 +46,11 @@ export function registerReadingTools(server: McpServer, base: ToolContext): void
         description: z.string(),
         advice: z.string(),
         lucky_colour: z.string(),
-        lucky_number: z.number(),
+        lucky_number: z
+          .number()
+          .describe(
+            "Today's number: the day of the month added down to one digit. It is the same for everyone and is not personal.",
+          ),
         areas: z.array(
           z.object({
             area: z.string(),
@@ -124,7 +128,7 @@ export function registerReadingTools(server: McpServer, base: ToolContext): void
       name: 'get_numerology_numbers',
       title: 'Get numerology numbers',
       description:
-        "Use this when the user asks for their numerology numbers. Calculates the life path, Mulank (psychic number), Bhagyank (destiny number) and the name numbers (expression, soul urge, personality) from a full name and a date of birth. Nothing is saved.",
+        'Use this when the user asks for their numerology numbers. Calculates the life path, Mulank (psychic number), Bhagyank (destiny number) and the name numbers (expression, soul urge, personality) from a full name and a date of birth. Nothing is saved.',
       input: {
         full_name: z
           .string()

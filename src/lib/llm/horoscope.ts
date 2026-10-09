@@ -546,7 +546,7 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
   // replaced. Needs only date of birth, not the full chart, so this no
   // longer gates on ctx.kundli.chart being ready.
   const lucky = getDailyLuckyElements(dob, ctx.forDate);
-  const luckyFact = `MANDATORY LUCKY ELEMENTS: You MUST set "luckyColor": "${lucky.luckyColor}" and "luckyNumber": ${lucky.luckyNumber} in the JSON root exactly.`;
+  const luckyFact = `MANDATORY DAILY ELEMENTS: You MUST set "luckyColor": "${lucky.luckyColor}" and "luckyNumber": ${lucky.todaysNumber} in the JSON root exactly. The number is today's number (the day of the month added down to one digit), the same for every reader: never describe it as personal to this reader.`;
 
   const categoryGrounding = `
 CATEGORY GUIDELINES:
