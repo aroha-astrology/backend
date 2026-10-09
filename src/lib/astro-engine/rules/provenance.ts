@@ -495,7 +495,13 @@ const REGISTRY: ProvenanceEntry[] = [
   // -------------------------------------------------------------------------
   // Muhurta
   // -------------------------------------------------------------------------
-  { featureId: 'MUH-FLT', featureName: 'Muhurta filters (all)', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'MUH-FLT',
+    featureName: 'Muhurta filters (all)',
+    tag: 'UNVERIFIED',
+    sourceIds: ['BS-97-99'],
+    note: 'Only the marriage star list and the Rikta tithis are in Bṛhat Saṃhitā 97-99. The other categories, weekdays and tithi lists are from a work not yet opened. Karana (Vishti) and yoga (Vyatipata, Vaidhriti) are not modelled',
+  },
   {
     featureId: 'MUH-SRG',
     featureName: 'Surgery muhurta category',

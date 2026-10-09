@@ -149,11 +149,16 @@ const PROPERTY: MuhurtaRule = {
   unfavorableWeekdays: [TUE, SAT],
 };
 
-/** Vivah nakshatras; the three Purvas and the fierce stars avoided, as are Ashtami and Navami. */
+/**
+ * Vivah nakshatras: the eleven of Bṛhat Saṃhitā 99.7 (Rohini, the three Uttaras, Revati,
+ * Mrigashira, Moola, Anuradha, Magha, Hasta, Swati). The three Purvas and the other fierce
+ * stars are avoided, as are Ashtami and Navami (those two tithis are not from that text).
+ */
 const MARRIAGE: MuhurtaRule = {
   favorableNakshatras: [
     'Rohini',
     'Mrigashira',
+    'Moola',
     'Magha',
     'UttaraPhalguni',
     'Hasta',
@@ -169,7 +174,6 @@ const MARRIAGE: MuhurtaRule = {
     'Ardra',
     'Ashlesha',
     'Jyeshtha',
-    'Moola',
     'PurvaPhalguni',
     'PurvaAshadha',
     'PurvaBhadrapada',

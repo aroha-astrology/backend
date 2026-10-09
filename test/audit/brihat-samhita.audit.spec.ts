@@ -4,6 +4,7 @@ import { SIGN_LORDS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import { detectAllYogas } from '../../src/lib/astro-engine/yogas/index.js';
 import { VASTU_RULES } from '../../src/modules/vastu/vastu.rules.js';
 import { AUSPICIOUS_HOUSES, VEDHA_PAIRS } from '../../src/lib/astro-tools/vedha.js';
+import { MUHURTA_SPECS } from '../../src/lib/astro-tools/muhurta-rules.js';
 
 // =============================================================================
 // Rules read from the Bṛhat Saṃhitā of Varāhamihira (6th century)
@@ -207,4 +208,49 @@ describe('[BS 103.4] the houses from the birth Moon in which a transiting planet
       }
     }
   });
+});
+
+describe('[BS 99.7-99.8, 98.2] the nakshatras and tithis for marriage', () => {
+  // rohiṇy-uttara-revatī-mṛgaśiro-mūla-anurādhā-maghā-hasta-svātiṣu ... pāṇigrahaḥ
+  // Rohini, the three Uttaras, Revati, Mrigashira, Mula, Anuradha, Magha,
+  // Hasta, Swati: eleven stars. vyatipāta-vaidhṛti-dinaṃ viṣṭiṃ ca riktāṃ
+  // tithiṃ tyaktvā: leave out the days of Vyatipata and Vaidhriti, Vishti
+  // (Bhadra) and a Rikta tithi. 98.2 groups the tithis as Nanda, Bhadra,
+  // Vijaya, Rikta, Purna, five groups of three: Rikta is the 4th, 9th, 14th.
+  const marriage = MUHURTA_SPECS.marriage.rule;
+  const verseStars = [
+    'Rohini',
+    'UttaraPhalguni',
+    'UttaraAshadha',
+    'UttaraBhadrapada',
+    'Revati',
+    'Mrigashira',
+    'Moola',
+    'Anuradha',
+    'Magha',
+    'Hasta',
+    'Swati',
+  ];
+
+  it('all eleven stars of the verse are favourable for marriage', () => {
+    for (const star of verseStars) {
+      expect(marriage.favorableNakshatras, star).toContain(star);
+    }
+  });
+
+  it('none of the eleven is listed as one to avoid', () => {
+    for (const star of verseStars) {
+      expect(marriage.unfavorableNakshatras, star).not.toContain(star);
+    }
+  });
+
+  it('the Rikta tithis (4, 9, 14 of each half) are avoided', () => {
+    for (const tithi of [4, 9, 14, 19, 24, 29]) {
+      expect(marriage.unfavorableTithis, String(tithi)).toContain(tithi);
+    }
+  });
+
+  it.todo(
+    'Vishti (Bhadra) karana, Vyatipata and Vaidhriti yoga days are to be left out (BS 99.8); the day scorer does not model karana or yoga (NEEDS DECISION: adds a scoring input)',
+  );
 });
