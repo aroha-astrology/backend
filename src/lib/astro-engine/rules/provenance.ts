@@ -332,7 +332,13 @@ const REGISTRY: ProvenanceEntry[] = [
   // -------------------------------------------------------------------------
   // Yoga engine
   // -------------------------------------------------------------------------
-  { featureId: 'YGA-PMP', featureName: 'Pancha Mahapurusha', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'YGA-PMP',
+    featureName: 'Pancha Mahapurusha',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BS-68.1-2'],
+    note: 'The conditions (own or exalted sign, in an angle) are Bṛhat Saṃhitā 68. The result sentences shown to users are not from that text, which describes the body of each man; one translator reads the conditions as alternatives',
+  },
   { featureId: 'YGA-RAJ', featureName: 'Raja Yoga', tag: 'UNVERIFIED', sourceIds: [] },
   {
     featureId: 'YGA-DKA',
@@ -591,9 +597,10 @@ const REGISTRY: ProvenanceEntry[] = [
   // -------------------------------------------------------------------------
   {
     featureId: 'VST-ANC',
-    featureName: 'Vastu ancient rules (Purusha, Mandala)',
+    featureName: 'Vastu room-direction rules',
     tag: 'UNVERIFIED',
-    sourceIds: [],
+    sourceIds: ['BS-52.116-117', 'BJ-2.5b'],
+    note: 'Five rules have support in Bṛhat Saṃhitā 52 (puja NE, kitchen SE, store SW/NW, water N/NE good, SE/S/SW bad). Water in E and NW is rated acceptable against the text. The other rules, the score and the weights are not from it',
   },
   {
     featureId: 'VST-SCR',

@@ -18,6 +18,7 @@ import {
   calculateD30,
 } from '../../src/lib/astro-engine/charts/divisionalCharts.js';
 import { detectAllYogas } from '../../src/lib/astro-engine/yogas/index.js';
+import { PLANETARY_DIRECTIONS } from '../../src/modules/vastu/vastu.rules.js';
 
 // =============================================================================
 // Rules read from the Bṛhat Jātaka of Varāhamihira (6th century)
@@ -491,5 +492,25 @@ describe('[BJ 13.9] Vasumati: all the benefics in the growing houses', () => {
     // Moon in Leo (4): 3rd Libra (6), 6th Capricorn (9). Mercury in Leo with the Moon.
     const chart = chartWith({ Moon: 4, Jupiter: 6, Venus: 9, Mercury: 4, Sun: 4 });
     expect(present(chart, 'Vasumathi Yoga')).toBe(false);
+  });
+});
+
+describe('[BJ 2.5] the direction each planet presides over', () => {
+  // prāg-ādyā ravi-śukra-lohita-tamaḥ-saura-indu-vit-sūrayaḥ: from the east on,
+  // the Sun, Venus, Mars, Rāhu (tamas), Saturn, the Moon, Mercury, Jupiter.
+  it('the engine’s table is the verse’s table for the seven planets and Rahu', () => {
+    const verse: Record<string, string> = {
+      Sun: 'E',
+      Venus: 'SE',
+      Mars: 'S',
+      Rahu: 'SW',
+      Saturn: 'W',
+      Moon: 'NW',
+      Mercury: 'N',
+      Jupiter: 'NE',
+    };
+    for (const [planet, direction] of Object.entries(verse)) {
+      expect(PLANETARY_DIRECTIONS[planet]?.direction, planet).toBe(direction);
+    }
   });
 });
