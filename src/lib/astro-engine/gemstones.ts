@@ -18,6 +18,17 @@
 // retroactively to every already-unlocked user with no backfill.
 // =============================================================================
 
+import type { Planet } from '@aroha-astrology/shared';
+import {
+  PLANET_DEBILITATION,
+  PLANET_ENEMIES,
+  PLANET_EXALTATION,
+  PLANET_OWN_SIGNS,
+  SIGN_LORDS,
+  ZODIAC_SIGNS,
+} from '@aroha-astrology/shared';
+import { naturalRelation } from './rules/dignity.js';
+
 export type PlanetStrength = 'weak' | 'average' | 'strong';
 
 // Locale-dependent facts (name, alternatives, finger, metal, day, weight, dos, static donts, the
@@ -51,50 +62,20 @@ interface NatalHouse {
   lord?: string;
 }
 
-const DEBILITATION: Record<string, string> = {
-  Sun: 'Libra',
-  Moon: 'Scorpio',
-  Mars: 'Cancer',
-  Mercury: 'Pisces',
-  Jupiter: 'Capricorn',
-  Venus: 'Virgo',
-  Saturn: 'Aries',
-  Rahu: 'Scorpio',
-  Ketu: 'Taurus',
-};
-const EXALTATION: Record<string, string> = {
-  Sun: 'Aries',
-  Moon: 'Taurus',
-  Mars: 'Capricorn',
-  Mercury: 'Virgo',
-  Jupiter: 'Cancer',
-  Venus: 'Pisces',
-  Saturn: 'Libra',
-  Rahu: 'Taurus',
-  Ketu: 'Scorpio',
-};
-const OWN_SIGNS: Record<string, string[]> = {
-  Sun: ['Leo'],
-  Moon: ['Cancer'],
-  Mars: ['Aries', 'Scorpio'],
-  Mercury: ['Gemini', 'Virgo'],
-  Jupiter: ['Sagittarius', 'Pisces'],
-  Venus: ['Taurus', 'Libra'],
-  Saturn: ['Capricorn', 'Aquarius'],
-  Rahu: ['Aquarius'],
-  Ketu: ['Scorpio'],
-};
-const ENEMY_SIGNS: Record<string, string[]> = {
-  Sun: ['Taurus', 'Libra', 'Capricorn', 'Aquarius'],
-  Moon: [],
-  Mars: ['Gemini', 'Virgo'],
-  Mercury: ['Cancer'],
-  Jupiter: ['Gemini', 'Virgo', 'Taurus', 'Libra'],
-  Venus: ['Leo', 'Cancer'],
-  Saturn: ['Leo', 'Cancer', 'Aries', 'Scorpio'],
-  Rahu: ['Leo', 'Cancer', 'Aries', 'Scorpio'],
-  Ketu: ['Leo', 'Cancer'],
-};
+// Views of the engine's one dignity table (shared constants, also read by
+// rules/dignity.ts), not a second copy of it.
+const signOf = (table: Partial<Record<Planet, { sign: string }>>): Record<string, string> =>
+  Object.fromEntries(Object.entries(table).map(([planet, entry]) => [planet, entry.sign]));
+const DEBILITATION = signOf(PLANET_DEBILITATION);
+const EXALTATION = signOf(PLANET_EXALTATION);
+const OWN_SIGNS: Record<string, string[]> = PLANET_OWN_SIGNS;
+/** Signs owned by the planet's natural enemies (its debilitation sign included when an enemy owns it). */
+const ENEMY_SIGNS: Record<string, string[]> = Object.fromEntries(
+  (Object.keys(PLANET_ENEMIES) as Planet[]).map((planet) => [
+    planet,
+    ZODIAC_SIGNS.filter((sign) => naturalRelation(planet, SIGN_LORDS[sign]) === 'enemy'),
+  ]),
+);
 /** No entry ⇒ combustion doesn't apply to that body (Sun can't be combust with itself; Rahu/Ketu are shadow points). */
 const COMBUST_DISTANCE: Record<string, number> = {
   Moon: 12,

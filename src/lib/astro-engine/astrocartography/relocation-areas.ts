@@ -24,6 +24,7 @@ import {
   ZODIAC_SIGNS,
 } from '@aroha-astrology/shared';
 import { calculateAscendant } from '../calculations/planetPositions.js';
+import { signDignity } from '../rules/dignity.js';
 import { calculateAshtakavarga } from '../calculations/ashtakavarga.js';
 import type { WhyFactor } from '../../intelligence/types.js';
 
@@ -40,32 +41,26 @@ export type RelocationArea = keyof typeof RELOCATION_AREAS;
 const UPACHAYA = new Set([3, 6, 10, 11]);
 const SAV_AVERAGE = 28;
 
-/** Sign index (0-11) where each graha is exalted; debilitation is opposite. */
-const EXALTATION: Partial<Record<Planet, number>> = {
-  Sun: 0,
-  Moon: 1,
-  Mars: 9,
-  Mercury: 5,
-  Jupiter: 3,
-  Venus: 11,
-  Saturn: 6,
-};
-const OWN_SIGNS: Partial<Record<Planet, number[]>> = {
-  Sun: [4],
-  Moon: [3],
-  Mars: [0, 7],
-  Mercury: [2, 5],
-  Jupiter: [8, 11],
-  Venus: [1, 6],
-  Saturn: [9, 10],
-};
+const SEVEN_GRAHAS = new Set<Planet>([
+  'Sun',
+  'Moon',
+  'Mars',
+  'Mercury',
+  'Jupiter',
+  'Venus',
+  'Saturn',
+]);
 
-/** +1 exalted or in its own sign, -1 debilitated, 0 otherwise. */
+/**
+ * +1 exalted or in its own sign, -1 debilitated, 0 otherwise. Read from the
+ * engine's one dignity table (rules/dignity.ts). The nodes carry no dignity
+ * here.
+ */
 export function dignityOf(planet: Planet, signIndex: number): -1 | 0 | 1 {
-  const ex = EXALTATION[planet];
-  if (ex === undefined) return 0;
-  if (signIndex === ex || OWN_SIGNS[planet]?.includes(signIndex)) return 1;
-  if (signIndex === (ex + 6) % 12) return -1;
+  if (!SEVEN_GRAHAS.has(planet)) return 0;
+  const dignity = signDignity(planet, signIndex);
+  if (dignity === 'exalted' || dignity === 'own') return 1;
+  if (dignity === 'debilitated') return -1;
   return 0;
 }
 
