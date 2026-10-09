@@ -52,6 +52,14 @@ export interface AstrologyRuleProfile {
    * works do.
    */
   kalaDoubling: 'none' | 'sun-ayana-moon-paksha';
+  /**
+   * What stops Kemadruma (the Moon with no planet but the Sun in its 2nd or
+   * 12th). 'brihat-jataka': the Moon in an angle from the Lagna, or any planet
+   * with the Moon (BJ 13.3). 'later-tradition': also a planet in an angle from
+   * the Moon, Jupiter's aspect on the Moon, Venus with the Moon; the text calls
+   * the first of these "not authoritative" and does not have the second.
+   */
+  kemadrumaExemptions: 'brihat-jataka' | 'later-tradition';
   /** How sunrise is defined for day-based rules. */
   sunrise: 'upper-limb-refracted';
 }
@@ -67,6 +75,7 @@ export const DEFAULT_PROFILE: AstrologyRuleProfile = {
   saptavargajaPoints: 'bphs',
   moolatrikonaInVargas: 'sign',
   kalaDoubling: 'none',
+  kemadrumaExemptions: 'brihat-jataka',
   sunrise: 'upper-limb-refracted',
 };
 

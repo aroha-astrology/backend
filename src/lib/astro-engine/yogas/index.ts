@@ -12,6 +12,7 @@ import { isCombust } from '../calculations/planet-state.js';
 import { aspectsHouse, houseFrom, isKendraFrom } from '../rules/houses.js';
 import { isDayChart } from '../rules/day.js';
 import { beneficsOf, natureOf } from '../rules/nature.js';
+import { assessKemadruma } from '../doshas/kemDrumaDosha.js';
 
 import {
   ZODIAC_SIGNS,
@@ -1318,31 +1319,27 @@ function detectVimala(chartData: ChartData): Yoga {
 }
 
 function detectKemadrumaCanellation(chartData: ChartData): Yoga {
-  // Kemadruma is a dosha when Moon has no planets in 2nd or 12th from it.
-  // Kemadruma Cancellation (benefic yoga) occurs when:
-  //   1. Moon is in a Kendra house, OR
-  //   2. Moon is aspected by Jupiter
+  // Kemadruma is formed when no planet but the Sun is in the 2nd or 12th from
+  // the Moon. The cancellation is what the dosha detector says cancels it
+  // (Brihat Jataka 13.3: the Moon in an angle from the Lagna, or with a planet;
+  // the later exemptions only under the 'later-tradition' profile option), so
+  // the yoga and the dosha cannot disagree (audit DS3).
   const moonHouse = getPlanetHouse('Moon', chartData);
-  if (moonHouse === 0) {
+  const assessment = assessKemadruma(chartData);
+  if (moonHouse === 0 || !assessment) {
     return {
       name: 'Kemadruma Cancellation',
       type: 'benefic',
       present: false,
       strength: 0,
-      description: 'Moon in Kendra or aspected by Jupiter cancels Kemadruma dosha.',
+      description:
+        'Kemadruma is cancelled when the Moon is in an angle from the Lagna or has a planet with it.',
       planets: [],
       houses: [],
     };
   }
 
-  // First check if Kemadruma dosha exists (no planets in 2nd/12th from Moon)
-  const secondFromMoon = (moonHouse % 12) + 1;
-  const twelfthFromMoon = ((moonHouse - 2 + 12) % 12) + 1;
-  const eligible: Planet[] = ['Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
-
-  const hasSecond = eligible.some((p) => getPlanetHouse(p, chartData) === secondFromMoon);
-  const hasTwelfth = eligible.some((p) => getPlanetHouse(p, chartData) === twelfthFromMoon);
-  const kemadrumaExists = !hasSecond && !hasTwelfth;
+  const kemadrumaExists = assessment.formed;
 
   if (!kemadrumaExists) {
     // No Kemadruma dosha, so cancellation is not applicable (no dosha to cancel = not a yoga)
@@ -1357,26 +1354,24 @@ function detectKemadrumaCanellation(chartData: ChartData): Yoga {
     };
   }
 
-  const moonInKendra = isInKendra(moonHouse);
-  const jupiterAspectsMoon = isPlanetAspectedBy('Moon', 'Jupiter', chartData);
-  const present = moonInKendra || jupiterAspectsMoon;
+  const present = assessment.cancellations.length > 0;
 
   let strength = 0;
   if (present) {
     strength = computePlanetStrength('Moon', chartData);
-    if (moonInKendra && jupiterAspectsMoon) strength = Math.min(100, strength + 15);
+    if (assessment.cancellations.length > 1) strength = Math.min(100, strength + 15);
   }
 
-  const planets: Planet[] = ['Moon'];
-  if (jupiterAspectsMoon) planets.push('Jupiter');
+  const planets: Planet[] = ['Moon', ...assessment.cancellingPlanets];
 
   return {
     name: 'Kemadruma Cancellation',
     type: 'benefic',
     present,
     strength,
-    description:
-      "Kemadruma dosha is cancelled because Moon is in a Kendra or aspected by Jupiter. Restores the native's fortune, status, and mental peace.",
+    description: present
+      ? `Kemadruma is cancelled: ${assessment.cancellations.join('; ').replace(/ - cancellation applies/g, '')}.`
+      : 'Kemadruma is cancelled when the Moon is in an angle from the Lagna or has a planet with it.',
     planets,
     houses: present ? [moonHouse] : [],
     activationPeriod: 'Moon Mahadasha/Antardasha' ?? undefined,

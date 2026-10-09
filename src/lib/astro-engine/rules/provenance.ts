@@ -411,9 +411,9 @@ const REGISTRY: ProvenanceEntry[] = [
   {
     featureId: 'DOH-KEM',
     featureName: 'Kemadruma Dosha',
-    tag: 'UNVERIFIED',
+    tag: 'ANCIENT_CLASSICAL',
     sourceIds: ['BJ-13.3'],
-    note: 'Definition and two cancellations are in Bṛhat Jātaka 13.3. The code adds a kendra-from-Moon exemption (reported there as not authoritative) and a Jupiter-aspect cancellation (not there)',
+    note: 'Definition and the two cancellations are in Bṛhat Jātaka 13.3 and are the default. The later exemptions (a planet in an angle from the Moon, the aspect of Jupiter, Venus with the Moon) are the profile option kemadrumaExemptions later-tradition',
   },
   {
     featureId: 'DOH-SAD',
