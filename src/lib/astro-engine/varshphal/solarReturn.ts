@@ -13,8 +13,8 @@ import { calculatePlanetPositions, calculateChart } from '../calculations/planet
 import { jdFromDate, dateFromJd } from '../../astro-tools/transit-events.js';
 import type { ChartData, Ayanamsa, HouseSystem } from '@aroha-astrology/shared';
 
-async function sunLongitudeAt(jd: number): Promise<number> {
-  const positions = await calculatePlanetPositions(jd);
+async function sunLongitudeAt(jd: number, ayanamsa: Ayanamsa): Promise<number> {
+  const positions = await calculatePlanetPositions(jd, ayanamsa);
   return positions.find((p) => p.planet === 'Sun')?.longitude ?? 0;
 }
 
@@ -37,6 +37,10 @@ export async function findSolarReturnJd(
   natalSunLongitude: number,
   birthDate: Date,
   targetYear: number,
+  // The natal Sun's longitude is in the chart's own ayanamsa, so the transit
+  // Sun must be read in the same one (audit item TJ4): against the default it
+  // lands up to a day and a half away for a non-Lahiri chart.
+  ayanamsa: Ayanamsa = 'lahiri',
 ): Promise<number> {
   const approx = new Date(
     Date.UTC(
@@ -53,7 +57,7 @@ export async function findSolarReturnJd(
 
   for (let i = 0; i < SEARCH_ITERATIONS; i++) {
     const mid = (jdLow + jdHigh) / 2;
-    const diff = angleDiff(await sunLongitudeAt(mid), natalSunLongitude);
+    const diff = angleDiff(await sunLongitudeAt(mid, ayanamsa), natalSunLongitude);
     if (diff < 0) jdLow = mid;
     else jdHigh = mid;
   }
@@ -88,7 +92,7 @@ export async function computeSolarReturn(
   ayanamsa: Ayanamsa = 'lahiri',
   houseSystem: HouseSystem = 'W',
 ): Promise<SolarReturnResult> {
-  const jd = await findSolarReturnJd(natalSunLongitude, birthDate, targetYear);
+  const jd = await findSolarReturnJd(natalSunLongitude, birthDate, targetYear, ayanamsa);
   const exactAt = dateFromJd(jd);
 
   const chart = await calculateChart(
@@ -96,7 +100,9 @@ export async function computeSolarReturn(
     exactAt.getUTCMonth() + 1,
     exactAt.getUTCDate(),
     exactAt.getUTCHours(),
-    exactAt.getUTCMinutes(),
+    // Seconds ride along as a fraction of the minute; dropping them moved the
+    // annual Lagna by up to a quarter of a degree.
+    exactAt.getUTCMinutes() + exactAt.getUTCSeconds() / 60,
     0, // exactAt is already UT
     latitude,
     longitude,

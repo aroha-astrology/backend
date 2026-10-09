@@ -128,8 +128,12 @@ export function buildYoginiAntardashas(
  * @param birthDate      Date/time of birth.
  * @returns              A `YoginiDasha` object.
  */
-export function calculateYoginiDasha(moonLongitude: number, birthDate: Date): YoginiDasha {
-  const now = new Date();
+export function calculateYoginiDasha(
+  moonLongitude: number,
+  birthDate: Date,
+  asOf: Date = new Date(),
+): YoginiDasha {
+  const now = asOf;
 
   // 1. Starting yogini
   const nakshatraIdx = getNakshatraIndex(moonLongitude);
@@ -176,8 +180,21 @@ export function calculateYoginiDasha(moonLongitude: number, birthDate: Date): Yo
       endDate,
       isActive,
       level: 'mahadasha',
-      subPeriods: isActive ? buildYoginiAntardashas(yoginiIdx, cursor, durationYears, now) : [],
+      // The birth period began before birth: its sub-periods are cut from the
+      // full length and the ones already over at birth dropped (audit item VM1,
+      // same rule as dashas/vimshottari.ts's fullSpanOf).
+      subPeriods: isActive
+        ? buildYoginiAntardashas(
+            yoginiIdx,
+            periodCount === 0 ? addYears(birthDate, -traversed * firstFullYears) : cursor,
+            periodCount === 0 ? firstFullYears : durationYears,
+            now,
+          ).filter((p) => p.endDate.getTime() > birthDate.getTime())
+        : [],
       deity: YOGINI_NAMES[yoginiIdx],
+      ...(periodCount === 0
+        ? { fullStartDate: addYears(birthDate, -traversed * firstFullYears) }
+        : {}),
     });
 
     accumulatedYears += durationYears;

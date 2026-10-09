@@ -166,6 +166,14 @@ export interface DashaPeriod {
   level: 'mahadasha' | 'antardasha' | 'pratyantardasha' | 'sookshma' | 'prana';
   subPeriods: DashaPeriod[];
   deity?: string;
+  /**
+   * Only on the Mahadasha a person is born into: when the whole period began,
+   * before birth. `startDate` stays the birth instant (what the dasha screen
+   * shows); sub-periods must be cut from the full period, so anything that
+   * rebuilds them reads this through `fullSpanOf` in dashas/vimshottari.ts.
+   * Absent on charts stored before the field existed.
+   */
+  fullStartDate?: Date;
 }
 
 export interface VimshottariDasha {

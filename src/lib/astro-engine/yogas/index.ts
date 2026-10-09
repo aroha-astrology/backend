@@ -9,6 +9,7 @@ import type {
 } from '@aroha-astrology/shared';
 
 import { isCombust } from '../calculations/planet-state.js';
+import { aspectsHouse, houseFrom, isKendraFrom } from '../rules/houses.js';
 
 import {
   ZODIAC_SIGNS,
@@ -97,10 +98,14 @@ function arePlanetsConjunct(p1: Planet, p2: Planet, chartData: ChartData): boole
   return h1 > 0 && h2 > 0 && h1 === h2;
 }
 
-/** Get the house distance from one house to another (1-12 counting forward). */
+/**
+ * Which house `toHouse` is, counted from `fromHouse` the Jyotish way: the same
+ * house is the 1st, the opposite house the 7th. This used to return steps
+ * (same house = 12, opposite = 6) while every caller below compared it with
+ * ordinals, which read each aspect one house late (audit items YG1-YG3).
+ */
 function houseDistance(fromHouse: number, toHouse: number): number {
-  const diff = (((toHouse - fromHouse) % 12) + 12) % 12;
-  return diff === 0 ? 12 : diff;
+  return houseFrom(fromHouse, toHouse);
 }
 
 /**
@@ -114,17 +119,7 @@ function houseDistance(fromHouse: number, toHouse: number): number {
 function doesPlanetAspect(planet: Planet, targetHouse: number, chartData: ChartData): boolean {
   const planetHouse = getPlanetHouse(planet, chartData);
   if (planetHouse === 0) return false;
-  const dist = houseDistance(planetHouse, targetHouse);
-
-  // All planets aspect the 7th
-  if (dist === 7) return true;
-
-  // Special aspects
-  if (planet === 'Mars' && (dist === 4 || dist === 8)) return true;
-  if (planet === 'Jupiter' && (dist === 5 || dist === 9)) return true;
-  if (planet === 'Saturn' && (dist === 3 || dist === 10)) return true;
-
-  return false;
+  return aspectsHouse(planet, planetHouse, targetHouse);
 }
 
 /** Is a planet aspected by a specific other planet? */
@@ -721,9 +716,7 @@ function detectGajakesari(chartData: ChartData): Yoga {
     };
   }
 
-  const dist = houseDistance(moonHouse, jupiterHouse);
-  // Kendra from Moon = Vedic 1st/4th/7th/10th ordinal = 0/3/6/9 steps (houseDistance returns 12 for same-house)
-  const inKendraFromMoon = dist === 12 || dist === 3 || dist === 6 || dist === 9;
+  const inKendraFromMoon = isKendraFrom(moonHouse, jupiterHouse);
   const present = inKendraFromMoon;
 
   let strength = 0;

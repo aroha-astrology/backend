@@ -5,6 +5,8 @@
 // and double-transit detection for Vedic transit analysis.
 // =============================================================================
 
+import { signDignity } from '../astro-engine/rules/dignity.js';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -99,35 +101,35 @@ export const OWN_SIGNS: Record<string, number[]> = {
 };
 
 /**
- * Friendly signs for each planet (0-based sign indices).
- * Based on natural friendship (naisargika maitri) in Vedic astrology.
+ * Friendly and enemy signs for each planet (0-based sign indices), derived
+ * from the one by-planet friendship table (rules/dignity.ts). These used to be
+ * hand-written sign lists that contradicted that table for the Moon, Mars,
+ * Mercury, Venus and Saturn (audit item TR1).
  */
-export const FRIENDS: Record<string, number[]> = {
-  Sun: [0, 3, 7, 8, 11], // Mars, Moon, Jupiter signs
-  Moon: [1, 2, 4, 5, 6], // Sun, Mercury signs + own
-  Mars: [3, 4, 8, 11], // Sun, Moon, Jupiter signs
-  Mercury: [1, 4, 6, 9, 10], // Venus, Saturn signs + Sun
-  Jupiter: [0, 3, 4, 7], // Sun, Moon, Mars signs
-  Venus: [2, 5, 9, 10], // Mercury, Saturn signs
-  Saturn: [1, 2, 5, 6, 11], // Venus, Mercury signs
-  Rahu: [2, 5, 8, 11], // Mercury, Jupiter signs
-  Ketu: [0, 3, 4, 8, 11], // Mars, Moon, Jupiter signs
-};
+const DIGNITY_PLANETS = [
+  'Sun',
+  'Moon',
+  'Mars',
+  'Mercury',
+  'Jupiter',
+  'Venus',
+  'Saturn',
+  'Rahu',
+  'Ketu',
+] as const;
 
-/**
- * Enemy signs for each planet (0-based sign indices).
- */
-export const ENEMIES: Record<string, number[]> = {
-  Sun: [1, 6, 9, 10], // Venus, Saturn signs
-  Moon: [7, 9, 10], // Saturn, Mars (Scorpio)
-  Mars: [2, 5, 6], // Mercury signs, Libra
-  Mercury: [0, 3, 7], // Mars, Moon signs
-  Jupiter: [1, 2, 5, 6], // Mercury, Venus signs
-  Venus: [0, 3, 4, 7], // Sun, Moon, Mars signs
-  Saturn: [0, 3, 4, 7, 8], // Sun, Moon, Mars signs
-  Rahu: [0, 4, 7], // Sun, Mars signs
-  Ketu: [1, 2, 5, 6], // Venus, Mercury signs
-};
+function signsWith(wanted: 'friend' | 'enemy'): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  for (const planet of DIGNITY_PLANETS) {
+    out[planet] = Array.from({ length: 12 }, (_, i) => i).filter(
+      (i) => signDignity(planet, i) === wanted,
+    );
+  }
+  return out;
+}
+
+export const FRIENDS: Record<string, number[]> = signsWith('friend');
+export const ENEMIES: Record<string, number[]> = signsWith('enemy');
 
 /**
  * Special aspects (drishti) beyond the universal 7th-house aspect.

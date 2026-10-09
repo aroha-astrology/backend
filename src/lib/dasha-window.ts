@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { buildSubPeriods } from './astro-engine/index.js';
+import { fullSpanOf } from './astro-engine/dashas/vimshottari.js';
 import type { DashaPeriod } from '@aroha-astrology/shared';
 
 export interface FavorableWindow {
@@ -14,8 +15,6 @@ export interface FavorableWindow {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
 }
-
-const MS_PER_YEAR = 365.25 * 86_400_000;
 
 /**
  * Scan the next `maxMahadashas` mahadashas (starting from the current one, if
@@ -62,9 +61,8 @@ export function findFavorableWindows(
   const horizonMs = horizonEnd?.getTime();
 
   for (const maha of upcoming) {
-    const mahaStart = new Date(maha.startDate);
-    const mahaEnd = new Date(maha.endDate);
-    const durationYears = (mahaEnd.getTime() - mahaStart.getTime()) / MS_PER_YEAR;
+    // Cut from the full period: the birth period began before its shown start.
+    const { start: mahaStart, years: durationYears } = fullSpanOf(maha);
 
     const antardashas =
       sharedSubPeriods?.get(maha.planet) ??
@@ -173,9 +171,7 @@ export function buildSharedDashaTree(
 
   const tree = new Map<string, ReturnType<typeof buildSubPeriods>>();
   for (const maha of upcoming) {
-    const mahaStart = new Date(maha.startDate);
-    const mahaEnd = new Date(maha.endDate);
-    const durationYears = (mahaEnd.getTime() - mahaStart.getTime()) / MS_PER_YEAR;
+    const { start: mahaStart, years: durationYears } = fullSpanOf(maha);
     tree.set(maha.planet, buildSubPeriods(maha.planet, mahaStart, durationYears, 1, now, 2, true));
   }
   return tree;

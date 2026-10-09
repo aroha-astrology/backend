@@ -1,8 +1,9 @@
-import { FRIENDS, ENEMIES, OWN_SIGNS } from '../astro-tools/transit.js';
+import { naturalRelation } from './rules/dignity.js';
 import { findFavorableWindows, type FavorableWindow } from '../dasha-window.js';
 import { buildSubPeriods } from './index.js';
 import { buildYoginiAntardashas } from './dashas/yogini.js';
 import { YOGINI_PLANETS } from '@aroha-astrology/shared';
+import type { Planet } from '@aroha-astrology/shared';
 
 export type Domain =
   | 'career'
@@ -229,22 +230,9 @@ export interface DomainWindowResult {
   windows: RankedWindow[];
 }
 
+/** Natural friendship of one period lord towards another, from the one planet table. */
 function getRelationship(planetA: string, planetB: string): 'friend' | 'enemy' | 'neutral' {
-  const planetBOwnSigns = OWN_SIGNS[planetB] ?? [];
-  const aFriends = FRIENDS[planetA] ?? [];
-  const aEnemies = ENEMIES[planetA] ?? [];
-
-  let isFriend = false;
-  let isEnemy = false;
-
-  for (const sign of planetBOwnSigns) {
-    if (aFriends.includes(sign)) isFriend = true;
-    if (aEnemies.includes(sign)) isEnemy = true;
-  }
-
-  if (isFriend && !isEnemy) return 'friend';
-  if (isEnemy && !isFriend) return 'enemy';
-  return 'neutral';
+  return naturalRelation(planetA as Planet, planetB as Planet);
 }
 
 /** ~13 months — a little over Jupiter's own sign-transit cycle (~1 year).
@@ -277,15 +265,11 @@ function yoginiAlignment(
   }
 
   const startYoginiIdx = YOGINI_PLANETS.indexOf(activeMaha.planet);
+  // The birth period is cut from its full length (it began before birth).
+  const fullStart = new Date(activeMaha.fullStartDate ?? activeMaha.startDate);
   const durationYears =
-    (new Date(activeMaha.endDate).getTime() - new Date(activeMaha.startDate).getTime()) /
-    (365.25 * 86_400_000);
-  const antardashas = buildYoginiAntardashas(
-    startYoginiIdx,
-    new Date(activeMaha.startDate),
-    durationYears,
-    windowStart,
-  );
+    (new Date(activeMaha.endDate).getTime() - fullStart.getTime()) / (365.25 * 86_400_000);
+  const antardashas = buildYoginiAntardashas(startYoginiIdx, fullStart, durationYears, windowStart);
   const activeAntar = antardashas.find(
     (a) =>
       new Date(a.startDate).getTime() <= windowStart.getTime() &&

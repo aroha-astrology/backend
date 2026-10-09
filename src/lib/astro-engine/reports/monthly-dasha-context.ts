@@ -31,7 +31,7 @@
 // =============================================================================
 
 import type { VimshottariDasha, DashaPeriod } from '@aroha-astrology/shared';
-import { buildSubPeriods } from '../dashas/vimshottari.js';
+import { buildSubPeriods, fullSpanOf } from '../dashas/vimshottari.js';
 import type { PlanetAnalysis } from '../gemstones.js';
 import {
   getHousesRuledBy,
@@ -90,14 +90,18 @@ function yearsBetween(start: Date, end: Date): number {
  * (which needs every Mahadasha's Antardashas across a 15-year span, not just one).
  */
 export function computeFreshAntardashas(mahadasha: DashaPeriod): DashaPeriod[] {
+  // The birth period is cut from its full length (it began before birth), and
+  // the antardashas already over at birth are left out — see fullSpanOf.
+  const full = fullSpanOf(mahadasha);
+  const shownStart = new Date(mahadasha.startDate).getTime();
   return buildSubPeriods(
     mahadasha.planet,
-    mahadasha.startDate,
-    yearsBetween(mahadasha.startDate, mahadasha.endDate),
+    full.start,
+    full.years,
     1,
-    mahadasha.startDate, // currentDate only affects isActive flags, which callers here never read
+    full.start, // currentDate only affects isActive flags, which callers here never read
     1,
-  );
+  ).filter((p) => p.endDate.getTime() > shownStart);
 }
 
 /**

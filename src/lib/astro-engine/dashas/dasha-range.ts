@@ -11,7 +11,7 @@
 // =============================================================================
 
 import type { Planet } from '@aroha-astrology/shared';
-import { buildSubPeriods } from './vimshottari.js';
+import { buildSubPeriods, fullSpanOf } from './vimshottari.js';
 
 const MS_PER_YEAR = 365.25 * 86_400_000;
 
@@ -31,6 +31,8 @@ export interface StoredMahadasha {
   planet: Planet | string;
   startDate: Date | string;
   endDate: Date | string;
+  /** Present on the birth period of charts computed since the VM1 fix. */
+  fullStartDate?: Date | string;
 }
 
 const LEVELS: DashaSpanLevel[] = ['mahadasha', 'antardasha', 'pratyantardasha'];
@@ -58,13 +60,22 @@ export function dashaPeriodsInRange(
     const end = new Date(md.endDate);
     if (!overlaps(start, end, from, to)) continue;
     const planet = md.planet as Planet;
-    walk(planet, start, end, 0, [planet]);
+    // Sub-periods are cut from the full period, which for the birth period
+    // began before `start` (see fullSpanOf).
+    walk(planet, start, end, 0, [planet], fullSpanOf(md).start);
   }
   return out;
 
-  function walk(planet: Planet, start: Date, end: Date, level: number, lords: Planet[]): void {
+  function walk(
+    planet: Planet,
+    shownStart: Date,
+    end: Date,
+    level: number,
+    lords: Planet[],
+    start: Date = shownStart,
+  ): void {
     if (level === depth) {
-      out.push({ level: LEVELS[level]!, planet, startDate: start, endDate: end, lords });
+      out.push({ level: LEVELS[level]!, planet, startDate: shownStart, endDate: end, lords });
       return;
     }
     const years = (end.getTime() - start.getTime()) / MS_PER_YEAR;

@@ -29,6 +29,30 @@ function isDateInRange(date: Date, start: Date, end: Date): boolean {
 }
 
 // ============================================================
+// The birth period
+// ============================================================
+
+/**
+ * The span a Mahadasha's sub-periods are cut from. For every period but the
+ * first this is simply [startDate, endDate). The period a person is born into
+ * began before birth: its antardashas keep their full lengths and birth falls
+ * part-way through one of them. Dividing only the balance left at birth into
+ * nine (what this engine did before, audit item VM1) gives wrong antardasha
+ * lords and dates for the whole of that first period.
+ *
+ * Accepts the stored JSON shape too, where dates are ISO strings.
+ */
+export function fullSpanOf(period: {
+  startDate: Date | string;
+  endDate: Date | string;
+  fullStartDate?: Date | string;
+}): { start: Date; end: Date; years: number } {
+  const start = new Date(period.fullStartDate ?? period.startDate);
+  const end = new Date(period.endDate);
+  return { start, end, years: (end.getTime() - start.getTime()) / MS_PER_YEAR };
+}
+
+// ============================================================
 // Core: Nakshatra from Moon longitude
 // ============================================================
 
@@ -149,13 +173,15 @@ export function buildSubPeriods(
  *
  * @param moonLongitude  Sidereal longitude of the Moon (0-360 degrees).
  * @param birthDate      Date/time of birth.
+ * @param asOf           The instant "current" periods are resolved for (default: now).
  * @returns              A `VimshottariDasha` object.
  */
 export function calculateVimshottariDasha(
   moonLongitude: number,
   birthDate: Date,
+  asOf: Date = new Date(),
 ): VimshottariDasha {
-  const now = new Date();
+  const now = asOf;
 
   // 1. Determine starting dasha lord from Moon's nakshatra
   const nakshatraIdx = getNakshatraIndex(moonLongitude);
@@ -199,6 +225,14 @@ export function calculateVimshottariDasha(
     const endDate = addYears(cursor, durationYears);
     const isActive = isDateInRange(now, cursor, endDate);
 
+    // The birth period began before birth: cut its sub-periods from the full
+    // length, then drop the ones already over when the person was born.
+    const isBirthPeriod = periodCount === 0;
+    const fullStartDate = isBirthPeriod
+      ? addYears(birthDate, -traversed * firstDashaFullYears)
+      : cursor;
+    const fullYears = isBirthPeriod ? firstDashaFullYears : durationYears;
+
     const period: DashaPeriod = {
       planet,
       startDate: new Date(cursor.getTime()),
@@ -206,7 +240,12 @@ export function calculateVimshottariDasha(
       isActive,
       level: 'mahadasha',
       // Compute deeper levels only for the active branch (performance)
-      subPeriods: isActive ? buildSubPeriods(planet, cursor, durationYears, 1, now, 4) : [],
+      subPeriods: isActive
+        ? buildSubPeriods(planet, fullStartDate, fullYears, 1, now, 4).filter(
+            (p) => p.endDate.getTime() > birthDate.getTime(),
+          )
+        : [],
+      ...(isBirthPeriod ? { fullStartDate } : {}),
     };
 
     mahadashas.push(period);
