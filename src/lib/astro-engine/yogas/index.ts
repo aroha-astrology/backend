@@ -11,6 +11,7 @@ import type {
 import { isCombust } from '../calculations/planet-state.js';
 import { aspectsHouse, houseFrom, isKendraFrom } from '../rules/houses.js';
 import { isDayChart } from '../rules/day.js';
+import { beneficsOf, natureOf } from '../rules/nature.js';
 
 import {
   ZODIAC_SIGNS,
@@ -1189,7 +1190,9 @@ function detectAmala(chartData: ChartData): Yoga {
   const found: Planet[] = [];
   const housesFound: number[] = [];
 
-  for (const benefic of NATURAL_BENEFICS) {
+  // A benefic as Bṛhat Jātaka 2.5 defines it for THIS chart: the Moon only while
+  // waxing, Mercury only when it keeps no malefic company (rules/nature.ts).
+  for (const benefic of beneficsOf(chartData)) {
     const bHouse = getPlanetHouse(benefic, chartData);
     if (bHouse === tenthFromLagna || (tenthFromMoon > 0 && bHouse === tenthFromMoon)) {
       found.push(benefic);
@@ -1311,62 +1314,6 @@ function detectVimala(chartData: ChartData): Yoga {
     planets: [lord12],
     houses: present ? [12] : [],
     activationPeriod: `${lord12} Mahadasha/Antardasha` ?? undefined,
-  };
-}
-
-function detectChandraAdhi(chartData: ChartData): Yoga {
-  // This is similar to Adhi Yoga but specifically named Chandra Adhi
-  const moonHouse = getPlanetHouse('Moon', chartData);
-  if (moonHouse === 0) {
-    return {
-      name: 'Chandra Adhi Yoga',
-      type: 'lunar',
-      present: false,
-      strength: 0,
-      description: 'Benefics in 6, 7, 8 from Moon.',
-      planets: [],
-      houses: [],
-    };
-  }
-
-  const offsets = [6, 7, 8];
-  const targetHouses = offsets.map((o) => ((moonHouse + o - 2) % 12) + 1);
-
-  const found: Planet[] = [];
-  const housesFound: number[] = [];
-  for (const benefic of NATURAL_BENEFICS) {
-    const bHouse = getPlanetHouse(benefic, chartData);
-    if (targetHouses.includes(bHouse)) {
-      found.push(benefic);
-      if (!housesFound.includes(bHouse)) housesFound.push(bHouse);
-    }
-  }
-
-  // Full yoga: all three positions occupied by benefics
-  const positionsCovered = targetHouses.filter((th) =>
-    NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === th),
-  ).length;
-
-  const present = positionsCovered === 3;
-
-  let strength = 0;
-  if (present) {
-    strength = Math.round(
-      found.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / found.length,
-    );
-  }
-
-  return {
-    name: 'Chandra Adhi Yoga',
-    type: 'lunar',
-    present,
-    strength,
-    description:
-      'Natural benefics in all of 6th, 7th, and 8th houses from Moon. Full Chandra Adhi Yoga grants commander/king-like status and immense prosperity.',
-    planets: ['Moon', ...found],
-    houses: [moonHouse, ...housesFound],
-    activationPeriod:
-      found.length > 0 ? `${found[0]} Mahadasha/Antardasha` : (undefined ?? undefined),
   };
 }
 
@@ -2035,7 +1982,7 @@ function detectKendradhipatiDosha(chartData: ChartData): Yoga {
 
   for (const k of kendras) {
     const lord = getHouseLord(k, chartData);
-    if (NATURAL_BENEFICS.includes(lord) && lord !== 'Moon') {
+    if (natureOf(lord, chartData) === 'benefic' && lord !== 'Moon') {
       // Moon is exempt in many traditions
       found.push(lord);
       housesFound.push(k);
@@ -2396,7 +2343,7 @@ function detectChaturSagara(chartData: ChartData): Yoga {
 function detectVasuki(chartData: ChartData): Yoga {
   // Vasuki Yoga: Benefics in 3rd house from Lagna
   const found: Planet[] = [];
-  for (const b of NATURAL_BENEFICS) {
+  for (const b of beneficsOf(chartData)) {
     if (getPlanetHouse(b, chartData) === 3) found.push(b);
   }
 
@@ -2489,7 +2436,8 @@ function detectAdhiYogaFromLagna(chartData: ChartData): Yoga {
   const found: Planet[] = [];
   const housesFound: number[] = [];
 
-  for (const b of NATURAL_BENEFICS) {
+  const benefics = beneficsOf(chartData);
+  for (const b of benefics) {
     const bHouse = getPlanetHouse(b, chartData);
     if (offsets.includes(bHouse)) {
       found.push(b);
@@ -2498,7 +2446,7 @@ function detectAdhiYogaFromLagna(chartData: ChartData): Yoga {
   }
 
   const positionsCovered = offsets.filter((h) =>
-    NATURAL_BENEFICS.some((b) => getPlanetHouse(b, chartData) === h),
+    benefics.some((b) => getPlanetHouse(b, chartData) === h),
   ).length;
 
   const present = positionsCovered >= 2;
@@ -2597,7 +2545,6 @@ export function detectAllYogas(chartData: ChartData): Yoga[] {
   yogas.push(detectHarsha(chartData));
   yogas.push(detectSarala(chartData));
   yogas.push(detectVimala(chartData));
-  yogas.push(detectChandraAdhi(chartData));
   yogas.push(detectKemadrumaCanellation(chartData));
   yogas.push(detectNipuna(chartData));
   yogas.push(detectGauri(chartData));

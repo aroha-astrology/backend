@@ -69,8 +69,10 @@ read and in agreement.
 ### BJ-2.5 — which planets are malefic
 
 - **Sanskrit (2.05b):** kṣīṇa-indv-arka-mahīsuta-arkatanayāḥ pāpā budhas tair yutaḥ
-- **Says:** the waning Moon, the Sun, Mars and Saturn are malefic; Mercury is malefic when joined with them.
-- **Supports:** the benefic/malefic lists (no registry id yet). Confidence 75. The engine's fixed lists (Moon and Mercury always benefic) do not follow this; audit item CN3.
+- **Translation:** "The waning Moon, the Sun, Mars, Saturn and Mercury when in conjunction with any of these are malefic planets."
+- **Says:** the waning Moon, the Sun, Mars and Saturn are malefic; Mercury is malefic when joined with them. The rest (Jupiter, Venus, the waxing Moon, Mercury alone) are benefic by implication. 2.21 names the dark half (bahula) as the waning Moon's time and the bright half (sita) as its opposite, so "waning" is the dark half, more than 180 degrees ahead of the Sun.
+- **Does not say:** anything about Rāhu and Ketu, or whether "joined" means the same sign or a close degree. The engine reads it as the same sign. The translator's note beside it (Jupiter, Venus and Mercury joined with "either of these" are benefic) is a gloss, not the verse; where Mercury is joined with both kinds, the verse's own words (joined with the malefics) are followed.
+- **Supports:** DIG-NAT, confidence 90. Implemented in `rules/nature.ts`. Node natures: ANCIENT SOURCE NOT VERIFIED.
 
 ### BJ-2.13 — aspects
 

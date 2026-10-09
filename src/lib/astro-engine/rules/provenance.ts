@@ -400,6 +400,13 @@ const REGISTRY: ProvenanceEntry[] = [
     note: 'Node entries in the shared table are not in this text',
   },
   {
+    featureId: 'DIG-NAT',
+    featureName: 'Benefic and malefic planets (waning Moon, Mercury by company)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-2.5'],
+    note: 'Node natures are not in this text. Aroha scoring heuristics (relocation, astrocartography, yantra, daily transit nudge, retrograde commentary, Lal Kitab debts) still use a fixed list and are Aroha conventions',
+  },
+  {
     featureId: 'DIG-FRD',
     featureName: 'Natural friends and enemies, seven planets',
     tag: 'ANCIENT_CLASSICAL',
