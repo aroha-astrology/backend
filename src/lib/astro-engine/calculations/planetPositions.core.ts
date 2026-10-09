@@ -346,6 +346,23 @@ export async function calculateHouses(
 }
 
 /**
+ * Sidereal longitude of the Midheaven (the meridian, the 10th cusp), in
+ * degrees. Needed for Dig Bala, which measures a planet from the actual
+ * meridian and nadir rather than from the sign boundaries of a whole-sign house.
+ */
+export async function calculateMidheaven(
+  jd: number,
+  lat: number,
+  lng: number,
+  ayanamsa: Ayanamsa = 'lahiri',
+): Promise<number> {
+  const swe = await getSwe();
+  swe.set_sid_mode(AYANAMSA_MAP[ayanamsa], 0, 0);
+  const result = swe.houses_ex(jd, SEFLG_SIDEREAL, lat, lng, 'W');
+  return normalizeDegree(result.ascmc[1]);
+}
+
+/**
  * Calculate the ascendant (lagna) position.
  */
 export async function calculateAscendant(

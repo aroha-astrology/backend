@@ -152,6 +152,11 @@ export interface ChartData {
   ayanamsa: Ayanamsa;
   ayanamsaValue: number;
   julianDay: number;
+  /**
+   * Sidereal longitude of the Midheaven (10th cusp), degrees. Absent on charts
+   * stored before it was added; Dig Bala then estimates it from the Ascendant.
+   */
+  midheaven?: number;
 }
 
 // ============================================================

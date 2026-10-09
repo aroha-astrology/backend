@@ -32,6 +32,14 @@ export interface AstroDay {
   fraction: number;
   /** 0 = Sunday .. 6 = Saturday, of the local civil date of `sunrise`. */
   weekday: number;
+  /** The local civil date of `sunrise`: the Hindu day that `at` belongs to. */
+  sunriseDate: CivilDate;
+}
+
+export interface CivilDate {
+  year: number;
+  month: number;
+  day: number;
 }
 
 /**
@@ -86,6 +94,11 @@ export async function getAstroDay(
     isDay,
     fraction: Math.max(0, Math.min(1, fraction)),
     weekday: localSunrise.getUTCDay(),
+    sunriseDate: {
+      year: localSunrise.getUTCFullYear(),
+      month: localSunrise.getUTCMonth() + 1,
+      day: localSunrise.getUTCDate(),
+    },
   };
 }
 
@@ -106,6 +119,14 @@ export interface DayContext {
   weekday: number;
   /** Hours elapsed since that sunrise. */
   hoursSinceSunrise: number;
+  /**
+   * Hours from apparent solar noon, positive after it, within a day that
+   * opened at sunrise (so 0 to about 24). Noon is taken as halfway between
+   * sunrise and sunset, which holds to a minute or two away from the poles.
+   */
+  hoursFromSolarNoon: number;
+  /** The local civil date of the sunrise that opened this day. */
+  civilDate: CivilDate;
   /** 'ephemeris': from the real sunrise at the place. 'chart': estimated from the Ascendant. */
   basis: 'ephemeris' | 'chart';
 }
@@ -116,6 +137,9 @@ export function dayContextAt(day: AstroDay, at: Date): DayContext {
     fraction: day.fraction,
     weekday: day.weekday,
     hoursSinceSunrise: Math.max(0, (at.getTime() - day.sunrise.getTime()) / MS_PER_HOUR),
+    hoursFromSolarNoon:
+      (at.getTime() - (day.sunrise.getTime() + day.sunset.getTime()) / 2) / MS_PER_HOUR,
+    civilDate: day.sunriseDate,
     basis: 'ephemeris',
   };
 }
@@ -178,6 +202,13 @@ export function estimateDayContext(chart: ChartData, at: Date): DayContext {
     fraction: (isDay ? risen : risen - 180) / 180,
     weekday: estimatedNoon.getUTCDay(),
     hoursSinceSunrise,
+    // The estimate takes sunrise as six hours before noon.
+    hoursFromSolarNoon: hoursSinceSunrise - 6,
+    civilDate: {
+      year: estimatedNoon.getUTCFullYear(),
+      month: estimatedNoon.getUTCMonth() + 1,
+      day: estimatedNoon.getUTCDate(),
+    },
     basis: 'chart',
   };
 }
