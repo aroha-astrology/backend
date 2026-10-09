@@ -13,22 +13,22 @@ import type { ChartData } from '@aroha-astrology/shared';
 
 describe('trikonaShodhana', () => {
   it('subtracts the group minimum from all three trine members when none are zero', () => {
-    // Fire [0,4,8]=[5,4,0] has a zero -> all zeroed.
+    // Fire [0,4,8]=[5,4,0] has a zero -> left as it is (BPHS 67.4).
     // Earth [1,5,9]=[3,7,3] min=3 -> [0,4,0].
     // Air [2,6,10]=[6,1,5] min=1 -> [5,0,4].
     // Water [3,7,11]=[2,8,2] min=2 -> [0,6,0].
     const bindus = [5, 3, 6, 2, 4, 7, 1, 8, 0, 3, 5, 2];
     const result = trikonaShodhana(bindus);
-    expect(result).toEqual([0, 0, 5, 0, 0, 4, 0, 6, 0, 0, 4, 0]);
+    expect(result).toEqual([5, 0, 5, 0, 4, 4, 0, 6, 0, 0, 4, 0]);
   });
 
-  it('zeroes the entire trine group when any single member is already 0', () => {
+  it('leaves a trine group alone when any single member is already 0 (BPHS 67.4)', () => {
     const bindus = [0, 5, 5, 5, 3, 5, 5, 5, 2, 5, 5, 5];
     const result = trikonaShodhana(bindus);
-    // Fire [0,4,8] = [0,3,2] -> contains a 0 -> all zeroed.
+    // Fire [0,4,8] = [0,3,2] -> contains a 0 -> unchanged.
     expect(result[0]).toBe(0);
-    expect(result[4]).toBe(0);
-    expect(result[8]).toBe(0);
+    expect(result[4]).toBe(3);
+    expect(result[8]).toBe(2);
   });
 
   it('does not mutate the input array', () => {
@@ -60,30 +60,30 @@ describe('ekadhipatyaShodhana', () => {
     expect(result[7]).toBe(0);
   });
 
-  it('leaves both signs untouched when the occupied sign has FEWER bindus than the vacant one', () => {
-    // Venus pair (1,6): planet at sign 1 only. reduced[1]=2 (occupied) < reduced[6]=9 (vacant).
+  it('takes the occupied sign’s count off the vacant one when the occupied sign has FEWER bindus (BPHS 68.4)', () => {
+    // Venus pair (1,6): planet at sign 1 only. reduced[1]=2 (occupied) < reduced[6]=9 (vacant): 9 - 2 = 7.
     const reduced = [0, 2, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0];
     const chart = chartWithPlanetsAt([1]);
     const result = ekadhipatyaShodhana(reduced, chart);
     expect(result[1]).toBe(2);
-    expect(result[6]).toBe(9);
+    expect(result[6]).toBe(7);
   });
 
-  it('zeroes the lower-bindu sign when neither sign of the pair is occupied', () => {
-    // Jupiter pair (8,11): neither occupied. reduced[8]=4 < reduced[11]=7 -> zero index 8.
+  it('takes the smaller count off both signs when neither sign of the pair is occupied (BPHS 68.2, 68.5)', () => {
+    // Jupiter pair (8,11): neither occupied. 4 and 7: the 4 comes off both -> 0 and 3.
     const reduced = [0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 7];
     const chart = chartWithPlanetsAt([]); // no planets at all
     const result = ekadhipatyaShodhana(reduced, chart);
     expect(result[8]).toBe(0);
-    expect(result[11]).toBe(7);
+    expect(result[11]).toBe(3);
   });
 
-  it('tie-breaks a both-vacant exact tie by zeroing the second sign of the pair', () => {
+  it('zeroes both signs of a both-vacant exact tie (BPHS 68.5)', () => {
     // Mercury pair (2,5): neither occupied, tied at 6.
     const reduced = [0, 0, 6, 0, 0, 6, 0, 0, 0, 0, 0, 0];
     const chart = chartWithPlanetsAt([]);
     const result = ekadhipatyaShodhana(reduced, chart);
-    expect(result[2]).toBe(6);
+    expect(result[2]).toBe(0);
     expect(result[5]).toBe(0);
   });
 
@@ -99,36 +99,43 @@ describe('ekadhipatyaShodhana', () => {
   it('runs all 5 dual-lordship pairs independently in one pass (composite scenario)', () => {
     const reduced = [3, 2, 6, 0, 0, 6, 9, 2, 4, 5, 3, 7];
     // Mars(0,7): occ@0, 3>=2 -> zero 7.
-    // Venus(1,6): occ@1, 2<9 -> unchanged.
-    // Mercury(2,5): neither occ, tie 6=6 -> zero 5.
-    // Jupiter(8,11): neither occ, 4<7 -> zero 8.
+    // Venus(1,6): occ@1, 2<9 -> the vacant one loses 2: 7.
+    // Mercury(2,5): neither occ, tie 6=6 -> both zero.
+    // Jupiter(8,11): neither occ, 4 and 7 -> 0 and 3.
     // Saturn(9,10): both occ -> unchanged.
     const chart = chartWithPlanetsAt([0, 1, 9, 10]);
     const result = ekadhipatyaShodhana(reduced, chart);
-    expect(result).toEqual([3, 2, 6, 0, 0, 0, 9, 0, 0, 5, 3, 7]);
+    expect(result).toEqual([3, 2, 0, 0, 0, 0, 7, 0, 0, 5, 3, 3]);
   });
 });
 
 describe('reduceBindus (Trikona then Ekadhipatya, composed)', () => {
   it('runs Ekadhipatya on the already trine-reduced values, not the raw ones', () => {
     const bindus = [5, 3, 6, 2, 4, 7, 1, 8, 0, 3, 5, 2];
-    // After Trikona: [0,0,5,0,0,4,0,6,0,0,4,0] (from the trikonaShodhana test above).
-    // Mercury pair (2,5): reduced values are 5 and 4, neither occupied -> zero the lower (5, index5).
+    // After Trikona: [5,0,5,0,4,4,0,6,0,0,4,0] (from the trikonaShodhana test above).
+    // Mercury pair (2,5): reduced values are 5 and 4, neither occupied -> the 4 comes off both: 1 and 0.
     const chart = chartWithPlanetsAt([]);
     const result = reduceBindus(bindus, chart);
-    expect(result[2]).toBe(5);
+    expect(result[2]).toBe(1);
     expect(result[5]).toBe(0);
   });
 });
 
 describe('shodhyaPinda', () => {
-  it('sums reduced-bindus x Rashi Gunakar for rasiPinda, and total-bindus x Graha Gunakar for grahaPinda', () => {
+  it('sums reduced-bindus x Rashi Gunakar for rasiPinda, and, for grahaPinda, the count of the sign each planet stands in x its Graha Gunakar (BPHS 69)', () => {
     const reduced = new Array(12).fill(0);
     reduced[0] = 2; // Aries, Rashi Gunakar 7
     reduced[11] = 3; // Pisces, Rashi Gunakar 12
-    const result = shodhyaPinda(reduced, 'Jupiter');
+    const chart = {
+      planets: [
+        { planet: 'Jupiter', signIndex: 11 }, // 3 x 10
+        { planet: 'Sun', signIndex: 0 }, // 2 x 5
+        { planet: 'Rahu', signIndex: 0 }, // not counted
+      ],
+    } as unknown as ChartData;
+    const result = shodhyaPinda(reduced, chart);
     expect(result.rasiPinda).toBe(2 * RASHI_GUNAKAR[0]! + 3 * RASHI_GUNAKAR[11]!);
-    expect(result.grahaPinda).toBe((2 + 3) * GRAHA_GUNAKAR.Jupiter);
+    expect(result.grahaPinda).toBe(3 * GRAHA_GUNAKAR.Jupiter + 2 * GRAHA_GUNAKAR.Sun);
     expect(result.shodhyaPinda).toBe(result.rasiPinda + result.grahaPinda);
   });
 
