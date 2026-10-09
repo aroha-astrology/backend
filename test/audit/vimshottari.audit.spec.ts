@@ -97,3 +97,153 @@ describe('[VM1] Yogini: the birth period keeps its full-length sub-periods too',
     expect((running.endDate.getTime() - BIRTH.getTime()) / MS_PER_YEAR).toBeCloseTo(0.44444, 4);
   });
 });
+
+// =============================================================================
+// BPHS chapter 46 (verses 12-16) and chapter 51 (verse 1): register rows
+// BPHS-46.12-16 and BPHS-51.1. The engine already matched the book; these tests
+// pin it so a later edit cannot move it.
+// =============================================================================
+
+const NAKSHATRA_SPAN = 360 / 27;
+
+describe('[BPHS-46.12-15] the Vimshottari lords and years', () => {
+  // The book's own table, in its own order (it starts at Krittika). Each row
+  // lists the three stars of one lord, written as 0-based star numbers counted
+  // from Ashwini = 0.
+  const TABLE: Array<[string, number, number[]]> = [
+    ['Sun', 6, [2, 11, 20]], // Krittika, Uttara Phalguni, Uttara Ashadha
+    ['Moon', 10, [3, 12, 21]], // Rohini, Hasta, Shravana
+    ['Mars', 7, [4, 13, 22]], // Mrigashira, Chitra, Dhanishta
+    ['Rahu', 18, [5, 14, 23]], // Ardra, Swati, Shatabhisha
+    ['Jupiter', 16, [6, 15, 24]], // Punarvasu, Vishakha, Purva Bhadrapada
+    ['Saturn', 19, [7, 16, 25]], // Pushya, Anuradha, Uttara Bhadrapada
+    ['Mercury', 17, [8, 17, 26]], // Ashlesha, Jyeshtha, Revati
+    ['Ketu', 7, [9, 18, 0]], // Magha, Moola, Ashwini
+    ['Venus', 20, [10, 19, 1]], // Purva Phalguni, Purva Ashadha, Bharani
+  ];
+
+  it('every one of the 27 stars starts the dasha of the lord the book names', () => {
+    for (const [lord, , stars] of TABLE) {
+      for (const star of stars) {
+        const moon = star * NAKSHATRA_SPAN + NAKSHATRA_SPAN / 2;
+        const tree = calculateVimshottariDasha(moon, BIRTH, BIRTH);
+        expect(tree.mahadashas[0]!.planet, `star ${star}`).toBe(lord);
+      }
+    }
+  });
+
+  it('the dasha years are 6, 10, 7, 18, 16, 19, 17, 7, 20 and total 120', () => {
+    expect(TABLE.reduce((sum, [, years]) => sum + years, 0)).toBe(120);
+    // A Moon at the very start of a star (a hair past the boundary) leaves the lord's whole dasha.
+    for (const [lord, years, stars] of TABLE) {
+      const tree = calculateVimshottariDasha(stars[0]! * NAKSHATRA_SPAN + 1e-9, BIRTH, BIRTH);
+      const first = tree.mahadashas[0]!;
+      expect(first.planet).toBe(lord);
+      expect((first.endDate.getTime() - first.startDate.getTime()) / MS_PER_YEAR).toBeCloseTo(
+        years,
+        6,
+      );
+    }
+  });
+
+  it('the dashas follow each other in the book order, from the first lord', () => {
+    const order = ['Sun', 'Moon', 'Mars', 'Rahu', 'Jupiter', 'Saturn', 'Mercury', 'Ketu', 'Venus'];
+    const tree = calculateVimshottariDasha(2 * NAKSHATRA_SPAN, BIRTH, BIRTH); // Krittika
+    expect(tree.mahadashas.slice(0, 9).map((p) => p.planet)).toEqual(order);
+  });
+});
+
+describe('[BPHS-46.16] the balance of the dasha at birth', () => {
+  // The book's example: birth in Mrigashira, lord Mars (7 years). The Moon has
+  // covered 58 ghatis 15 palas of the star's 59 ghatis 31 palas.
+  //   58 x 60 + 15 = 3495 palas elapsed; 59 x 60 + 31 = 3571 palas in all.
+  //   Balance = 7 x (3571 - 3495) / 3571 = 7 x 76 / 3571 = 0.148978 years.
+  // The book prints 3415 for the elapsed palas and 24435 for 7 x 3415 (7 x 3415
+  // is 23,905 and 7 x 3495 is 24,465). Its final balance, 1 month 23 days 37
+  // ghatis 55 palas, is what 3495 gives, so the figure is a print slip and the
+  // arithmetic above is the one used here.
+  const ELAPSED = 58 * 60 + 15;
+  const WHOLE = 59 * 60 + 31;
+  const moon = 4 * NAKSHATRA_SPAN + NAKSHATRA_SPAN * (ELAPSED / WHOLE);
+
+  it('the lord is Mars and the balance is 7 x 76 / 3571 years', () => {
+    const tree = calculateVimshottariDasha(moon, BIRTH, BIRTH);
+    const first = tree.mahadashas[0]!;
+    expect(first.planet).toBe('Mars');
+    const balance = (first.endDate.getTime() - BIRTH.getTime()) / MS_PER_YEAR;
+    expect(balance).toBeCloseTo((7 * 76) / 3571, 6);
+  });
+
+  it('the balance is about 1 month 23 days on the book 360-day year', () => {
+    const tree = calculateVimshottariDasha(moon, BIRTH, BIRTH);
+    const days = ((tree.mahadashas[0]!.endDate.getTime() - BIRTH.getTime()) / MS_PER_YEAR) * 360;
+    // 1 month 23 days 37 ghatis 55 palas = 53 days + (37 x 60 + 55) / 3600 day.
+    expect(days).toBeCloseTo(53 + (37 * 60 + 55) / 3600, 1);
+  });
+});
+
+describe('[BPHS-51.1] the sub-period is dasha years x sub-lord years / 120', () => {
+  // Moon at the start of Ashwini: Ketu 7, Venus 20, Sun 6, Moon 10, Mars 7,
+  // Rahu 18, Jupiter 16 = 84 years, so Saturn's dasha runs from year 84 to 103.
+  const tree = calculateVimshottariDasha(0, BIRTH, after(90));
+  const saturn = tree.currentMahadasha;
+  const years = (p: { startDate: Date; endDate: Date }) =>
+    (p.endDate.getTime() - p.startDate.getTime()) / MS_PER_YEAR;
+
+  it('Saturn is running and starts with Saturn itself: 19 x 19 / 120', () => {
+    expect(saturn.planet).toBe('Saturn');
+    expect(saturn.subPeriods[0]!.planet).toBe('Saturn');
+    expect(years(saturn.subPeriods[0]!)).toBeCloseTo((19 * 19) / 120, 6);
+  });
+
+  it('Mercury in Saturn is 17 x 19 / 120 = 323 / 120 years (2 years 8 months 9 days)', () => {
+    const mercury = saturn.subPeriods[1]!;
+    expect(mercury.planet).toBe('Mercury');
+    expect(years(mercury)).toBeCloseTo(323 / 120, 6);
+    // The book: 32.3 months = 32 months and 9 days.
+    expect(years(mercury) * 12).toBeCloseTo(32.3, 1);
+  });
+
+  it('Venus in Venus is 3 years 4 months (20 x 20 / 120)', () => {
+    const venus = calculateVimshottariDasha(0, BIRTH, after(10)).currentMahadasha;
+    expect(venus.planet).toBe('Venus');
+    expect(years(venus.subPeriods[0]!)).toBeCloseTo(400 / 120, 6);
+  });
+
+  it('the nine sub-periods fill the dasha exactly', () => {
+    const sum = saturn.subPeriods.reduce((s, p) => s + years(p), 0);
+    expect(sum).toBeCloseTo(19, 6);
+  });
+});
+
+describe('[BPHS-46.195-199] the Yogini dasha starts from (star number + 3) mod 8', () => {
+  // The book's example: Mrigashira is star 5 (1-based); 5 + 3 = 8; the remainder
+  // is 0, meaning the 8th Yogini, Sankata, whose planet is Rahu (8 years).
+  // Ardra is star 6; 6 + 3 = 9; remainder 1 = Mangala, whose planet is the Moon.
+  // The order of the Yoginis' planets: Moon, Sun, Jupiter, Mars, Mercury, Saturn,
+  // Venus, Rahu, with 1 to 8 years.
+  it('Mrigashira begins in Sankata (Rahu)', () => {
+    const tree = calculateYoginiDasha(4 * NAKSHATRA_SPAN + 0.5, BIRTH, BIRTH);
+    expect(tree.currentYogini.planet).toBe('Rahu');
+  });
+
+  it('Ardra begins in Mangala (Moon)', () => {
+    const tree = calculateYoginiDasha(5 * NAKSHATRA_SPAN + 0.5, BIRTH, BIRTH);
+    expect(tree.currentYogini.planet).toBe('Moon');
+  });
+
+  it('the eight planets follow in the book order, 1 to 8 years', () => {
+    const tree = calculateYoginiDasha(5 * NAKSHATRA_SPAN + 1e-6, BIRTH, BIRTH);
+    const firstEight = tree.yoginis.slice(0, 8);
+    expect(firstEight.map((p) => p.planet)).toEqual([
+      'Moon',
+      'Sun',
+      'Jupiter',
+      'Mars',
+      'Mercury',
+      'Saturn',
+      'Venus',
+      'Rahu',
+    ]);
+  });
+});

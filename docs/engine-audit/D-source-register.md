@@ -196,6 +196,35 @@ Read in the translation (E-BPHS-ENG) and the Sanskrit (E-BPHS-SKT, chapters 67 a
 
 - See the Drik Bala row. Worked from the translator's rule list; the Sanskrit of chapter 26 was not compared. Confidence 80.
 
+### BPHS-46.12-16 — Vimshottari: the order, the years, the balance at birth
+
+Read in the translation (E-BPHS-ENG, vol 2, chapter 46). The OCR of the Sanskrit lines of this chapter is unreadable, so the Sanskrit was not compared. Confidence 80.
+
+- **46.12-14.** "Beginning from Krittika the lords of Dasas (periods) are the Sun, the Moon, Mars, Rahu, Jupiter, Saturn, Mercury, Ketu and Venus in that order." The lord at birth is found by counting the stars from Krittika to the birth star and dividing by nine. The book gives the reason: in Kali Yuga the natural span of a life is taken as 120 years.
+- **46.15.** Years: Sun 6, Moon 10, Mars 7, Rahu 18, Jupiter 16, Saturn 19, Mercury 17, Ketu 7, Venus 20. Its table gives each lord three stars: Krittika, Uttara Phalguni, Uttara Ashadha (Sun); Rohini, Hasta, Shravana (Moon); Mrigashira, Chitra, Dhanishta (Mars); Ardra, Swati, Shatabhisha (Rahu); Punarvasu, Vishakha, Purva Bhadrapada (Jupiter); Pushya, Anuradha, Uttara Bhadrapada (Saturn); Ashlesha, Jyeshtha, Revati (Mercury); Magha, Moola, Ashwini (Ketu); Purva Phalguni, Purva Ashadha, Bharani (Venus).
+- **46.16.** The part of the dasha already gone is the lord's years times the part of the star the Moon has crossed, divided by the whole star; what is left is the balance at birth.
+- **Worked example in the book.** Birth in Mrigashira (Mars, 7 years). Gone: 58 ghatis 15 palas; whole star 59 ghatis 31 palas = 3571 palas. The book prints the gone part as "3415 palas" and 7 x 3415 as "24435". Both are slips of the print (or of this OCR): 58 x 60 + 15 = 3495, 7 x 3415 = 23,905 and 7 x 3495 = 24,465. The book's final figure, a balance of 1 month 23 days 37 ghatis 55 palas, is what 3495 gives (7 x 76 / 3571 = 0.14898 year), so the rule and the final answer are used and the printed 3415 and 24435 are not copied.
+- **Against the engine:** the order, the years, the 27-star table, the lord-at-birth rule and the balance rule are identical. No change. Pinned in `test/audit/vimshottari.audit.spec.ts` (the book's table row by row, the Mrigashira balance of 7 x 76 / 3571 years).
+- **Supports:** VMD-CYC, VMD-DUR, VMD-BAL.
+
+### BPHS-51.1 — the sub-periods (antardasha and pratyantardasha)
+
+Read in the translation (E-BPHS-ENG, vol 2, chapter 51; the chapter 46 text says the sub-periods come later). Confidence 80.
+
+- **Rule.** The sub-period of one planet inside the dasha of another is the dasha years of the first times the dasha years of the second, divided by 120 (the total). The next level down is cut in the same proportion from the sub-period. The planets follow in the dasha order starting from the lord of the period.
+- **Examples in the book.** Venus in Venus: 20 x 20 / 120 = 3 years 4 months. Mercury in Saturn: 17 x 19 = 323; 323 / 120 = 32.3 months = 32 months 9 days (2 years 8 months 9 days).
+- **Against the engine:** the same proportion at every level (`buildSubPeriods`). No change. Pinned in the same test file. Sookshma and Prana (levels four and five) are not in this chapter and stay unlabelled.
+- **Supports:** VMD-ANT, VMD-PRA.
+
+### BPHS-46.195-199 — the Yogini dasha
+
+Read in the translation (E-BPHS-ENG, vol 2, chapter 46). Confidence 80.
+
+- **Rule.** Eight Yoginis, Mangala, Pingala, Dhanya, Bhramari, Bhadrika, Ulka, Siddha and Sankata, born from the Moon, Sun, Jupiter, Mars, Mercury, Saturn, Venus and Rahu in that order, with 1 to 8 years. "Add 3 to the Janma nakshatra and divide it by 8. The remainder 1 etc. will indicate the Yogini Dasa of Mangala etc." The balance at birth is worked from the part of the star gone, as before.
+- **Example in the book.** Mrigashira is star 5; 5 + 3 = 8; remainder 0 means the 8th Yogini, Sankata (Rahu).
+- **Against the engine:** `(zero-based star + 3) mod 8` is the same rule (Mrigashira gives Sankata, Ardra gives Mangala). No change. The text says nothing about the sub-periods of this system; the engine uses the same proportion as Vimshottari, which is Aroha's own extension.
+- **Supports:** YGN-FULL for the order, the years and the start rule.
+
 ### BJ-9.1-9.7 — Aṣṭakavarga: the auspicious places from each contributor
 
 - **Sanskrit:** the seven verses 9.01 to 9.07, e.g. 9.01 "svād arkaḥ prathama-āya-bandhu-nidhana-dvy-ājñā-tapo-dyūnago vakrāt svād iva tadvad eva ravijāc chukrāt smara-antya-ariṣu / jīvād dharma-suta-āya-śatruṣu daśa-try-āya-arigaḥ śītagor eṣv eva antya-tapaḥ-suteṣu ca budhāl lagnāt sa-bandhv-antyagaḥ". Each verse is transcribed, phrase by phrase, beside its numbers in `test/audit/brihat-jataka.audit.spec.ts`. Four places where the e-text's word division or spelling had to be resolved are marked there: 9.03b `karmāny.alābha` read karma-antya-lābha (10, 12, 11); 9.05a `aṣṭama.dāya` read aṣṭa-mada-āya (8, 7, 11); 9.05b `āya.ratha` read āya-artha (11, 2); 9.06b `vyago` read vyayago (12). Each reading gives the verse the count the chapter total needs.
