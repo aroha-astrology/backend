@@ -1249,10 +1249,20 @@ function detectGuruMangala(chartData: ChartData): Yoga {
   };
 }
 
+/**
+ * Phaladeepika 6.57: the lord of a house standing in the 6th, 8th or 12th gives
+ * one of twelve yogas, one for each house. Harsha is the 6th lord's, Sarala the
+ * 8th lord's, Vimala the 12th lord's (register PD-6.57, audit YG5). The earlier
+ * code asked for the lord to be in its own house, which the text does not say.
+ */
+function lordInDusthana(houseNum: number, chartData: ChartData): { lord: Planet; house: number } {
+  const lord = getHouseLord(houseNum, chartData);
+  return { lord, house: getPlanetHouse(lord, chartData) };
+}
+
 function detectHarsha(chartData: ChartData): Yoga {
-  const lord6 = getHouseLord(6, chartData);
-  const lord6House = getPlanetHouse(lord6, chartData);
-  const present = lord6House === 6;
+  const { lord: lord6, house: lord6House } = lordInDusthana(6, chartData);
+  const present = [6, 8, 12].includes(lord6House);
 
   let strength = 0;
   if (present) {
@@ -1265,17 +1275,16 @@ function detectHarsha(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      '6th lord in the 6th house. Grants good health, ability to defeat enemies, and happiness. One of the three Parijata-group yogas.',
+      'The 6th lord in the 6th, 8th or 12th house (Phaladeepika 6.57). The text promises happiness, a strong constitution, victory over enemies, and friends of standing.',
     planets: [lord6],
-    houses: present ? [6] : [],
+    houses: present ? [lord6House] : [],
     activationPeriod: `${lord6} Mahadasha/Antardasha` ?? undefined,
   };
 }
 
 function detectSarala(chartData: ChartData): Yoga {
-  const lord8 = getHouseLord(8, chartData);
-  const lord8House = getPlanetHouse(lord8, chartData);
-  const present = lord8House === 8;
+  const { lord: lord8, house: lord8House } = lordInDusthana(8, chartData);
+  const present = [6, 8, 12].includes(lord8House);
 
   let strength = 0;
   if (present) {
@@ -1288,17 +1297,16 @@ function detectSarala(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      '8th lord in the 8th house. Grants longevity, fearlessness, prosperity, and fortune from unexpected sources.',
+      'The 8th lord in the 6th, 8th or 12th house (Phaladeepika 6.57). The text promises a long life, resolve, fearlessness, learning, children and prosperity.',
     planets: [lord8],
-    houses: present ? [8] : [],
+    houses: present ? [lord8House] : [],
     activationPeriod: `${lord8} Mahadasha/Antardasha` ?? undefined,
   };
 }
 
 function detectVimala(chartData: ChartData): Yoga {
-  const lord12 = getHouseLord(12, chartData);
-  const lord12House = getPlanetHouse(lord12, chartData);
-  const present = lord12House === 12;
+  const { lord: lord12, house: lord12House } = lordInDusthana(12, chartData);
+  const present = [6, 8, 12].includes(lord12House);
 
   let strength = 0;
   if (present) {
@@ -1311,9 +1319,9 @@ function detectVimala(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      '12th lord in the 12th house. Grants frugal nature, spiritual inclination, minimal expenses, and moksha.',
+      'The 12th lord in the 6th, 8th or 12th house (Phaladeepika 6.57). The text promises small spending and good saving, kindness to everyone, independence and a good name.',
     planets: [lord12],
-    houses: present ? [12] : [],
+    houses: present ? [lord12House] : [],
     activationPeriod: `${lord12} Mahadasha/Antardasha` ?? undefined,
   };
 }
