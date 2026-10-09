@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { computeNameChangeScores } from '../../../lib/astro-engine/reports/name-change.js';
+import { assertPersonInputs } from '../../../lib/astro-engine/reports/numerology.js';
 import {
   generateNameChangeNarrative,
   translateNameChangeNarrative,
@@ -27,6 +28,8 @@ const nameChangeGenerator: ReportGenerator = {
     return computeNameChangeScores(ctx, periodMonth);
   },
   async generateNarrative(scores: ReportScores, _language: 'en'): Promise<ReportSection[]> {
+    // See numerology.generator.ts: never narrate a stand-in name or date of birth.
+    assertPersonInputs(scores, 'name change');
     return generateNameChangeNarrative(scores as unknown as NameChangeScores);
   },
   async translateNarrative(sections: ReportSection[], language: string): Promise<ReportSection[]> {

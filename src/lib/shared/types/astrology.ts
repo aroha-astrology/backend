@@ -351,11 +351,6 @@ export interface AshtakootaResult {
   scores: KootaScore[];
   totalScore: number;
   maxTotal: number;
-  mangalMatch: {
-    boyManglik: boolean;
-    girlManglik: boolean;
-    compatible: boolean;
-  };
   overallCompatibility: 'excellent' | 'good' | 'average' | 'below_average' | 'poor';
 }
 

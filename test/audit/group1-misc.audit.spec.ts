@@ -110,3 +110,23 @@ describe('[RC1] rectification candidates that cross midnight change the date', (
     ]);
   });
 });
+
+describe('[MT4] the 36-point function states nothing about Mangal Dosha', () => {
+  it('returns no Mangal verdict: it is given two Moons, not two charts', async () => {
+    // Before, every pair came back as "neither is Manglik, compatible".
+    const { calculateAshtakoota } =
+      await import('../../src/lib/astro-engine/matching/ashtakoota.js');
+    const result = calculateAshtakoota(0, 13, 'Aries', 'Libra');
+    expect(result).not.toHaveProperty('mangalMatch');
+    expect(result.maxTotal).toBe(36);
+  });
+});
+
+describe('[MU1] the rough muhurta finder is gone', () => {
+  it('the engine no longer exports findBestMuhurta', async () => {
+    // It used mean Sun and Moon formulas, a guessed Lagna and longitude / 15 as
+    // the time zone, and nothing called it. Find My Date is the live feature.
+    const engine = await import('../../src/lib/astro-engine/index.js');
+    expect(engine).not.toHaveProperty('findBestMuhurta');
+  });
+});

@@ -109,6 +109,8 @@ export interface NumerologyScores extends Record<string, unknown>, ReportSharedF
   /** The DOB actually used (`YYYY-MM-DD`) for the date-derived numbers below — `ctx.personDob`,
    * or FALLBACK_DOB on the defensive path. Same visibility rationale as `name`. */
   dob: string;
+  /** 'name' and/or 'dob' when a stand-in was used for it; empty for a real report. */
+  missingInputs: Array<'name' | 'dob'>;
 
   mulank: number;
   bhagyank: number;
@@ -158,6 +160,26 @@ export interface NumerologyScores extends Record<string, unknown>, ReportSharedF
   phoneNumber?: MobileNumberAnalysis;
   /** Up to 5 replacement-number suggestions — same absence condition as `phoneNumber` above. */
   phoneSuggestions?: SuggestedPhoneNumber[];
+}
+
+/**
+ * Which of the two inputs every number here is built from were absent, so a
+ * stand-in was used. The scores stay computable (a page view must not crash),
+ * but nothing may be narrated or sold from them: see `assertPersonInputs`.
+ */
+export function missingPersonInputs(ctx: ReportScoreContext): Array<'name' | 'dob'> {
+  const missing: Array<'name' | 'dob'> = [];
+  if (!ctx.personName?.trim()) missing.push('name');
+  if (!ctx.personDob || Number.isNaN(new Date(ctx.personDob).getTime())) missing.push('dob');
+  return missing;
+}
+
+/** Throws when a report would be written from a stand-in name or date of birth. */
+export function assertPersonInputs(scores: { missingInputs?: unknown }, report: string): void {
+  const missing = Array.isArray(scores.missingInputs) ? (scores.missingInputs as string[]) : [];
+  if (missing.length === 0) return;
+  const words = missing.map((m) => (m === 'dob' ? 'date of birth' : 'name')).join(' and ');
+  throw new Error(`${report} report not written: the person's ${words} could not be read`);
 }
 
 function resolveName(ctx: ReportScoreContext): string {
@@ -265,6 +287,7 @@ export function computeNumerologyScores(
     lifeContext,
     name,
     dob: dobString,
+    missingInputs: missingPersonInputs(ctx),
     mulank,
     bhagyank,
     lifePath,
