@@ -135,6 +135,43 @@ const EnvSchema = z
     // GEMINI_MODEL", so leaving it unset changes nothing.
     GEMINI_REASONING_MODEL: z.string().default(''),
 
+    // --- Free fallback providers (chat + reports only) ------------------------
+    // Tried when every Gemini free key is cooling down, BEFORE the paid reserve —
+    // see lib/llm/fallback-llm.ts. Comma-separated, same convention as
+    // GEMINI_API_KEYS. Leave empty to disable a provider; with both empty the
+    // client behaves exactly as it did before this existed.
+    NVIDIA_API_KEYS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((key) => key.trim())
+          .filter(Boolean),
+      ),
+    OPENROUTER_API_KEYS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((key) => key.trim())
+          .filter(Boolean),
+      ),
+    FALLBACK_NVIDIA_MODEL: z.string().default('nvidia/nemotron-3-ultra-550b-a55b'),
+    FALLBACK_OPENROUTER_MODEL: z.string().default('nvidia/nemotron-3-ultra-550b-a55b:free'),
+    // Profiles allowed to use the fallback. Palm and everything else stay
+    // Gemini-only: the free models are text-only and have no native JSON mode.
+    FALLBACK_LLM_PROFILES: z
+      .string()
+      .default('chat,chat-summary')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((name) => name.trim())
+          .filter(Boolean),
+      ),
+
     // --- Gemini Live (realtime voice) --------------------------------------
     // A SEPARATE model from GEMINI_MODEL above, not a variant of it.
     // `gemini-3.1-flash-lite` is the text/batch tier and cannot do realtime

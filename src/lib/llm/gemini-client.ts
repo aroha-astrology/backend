@@ -25,6 +25,7 @@ import { msUntilNextPacificMidnight } from './quota-window.js';
 import { recordPaidKeyUse } from './paid-usage.js';
 import { getRequestContext } from '../request-context.js';
 import { modelForUser } from '../../modules/features/features.service.js';
+import { fallbackEligible, tryFallbackProviders } from './fallback-llm.js';
 
 export class GeminiError extends Error {
   constructor(
@@ -319,6 +320,8 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
   // blow MAX_TOTAL_ELAPSED_MS and fail the user with the reserve never
   // touched at all.
   let sawFailure = false;
+  // The free fallback providers (fallback-llm.ts) are asked at most once per call.
+  let fallbackTried = false;
   const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
   // Mirrors doRequest()'s own model resolution — duplicated rather than
@@ -374,6 +377,39 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       // capacity-related, and so most likely to be fixed by the paid tier —
       // exhausted every attempt on free keys and gave up with the reserve idle.
       const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawFailure);
+
+      // The free Gemini keys are spent (or we are about to escalate to the
+      // billed reserve). Chat and report calls get one try at the free fallback
+      // providers first; anything else, or a fallback miss, carries on below.
+      if (
+        (!picked || picked.tier === 'paid') &&
+        !fallbackTried &&
+        fallbackEligible(opts.profile, opts.messages)
+      ) {
+        fallbackTried = true;
+        const fb = await tryFallbackProviders({
+          profile: opts.profile,
+          messages: mergeSystemMessages(opts.messages),
+          responseSchema: opts.responseSchema,
+          signal: opts.signal,
+          timeoutMs: Math.min(opts.timeoutMs ?? GENERATE_TIMEOUT_MS, deadlineAt - Date.now()),
+        });
+        if (fb) {
+          abort.clear();
+          if (fb.usage) {
+            void insertAiUsage({
+              ...usageAttribution(opts),
+              model: fb.model,
+              tier: 'free',
+              tokensIn: fb.usage.prompt_tokens,
+              tokensOut: billedOutputTokens(fb.usage),
+              durationMs: Date.now() - startedAt,
+            }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed'));
+          }
+          return fb.content;
+        }
+      }
+
       if (!picked) {
         // Every key is either already tried this attempt or cooling down.
         poolExhausted = true;
@@ -581,6 +617,8 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
   // See generate(): ANY attempt failure escalates every later attempt to the
   // paid reserve, not just a 5xx.
   let sawFailure = false;
+  // See generate(): the free fallback providers are asked at most once per call.
+  let fallbackTried = false;
   const startedAt = Date.now();
   const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
   const model = opts.model ?? opts.profile.model ?? env.GEMINI_MODEL;
@@ -614,6 +652,41 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
         // than failing the user on a free tier that has already failed, and any
         // 5xx escalates immediately rather than waiting for that last attempt.
         const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawFailure);
+
+        // See generate(): one try at the free fallback providers before the
+        // billed reserve. They do not stream, so the whole reply is yielded as a
+        // single chunk.
+        if (
+          (!picked || picked.tier === 'paid') &&
+          !fallbackTried &&
+          !yieldedAny &&
+          fallbackEligible(opts.profile, opts.messages)
+        ) {
+          fallbackTried = true;
+          const fb = await tryFallbackProviders({
+            profile: opts.profile,
+            messages: mergeSystemMessages(opts.messages),
+            responseSchema: opts.responseSchema,
+            signal: opts.signal,
+            timeoutMs: Math.min(GENERATE_TIMEOUT_MS, deadlineAt - Date.now()),
+          });
+          if (fb) {
+            if (fb.usage) {
+              void insertAiUsage({
+                ...usageAttribution(opts),
+                model: fb.model,
+                tier: 'free',
+                tokensIn: fb.usage.prompt_tokens,
+                tokensOut: billedOutputTokens(fb.usage),
+                durationMs: Date.now() - startedAt,
+              }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed (stream)'));
+            }
+            yieldedAny = true;
+            yield fb.content;
+            return;
+          }
+        }
+
         if (!picked) {
           poolExhausted = true;
           break;
