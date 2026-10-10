@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { rateLimiter } from '../../middleware/rate-limit.js';
 import * as publicService from './public.service.js';
 import { signupBonusPaise } from '../auth/auth.service.js';
+import { AuthErrorReportSchema, reportAuthError } from './auth-error.service.js';
 import {
   MoonSignRequestSchema,
   MoonSignResponseSchema,
@@ -174,4 +175,42 @@ const signupBonusRoute = createRoute({
 // amount and the credited amount can't drift apart.
 publicRouter.openapi(signupBonusRoute, async (c) => {
   return c.json({ amountPaise: await signupBonusPaise() }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /public/auth-error                                                    */
+/* -------------------------------------------------------------------------- */
+
+// A person retrying a broken sign-in reaches this on their own, so it is
+// `silent`: a rejection here says nothing about the health of the system.
+const authErrorRateLimit = rateLimiter({
+  windowMs: 60_000,
+  max: 6,
+  name: 'public-auth-error',
+  silent: true,
+});
+
+const authErrorRoute = createRoute({
+  method: 'post',
+  path: '/public/auth-error',
+  tags: ['Public'],
+  summary: 'Report a sign-in failure the app had no message for (goes to the ops Telegram chat)',
+  middleware: [authErrorRateLimit] as const,
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: AuthErrorReportSchema } },
+    },
+  },
+  responses: {
+    204: { description: 'Report accepted' },
+    400: { description: 'Malformed report' },
+  },
+});
+
+// Public because the person is, by definition, not signed in. No validation
+// hook: the app ignores the answer, so the library's plain 400 is enough.
+publicRouter.openapi(authErrorRoute, async (c) => {
+  await reportAuthError(c.req.valid('json'), c.req.header('user-agent'));
+  return c.body(null, 204);
 });
