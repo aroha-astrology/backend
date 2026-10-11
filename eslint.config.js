@@ -13,6 +13,10 @@ export default tseslint.config(
       // part of the tsconfig TS program (no allowJs), so typed-linting them
       // fails with a "project service" parse error rather than a real lint issue.
       'test/fixtures/**/*.mjs',
+      // Compiled .js and .d.ts files beside the shared TypeScript sources (tracked, and
+      // resolved ahead of the .ts by an extensionless import); not in the TS program.
+      'src/lib/shared/**/*.js',
+      'src/lib/shared/**/*.d.ts',
     ],
   },
   js.configs.recommended,

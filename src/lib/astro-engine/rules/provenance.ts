@@ -617,6 +617,13 @@ const REGISTRY: ProvenanceEntry[] = [
   },
   { featureId: 'MT-DSH', featureName: 'Dashakoota (10 factors)', tag: 'UNVERIFIED', sourceIds: [] },
   {
+    featureId: 'MT-NAD',
+    featureName: 'Nadi koota (stars of the three nadis)',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['MC-6.34'],
+    note: 'Muhurta Chintamani 6.34 (a much later author than the Bṛhat Jātaka). The 8-point Nadi score and its place in a 36-point total are conventions',
+  },
+  {
     featureId: 'MT-RIS',
     featureName: 'Match risk scoring',
     tag: 'AROHA_PROPRIETARY',

@@ -172,8 +172,8 @@ export const NAKSHATRA_YONI = {
 };
 export const NAKSHATRA_NADI = {
     0: 'Aadi', 1: 'Madhya', 2: 'Antya', 3: 'Antya', 4: 'Madhya', 5: 'Aadi',
-    6: 'Aadi', 7: 'Madhya', 8: 'Antya', 9: 'Aadi', 10: 'Madhya', 11: 'Antya',
-    12: 'Antya', 13: 'Madhya', 14: 'Aadi', 15: 'Aadi', 16: 'Madhya', 17: 'Antya',
+    6: 'Aadi', 7: 'Madhya', 8: 'Antya', 9: 'Antya', 10: 'Madhya', 11: 'Aadi',
+    12: 'Aadi', 13: 'Madhya', 14: 'Antya', 15: 'Antya', 16: 'Madhya', 17: 'Aadi',
     18: 'Aadi', 19: 'Madhya', 20: 'Antya', 21: 'Antya', 22: 'Madhya', 23: 'Aadi',
     24: 'Aadi', 25: 'Madhya', 26: 'Antya',
 };
