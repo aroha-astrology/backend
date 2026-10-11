@@ -351,6 +351,10 @@ The book gives only two totals for the standard nativity (BPHS vol 1, chapter 39
 
 Both gaps are about 49 virupas (0.81 and 0.82 rupa). The two planets share only the sign (both in Cancer, the 9th). Untested explanations: the Kendradi Bala read from the bhava cusps (Jupiter is 4.9 degrees before the midheaven, which would add 45 for Jupiter but not for Mars), another reading of the Drik Bala clause, the hora lord (proportional or equal hours), the Tribhaga lords. The totals are BPHS-faithful in each term and are not forced to match one published program. Not changed.
 
+### BPHS-6.3-33 — where each division starts (D1 to D60)
+
+Read in the Sanskrit and the Santhanam translation (enjoylearningsanskrit.com/scriptures/parashara/chapter-6). The engine matches every one: D4 6.9 (the sign and its 4th, 7th, 10th); D7 6.10 (odd from the sign, even from the 7th); D9 6.12 (movable from itself, fixed from the 9th, dual from the 5th, the same as the element rule the engine uses); D10 6.13 (odd from itself, even from the 9th); D12 6.15 (from itself); D16 6.16 (Aries, Leo, and a third start the translator renders as the Ashvini-kumaras and the tradition reads as Sagittarius); D20 6.17 (Aries, Sagittarius, Leo); D24 6.22 (odd from Leo, even from Cancer); D40 6.29 (odd from Aries, even from Libra); D45 6.31 (Aries, Leo, Sagittarius); D60 6.33 (double the degrees, divide by 12, remainder counts from the sign). D27 6.24-26 gives the 27 lords "from Aries, from the movable sign" only; the engine's start by element (Aries, Cancer, Libra, Capricorn) is the usual reading, not stated in the verse. Pinned in `test/audit/varga-bphs6.audit.spec.ts`. Not in the text: D2 and D3 here (they are Bṛhat Jātaka 1.11, already labelled), D5, D6, D8, D11, D14, D21, D81 and D108, which stay "no source".
+
 ### BPHS-6.27-28 — the Trimsamsa (D30) signs
 
 Read in the translation (E-BPHS-ENG, vol 1, chapter 6, with the translator's speculum). Confidence 85 (the book's worked example agrees).
