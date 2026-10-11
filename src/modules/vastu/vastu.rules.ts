@@ -19,6 +19,20 @@ export const VASTU_RULE_SET = {
 // "acceptable" and left the west unrated. Plans and homes already stored keep the id
 // they were scored under ('aroha-traditional-v1'); only new ones are scored as v2.
 
+/**
+ * Plain notes from the old text that carry no score and no room rule. They go to
+ * the analysis as context only. BS 52.122 (register BS-52.116-117, 52.122; audit
+ * VS-SLEEP): no sleeping-direction rule existed.
+ */
+export const VASTU_TRADITIONAL_NOTES: ReadonlyArray<{ id: string; text: string; source: string }> =
+  [
+    {
+      id: 'sleep-head-direction',
+      text: 'The old text says not to sleep with the head towards the north or west.',
+      source: 'Brihat Samhita 52.122',
+    },
+  ];
+
 export interface VastuRule {
   room: string;
   idealDirections: string[];

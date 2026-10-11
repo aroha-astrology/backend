@@ -1,6 +1,10 @@
 import { generate } from './gemini-client.js';
 import { VASTU_PROFILE } from '../../config/llm.js';
-import { VASTU_RULES, type RoomScore } from '../../modules/vastu/vastu.rules.js';
+import {
+  VASTU_RULES,
+  VASTU_TRADITIONAL_NOTES,
+  type RoomScore,
+} from '../../modules/vastu/vastu.rules.js';
 import { mergeTranslatedContent } from './translation-merge.js';
 
 export interface VastuAnalysisInput {
@@ -137,6 +141,8 @@ export async function generateVastuAnalysis(
       idealDirections: r.idealDirections,
       reason: r.reason,
     })),
+    // Plain notes from the old text; no score. Mention only where they apply to a bedroom.
+    traditionalNotes: VASTU_TRADITIONAL_NOTES.map((n) => ({ note: n.text, source: n.source })),
   };
 
   const raw = await generate({
