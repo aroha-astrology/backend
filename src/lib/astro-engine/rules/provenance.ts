@@ -92,6 +92,13 @@ const REGISTRY: ProvenanceEntry[] = [
   // Shadbala
   // -------------------------------------------------------------------------
   {
+    featureId: 'PLN-COM',
+    featureName: 'Combustion orbs',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['BPHS-7-combustion'],
+    note: 'The translator table in the notes to BPHS ch. 7, not a verse. Nodes are never combust. Saturn 15 against the OCR 16 is unresolved',
+  },
+  {
     featureId: 'SHB-VIM',
     featureName: 'Vimsopaka Bala (Shadvarga)',
     tag: 'ANCIENT_CLASSICAL',

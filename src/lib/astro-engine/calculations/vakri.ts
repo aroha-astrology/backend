@@ -587,7 +587,7 @@ export function analyzeVakriPlanet(
   // 5. Combustion & War
   const sunPos = chartData.planets.find((p) => p.planet === 'Sun');
   const sunLong = sunPos?.longitude ?? null;
-  const combust = isCombust(planet, planetPos.longitude, sunLong);
+  const combust = isCombust(planet, planetPos.longitude, sunLong, planetPos.isRetrograde);
 
   let combustionType: 'none' | 'inferior' | 'superior' | 'standard' = 'none';
   if (combust) {
@@ -622,7 +622,7 @@ export function analyzeVakriPlanet(
         dispPos.sign,
         Boolean(dispPos.isRetrograde),
       );
-      const dispCombust = isCombust(signLord, dispPos.longitude, sunLong);
+      const dispCombust = isCombust(signLord, dispPos.longitude, sunLong, dispPos.isRetrograde);
       dispositor = {
         planet: signLord,
         house: dispPos.house || 1,

@@ -27,6 +27,7 @@ import {
   SIGN_LORDS,
   ZODIAC_SIGNS,
 } from '@aroha-astrology/shared';
+import { isCombust as sharedIsCombust } from './calculations/planet-state.js';
 import { naturalRelation } from './rules/dignity.js';
 
 export type PlanetStrength = 'weak' | 'average' | 'strong';
@@ -77,15 +78,6 @@ const ENEMY_SIGNS: Record<string, string[]> = Object.fromEntries(
   ]),
 );
 /** No entry ⇒ combustion doesn't apply to that body (Sun can't be combust with itself; Rahu/Ketu are shadow points). */
-const COMBUST_DISTANCE: Record<string, number> = {
-  Moon: 12,
-  Mars: 17,
-  Mercury: 14,
-  Jupiter: 11,
-  Venus: 10,
-  Saturn: 15,
-};
-
 function getPlanetPos(
   planetName: string,
   chart: Record<string, unknown> | null,
@@ -136,8 +128,6 @@ function isInEnemySign(planetName: string, chart: Record<string, unknown> | null
 }
 
 function isCombust(planetName: string, chart: Record<string, unknown> | null): boolean {
-  const distance = COMBUST_DISTANCE[planetName];
-  if (!distance) return false;
   const pos = getPlanetPos(planetName, chart);
   const sunPos = getPlanetPos('Sun', chart);
   if (
@@ -148,9 +138,8 @@ function isCombust(planetName: string, chart: Record<string, unknown> | null): b
   ) {
     return false;
   }
-  const diff = Math.abs(pos.longitude - sunPos.longitude);
-  const angDist = diff > 180 ? 360 - diff : diff;
-  return angDist < distance;
+  // One orb table for the whole engine (planet-state.ts), by the planet's motion (audit ST1).
+  return sharedIsCombust(planetName, pos.longitude, sunPos.longitude, pos.isRetrograde === true);
 }
 
 export const GEMSTONE_DATA: Record<string, GemstoneInfo> = {

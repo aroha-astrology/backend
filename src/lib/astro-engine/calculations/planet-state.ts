@@ -11,16 +11,18 @@
 // narration layers read, so the orb table can never drift between them.
 // =============================================================================
 
+import { getActiveProfile } from '../rules/profile.js';
+
 /**
  * Combustion orbs in degrees from the Sun, carried over UNCHANGED from the
  * table that was inline in `yogas/index.ts` so extracting this helper does not
  * silently re-score every existing chart's yogas.
  *
- * ponytail: single orb per planet. Classical texts split these by motion
- * (Mercury 12° direct / 14° retrograde, Venus 8° / 10°) — the values here are
- * the wider retrograde ones, so the classification errs toward flagging
- * combustion. Split by `isRetrograde` if a chart-level audit ever shows the
- * direct-motion cases reading wrong.
+ * These are the orbs of a planet in direct motion. A retrograde Mars, Mercury or
+ * Venus has a NARROWER orb (COMBUSTION_ORB_RETROGRADE), in the translator's table
+ * of the BPHS ch. 7 notes (register BPHS-7-combustion, audit ST1). The earlier
+ * comment here said the retrograde orbs were the wider ones; in that table they
+ * are not.
  */
 export const COMBUSTION_ORB: Record<string, number> = {
   Moon: 12,
@@ -29,6 +31,13 @@ export const COMBUSTION_ORB: Record<string, number> = {
   Jupiter: 11,
   Venus: 10,
   Saturn: 15,
+};
+
+/** Orbs of a retrograde planet where they differ: Mars 8, Mercury 12, Venus 8 degrees. */
+export const COMBUSTION_ORB_RETROGRADE: Record<string, number> = {
+  Mars: 8,
+  Mercury: 12,
+  Venus: 8,
 };
 
 /** Planets that can never be combust: the Sun itself, and the two shadow points. */
@@ -51,11 +60,16 @@ export function isCombust(
   planet: string,
   planetLongitude: number,
   sunLongitude: number | null | undefined,
+  retrograde = false,
 ): boolean {
   if (NEVER_COMBUST.has(planet)) return false;
   if (sunLongitude == null || !Number.isFinite(sunLongitude)) return false;
   if (!Number.isFinite(planetLongitude)) return false;
-  const orb = COMBUSTION_ORB[planet] ?? DEFAULT_ORB;
+  const byMotion = retrograde && getActiveProfile().combustionOrbs === 'by-motion';
+  const orb =
+    (byMotion ? COMBUSTION_ORB_RETROGRADE[planet] : undefined) ??
+    COMBUSTION_ORB[planet] ??
+    DEFAULT_ORB;
   return angularSeparation(planetLongitude, sunLongitude) < orb;
 }
 
@@ -85,7 +99,7 @@ export function computePlanetStates(
     return {
       planet: p.planet,
       isRetrograde: Boolean(p.isRetrograde),
-      isCombust: isCombust(p.planet, longitude, sunLongitude),
+      isCombust: isCombust(p.planet, longitude, sunLongitude, Boolean(p.isRetrograde)),
       degreesFromSun:
         combustible && sunLongitude != null && Number.isFinite(longitude)
           ? Math.round(angularSeparation(longitude, sunLongitude) * 10) / 10

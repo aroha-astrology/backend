@@ -88,6 +88,12 @@ export interface AstrologyRuleProfile {
    *  - 'earlier': what the engine used before the audit, 0 for every such pair.
    */
   bhakootRule: 'muhurta-chintamani' | 'earlier';
+  /**
+   * Combustion orbs. 'by-motion': the translator's table in the notes to BPHS ch. 7
+   * (Mars 17 direct / 8 retrograde, Mercury 14 / 12, Venus 10 / 8; the others one
+   * orb). 'single': the direct orb for a retrograde planet too, as before.
+   */
+  combustionOrbs: 'by-motion' | 'single';
   /** How sunrise is defined for day-based rules. */
   sunrise: 'upper-limb-refracted';
 }
@@ -107,6 +113,7 @@ export const DEFAULT_PROFILE: AstrologyRuleProfile = {
   neechabhangaRules: 'phaladeepika',
   gajakesariRule: 'bphs',
   bhakootRule: 'muhurta-chintamani',
+  combustionOrbs: 'by-motion',
   sunrise: 'upper-limb-refracted',
 };
 

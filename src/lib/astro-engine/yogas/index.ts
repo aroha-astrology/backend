@@ -192,7 +192,14 @@ function computePlanetStrength(planet: Planet, chartData: ChartData): number {
   // Combustion penalty: planet within its orb of the Sun. The orb table used
   // to be inline here; it now lives in calculations/planet-state.ts so the
   // narration layers classify combustion identically (same orbs, same result).
-  if (isCombust(planet, pos.longitude, getPlanetPosition('Sun', chartData)?.longitude)) {
+  if (
+    isCombust(
+      planet,
+      pos.longitude,
+      getPlanetPosition('Sun', chartData)?.longitude,
+      pos.isRetrograde,
+    )
+  ) {
     strength = Math.max(0, strength - 20);
   }
 
@@ -797,7 +804,7 @@ function detectGajakesari(chartData: ChartData): Yoga {
     const free =
       dignity !== 'debilitated' &&
       dignity !== 'enemy' &&
-      !isCombust('Jupiter', jupiter.longitude, sun?.longitude);
+      !isCombust('Jupiter', jupiter.longitude, sun?.longitude, jupiter.isRetrograde);
     present = placed && supported && free;
   }
 
