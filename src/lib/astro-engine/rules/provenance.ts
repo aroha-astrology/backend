@@ -461,6 +461,20 @@ const REGISTRY: ProvenanceEntry[] = [
     note: 'The name is in none of the texts opened (Bṛhat Jātaka, BPHS translation, Phaladeepika). The two-of-three rule is Aroha own; Harsha, Sarala and Vimala (PD-6.57) are the nearest old rules',
   },
   {
+    featureId: 'YGA-SAR',
+    featureName: 'Saraswati Yoga',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-6.26-27'],
+    note: 'Phaladeepika 6.26. Strong Jupiter in the text has no number and is not applied',
+  },
+  {
+    featureId: 'YGA-PAR',
+    featureName: 'Parivartana Yogas (Dainya, Khala, Maha)',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-6.32-33'],
+    note: 'Phaladeepika 6.32-33: 30 Dainya, 8 Khala, 28 Maha pairs',
+  },
+  {
     featureId: 'YGA-HSV',
     featureName: 'Harsha, Sarala and Vimala yogas',
     tag: 'LATER_CLASSICAL',

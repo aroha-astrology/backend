@@ -253,10 +253,21 @@ Read in the translation (E-BPHS-ENG, vol 2, chapter 46). Confidence 80.
 - **Against the engine:** Mahabhagya is identical (the engine reports whichever of the two cases the chart meets, since it does not know the reader's sex). Shakata: the Moon 6th, 8th or 12th from Jupiter is identical, but the engine kept Shakata when the Moon was in a kendra from the Lagna and only lowered its strength. **Fixed:** no Shakata then. This is the "Moon-Jupiter Shakata" the Bṛhat Jātaka does not have (its only Śakaṭa is a figure of planets in the 1st and 7th, BJ-12.4).
 - **Supports:** YGA-MBH, YGA-SHK, confidence 78.
 
+### PD-6.26-27 — Saraswati
+
+- **Translation (E-PHALA, 6.26):** "If Venus, Jupiter and Mercury occupy a Kendra, a Trikona or the second house, and Jupiter be also in his exaltation, his own or a friendly house and possess strength, the resulting Yoga is termed Saraswati." **6.27:** a man of high intelligence, skilled in drama, prose, verse, accounts and poetics, famed in the three worlds, wealthy, with wife and children, respected by kings.
+- **Against the engine:** the houses (1, 2, 4, 5, 7, 9, 10) were right; Jupiter was accepted only in an exalted or own sign. **Fixed (YG6):** a friendly sign is accepted too (the natural friendship table). "Possess strength" has no number in the text and is not applied.
+- **Supports:** YGA-SAR, confidence 78.
+
+### PD-6.32-33 — Parivartana: Dainya, Khala, Maha
+
+- **Translation (E-PHALA, 6.32):** when two house lords each stand in the other's house it is Parivartana, 66 pairs in all. "Out of these, 30 are caused by the lords of the 6th, 8th and 12th and are termed Dainya Yogas; and 8 are caused by the lord of the 3rd" (Khala); "the remaining 28 are termed Maha Yogas", formed by the pairs among the houses 1, 2, 4, 5, 7, 9, 10 and 11 (7 + 6 + 5 + 4 + 3 + 2 + 1 = 28). **6.33:** Dainya, a fool who reviles others, does sinful acts, is tormented by enemies; Khala, "at one time go astray, at another gentle in speech", prosperity at times and distress at others; Maha, "the repository of the blessings of the Goddess Sri", wealthy, honoured by the sovereign, with vehicles, wealth and children.
+- **Against the engine:** it called a pair Maha only when both houses were kendras or trikonas, so the pairs with the 2nd or 11th (14 of the 28) were reported as "Kahala" benefic; it called an exchange between two of the 6th, 8th, 12th a "special" Dainya that gains through adversity (not in this text); and it skipped an exchange whenever the same two planets had already been checked for another house pair (so a Mars-Jupiter exchange between the 1st and 12th was missed once the 1st-9th pair had been tried). **Fixed (YG6):** the three classes of the text; the planet-pair skip is removed. Khala is typed 'benefic' only because the type list has no "mixed"; its description says mixed.
+- **Supports:** YGA-PAR, confidence 78.
+
 ### Not found in the texts opened (label only)
 
 - **Budhaditya, Chandra-Mangala, Lakshmi:** the names do not occur in the BPHS translation or in the Phaladeepika text searched. The rules stay as they are; the provenance entries say so (YG6, label only).
-- **Parivartana types (PD-6.32) and Saraswati (PD-6.26-27):** the Phaladeepika has them; not yet compared with the engine.
 
 ### BPHS-83 — the father's curse and the serpent's curse (what the BPHS has instead of Pitra Dosha and Kaal Sarp)
 

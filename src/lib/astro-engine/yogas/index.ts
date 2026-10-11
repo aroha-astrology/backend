@@ -1222,9 +1222,11 @@ function detectSaraswati(chartData: ChartData): Yoga {
   const venHouse = getPlanetHouse('Venus', chartData);
   const merHouse = getPlanetHouse('Mercury', chartData);
 
-  const jupSign = getPlanetSign('Jupiter', chartData);
+  // Phaladeepika 6.26: Jupiter in exaltation, in its own or in a friendly sign
+  // ("possess strength" has no number in the text and is not applied).
+  const jupDignity = signDignity('Jupiter', signIndex(getPlanetSign('Jupiter', chartData)));
   const jupInOwnOrExalted =
-    isPlanetExalted('Jupiter', jupSign) || isPlanetInOwnSign('Jupiter', jupSign);
+    jupDignity === 'exalted' || jupDignity === 'own' || jupDignity === 'friend';
 
   const validHouses = [1, 2, 4, 5, 7, 9, 10]; // kendra + trikona + 2nd
   const jupOk = validHouses.includes(jupHouse);
@@ -1247,7 +1249,7 @@ function detectSaraswati(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      'Jupiter, Venus, Mercury in Kendra, Trikona, or 2nd house, with Jupiter in own/exalted sign. Grants exceptional learning, wisdom, mastery of arts and sciences.',
+      'Jupiter, Venus and Mercury in a Kendra, a Trikona or the 2nd house, with Jupiter in an exalted, own or friendly sign (Phaladeepika 6.26). The text promises learning, skill with words and a good name.',
     planets: ['Jupiter', 'Venus', 'Mercury'],
     houses: present ? [jupHouse, venHouse, merHouse] : [],
     activationPeriod: 'Jupiter Mahadasha/Antardasha' ?? undefined,
@@ -1462,7 +1464,6 @@ function detectKemadrumaCanellation(chartData: ChartData): Yoga {
 
 function detectParivartana(chartData: ChartData): Yoga[] {
   const yogas: Yoga[] = [];
-  const checked = new Set<string>();
 
   for (let h1 = 1; h1 <= 12; h1++) {
     for (let h2 = h1 + 1; h2 <= 12; h2++) {
@@ -1470,39 +1471,28 @@ function detectParivartana(chartData: ChartData): Yoga[] {
       const lord2 = getHouseLord(h2, chartData);
       if (lord1 === lord2) continue; // Same lord rules both houses
 
-      const key = [lord1, lord2].sort().join('-');
-      if (checked.has(key)) continue;
-      checked.add(key);
-
       const lord1House = getPlanetHouse(lord1, chartData);
       const lord2House = getPlanetHouse(lord2, chartData);
 
       // Mutual exchange: lord1 is in lord2's house and lord2 is in lord1's house
       if (lord1House === h2 && lord2House === h1) {
-        // Determine sub-type
+        // Phaladeepika 6.32-33 (register PD-6.32-33, audit YG6): Dainya when the
+        // 6th, 8th or 12th lord is one of the two (30 pairs); Khala when the 3rd
+        // lord is (8 more); Maha for the remaining 28 pairs among 1, 2, 4, 5, 7,
+        // 9, 10 and 11.
         let yogaSubtype: YogaType = 'benefic';
         let description = '';
-        const kendras = [1, 4, 7, 10];
-        const trikonas = [1, 5, 9];
         const dusthanas = [6, 8, 12];
 
-        const h1IsKendraTrikona = kendras.includes(h1) || trikonas.includes(h1);
-        const h2IsKendraTrikona = kendras.includes(h2) || trikonas.includes(h2);
-        const h1IsDusthana = dusthanas.includes(h1);
-        const h2IsDusthana = dusthanas.includes(h2);
-
-        if (h1IsKendraTrikona && h2IsKendraTrikona) {
-          yogaSubtype = 'raja';
-          description = `Maha Parivartana Yoga: Mutual exchange between lords of houses ${h1} and ${h2} (both Kendra/Trikona). Extremely auspicious, grants power and fortune.`;
-        } else if (h1IsDusthana && h2IsDusthana) {
-          yogaSubtype = 'benefic';
-          description = `Dainya Parivartana Yoga (special): Mutual exchange between lords of houses ${h1} and ${h2} (both dusthana). Can bring gains through adversity.`;
-        } else if (h1IsDusthana || h2IsDusthana) {
+        if (dusthanas.includes(h1) || dusthanas.includes(h2)) {
           yogaSubtype = 'dosha';
-          description = `Dainya Parivartana Yoga: Mutual exchange between lords of houses ${h1} and ${h2} (one dusthana involved). Indicates struggles that require effort to overcome.`;
-        } else {
+          description = `Dainya Parivartana Yoga: the lords of houses ${h1} and ${h2} exchange places. The Phaladeepika (6.32-33) counts every exchange with the lord of the 6th, 8th or 12th as Dainya and gives it a hard result.`;
+        } else if (h1 === 3 || h2 === 3) {
           yogaSubtype = 'benefic';
-          description = `Kahala Parivartana Yoga: Mutual exchange between lords of houses ${h1} and ${h2}. Brings benefits related to the significations of both houses.`;
+          description = `Khala Parivartana Yoga: the lords of houses ${h1} and ${h2} exchange places. The Phaladeepika (6.32-33) gives a mixed result: sometimes prosperity, sometimes distress.`;
+        } else {
+          yogaSubtype = 'raja';
+          description = `Maha Parivartana Yoga: the lords of houses ${h1} and ${h2} exchange places. The Phaladeepika (6.32-33) gives wealth, honour from rulers and authority.`;
         }
 
         const s1 = computePlanetStrength(lord1, chartData);
