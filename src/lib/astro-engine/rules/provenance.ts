@@ -413,7 +413,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Chara Dasha (complete)',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'Antardasha and karakas missing; direction formula unverified — Y3 fault',
+    note: 'K. V. Abhyankar summary of the Jaimini Sutras (register JS-ABH-52-70): node co-lords and their count fixed; start from the stronger of the 1st and 7th, antardasha and sequence direction not settled. No live caller',
   },
   {
     featureId: 'YGN-FULL',
