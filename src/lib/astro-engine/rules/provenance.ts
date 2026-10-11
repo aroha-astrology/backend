@@ -127,6 +127,13 @@ const REGISTRY: ProvenanceEntry[] = [
     note: 'Tajika Neelakanthi chapter 1: the five officers, Tajika aspects to the Varsha lagna, the tie-breaks of verses 64-67. The tie-break by the ithasala of the Moon (the author view) is not built',
   },
   {
+    featureId: 'SHB-BHV',
+    featureName: 'Bhava Bala',
+    tag: 'UNVERIFIED',
+    sourceIds: ['BPHS-27.26-31'],
+    note: 'Read in the BPHS translation but not built: the summary is ambiguous, there is no worked example, and no screen uses it',
+  },
+  {
     featureId: 'SHB-VIM',
     featureName: 'Vimsopaka Bala (Shadvarga)',
     tag: 'ANCIENT_CLASSICAL',
@@ -817,8 +824,9 @@ const REGISTRY: ProvenanceEntry[] = [
   {
     featureId: 'LKB-CLS',
     featureName: 'Lal Kitab classification',
-    tag: 'LATER_CLASSICAL',
+    tag: 'MODERN_ASTROLOGICAL',
     sourceIds: [],
+    note: 'A 20th-century work (scans of the 1939, 1941 and 1952 editions exist); not a classical text',
   },
   {
     featureId: 'LKB-PKG',
@@ -827,7 +835,13 @@ const REGISTRY: ProvenanceEntry[] = [
     sourceIds: [],
     note: 'Must not be mixed with ordinary planetary lordship — L1 fault',
   },
-  { featureId: 'LKB-DEB', featureName: 'Lal Kitab debts', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'LKB-DEB',
+    featureName: 'Lal Kitab debts',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+    note: 'In the legible part of the Hindi edition the debts go by the planets house, not by Parashari aspect or retrograde motion as the engine reads them. Not changed (the list is incomplete in the scan)',
+  },
 
   // -------------------------------------------------------------------------
   // Numerology
@@ -852,10 +866,10 @@ const REGISTRY: ProvenanceEntry[] = [
   },
   {
     featureId: 'NUM-LKY',
-    featureName: 'Lucky number (daily)',
-    tag: 'UNVERIFIED',
+    featureName: 'Today number (daily)',
+    tag: 'AROHA_PROPRIETARY',
     sourceIds: [],
-    note: 'Formula uses (nakshatra+3)%9 — depends on YGN start — P2 fault',
+    note: 'The day of the month added down to one digit, the same for everyone, called today number since the audit (NM2). The older nakshatra formula is gone',
   },
 
   // -------------------------------------------------------------------------
