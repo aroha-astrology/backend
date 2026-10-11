@@ -452,7 +452,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'D5/D6/D8/D11/D14/D21/D81/D108 (extra)',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'Generic rule with no source — V2 fault; label only',
+    note: 'No old text for D5, D6, D8, D11, D14, D21, D81 or D108: an equal-division rule counted from the sign. Labelled not verified',
   },
 
   // -------------------------------------------------------------------------
@@ -518,7 +518,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Mangal Dosha',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: '10 cancellation rules not in known primary texts — D1 fault',
+    note: 'The house list is the usual one; the ten cancellation rules are not all in the texts opened and come from later practice. Not changed',
   },
   {
     featureId: 'DOH-KAL',
@@ -554,7 +554,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Sade Sati',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'Needs real sunrise for boundary dates — S1 fault affects this',
+    note: 'Saturn over the 12th, 1st and 2nd from the Moon: a later popular system, no old text opened for the name. The dates come from the ephemeris',
   },
   { featureId: 'DOH-DHA', featureName: 'Dhaiya', tag: 'UNVERIFIED', sourceIds: [] },
 
@@ -798,7 +798,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Yoga (Panchanga)',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'Needs explicit floor/index — PN1 fault',
+    note: 'The Sun plus the Moon longitude in 27 parts of 13 deg 20 min, with an explicit floor. No old text opened for the auspicious and inauspicious split',
   },
   { featureId: 'PAN-KAR', featureName: 'Karana', tag: 'UNVERIFIED', sourceIds: [] },
   { featureId: 'PAN-RIS', featureName: 'Sunrise/sunset/noon', tag: 'UNVERIFIED', sourceIds: [] },
@@ -879,7 +879,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Sahams',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'Five sahams with separate formulas vs 8 in doc — X3 fault',
+    note: 'Five sahams, each with its own formula, no text opened for them; the older document listed eight',
   },
 
   // -------------------------------------------------------------------------
@@ -897,7 +897,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Pakka Ghar',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'Must not be mixed with ordinary planetary lordship — L1 fault',
+    note: 'Lal Kitab gives each planet a fixed house of its own, separate from ordinary lordship. A 20th-century work whose scans are unreadable (register, Lal Kitab)',
   },
   {
     featureId: 'LKB-DEB',
@@ -999,7 +999,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Gemstone prescription',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'Depends on Shadbala strength — G1 fault',
+    note: 'Follows the corrected Shadbala. No old text opened for the stone to planet table beyond the common list',
   },
 
   // -------------------------------------------------------------------------
@@ -1010,7 +1010,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Yantra magic-square tables',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'One table called "classical" without source — E1 fault',
+    note: 'One table was called classical without a source; no old text found',
   },
 
   // -------------------------------------------------------------------------
@@ -1045,14 +1045,14 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Progeny / fertility report',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'SF2 — sex tendency and child count unverified',
+    note: 'The sex tendency and the child count are no longer shown or written (SF2). The rest is Aroha scoring over the sphuta rules of the Phaladeepika',
   },
   {
     featureId: 'RPT-PL',
     featureName: 'Past-life report',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'SF3 — Rahu/Ketu themes and D60 presented as fact',
+    note: 'A reflective story, not a fact (SF3): the narration says so and ascribes no guilt, debt or curse',
   },
   {
     featureId: 'RPT-RPT',
@@ -1070,7 +1070,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Ephemeris service (deterministic, renamed from Metrologist Agent)',
     tag: 'AROHA_PROPRIETARY',
     sourceIds: [],
-    note: 'Already deterministic; rename is a wording fix — ARCH fault',
+    note: 'Renamed the ephemeris service: a deterministic chart computation, no language model (ARCH)',
   },
   {
     featureId: 'ARCH-DEC',

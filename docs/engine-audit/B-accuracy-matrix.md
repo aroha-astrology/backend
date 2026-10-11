@@ -9,6 +9,8 @@
 > - **Verification Confidence %**: 90+ = original text + translation both read and agreeing; 70–89 = one translation with verse identified; 40–69 = reached via secondary pointer only; <40 = not verified.
 >
 > **Status values:** `OPEN` | `IN-PROGRESS` | `CLOSED` | `LABEL-ONLY`
+>
+> **Superseded for current state (2026-10-11).** The tags and statuses below are the ones from the start of the audit and were not kept up to date row by row. The current label of every feature is in `src/lib/astro-engine/rules/provenance.ts`, shown in `docs/AROHA_E2E_FEATURES_AND_CALCULATIONS_AUDITED.md` (regenerate with `npx tsx scripts/audit-feature-doc.ts`), and what was changed for each fault id is in `C-critical-corrections.md`.
 
 ---
 
