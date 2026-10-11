@@ -33,13 +33,13 @@ import { reportFactsMessage } from './report-facts-message.js';
 const GROUNDING_RULE =
   'The Rahu house/sign, Ketu house/sign, 12th-lord strength, any conjunct planets, and any favorable yoga below are GIVEN FACTS, already computed from the chart. State them verbatim. Never invent a different house, sign, planet, or yoga than what is given.';
 const SAFETY_RULE =
-  'This is reflective, classical Rahu/Ketu axis interpretation for entertainment and self-reflection — never a literal claim about a verifiable past life, never a guarantee. Use tendency language ("classically associated with", "suggests a theme of").';
+  'This is a reflective reading of the Rahu/Ketu axis, a story from a tradition of belief, not a fact about the reader: say plainly that it is a way of looking at themes, never that anything happened in a past life, and never ascribe guilt, a debt or a curse to the reader. Use tendency language ("in the traditional reading", "suggests a theme of").';
 const ARCHETYPE_RULE =
   'The karmic archetype label/description below is a GIVEN FACT — a deterministic house-axis theme, not something you invent. Weave it in as the overarching frame for the axis, but keep it as generic/classical tendency language, never a specific prediction about identifying details of a past life.';
 const SHASHTIAMSHA_RULE =
   'The Shashtiamsha (D60) chart below — the most fine-grained classical varga, traditionally read for overall karmic destiny — is a GIVEN FACT. Weave it in as ONE brief sentence of extra classical color alongside the karmic archetype theme (per ARCHETYPE_RULE), never as a separate topic.';
 const KAAL_SARP_RULE =
-  'The Kaal Sarp Dosha note below (present or not) is a GIVEN FACT. If present, mention it calmly and matter-of-factly as a classical condition where all planets fall between the Rahu/Ketu axis, intensifying the karmic-release theme AND any fears/blocks theme already raised for Rahu — never alarming language, no specific remedies or purchases recommended. If not present, you may skip the mention entirely.';
+  'The Kaal Sarp Dosha note below (present or not) is a GIVEN FACT. If present, mention it calmly and matter-of-factly as a pattern of a later tradition (not a rule of the old Parashari texts) where all planets fall between the Rahu/Ketu axis, intensifying the karmic-release theme AND any fears/blocks theme already raised for Rahu — never alarming language, no specific remedies or purchases recommended. If not present, you may skip the mention entirely.';
 const YOGA_RULE =
   "Any favorable yoga listed below (if present) is a GIVEN FACT — a specific classical placement, not something you invent. Frame it as a specific talent or skill classically read as carried forward from a past life, in the same tendency language as everything else here. If no favorable yoga is present, do NOT skip this question — instead name Ketu's own house/sign placement (already given) as the classical signifier of an innate, already-mastered skill or talent carried into this life; Ketu classically represents that regardless of whether a separate yoga also confirms it.";
 const HOOK_RULE =
