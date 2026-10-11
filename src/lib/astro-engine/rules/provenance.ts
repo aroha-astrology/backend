@@ -113,6 +113,20 @@ const REGISTRY: ProvenanceEntry[] = [
     note: 'The translator table in the notes to BPHS ch. 7, not a verse. Nodes are never combust. Saturn 15 against the OCR 16 is unresolved',
   },
   {
+    featureId: 'TJK-PVB',
+    featureName: 'Tajika Panchavargi Bala',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['TN-1.30-41'],
+    note: 'Tajika Neelakanthi chapter 1, verses 31-41. The book worked example for the Sun is reproduced. The hadda table is rebuilt from the verse numerals',
+  },
+  {
+    featureId: 'TJK-VRS',
+    featureName: 'Varsheshwara (lord of the year)',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['TN-1.60-67', 'TN-1.77-78'],
+    note: 'Tajika Neelakanthi chapter 1: the five officers, Tajika aspects to the Varsha lagna, the tie-breaks of verses 64-67. The tie-break by the ithasala of the Moon (the author view) is not built',
+  },
+  {
     featureId: 'SHB-VIM',
     featureName: 'Vimsopaka Bala (Shadvarga)',
     tag: 'ANCIENT_CLASSICAL',
