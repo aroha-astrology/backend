@@ -322,7 +322,7 @@ export const KOOTA_MAX_SCORES = {
 export const NAKSHATRA_GANA: Record<number, 'Deva' | 'Manushya' | 'Rakshasa'> = {
   0: 'Deva',
   1: 'Manushya',
-  2: 'Deva',
+  2: 'Rakshasa', // Krittika: Muhurta Chintamani 6.29 (register MC-6.29, audit CN2)
   3: 'Manushya',
   4: 'Deva',
   5: 'Manushya',

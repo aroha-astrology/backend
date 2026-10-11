@@ -148,7 +148,7 @@ export const KOOTA_MAX_SCORES = {
     Nadi: 8,
 };
 export const NAKSHATRA_GANA = {
-    0: 'Deva', 1: 'Manushya', 2: 'Deva', 3: 'Manushya', 4: 'Deva', 5: 'Manushya',
+    0: 'Deva', 1: 'Manushya', 2: 'Rakshasa', 3: 'Manushya', 4: 'Deva', 5: 'Manushya',
     6: 'Deva', 7: 'Deva', 8: 'Rakshasa', 9: 'Rakshasa', 10: 'Manushya', 11: 'Manushya',
     12: 'Deva', 13: 'Rakshasa', 14: 'Deva', 15: 'Rakshasa', 16: 'Deva', 17: 'Rakshasa',
     18: 'Rakshasa', 19: 'Manushya', 20: 'Manushya', 21: 'Deva', 22: 'Rakshasa', 23: 'Rakshasa',
