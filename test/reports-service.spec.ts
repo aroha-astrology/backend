@@ -1473,6 +1473,64 @@ describe('getReportCatalogueForUser', () => {
     expect(marriage.originalPricePaise).toBe(49900);
   });
 
+  it('an Aroha Pass discount comes off the sale price, on top of the sale, and the catalogue shows both steps', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.marriage': { enabled: true, pricePaise: 14900, originalPricePaise: 49900 },
+    });
+    state.listReportsForUser.mockResolvedValue([]);
+    state.passReportDiscountPct.mockResolvedValue(30);
+
+    const catalogue = await getReportCatalogueForUser(makeUser(), null);
+    const marriage = catalogue.find((c) => c.key === 'marriage')!;
+
+    expect(marriage.originalPricePaise).toBe(49900);
+    expect(marriage.listPricePaise).toBe(14900);
+    expect(marriage.passDiscountPct).toBe(30);
+    // 30% off the sale price of 149, not off the 499 it was marked down from.
+    expect(marriage.pricePaise).toBe(10430);
+  });
+
+  it('what the catalogue shows a Pass holder is what the purchase charges', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.past_life': { enabled: true, pricePaise: 14900, originalPricePaise: 49900 },
+    });
+    state.listReportsForUser.mockResolvedValue([]);
+    state.passReportDiscountPct.mockResolvedValue(30);
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({
+        id: 'r1',
+        reportKey: 'past_life',
+        pricePaidPaise: 10430,
+        status: 'generating',
+      }),
+    );
+
+    const catalogue = await getReportCatalogueForUser(makeUser(), null);
+    const shown = catalogue.find((c) => c.key === 'past_life')!.pricePaise;
+    await purchaseReport(makeUser(), { reportKey: 'past_life' });
+
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      shown,
+      'report_unlock:past_life',
+    );
+  });
+
+  it('without a Pass the list price is the price and the Pass percent is 0', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.marriage': { enabled: true, pricePaise: 14900, originalPricePaise: 49900 },
+    });
+    state.listReportsForUser.mockResolvedValue([]);
+
+    const marriage = (await getReportCatalogueForUser(makeUser(), null)).find(
+      (c) => c.key === 'marriage',
+    )!;
+
+    expect(marriage.pricePaise).toBe(14900);
+    expect(marriage.listPricePaise).toBe(14900);
+    expect(marriage.passDiscountPct).toBe(0);
+  });
+
   it('resolves originalPricePaise to null (never falling back to basePricePaise) when no discount is configured', async () => {
     state.resolveFeaturesForUser.mockResolvedValue({
       'reports.marriage': { enabled: true, pricePaise: 9900 },

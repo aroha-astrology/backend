@@ -828,6 +828,14 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+  // The "Aroha Pass is here" popup on Home, with a button to /pass. Shown once to each user who has no Pass, and only while nav.arohaPass is on with at least one tier. A new user does not get it on their first visit: it waits for the second.
+  {
+    key: 'home.passLaunchPopup',
+    label: "Aroha Pass launch popup on Home (once per user, from a new user's second visit)",
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
   // Silver: 15 questions, Life Timeline, Bonds, 10% off reports. The price here is only what the app shows; Google Play charges the base plan's own price, set in Play Console (base plan pass-199) — keep them the same.
   {
     key: 'paid.arohaPassA',

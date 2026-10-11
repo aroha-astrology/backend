@@ -1317,6 +1317,10 @@ export async function getReportCatalogueForUser(
       enabled,
       isNew: computeIsNewReport(enabled, resolved?.enabledAt ?? null, now),
       pricePaise: withPassDiscount(resolved?.pricePaise ?? def.basePricePaise, passDiscountPct),
+      // What everyone pays before the Pass discount, and the Pass's own percent
+      // (0 without a Pass), so the buy screen can show the two discounts apart.
+      listPricePaise: resolved?.pricePaise ?? def.basePricePaise,
+      passDiscountPct,
       // No fallback to basePricePaise here — an unconfigured original price
       // means there's no discount to show, not a fabricated one. A Pass holder's
       // discount is a real one, so it shows the undiscounted price struck out.

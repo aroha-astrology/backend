@@ -5,6 +5,8 @@ import { QUESTION_PACKS } from './pass.config.js';
 import { buyQuestionPack, getPassStatus } from './pass.service.js';
 import { confirmPlayPass } from './pass-play.service.js';
 import { passStats } from './pass.repo.js';
+import { passLaunchReadiness, sendPassLaunch } from './pass-launch.service.js';
+import { logAdminAction } from '../admin/admin.repo.js';
 
 const ErrorSchema = z
   .object({
@@ -129,4 +131,64 @@ const adminStatsRoute = createRoute({
 passRouter.openapi(adminStatsRoute, async (c) => {
   const stats = await passStats();
   return c.json(stats as unknown as Record<string, unknown>, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Admin: go-live check and the launch notification                           */
+/* -------------------------------------------------------------------------- */
+
+const launchStatusRoute = createRoute({
+  method: 'get',
+  path: '/admin/pass-launch',
+  tags: ['Admin'],
+  summary:
+    'Is the Aroha Pass ready to go live: every switch it needs, Google Play, and who the launch notification would reach',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: { description: 'Readiness', content: { 'application/json': { schema: Json } } },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Not an admin'),
+  },
+});
+
+passRouter.openapi(launchStatusRoute, async (c) => {
+  const readiness = await passLaunchReadiness();
+  return c.json(readiness as unknown as Record<string, unknown>, 200);
+});
+
+const launchSendRoute = createRoute({
+  method: 'post',
+  path: '/admin/pass-launch',
+  tags: ['Admin'],
+  summary:
+    'Send the "Aroha Pass is here" notification to every user who has not had it, or with onlyMe a try-out to the calling admin',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: z.object({ onlyMe: z.boolean().default(false) }) } },
+    },
+  },
+  responses: {
+    200: { description: 'Send result', content: { 'application/json': { schema: Json } } },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Not an admin'),
+    409: errorResponse('PASS_NOT_READY'),
+  },
+});
+
+passRouter.openapi(launchSendRoute, async (c) => {
+  const admin = c.get('user');
+  const { onlyMe } = c.req.valid('json');
+  const result = await sendPassLaunch(
+    onlyMe ? { onlyUser: { id: admin.id, locale: admin.locale } } : {},
+  );
+  await logAdminAction(
+    c.get('firebaseToken').phone_number ?? 'unknown',
+    'POST /v1/admin/pass-launch',
+    { onlyMe, ...result },
+  );
+  return c.json(result as unknown as Record<string, unknown>, 200);
 });

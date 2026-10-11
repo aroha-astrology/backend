@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, gte, isNull, lt, lte, not, or, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
+  notifications,
   subscriptionPlans,
   userSubscriptions,
   users,
@@ -260,6 +261,15 @@ export async function updatePlayPass(
     .update(userSubscriptions)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(userSubscriptions.id, id));
+}
+
+/** Every user who already has a notification of `type` (how a one-off send avoids a second copy). */
+export async function listUserIdsNotified(type: string): Promise<Set<string>> {
+  const rows = await db
+    .selectDistinct({ userId: notifications.userId })
+    .from(notifications)
+    .where(eq(notifications.type, type));
+  return new Set(rows.map((r) => r.userId));
 }
 
 /* -------------------------------------------------------------------------- */
