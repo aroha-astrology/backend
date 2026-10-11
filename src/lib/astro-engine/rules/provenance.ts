@@ -640,9 +640,9 @@ const REGISTRY: ProvenanceEntry[] = [
   {
     featureId: 'MT-BHK',
     featureName: 'Bhakoot koota',
-    tag: 'UNVERIFIED',
+    tag: 'LATER_CLASSICAL',
     sourceIds: ['MC-6.21-33'],
-    note: 'The text (6.31, called an interpolation by its editor; 6.32-33 exemptions) differs from the engine: 6-8 split by odd and even signs, exemptions. Not changed, needs the owner decision',
+    note: 'Muhurta Chintamani 6.31-33: the 2-12, 5-9 and 6-8 faults and their exemptions (same or friendly sign lords, pure nadi, pure tara). Exemptions by navamsa lords and by vashya are not applied. The earlier rule is the profile value bhakootRule earlier',
   },
   {
     featureId: 'MT-NAD',

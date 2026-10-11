@@ -79,6 +79,15 @@ export interface AstrologyRuleProfile {
    *    from the Moon and nothing else (the common later form).
    */
   gajakesariRule: 'bphs' | 'moon-kendra';
+  /**
+   * Bhakoot (the 2nd-12th, 5th-9th and 6th-8th relations of the Moon signs).
+   *  - 'muhurta-chintamani': MC 6.31-33. The fault is lifted when the two sign
+   *    lords are one planet, or are friendly (a 6th-8th needs only a pure nadi;
+   *    a 2nd-12th or 5th-9th also needs a pure tara), and a pure nadi is
+   *    required for any exemption.
+   *  - 'earlier': what the engine used before the audit, 0 for every such pair.
+   */
+  bhakootRule: 'muhurta-chintamani' | 'earlier';
   /** How sunrise is defined for day-based rules. */
   sunrise: 'upper-limb-refracted';
 }
@@ -97,6 +106,7 @@ export const DEFAULT_PROFILE: AstrologyRuleProfile = {
   kemadrumaExemptions: 'brihat-jataka',
   neechabhangaRules: 'phaladeepika',
   gajakesariRule: 'bphs',
+  bhakootRule: 'muhurta-chintamani',
   sunrise: 'upper-limb-refracted',
 };
 

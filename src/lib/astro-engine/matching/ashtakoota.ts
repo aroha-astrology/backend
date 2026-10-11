@@ -9,6 +9,7 @@
 // All calculations are deterministic with classical Vedic rules.
 // =============================================================================
 
+import { getActiveProfile } from '../rules/profile.js';
 import type {
   AshtakootaResult,
   KootaScore,
@@ -393,7 +394,37 @@ function calculateGana(nakshatraIndex1: number, nakshatraIndex2: number): KootaS
 // 2-12 (and 12-2), 6-8 (and 8-6), 5-9 (and 9-5) = 0 points (inauspicious)
 // All other combinations = 7 points
 
-function calculateBhakoot(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaScore {
+/**
+ * Muhurta Chintamani 6.32-33 (register MC-6.21-33, audit MT3): the sign lords
+ * being one planet, or friendly, lifts a Bhakoot fault, provided the nadi is
+ * pure; a 2nd-12th or 5th-9th also needs the tara pure. "Friendly" here is: neither
+ * lord counts the other an enemy and at least one counts the other a friend.
+ */
+function bhakootExempt(
+  moonSign1: ZodiacSign,
+  moonSign2: ZodiacSign,
+  dist: number,
+  nadiPure: boolean,
+  taraPure: boolean,
+): boolean {
+  if (!nadiPure) return false;
+  const lord1 = SIGN_LORDS[moonSign1];
+  const lord2 = SIGN_LORDS[moonSign2];
+  if (lord1 === lord2) return true;
+  const r1 = getPlanetRelation(lord1, lord2);
+  const r2 = getPlanetRelation(lord2, lord1);
+  const friendly = r1 !== 'enemy' && r2 !== 'enemy' && (r1 === 'friend' || r2 === 'friend');
+  if (!friendly) return false;
+  const shadashtaka = dist === 6 || dist === 8;
+  return shadashtaka || taraPure;
+}
+
+function calculateBhakoot(
+  moonSign1: ZodiacSign,
+  moonSign2: ZodiacSign,
+  nadiPure = false,
+  taraPure = false,
+): KootaScore {
   const dist = signDistance(moonSign1, moonSign2);
   const reverseDist = signDistance(moonSign2, moonSign1);
 
@@ -412,15 +443,21 @@ function calculateBhakoot(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaSc
     }
   }
 
-  const score = isBad ? 0 : 7;
+  const exempt =
+    isBad &&
+    getActiveProfile().bhakootRule === 'muhurta-chintamani' &&
+    bhakootExempt(moonSign1, moonSign2, dist, nadiPure, taraPure);
+  const score = isBad && !exempt ? 0 : 7;
 
   return {
     koota: 'Bhakoot',
     maxScore: KOOTA_MAX_SCORES.Bhakoot,
     score,
-    description: isBad
-      ? `Bhakoot dosha: ${dist}-${reverseDist} relationship is inauspicious`
-      : 'Bhakoot is favorable',
+    description: exempt
+      ? `${dist}-${reverseDist} relationship, but the sign lords are one or friendly and the nadi is pure: the fault is lifted`
+      : isBad
+        ? `Bhakoot dosha: ${dist}-${reverseDist} relationship is inauspicious`
+        : 'Bhakoot is favorable',
     compatibility: score === 7 ? 'excellent' : 'poor',
   };
 }
@@ -484,15 +521,17 @@ export function calculateAshtakoota(
   moonSign1: ZodiacSign,
   moonSign2: ZodiacSign,
 ): AshtakootaResult {
+  const tara = calculateTara(nakshatraIndex1, nakshatraIndex2);
+  const nadi = calculateNadi(nakshatraIndex1, nakshatraIndex2);
   const scores: KootaScore[] = [
     calculateVarna(moonSign1, moonSign2),
     calculateVashya(moonSign1, moonSign2),
-    calculateTara(nakshatraIndex1, nakshatraIndex2),
+    tara,
     calculateYoni(nakshatraIndex1, nakshatraIndex2),
     calculateGrahaMaitri(moonSign1, moonSign2),
     calculateGana(nakshatraIndex1, nakshatraIndex2),
-    calculateBhakoot(moonSign1, moonSign2),
-    calculateNadi(nakshatraIndex1, nakshatraIndex2),
+    calculateBhakoot(moonSign1, moonSign2, nadi.score > 0, tara.score === KOOTA_MAX_SCORES.Tara),
+    nadi,
   ];
 
   const totalScore = scores.reduce((sum, s) => sum + s.score, 0);
