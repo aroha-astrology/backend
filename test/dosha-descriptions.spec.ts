@@ -210,6 +210,12 @@ describe('Kaal Sarp Dosha description', () => {
     expect(result.description).toContain('7');
   });
 
+  it('does not call Kaal Sarp classical: it is a later tradition (audit R4)', () => {
+    const result = detectKaalSarpDosha(fullKaalSarpChart());
+    expect(result.description).not.toMatch(/classical|ancient/i);
+    expect(result.description).toMatch(/later tradition/);
+  });
+
   it('differentiates a partial Kaal Sarp description from a full one', () => {
     const full = detectKaalSarpDosha(fullKaalSarpChart());
     const partialPlanets = fullKaalSarpChart();
