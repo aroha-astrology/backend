@@ -183,6 +183,26 @@ export const ReportReadySchema = z
     /** True for a free "generate and blur" preview row that hasn't been purchased yet — tells the
      * client to render the paywall/blur over these sections rather than the full report. */
     isPreview: z.boolean(),
+    /** What the report is built from and how it is to be read (audit release R4): the
+     * calculation basis, the rule profile, rules by origin (traditional, modern, Aroha's own,
+     * unverified) and the safety class of the subject. */
+    basis: z
+      .object({
+        calculation_basis: z.string(),
+        source_profile: z.string(),
+        traditional_rules: z.array(
+          z.object({ id: z.string(), name: z.string(), label: z.string() }),
+        ),
+        modern_rules: z.array(z.object({ id: z.string(), name: z.string(), label: z.string() })),
+        aroha_proprietary_rules: z.array(
+          z.object({ id: z.string(), name: z.string(), label: z.string() }),
+        ),
+        unverified_rules: z.array(
+          z.object({ id: z.string(), name: z.string(), label: z.string() }),
+        ),
+        safety_classification: z.string(),
+      })
+      .optional(),
   })
   .openapi('ReportReady');
 

@@ -151,7 +151,12 @@ export async function generateRelationshipMonthlyNarrative(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: narrativeSystemPrompt() },
-      reportFactsMessage(buildFacts(scores), scores.planetCondition, scores.vakriFacts),
+      reportFactsMessage(
+        buildFacts(scores),
+        scores.planetCondition,
+        scores.vakriFacts,
+        'relationship_monthly',
+      ),
       { role: 'user', content: "Write this month's Relationship report narrative." },
     ],
   });

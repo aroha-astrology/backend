@@ -337,7 +337,7 @@ async function callAndParse(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'progeny'),
       { role: 'user', content: 'Write this part of the Progeny Report narrative.' },
     ],
   });

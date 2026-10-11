@@ -277,7 +277,7 @@ async function generateSection(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'wealth'),
       { role: 'user', content: userPrompt },
     ],
   });

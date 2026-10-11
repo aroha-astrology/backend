@@ -204,7 +204,7 @@ export async function generateReportVerdict(
       // No explicit condition argument: `planetCondition` is one of the excluded keys
       // above (it's grounding, not this report's topic) — passing it again would just
       // reintroduce the cross-domain drift this function exists to remove.
-      reportFactsMessage(JSON.stringify(factsForVerdict(scores))),
+      reportFactsMessage(JSON.stringify(factsForVerdict(scores)), undefined, undefined, reportKey),
       { role: 'user', content: 'Write the Final Verdict card for this report.' },
     ],
   });

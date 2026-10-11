@@ -288,7 +288,7 @@ async function generateSection(
     responseSchema: KEYED_SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'match_report'),
       { role: 'user', content: userPrompt },
     ],
   });

@@ -300,6 +300,7 @@ export async function generateNameChangeNarrative(
         buildFacts(scores, suggestions),
         scores.planetCondition,
         scores.vakriFacts,
+        'name_change',
       ),
       { role: 'user', content: 'Write the Name Change report narrative.' },
     ],

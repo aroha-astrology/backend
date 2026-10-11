@@ -808,8 +808,6 @@ const REGISTRY: ProvenanceEntry[] = [
     note: 'Tajika is a later tradition',
   },
   { featureId: 'TAJ-MUN', featureName: 'Muntha', tag: 'UNVERIFIED', sourceIds: [] },
-  { featureId: 'TAJ-VRE', featureName: 'Varsheshwara', tag: 'UNVERIFIED', sourceIds: [] },
-  { featureId: 'TAJ-PVB', featureName: 'Panchavargiya Bala', tag: 'UNVERIFIED', sourceIds: [] },
   {
     featureId: 'TAJ-SAH',
     featureName: 'Sahams',
@@ -995,7 +993,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'All 16 commercial reports (provenance block)',
     tag: 'AROHA_PROPRIETARY',
     sourceIds: [],
-    note: 'Must return calculation_basis, source_profile, traditional_rules, aroha_proprietary_rules, safety_classification — RP1',
+    note: 'Every report now returns a basis block (rules/report-basis.ts): calculation_basis, source_profile, traditional_rules, modern_rules, aroha_proprietary_rules, unverified_rules, safety_classification. The report scores themselves are Aroha blends of a 30/60/90 scale (RP1)',
   },
 
   // -------------------------------------------------------------------------

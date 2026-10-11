@@ -186,7 +186,7 @@ async function generateSection(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'kundli_milan'),
       { role: 'user', content: userPrompt },
     ],
   });

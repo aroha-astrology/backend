@@ -288,7 +288,7 @@ async function callAndParse(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'true_love'),
       { role: 'user', content: 'Write this part of the True Love report narrative.' },
     ],
   });

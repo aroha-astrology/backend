@@ -184,7 +184,12 @@ export async function generatePastLifeNarrative(scores: PastLifeScores): Promise
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: narrativeSystemPrompt() },
-      reportFactsMessage(buildFacts(scores), scores.planetCondition, scores.vakriFacts),
+      reportFactsMessage(
+        buildFacts(scores),
+        scores.planetCondition,
+        scores.vakriFacts,
+        'past_life',
+      ),
       { role: 'user', content: 'Write the Past Life report narrative.' },
     ],
   });
