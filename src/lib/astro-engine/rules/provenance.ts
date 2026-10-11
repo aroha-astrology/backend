@@ -92,6 +92,13 @@ const REGISTRY: ProvenanceEntry[] = [
   // Shadbala
   // -------------------------------------------------------------------------
   {
+    featureId: 'SHB-VIM',
+    featureName: 'Vimsopaka Bala (Shadvarga)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-16.17-27'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The book worked example (Venus 16.8) is reproduced. Only the six-division scheme is computed',
+  },
+  {
     featureId: 'SHB-YUD',
     featureName: 'Yuddha Bala (planetary war)',
     tag: 'ANCIENT_CLASSICAL',

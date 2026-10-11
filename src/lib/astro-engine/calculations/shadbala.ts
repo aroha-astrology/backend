@@ -188,7 +188,14 @@ export function uchchaBala(planet: Planet, longitude: number): number {
   return angularDistance(longitude, point) / 3;
 }
 
-type Dignity = 'moolatrikona' | 'own' | 'adhimitra' | 'mitra' | 'sama' | 'shatru' | 'adhishatru';
+export type Dignity =
+  | 'moolatrikona'
+  | 'own'
+  | 'adhimitra'
+  | 'mitra'
+  | 'sama'
+  | 'shatru'
+  | 'adhishatru';
 
 const SAPTAVARGAJA_POINTS: Record<'bphs' | 'raman', Record<Dignity, number>> = {
   bphs: { moolatrikona: 45, own: 30, adhimitra: 20, mitra: 15, sama: 10, shatru: 4, adhishatru: 2 },
@@ -209,7 +216,7 @@ const SAPTAVARGAJA_POINTS: Record<'bphs' | 'raman', Record<Dignity, number>> = {
  * temporary one read from the SIGN chart only (planets in the 2nd, 3rd, 4th,
  * 10th, 11th or 12th sign from each other are temporary friends).
  */
-function panchadhaRelation(
+export function panchadhaRelation(
   planet: Planet,
   lord: Planet,
   planetSign: number,
@@ -224,7 +231,7 @@ function panchadhaRelation(
 }
 
 /** Dignity of a planet in the sign chart, where the moolatrikona degree range applies. */
-function rasiDignity(planet: Planet, longitude: number, chart: ChartData): Dignity {
+export function rasiDignity(planet: Planet, longitude: number, chart: ChartData): Dignity {
   const signIndex = signIndexOf(longitude);
   const sign = ZODIAC_SIGNS[signIndex] as ZodiacSign;
   const degree = norm360(longitude) % 30;
@@ -236,7 +243,7 @@ function rasiDignity(planet: Planet, longitude: number, chart: ChartData): Digni
 }
 
 /** Dignity in a division whose result is a sign (drekkana, saptamsa, navamsa, dvadasamsa). */
-function vargaSignDignity(
+export function vargaSignDignity(
   planet: Planet,
   signIndex: number,
   planetSign: number,
@@ -253,7 +260,7 @@ function vargaSignDignity(
 }
 
 /** Dignity in a division named for its lord (hora, trimsamsa): own when the lord is the planet itself. */
-function vargaLordDignity(
+export function vargaLordDignity(
   planet: Planet,
   lord: Planet,
   planetSign: number,

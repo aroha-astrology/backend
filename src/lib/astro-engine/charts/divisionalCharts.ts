@@ -345,27 +345,33 @@ export function calculateD27(longitude: number): number {
 // For EVEN signs: Venus 0-5, Mercury 5-12, Jupiter 12-20, Saturn 20-25, Mars 25-30
 //
 //
-// The lords and their widths are Bṛhat Jātaka 1.7 (source register BJ-1.7).
-// That verse names LORDS only. Which of a lord's two signs the part is drawn
-// in is not in it: ANCIENT SOURCE NOT VERIFIED. This function always returns
-// the lord's odd sign (Mars -> Aries, Saturn -> Aquarius, Jupiter ->
-// Sagittarius, Mercury -> Gemini, Venus -> Libra), for even signs too. Read
-// the result as "the lord of this sign" until a text for the sign is found
-// (audit item V1).
+// The lords and their widths are Bṛhat Jātaka 1.7 (source register BJ-1.7); the
+// sign drawn is BPHS 6.27-28 and its speculum (register BPHS-6.27-28, audit V1):
+// in an odd sign the parts are drawn in Aries, Aquarius, Sagittarius, Gemini and
+// Libra, and in an even sign, "reversed", in Taurus, Virgo, Pisces, Capricorn and
+// Scorpio (the book's worked example puts Venus at Capricorn 4 deg 32 min in Taurus).
+// Until 2026-10-11 this returned the odd sign for even signs too.
 
 export function calculateD30(longitude: number): number {
   const si = signIndex(longitude);
   const deg = signDegree(longitude);
 
-  // Trimshamsha ruler -> sign mapping (Parashara)
-  // Mars=Aries, Saturn=Aquarius, Jupiter=Sagittarius, Mercury=Gemini, Venus=Libra
-  const planetToSign: Record<string, number> = {
+  // Trimshamsha ruler -> sign, by the parity of the sign the planet stands in (BPHS 6.27-28).
+  const oddSigns: Record<string, number> = {
     Mars: 0, // Aries
     Saturn: 10, // Aquarius
     Jupiter: 8, // Sagittarius
     Mercury: 2, // Gemini
     Venus: 6, // Libra
   };
+  const evenSigns: Record<string, number> = {
+    Venus: 1, // Taurus
+    Mercury: 5, // Virgo
+    Jupiter: 11, // Pisces
+    Saturn: 9, // Capricorn
+    Mars: 7, // Scorpio
+  };
+  const planetToSign = isOddSign(si) ? oddSigns : evenSigns;
 
   let ruler: string;
 

@@ -334,6 +334,38 @@ Read in the translation (E-BPHS-ENG, vol 1 chapter 27 and vol 2 chapter 79). Con
 - **Against the engine:** no Yuddha Bala. **Fixed (S5):** two of Mars to Saturn within one degree of longitude; Venus wins, otherwise the planet further north (greater ecliptic latitude); equal latitudes give no victor. The difference of the two pre-war totals is added to the winner and taken from the loser, and `isStrong` is read after it. The field `yuddhaBala` on each planet's result carries the signed amount (0 when in no war).
 - **Supports:** SHB-YUD.
 
+### BPHS-27, the standard nativity check (still unexplained, 2026-10-11)
+
+The book gives only two totals for the standard nativity (BPHS vol 1, chapter 39: "Jupiter ... a Shadbala of 9.32 Rupas and Mars 7.32 Rupas", with Vimsopaka 16.45 and 16.80) and no component figures, so the cause of the gap cannot be read off it. The engine, with the real sunrise and sunset of the place (21 May 1944, 19:02 war time, UTC+6:30, 13N40 79E20, Lahiri), gives positions matching the book's table and these Shadbalas, in virupas (sthana, dig, kala, cheshta, naisargika, drik, total):
+
+- Sun 240.92, 32.09, 203.47, 56.04, 60, 2.36 = 594.88 (9.91 rupas)
+- Moon 186.24, 31.09, 39.95, 3.17, 51.43, 2.48 = 314.36 (5.24)
+- Mars 167.23, 51.78, 142.31, 25.22, 17.14, -13.02 = 390.66 (**6.51; the book 7.32**)
+- Mercury 206.98, 5.33, 111.11, 41.55, 25.71, 9.98 = 400.65 (6.68)
+- Jupiter 207.96, 28.40, 232.73, 27.84, 34.29, -21.10 = 510.12 (**8.50; the book 9.32**)
+- Venus 221.90, 31.22, 86.25, 5.85, 42.86, 2.48 = 390.55 (6.51)
+- Saturn 184.38, 49.26, 146.73, 9.58, 8.57, -2.22 = 396.29 (6.60)
+
+Both gaps are about 49 virupas (0.81 and 0.82 rupa). The two planets share only the sign (both in Cancer, the 9th). Untested explanations: the Kendradi Bala read from the bhava cusps (Jupiter is 4.9 degrees before the midheaven, which would add 45 for Jupiter but not for Mars), another reading of the Drik Bala clause, the hora lord (proportional or equal hours), the Tribhaga lords. The totals are BPHS-faithful in each term and are not forced to match one published program. Not changed.
+
+### BPHS-6.27-28 — the Trimsamsa (D30) signs
+
+Read in the translation (E-BPHS-ENG, vol 1, chapter 6, with the translator's speculum). Confidence 85 (the book's worked example agrees).
+
+- **6.27-28.** "The Trimsamsa lords for an odd sign are Mars, Saturn, Jupiter, Mercury and Venus. Each of them in order rules 5, 5, 8, 7 and 5 degrees ... In the case of an even sign, the quantum of Trimsamsa, planetary lordship and deities get reversed." The speculum: odd signs, first 5 degrees Aries, next 5 Aquarius, next 8 Sagittarius, next 7 Gemini, last 5 Libra; even signs, first 5 Taurus, next 7 Virgo, next 8 Pisces, next 5 Capricorn, last 5 Scorpio. The Bṛhat Jātaka (BJ-1.7) gives the lords and widths and not the signs.
+- **Worked example (BPHS ch. 7 notes, Vimsopaka):** Venus at Capricorn 4 degrees 32 minutes has its Trimsamsa in Taurus, "own".
+- **Against the engine:** the lords and widths were right; the sign drawn was always the lord's odd sign (Libra for Venus). **Fixed (V1):** an even sign draws the lord's even sign. Shadbala's Saptavargaja reads the lord of that sign, so it is unchanged; the D30 chart now shows the book's signs.
+- **Supports:** DIV-D30.
+
+### BPHS-16.17-27 — Vimsopaka Bala
+
+Read in the translation (E-BPHS-ENG, vol 1, chapter 7 in the translation's own numbering). Confidence 88: the book's worked example is reproduced to the point.
+
+- **Verses.** Shadvarga weights (Swaviswa): Rasi 6, Hora 2, Drekkana 4, Navamsa 5, Dvadasamsa 2, Trimsamsa 1. Sapta-varga: 5, 2, 3, 2.5, 4.5, 2, 1. Dasa-varga: Rasi 3, Shashtiamsa 5 and each of the other eight 1.5 (the figure for the eight is lost in the OCR and recovered from the total of 20: 3 + 5 + 8 x 1.5). Shodasa-varga: Hora 1, Trimsamsa 1, Drekkana 1, Shodasamsa 2, Navamsa 3, Rasi 3.5, Shashtiamsa 4, the other nine each 0.5. A planet in its own division has the full 20. Otherwise the Varga Viswa falls to 18 in an extreme friend's division, 15 a friend's, 10 an equal's, 7 an enemy's, 5 a sworn enemy's. The strength is Swaviswa x Varga Viswa / 20. Reading: below 5 the planet cannot give good results; 5-10 some good; 10-15 middling; above 15 wholly favourable.
+- **Worked example:** Venus, longitude 9 signs 4 degrees 32 minutes 30 seconds, chart of 17 February 1984, 22:35 IST, New Delhi. Rasi Capricorn, Saturn, adhimitra, 6 x 18 / 20 = 5.4; Hora Cancer, Moon, adhishatru, 0.5; Drekkana Capricorn, Saturn, adhimitra, 3.6; Navamsa Aquarius, Saturn, 4.5; Dvadasamsa Aquarius, Saturn, 1.8; Trimsamsa Taurus, Venus, own, 1.0; total 16.8. The relationships are the five-fold ones of BPHS ch. 3 (natural with temporary friendship from the sign chart).
+- **Against the engine:** the Shadvarga weights were right, but each division was scored by the planet's simple sign dignity on a 0-5 scale turned into 1, 0.8, 0.6, 0.4, 0.2, 0 (exalted to debilitated) rather than the Varga Viswa 20, 18, 15, 10, 7, 5 of the five-fold relationship, and Rahu and Ketu were scored. **Fixed (ST1):** the book's rule; the seven planets only; the engine reproduces the book's 16.8 and every part of it (`test/audit/vimsopaka-d30.audit.spec.ts`). Only the Shadvarga scheme is computed. The Sapta, Dasa and Shodasa schemes are in the text and are not built. The book also quotes 16.45 for Jupiter and 16.80 for Mars in its standard nativity without saying which scheme.
+- **Supports:** SHB-VIM.
+
 ### BJ-9.1-9.7 — Aṣṭakavarga: the auspicious places from each contributor
 
 - **Sanskrit:** the seven verses 9.01 to 9.07, e.g. 9.01 "svād arkaḥ prathama-āya-bandhu-nidhana-dvy-ājñā-tapo-dyūnago vakrāt svād iva tadvad eva ravijāc chukrāt smara-antya-ariṣu / jīvād dharma-suta-āya-śatruṣu daśa-try-āya-arigaḥ śītagor eṣv eva antya-tapaḥ-suteṣu ca budhāl lagnāt sa-bandhv-antyagaḥ". Each verse is transcribed, phrase by phrase, beside its numbers in `test/audit/brihat-jataka.audit.spec.ts`. Four places where the e-text's word division or spelling had to be resolved are marked there: 9.03b `karmāny.alābha` read karma-antya-lābha (10, 12, 11); 9.05a `aṣṭama.dāya` read aṣṭa-mada-āya (8, 7, 11); 9.05b `āya.ratha` read āya-artha (11, 2); 9.06b `vyago` read vyayago (12). Each reading gives the verse the count the chapter total needs.
