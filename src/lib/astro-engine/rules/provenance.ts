@@ -92,6 +92,13 @@ const REGISTRY: ProvenanceEntry[] = [
   // Shadbala
   // -------------------------------------------------------------------------
   {
+    featureId: 'SHB-YUD',
+    featureName: 'Yuddha Bala (planetary war)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.20', 'BPHS-79.9'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The translator notes give other rules for who wins; the verses are followed',
+  },
+  {
     featureId: 'SHB-UCH',
     featureName: 'Uchcha Bala',
     tag: 'ANCIENT_CLASSICAL',

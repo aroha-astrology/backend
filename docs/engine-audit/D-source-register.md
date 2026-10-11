@@ -324,6 +324,16 @@ Read in E-MC-SKT, the Vivaha prakarana (the 6th), verses 21 to 33, Sanskrit with
 - **Not in this text.** Rajju and Vedha (the South Indian porutham tables) are not in this prakarana of this edition: MT1 and MT2 stay NEEDS TEXT. Dina is not in these verses either.
 - **Supports:** MT-ASH (the eight factors and their maximum points), MT-NAD, MT-GAN, MT-YON (animals and enemies), MT-VAS and MT-BHK (differences recorded).
 
+### BPHS-27.20 and BPHS-79.9 — planetary war (Yuddha Bala)
+
+Read in the translation (E-BPHS-ENG, vol 1 chapter 27 and vol 2 chapter 79). Confidence 78.
+
+- **27.20.** "Should there be a war between the starry planets (i.e. between 2 planets from Mars to Saturn, in a given horoscope), the difference between the Shadbalas of the two should be added to the victor's shadbala and deducted from the Shadbala of the vanquished."
+- **79.9 (in the chapter on renunciation).** "There is planetary war if Mars, Mercury, Jupiter, Venus and Saturn are together (within one degree of each other). Venus is the conqueror whether he is in North or South, but amongst the other four only one, who is in the north, is the conqueror and that in the south is considered defeated in the planetary war."
+- **Translator's notes (not verses):** the usual teaching is that two planets on the same degree fight and the one with the lesser longitude wins; another author wants identical longitudes to the minute and the same side of the ecliptic, the higher latitude winning. The luminaries do not fight. The verses above are followed; the notes' other rules are recorded and not applied.
+- **Against the engine:** no Yuddha Bala. **Fixed (S5):** two of Mars to Saturn within one degree of longitude; Venus wins, otherwise the planet further north (greater ecliptic latitude); equal latitudes give no victor. The difference of the two pre-war totals is added to the winner and taken from the loser, and `isStrong` is read after it. The field `yuddhaBala` on each planet's result carries the signed amount (0 when in no war).
+- **Supports:** SHB-YUD.
+
 ### BJ-9.1-9.7 — Aṣṭakavarga: the auspicious places from each contributor
 
 - **Sanskrit:** the seven verses 9.01 to 9.07, e.g. 9.01 "svād arkaḥ prathama-āya-bandhu-nidhana-dvy-ājñā-tapo-dyūnago vakrāt svād iva tadvad eva ravijāc chukrāt smara-antya-ariṣu / jīvād dharma-suta-āya-śatruṣu daśa-try-āya-arigaḥ śītagor eṣv eva antya-tapaḥ-suteṣu ca budhāl lagnāt sa-bandhv-antyagaḥ". Each verse is transcribed, phrase by phrase, beside its numbers in `test/audit/brihat-jataka.audit.spec.ts`. Four places where the e-text's word division or spelling had to be resolved are marked there: 9.03b `karmāny.alābha` read karma-antya-lābha (10, 12, 11); 9.05a `aṣṭama.dāya` read aṣṭa-mada-āya (8, 7, 11); 9.05b `āya.ratha` read āya-artha (11, 2); 9.06b `vyago` read vyayago (12). Each reading gives the verse the count the chapter total needs.

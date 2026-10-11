@@ -308,6 +308,12 @@ export interface PlanetShadbala {
   totalVirupas: number;
   requiredVirupas: number;
   isStrong: boolean;
+  /**
+   * Planetary war (BPHS 27.20): the difference of the two Shadbalas, added to the
+   * winner and taken from the loser. Already inside totalVirupas; 0 when the
+   * planet is in no war.
+   */
+  yuddhaBala?: number;
 }
 
 // ============================================================

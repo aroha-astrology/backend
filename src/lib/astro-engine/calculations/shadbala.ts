@@ -586,6 +586,24 @@ function drikBala(planet: Planet, chart: ChartData): number {
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+/** Mars, Mercury, Jupiter, Venus, Saturn: the planets that can go to war (BPHS 27.20). */
+const WAR_PLANETS: Planet[] = ['Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
+
+/**
+ * Who wins a planetary war (BPHS 79.9, register BPHS-27.20 and BPHS-79.9): two of the
+ * five within one degree of longitude; Venus wins whether north or south; among the
+ * other four the one further north wins. Equal latitudes: no victor (null).
+ */
+export function warWinner(
+  a: { planet: Planet; latitude: number },
+  b: { planet: Planet; latitude: number },
+): Planet | null {
+  if (a.planet === 'Venus') return a.planet;
+  if (b.planet === 'Venus') return b.planet;
+  if (a.latitude === b.latitude) return null;
+  return a.latitude > b.latitude ? a.planet : b.planet;
+}
+
 /**
  * Six-fold strength of the seven planets, in virupas.
  *
@@ -596,6 +614,7 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  */
 export function calculateShadbala(chartData: ChartData, day?: DayContext | null): PlanetShadbala[] {
   const results: PlanetShadbala[] = [];
+  const rawTotals = new Map<Planet, number>();
   const dayContext = day ?? estimateDayContext(chartData, instantOf(chartData));
   const ascendant = ascendantLongitude(chartData);
   const midheaven = midheavenLongitude(chartData);
@@ -612,6 +631,7 @@ export function calculateShadbala(chartData: ChartData, day?: DayContext | null)
     const drik = drikBala(planet, chartData);
 
     const total = sthana + dig + kala + cheshta + naisargika + drik;
+    rawTotals.set(planet, total);
     const required = REQUIRED_VIRUPAS[planet] ?? 300;
 
     results.push({
@@ -626,6 +646,35 @@ export function calculateShadbala(chartData: ChartData, day?: DayContext | null)
       requiredVirupas: required,
       isStrong: total >= required,
     });
+  }
+
+  // Planetary war (BPHS 27.20): two of Mars to Saturn within one degree of longitude.
+  // The difference of their Shadbalas goes to the winner from the loser.
+  const war = new Map<Planet, number>();
+  for (let i = 0; i < WAR_PLANETS.length; i++) {
+    for (let j = i + 1; j < WAR_PLANETS.length; j++) {
+      const a = planetOf(chartData, WAR_PLANETS[i]!);
+      const b = planetOf(chartData, WAR_PLANETS[j]!);
+      if (!a || !b) continue;
+      const separation = Math.min(
+        Math.abs(a.longitude - b.longitude),
+        360 - Math.abs(a.longitude - b.longitude),
+      );
+      if (separation >= 1) continue;
+      const winner = warWinner(a, b);
+      if (!winner) continue;
+      const loser = winner === a.planet ? b.planet : a.planet;
+      const diff = Math.abs((rawTotals.get(a.planet) ?? 0) - (rawTotals.get(b.planet) ?? 0));
+      war.set(winner, (war.get(winner) ?? 0) + diff);
+      war.set(loser, (war.get(loser) ?? 0) - diff);
+    }
+  }
+  for (const r of results) {
+    const w = war.get(r.planet) ?? 0;
+    const total = (rawTotals.get(r.planet) ?? r.totalVirupas) + w;
+    r.yuddhaBala = round2(w);
+    r.totalVirupas = round2(total);
+    r.isStrong = total >= r.requiredVirupas;
   }
 
   return results;
