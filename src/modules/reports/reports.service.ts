@@ -36,7 +36,7 @@ import {
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { todayForApp } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
-import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
+import { computeMetrology } from '../../lib/swarm/agents/ephemeris.js';
 import {
   chartConditionFacts,
   chartPlanetStrength,

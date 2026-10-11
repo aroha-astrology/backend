@@ -13,7 +13,7 @@ export type { SwarmState, BirthRecord, Finding, Intent, ChatMessage } from './st
 
 // Individual nodes (for direct import by service layer)
 export { gatewayNode } from './agents/gateway.js';
-export { metrologistNode, computeMetrology } from './agents/metrologist.js';
+export { ephemerisNode, computeMetrology } from './agents/ephemeris.js';
 export { synthesizerNode } from './agents/synthesizer.js';
 export { profilerNode } from './agents/profiler.js';
 export { aggregatorNode } from './agents/aggregator.js';

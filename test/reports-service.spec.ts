@@ -96,7 +96,7 @@ vi.mock('../src/modules/birth-profiles/profile-context.js', () => ({
   resolveProfileContext: state.resolveProfileContext,
 }));
 
-vi.mock('../src/lib/swarm/agents/metrologist.js', () => ({
+vi.mock('../src/lib/swarm/agents/ephemeris.js', () => ({
   computeMetrology: state.computeMetrology,
 }));
 

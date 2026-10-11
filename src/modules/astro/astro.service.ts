@@ -193,7 +193,7 @@ export async function dailyFullSynthesis(
     timezone: body.birth.timezone,
   };
 
-  // Step 1: run the metrologist to get natal chart data
+  // Step 1: run the ephemeris service to get natal chart data
   const metrology = await computeMetrology(birthRecord);
 
   // Step 2: extract synthesis inputs from metrology.
@@ -253,8 +253,8 @@ export async function matchmake(
 
   // calculateAshtakoota(nakshatraIndex1, nakshatraIndex2, moonSign1, moonSign2)
   // We need to compute natal Moon nakshatra and sign for each person.
-  // Birth data only has lat/lng/date — we forward to metrologist for each.
-  const { computeMetrology } = await import('../../lib/swarm/agents/metrologist.js');
+  // Birth data only has lat/lng/date — we forward to the ephemeris service for each.
+  const { computeMetrology } = await import('../../lib/swarm/agents/ephemeris.js');
   const met1 = await computeMetrology({
     date: body.person1.date,
     time: body.person1.time,
@@ -1341,7 +1341,7 @@ export async function buildSecondChartFacts(
     ];
   }
 
-  const { computeMetrology } = await import('../../lib/swarm/agents/metrologist.js');
+  const { computeMetrology } = await import('../../lib/swarm/agents/ephemeris.js');
   const met = await computeMetrology({
     date: profile.dateOfBirth,
     time: profile.timeOfBirth,

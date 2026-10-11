@@ -85,7 +85,7 @@ export interface ProvenanceEntry {
  *   PPK-*   Pancha Pakshi
  *   REC-*   Rectification
  *   RPT-*   Reports / provenance blocks
- *   ARCH-*  Architecture (Metrologist, decision engine)
+ *   ARCH-*  Architecture (ephemeris service, decision engine)
  */
 const REGISTRY: ProvenanceEntry[] = [
   // -------------------------------------------------------------------------
@@ -1001,7 +1001,7 @@ const REGISTRY: ProvenanceEntry[] = [
   // -------------------------------------------------------------------------
   {
     featureId: 'ARCH-MET',
-    featureName: 'Metrologist Agent (deterministic service)',
+    featureName: 'Ephemeris service (deterministic, renamed from Metrologist Agent)',
     tag: 'AROHA_PROPRIETARY',
     sourceIds: [],
     note: 'Already deterministic; rename is a wording fix — ARCH fault',
