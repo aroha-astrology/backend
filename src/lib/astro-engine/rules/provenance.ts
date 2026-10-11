@@ -92,6 +92,20 @@ const REGISTRY: ProvenanceEntry[] = [
   // Shadbala
   // -------------------------------------------------------------------------
   {
+    featureId: 'VAK-DIG',
+    featureName: 'Retrograde dignity reversal',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['UK-1.2'],
+    note: 'Uttara Kalamrita, First Kanda, chapter 2 (verse number not legible in the scan): exalted and retrograde is like debilitated, debilitated and retrograde has the strength of exaltation',
+  },
+  {
+    featureId: 'VAK-CHB',
+    featureName: 'Cheshta Bala in the Vakri analysis',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.24-25'],
+    note: 'The same figure as Shadbala (the Cheshta Kendra over 3); the Vakri analysis no longer has its own',
+  },
+  {
     featureId: 'PLN-COM',
     featureName: 'Combustion orbs',
     tag: 'LATER_CLASSICAL',
