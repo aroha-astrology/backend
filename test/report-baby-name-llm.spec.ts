@@ -162,7 +162,7 @@ describe('generateBabyNameNarrative', () => {
     expect(systemContent.toLowerCase()).toContain('sounds or letters to avoid');
   });
 
-  it('instructs the model to mention a present dosha gently, not alarmingly', async () => {
+  it('never gives the model a dosha of the child, and tells it to name none (audit R4, BN2)', async () => {
     state.generate.mockResolvedValueOnce(
       JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
     );
@@ -176,8 +176,10 @@ describe('generateBabyNameNarrative', () => {
     );
     const call = state.generate.mock.calls[0]?.[0];
     const content = call.messages.map((m: { content: string }) => m.content).join('\n');
-    expect(content).toContain('Mangal Dosha');
-    expect(content.toLowerCase()).toContain('gently');
+    expect(content).not.toContain('Mangal Dosha');
+    expect(content).not.toContain('medium severity');
+    expect(content).toMatch(/Never name a dosha/);
+    expect(content).not.toContain('dosha/yoga note');
   });
 });
 

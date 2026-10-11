@@ -34,15 +34,15 @@ const PADA_RULE =
   "Explicitly explain, in one sentence, that the nakshatra's own classical meaning already narrows to a specific starting sound via its pada (quarter) — the given pada number is what picks the exact syllable out of the nakshatra's full set — directly answering \"how does the nakshatra's pada further refine the ideal starting sound.\"";
 const AVOID_SOUNDS_RULE =
   'Directly and honestly address whether there are specific sounds or letters to avoid in the name — do not skip this question. The honest classical answer is that this naming tradition is additive, not exclusionary: there is no separate "avoid" list to check against, since starting the name with the one given syllable IS the guidance. Say this plainly in one sentence rather than ignoring the question or inventing a list of letters to avoid.';
-const GENTLE_DOSHA_RULE =
-  'This report is read by a new or expecting parent about their baby. If a dosha (e.g. Mangal Dosha, Kaal Sarp Dosha) is listed as present, mention it matter-of-factly and calmly, never alarmingly — classical doshas are common chart features with their own classical remedies/timing, not a flaw in the baby. Do not recommend specific remedies, pujas, or purchases. If a favorable yoga (Raja/Dhana) is present, you may mention it warmly and briefly. If neither is present, skip this note or fold it into a single reassuring line.';
+const NO_DOSHA_RULE =
+  'This report is read by a new or expecting parent about their baby. Never name a dosha (for example Mangal, Kaal Sarp, Pitra or Grahan), never describe the chart as afflicted or flawed, and never recommend remedies, pujas or purchases: a name is a happy choice, not a place for warnings. If a favorable yoga is given, you may mention it warmly in one short sentence as a theme, never as a promise. If none is given, say nothing about yogas.';
 const STYLE_RULE =
   'For each given name, briefly note whether it reads as more traditional/classical, more modern/contemporary, or deity-inspired (drawn from the given nakshatra deity) — describe the flavor the name ALREADY has, do not reshape or filter the given list to force an even spread across the three, since the list itself is fixed.';
 const PREFERENCE_RULE =
   "If the reader gave optional context below (whether they already have a child and its gender, whether they're planning one, and/or a preferred name style), acknowledge their situation naturally in the opening. The given names list is already gender-narrowed by the app when a child gender was given — you do not need to filter it further, only reflect the context in your framing.";
 
 function narrativeSystemPrompt(): string {
-  return `You are writing a Baby Name Report for a mobile Vedic astrology app, grounded in the classical Moon-nakshatra-to-starting-syllable naming convention. The app already computed the reader's Moon nakshatra, pada, the classical starting syllable for naming, the nakshatra's ruling planet and deity, and a gentle dosha/yoga summary. Your job is ONLY to write the narrative + name list.
+  return `You are writing a Baby Name Report for a mobile Vedic astrology app, grounded in the classical Moon-nakshatra-to-starting-syllable naming convention. The app already computed the reader's Moon nakshatra, pada, the classical starting syllable for naming, the nakshatra's ruling planet and deity, and any favorable yoga. Your job is ONLY to write the narrative + name list.
 
 ${GROUNDING_RULE}
 ${SCOPE_RULE}
@@ -53,7 +53,7 @@ ${THEME_RULE}
 ${SAPTAMSHA_RULE}
 ${PADA_RULE}
 ${AVOID_SOUNDS_RULE}
-${GENTLE_DOSHA_RULE}
+${NO_DOSHA_RULE}
 ${PREFERENCE_RULE}
 ${HUMAN_VOICE_RULE}
 
@@ -62,7 +62,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "Suggested Names". The FIRST paragraph must contain the required scope-limitation disclaimer (see above). Then write ONE paragraph per given suggested name (see NAMES_RULE — if 25 names are given, write 25 name paragraphs, no more, no fewer), each giving its one-line real meaning AND the one-line "what it brings to the child" note (e.g. "Chudamani — one who wears the crest jewel of virtue. Classically linked with quiet self-respect and a child who holds their own without needing to prove it.") and naming which flavor it leans toward per STYLE_RULE.
-2. Heading close to "Naming Themes & Blessings" — 2-3 short paragraphs: the nakshatra lord/deity naming-theme flavor AND birth-star personality traits (per THEME_RULE) plus the Saptamsha color (per SAPTAMSHA_RULE), the pada explanation (per PADA_RULE), whether there are sounds/letters to avoid (per AVOID_SOUNDS_RULE), and a brief, gentle dosha/yoga note (per GENTLE_DOSHA_RULE).
+2. Heading close to "Naming Themes & Blessings" — 2-3 short paragraphs: the nakshatra lord/deity naming-theme flavor AND birth-star personality traits (per THEME_RULE) plus the Saptamsha color (per SAPTAMSHA_RULE), the pada explanation (per PADA_RULE), whether there are sounds/letters to avoid (per AVOID_SOUNDS_RULE), and, only when a favorable yoga is given, one warm sentence on it (per NO_DOSHA_RULE).
 
 Each paragraph in section 2 should be 2-3 sentences.`;
 }
@@ -92,13 +92,6 @@ function buildFacts(scores: BabyNameScores): string {
           .map((p) => `${p.label} (${p.detail})`)
           .join('; ')}.`
       : "No specifically flagged favorable yogas on the baby's chart.",
-  );
-  lines.push(
-    scores.doshaYoga.cautions.length > 0
-      ? `Doshas present on the baby's chart (mention gently, not alarmingly): ${scores.doshaYoga.cautions
-          .map((c) => `${c.label} (${c.detail})`)
-          .join('; ')}.`
-      : "No specifically flagged doshas on the baby's chart.",
   );
   const a = scores.userAnswers;
   if (a?.hasChild) lines.push(`Reader-provided context — already has a child: ${a.hasChild}.`);

@@ -85,8 +85,9 @@ export interface BabyNameScores extends Record<string, unknown>, ReportSharedFac
   nakshatraDeity: string | undefined;
   /** Mangal Dosha / Kaal Sarp Dosha cautions and Raja/Dhana Yoga positives read from the BABY's
    * OWN chart (ctx.doshaData/ctx.yogaData describe the baby here, not the purchasing parent —
-   * see this module's own top-of-file scope note). Framed gently in the narrative — see
-   * lib/llm/reports/baby-name.ts's GENTLE_DOSHA_RULE — this report is read by a new parent. */
+   * see this module's own top-of-file scope note). Kept in the stored scores, but since the
+   * audit (BN2) the narrative is given only the favorable yogas and never names a dosha: see
+   * lib/llm/reports/baby-name.ts's NO_DOSHA_RULE — this report is read by a new parent. */
   doshaYoga: DoshaYogaSummary;
   /** Real given names (see lib/astro-engine/names/name-corpus.ts) starting with
    * `startingSyllables[0]`, up to CANDIDATE_NAME_COUNT — GIVEN FACTS the narrative writes about,
