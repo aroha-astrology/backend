@@ -80,6 +80,54 @@ describe('buildSecondChartFacts — partner synastry', () => {
     const facts = await buildSecondChartFacts('user-1', userChart(), 'profile-1');
     expect(facts[0]).toContain('Real Ashtakoota synastry reading');
   }, 20_000);
+
+  it('keeps Guna Milan for a marriage or one that may come: a situationship gets a chart snapshot', async () => {
+    state.getBirthProfile.mockResolvedValueOnce(makeProfile({ relationship: 'situationship' }));
+    const facts = await buildSecondChartFacts('user-1', userChart(), 'profile-1');
+    expect(facts[0]).toContain('Chart snapshot for saved profile');
+    expect(facts[0]).not.toContain('Guna score');
+  }, 20_000);
+
+  it("puts the man's Moon first, whichever of the two is asking", async () => {
+    const guna = (fact: string) => /total Guna score ([\d.]+)\/36/.exec(fact)![1];
+    // The same couple seen from each side: a woman asking about a man, and a
+    // man (with her Moon) asking about a woman (with his). Tara, Gana and the
+    // other one-way kootas would differ if the asker always went first.
+    state.getBirthProfile.mockResolvedValueOnce(makeProfile({ gender: 'male' }));
+    const herAsking = await buildSecondChartFacts('user-1', userChart(), 'profile-1', 'female');
+    state.getBirthProfile.mockResolvedValueOnce(makeProfile({ gender: 'male' }));
+    const defaultOrder = await buildSecondChartFacts('user-1', userChart(), 'profile-1');
+
+    const { calculateAshtakoota } = await import('../src/lib/astro-engine/matching/ashtakoota.js');
+    const { computeMetrology } = await import('../src/lib/swarm/agents/metrologist.js');
+    const him = makeProfile({});
+    const met = await computeMetrology({
+      date: him.dateOfBirth!,
+      time: him.timeOfBirth!,
+      latitude: him.placeOfBirth!.lat,
+      longitude: him.placeOfBirth!.lon,
+      timezone: him.placeOfBirth!.tz,
+    });
+    const hisMoon = (met.planets as Array<Record<string, unknown>>).find(
+      (p) => p.planet === 'Moon',
+    )!;
+    const herMoon = { nakshatraIndex: 6, sign: 'Cancer' };
+    const manFirst = calculateAshtakoota(
+      Number(hisMoon.nakshatraIndex),
+      herMoon.nakshatraIndex,
+      hisMoon.sign as never,
+      herMoon.sign as never,
+    ).totalScore;
+    const askerFirst = calculateAshtakoota(
+      herMoon.nakshatraIndex,
+      Number(hisMoon.nakshatraIndex),
+      herMoon.sign as never,
+      hisMoon.sign as never,
+    ).totalScore;
+
+    expect(guna(herAsking[0]!)).toBe(String(manFirst));
+    expect(guna(defaultOrder[0]!)).toBe(String(askerFirst));
+  }, 30_000);
 });
 
 describe('buildSecondChartFacts — child', () => {

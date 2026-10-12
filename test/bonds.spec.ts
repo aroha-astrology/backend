@@ -5,6 +5,26 @@ import { makeUserRow } from './helpers/mocks.js';
 const state = vi.hoisted(() => ({
   profiles: [] as unknown[],
   pass: true,
+  bondsOn: true,
+  owner: null as unknown,
+}));
+
+vi.mock('../src/modules/features/features.service.js', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  resolveFeaturesForUser: () =>
+    Promise.resolve({
+      'nav.bonds': { enabled: state.bondsOn },
+      'home.bondsCard': { enabled: false },
+    }),
+}));
+// No database in these tests: nobody is in a user group.
+vi.mock('../src/modules/user-groups/user-groups.repo.js', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  listGroupIdsForUser: () => Promise.resolve([]),
+}));
+vi.mock('../src/modules/users/users.repo.js', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  findActiveUserById: () => Promise.resolve(state.owner),
 }));
 
 vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
@@ -22,6 +42,7 @@ vi.mock('../src/modules/pass/pass.repo.js', () => ({
 import {
   bondCategory,
   bondCompatibility,
+  bondFactsForChat,
   bondPhase,
   bondSpec,
   getBond,
@@ -76,9 +97,13 @@ function profile(overrides: Partial<BirthProfileRow>): BirthProfileRow {
   };
 }
 
+const MA = '22222222-2222-4222-8222-222222222222';
+
 beforeEach(() => {
   state.profiles = [];
   state.pass = true;
+  state.bondsOn = true;
+  state.owner = OWNER;
 });
 
 describe('bondSpec', () => {
@@ -415,10 +440,97 @@ describe('listBonds / getBond', () => {
     for (const w of open.detail!.upcoming) expect(w.start <= w.end).toBe(true);
   }, 60_000);
 
+  it('reads both people on a couple: whose period, three meters, the Mangal line', async () => {
+    state.profiles = [profile({})];
+    const open = await getBond(OWNER, '11111111-1111-4111-8111-111111111111');
+    const detail = open.detail!;
+
+    expect(open.phaseDetail!.themes).toHaveLength(2);
+    for (const t of open.phaseDetail!.themes) {
+      expect(t).not.toBeNull();
+      expect(t!.house).toBeGreaterThanOrEqual(1);
+      expect(t!.house).toBeLessThanOrEqual(12);
+    }
+    expect(open.phaseDetail!.themes[0]!.planet).toBe(open.phaseDetail!.lords[0]);
+    expect(open.phaseDetail!.themes[1]!.planet).toBe(open.phaseDetail!.lords[1]);
+
+    for (const w of detail.upcoming) {
+      expect(['you', 'them']).toContain(w.who);
+      expect(w.end <= detail.horizon).toBe(true);
+    }
+    const starts = detail.upcoming.map((w) => w.start);
+    expect(starts).toEqual([...starts].sort());
+    expect(detail.upcoming.filter((w) => w.who === 'you').length).toBeLessThanOrEqual(4);
+    expect(detail.upcoming.filter((w) => w.who === 'them').length).toBeLessThanOrEqual(4);
+    for (const s of detail.shared) expect(s.start < s.end).toBe(true);
+
+    expect(detail.relate.map((m) => m.key)).toEqual(['emotion', 'communication', 'spark']);
+    for (const m of detail.relate) {
+      expect(m.score).toBeGreaterThanOrEqual(0);
+      expect(m.score).toBeLessThanOrEqual(100);
+      expect(m.parts.length).toBeGreaterThan(0);
+    }
+
+    expect(detail.mangal).not.toBeNull();
+    const { you, them, status } = detail.mangal!;
+    expect(status).toBe(you && them ? 'both' : you || them ? 'oneSided' : 'neither');
+
+    expect(detail.dates.length).toBeLessThanOrEqual(6);
+    expect(detail.dates.filter((d) => d.kind === 'birthday')).toHaveLength(1);
+  }, 60_000);
+
+  it('gives a friend the Vibe meter and no Mangal line', async () => {
+    state.profiles = [profile({ relationship: 'friend' })];
+    const open = await getBond(OWNER, '11111111-1111-4111-8111-111111111111');
+    expect(open.category).toBe('social');
+    expect(open.compatibility?.kind).toBe('harmony');
+    expect(open.detail!.relate.map((m) => m.key)).toEqual(['emotion', 'communication', 'vibe']);
+    expect(open.detail!.mangal).toBeNull();
+  }, 60_000);
+
+  it('scores romance that is not a marriage with harmony, with Spark and no Mangal line', async () => {
+    state.profiles = [profile({ relationship: 'situationship' })];
+    const open = await getBond(OWNER, '11111111-1111-4111-8111-111111111111');
+    expect(open.category).toBe('romantic');
+    expect(open.compatibility?.kind).toBe('harmony');
+    expect(open.detail!.relate.map((m) => m.key)).toEqual(['emotion', 'communication', 'spark']);
+    expect(open.detail!.mangal).toBeNull();
+  }, 60_000);
+
   it('404s for a profile that is not yours', async () => {
     state.profiles = [profile({})];
     await expect(getBond(OWNER, '99999999-9999-4999-8999-999999999999')).rejects.toThrow(
       'BOND_NOT_FOUND',
     );
   });
+});
+
+describe('bondFactsForChat', () => {
+  const PRIYA = '11111111-1111-4111-8111-111111111111';
+
+  it('gives Ask Aroha the same reading the Bonds page shows', async () => {
+    state.profiles = [profile({})];
+    const [fact, ...rest] = await bondFactsForChat(OWNER.id, PRIYA);
+    expect(rest).toHaveLength(0);
+    const page = await getBond(OWNER, PRIYA);
+    expect(fact).toContain(
+      'Aroha Bonds reading for saved profile "Priya" (spouse; a romantic bond)',
+    );
+    expect(fact).toContain(`Guna Milan ${page.compatibility!.score}/36`);
+    for (const m of page.detail!.relate) expect(fact).toContain(`${m.key} ${m.score}`);
+    expect(fact).toContain(`a ${page.phaseDetail!.lords[0]} sub-period`);
+    expect(fact).toContain(`Priya is in a ${page.phaseDetail!.lords[1]} sub-period`);
+  }, 60_000);
+
+  it('says nothing without a Pass, with Bonds switched off, or for a person with no chart', async () => {
+    state.profiles = [profile({}), profile({ id: MA, timeOfBirth: null })];
+    state.pass = false;
+    expect(await bondFactsForChat(OWNER.id, PRIYA)).toEqual([]);
+    state.pass = true;
+    state.bondsOn = false;
+    expect(await bondFactsForChat(OWNER.id, PRIYA)).toEqual([]);
+    state.bondsOn = true;
+    expect(await bondFactsForChat(OWNER.id, MA)).toEqual([]);
+    expect(await bondFactsForChat(OWNER.id, '99999999-9999-4999-8999-999999999999')).toEqual([]);
+  }, 60_000);
 });

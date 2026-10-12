@@ -1329,6 +1329,8 @@ export async function buildSecondChartFacts(
   userId: string,
   groundingSource: GroundingSource,
   birthProfileId: string,
+  /** Gender of the person whose chart `groundingSource` is, when known. */
+  selfGender?: ProfileContext['gender'],
 ): Promise<string[]> {
   const profile = await getBirthProfile(userId, birthProfileId);
   const label = profile.displayName
@@ -1366,10 +1368,15 @@ export async function buildSecondChartFacts(
     ).find((p) => p.planet === 'Moon');
     if (userMoon) {
       const { calculateAshtakoota } = await import('../../lib/astro-engine/matching/ashtakoota.js');
-      const nak1 = Number(userMoon.nakshatraIndex ?? 0);
-      const nak2 = Number(moon.nakshatraIndex ?? 0);
-      const sign1 = asString(userMoon.sign, 'Aries');
-      const sign2 = asString(moon.sign, 'Aries');
+      // Ashtakoota takes the boy's Moon first. Same ordering rule as Aroha
+      // Bonds (bonds.service.ts pairAshtakoota), so chat and the Bonds page
+      // give one Guna score for the same couple.
+      const selfFirst = !(selfGender === 'female' && profile.gender === 'male');
+      const [first, second] = selfFirst ? [userMoon, moon] : [moon, userMoon];
+      const nak1 = Number(first.nakshatraIndex ?? 0);
+      const nak2 = Number(second.nakshatraIndex ?? 0);
+      const sign1 = asString(first.sign, 'Aries');
+      const sign2 = asString(second.sign, 'Aries');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
       const result = calculateAshtakoota(nak1, nak2, sign1 as any, sign2 as any);
       const nadi = result.scores.find((s) => s.koota === 'Nadi');
@@ -1378,15 +1385,21 @@ export async function buildSecondChartFacts(
       const mangalUser = detectMangalDosha(groundingSource.chart as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
       const mangalOther = detectMangalDosha(met.chart as any);
+      // A dosha the detector finds cancelled is not in force — said as such,
+      // and not counted as a mismatch (the Bonds page reads it the same way).
+      const inForce = (m: { present: boolean; type: string }) =>
+        m.present && m.type !== 'cancelled';
+      const mangalWords = (m: { present: boolean; type: string }) =>
+        inForce(m) ? 'have it' : m.present ? 'have it but it is cancelled' : 'do not have it';
 
       return [
         `Real Ashtakoota synastry reading with saved profile "${label}" (their actual chart, not ` +
           `a guess): total Guna score ${result.totalScore}/${result.maxTotal} (${result.overallCompatibility}). ` +
           `Nadi Dosha ${nadi?.score === 0 ? 'PRESENT (0/8 — traditionally a serious flag)' : 'not present'}. ` +
           `Bhakoot Dosha ${bhakoot?.score === 0 ? 'PRESENT (0/7)' : 'not present'}. ` +
-          `Mangal Dosha: you ${mangalUser.present ? 'have it' : 'do not have it'}, they ${
-            mangalOther.present ? 'have it' : 'do not have it'
-          } (${mangalUser.present === mangalOther.present ? 'matched' : 'MISMATCHED — asymmetric'}).`,
+          `Mangal Dosha: you ${mangalWords(mangalUser)}, they ${mangalWords(mangalOther)} (${
+            inForce(mangalUser) === inForce(mangalOther) ? 'matched' : 'MISMATCHED — asymmetric'
+          }).`,
       ];
     }
   }
@@ -1716,8 +1729,20 @@ export async function* chatStream(
   // break the chat reply.
   const matchedProfileId = compareProfileId ?? matchSavedProfileByName(savedProfiles, message)?.id;
   const secondChartFacts = matchedProfileId
-    ? await buildSecondChartFacts(userId, groundingSource, matchedProfileId).catch(() => [])
+    ? await buildSecondChartFacts(
+        userId,
+        groundingSource,
+        matchedProfileId,
+        profile?.gender,
+      ).catch(() => [])
     : [];
+  // The Aroha Bonds reading for that person (Pass members with Bonds switched
+  // on), so the answer matches the Bonds page. Bonds always compares the
+  // account owner's own chart, so it is only added when chatting as oneself.
+  if (matchedProfileId && profile && profile.birthProfileId == null) {
+    const { bondFactsForChat } = await import('../bonds/bonds.service.js');
+    secondChartFacts.push(...(await bondFactsForChat(userId, matchedProfileId).catch(() => [])));
+  }
 
   // A purchased Compatibility Match Report — only when the client explicitly asks for one via
   // matchReportId (see ChatRequestSchema). Independent of compareProfileId/secondChartFacts above
