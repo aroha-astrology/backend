@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BirthProfileRow } from '../src/db/schema.js';
 import { makeUserRow } from './helpers/mocks.js';
 
-const state = vi.hoisted(() => ({
-  profiles: [] as unknown[],
-  pass: true,
-  bondsOn: true,
-  owner: null as unknown,
-}));
+const state = vi.hoisted(
+  (): { profiles: unknown[]; pass: boolean; bondsOn: boolean; owner: unknown } => ({
+    profiles: [],
+    pass: true,
+    bondsOn: true,
+    owner: null,
+  }),
+);
 
 vi.mock('../src/modules/features/features.service.js', async (original) => ({
   ...(await original<Record<string, unknown>>()),

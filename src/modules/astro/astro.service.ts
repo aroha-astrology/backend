@@ -1729,12 +1729,9 @@ export async function* chatStream(
   // break the chat reply.
   const matchedProfileId = compareProfileId ?? matchSavedProfileByName(savedProfiles, message)?.id;
   const secondChartFacts = matchedProfileId
-    ? await buildSecondChartFacts(
-        userId,
-        groundingSource,
-        matchedProfileId,
-        profile?.gender,
-      ).catch(() => [])
+    ? await buildSecondChartFacts(userId, groundingSource, matchedProfileId, profile?.gender).catch(
+        () => [],
+      )
     : [];
   // The Aroha Bonds reading for that person (Pass members with Bonds switched
   // on), so the answer matches the Bonds page. Bonds always compares the
