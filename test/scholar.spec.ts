@@ -347,4 +347,13 @@ describe('scholar voice call — spoken-language matching', () => {
     expect(content).toContain('The app is set to "kn"');
     expect(content).toContain('only a starting default for your opening');
   });
+
+  it('tells the model it speaks every language, so it never invents a short list', () => {
+    const content = buildVoiceSystemInstruction({ groundingFacts: [], locale: 'en' });
+    for (const language of ['Hindi', 'Bengali', 'Tamil', 'Telugu', 'Kannada', 'Malayalam']) {
+      expect(content).toContain(language);
+    }
+    expect(content).toContain('whichever language they are most comfortable');
+    expect(content).toContain('Never say or imply that you speak only a few languages');
+  });
 });

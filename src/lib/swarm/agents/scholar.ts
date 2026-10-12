@@ -1019,6 +1019,28 @@ export function buildChatMessages(
  */
 const CALL_CONNECTED_SENTINEL = '[[CALL_CONNECTED]]';
 
+/**
+ * Languages the astrologer names when a caller asks what they can speak. All
+ * are in Google's Live API language list; the list is there to stop the model
+ * inventing a short one, not to limit it (see the prompt section that uses it).
+ */
+const VOICE_LANGUAGES = [
+  'Hindi',
+  'English',
+  'Bengali',
+  'Marathi',
+  'Telugu',
+  'Tamil',
+  'Gujarati',
+  'Kannada',
+  'Malayalam',
+  'Punjabi',
+  'Odia',
+  'Assamese',
+  'Urdu',
+  'Nepali',
+] as const;
+
 export function buildVoiceSystemInstruction(opts: {
   groundingFacts: string[];
   birthTimeUnknown?: boolean;
@@ -1093,6 +1115,18 @@ export function buildVoiceSystemInstruction(opts: {
       `DATA above. Do not fall back to generic, textbook-style descriptions of what ` +
       `astrologers "generally" look at — commit to the same level of specific, confident ` +
       `narration in whatever language the user is speaking.`,
+  );
+
+  // Without this the prompt never says which languages the astrologer speaks,
+  // so a user who asks gets a list the model made up ("Hindi, English and
+  // Bengali only", reported 2026-10-12) — while the Live model itself speaks
+  // every language named here and picks the spoken one on its own.
+  sections.push(
+    `You speak and understand every language your callers use: ${VOICE_LANGUAGES.join(', ')}, ` +
+      `and others besides. If the user asks which languages you speak, or whether you can talk ` +
+      `in a particular one, say you can talk in whichever language they are most comfortable ` +
+      `in, and carry on in it. Never say or imply that you speak only a few languages, and ` +
+      `never refuse or steer the user to another language because of the one they chose.`,
   );
 
   // PERSONAL_TOUCH now allows the name sparingly throughout (both here and in
