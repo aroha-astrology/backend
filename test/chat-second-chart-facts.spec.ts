@@ -74,6 +74,12 @@ describe('buildSecondChartFacts — partner synastry', () => {
     const facts = await buildSecondChartFacts('user-1', userChart(), 'profile-1');
     expect(facts[0]).toContain('Real Ashtakoota synastry reading');
   }, 20_000);
+
+  it('treats a fiance the same as partner', async () => {
+    state.getBirthProfile.mockResolvedValueOnce(makeProfile({ relationship: 'fiance' }));
+    const facts = await buildSecondChartFacts('user-1', userChart(), 'profile-1');
+    expect(facts[0]).toContain('Real Ashtakoota synastry reading');
+  }, 20_000);
 });
 
 describe('buildSecondChartFacts — child', () => {

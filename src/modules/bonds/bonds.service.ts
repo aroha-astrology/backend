@@ -8,9 +8,11 @@
 //                  Bhakoot, Tara).
 //   phase          the running dasha lords of BOTH people and how tied they
 //                  are to the house this bond lives in (7th partner, 4th/9th
-//                  mother/father, 5th child, 3rd sibling, 11th friend, 7th and
-//                  10th business partner), plus Saturn/Rahu/Ketu/Jupiter moving
-//                  through it (from the owner's Moon).
+//                  mother/father, 5th child, 3rd sibling, 11th friend ... the
+//                  full list is BOND_HOUSES below), plus Saturn/Rahu/Ketu/
+//                  Jupiter moving through it (from the owner's Moon).
+// Guna Milan is kept for a marriage or one that may come (partner, fiance,
+// spouse, prospective match); every other bond gets the harmony score.
 // Each bond also carries the detail: the next few sub-periods for it, how the
 // two of you communicate, dates to keep in mind. Aroha Pass only: without a
 // live Pass both routes answer PASS_REQUIRED. Rule-based, no AI.
@@ -42,12 +44,25 @@ import {
 import { resolveProfileContext, type ProfileContext } from '../birth-profiles/profile-context.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { birthInputsForProfile } from '../kundli/kundli.service.js';
+import {
+  bondCategory,
+  isMarriageTrack,
+  type BondCategory,
+  type Relationship,
+} from './bond-types.js';
+
+export {
+  bondCategory,
+  isMarriageTrack,
+  isRomantic,
+  type BondCategory,
+  type Relationship,
+} from './bond-types.js';
 
 const MAX_BONDS = 12;
 const MS_PER_DAY = 86_400_000;
 const UPCOMING_YEARS = 3;
 
-export type Relationship = NonNullable<BirthProfileRow['relationship']>;
 type Gender = BirthProfileRow['gender'];
 
 /** The houses and karakas a bond lives in, in each person's own chart. */
@@ -63,70 +78,120 @@ export interface BondSpec {
 /**
  * Where a bond sits in each chart. A parent is the 4th (mother) or 9th
  * (father) house from the child, and the child is the 5th from the parent, so
- * the two sides of a parent-child bond read different houses.
+ * the two sides of a parent-child bond read different houses. A parent whose
+ * gender isn't on file is read from both the 4th and the 9th.
  */
 export function bondSpec(relationship: Relationship | null, other: Gender, self: Gender): BondSpec {
   const parentOf = (g: Gender) =>
     g === 'female'
       ? { houses: [4], karakas: ['Moon'] as Planet[] }
-      : { houses: [9], karakas: ['Sun'] as Planet[] };
-  switch (relationship) {
-    case 'partner':
-    case 'spouse':
-    case 'prospective_match':
-      return {
-        houses: [7],
-        karakas: ['Venus'],
-        theirHouses: [7],
-        theirKarakas: ['Venus'],
-        guna: true,
-      };
-    case 'business_partner':
-      return {
-        houses: [7, 10],
-        karakas: ['Mercury'],
-        theirHouses: [7, 10],
-        theirKarakas: ['Mercury'],
-        guna: false,
-      };
-    case 'child': {
-      const me = parentOf(self);
-      return {
-        houses: [5],
-        karakas: ['Jupiter'],
-        theirHouses: me.houses,
-        theirKarakas: me.karakas,
-        guna: false,
-      };
-    }
-    case 'parent': {
-      const them = parentOf(other);
-      return {
-        houses: them.houses,
-        karakas: them.karakas,
-        theirHouses: [5],
-        theirKarakas: ['Jupiter'],
-        guna: false,
-      };
-    }
-    case 'sibling':
-      return {
-        houses: [3],
-        karakas: ['Mars'],
-        theirHouses: [3],
-        theirKarakas: ['Mars'],
-        guna: false,
-      };
-    default:
-      return {
-        houses: [11],
-        karakas: ['Mercury'],
-        theirHouses: [11],
-        theirKarakas: ['Mercury'],
-        guna: false,
-      };
+      : g === 'male'
+        ? { houses: [9], karakas: ['Sun'] as Planet[] }
+        : { houses: [4, 9], karakas: ['Moon', 'Sun'] as Planet[] };
+  const guna = isMarriageTrack(relationship);
+  if (relationship === 'child') {
+    const me = parentOf(self);
+    return {
+      houses: [5],
+      karakas: ['Jupiter'],
+      theirHouses: me.houses,
+      theirKarakas: me.karakas,
+      guna,
+    };
   }
+  if (relationship === 'parent') {
+    const them = parentOf(other);
+    return {
+      houses: them.houses,
+      karakas: them.karakas,
+      theirHouses: [5],
+      theirKarakas: ['Jupiter'],
+      guna,
+    };
+  }
+  const [mine, theirs] = BOND_HOUSES[relationship ?? 'other'];
+  const side = theirs ?? mine;
+  return {
+    houses: mine.houses,
+    karakas: mine.karakas,
+    theirHouses: side.houses,
+    theirKarakas: side.karakas,
+    guna,
+  };
 }
+
+interface BondSide {
+  houses: number[];
+  karakas: Planet[];
+}
+
+/**
+ * The house and significator each bond is read from: the owner's chart first,
+ * then the other person's when the two sides differ. Parent and child are
+ * worked out in bondSpec because they depend on gender.
+ *
+ * Classical house meanings and derived houses (counting from the house of the
+ * person the bond runs through):
+ *   7th  spouse, partners          5th  romance, children, creative work
+ *   3rd  siblings, effort, short trips    9th  fortune, long journeys
+ *   11th friends, gains            4th  home, mother
+ *   10th work, authority           6th  service, employees, rivals
+ *   8th  another's money, what is hidden   12th what lies beyond the everyday
+ *   mother-in-law = 4th from the 7th = 10th
+ *   father-in-law = 9th from the 7th = 3rd
+ *   a child's spouse = 7th from the 5th = 11th
+ * Which modern label goes with which house (a situationship in the 5th, a
+ * soulmate in the 9th and 12th ...) is Aroha's own reading.
+ */
+const BOND_HOUSES: Record<Exclude<Relationship, 'parent' | 'child'>, [BondSide, BondSide?]> = {
+  // Romance
+  partner: [{ houses: [7], karakas: ['Venus'] }],
+  fiance: [{ houses: [7], karakas: ['Venus'] }],
+  spouse: [{ houses: [7], karakas: ['Venus'] }],
+  prospective_match: [{ houses: [7], karakas: ['Venus'] }],
+  situationship: [{ houses: [5], karakas: ['Venus', 'Rahu'] }],
+  crush: [{ houses: [5], karakas: ['Venus'] }],
+  first_love: [{ houses: [5], karakas: ['Moon'] }],
+  fwb: [{ houses: [11, 8], karakas: ['Venus', 'Mars'] }],
+  soulmate: [{ houses: [9, 12], karakas: ['Jupiter', 'Ketu'] }],
+  ex: [{ houses: [7], karakas: ['Venus', 'Ketu'] }],
+  // Work and money. A manager and an employee are the two ends of one bond:
+  // the one who reports reads the 10th (Sun), the one in charge reads the 6th (Saturn).
+  business_partner: [{ houses: [7, 10], karakas: ['Mercury'] }],
+  manager: [
+    { houses: [10], karakas: ['Sun'] },
+    { houses: [6], karakas: ['Saturn'] },
+  ],
+  employee: [
+    { houses: [6], karakas: ['Saturn'] },
+    { houses: [10], karakas: ['Sun'] },
+  ],
+  colleague: [{ houses: [10, 3], karakas: ['Mercury'] }],
+  // The one funded reads the 8th (another's money); the investor reads the 5th (what they stake).
+  investor: [
+    { houses: [8], karakas: ['Jupiter'] },
+    { houses: [5], karakas: ['Jupiter'] },
+  ],
+  competitor: [{ houses: [6], karakas: ['Mars'] }],
+  // Family
+  sibling: [{ houses: [3], karakas: ['Mars'] }],
+  cousin: [{ houses: [3], karakas: ['Mars'] }],
+  mother_in_law: [
+    { houses: [10], karakas: ['Moon', 'Saturn'] },
+    { houses: [11], karakas: ['Jupiter'] },
+  ],
+  father_in_law: [
+    { houses: [3], karakas: ['Sun', 'Saturn'] },
+    { houses: [11], karakas: ['Jupiter'] },
+  ],
+  // Friends and shared activities
+  friend: [{ houses: [11], karakas: ['Mercury'] }],
+  roommate: [{ houses: [4, 11], karakas: ['Moon'] }],
+  travel_buddy: [{ houses: [9, 3], karakas: ['Jupiter', 'Mercury'] }],
+  creative_partner: [{ houses: [5, 3], karakas: ['Venus', 'Mercury'] }],
+  gym_partner: [{ houses: [6, 3], karakas: ['Mars'] }],
+  other: [{ houses: [11], karakas: ['Mercury'] }],
+};
 
 interface Tie {
   score: number;
@@ -181,8 +246,27 @@ export function lordTie(
       params: { planet },
     });
   }
-  if (natal && score > 0) score += placementEffect(natal.house);
+  if (natal && score > 0) {
+    // A lord sitting in the bond's own house is at home there, even when that
+    // house is the 6th, 8th or 12th (an employee's 6th, an investor's 8th).
+    const effect = placementEffect(natal.house);
+    if (effect > 0 || !houses.includes(natal.house)) score += effect;
+  }
   return { score: Math.max(0, score), why };
+}
+
+/**
+ * The strain rule: a planet that rules one of the bond's houses but sits in
+ * the 6th, 8th or 12th. Sitting in one of the bond's own houses doesn't count.
+ */
+export function lordStrained(ctx: ChartContext, planet: Planet, houses: number[]): boolean {
+  const natal = ctx.natal.find((p) => p.planet === planet);
+  return (
+    natal !== undefined &&
+    DUSTHANA.has(natal.house) &&
+    !houses.includes(natal.house) &&
+    housesRuledBy(ctx, planet).some((h) => houses.includes(h))
+  );
 }
 
 export type PhaseTone = 'active' | 'steady' | 'mixed' | 'testing';
@@ -212,15 +296,7 @@ export function bondPhase(
       const tie = lordTie(ctx, antar, houses, karakas, who);
       focus += tie.score;
       why.push(...tie.why);
-      const natal = ctx.natal.find((p) => p.planet === antar);
-      if (
-        tie.score > 0 &&
-        natal &&
-        DUSTHANA.has(natal.house) &&
-        housesRuledBy(ctx, antar).some((h) => houses.includes(h))
-      ) {
-        strain += 1;
-      }
+      if (tie.score > 0 && lordStrained(ctx, antar, houses)) strain += 1;
     }
     if (maha && maha !== antar) focus += lordTie(ctx, maha, houses, karakas).score / 2;
     return antar;
@@ -228,10 +304,9 @@ export function bondPhase(
   const mine = side(self, spec.houses, spec.karakas);
   const theirs = side(them, spec.theirHouses, spec.theirKarakas, name);
 
-  // Slow planets passing the bond's house, counted from the owner's Moon.
-  const bondHouse = spec.houses[0]!;
+  // Slow planets passing any of the bond's houses, counted from the owner's Moon.
   for (const t of self.transits) {
-    if (t.houseFromMoon !== bondHouse) continue;
+    if (!spec.houses.includes(t.houseFromMoon)) continue;
     if (t.planet === 'Saturn' || t.planet === 'Rahu' || t.planet === 'Ketu') {
       strain += 1;
       why.push({
@@ -273,6 +348,15 @@ export interface BondCompatibility {
 
 const HARMONY_KOOTAS: Record<string, number> = { GrahaMaitri: 0.4, Bhakoot: 0.35, Tara: 0.25 };
 
+/** A low harmony score is said plainly: under 30 is "poor", shown as "Challenging". */
+export function harmonyLabel(pct: number): BondCompatibility['label'] {
+  if (pct >= 75) return 'excellent';
+  if (pct >= 60) return 'good';
+  if (pct >= 45) return 'average';
+  if (pct >= 30) return 'mixed';
+  return 'poor';
+}
+
 /**
  * Guna Milan for a couple (the boy's chart first, per Ashtakoota convention);
  * for any other bond, a harmony score from Moon-lord friendship, Bhakoot and
@@ -306,8 +390,7 @@ export function bondCompatibility(
   const pct = Math.round(
     kootas.reduce((sum, k) => sum + (k.score / k.max) * HARMONY_KOOTAS[k.koota]!, 0) * 100,
   );
-  const label = pct >= 75 ? 'excellent' : pct >= 60 ? 'good' : pct >= 45 ? 'average' : 'mixed';
-  return { kind: 'harmony', score: pct, max: 100, pct, label, kootas };
+  return { kind: 'harmony', score: pct, max: 100, pct, label: harmonyLabel(pct), kootas };
 }
 
 /** 0 fire, 1 earth, 2 air, 3 water. */
@@ -410,12 +493,7 @@ export function upcomingWindows(
     const [maha, antar] = span.lords as [Planet, Planet];
     const antarTie = lordTie(self, antar, spec.houses, spec.karakas);
     const mahaTie = lordTie(self, maha, spec.houses, spec.karakas);
-    const natal = self.natal.find((p) => p.planet === antar);
-    const care =
-      antarTie.score > 0 &&
-      natal !== undefined &&
-      DUSTHANA.has(natal.house) &&
-      housesRuledBy(self, antar).some((h) => spec.houses.includes(h));
+    const care = antarTie.score > 0 && lordStrained(self, antar, spec.houses);
     const good = !care && antarTie.score + mahaTie.score / 2 >= 3;
     if (!good && !care) continue;
     out.push({
@@ -520,6 +598,9 @@ export interface BondSummary {
   profileId: string;
   name: string | null;
   relationship: Relationship | null;
+  category: BondCategory;
+  /** Their gender, so the page can say Mother or Father for a parent. */
+  gender: Gender;
   /** False when their birth date, time or place is missing — nothing to compare yet. */
   ready: boolean;
   compatibility: BondCompatibility | null;
@@ -573,6 +654,8 @@ async function summarize(
       profileId: row.id,
       name: row.displayName,
       relationship: row.relationship,
+      category: bondCategory(row.relationship),
+      gender: row.gender,
       ready: Boolean(them),
       compatibility: them
         ? bondCompatibility(owner.chart.ctx, them.ctx, spec, owner.profile.gender, row.gender)

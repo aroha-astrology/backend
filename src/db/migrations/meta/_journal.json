@@ -610,6 +610,13 @@
       "when": 1790100000000,
       "tag": "0086_chat_session_voice_call",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1790200000000,
+      "tag": "0087_bond_relationships",
+      "breakpoints": true
     }
   ]
 }

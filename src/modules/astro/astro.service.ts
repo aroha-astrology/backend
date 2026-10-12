@@ -63,6 +63,7 @@ import { findActiveUserById } from '../users/users.repo.js';
 import { getBirthProfile } from '../birth-profiles/birth-profiles.service.js';
 import { listBirthProfilesByOwner } from '../birth-profiles/birth-profiles.repo.js';
 import type { ProfileContext } from '../birth-profiles/profile-context.js';
+import { isMarriageTrack } from '../bonds/bond-types.js';
 import { getUserFacts, saveUserFacts } from './user-facts.repo.js';
 import '../reports/generators/index.js';
 import { findReportById } from '../reports/reports.repo.js';
@@ -1357,10 +1358,7 @@ export async function buildSecondChartFacts(
     | Record<string, unknown>
     | undefined;
 
-  const isPartnerType =
-    profile.relationship === 'partner' ||
-    profile.relationship === 'spouse' ||
-    profile.relationship === 'prospective_match';
+  const isPartnerType = isMarriageTrack(profile.relationship);
 
   if (isPartnerType && moon) {
     const userMoon = (
