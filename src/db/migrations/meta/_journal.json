@@ -603,6 +603,13 @@
       "when": 1790000000000,
       "tag": "0085_voice_free_minutes",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1790100000000,
+      "tag": "0086_chat_session_voice_call",
+      "breakpoints": true
     }
   ]
 }

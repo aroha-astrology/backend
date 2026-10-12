@@ -33,7 +33,9 @@ const state = vi.hoisted(() => ({
   buildVoiceSystemInstruction: vi.fn(),
   insertAiUsage: vi.fn(),
   createChatSession: vi.fn(),
+  setCallRecap: vi.fn(),
   extractTurnFacts: vi.fn(),
+  summarizeCall: vi.fn(),
 }));
 
 const fakeEnv = {
@@ -106,6 +108,11 @@ vi.mock('../src/modules/admin/ai-usage.repo.js', () => ({
 
 vi.mock('../src/modules/astro/chat-sessions.repo.js', () => ({
   createChatSession: state.createChatSession,
+  setCallRecap: state.setCallRecap,
+}));
+
+vi.mock('../src/lib/voice-call-recap.js', () => ({
+  summarizeCall: state.summarizeCall,
 }));
 
 vi.mock('../src/lib/chat-fact-extraction.js', () => ({
@@ -179,6 +186,8 @@ beforeEach(() => {
   state.insertAiUsage.mockReset().mockResolvedValue(undefined);
 
   state.createChatSession.mockReset().mockResolvedValue({ id: 'chat-session-1' });
+  state.setCallRecap.mockReset().mockResolvedValue(undefined);
+  state.summarizeCall.mockReset().mockResolvedValue(null);
   state.extractTurnFacts.mockReset().mockResolvedValue([]);
   state.saveUserFacts.mockReset().mockResolvedValue(undefined);
 });
@@ -641,7 +650,44 @@ describe('endVoiceSessionForUser — saving the call as a chat session', () => {
       null,
       'What does my chart say about marriage?',
       TRANSCRIPT,
+      undefined,
+      SESSION,
     );
+  });
+
+  it('writes what the call was about onto the saved session', async () => {
+    state.summarizeCall.mockResolvedValue('You asked about marriage. A good match is expected.');
+
+    await endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT);
+
+    expect(state.summarizeCall).toHaveBeenCalledWith(TRANSCRIPT, USER);
+    await vi.waitFor(() => {
+      expect(state.setCallRecap).toHaveBeenCalledWith(
+        'chat-session-1',
+        USER,
+        'You asked about marriage. A good match is expected.',
+      );
+    });
+  });
+
+  it('saves the call without a note when there is nothing to say about it', async () => {
+    state.summarizeCall.mockResolvedValue(null);
+
+    await endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT);
+    await vi.waitFor(() => expect(state.summarizeCall).toHaveBeenCalled());
+
+    expect(state.createChatSession).toHaveBeenCalled();
+    expect(state.setCallRecap).not.toHaveBeenCalled();
+  });
+
+  it('never throws when the note cannot be saved, because the call is already saved', async () => {
+    state.summarizeCall.mockResolvedValue('You asked about marriage.');
+    state.setCallRecap.mockRejectedValue(new Error('db down'));
+
+    await expect(
+      endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT),
+    ).resolves.toBeUndefined();
+    await vi.waitFor(() => expect(state.setCallRecap).toHaveBeenCalled());
   });
 
   it('truncates a long first turn to match the text-chat title convention', async () => {
@@ -667,6 +713,8 @@ describe('endVoiceSessionForUser — saving the call as a chat session', () => {
       'profile-xyz',
       expect.any(String),
       TRANSCRIPT,
+      undefined,
+      SESSION,
     );
   });
 

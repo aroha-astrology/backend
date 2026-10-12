@@ -1937,6 +1937,22 @@ export const chatSessions = pgTable(
      * FK to this table, so deleting a session never touches extracted facts.
      */
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /**
+     * Set when this session is the saved transcript of a voice call: the call
+     * it came from, which is where Chat History reads the call's time and
+     * length. NULL for an ordinary text chat.
+     */
+    voiceSessionId: uuid('voice_session_id').references((): AnyPgColumn => voiceSessions.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * A few sentences on what a voice call was about, for the Chat History
+     * list. Encrypted at rest like `history`. Written shortly after the call
+     * ends (voice.service.ts), so it is NULL until then, and stays NULL if the
+     * model call fails. Separate from `summary`, which is the model's own
+     * running notes and is rewritten as a chat continues.
+     */
+    callRecap: text('call_recap'),
   },
   (table) => ({
     userIdx: index('chat_sessions_user_id_idx').on(table.userId),

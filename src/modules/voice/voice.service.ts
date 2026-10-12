@@ -41,6 +41,7 @@ import { PASS_PERIOD_DAYS, PASS_VOICE_FREE_MINUTES } from '../pass/pass.config.j
 import * as voiceRepo from './voice.repo.js';
 import * as chatSessionsRepo from '../astro/chat-sessions.repo.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
+import { summarizeCall } from '../../lib/voice-call-recap.js';
 import type { ChatHistoryTurn } from '../astro/astro.schemas.js';
 
 /**
@@ -427,7 +428,7 @@ export async function endVoiceSessionForUser(
   });
 
   if (row && transcript && transcript.length > 0) {
-    await persistTranscript(userId, row.birthProfileId, transcript).catch((err: unknown) => {
+    await persistTranscript(userId, row.birthProfileId, transcript, row.id).catch((err: unknown) => {
       logger.warn({ err, userId, voiceSessionId }, 'voice: failed to persist call transcript');
     });
   }
@@ -446,17 +447,40 @@ export async function endVoiceSessionForUser(
  * (astro.service.ts): a failure here must never affect a call the user
  * already ended, and this is what makes the call's content available to
  * later TEXT chats too, not just a reopened copy of this same session.
+ *
+ * The row is linked to its call, which is what lets Chat History show it as a
+ * call (with its time and length) instead of as one more chat. A short note of
+ * what the call was about is written onto it afterwards, also fire-and-forget:
+ * the list shows the call without one until it arrives.
  */
 async function persistTranscript(
   userId: string,
   birthProfileId: string | null,
   transcript: ChatHistoryTurn[],
+  voiceSessionId: string,
 ): Promise<void> {
   const firstUserTurn = transcript.find((t) => t.role === 'user')?.content ?? '';
   const title =
     firstUserTurn.length > 50 ? firstUserTurn.slice(0, 47) + '...' : firstUserTurn || 'Voice call';
 
-  await chatSessionsRepo.createChatSession(userId, birthProfileId, title, transcript);
+  const saved = await chatSessionsRepo.createChatSession(
+    userId,
+    birthProfileId,
+    title,
+    transcript,
+    undefined,
+    voiceSessionId,
+  );
+
+  if (saved) {
+    void summarizeCall(transcript, userId)
+      .then((recap) => {
+        if (recap) return chatSessionsRepo.setCallRecap(saved.id, userId, recap);
+      })
+      .catch((err: unknown) => {
+        logger.warn({ err, userId, voiceSessionId }, 'voice: failed to save the call recap');
+      });
+  }
 
   const userText = transcript
     .filter((t) => t.role === 'user')

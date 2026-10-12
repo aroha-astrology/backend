@@ -1530,6 +1530,7 @@ export async function collectUserExport(userId: string) {
       ...s,
       history: JSON.parse(decryptField(s.history) ?? '[]') as unknown,
       summary: decryptField(s.summary),
+      callRecap: decryptField(s.callRecap),
     })),
     rememberedFacts: facts.map((f) => ({
       ...f,
