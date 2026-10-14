@@ -364,6 +364,12 @@ describe('POST /internal/telegram/webhook', () => {
     state.usersActiveBetween
       .mockResolvedValueOnce(41) // active today
       .mockResolvedValueOnce(37); // active yesterday
+    state.maxOnlineCountBetween
+      .mockResolvedValueOnce(3) // peak today
+      .mockResolvedValueOnce(4) // peak yesterday
+      .mockResolvedValueOnce(6) // peak this week
+      .mockResolvedValueOnce(9) // peak this month
+      .mockResolvedValueOnce(12); // peak this year
 
     const app = createApp();
     const res = await app.request('/internal/telegram/webhook', {
@@ -382,10 +388,12 @@ describe('POST /internal/telegram/webhook', () => {
     expect(reply).toContain('123456');
     expect(reply).toMatch(/Active Users \\\(today, .+?\\\): 41/);
     expect(reply).toMatch(/Active Users \\\(yesterday, .+?\\\): 37/);
-    expect(reply).toMatch(/Concurrent Users \\\(yesterday, .+?\\\): 17/);
-    expect(reply).toMatch(/Concurrent Users \\\(weekly, .+?\\\): 17/);
-    expect(reply).toMatch(/Concurrent Users \\\(monthly, .+?\\\): 17/);
-    expect(reply).toMatch(/Concurrent Users \\\(yearly, .+?\\\): 17/);
+    // The real recorded peaks, with no floor under them.
+    expect(reply).toMatch(/Concurrent Users \\\(today, .+?\\\): 3\n/);
+    expect(reply).toMatch(/Concurrent Users \\\(yesterday, .+?\\\): 4\n/);
+    expect(reply).toMatch(/Concurrent Users \\\(weekly, .+?\\\): 6\n/);
+    expect(reply).toMatch(/Concurrent Users \\\(monthly, .+?\\\): 9\n/);
+    expect(reply).toMatch(/Concurrent Users \\\(yearly, .+?\\\): 12\n/);
   });
 
   it('grants money with /money +phone amount', async () => {
