@@ -62,7 +62,13 @@ const VoiceGrantSchema = z
       .describe('Whole minutes the call can still be given: free Pass minutes plus wallet balance'),
     pricePerMinutePaise: z.number(),
     freeMinute: z.boolean().describe('This minute came from the free Pass allowance'),
-    freeMinutesLeft: z.number().describe('Free Pass minutes left in the current Pass period'),
+    freeMinutesLeft: z
+      .number()
+      .describe('Free minutes left: trial minutes plus, for a member, the Pass period'),
+    trialMinute: z.boolean().describe('This minute came from the one-time free trial'),
+    passMember: z
+      .boolean()
+      .describe('False on a trial call: it ends with the trial and the wallet is never used'),
   })
   .openapi('VoiceGrant');
 

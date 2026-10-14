@@ -25,6 +25,8 @@ vi.mock('../src/config/db.js', async () => {
 const {
   claimFreeVoiceMinute,
   countFreeVoiceMinutesUsed,
+  claimTrialVoiceMinute,
+  countTrialVoiceMinutesUsed,
   releaseVoiceMinute,
   endVoiceSessionWithRefund,
 } = await import('../src/modules/voice/voice.repo.js');
@@ -50,7 +52,7 @@ describe('claimFreeVoiceMinute', () => {
     // The allowance is a sum over ALL of the user's sessions since the period
     // began, compared inside the same statement that takes the minute.
     expect(query).toMatch(
-      /\(select coalesce\(sum\("free_minutes"\), 0\) from "voice_sessions" where \("voice_sessions"\."user_id" = \$\d+ and "voice_sessions"\."created_at" >= \$\d+\)\)\) < \$\d+/,
+      /\(select coalesce\(sum\("free_minutes" - "trial_minutes"\), 0\) from "voice_sessions" where \("voice_sessions"\."user_id" = \$\d+ and "voice_sessions"\."created_at" >= \$\d+\)\)\) < \$\d+/,
     );
     expect(query).toContain('"voice_sessions"."active" = $');
     expect(params).toContain(3);
@@ -81,7 +83,48 @@ describe('countFreeVoiceMinutesUsed', () => {
   });
 });
 
+describe('claimTrialVoiceMinute', () => {
+  it('claims a trial minute only while the lifetime trial is not used up', async () => {
+    await claimTrialVoiceMinute(SESSION, USER, 60, 3);
+
+    expect(state.calls).toHaveLength(1);
+    const { query, params } = state.calls[0]!;
+    expect(query).toMatch(/^update "voice_sessions"/);
+    expect(query).toContain('"trial_minutes" = "voice_sessions"."trial_minutes" + 1');
+    // A trial minute is a free minute too, so every "was it free" check still holds.
+    expect(query).toContain('"free_minutes" = "voice_sessions"."free_minutes" + 1');
+    expect(query).toContain('"minutes_charged" = "voice_sessions"."minutes_charged" + 1');
+    // Summed over ALL of the user's sessions, with no date: the trial is once in a lifetime.
+    expect(query).toMatch(
+      /\(select coalesce\(sum\("trial_minutes"\), 0\) from "voice_sessions" where "voice_sessions"\."user_id" = \$\d+\)\) < \$\d+/,
+    );
+    expect(query).toContain('"voice_sessions"."active" = $');
+    expect(params).toContain(3);
+    expect(params).toContain(60);
+  });
+
+  it('counts the trial minutes used as a number', async () => {
+    state.rows = [[['2']]];
+
+    expect(await countTrialVoiceMinutesUsed(USER)).toBe(2);
+  });
+});
+
 describe('releaseVoiceMinute', () => {
+  it('hands a trial minute back to the trial', async () => {
+    await releaseVoiceMinute(SESSION, USER, 'trial');
+
+    const { query } = state.calls[0]!;
+    expect(query).toContain('"trial_minutes" = greatest("voice_sessions"."trial_minutes" - 1, 0)');
+    expect(query).toContain('"free_minutes" = greatest("voice_sessions"."free_minutes" - 1, 0)');
+  });
+
+  it('leaves the trial alone for a Pass minute', async () => {
+    await releaseVoiceMinute(SESSION, USER, 'pass');
+
+    expect(state.calls[0]!.query).not.toContain('"trial_minutes"');
+  });
+
   it('leaves the free count alone for a wallet minute', async () => {
     await releaseVoiceMinute(SESSION, USER);
 
@@ -89,7 +132,7 @@ describe('releaseVoiceMinute', () => {
   });
 
   it('hands a free minute back to the allowance', async () => {
-    await releaseVoiceMinute(SESSION, USER, true);
+    await releaseVoiceMinute(SESSION, USER, 'pass');
 
     expect(state.calls[0]!.query).toContain(
       '"free_minutes" = greatest("voice_sessions"."free_minutes" - 1, 0)',
@@ -98,30 +141,42 @@ describe('releaseVoiceMinute', () => {
 });
 
 describe('endVoiceSessionWithRefund', () => {
-  it('treats the minute as free only when every minute of the call so far was free', async () => {
+  it('gives a trial minute back to the trial when every minute so far was a trial one', async () => {
     state.rows = [[{ id: SESSION }]];
 
     const refund = await endVoiceSessionWithRefund(SESSION, USER, 15_000);
 
     expect(refund).toEqual({ refundedMinutes: 1, free: true });
     expect(state.calls).toHaveLength(1);
-    expect(state.calls[0]!.query).toContain(
+    const { query } = state.calls[0]!;
+    expect(query).toContain('"voice_sessions"."trial_minutes" = "voice_sessions"."minutes_charged"');
+    expect(query).toContain('"trial_minutes" = "voice_sessions"."trial_minutes" - 1');
+  });
+
+  it('treats the minute as free only when every minute of the call so far was free', async () => {
+    state.rows = [[], [{ id: SESSION }]];
+
+    const refund = await endVoiceSessionWithRefund(SESSION, USER, 15_000);
+
+    expect(refund).toEqual({ refundedMinutes: 1, free: true });
+    expect(state.calls).toHaveLength(2);
+    expect(state.calls[1]!.query).toContain(
       '"voice_sessions"."free_minutes" = "voice_sessions"."minutes_charged"',
     );
   });
 
   it('falls through to a wallet refund when the latest minute was paid for', async () => {
-    state.rows = [[], [{ id: SESSION }]];
+    state.rows = [[], [], [{ id: SESSION }]];
 
     const refund = await endVoiceSessionWithRefund(SESSION, USER, 15_000);
 
     expect(refund).toEqual({ refundedMinutes: 1, free: false });
-    expect(state.calls).toHaveLength(2);
-    expect(state.calls[1]!.query).not.toContain('"free_minutes" =');
+    expect(state.calls).toHaveLength(3);
+    expect(state.calls[2]!.query).not.toContain('"free_minutes" =');
   });
 
   it('refunds nothing outside the grace window or once the call has ended', async () => {
-    state.rows = [[], []];
+    state.rows = [[], [], []];
 
     expect(await endVoiceSessionWithRefund(SESSION, USER, 15_000)).toBeNull();
   });

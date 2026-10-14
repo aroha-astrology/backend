@@ -18,9 +18,15 @@
 // Voice call is an Aroha Pass benefit (every tier). A member gets
 // PASS_VOICE_FREE_MINUTES free minutes in each Pass period, across all their
 // calls; after those, each minute costs the `paid.voiceChat` price from the
-// wallet, for as long as the wallet can pay. Someone without a Pass cannot
-// start a call at all (403 PASS_REQUIRED, the same answer the other Pass-only
-// features give, so the app shows the same lock).
+// wallet, for as long as the wallet can pay.
+//
+// On top of that every user, Pass or not, gets VOICE_TRIAL_MINUTES free ONCE
+// (the voice trial, launched for Durga Puja 2026; admin switch
+// `chat.voiceTrial`). A call spends trial minutes before anything else.
+// Someone without a Pass can talk for their trial minutes and no more: the
+// wallet is never used for them, and once the trial is spent every minute is
+// refused with 403 PASS_REQUIRED (the same answer the other Pass-only features
+// give, so the app shows the same lock).
 
 import { logger } from '../../lib/logger.js';
 import { Errors } from '../../lib/errors.js';
@@ -37,8 +43,13 @@ import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { insertAiUsage } from '../admin/ai-usage.repo.js';
 import { passEntitlement } from '../../lib/entitlements.js';
 import { findActivePass } from '../pass/pass.repo.js';
-import { PASS_PERIOD_DAYS, PASS_VOICE_FREE_MINUTES } from '../pass/pass.config.js';
+import {
+  PASS_PERIOD_DAYS,
+  PASS_VOICE_FREE_MINUTES,
+  VOICE_TRIAL_MINUTES,
+} from '../pass/pass.config.js';
 import * as voiceRepo from './voice.repo.js';
+import type { VoiceSessionRow } from '../../db/schema.js';
 import * as chatSessionsRepo from '../astro/chat-sessions.repo.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
 import { summarizeCall } from '../../lib/voice-call-recap.js';
@@ -89,17 +100,34 @@ export interface VoiceSessionGrant {
   expiresAt: number;
   minutesUsed: number;
   /**
-   * Whole minutes this call can still be given after the current one: the free
-   * Pass minutes left plus what the wallet can pay for, up to the safety
-   * ceiling. The app counts down from this and warns the member to recharge
-   * when little is left.
+   * Whole minutes this call can still be given after the current one. For a
+   * member: trial minutes left, the free Pass minutes left and what the wallet
+   * can pay for, up to the safety ceiling. Without a Pass: the trial minutes
+   * left and nothing else, since the wallet is never used for them. The app
+   * counts down from this.
    */
   minutesRemaining: number;
   pricePerMinutePaise: number;
-  /** True when this minute came from the free Pass allowance, so nothing was charged for it. */
+  /** True when this minute was free (a trial or a Pass minute), so nothing was charged for it. */
   freeMinute: boolean;
-  /** Free Pass minutes left in the member's current Pass period, after this one. */
+  /** Free minutes left after this one: trial minutes plus, for a member, the Pass period's. */
   freeMinutesLeft: number;
+  /** True when this minute came from the one-time trial. */
+  trialMinute: boolean;
+  /**
+   * Whether the caller has a Pass with voice call. False means a trial call: it
+   * ends when the trial does, with the Pass lock, and recharging cannot extend it.
+   */
+  passMember: boolean;
+}
+
+/** Who may call, and from which allowances. See `voiceMembership`. */
+export interface VoiceAccess {
+  passMember: boolean;
+  /** Where the member's current Pass period began; null without a Pass. */
+  freeSince: Date | null;
+  /** Trial minutes the user has not spent yet (0 when the trial is switched off). */
+  trialLeft: number;
 }
 
 async function minutePricePaise(userId: string): Promise<number> {
@@ -163,29 +191,83 @@ async function buildSessionInstruction(
 }
 
 /**
- * Checks the user's Pass includes voice call, and says where their current Pass
- * period began — the point their free minutes are counted from.
+ * Trial minutes the user has left: VOICE_TRIAL_MINUTES less what they have
+ * spent, or 0 when the trial is switched off. A failed lookup counts as none
+ * left, so an outage never hands out minutes; a member still has their Pass.
+ */
+async function trialMinutesLeft(userId: string): Promise<number> {
+  const features = await resolveFeaturesForUser(userId).catch(() => null);
+  if (features?.['chat.voiceTrial']?.enabled !== true) return 0;
+  const used = await voiceRepo.countTrialVoiceMinutesUsed(userId).catch(() => VOICE_TRIAL_MINUTES);
+  return Math.max(0, VOICE_TRIAL_MINUTES - used);
+}
+
+/**
+ * Says whether the user may call and from which allowances: whether their
+ * Pass includes voice call (and where its current period began, the point
+ * their free Pass minutes are counted from), and how many trial minutes they
+ * have left.
  *
- * Throws 403 PASS_REQUIRED without a live Pass. Checked on every minute, not
- * only at the start, so a Pass that ends mid-call stops the next minute.
+ * Throws 403 PASS_REQUIRED when there is neither a live Pass nor a trial
+ * minute left. Checked on every minute, not only at the start, so a Pass that
+ * ends mid-call stops the next minute and a trial call stops when the trial does.
  *
  * A member of an admin user group has the top Pass with no subscription row;
  * with no period of their own, their free minutes are counted over the last
  * PASS_PERIOD_DAYS days.
  */
-export async function voiceMembership(userId: string): Promise<{ freeSince: Date }> {
-  const pass = await passEntitlement(userId);
-  if (!pass?.features.includes('voiceCall')) throw Errors.forbidden('PASS_REQUIRED');
+export async function voiceMembership(userId: string): Promise<VoiceAccess> {
+  const [pass, trialLeft] = await Promise.all([
+    passEntitlement(userId),
+    trialMinutesLeft(userId),
+  ]);
+  const passMember = pass?.features.includes('voiceCall') === true;
+  if (!passMember) {
+    if (trialLeft > 0) return { passMember: false, freeSince: null, trialLeft };
+    throw Errors.forbidden('PASS_REQUIRED');
+  }
 
   const row = await findActivePass(userId).catch(() => null);
   const freeSince =
     row?.periodStart ?? row?.startedAt ?? new Date(Date.now() - PASS_PERIOD_DAYS * 86_400_000);
-  return { freeSince };
+  return { passMember: true, freeSince, trialLeft };
 }
 
 /**
- * Takes one minute — free if the member has free Pass minutes left, otherwise
- * charged to the wallet — and mints the token for it.
+ * Claims the next minute from the first allowance that has one: the trial,
+ * then (members only) the free Pass minutes. Null when neither does, or the
+ * session is over or at the ceiling.
+ */
+async function claimFreeMinute(
+  userId: string,
+  voiceSessionId: string,
+  access: VoiceAccess,
+): Promise<{ row: VoiceSessionRow; source: 'trial' | 'pass' } | null> {
+  if (access.trialLeft > 0) {
+    const row = await voiceRepo.claimTrialVoiceMinute(
+      voiceSessionId,
+      userId,
+      VOICE_MAX_MINUTES,
+      VOICE_TRIAL_MINUTES,
+    );
+    if (row) return { row, source: 'trial' };
+  }
+  if (access.passMember && access.freeSince) {
+    const row = await voiceRepo.claimFreeVoiceMinute(
+      voiceSessionId,
+      userId,
+      VOICE_MAX_MINUTES,
+      access.freeSince,
+      PASS_VOICE_FREE_MINUTES,
+    );
+    if (row) return { row, source: 'pass' };
+  }
+  return null;
+}
+
+/**
+ * Takes one minute — a trial minute if any are left, else a free Pass minute,
+ * else (members only) charged to the wallet — and mints the token for it.
  *
  * Ordering is load-bearing and mirrors the chat route's charge-then-refund
  * shape. The minute is claimed first (that is the atomic allowance and ceiling
@@ -200,23 +282,22 @@ async function chargeAndMint(
   systemInstruction: string,
   resumptionHandle: string | undefined,
 ): Promise<VoiceSessionGrant> {
-  const { freeSince } = await voiceMembership(userId);
+  const access = await voiceMembership(userId);
   const pricePaise = await minutePricePaise(userId);
 
-  let free = true;
-  let claimed = await voiceRepo.claimFreeVoiceMinute(
-    voiceSessionId,
-    userId,
-    VOICE_MAX_MINUTES,
-    freeSince,
-    PASS_VOICE_FREE_MINUTES,
-  );
+  const freeClaim = await claimFreeMinute(userId, voiceSessionId, access);
+  let source: voiceRepo.VoiceMinuteSource = freeClaim?.source ?? 'paid';
+  let claimed = freeClaim?.row ?? null;
 
   if (!claimed) {
+    // A trial call never reaches the wallet: the trial ran out between the
+    // membership check and the claim (a second device), or the session is over.
+    if (!access.passMember) throw Errors.forbidden('PASS_REQUIRED');
+
     // No free minute to give: the allowance is spent, or the session is over
     // or at the ceiling. The paid claim re-checks the session and tells the
     // last two apart from the first.
-    free = false;
+    source = 'paid';
     claimed = await voiceRepo.claimVoiceMinute(voiceSessionId, userId, VOICE_MAX_MINUTES);
     if (!claimed) {
       // Either the safety ceiling is reached or the session is over. Neither is
@@ -259,7 +340,7 @@ async function chargeAndMint(
     });
     const { freeMinutesLeft, minutesRemaining } = await minutesAhead(
       userId,
-      freeSince,
+      access,
       pricePaise,
       claimed.minutesCharged,
     );
@@ -271,22 +352,29 @@ async function chargeAndMint(
       minutesUsed: claimed.minutesCharged,
       minutesRemaining,
       pricePerMinutePaise: pricePaise,
-      freeMinute: free,
+      freeMinute: source !== 'paid',
       freeMinutesLeft,
+      trialMinute: source === 'trial',
+      passMember: access.passMember,
     };
   } catch (err) {
     // Give back the minute, and the money if any was taken — the user got nothing.
-    if (!free) await addWalletBalance(userId, pricePaise, WALLET_REASON_REFUND).catch(() => {});
-    await voiceRepo.releaseVoiceMinute(voiceSessionId, userId, free).catch(() => {});
+    if (source === 'paid') {
+      await addWalletBalance(userId, pricePaise, WALLET_REASON_REFUND).catch(() => {});
+    }
+    await voiceRepo.releaseVoiceMinute(voiceSessionId, userId, source).catch(() => {});
     logger.error({ err, userId, voiceSessionId }, 'voice: token mint failed, minute given back');
     throw Errors.internal('Could not start the voice session. Please try again.');
   }
 }
 
 /**
- * How much more this call can run after the minute just granted: the free Pass
- * minutes left in the period, plus the minutes the wallet can pay for, held to
- * the safety ceiling. Read after the charge so it reflects the balance now.
+ * How much more this call can run after the minute just granted, held to the
+ * safety ceiling and read after the charge so it reflects the balance now:
+ * - a member: trial minutes left, the free Pass minutes left in the period,
+ *   plus the minutes the wallet can pay for;
+ * - without a Pass: the trial minutes left and nothing else, so a trial call
+ *   counts down from the trial alone however full the wallet is.
  *
  * Reporting only — the next minute is decided by the claim and the debit, not
  * by this number. So a failed lookup counts as nothing left rather than
@@ -295,16 +383,28 @@ async function chargeAndMint(
  */
 async function minutesAhead(
   userId: string,
-  freeSince: Date,
+  access: VoiceAccess,
   pricePaise: number,
   minutesCharged: number,
 ): Promise<{ freeMinutesLeft: number; minutesRemaining: number }> {
+  const ceilingLeft = Math.max(0, VOICE_MAX_MINUTES - minutesCharged);
+  const trialUsed =
+    access.trialLeft > 0
+      ? await voiceRepo.countTrialVoiceMinutesUsed(userId).catch(() => VOICE_TRIAL_MINUTES)
+      : VOICE_TRIAL_MINUTES;
+  const trialLeft = Math.max(0, VOICE_TRIAL_MINUTES - trialUsed);
+
+  if (!access.passMember || !access.freeSince) {
+    return { freeMinutesLeft: trialLeft, minutesRemaining: Math.min(ceilingLeft, trialLeft) };
+  }
+
   const [freeUsed, user] = await Promise.all([
-    voiceRepo.countFreeVoiceMinutesUsed(userId, freeSince).catch(() => PASS_VOICE_FREE_MINUTES),
+    voiceRepo
+      .countFreeVoiceMinutesUsed(userId, access.freeSince)
+      .catch(() => PASS_VOICE_FREE_MINUTES),
     findActiveUserById(userId).catch(() => undefined),
   ]);
-  const freeMinutesLeft = Math.max(0, PASS_VOICE_FREE_MINUTES - freeUsed);
-  const ceilingLeft = Math.max(0, VOICE_MAX_MINUTES - minutesCharged);
+  const freeMinutesLeft = trialLeft + Math.max(0, PASS_VOICE_FREE_MINUTES - freeUsed);
   const walletMinutes =
     pricePaise > 0 ? Math.floor((user?.walletBalancePaise ?? 0) / pricePaise) : ceilingLeft;
   return {
@@ -327,7 +427,8 @@ export async function startVoiceSession(
   locale: string,
 ): Promise<VoiceSessionGrant> {
   assertVoiceEnabled();
-  // Before any work or any row: someone without a Pass is told so at once.
+  // Before any work or any row: someone with neither a Pass nor a trial minute
+  // left is told so at once.
   // chargeAndMint checks again, which is what covers every later minute.
   await voiceMembership(userId);
 

@@ -28,6 +28,8 @@ const CATEGORY_BY_TYPE: Record<string, NotificationCategory> = {
   admin_broadcast: 'marketing',
   pass_launch: 'marketing',
   pass_launch_test: 'marketing',
+  voice_trial_launch: 'marketing',
+  voice_trial_launch_test: 'marketing',
   daily_reading: 'dailyHoroscope',
   weekly_reading: 'dailyHoroscope',
   monthly_reading: 'dailyHoroscope',

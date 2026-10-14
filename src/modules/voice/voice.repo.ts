@@ -67,13 +67,70 @@ export async function claimVoiceMinute(
 
 /**
  * Free Pass minutes this user has spent on calls started since `since` (the
- * start of their Pass period).
+ * start of their Pass period). Trial minutes are free minutes too but are not
+ * Pass minutes, so they are left out: they must not use up the month's Pass
+ * allowance.
  */
 function freeMinutesUsedSince(userId: string, since: Date) {
   return db
-    .select({ used: sql<number>`coalesce(sum(${voiceSessions.freeMinutes}), 0)` })
+    .select({
+      used: sql<number>`coalesce(sum(${voiceSessions.freeMinutes} - ${voiceSessions.trialMinutes}), 0)`,
+    })
     .from(voiceSessions)
     .where(and(eq(voiceSessions.userId, userId), gte(voiceSessions.createdAt, since)));
+}
+
+/** Trial minutes this user has spent, over every call they have ever made. */
+function trialMinutesUsed(userId: string) {
+  return db
+    .select({ used: sql<number>`coalesce(sum(${voiceSessions.trialMinutes}), 0)` })
+    .from(voiceSessions)
+    .where(eq(voiceSessions.userId, userId));
+}
+
+export async function countTrialVoiceMinutesUsed(userId: string): Promise<number> {
+  const [row] = await trialMinutesUsed(userId);
+  return Number(row?.used ?? 0);
+}
+
+/**
+ * Claims the next minute as one of the user's one-time trial minutes,
+ * atomically — the same one-UPDATE shape as `claimFreeVoiceMinute`, with the
+ * lifetime trial count in the WHERE clause instead of the Pass period's.
+ *
+ * A trial minute is a free minute too, so `free_minutes` goes up with
+ * `trial_minutes`: everything that asks "was this minute free" (the refund on a
+ * failed connect, the money refund) keeps working unchanged.
+ *
+ * Returns null when the trial is used up, the session has ended, it has reached
+ * `maxMinutes`, or it isn't this user's. The same two-device race as the Pass
+ * allowance applies: at most one extra minute, once.
+ */
+export async function claimTrialVoiceMinute(
+  id: string,
+  userId: string,
+  maxMinutes: number,
+  allowance: number,
+): Promise<VoiceSessionRow | null> {
+  const [row] = await db
+    .update(voiceSessions)
+    .set({
+      minutesCharged: sql`${voiceSessions.minutesCharged} + 1`,
+      freeMinutes: sql`${voiceSessions.freeMinutes} + 1`,
+      trialMinutes: sql`${voiceSessions.trialMinutes} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(voiceSessions.id, id),
+        eq(voiceSessions.userId, userId),
+        eq(voiceSessions.active, true),
+        sql`${voiceSessions.minutesCharged} < ${maxMinutes}`,
+        sql`(${trialMinutesUsed(userId)}) < ${allowance}`,
+      ),
+    )
+    .returning();
+  return row ?? null;
 }
 
 export async function countFreeVoiceMinutesUsed(userId: string, since: Date): Promise<number> {
@@ -126,18 +183,28 @@ export async function claimFreeVoiceMinute(
   return row ?? null;
 }
 
+/** Where a minute came from: the one-time trial, the member's monthly Pass minutes, or the wallet. */
+export type VoiceMinuteSource = 'trial' | 'pass' | 'paid';
+
 /**
  * Gives a claimed minute back when the mint that followed it failed, so a
  * Google-side error doesn't silently consume a minute the user never got.
- * `free` also hands the minute back to the Pass allowance. Guarded against
- * dropping below zero.
+ * A `pass` minute also goes back to the Pass allowance and a `trial` minute to
+ * the trial. Guarded against dropping below zero.
  */
-export async function releaseVoiceMinute(id: string, userId: string, free = false): Promise<void> {
+export async function releaseVoiceMinute(
+  id: string,
+  userId: string,
+  source: VoiceMinuteSource = 'paid',
+): Promise<void> {
   await db
     .update(voiceSessions)
     .set({
       minutesCharged: sql`greatest(${voiceSessions.minutesCharged} - 1, 0)`,
-      ...(free ? { freeMinutes: sql`greatest(${voiceSessions.freeMinutes} - 1, 0)` } : {}),
+      ...(source !== 'paid' ? { freeMinutes: sql`greatest(${voiceSessions.freeMinutes} - 1, 0)` } : {}),
+      ...(source === 'trial'
+        ? { trialMinutes: sql`greatest(${voiceSessions.trialMinutes} - 1, 0)` }
+        : {}),
       updatedAt: new Date(),
     })
     .where(and(eq(voiceSessions.id, id), eq(voiceSessions.userId, userId)));
@@ -193,10 +260,13 @@ export async function endVoiceSession(id: string, userId: string): Promise<Voice
  * the minute was one of the member's free Pass minutes: it goes back to the
  * allowance and the caller must NOT credit the wallet for it.
  *
- * A call spends its free minutes first, so its latest minute was free exactly
- * when every minute so far was (`free_minutes = minutes_charged`). The free
- * case is tried first, as its own UPDATE with that predicate; whichever UPDATE
- * matches flips `active`, so the other can never also apply.
+ * A call spends its trial minutes first, then its free Pass minutes, then paid
+ * ones. So its latest minute was a trial minute exactly when every minute so
+ * far was (`trial_minutes = minutes_charged`), and free exactly when every
+ * minute so far was free (`free_minutes = minutes_charged`). The trial case is
+ * tried first, then the free one, each as its own UPDATE with that predicate;
+ * whichever UPDATE matches flips `active`, so no later one can also apply.
+ * `free` is true for a trial minute too (no money was taken for either).
  */
 export async function endVoiceSessionWithRefund(
   id: string,
@@ -211,6 +281,20 @@ export async function endVoiceSessionWithRefund(
     sql`${voiceSessions.minutesCharged} > 0`,
     sql`${voiceSessions.updatedAt} > now() - ${graceSeconds} * interval '1 second'`,
   );
+
+  const [trialRow] = await db
+    .update(voiceSessions)
+    .set({
+      minutesCharged: sql`${voiceSessions.minutesCharged} - 1`,
+      freeMinutes: sql`${voiceSessions.freeMinutes} - 1`,
+      trialMinutes: sql`${voiceSessions.trialMinutes} - 1`,
+      active: false,
+      endedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(and(refundable, sql`${voiceSessions.trialMinutes} = ${voiceSessions.minutesCharged}`))
+    .returning();
+  if (trialRow) return { refundedMinutes: 1, free: true };
 
   const [freeRow] = await db
     .update(voiceSessions)

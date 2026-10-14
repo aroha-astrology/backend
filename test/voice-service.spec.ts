@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   findActivePass: vi.fn(),
   claimFreeVoiceMinute: vi.fn(),
   countFreeVoiceMinutesUsed: vi.fn(),
+  claimTrialVoiceMinute: vi.fn(),
+  countTrialVoiceMinutesUsed: vi.fn(),
   claimVoiceMinute: vi.fn(),
   releaseVoiceMinute: vi.fn(),
   createVoiceSession: vi.fn(),
@@ -61,6 +63,8 @@ vi.mock('../src/modules/pass/pass.repo.js', () => ({
 vi.mock('../src/modules/voice/voice.repo.js', () => ({
   claimFreeVoiceMinute: state.claimFreeVoiceMinute,
   countFreeVoiceMinutesUsed: state.countFreeVoiceMinutesUsed,
+  claimTrialVoiceMinute: state.claimTrialVoiceMinute,
+  countTrialVoiceMinutesUsed: state.countTrialVoiceMinutesUsed,
   claimVoiceMinute: state.claimVoiceMinute,
   releaseVoiceMinute: state.releaseVoiceMinute,
   createVoiceSession: state.createVoiceSession,
@@ -122,7 +126,9 @@ vi.mock('../src/lib/chat-fact-extraction.js', () => ({
 const { startVoiceSession, extendVoiceSession, endVoiceSessionForUser, VOICE_MAX_MINUTES } =
   await import('../src/modules/voice/voice.service.js');
 
-const { PASS_VOICE_FREE_MINUTES } = await import('../src/modules/pass/pass.config.js');
+const { PASS_VOICE_FREE_MINUTES, VOICE_TRIAL_MINUTES } = await import(
+  '../src/modules/pass/pass.config.js'
+);
 
 const PRICE = 2000;
 const USER = 'user-1';
@@ -152,6 +158,10 @@ beforeEach(() => {
   state.findActivePass.mockReset().mockResolvedValue({ periodStart: PERIOD_START });
   state.claimFreeVoiceMinute.mockReset().mockResolvedValue(null);
   state.countFreeVoiceMinutesUsed.mockReset().mockResolvedValue(PASS_VOICE_FREE_MINUTES);
+  // The trial is switched off unless a test turns it on (`withTrial`), so these
+  // default specs describe the Pass rules alone.
+  state.claimTrialVoiceMinute.mockReset().mockResolvedValue(null);
+  state.countTrialVoiceMinutesUsed.mockReset().mockResolvedValue(0);
 
   state.claimVoiceMinute.mockReset().mockResolvedValue(claimed(1));
   state.releaseVoiceMinute.mockReset().mockResolvedValue(undefined);
@@ -286,7 +296,7 @@ describe('startVoiceSession', () => {
     await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow();
 
     expect(state.addWalletBalance).toHaveBeenCalledWith(USER, PRICE, 'refund:voice_minute');
-    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER, false);
+    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER, 'paid');
   });
 
   it('uses the admin-configured price rather than the hardcoded default', async () => {
@@ -433,7 +443,7 @@ describe('free Pass minutes', () => {
     await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow();
 
     expect(state.addWalletBalance).not.toHaveBeenCalled();
-    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER, true);
+    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER, 'pass');
   });
 
   it('refunds no money when the minute that never connected was a free one', async () => {
@@ -443,6 +453,153 @@ describe('free Pass minutes', () => {
 
     expect(state.addWalletBalance).not.toHaveBeenCalled();
     expect(state.endVoiceSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('the voice trial: 3 free minutes once for every user', () => {
+  /**
+   * Turns the trial on and plays out a user's trial minutes: `usedBefore`
+   * already spent on earlier calls, each claim takes the next one until
+   * VOICE_TRIAL_MINUTES, and `minutesCharged` counts this session's minutes.
+   */
+  function withTrial(usedBefore = 0) {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'paid.voiceChat': { enabled: true, pricePaise: PRICE },
+      'chat.voiceTrial': { enabled: true, pricePaise: null },
+    });
+    let used = usedBefore;
+    let minute = 0;
+    state.countTrialVoiceMinutesUsed.mockImplementation(() => Promise.resolve(used));
+    state.claimTrialVoiceMinute.mockImplementation(() => {
+      if (used >= VOICE_TRIAL_MINUTES) return Promise.resolve(null);
+      used += 1;
+      minute += 1;
+      return Promise.resolve(claimed(minute));
+    });
+    state.claimFreeVoiceMinute.mockImplementation(() => {
+      minute += 1;
+      return Promise.resolve(claimed(minute));
+    });
+    state.claimVoiceMinute.mockImplementation(() => {
+      minute += 1;
+      return Promise.resolve(claimed(minute));
+    });
+  }
+
+  it('lets someone without a Pass talk for 3 minutes, then refuses the 4th with the Pass lock', async () => {
+    state.passEntitlement.mockResolvedValue(null);
+    withTrial();
+
+    const grants = [await startVoiceSession(USER, profile, 'en')];
+    grants.push(await extendVoiceSession(USER, SESSION, profile, 'en', 'h'));
+    grants.push(await extendVoiceSession(USER, SESSION, profile, 'en', 'h'));
+    await expect(extendVoiceSession(USER, SESSION, profile, 'en', 'h')).rejects.toThrow(
+      'PASS_REQUIRED',
+    );
+
+    expect(grants.map((g) => g.trialMinute)).toEqual([true, true, true]);
+    expect(grants.every((g) => g.freeMinute && !g.passMember)).toBe(true);
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.claimVoiceMinute).not.toHaveBeenCalled();
+  });
+
+  it('counts a trial call down from the trial alone, however full the wallet is', async () => {
+    // ₹100 in the wallet would be 5 paid minutes for a member; it must not show here.
+    state.passEntitlement.mockResolvedValue(null);
+    withTrial();
+
+    const first = await startVoiceSession(USER, profile, 'en');
+    const second = await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
+    const third = await extendVoiceSession(USER, SESSION, profile, 'en', 'h');
+
+    // The current minute plus these is the 3:00 the app shows.
+    expect([first, second, third].map((g) => g.minutesRemaining)).toEqual([2, 1, 0]);
+  });
+
+  it('is used once: a later call without a Pass gets the Pass lock at once', async () => {
+    state.passEntitlement.mockResolvedValue(null);
+    withTrial(VOICE_TRIAL_MINUTES);
+
+    await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow('PASS_REQUIRED');
+    expect(state.createVoiceSession).not.toHaveBeenCalled();
+  });
+
+  it('a call cut short keeps the rest of the trial for the next call', async () => {
+    state.passEntitlement.mockResolvedValue(null);
+    withTrial(1);
+
+    const grant = await startVoiceSession(USER, profile, 'en');
+
+    expect(grant.trialMinute).toBe(true);
+    expect(grant.minutesRemaining).toBe(1);
+  });
+
+  it('gives a Pass member the trial first, then the monthly Pass minutes, then the wallet', async () => {
+    withTrial();
+    let passUsed = 0;
+    state.claimFreeVoiceMinute.mockImplementation(() => {
+      if (passUsed >= PASS_VOICE_FREE_MINUTES) return Promise.resolve(null);
+      passUsed += 1;
+      return Promise.resolve(claimed(VOICE_TRIAL_MINUTES + passUsed));
+    });
+    state.claimVoiceMinute.mockResolvedValue(claimed(7));
+
+    const grants = [await startVoiceSession(USER, profile, 'en')];
+    for (let i = 0; i < 6; i++) grants.push(await extendVoiceSession(USER, SESSION, profile, 'en', 'h'));
+
+    expect(grants.map((g) => (g.trialMinute ? 'trial' : g.freeMinute ? 'pass' : 'paid'))).toEqual([
+      'trial',
+      'trial',
+      'trial',
+      'pass',
+      'pass',
+      'pass',
+      'paid',
+    ]);
+    expect(grants.every((g) => g.passMember)).toBe(true);
+    expect(state.deductWalletBalance).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds a member's trial minutes to their usual countdown", async () => {
+    // Trial 1 of 3 used, the Pass minutes untouched (3), ₹100 in the wallet (5).
+    state.countFreeVoiceMinutesUsed.mockResolvedValue(0);
+    withTrial();
+
+    const grant = await startVoiceSession(USER, profile, 'en');
+
+    expect(grant.freeMinutesLeft).toBe(2 + PASS_VOICE_FREE_MINUTES);
+    expect(grant.minutesRemaining).toBe(2 + PASS_VOICE_FREE_MINUTES + 5);
+  });
+
+  it('gives a trial minute back to the trial when Google refuses to mint', async () => {
+    state.passEntitlement.mockResolvedValue(null);
+    withTrial();
+    state.mintLiveToken.mockRejectedValue(new Error('502 from Google'));
+
+    await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow();
+
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+    expect(state.releaseVoiceMinute).toHaveBeenCalledWith(SESSION, USER, 'trial');
+  });
+
+  it('switched off, voice is Pass-only again', async () => {
+    state.passEntitlement.mockResolvedValue(null);
+    withTrial();
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'paid.voiceChat': { enabled: true, pricePaise: PRICE },
+      'chat.voiceTrial': { enabled: false, pricePaise: null },
+    });
+
+    await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow('PASS_REQUIRED');
+    expect(state.claimTrialVoiceMinute).not.toHaveBeenCalled();
+  });
+
+  it('a failed trial lookup hands out no trial minute', async () => {
+    state.passEntitlement.mockResolvedValue(null);
+    withTrial();
+    state.countTrialVoiceMinutesUsed.mockRejectedValue(new Error('db down'));
+
+    await expect(startVoiceSession(USER, profile, 'en')).rejects.toThrow('PASS_REQUIRED');
   });
 });
 

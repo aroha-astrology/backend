@@ -2771,6 +2771,14 @@ export const voiceSessions = pgTable(
      */
     freeMinutes: integer('free_minutes').notNull().default(0),
     /**
+     * How many of `freeMinutes` were the user's one-time trial minutes (every
+     * user gets VOICE_TRIAL_MINUTES once, Pass or not). A call spends trial
+     * minutes before any other, so the first `trialMinutes` minutes of a session
+     * are the trial ones. Summed over ALL the user's sessions, this is how much
+     * of the trial is used (see voice.repo.ts's claimTrialVoiceMinute).
+     */
+    trialMinutes: integer('trial_minutes').notNull().default(0),
+    /**
      * Cleared when the session ends (either the client says so, or the ceiling
      * is reached). A session that is still `true` long after `updatedAt` is one
      * whose client vanished without telling us — harmless, since no further

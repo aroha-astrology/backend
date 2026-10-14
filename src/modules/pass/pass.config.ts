@@ -32,6 +32,14 @@ export type PassFeature = (typeof PASS_FEATURES)[number];
 export const PASS_VOICE_FREE_MINUTES = 3;
 
 /**
+ * Voice-call minutes every user gets free ONCE, Pass or not (the voice trial,
+ * launched for Durga Puja 2026, admin switch `chat.voiceTrial`). Someone
+ * without a Pass can talk for these and then sees the Pass lock; a member
+ * spends them before their monthly PASS_VOICE_FREE_MINUTES.
+ */
+export const VOICE_TRIAL_MINUTES = 3;
+
+/**
  * The three Passes, cheapest first. Each is its own admin key (on/off and the
  * shown price) and its own base plan on the one Play subscription. A user sees
  * every tier that is switched on and picks one. `variant` is what
