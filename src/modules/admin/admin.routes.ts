@@ -22,6 +22,8 @@ import {
   AdminReportGenerationsBulkBodySchema,
   AdminReportGenerationsBulkResponseSchema,
   AdminReportRatingsQuerySchema,
+  AdminVoiceFeedbackQuerySchema,
+  AdminVoiceFeedbackResponseSchema,
   AdminReportRatingsResponseSchema,
   AdminNextReportVotesResponseSchema,
   AdminReferralsResponseSchema,
@@ -48,6 +50,7 @@ import {
   resetReportGenerationsBulk,
   deleteReportGenerationsBulk,
   getReportRatings,
+  getVoiceFeedback,
   getNextReportVoteCounts,
   getReferrals,
   getRecurringUsers,
@@ -502,6 +505,35 @@ adminRouter.openapi(reportRatingsRoute, async (c) => {
   const { reportKey, offset, limit } = c.req.valid('query');
   const page = await getReportRatings(reportKey, limit, offset);
   await auditRead(c, 'GET /v1/admin/report-ratings', { reportKey, offset, limit });
+  return c.json(page, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/voice-feedback — every "how was your call?" answer              */
+/* -------------------------------------------------------------------------- */
+
+const voiceFeedbackRoute = createRoute({
+  method: 'get',
+  path: '/admin/voice-feedback',
+  tags: ['Admin'],
+  summary: 'Every voice-call rating across all users, newest first, with the average',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { query: AdminVoiceFeedbackQuerySchema },
+  responses: {
+    200: {
+      description: 'Voice call feedback rows',
+      content: { 'application/json': { schema: AdminVoiceFeedbackResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(voiceFeedbackRoute, async (c) => {
+  const { offset, limit } = c.req.valid('query');
+  const page = await getVoiceFeedback(limit, offset);
+  await auditRead(c, 'GET /v1/admin/voice-feedback', { offset, limit });
   return c.json(page, 200);
 });
 

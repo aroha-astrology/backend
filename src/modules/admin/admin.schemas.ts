@@ -132,7 +132,14 @@ export const AdminUsersQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   sortBy: z
-    .enum(['createdAt', 'lastActiveAt', 'walletBalancePaise', 'claimedAt', 'totalPaidPaise'])
+    .enum([
+      'createdAt',
+      'lastActiveAt',
+      'walletBalancePaise',
+      'claimedAt',
+      'totalPaidPaise',
+      'voiceSeconds',
+    ])
     .default('createdAt'),
   sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
@@ -157,6 +164,11 @@ const AdminUserRowSchema = z.object({
   timeSpentWeekSec: z.number(),
   timeSpentMonthSec: z.number(),
   timeSpentYearSec: z.number(),
+  /** Voice calls with at least one minute granted, and their total length in seconds. */
+  voiceCalls: z.number(),
+  voiceSeconds: z.number(),
+  /** Average "how was your call?" stars, null when never answered. */
+  voiceRating: z.number().nullable(),
 });
 
 export const AdminUsersResponseSchema = z
@@ -286,6 +298,39 @@ export const AdminReportRatingsResponseSchema = z
     limit: z.number(),
   })
   .openapi('AdminReportRatingsResponse');
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/voice-feedback                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const AdminVoiceFeedbackQuerySchema = z.object({
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+const AdminVoiceFeedbackRowSchema = z.object({
+  voiceSessionId: z.string(),
+  userId: z.string(),
+  displayName: z.string().nullable(),
+  phoneE164: z.string().nullable(),
+  rating: z.number(),
+  tags: z.array(z.string()),
+  comment: z.string().nullable(),
+  minutesCharged: z.number(),
+  callStartedAt: z.string(),
+  callEndedAt: z.string().nullable(),
+  feedbackAt: z.string(),
+});
+
+export const AdminVoiceFeedbackResponseSchema = z
+  .object({
+    feedback: z.array(AdminVoiceFeedbackRowSchema),
+    total: z.number(),
+    averageRating: z.number().nullable(),
+    offset: z.number(),
+    limit: z.number(),
+  })
+  .openapi('AdminVoiceFeedbackResponse');
 
 const AdminNextReportVoteRowSchema = z.object({
   reportKey: z.string(),

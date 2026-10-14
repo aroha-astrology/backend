@@ -29,6 +29,7 @@
 // give, so the app shows the same lock).
 
 import { logger } from '../../lib/logger.js';
+import { alertThrottled } from '../../lib/notifications/alerts.js';
 import { Errors } from '../../lib/errors.js';
 import { env } from '../../config/env.js';
 import { mintLiveToken } from '../../lib/llm/gemini-live-token.js';
@@ -619,5 +620,67 @@ async function persistTranscript(
 function assertVoiceEnabled(): void {
   if (!env.GEMINI_LIVE_ENABLED) {
     throw Errors.forbidden('Realtime voice is not available');
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* After-call feedback                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The quick answers the "how was your call?" sheet offers. The app shows the
+ * first four beside a good rating and the rest beside a poor one; the server
+ * accepts any of them with any rating.
+ */
+export const VOICE_FEEDBACK_TAGS = [
+  'clearVoice',
+  'helpfulAnswers',
+  'understoodMe',
+  'feltNatural',
+  'hardToHear',
+  'callCut',
+  'didntUnderstand',
+  'wrongLanguage',
+  'notHelpful',
+  'slowReplies',
+] as const;
+export type VoiceFeedbackTag = (typeof VOICE_FEEDBACK_TAGS)[number];
+
+/** At or below this many stars the owner hears about it on Telegram. */
+const LOW_RATING_ALERT_MAX = 2;
+
+/**
+ * Saves the answer to "how was your call?" (one per call; a second one is
+ * ignored). A poor rating also goes to the ops chat with its tags and comment,
+ * so a bad call is seen the same day instead of waiting in the admin list.
+ */
+export async function submitVoiceFeedback(
+  userId: string,
+  voiceSessionId: string,
+  input: { rating: number; tags: VoiceFeedbackTag[]; comment?: string },
+): Promise<void> {
+  const tags = [...new Set(input.tags)];
+  const saved = await voiceRepo.saveVoiceFeedback({
+    id: voiceSessionId,
+    userId,
+    rating: input.rating,
+    tags,
+    comment: input.comment,
+  });
+  if (!saved) {
+    const row = await voiceRepo.getVoiceSession(voiceSessionId, userId);
+    if (!row) throw Errors.notFound('Voice session not found');
+    // Already answered, or a call that never got a minute: nothing to add.
+    return;
+  }
+
+  if (input.rating <= LOW_RATING_ALERT_MAX) {
+    const lines = [
+      `${input.rating}/5 stars`,
+      tags.length ? `Tags: ${tags.join(', ')}` : null,
+      input.comment ? `Comment: ${input.comment.slice(0, 500)}` : null,
+      `User ${userId}, call ${voiceSessionId}`,
+    ].filter(Boolean);
+    void alertThrottled('voice-feedback:low', 'Voice call rated low', lines.join('\n'));
   }
 }

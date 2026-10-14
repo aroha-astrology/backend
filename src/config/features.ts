@@ -720,6 +720,14 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'chat',
     defaultEnabled: true,
   },
+  // After a call that ran 30 s or more: "how was your call?" (stars, quick tags, comment). See voice.service.ts submitVoiceFeedback.
+  {
+    key: 'chat.voiceFeedback',
+    label: 'Voice call — ask "how was your call?" when it ends',
+    group: 'chat',
+    defaultEnabled: false,
+    tag: 'new',
+  },
   // Hands-free chat: dictation in, reply read aloud in the language it was written in. Uses the normal per-question price.
   {
     key: 'chat.voiceMode',

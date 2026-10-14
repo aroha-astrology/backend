@@ -986,8 +986,12 @@ const USER_SORT_COLUMNS = {
   lastActiveAt: users.lastActiveAt,
   walletBalancePaise: users.walletBalancePaise,
 } as const;
-/** `claimedAt`/`totalPaidPaise` aren't real columns (see below), so they can't live in USER_SORT_COLUMNS — handled as separate branches in listUsersPage's orderBy. */
-export type UserSortBy = keyof typeof USER_SORT_COLUMNS | 'claimedAt' | 'totalPaidPaise';
+/** `claimedAt`/`totalPaidPaise`/`voiceSeconds` aren't real columns (see below), so they can't live in USER_SORT_COLUMNS — handled as separate branches in listUsersPage's orderBy. */
+export type UserSortBy =
+  | keyof typeof USER_SORT_COLUMNS
+  | 'claimedAt'
+  | 'totalPaidPaise'
+  | 'voiceSeconds';
 
 /** Whichever claim-campaign (static config or admin-created `gift_campaigns`
  * row) was launched most recently, system-wide — see config/campaigns.ts and
@@ -1057,6 +1061,27 @@ const lastPaidAtExpr = () => sql<string | null>`(
   where o.user_id = users.id and o.status = 'paid'
 )`;
 
+/** Voice calls with at least one minute granted, and their talk time. Same duration rule as
+ * Call History (chat-sessions.repo.ts callDurationSeconds): start to hang-up, or the minutes it
+ * was granted when the app never reported the end. Same hand-aliased-subquery style as above. */
+const voiceCallsExpr = () => sql<number>`(
+  select count(*)::int from voice_sessions vs
+  where vs.user_id = users.id and vs.minutes_charged > 0
+)`;
+const voiceSecondsExpr = () => sql<number>`(
+  select coalesce(sum(
+    case when vs.ended_at is null then vs.minutes_charged * 60
+         else greatest(0, round(extract(epoch from (vs.ended_at - vs.created_at))))
+    end
+  ), 0)::int from voice_sessions vs
+  where vs.user_id = users.id and vs.minutes_charged > 0
+)`;
+/** Average of the user's "how was your call?" stars, null when they never answered. */
+const voiceRatingExpr = () => sql<number | null>`(
+  select round(avg(vs.feedback_rating), 1)::float from voice_sessions vs
+  where vs.user_id = users.id and vs.feedback_rating is not null
+)`;
+
 /** Sum of `user_activity_daily.seconds_active` for this user over an inclusive IST date range.
  * Same hand-aliased-subquery style as claimedAmountExpr above, for the same reason: interpolating
  * the `userActivityDaily` column objects directly would render unqualified inside the subquery. */
@@ -1092,7 +1117,9 @@ export async function listUsersPage(
       ? claimedAtExpr()
       : sortBy === 'totalPaidPaise'
         ? totalPaidExpr()
-        : USER_SORT_COLUMNS[sortBy];
+        : sortBy === 'voiceSeconds'
+          ? voiceSecondsExpr()
+          : USER_SORT_COLUMNS[sortBy];
   const w = timeSpentWindows();
   const rows = await db
     .select({
@@ -1115,6 +1142,9 @@ export async function listUsersPage(
       timeSpentWeekSec: activitySecondsExpr(w.weekStart, w.today),
       timeSpentMonthSec: activitySecondsExpr(w.monthStart, w.today),
       timeSpentYearSec: activitySecondsExpr(w.yearStart, w.today),
+      voiceCalls: voiceCallsExpr(),
+      voiceSeconds: voiceSecondsExpr(),
+      voiceRating: voiceRatingExpr(),
     })
     .from(users)
     .where(userSearchWhere(q, contactType))

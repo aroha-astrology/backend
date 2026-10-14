@@ -1,6 +1,7 @@
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, gte, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
-import { voiceSessions, type VoiceSessionRow } from '../../db/schema.js';
+import { users, voiceSessions, type VoiceSessionRow } from '../../db/schema.js';
+import { decryptField, encryptField } from '../../lib/crypto/field-encryption.js';
 
 export async function createVoiceSession(input: {
   userId: string;
@@ -320,4 +321,104 @@ export async function endVoiceSessionWithRefund(
     .where(refundable)
     .returning();
   return row ? { refundedMinutes: 1, free: false } : null;
+}
+
+/**
+ * Saves the caller's "how was your call?" answer onto the call's own row.
+ *
+ * One answer per call: the `feedback_at IS NULL` predicate makes a second
+ * submit (a double-tap, a retry) a no-op instead of overwriting the first.
+ * Only a call that was actually given a minute can be rated. Returns false
+ * when nothing was saved: not this user's call, never connected, or already
+ * rated.
+ */
+export async function saveVoiceFeedback(input: {
+  id: string;
+  userId: string;
+  rating: number;
+  tags: string[];
+  comment?: string;
+}): Promise<boolean> {
+  const rows = await db
+    .update(voiceSessions)
+    .set({
+      feedbackRating: input.rating,
+      feedbackTags: input.tags,
+      feedbackComment: input.comment ? (encryptField(input.comment) as string) : null,
+      feedbackAt: new Date(),
+    })
+    .where(
+      and(
+        eq(voiceSessions.id, input.id),
+        eq(voiceSessions.userId, input.userId),
+        gt(voiceSessions.minutesCharged, 0),
+        isNull(voiceSessions.feedbackAt),
+      ),
+    )
+    .returning({ id: voiceSessions.id });
+  return rows.length > 0;
+}
+
+export interface AdminVoiceFeedbackRow {
+  voiceSessionId: string;
+  userId: string;
+  displayName: string | null;
+  phoneE164: string | null;
+  rating: number;
+  tags: string[];
+  comment: string | null;
+  minutesCharged: number;
+  callStartedAt: Date;
+  callEndedAt: Date | null;
+  feedbackAt: Date;
+}
+
+/** Every call answer across all users, newest first — powers /admin/voice-feedback. */
+export async function listVoiceFeedback(
+  limit: number,
+  offset: number,
+): Promise<{ rows: AdminVoiceFeedbackRow[]; total: number; averageRating: number | null }> {
+  const rated = isNotNull(voiceSessions.feedbackAt);
+  const [rows, totals] = await Promise.all([
+    db
+      .select({
+        voiceSessionId: voiceSessions.id,
+        userId: voiceSessions.userId,
+        displayName: users.displayName,
+        phoneE164: users.phoneE164,
+        rating: voiceSessions.feedbackRating,
+        tags: voiceSessions.feedbackTags,
+        comment: voiceSessions.feedbackComment,
+        minutesCharged: voiceSessions.minutesCharged,
+        callStartedAt: voiceSessions.createdAt,
+        callEndedAt: voiceSessions.endedAt,
+        feedbackAt: voiceSessions.feedbackAt,
+      })
+      .from(voiceSessions)
+      .innerJoin(users, eq(users.id, voiceSessions.userId))
+      .where(rated)
+      .orderBy(desc(voiceSessions.feedbackAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({
+        total: count(),
+        average: sql<string | null>`avg(${voiceSessions.feedbackRating})`,
+      })
+      .from(voiceSessions)
+      .where(rated),
+  ]);
+  const average = totals[0]?.average;
+  return {
+    rows: rows.map((row) => ({
+      ...row,
+      phoneE164: decryptField(row.phoneE164),
+      rating: row.rating ?? 0,
+      tags: row.tags ?? [],
+      comment: row.comment ? decryptField(row.comment) : null,
+      feedbackAt: row.feedbackAt ?? row.callStartedAt,
+    })),
+    total: totals[0]?.total ?? 0,
+    averageRating: average == null ? null : Math.round(Number(average) * 10) / 10,
+  };
 }

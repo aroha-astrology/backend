@@ -38,6 +38,8 @@ const state = vi.hoisted(() => ({
   setCallRecap: vi.fn(),
   extractTurnFacts: vi.fn(),
   summarizeCall: vi.fn(),
+  saveVoiceFeedback: vi.fn(),
+  alertThrottled: vi.fn(),
 }));
 
 const fakeEnv = {
@@ -71,6 +73,11 @@ vi.mock('../src/modules/voice/voice.repo.js', () => ({
   getVoiceSession: state.getVoiceSession,
   endVoiceSession: state.endVoiceSession,
   endVoiceSessionWithRefund: state.endVoiceSessionWithRefund,
+  saveVoiceFeedback: state.saveVoiceFeedback,
+}));
+
+vi.mock('../src/lib/notifications/alerts.js', () => ({
+  alertThrottled: state.alertThrottled,
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
@@ -123,8 +130,13 @@ vi.mock('../src/lib/chat-fact-extraction.js', () => ({
   extractTurnFacts: state.extractTurnFacts,
 }));
 
-const { startVoiceSession, extendVoiceSession, endVoiceSessionForUser, VOICE_MAX_MINUTES } =
-  await import('../src/modules/voice/voice.service.js');
+const {
+  startVoiceSession,
+  extendVoiceSession,
+  endVoiceSessionForUser,
+  submitVoiceFeedback,
+  VOICE_MAX_MINUTES,
+} = await import('../src/modules/voice/voice.service.js');
 
 const { PASS_VOICE_FREE_MINUTES, VOICE_TRIAL_MINUTES } = await import(
   '../src/modules/pass/pass.config.js'
@@ -937,5 +949,72 @@ describe('endVoiceSessionForUser — saving the call as a chat session', () => {
     await expect(
       endVoiceSessionForUser(USER, SESSION, undefined, TRANSCRIPT),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('submitVoiceFeedback — "how was your call?"', () => {
+  beforeEach(() => {
+    state.saveVoiceFeedback.mockReset().mockResolvedValue(true);
+    state.alertThrottled.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('saves the stars, tags and comment onto the call', async () => {
+    await submitVoiceFeedback(USER, SESSION, {
+      rating: 5,
+      tags: ['clearVoice', 'helpfulAnswers'],
+      comment: 'Loved it',
+    });
+    expect(state.saveVoiceFeedback).toHaveBeenCalledWith({
+      id: SESSION,
+      userId: USER,
+      rating: 5,
+      tags: ['clearVoice', 'helpfulAnswers'],
+      comment: 'Loved it',
+    });
+    expect(state.alertThrottled).not.toHaveBeenCalled();
+  });
+
+  it('drops a repeated tag', async () => {
+    await submitVoiceFeedback(USER, SESSION, { rating: 4, tags: ['callCut', 'callCut'] });
+    expect(state.saveVoiceFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ['callCut'] }),
+    );
+  });
+
+  it('tells the ops chat about a rating of 2 or less, with what was wrong', async () => {
+    await submitVoiceFeedback(USER, SESSION, {
+      rating: 2,
+      tags: ['hardToHear'],
+      comment: 'Could not hear Baba Ji',
+    });
+    expect(state.alertThrottled).toHaveBeenCalledTimes(1);
+    const [signature, , message] = state.alertThrottled.mock.calls[0]!;
+    expect(signature).toBe('voice-feedback:low');
+    expect(message).toContain('2/5');
+    expect(message).toContain('hardToHear');
+    expect(message).toContain('Could not hear Baba Ji');
+  });
+
+  it('does not alert for a 3-star call', async () => {
+    await submitVoiceFeedback(USER, SESSION, { rating: 3, tags: [] });
+    expect(state.alertThrottled).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 for someone else's call", async () => {
+    state.saveVoiceFeedback.mockResolvedValue(false);
+    state.getVoiceSession.mockResolvedValue(null);
+    await expect(submitVoiceFeedback(USER, SESSION, { rating: 1, tags: [] })).rejects.toThrow(
+      /not found/i,
+    );
+    expect(state.alertThrottled).not.toHaveBeenCalled();
+  });
+
+  it('ignores a second answer for the same call, without a second alert', async () => {
+    state.saveVoiceFeedback.mockResolvedValue(false);
+    state.getVoiceSession.mockResolvedValue({ id: SESSION, active: false });
+    await expect(
+      submitVoiceFeedback(USER, SESSION, { rating: 1, tags: [] }),
+    ).resolves.toBeUndefined();
+    expect(state.alertThrottled).not.toHaveBeenCalled();
   });
 });

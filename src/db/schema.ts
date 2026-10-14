@@ -2794,9 +2794,22 @@ export const voiceSessions = pgTable(
       .notNull()
       .default(sql`now()`),
     endedAt: timestamp('ended_at', { withTimezone: true }),
+    /**
+     * The caller's answer to "how was your call?", asked once the call ends
+     * (feature `chat.voiceFeedback`). One answer per call; null until given.
+     * `feedbackTags` holds VOICE_FEEDBACK_TAGS values (voice.routes.ts) and
+     * `feedbackComment` is encrypted with field-encryption.
+     */
+    feedbackRating: smallint('feedback_rating'),
+    feedbackTags: text('feedback_tags').array().$type<string[]>(),
+    feedbackComment: text('feedback_comment'),
+    feedbackAt: timestamp('feedback_at', { withTimezone: true }),
   },
   (table) => ({
     userIdx: index('voice_sessions_user_idx').on(table.userId, table.createdAt),
+    feedbackIdx: index('voice_sessions_feedback_idx')
+      .on(table.feedbackAt)
+      .where(sql`${table.feedbackAt} IS NOT NULL`),
   }),
 );
 

@@ -11,6 +11,8 @@ import {
   extendVoiceSession,
   endVoiceSessionForUser,
   voiceMembership,
+  submitVoiceFeedback,
+  VOICE_FEEDBACK_TAGS,
   VOICE_MAX_MINUTES,
 } from './voice.service.js';
 
@@ -293,5 +295,54 @@ voiceRouter.openapi(endRoute, async (c) => {
   const { id } = c.req.valid('param');
   const { connected, transcript } = c.req.valid('json') ?? {};
   await endVoiceSessionForUser(user.id, id, connected, transcript);
+  return c.json({ ok: true as const }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /voice/sessions/{id}/feedback — "how was your call?"                  */
+/* -------------------------------------------------------------------------- */
+
+const feedbackRoute = createRoute({
+  method: 'post',
+  path: '/voice/sessions/{id}/feedback',
+  tags: ['Voice'],
+  summary: 'Rate a finished voice call',
+  description:
+    'The answer to the sheet the app shows after a call: 1 to 5 stars, quick tags and an ' +
+    'optional comment. One answer per call; a second one is ignored. A rating of 2 or less ' +
+    'is also sent to the ops chat. Behind the `chat.voiceFeedback` switch.',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireFeature('chat.voiceFeedback')] as const,
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({
+            rating: z.number().int().min(1).max(5),
+            tags: z.array(z.enum(VOICE_FEEDBACK_TAGS)).max(VOICE_FEEDBACK_TAGS.length).default([]),
+            comment: z.string().trim().max(1000).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Answer saved (or the call was already rated)',
+      content: { 'application/json': { schema: z.object({ ok: z.literal(true) }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled'),
+    404: errorResponse('Voice session not found'),
+  },
+});
+
+voiceRouter.openapi(feedbackRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const { rating, tags, comment } = c.req.valid('json');
+  await submitVoiceFeedback(user.id, id, { rating, tags, comment: comment || undefined });
   return c.json({ ok: true as const }, 200);
 });
