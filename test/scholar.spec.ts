@@ -5,6 +5,7 @@ import {
   type UserFact,
 } from '../src/lib/swarm/agents/scholar.js';
 import { newState } from '../src/lib/swarm/state.js';
+import { containsLegalRefusalFraming } from '../src/lib/content-policy.js';
 
 function systemContent(groundingFacts: string[] = [], birthTimeUnknown = false): string {
   const state = newState({ userId: 'u1', intent: 'chat', consent: true });
@@ -355,5 +356,31 @@ describe('scholar voice call — spoken-language matching', () => {
     }
     expect(content).toContain('whichever language they are most comfortable');
     expect(content).toContain('Never say or imply that you speak only a few languages');
+  });
+});
+
+describe('scholar — a demand for one exact date', () => {
+  // A user asked "Mujha exact date bolo kab job milega" and got the death
+  // policy's "it's against the law" line twice, then the neutral decline. The
+  // refusal line was the only ready-made decline in the prompt, and the rules
+  // that named it next to "exact date" kept it in mind; an example of the right
+  // reply took the live-model rate from 5 in 10 to 0 in 30.
+  const messages = () => buildChatMessages(newState({}), 'kab job milega', [], false, 'en');
+
+  it('shows a worked reply that answers with a window and declines nothing', () => {
+    const all = messages();
+    const ask = all.findIndex((m) => m.role === 'user' && /exact date/i.test(m.content));
+    expect(ask).toBeGreaterThan(-1);
+    const reply = all[ask + 1]!;
+    expect(reply.role).toBe('assistant');
+    expect(reply.content).toMatch(/window/);
+    expect(containsLegalRefusalFraming(reply.content)).toBe(false);
+    expect(reply.content).not.toMatch(/can't|cannot|sorry/i);
+  });
+
+  it('names the legal refusal only once, inside the death policy itself', () => {
+    const system = messages()[0]!.content;
+    expect(system.match(/against the law/gi)).toHaveLength(1);
+    expect(system.match(/can't share/gi)).toHaveLength(1);
   });
 });
