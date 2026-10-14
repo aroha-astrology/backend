@@ -140,7 +140,54 @@ describe('POST /internal/telegram/webhook', () => {
       body: JSON.stringify({ message: { chat: { id: 67890 }, text: '/users' } }),
     });
     expect(res.status).toBe(200);
-    expect(state.sendMessage).toHaveBeenCalledTimes(1);
+    // the reply to the sender, then a copy to the owner
+    expect(state.sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  describe('command log to the owner', () => {
+    const post = (message: Record<string, unknown>) =>
+      createApp().request('/internal/telegram/webhook', {
+        method: 'POST',
+        headers: { 'x-telegram-bot-api-secret-token': 'test-secret' },
+        body: JSON.stringify({ message }),
+      });
+
+    it('sends the owner a log when another admin device runs a command', async () => {
+      state.countUsers.mockResolvedValue(0);
+      state.listUsersPage.mockResolvedValue([]);
+      await post({
+        chat: { id: 67890 },
+        from: { first_name: 'Varun', username: 'varun_k' },
+        text: '/money +919999999999 250',
+      });
+      const toOwner = state.sendMessage.mock.calls.filter((c) => c[1] === '12345');
+      expect(toOwner).toHaveLength(1);
+      const text = (toOwner[0]![0] as string).replace(/\\/g, '');
+      expect(text).toContain('Varun');
+      expect(text).toContain('@varun_k');
+      expect(text).toContain('/money +919999999999 250');
+      expect(text).toContain('67890');
+    });
+
+    it('does not echo the owner own commands back to the owner', async () => {
+      state.countUsers.mockResolvedValue(0);
+      state.listUsersPage.mockResolvedValue([]);
+      await post({ chat: { id: 12345 }, text: '/users' });
+      expect(state.sendMessage).toHaveBeenCalledTimes(1);
+      expect(state.sendMessage.mock.calls[0]![1]).toBe('12345');
+    });
+
+    it('logs a blocked admin-only command from a read-only chat', async () => {
+      await post({ chat: { id: 11111 }, text: '/delete u1' });
+      const toOwner = state.sendMessage.mock.calls.filter((c) => c[1] === '12345');
+      expect(toOwner).toHaveLength(1);
+      expect((toOwner[0]![0] as string).replace(/\\/g, '')).toContain('blocked');
+    });
+
+    it('logs nothing for a chat that is not on any list', async () => {
+      await post({ chat: { id: 9999 }, text: '/users' });
+      expect(state.sendMessage).not.toHaveBeenCalled();
+    });
   });
 
   it('handles /users command with pagination', async () => {
