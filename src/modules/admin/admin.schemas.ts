@@ -167,6 +167,8 @@ const AdminUserRowSchema = z.object({
   /** Voice calls with at least one minute granted, and their total length in seconds. */
   voiceCalls: z.number(),
   voiceSeconds: z.number(),
+  /** Start times (ISO, UTC) of the 3 latest of those calls, newest first. */
+  voiceLastCalls: z.array(z.string()),
   /** Average "how was your call?" stars, null when never answered. */
   voiceRating: z.number().nullable(),
 });

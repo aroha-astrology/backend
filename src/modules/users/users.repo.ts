@@ -1076,6 +1076,17 @@ const voiceSecondsExpr = () => sql<number>`(
   ), 0)::int from voice_sessions vs
   where vs.user_id = users.id and vs.minutes_charged > 0
 )`;
+/** Start times of the user's 3 latest calls (same calls as voiceCallsExpr), newest first, as ISO
+ * UTC strings. Built as a json array so the driver hands back plain strings, not a timestamptz[]. */
+const voiceLastCallsExpr = () => sql<string[]>`(
+  select coalesce(json_agg(to_char(t.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') order by t.created_at desc), '[]'::json)
+  from (
+    select vs.created_at from voice_sessions vs
+    where vs.user_id = users.id and vs.minutes_charged > 0
+    order by vs.created_at desc
+    limit 3
+  ) t
+)`;
 /** Average of the user's "how was your call?" stars, null when they never answered. */
 const voiceRatingExpr = () => sql<number | null>`(
   select round(avg(vs.feedback_rating), 1)::float from voice_sessions vs
@@ -1144,6 +1155,7 @@ export async function listUsersPage(
       timeSpentYearSec: activitySecondsExpr(w.yearStart, w.today),
       voiceCalls: voiceCallsExpr(),
       voiceSeconds: voiceSecondsExpr(),
+      voiceLastCalls: voiceLastCallsExpr(),
       voiceRating: voiceRatingExpr(),
     })
     .from(users)
