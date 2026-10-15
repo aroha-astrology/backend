@@ -6,9 +6,15 @@ import {
   userSubscriptions,
   users,
   walletTransactions,
+  type UserRow,
   type UserSubscriptionRow,
 } from '../../db/schema.js';
-import { entitlementForRow, PASS_PLAN_NAME } from './pass.config.js';
+import {
+  entitlementForRow,
+  GROUP_ENTITLEMENT,
+  PASS_PERIOD_DAYS,
+  PASS_PLAN_NAME,
+} from './pass.config.js';
 
 export type PassSource = 'wallet' | 'google_play';
 
@@ -161,6 +167,52 @@ export async function refundPassQuestion(userId: string, now: Date = new Date())
         gt(userSubscriptions.periodEnd, now),
       ),
     );
+}
+
+const PERIOD_MS = PASS_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+
+/** An admin-group member's questions left this period: the full allowance once it lapses. */
+export function groupQuestionsLeft(
+  user: Pick<UserRow, 'groupQuestionsUsed' | 'groupQuestionsPeriodStart'>,
+  now: Date = new Date(),
+): number {
+  const start = user.groupQuestionsPeriodStart;
+  if (!start || start.getTime() <= now.getTime() - PERIOD_MS) return GROUP_ENTITLEMENT.questions;
+  return Math.max(0, GROUP_ENTITLEMENT.questions - user.groupQuestionsUsed);
+}
+
+/**
+ * Counts one question against an admin-group member's free allowance, atomically.
+ * A period that has lapsed (or never started) restarts at this question. False when
+ * this period's allowance is used up; the member still pays nothing.
+ */
+export async function consumeGroupQuestion(
+  userId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const cutoff = new Date(now.getTime() - PERIOD_MS).toISOString();
+  const lapsed = sql`(${users.groupQuestionsPeriodStart} is null or ${users.groupQuestionsPeriodStart} <= ${cutoff}::timestamptz)`;
+  const rows = await db
+    .update(users)
+    .set({
+      groupQuestionsUsed: sql`case when ${lapsed} then 1 else ${users.groupQuestionsUsed} + 1 end`,
+      groupQuestionsPeriodStart: sql`case when ${lapsed} then ${now.toISOString()}::timestamptz else ${users.groupQuestionsPeriodStart} end`,
+    })
+    .where(
+      and(
+        eq(users.id, userId),
+        or(lapsed, lt(users.groupQuestionsUsed, GROUP_ENTITLEMENT.questions)),
+      ),
+    )
+    .returning({ id: users.id });
+  return rows.length > 0;
+}
+
+export async function refundGroupQuestion(userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ groupQuestionsUsed: sql`greatest(${users.groupQuestionsUsed} - 1, 0)` })
+    .where(eq(users.id, userId));
 }
 
 /** Spends one prepaid question credit, atomically. False when there are none. */

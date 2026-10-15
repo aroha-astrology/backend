@@ -383,6 +383,12 @@ export const users = pgTable(
     /** Prepaid chat questions bought as Question Packs (roadmap step 10). Spent after the
      * Aroha Pass quota and before the wallet — see modules/pass/question-billing.ts. */
     questionCredits: integer('question_credits').notNull().default(0),
+    /** Chat questions an admin-group member asked in their current 30-day period. Group
+     * members pay nothing, but their allowance counts down like a buyer's (migration 0090,
+     * consumeGroupQuestion in modules/pass/pass.repo.ts). */
+    groupQuestionsUsed: integer('group_questions_used').notNull().default(0),
+    /** When that period began; null = never asked. Reset lazily on the next question. */
+    groupQuestionsPeriodStart: timestamp('group_questions_period_start', { withTimezone: true }),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
