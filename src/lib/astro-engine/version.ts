@@ -14,7 +14,7 @@
  * package.json (deliberately pinned, not a caret range, so the resolved ephemeris can't
  * silently drift underneath a cached chart on a routine `npm install`).
  */
-export const CALCULATION_VERSION = '2026.08.1';
+export const CALCULATION_VERSION = '2026.10.1';
 export const EPHEMERIS_VERSION = 'swisseph-wasm@0.0.5';
 
 /**

@@ -136,17 +136,15 @@ describe('birthInputsForProfile', () => {
       .slice(0, 16);
   }
 
-  it('does NOT change any already-stored birthHash while at the pre-versioning baseline', () => {
-    // The load-bearing one. Introducing versioning must not itself invalidate the cache:
-    // a changed hash triggers a full regeneration, which ALSO deletes that profile's
-    // horoscopes and re-fires its house insights (both LLM-backed), so a hash change on
-    // every row at once would stampede every user through the engine and the shared Gemini
-    // quota — to produce byte-identical charts, since the engine hasn't changed. The hash
-    // here must equal one computed with no version keys at all (the pre-versioning shape).
+  it('changes every already-stored birthHash once the calculation version is raised (engine audit, 2026-10)', () => {
+    // The engine audit changed yogas, doshas, Shadbala and matching on purpose, so the version
+    // was raised from the pre-versioning baseline (2026.08.1) to 2026.10.1: every stored
+    // kundli regenerates on next use. The hash now carries the real version keys.
     const preVersioningHash = hashWith({});
-    expect(birthInputsForProfile(completeProfile(), makeUserRow())!.birthHash).toBe(
-      preVersioningHash,
-    );
+    const inputs = birthInputsForProfile(completeProfile(), makeUserRow())!;
+    expect(inputs.birthHash).not.toBe(preVersioningHash);
+    // The ephemeris is still at its baseline, so only the calculation version enters the hash.
+    expect(inputs.birthHash).toBe(hashWith({ calculationVersion: CALCULATION_VERSION }));
   });
 
   it('DOES change the hash once a version moves off the baseline — the intended invalidation', () => {
