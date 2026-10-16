@@ -61,6 +61,22 @@ const NEW_SESSION_WINDOW_MS = 60_000;
 
 const MINT_TIMEOUT_MS = 10_000;
 
+/**
+ * Whether to ask Google to keep a long call inside the model's context window
+ * by dropping its oldest turns (`contextWindowCompression`, sliding window).
+ *
+ * Without it a call's audio fills the window after roughly a quarter of an
+ * hour and Google ends the session — fine under the old 3-minute ceiling,
+ * not now that a call runs for as long as the wallet can pay.
+ *
+ * The mint endpoint rejects a field it does not know with a 400, which would
+ * stop every call from starting. So the first 400 that names this field turns
+ * it off for the life of the process and the mint is retried without it: a
+ * wrong guess about the field then costs long calls their length, never
+ * anyone's ability to call.
+ */
+let contextCompression = true;
+
 export interface MintedLiveToken {
   /** Opaque token the client passes to Google in place of an API key. */
   token: string;
@@ -127,7 +143,7 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
     const now = Date.now();
     const expiresAt = now + TOKEN_LIFETIME_MS;
 
-    const body = {
+    const buildBody = (compress: boolean) => ({
       uses: 1,
       expireTime: new Date(expiresAt).toISOString(),
       newSessionExpireTime: new Date(now + NEW_SESSION_WINDOW_MS).toISOString(),
@@ -179,26 +195,43 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
         // the token — an empty list is what stops a tampered client granting
         // itself tool access on our quota.
         tools: [],
+        ...(compress ? { contextWindowCompression: { slidingWindow: {} } } : {}),
       },
+    });
+
+    const post = async (compress: boolean): Promise<{ response: Response; text: string }> => {
+      try {
+        const res = await fetch(`${env.GEMINI_LIVE_BASE_URL}/auth_tokens`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': picked.key,
+          },
+          body: JSON.stringify(buildBody(compress)),
+          signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
+        });
+        return { response: res, text: await res.text() };
+      } catch (err) {
+        logger.warn({ err, attempt }, 'gemini-live: token mint network error');
+        throw new GeminiLiveTokenError(`Token mint network error: ${String(err)}`);
+      }
     };
 
-    let response: Response;
-    try {
-      response = await fetch(`${env.GEMINI_LIVE_BASE_URL}/auth_tokens`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': picked.key,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
-      });
-    } catch (err) {
-      logger.warn({ err, attempt }, 'gemini-live: token mint network error');
-      throw new GeminiLiveTokenError(`Token mint network error: ${String(err)}`);
+    let { response, text } = await post(contextCompression);
+    if (contextCompression && response.status === 400 && /contextWindowCompression/i.test(text)) {
+      contextCompression = false;
+      logger.warn(
+        { body: text.slice(0, 300) },
+        'gemini-live: contextWindowCompression rejected, minting without it',
+      );
+      void alertThrottled(
+        'gemini-live:no-compression',
+        'Gemini Live rejected contextWindowCompression',
+        'Voice calls still start, but a long call may be cut by Google after about 15 minutes. ' +
+          text.slice(0, 300),
+      );
+      ({ response, text } = await post(false));
     }
-
-    const text = await response.text();
 
     if (response.status === 429) {
       await markRateLimited(picked.index, 10_000);

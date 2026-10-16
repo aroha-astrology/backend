@@ -53,6 +53,41 @@ describe('mintLiveToken: voice pinning', () => {
     vi.stubGlobal('fetch', fetchMock);
   });
 
+  it('asks Google to keep a long call inside the context window', async () => {
+    await mintLiveToken({ systemInstruction: 'x' });
+
+    expect(sentBody(fetchMock).bidiGenerateContentSetup.contextWindowCompression).toEqual({
+      slidingWindow: {},
+    });
+  });
+
+  it('mints without compression if Google rejects the field, and stops sending it', async () => {
+    // Last in effect for the whole process, so this case runs against its own
+    // copy of the module rather than switching compression off for the others.
+    vi.resetModules();
+    const { mintLiveToken: mint } = await import('../src/lib/llm/gemini-live-token.js');
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve({
+        ok: false,
+        status: 400,
+        text: () =>
+          Promise.resolve('Unknown name "contextWindowCompression" at \'auth_token.setup\''),
+      }),
+    );
+
+    const first = await mint({ systemInstruction: 'x' });
+    expect(first.token).toBe('auth_tokens/abc123');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retried = JSON.parse(fetchMock.mock.calls[1]![1]!.body as string);
+    expect(retried.bidiGenerateContentSetup.contextWindowCompression).toBeUndefined();
+    expect(retried.bidiGenerateContentSetup.tools).toEqual([]);
+
+    await mint({ systemInstruction: 'x' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const later = JSON.parse(fetchMock.mock.calls[2]![1]!.body as string);
+    expect(later.bidiGenerateContentSetup.contextWindowCompression).toBeUndefined();
+  });
+
   it('pins the configured voice into the mint request', async () => {
     await mintLiveToken({ systemInstruction: 'be Baba', resumptionHandle: undefined });
 

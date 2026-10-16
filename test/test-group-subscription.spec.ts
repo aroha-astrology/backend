@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { hasPass, requirePass } from '../src/lib/entitlements.js';
 import { getPassStatus } from '../src/modules/pass/pass.service.js';
-import { chargeQuestion } from '../src/modules/pass/question-billing.js';
+import { chargeQuestion, refundQuestion } from '../src/modules/pass/question-billing.js';
+import { chatPricingFact } from '../src/lib/chat-pricing.js';
 import * as userGroupsRepo from '../src/modules/user-groups/user-groups.repo.js';
 import * as passRepo from '../src/modules/pass/pass.repo.js';
 import * as usersRepo from '../src/modules/users/users.repo.js';
@@ -101,6 +102,8 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
     nextReportVotedAt: null,
     lastFreeFollowUpAt: null,
     questionCredits: 0,
+    groupQuestionsUsed: 0,
+    groupQuestionsPeriodStart: null,
   };
 
   beforeEach(() => {
@@ -140,10 +143,92 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
     expect(status.pass?.questionsLeft).toBeGreaterThan(0);
   });
 
-  it('chargeQuestion is always free for test group members and never deducts wallet', async () => {
+  it('chargeQuestion never deducts the wallet for test group members', async () => {
     const deductSpy = vi.spyOn(usersRepo, 'deductWalletBalance');
+    vi.spyOn(passRepo, 'consumeGroupQuestion').mockResolvedValue(false);
     const source = await chargeQuestion(testUserId, 800);
     expect(source).toBe('free');
     expect(deductSpy).not.toHaveBeenCalled();
+  });
+
+  // The owner's phone showed "60 questions left" after several questions: group
+  // members were never counted. They now count down like a buyer, still for free.
+  describe('group members count down their questions', () => {
+    const NOW = new Date('2026-10-15T08:00:00Z');
+    const DAY = 86_400_000;
+
+    it('getPassStatus subtracts the questions asked this period', async () => {
+      const status = await getPassStatus({
+        ...mockUser,
+        groupQuestionsUsed: 2,
+        groupQuestionsPeriodStart: new Date(Date.now() - 3 * DAY),
+      });
+      expect(status.pass).toMatchObject({ source: 'group', questionsLeft: 58 });
+    });
+
+    it('a lapsed 30-day period shows the full allowance again', async () => {
+      const status = await getPassStatus({
+        ...mockUser,
+        groupQuestionsUsed: 60,
+        groupQuestionsPeriodStart: new Date(Date.now() - 31 * DAY),
+      });
+      expect(status.pass?.questionsLeft).toBe(60);
+    });
+
+    it('groupQuestionsLeft never goes below 0', () => {
+      expect(
+        passRepo.groupQuestionsLeft(
+          { groupQuestionsUsed: 75, groupQuestionsPeriodStart: new Date(NOW.getTime() - DAY) },
+          NOW,
+        ),
+      ).toBe(0);
+      expect(
+        passRepo.groupQuestionsLeft(
+          { groupQuestionsUsed: 0, groupQuestionsPeriodStart: null },
+          NOW,
+        ),
+      ).toBe(60);
+    });
+
+    it('chargeQuestion spends a group question and never touches the wallet', async () => {
+      const consume = vi.spyOn(passRepo, 'consumeGroupQuestion').mockResolvedValue(true);
+      const deductSpy = vi.spyOn(usersRepo, 'deductWalletBalance');
+      expect(await chargeQuestion(testUserId, 800)).toBe('group');
+      expect(consume).toHaveBeenCalledWith(testUserId);
+      expect(deductSpy).not.toHaveBeenCalled();
+    });
+
+    it('once the allowance is used up the question is still free', async () => {
+      vi.spyOn(passRepo, 'consumeGroupQuestion').mockResolvedValue(false);
+      const credit = vi.spyOn(passRepo, 'consumeQuestionCredit');
+      expect(await chargeQuestion(testUserId, 800)).toBe('free');
+      expect(credit).not.toHaveBeenCalled();
+    });
+
+    it('a member who also holds a real Pass spends from that Pass', async () => {
+      vi.spyOn(passRepo, 'findActivePass').mockResolvedValue({ id: 'sub-1' } as never);
+      vi.spyOn(passRepo, 'consumePassQuestion').mockResolvedValue(true);
+      const group = vi.spyOn(passRepo, 'consumeGroupQuestion').mockResolvedValue(true);
+      expect(await chargeQuestion(testUserId, 800)).toBe('pass');
+      expect(group).not.toHaveBeenCalled();
+    });
+
+    it('a member whose real Pass is used up still pays nothing', async () => {
+      vi.spyOn(passRepo, 'findActivePass').mockResolvedValue({ id: 'sub-1' } as never);
+      vi.spyOn(passRepo, 'consumePassQuestion').mockResolvedValue(false);
+      const deductSpy = vi.spyOn(usersRepo, 'deductWalletBalance');
+      expect(await chargeQuestion(testUserId, 800)).toBe('free');
+      expect(deductSpy).not.toHaveBeenCalled();
+    });
+
+    it('a refund gives the group question back', async () => {
+      const refund = vi.spyOn(passRepo, 'refundGroupQuestion').mockResolvedValue();
+      await refundQuestion(testUserId, 'group', 800);
+      expect(refund).toHaveBeenCalledWith(testUserId);
+    });
+
+    it('the chat is told group questions are free', () => {
+      expect(chatPricingFact(800, 'group')).toBe('CHAT PRICING: questions are free for this user.');
+    });
   });
 });

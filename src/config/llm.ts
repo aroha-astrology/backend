@@ -124,6 +124,20 @@ export const CHAT_SUMMARY_PROFILE: GenerationProfile = {
   maxTokens: 220,
 };
 
+/**
+ * Cheap, fast, non-streaming — writes the few sentences Chat History shows for
+ * a finished voice call (lib/voice-call-recap.ts). The note itself is under 60
+ * words; the ceiling leaves room for Indic scripts, which take several tokens
+ * a word.
+ */
+export const CALL_RECAP_PROFILE: GenerationProfile = {
+  name: 'call-recap',
+  temperature: 0.2,
+  jsonMode: false,
+  stream: false,
+  maxTokens: 400,
+};
+
 /** Cheap, fast, non-streaming, JSON-mode — used to extract durable personal facts from a single chat turn. */
 export const FACT_EXTRACTION_PROFILE: GenerationProfile = {
   name: 'fact-extraction',

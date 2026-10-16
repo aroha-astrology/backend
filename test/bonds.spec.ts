@@ -2,9 +2,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BirthProfileRow } from '../src/db/schema.js';
 import { makeUserRow } from './helpers/mocks.js';
 
-const state = vi.hoisted(() => ({
-  profiles: [] as unknown[],
-  pass: true,
+const state = vi.hoisted(
+  (): { profiles: unknown[]; pass: boolean; bondsOn: boolean; owner: unknown } => ({
+    profiles: [],
+    pass: true,
+    bondsOn: true,
+    owner: null,
+  }),
+);
+
+vi.mock('../src/modules/features/features.service.js', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  resolveFeaturesForUser: () =>
+    Promise.resolve({
+      'nav.bonds': { enabled: state.bondsOn },
+      'home.bondsCard': { enabled: false },
+    }),
+}));
+// No database in these tests: nobody is in a user group.
+vi.mock('../src/modules/user-groups/user-groups.repo.js', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  listGroupIdsForUser: () => Promise.resolve([]),
+}));
+vi.mock('../src/modules/users/users.repo.js', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  findActiveUserById: () => Promise.resolve(state.owner),
 }));
 
 vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
@@ -20,13 +42,25 @@ vi.mock('../src/modules/pass/pass.repo.js', () => ({
 }));
 
 import {
+  bondCategory,
   bondCompatibility,
+  bondFactsForChat,
+  bondPhase,
   bondSpec,
   getBond,
+  harmonyLabel,
+  isMarriageTrack,
+  isRomantic,
   listBonds,
   loadBondChart,
+  lordStrained,
+  lordTie,
   nextBirthday,
 } from '../src/modules/bonds/bonds.service.js';
+import { BOND_CATEGORY } from '../src/modules/bonds/bond-types.js';
+import { birthProfileRelationshipEnum } from '../src/db/schema.js';
+import { BirthProfileRelationshipSchema } from '../src/modules/birth-profiles/birth-profiles.schemas.js';
+import type { ChartContext } from '../src/lib/intelligence/chart-context.js';
 import { makeProfileContext } from './helpers/mocks.js';
 
 const DELHI = { name: 'Delhi', lat: 28.6139, lon: 77.209, tz: 'Asia/Kolkata' };
@@ -65,9 +99,13 @@ function profile(overrides: Partial<BirthProfileRow>): BirthProfileRow {
   };
 }
 
+const MA = '22222222-2222-4222-8222-222222222222';
+
 beforeEach(() => {
   state.profiles = [];
   state.pass = true;
+  state.bondsOn = true;
+  state.owner = OWNER;
 });
 
 describe('bondSpec', () => {
@@ -93,6 +131,205 @@ describe('bondSpec', () => {
   it('treats friends and anything unknown as the 11th', () => {
     expect(bondSpec('friend', null, null).houses).toEqual([11]);
     expect(bondSpec(null, null, null).houses).toEqual([11]);
+  });
+
+  it('reads a parent with no gender on file from both the 4th and the 9th', () => {
+    expect(bondSpec('parent', null, 'male')).toMatchObject({
+      houses: [4, 9],
+      karakas: ['Moon', 'Sun'],
+    });
+    expect(bondSpec('child', 'male', null).theirHouses).toEqual([4, 9]);
+  });
+
+  it('keeps Guna Milan for a marriage or one that may come, not for other romance', () => {
+    for (const r of ['partner', 'fiance', 'spouse', 'prospective_match'] as const) {
+      expect(bondSpec(r, 'female', 'male')).toMatchObject({ houses: [7], guna: true });
+    }
+    for (const r of ['situationship', 'crush', 'first_love', 'fwb', 'soulmate', 'ex'] as const) {
+      expect(bondSpec(r, 'female', 'male').guna).toBe(false);
+      expect(isRomantic(r)).toBe(true);
+      expect(isMarriageTrack(r)).toBe(false);
+    }
+    expect(bondSpec('situationship', null, null)).toMatchObject({
+      houses: [5],
+      karakas: ['Venus', 'Rahu'],
+    });
+    expect(bondSpec('soulmate', null, null).houses).toEqual([9, 12]);
+  });
+
+  it('reads in-laws from the house counted from the 7th', () => {
+    // Mother-in-law: 4th from the 7th. Father-in-law: 9th from the 7th.
+    const from7th = (n: number) => ((7 + n - 2) % 12) + 1;
+    expect(bondSpec('mother_in_law', 'female', 'male').houses).toEqual([from7th(4)]);
+    expect(bondSpec('father_in_law', 'male', 'female').houses).toEqual([from7th(9)]);
+    expect(from7th(4)).toBe(10);
+    expect(from7th(9)).toBe(3);
+    // Their chart reads a child's spouse: 7th from the 5th.
+    expect(bondSpec('mother_in_law', 'female', 'male').theirHouses).toEqual([11]);
+  });
+
+  it('reads a manager and an employee as the two ends of one bond', () => {
+    const up = bondSpec('manager', 'male', 'male');
+    const down = bondSpec('employee', 'male', 'male');
+    expect(up).toMatchObject({ houses: [10], karakas: ['Sun'], theirHouses: [6] });
+    expect(down).toMatchObject({ houses: [6], karakas: ['Saturn'], theirHouses: [10] });
+    expect(up.houses).toEqual(down.theirHouses);
+    expect(up.theirKarakas).toEqual(down.karakas);
+  });
+
+  it('reads work, money and shared-activity bonds from their own houses', () => {
+    expect(bondSpec('colleague', null, null).houses).toEqual([10, 3]);
+    expect(bondSpec('investor', null, null)).toMatchObject({ houses: [8], theirHouses: [5] });
+    expect(bondSpec('competitor', null, null)).toMatchObject({ houses: [6], karakas: ['Mars'] });
+    expect(bondSpec('roommate', null, null).houses).toEqual([4, 11]);
+    expect(bondSpec('travel_buddy', null, null).houses).toEqual([9, 3]);
+    expect(bondSpec('creative_partner', null, null).houses).toEqual([5, 3]);
+    expect(bondSpec('gym_partner', null, null).houses).toEqual([6, 3]);
+    expect(bondSpec('cousin', null, null)).toEqual(bondSpec('sibling', null, null));
+  });
+});
+
+describe('every relationship is covered', () => {
+  const all = birthProfileRelationshipEnum.enumValues;
+
+  it('the database list, the API list and the category list name the same relationships', () => {
+    expect([...BirthProfileRelationshipSchema.options].sort()).toEqual([...all].sort());
+    expect(Object.keys(BOND_CATEGORY).sort()).toEqual([...all].sort());
+  });
+
+  it('each one has a group and real houses and significators on both sides', () => {
+    const planets = [
+      'Sun',
+      'Moon',
+      'Mars',
+      'Mercury',
+      'Jupiter',
+      'Venus',
+      'Saturn',
+      'Rahu',
+      'Ketu',
+    ];
+    for (const r of all) {
+      expect(['romantic', 'professional', 'family', 'social', 'other']).toContain(bondCategory(r));
+      for (const [self, other] of [
+        ['male', 'female'],
+        ['female', 'male'],
+        [null, null],
+      ] as const) {
+        const spec = bondSpec(r, other, self);
+        for (const houses of [spec.houses, spec.theirHouses]) {
+          expect(houses.length, r).toBeGreaterThan(0);
+          for (const h of houses) expect(h >= 1 && h <= 12, `${r} house ${h}`).toBe(true);
+        }
+        for (const karakas of [spec.karakas, spec.theirKarakas]) {
+          expect(karakas.length, r).toBeGreaterThan(0);
+          for (const k of karakas) expect(planets, r).toContain(k);
+        }
+      }
+    }
+  });
+
+  it('groups them for the tabs on the Bonds page', () => {
+    const count = (c: string) => all.filter((r) => bondCategory(r) === c).length;
+    expect(count('romantic')).toBe(10);
+    expect(count('professional')).toBe(6);
+    expect(count('family')).toBe(6);
+    expect(count('social')).toBe(5);
+    expect(count('other')).toBe(1);
+    expect(bondCategory(null)).toBe('other');
+  });
+});
+
+/** A chart whose only planet is `planet`, in `house`, ruling `rules`. */
+function chartWith(planet: string, house: number, rules: number[]): ChartContext {
+  return {
+    natal: [{ planet, house, signIndex: 0, nakshatraIndex: 0 }],
+    houseLords: Object.fromEntries(rules.map((h) => [h, planet])),
+    dasha: { mahadasha: null, antardasha: null, pratyantardasha: null },
+    transits: [],
+  } as unknown as ChartContext;
+}
+
+describe('the strain rule with a bond that lives in the 6th, 8th or 12th', () => {
+  it("does not call a lord strained for sitting in the bond's own house", () => {
+    // Saturn rules and sits in the 6th: at home for an employee bond.
+    const atHome = chartWith('Saturn', 6, [6]);
+    expect(lordStrained(atHome, 'Saturn', [6])).toBe(false);
+    // rules 3 + sits 2 + significator 1, and no penalty for the 6th.
+    expect(lordTie(atHome, 'Saturn', [6], ['Saturn']).score).toBe(6);
+  });
+
+  it('still calls it strained in a different difficult house', () => {
+    const away = chartWith('Saturn', 8, [6]);
+    expect(lordStrained(away, 'Saturn', [6])).toBe(true);
+    // rules 3 + significator 1, less 1 for the 8th.
+    expect(lordTie(away, 'Saturn', [6], ['Saturn']).score).toBe(3);
+  });
+
+  it('leaves the old rule unchanged for a bond in an ordinary house', () => {
+    const venus12 = chartWith('Venus', 12, [7]);
+    expect(lordStrained(venus12, 'Venus', [7])).toBe(true);
+    expect(lordTie(venus12, 'Venus', [7], ['Venus']).score).toBe(3);
+    const venus7 = chartWith('Venus', 7, [7]);
+    expect(lordStrained(venus7, 'Venus', [7])).toBe(false);
+    // rules 3 + sits 2 + significator 1 + 1 for an angle.
+    expect(lordTie(venus7, 'Venus', [7], ['Venus']).score).toBe(7);
+  });
+});
+
+describe('harmonyLabel', () => {
+  it('goes below Mixed when the score is very low', () => {
+    expect(harmonyLabel(80)).toBe('excellent');
+    expect(harmonyLabel(60)).toBe('good');
+    expect(harmonyLabel(45)).toBe('average');
+    expect(harmonyLabel(30)).toBe('mixed');
+    expect(harmonyLabel(29)).toBe('poor');
+    expect(harmonyLabel(0)).toBe('poor');
+  });
+});
+
+/** A chart with nothing in it but the slow planets passing the given houses from the Moon. */
+function quietChart(transits: Array<{ planet: string; houseFromMoon: number }>): ChartContext {
+  return {
+    natal: [],
+    houseLords: {},
+    dasha: { mahadasha: null, antardasha: null, pratyantardasha: null },
+    transits: transits.map((t) => ({
+      ...t,
+      signIndex: 0,
+      sign: 'Aries',
+      nakshatraIndex: 0,
+      isRetrograde: false,
+      houseFromLagna: 1,
+    })),
+  } as unknown as ChartContext;
+}
+
+describe('bondPhase transits', () => {
+  it("counts Saturn in a business partner's 10th house, not only the 7th", () => {
+    const spec = bondSpec('business_partner', 'male', 'male');
+    const phase = bondPhase(
+      quietChart([{ planet: 'Saturn', houseFromMoon: 10 }]),
+      quietChart([]),
+      spec,
+      'Ravi',
+    );
+    expect(phase.tone).toBe('mixed');
+    expect(phase.why).toContainEqual(
+      expect.objectContaining({ kind: 'transit', planet: 'Saturn', house: 10, effect: -1 }),
+    );
+  });
+
+  it('stays steady when the slow planets are elsewhere', () => {
+    const spec = bondSpec('business_partner', 'male', 'male');
+    const phase = bondPhase(
+      quietChart([{ planet: 'Saturn', houseFromMoon: 2 }]),
+      quietChart([]),
+      spec,
+      'Ravi',
+    );
+    expect(phase.tone).toBe('steady');
+    expect(phase.why).toHaveLength(0);
   });
 });
 
@@ -174,7 +411,14 @@ describe('listBonds / getBond', () => {
     ];
     const { bonds } = await listBonds(OWNER);
     expect(bonds).toHaveLength(2);
-    expect(bonds[0]).toMatchObject({ name: 'Priya', relationship: 'spouse', ready: true });
+    expect(bonds[0]).toMatchObject({
+      name: 'Priya',
+      relationship: 'spouse',
+      category: 'romantic',
+      gender: 'female',
+      ready: true,
+    });
+    expect(bonds[1]).toMatchObject({ category: 'family' });
     expect(bonds[0]!.compatibility?.kind).toBe('guna');
     expect(['active', 'steady', 'mixed', 'testing']).toContain(bonds[0]!.phase);
     expect(bonds[1]).toMatchObject({ name: 'Ma', ready: false, compatibility: null, phase: null });
@@ -198,10 +442,97 @@ describe('listBonds / getBond', () => {
     for (const w of open.detail!.upcoming) expect(w.start <= w.end).toBe(true);
   }, 60_000);
 
+  it('reads both people on a couple: whose period, three meters, the Mangal line', async () => {
+    state.profiles = [profile({})];
+    const open = await getBond(OWNER, '11111111-1111-4111-8111-111111111111');
+    const detail = open.detail!;
+
+    expect(open.phaseDetail!.themes).toHaveLength(2);
+    for (const t of open.phaseDetail!.themes) {
+      expect(t).not.toBeNull();
+      expect(t!.house).toBeGreaterThanOrEqual(1);
+      expect(t!.house).toBeLessThanOrEqual(12);
+    }
+    expect(open.phaseDetail!.themes[0]!.planet).toBe(open.phaseDetail!.lords[0]);
+    expect(open.phaseDetail!.themes[1]!.planet).toBe(open.phaseDetail!.lords[1]);
+
+    for (const w of detail.upcoming) {
+      expect(['you', 'them']).toContain(w.who);
+      expect(w.end <= detail.horizon).toBe(true);
+    }
+    const starts = detail.upcoming.map((w) => w.start);
+    expect(starts).toEqual([...starts].sort());
+    expect(detail.upcoming.filter((w) => w.who === 'you').length).toBeLessThanOrEqual(4);
+    expect(detail.upcoming.filter((w) => w.who === 'them').length).toBeLessThanOrEqual(4);
+    for (const s of detail.shared) expect(s.start < s.end).toBe(true);
+
+    expect(detail.relate.map((m) => m.key)).toEqual(['emotion', 'communication', 'spark']);
+    for (const m of detail.relate) {
+      expect(m.score).toBeGreaterThanOrEqual(0);
+      expect(m.score).toBeLessThanOrEqual(100);
+      expect(m.parts.length).toBeGreaterThan(0);
+    }
+
+    expect(detail.mangal).not.toBeNull();
+    const { you, them, status } = detail.mangal!;
+    expect(status).toBe(you && them ? 'both' : you || them ? 'oneSided' : 'neither');
+
+    expect(detail.dates.length).toBeLessThanOrEqual(6);
+    expect(detail.dates.filter((d) => d.kind === 'birthday')).toHaveLength(1);
+  }, 60_000);
+
+  it('gives a friend the Vibe meter and no Mangal line', async () => {
+    state.profiles = [profile({ relationship: 'friend' })];
+    const open = await getBond(OWNER, '11111111-1111-4111-8111-111111111111');
+    expect(open.category).toBe('social');
+    expect(open.compatibility?.kind).toBe('harmony');
+    expect(open.detail!.relate.map((m) => m.key)).toEqual(['emotion', 'communication', 'vibe']);
+    expect(open.detail!.mangal).toBeNull();
+  }, 60_000);
+
+  it('scores romance that is not a marriage with harmony, with Spark and no Mangal line', async () => {
+    state.profiles = [profile({ relationship: 'situationship' })];
+    const open = await getBond(OWNER, '11111111-1111-4111-8111-111111111111');
+    expect(open.category).toBe('romantic');
+    expect(open.compatibility?.kind).toBe('harmony');
+    expect(open.detail!.relate.map((m) => m.key)).toEqual(['emotion', 'communication', 'spark']);
+    expect(open.detail!.mangal).toBeNull();
+  }, 60_000);
+
   it('404s for a profile that is not yours', async () => {
     state.profiles = [profile({})];
     await expect(getBond(OWNER, '99999999-9999-4999-8999-999999999999')).rejects.toThrow(
       'BOND_NOT_FOUND',
     );
   });
+});
+
+describe('bondFactsForChat', () => {
+  const PRIYA = '11111111-1111-4111-8111-111111111111';
+
+  it('gives Ask Aroha the same reading the Bonds page shows', async () => {
+    state.profiles = [profile({})];
+    const [fact, ...rest] = await bondFactsForChat(OWNER.id, PRIYA);
+    expect(rest).toHaveLength(0);
+    const page = await getBond(OWNER, PRIYA);
+    expect(fact).toContain(
+      'Aroha Bonds reading for saved profile "Priya" (spouse; a romantic bond)',
+    );
+    expect(fact).toContain(`Guna Milan ${page.compatibility!.score}/36`);
+    for (const m of page.detail!.relate) expect(fact).toContain(`${m.key} ${m.score}`);
+    expect(fact).toContain(`a ${page.phaseDetail!.lords[0]} sub-period`);
+    expect(fact).toContain(`Priya is in a ${page.phaseDetail!.lords[1]} sub-period`);
+  }, 60_000);
+
+  it('says nothing without a Pass, with Bonds switched off, or for a person with no chart', async () => {
+    state.profiles = [profile({}), profile({ id: MA, timeOfBirth: null })];
+    state.pass = false;
+    expect(await bondFactsForChat(OWNER.id, PRIYA)).toEqual([]);
+    state.pass = true;
+    state.bondsOn = false;
+    expect(await bondFactsForChat(OWNER.id, PRIYA)).toEqual([]);
+    state.bondsOn = true;
+    expect(await bondFactsForChat(OWNER.id, MA)).toEqual([]);
+    expect(await bondFactsForChat(OWNER.id, '99999999-9999-4999-8999-999999999999')).toEqual([]);
+  }, 60_000);
 });

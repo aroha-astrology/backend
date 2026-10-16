@@ -19,8 +19,25 @@ export const PASS_FEATURES = [
   'findMyDate',
   'birthTime',
   'relocation',
+  'voiceCall',
 ] as const;
 export type PassFeature = (typeof PASS_FEATURES)[number];
+
+/**
+ * Voice-call minutes a member gets free in each Pass period, across all their
+ * calls. Every tier includes voice call and gets the same number; after these
+ * each minute is charged to the wallet at the `paid.voiceChat` price. See
+ * modules/voice/voice.service.ts.
+ */
+export const PASS_VOICE_FREE_MINUTES = 3;
+
+/**
+ * Voice-call minutes every user gets free ONCE, Pass or not (the voice trial,
+ * launched for Durga Puja 2026, admin switch `chat.voiceTrial`). Someone
+ * without a Pass can talk for these and then sees the Pass lock; a member
+ * spends them before their monthly PASS_VOICE_FREE_MINUTES.
+ */
+export const VOICE_TRIAL_MINUTES = 3;
 
 /**
  * The three Passes, cheapest first. Each is its own admin key (on/off and the
@@ -38,7 +55,7 @@ export const PASS_TIERS = [
     playBasePlan: 'pass-199',
     questions: 15,
     reportDiscountPct: 10,
-    features: ['timeline', 'bonds'],
+    features: ['timeline', 'bonds', 'voiceCall'],
   },
   {
     tier: 'gold',
@@ -48,7 +65,7 @@ export const PASS_TIERS = [
     playBasePlan: 'pass-299',
     questions: 30,
     reportDiscountPct: 20,
-    features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime'],
+    features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall'],
   },
   {
     tier: 'platinum',

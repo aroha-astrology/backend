@@ -161,6 +161,26 @@ export const birthProfileRelationshipEnum = pgEnum('birth_profile_relationship',
   'friend',
   'other',
   'business_partner',
+  // Aroha Bonds v2 (migration 0087).
+  'fiance',
+  'situationship',
+  'crush',
+  'first_love',
+  'fwb',
+  'soulmate',
+  'ex',
+  'manager',
+  'employee',
+  'colleague',
+  'investor',
+  'competitor',
+  'cousin',
+  'mother_in_law',
+  'father_in_law',
+  'roommate',
+  'travel_buddy',
+  'creative_partner',
+  'gym_partner',
 ]);
 
 export const consentTypeEnum = pgEnum('consent_type', [
@@ -363,6 +383,12 @@ export const users = pgTable(
     /** Prepaid chat questions bought as Question Packs (roadmap step 10). Spent after the
      * Aroha Pass quota and before the wallet — see modules/pass/question-billing.ts. */
     questionCredits: integer('question_credits').notNull().default(0),
+    /** Chat questions an admin-group member asked in their current 30-day period. Group
+     * members pay nothing, but their allowance counts down like a buyer's (migration 0090,
+     * consumeGroupQuestion in modules/pass/pass.repo.ts). */
+    groupQuestionsUsed: integer('group_questions_used').notNull().default(0),
+    /** When that period began; null = never asked. Reset lazily on the next question. */
+    groupQuestionsPeriodStart: timestamp('group_questions_period_start', { withTimezone: true }),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
@@ -1937,6 +1963,22 @@ export const chatSessions = pgTable(
      * FK to this table, so deleting a session never touches extracted facts.
      */
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /**
+     * Set when this session is the saved transcript of a voice call: the call
+     * it came from, which is where Chat History reads the call's time and
+     * length. NULL for an ordinary text chat.
+     */
+    voiceSessionId: uuid('voice_session_id').references((): AnyPgColumn => voiceSessions.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * A few sentences on what a voice call was about, for the Chat History
+     * list. Encrypted at rest like `history`. Written shortly after the call
+     * ends (voice.service.ts), so it is NULL until then, and stays NULL if the
+     * model call fails. Separate from `summary`, which is the model's own
+     * running notes and is rewritten as a chat continues.
+     */
+    callRecap: text('call_recap'),
   },
   (table) => ({
     userIdx: index('chat_sessions_user_id_idx').on(table.userId),
@@ -2727,6 +2769,22 @@ export const voiceSessions = pgTable(
      */
     minutesCharged: integer('minutes_charged').notNull().default(0),
     /**
+     * How many of `minutesCharged` were the member's free Pass minutes rather
+     * than wallet charges. A call spends its free minutes first, so the first
+     * `freeMinutes` minutes of a session are the free ones. Summed over a
+     * member's sessions since their Pass period began, this is how much of the
+     * period's free allowance is used (see voice.repo.ts's claimFreeVoiceMinute).
+     */
+    freeMinutes: integer('free_minutes').notNull().default(0),
+    /**
+     * How many of `freeMinutes` were the user's one-time trial minutes (every
+     * user gets VOICE_TRIAL_MINUTES once, Pass or not). A call spends trial
+     * minutes before any other, so the first `trialMinutes` minutes of a session
+     * are the trial ones. Summed over ALL the user's sessions, this is how much
+     * of the trial is used (see voice.repo.ts's claimTrialVoiceMinute).
+     */
+    trialMinutes: integer('trial_minutes').notNull().default(0),
+    /**
      * Cleared when the session ends (either the client says so, or the ceiling
      * is reached). A session that is still `true` long after `updatedAt` is one
      * whose client vanished without telling us — harmless, since no further
@@ -2742,9 +2800,22 @@ export const voiceSessions = pgTable(
       .notNull()
       .default(sql`now()`),
     endedAt: timestamp('ended_at', { withTimezone: true }),
+    /**
+     * The caller's answer to "how was your call?", asked once the call ends
+     * (feature `chat.voiceFeedback`). One answer per call; null until given.
+     * `feedbackTags` holds VOICE_FEEDBACK_TAGS values (voice.routes.ts) and
+     * `feedbackComment` is encrypted with field-encryption.
+     */
+    feedbackRating: smallint('feedback_rating'),
+    feedbackTags: text('feedback_tags').array().$type<string[]>(),
+    feedbackComment: text('feedback_comment'),
+    feedbackAt: timestamp('feedback_at', { withTimezone: true }),
   },
   (table) => ({
     userIdx: index('voice_sessions_user_idx').on(table.userId, table.createdAt),
+    feedbackIdx: index('voice_sessions_feedback_idx')
+      .on(table.feedbackAt)
+      .where(sql`${table.feedbackAt} IS NOT NULL`),
   }),
 );
 

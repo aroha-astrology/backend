@@ -42,6 +42,38 @@ function resolveTier(chatId: string): Tier | null {
   return null;
 }
 
+/**
+ * Copies a command sent from any other chat to the owner's chat
+ * (TELEGRAM_ALERT_CHAT_ID), so they see what a second device ran and when.
+ * The owner's own commands are not echoed back to them.
+ */
+async function logCommandToOwner(
+  message: Record<string, unknown>,
+  chatId: string,
+  tier: Tier,
+  text: string,
+  denied: boolean,
+): Promise<void> {
+  const ownerChatId = env.TELEGRAM_ALERT_CHAT_ID;
+  if (!ownerChatId || ownerChatId === chatId) return;
+
+  const from = message.from as Record<string, unknown> | undefined;
+  const firstName = typeof from?.first_name === 'string' ? from.first_name : '';
+  const username = typeof from?.username === 'string' ? `@${from.username}` : '';
+  const who = [firstName, username].filter(Boolean).join(' ') || 'unknown';
+  const when = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+
+  await sendMessage(
+    escapeMarkdown(
+      `Command from another device${denied ? ' (blocked, read-only chat)' : ''}\n` +
+        `Who: ${who} (chat ${chatId}, ${tier})\n` +
+        `Command: ${text}\n` +
+        `Time: ${when} IST`,
+    ),
+    ownerChatId,
+  );
+}
+
 export async function handleUpdate(update: unknown): Promise<void> {
   if (!update || typeof update !== 'object') return;
   const u = update as Record<string, unknown>;
@@ -68,6 +100,7 @@ export async function handleUpdate(update: unknown): Promise<void> {
       escapeMarkdown(`${command} requires admin access — this chat has read-only access.`),
       chatId,
     );
+    await logCommandToOwner(message, chatId, tier, text, true);
     return;
   }
 
@@ -143,4 +176,5 @@ export async function handleUpdate(update: unknown): Promise<void> {
   }
 
   await sendMessage(reply, chatId);
+  await logCommandToOwner(message, chatId, tier, text, false);
 }

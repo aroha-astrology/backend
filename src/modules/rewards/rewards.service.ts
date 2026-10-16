@@ -81,6 +81,20 @@ export function amountForDay(
   return day === CYCLE_LEN ? stepAmount + bonusPaise : stepAmount;
 }
 
+/**
+ * Claimed dates, newest first, reaching back past the start of the current run. The ladder
+ * slot is `run % 7`, so it needs the whole run: this used to read a fixed 8 rows, which capped
+ * the run at 8 — anyone who came back 8 days in a row then sat on day 2 every day after.
+ * Claims are one row per IST day, so a full page with no gap in it means the run may go
+ * further back, and the next page is bigger.
+ */
+async function claimedDatesThroughGap(userId: string, today: string): Promise<string[]> {
+  for (let limit = 32; ; limit *= 4) {
+    const dates = (await recentDailyRewardReasons(userId, limit)).map(dateFromReason);
+    if (dates.length < limit || streakRun(dates, today) < dates.length) return dates;
+  }
+}
+
 async function resolveAmounts(
   userId: string,
 ): Promise<{ basePaise: number; bonusPaise: number; stepPaise: number }> {
@@ -97,9 +111,9 @@ export async function getDailyRewardState(
   now: Date = new Date(),
 ): Promise<DailyRewardState> {
   const { basePaise, bonusPaise, stepPaise } = await resolveAmounts(userId);
-  const dates = (await recentDailyRewardReasons(userId)).map(dateFromReason);
-  const dateSet = new Set(dates);
   const today = istDateString(now);
+  const dates = await claimedDatesThroughGap(userId, today);
+  const dateSet = new Set(dates);
   const claimedToday = dateSet.has(today);
   const currentDay = positionInCycle(streakRun(dates, today), claimedToday);
   const cycleStart = addDays(today, -(currentDay - 1));
@@ -138,8 +152,8 @@ export async function claimDailyReward(
   now: Date = new Date(),
 ): Promise<{ claimed: boolean; walletBalancePaise: number }> {
   const { basePaise, bonusPaise, stepPaise } = await resolveAmounts(userId);
-  const dates = (await recentDailyRewardReasons(userId)).map(dateFromReason);
   const today = istDateString(now);
+  const dates = await claimedDatesThroughGap(userId, today);
   const claimedToday = dates.includes(today);
   const currentDay = positionInCycle(streakRun(dates, today), claimedToday);
   const amountPaise = amountForDay(currentDay, basePaise, bonusPaise, stepPaise);

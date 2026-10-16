@@ -40,6 +40,7 @@ import {
   expireLapsedPasses,
   expirePass,
   findActivePass,
+  groupQuestionsLeft,
   listWalletRemindersDue,
   listWalletRenewalsDue,
   markPassReminded,
@@ -146,7 +147,7 @@ export async function getPassStatus(user: UserRow): Promise<PassStatus> {
       pricePaise: 0,
       periodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       autoRenew: true,
-      questionsLeft: GROUP_ENTITLEMENT.questions,
+      questionsLeft: groupQuestionsLeft(user),
       ...benefitsOf(GROUP_ENTITLEMENT),
     };
   }

@@ -36,6 +36,7 @@ import {
   getChatSession,
   createChatSession,
   updateChatSession,
+  setCallRecap,
 } from '../src/modules/astro/chat-sessions.repo.js';
 
 const dialect = new PgDialect();
@@ -45,6 +46,7 @@ function compile(cond: unknown) {
 
 interface FakeSelectChain {
   from: (table: unknown) => FakeSelectChain;
+  leftJoin: (table: unknown, on: unknown) => FakeSelectChain;
   where: (cond: unknown) => FakeSelectChain;
   orderBy: (ord: unknown) => FakeSelectChain;
   limit: (n: number) => Promise<unknown[]>;
@@ -56,6 +58,7 @@ function makeSelectChain(result: unknown[]) {
   const calls: { where?: unknown; orderBy?: unknown; limit?: unknown } = {};
   const chain: FakeSelectChain = {
     from: vi.fn(() => chain),
+    leftJoin: vi.fn(() => chain),
     where: vi.fn((cond: unknown) => {
       calls.where = cond;
       return chain;
@@ -237,6 +240,119 @@ describe('createChatSession — tags the new row with the active profile', () =>
       birthProfileId: 'profile-a',
       title: 'title',
     });
+  });
+});
+
+describe('voice calls in the chat history list', () => {
+  const listRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'session-1',
+    title: 'When will I get a job?',
+    summary: null,
+    createdAt: new Date('2026-10-12T10:12:05Z'),
+    updatedAt: new Date('2026-10-12T10:12:05Z'),
+    callRecap: null,
+    voiceSessionId: null,
+    callStartedAt: null,
+    callEndedAt: null,
+    callMinutes: null,
+    ...overrides,
+  });
+
+  it('a text chat has no call details', async () => {
+    const { chain } = makeSelectChain([listRow()]);
+    state.select.mockReturnValue(chain);
+
+    const [session] = await getChatSessions('user-1', null);
+
+    expect(session).toEqual({
+      id: 'session-1',
+      title: 'When will I get a job?',
+      summary: null,
+      createdAt: new Date('2026-10-12T10:12:05Z'),
+      updatedAt: new Date('2026-10-12T10:12:05Z'),
+      call: null,
+    });
+  });
+
+  it('a saved call says when it began, how long it ran and what it was about', async () => {
+    const { chain } = makeSelectChain([
+      listRow({
+        callRecap: 'You asked about a job. March was named.',
+        voiceSessionId: 'voice-1',
+        callStartedAt: new Date('2026-10-12T10:00:00Z'),
+        callEndedAt: new Date('2026-10-12T10:12:04Z'),
+        callMinutes: 13,
+      }),
+    ]);
+    state.select.mockReturnValue(chain);
+
+    const [session] = await getChatSessions('user-1', null);
+
+    expect(session?.call).toEqual({
+      startedAt: new Date('2026-10-12T10:00:00Z'),
+      durationSeconds: 724,
+      recap: 'You asked about a job. March was named.',
+    });
+    // The columns the list was built from are not sent to the app.
+    expect(session).not.toHaveProperty('voiceSessionId');
+    expect(session).not.toHaveProperty('callMinutes');
+  });
+
+  it('a call that never reported its end falls back to the minutes it was given', async () => {
+    const { chain } = makeSelectChain([
+      listRow({
+        voiceSessionId: 'voice-1',
+        callStartedAt: new Date('2026-10-12T10:00:00Z'),
+        callEndedAt: null,
+        callMinutes: 4,
+      }),
+    ]);
+    state.select.mockReturnValue(chain);
+
+    const [session] = await getChatSessions('user-1', null);
+
+    expect(session?.call).toEqual({
+      startedAt: new Date('2026-10-12T10:00:00Z'),
+      durationSeconds: 240,
+      recap: null,
+    });
+  });
+
+  it('createChatSession links the row to the call it is the transcript of', async () => {
+    const { chain, calls } = makeInsertChain([makeSessionRow({ voiceSessionId: 'voice-1' })]);
+    state.insert.mockReturnValue(chain);
+
+    await createChatSession(
+      'user-1',
+      null,
+      'title',
+      [{ role: 'user', content: 'hi' }],
+      undefined,
+      'voice-1',
+    );
+
+    expect(calls.values).toMatchObject({ userId: 'user-1', voiceSessionId: 'voice-1' });
+  });
+
+  it('createChatSession leaves a text chat unlinked', async () => {
+    const { chain, calls } = makeInsertChain([makeSessionRow()]);
+    state.insert.mockReturnValue(chain);
+
+    await createChatSession('user-1', null, 'title', [{ role: 'user', content: 'hi' }]);
+
+    expect(calls.values).toMatchObject({ voiceSessionId: null });
+  });
+
+  it('setCallRecap writes only to the caller\'s own session and leaves its place in the list alone', async () => {
+    const { chain, calls } = makeUpdateChain([]);
+    state.update.mockReturnValue(chain);
+
+    await setCallRecap('session-1', 'user-1', 'You asked about a job.');
+
+    expect(calls.set).toEqual({ callRecap: 'You asked about a job.' });
+    const query = compile(calls.where);
+    expect(query.sql).toBe('("chat_sessions"."id" = $1 and "chat_sessions"."user_id" = $2)');
+    expect(query.params).toEqual(['session-1', 'user-1']);
   });
 });
 

@@ -711,6 +711,23 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+  // Voice call trial (Durga Puja 2026, owner's decision): every user, Pass or not, gets
+  // VOICE_TRIAL_MINUTES free once. Without a Pass the call stops there and shows the Pass lock.
+  // ON by default; switching it off makes voice Pass-only again. See modules/voice/voice.service.ts.
+  {
+    key: 'chat.voiceTrial',
+    label: 'Voice call — 3 free minutes once for every user (then the Pass)',
+    group: 'chat',
+    defaultEnabled: true,
+  },
+  // After a call that ran 30 s or more: "how was your call?" (stars, quick tags, comment). See voice.service.ts submitVoiceFeedback.
+  {
+    key: 'chat.voiceFeedback',
+    label: 'Voice call — ask "how was your call?" when it ends',
+    group: 'chat',
+    defaultEnabled: false,
+    tag: 'new',
+  },
   // Hands-free chat: dictation in, reply read aloud in the language it was written in. Uses the normal per-question price.
   {
     key: 'chat.voiceMode',
@@ -825,6 +842,14 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     key: 'nav.arohaPass',
     label: 'Aroha Pass — monthly Google Play subscription',
     group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // The "Aroha Pass is here" popup on Home, with a button to /pass. Shown once to each user who has no Pass, and only while nav.arohaPass is on with at least one tier. A new user does not get it on their first visit: it waits for the second.
+  {
+    key: 'home.passLaunchPopup',
+    label: "Aroha Pass launch popup on Home (once per user, from a new user's second visit)",
+    group: 'home',
     defaultEnabled: false,
     tag: 'new',
   },

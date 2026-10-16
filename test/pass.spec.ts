@@ -234,7 +234,7 @@ describe('getPassStatus', () => {
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-199' },
         questionsPerPeriod: 15,
         reportDiscountPct: 10,
-        features: ['timeline', 'bonds'],
+        features: ['timeline', 'bonds', 'voiceCall'],
       },
       {
         tier: 'gold',
@@ -243,7 +243,7 @@ describe('getPassStatus', () => {
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-299' },
         questionsPerPeriod: 30,
         reportDiscountPct: 20,
-        features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime'],
+        features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall'],
       },
       {
         tier: 'platinum',
@@ -252,7 +252,15 @@ describe('getPassStatus', () => {
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-399' },
         questionsPerPeriod: 60,
         reportDiscountPct: 30,
-        features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'relocation'],
+        features: [
+          'timeline',
+          'bonds',
+          'decisions',
+          'findMyDate',
+          'birthTime',
+          'relocation',
+          'voiceCall',
+        ],
       },
     ]);
     expect(s.periodDays).toBe(30);
@@ -274,7 +282,7 @@ describe('getPassStatus', () => {
       questionsPerPeriod: 15,
       questionsLeft: 11,
       reportDiscountPct: 10,
-      features: ['timeline', 'bonds'],
+      features: ['timeline', 'bonds', 'voiceCall'],
     });
 
     held.active = passRow({ source: 'google_play', priceVariant: 'C', questionsUsed: 70 });

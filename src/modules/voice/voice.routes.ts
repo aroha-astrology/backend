@@ -10,6 +10,9 @@ import {
   startVoiceSession,
   extendVoiceSession,
   endVoiceSessionForUser,
+  voiceMembership,
+  submitVoiceFeedback,
+  VOICE_FEEDBACK_TAGS,
   VOICE_MAX_MINUTES,
 } from './voice.service.js';
 
@@ -33,7 +36,7 @@ export const voiceRouter = new OpenAPIHono();
 
 /**
  * Caps how often a user can ask for a token, independent of the per-session
- * 3-minute ceiling which resets every time they start a new session. Without
+ * ceiling which resets every time they start a new session. Without
  * this, someone could start-and-abandon sessions in a loop and mint tokens far
  * faster than 1/minute.
  *
@@ -56,15 +59,27 @@ const VoiceGrantSchema = z
     model: z.string(),
     expiresAt: z.number().describe('Epoch ms when this paid minute stops accepting audio'),
     minutesUsed: z.number(),
-    minutesRemaining: z.number(),
+    minutesRemaining: z
+      .number()
+      .describe('Whole minutes the call can still be given: free Pass minutes plus wallet balance'),
     pricePerMinutePaise: z.number(),
+    freeMinute: z.boolean().describe('This minute came from the free Pass allowance'),
+    freeMinutesLeft: z
+      .number()
+      .describe('Free minutes left: trial minutes plus, for a member, the Pass period'),
+    trialMinute: z.boolean().describe('This minute came from the one-time free trial'),
+    passMember: z
+      .boolean()
+      .describe('False on a trial call: it ends with the trial and the wallet is never used'),
   })
   .openapi('VoiceGrant');
 
 /**
- * Three gates gate every voice route, and all must pass:
+ * Four gates gate every voice route, and all must pass:
  *   - `GEMINI_LIVE_ENABLED`  — the operational kill switch (checked in the service)
  *   - `paid.voiceChat`       — the admin/product toggle, ships disabled
+ *   - an Aroha Pass          — voice call is a Pass benefit (checked in the service,
+ *                              403 PASS_REQUIRED, the same answer as other Pass features)
  *   - voice consent          — the per-user grant, checked by this function
  *
  * `requireConsent` in the middleware list covers only the general
@@ -104,9 +119,11 @@ const startRoute = createRoute({
   tags: ['Voice'],
   summary: 'Start a realtime voice session',
   description:
-    'Charges one minute and returns a single-use ephemeral token the client uses to open a ' +
-    'WebSocket directly to Gemini Live. Audio never passes through this server. Each minute ' +
-    `must be bought separately via the extend endpoint, up to ${VOICE_MAX_MINUTES} per session.`,
+    'Needs an Aroha Pass. Takes one minute — free while the member has free Pass minutes left ' +
+    'in the period, otherwise charged to the wallet — and returns a single-use ephemeral token ' +
+    'the client uses to open a WebSocket directly to Gemini Live. Audio never passes through ' +
+    'this server. Each further minute is asked for via the extend endpoint, for as long as ' +
+    `there are free minutes or wallet balance, up to a safety ceiling of ${VOICE_MAX_MINUTES}.`,
   security: [{ bearerAuth: [] }],
   middleware: [
     requireUser,
@@ -130,14 +147,17 @@ const startRoute = createRoute({
       content: { 'application/json': { schema: VoiceGrantSchema } },
     },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled, or voice consent not granted'),
-    409: errorResponse('Not enough credits'),
+    403: errorResponse('Feature disabled, no Aroha Pass, or voice consent not granted'),
+    409: errorResponse('Not enough credits (VOICE_OUT_OF_CREDIT)'),
     429: errorResponse('Starting sessions too quickly'),
   },
 });
 
 voiceRouter.openapi(startRoute, async (c) => {
   const user = c.get('user');
+  // The Pass before consent: someone who cannot call is shown the Pass lock
+  // straight away, not asked to agree to voice recording first and then told.
+  await voiceMembership(user.id);
   requireVoiceConsent(user);
 
   const { locale } = c.req.valid('json');
@@ -157,9 +177,10 @@ const extendRoute = createRoute({
   tags: ['Voice'],
   summary: 'Buy the next minute of an in-progress voice session',
   description:
-    'Charges another minute and mints a fresh token. Pass the sessionResumption handle the ' +
-    'client received from Gemini so the conversation continues rather than restarting. ' +
-    `Returns 409 once ${VOICE_MAX_MINUTES} minutes have been used.`,
+    'Takes another minute (free Pass minute, else wallet) and mints a fresh token. Pass the ' +
+    'sessionResumption handle the client received from Gemini so the conversation continues ' +
+    'rather than restarting. Returns 409 VOICE_OUT_OF_CREDIT when the wallet cannot pay, and ' +
+    `409 VOICE_SESSION_LIMIT at the safety ceiling of ${VOICE_MAX_MINUTES} minutes.`,
   security: [{ bearerAuth: [] }],
   middleware: [
     requireUser,
@@ -187,7 +208,7 @@ const extendRoute = createRoute({
       content: { 'application/json': { schema: VoiceGrantSchema } },
     },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Feature disabled, or voice consent not granted'),
+    403: errorResponse('Feature disabled, no Aroha Pass, or voice consent not granted'),
     404: errorResponse('Voice session not found'),
     409: errorResponse('Session limit reached, ended, or not enough credits'),
     429: errorResponse('Requesting minutes too quickly'),
@@ -196,6 +217,7 @@ const extendRoute = createRoute({
 
 voiceRouter.openapi(extendRoute, async (c) => {
   const user = c.get('user');
+  await voiceMembership(user.id);
   requireVoiceConsent(user);
 
   const { id } = c.req.valid('param');
@@ -244,7 +266,10 @@ const endRoute = createRoute({
               ),
             transcript: z
               .array(ChatHistoryTurnSchema)
-              .max(60)
+              // Sized for the longest call the safety ceiling allows. At the old
+              // 60, a long call failed validation here, which lost the transcript
+              // AND left the session marked active.
+              .max(1000)
               .optional()
               .describe(
                 'The whole call, assembled client-side from Gemini Live transcription events. ' +
@@ -270,5 +295,54 @@ voiceRouter.openapi(endRoute, async (c) => {
   const { id } = c.req.valid('param');
   const { connected, transcript } = c.req.valid('json') ?? {};
   await endVoiceSessionForUser(user.id, id, connected, transcript);
+  return c.json({ ok: true as const }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /voice/sessions/{id}/feedback — "how was your call?"                  */
+/* -------------------------------------------------------------------------- */
+
+const feedbackRoute = createRoute({
+  method: 'post',
+  path: '/voice/sessions/{id}/feedback',
+  tags: ['Voice'],
+  summary: 'Rate a finished voice call',
+  description:
+    'The answer to the sheet the app shows after a call: 1 to 5 stars, quick tags and an ' +
+    'optional comment. One answer per call; a second one is ignored. A rating of 2 or less ' +
+    'is also sent to the ops chat. Behind the `chat.voiceFeedback` switch.',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireFeature('chat.voiceFeedback')] as const,
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({
+            rating: z.number().int().min(1).max(5),
+            tags: z.array(z.enum(VOICE_FEEDBACK_TAGS)).max(VOICE_FEEDBACK_TAGS.length).default([]),
+            comment: z.string().trim().max(1000).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Answer saved (or the call was already rated)',
+      content: { 'application/json': { schema: z.object({ ok: z.literal(true) }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Feature disabled'),
+    404: errorResponse('Voice session not found'),
+  },
+});
+
+voiceRouter.openapi(feedbackRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const { rating, tags, comment } = c.req.valid('json');
+  await submitVoiceFeedback(user.id, id, { rating, tags, comment: comment || undefined });
   return c.json({ ok: true as const }, 200);
 });

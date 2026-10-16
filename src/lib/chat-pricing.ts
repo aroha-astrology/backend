@@ -25,7 +25,7 @@ function rupees(paise: number): string {
  * case reads as the normal price.
  */
 export function chatPricingFact(pricePaise: number, source: QuestionSource | null): string {
-  if (pricePaise <= 0 || source === 'free') {
+  if (pricePaise <= 0 || source === 'free' || source === 'group') {
     return 'CHAT PRICING: questions are free for this user.';
   }
   const price = rupees(pricePaise);

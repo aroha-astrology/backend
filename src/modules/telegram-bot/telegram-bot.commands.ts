@@ -144,18 +144,9 @@ export async function cmdPendingDeletes(): Promise<string> {
   return `*Pending Deletion Requests \\(${pending.length}\\)*\n\n${lines.join('\n')}`;
 }
 
-const peakBetween = async (preset: string) => {
+const peakBetween = (preset: string) => {
   const { from, to } = resolveDateRangePreset(preset);
-  const count = await maxOnlineCountBetween(from, to);
-  if (
-    preset === 'yesterday' ||
-    preset === 'last7d' ||
-    preset === 'last30d' ||
-    preset === 'this_year'
-  ) {
-    return Math.max(17, count);
-  }
-  return count;
+  return maxOnlineCountBetween(from, to);
 };
 
 const IST_DATE_FMT = new Intl.DateTimeFormat('en-GB', {

@@ -31,6 +31,7 @@ import {
   adminDeleteReportRowsByKey,
 } from '../reports/reports.repo.js';
 import { listAllReportRatings } from '../reports/report-ratings.repo.js';
+import { listVoiceFeedback } from '../voice/voice.repo.js';
 import {
   sumPaidOrdersBetween,
   revenueTimeSeries,
@@ -392,6 +393,18 @@ export async function getReportRatings(
   const { rows, total } = await listAllReportRatings(reportKey, limit, offset);
   const ratings = rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
   return { ratings, total, offset, limit };
+}
+
+/** Every "how was your call?" answer, newest first, with the overall average. */
+export async function getVoiceFeedback(limit: number, offset: number) {
+  const { rows, total, averageRating } = await listVoiceFeedback(limit, offset);
+  const feedback = rows.map((row) => ({
+    ...row,
+    callStartedAt: row.callStartedAt.toISOString(),
+    callEndedAt: row.callEndedAt ? row.callEndedAt.toISOString() : null,
+    feedbackAt: row.feedbackAt.toISOString(),
+  }));
+  return { feedback, total, averageRating, offset, limit };
 }
 
 /** Vote counts for "which report should we prepare next", most-requested

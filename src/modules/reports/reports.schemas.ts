@@ -109,6 +109,10 @@ export const ReportCatalogueEntrySchema = z
     /** "Strikethrough" MRP for the discount treatment. Null means no discount
      * is configured — never a fabricated value derived from pricePaise. */
     originalPricePaise: z.number().int().nullable(),
+    /** The price before the caller's Aroha Pass discount: the same as pricePaise without a Pass. */
+    listPricePaise: z.number().int(),
+    /** Percent the caller's Aroha Pass takes off listPricePaise; 0 without a Pass. */
+    passDiscountPct: z.number().int(),
     purchases: z.array(ReportCataloguePurchaseSchema),
     /** marriage only — the most recently purchased marriage report's own stored spouse birth
      * details, for pre-filling the optional spouse-details section on a later purchase. Always
