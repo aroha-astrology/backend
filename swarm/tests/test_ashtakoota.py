@@ -29,13 +29,13 @@ class TestKootaScores:
 
     def test_different_nadi_full_score(self):
         # Nak 0 = Aadi, Nak 2 = Antya
-        result = calculate_ashtakoota(0, 2, "Aries", "Gemini")
+        result = calculate_ashtakoota(0, 4, "Aries", "Gemini")
         nadi = next(s for s in result["scores"] if s["koota"] == "Nadi")
         assert nadi["score"] == 8
 
     def test_same_gana_full_score(self):
-        # Nak 0 = Deva, Nak 2 = Deva
-        result = calculate_ashtakoota(0, 2, "Aries", "Gemini")
+        # Nak 0 = Deva, Nak 4 = Deva (Krittika, 2, is Rakshasa since the audit)
+        result = calculate_ashtakoota(0, 4, "Aries", "Gemini")
         gana = next(s for s in result["scores"] if s["koota"] == "Gana")
         assert gana["score"] == 6
 
