@@ -10,7 +10,7 @@ import { VASTU_RULES, VASTU_RULE_SET } from '../src/modules/vastu/vastu.rules.js
 
 const snapshot = JSON.parse(
   readFileSync(
-    new URL('./fixtures/vastu-rules.aroha-traditional-v1.json', import.meta.url),
+    new URL('./fixtures/vastu-rules.aroha-traditional-v2.json', import.meta.url),
     'utf8',
   ),
 ) as { ruleSetId: string; rules: unknown[] };

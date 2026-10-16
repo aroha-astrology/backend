@@ -26,8 +26,8 @@
 // =============================================================================
 
 import { calculateChart } from './planetPositions.js';
-import { calculateVimshottariDasha } from '../dashas/vimshottari.js';
-import type { Ayanamsa, HouseSystem } from '@aroha-astrology/shared';
+import { buildSubPeriods, calculateVimshottariDasha, fullSpanOf } from '../dashas/vimshottari.js';
+import type { Ayanamsa, HouseSystem, Planet } from '@aroha-astrology/shared';
 
 /** Every kind of life event rectification (and the Astro Journal) understands. */
 export const LIFE_EVENT_DOMAINS = [
@@ -84,7 +84,7 @@ const DOMAIN_HOUSES: Record<LifeEvent['domain'], number[]> = {
 
   // --- Family
   childbirth: [5, 9, 2],
-  bereavement: [8, 12, 2], // 2nd is the classical maraka
+  bereavement: [8, 12, 2], // 2nd is the traditional maraka
 
   // --- Home and money
   property_bought: [4, 12, 11], // 4th home, 12th outlay, 11th means
@@ -159,6 +159,7 @@ interface PeriodLike {
   planet: string;
   startDate: Date | string;
   endDate: Date | string;
+  fullStartDate?: Date | string;
   subPeriods?: PeriodLike[];
 }
 
@@ -170,7 +171,19 @@ function activeLords(mahadashas: PeriodLike[], at: number): string[] {
     const end = new Date(maha.endDate).getTime();
     if (!(start <= at && at < end)) continue;
     lords.push(maha.planet);
-    for (const antar of maha.subPeriods ?? []) {
+    // The tree only carries sub-periods for the Mahadasha running today, so an
+    // event in any earlier period used to be scored on the Maha lord alone
+    // (audit item VM2). Cut them here from the period's own full span.
+    const full = fullSpanOf(maha);
+    const antardashas = buildSubPeriods(
+      maha.planet as Planet,
+      full.start,
+      full.years,
+      1,
+      full.start,
+      1,
+    );
+    for (const antar of antardashas) {
       const aStart = new Date(antar.startDate).getTime();
       const aEnd = new Date(antar.endDate).getTime();
       if (aStart <= at && at < aEnd) lords.push(antar.planet);
@@ -279,16 +292,23 @@ export async function rectifyBirthTime(input: RectifyInput): Promise<Rectificati
   const evidence = new Map<number, { chart: ChartLike; mahadashas: PeriodLike[] }>();
 
   for (let offset = -windowMinutes; offset <= windowMinutes; offset += stepMinutes) {
-    const totalMinutes = input.hour * 60 + input.minute + offset;
-    const hour = Math.floor((((totalMinutes % 1440) + 1440) % 1440) / 60);
-    const minute = ((totalMinutes % 60) + 60) % 60;
+    // Wall-clock arithmetic on the local birth date, so a candidate that
+    // crosses midnight lands on the neighbouring day (audit item RC1).
+    const local = new Date(
+      Date.UTC(input.year, input.month - 1, input.day, input.hour, input.minute + offset),
+    );
+    const year = local.getUTCFullYear();
+    const month = local.getUTCMonth() + 1;
+    const day = local.getUTCDate();
+    const hour = local.getUTCHours();
+    const minute = local.getUTCMinutes();
 
     let chart;
     try {
       chart = await calculateChart(
-        input.year,
-        input.month,
-        input.day,
+        year,
+        month,
+        day,
         hour,
         minute,
         input.tzOffset,
@@ -303,7 +323,7 @@ export async function rectifyBirthTime(input: RectifyInput): Promise<Rectificati
 
     const moon = chart.planets.find((p) => p.planet === 'Moon');
     const birthDate = new Date(
-      Date.UTC(input.year, input.month - 1, input.day, hour, minute) - input.tzOffset * 3_600_000,
+      Date.UTC(year, month - 1, day, hour, minute) - input.tzOffset * 3_600_000,
     );
     const dasha = calculateVimshottariDasha(moon?.longitude ?? 0, birthDate) as unknown as {
       mahadashas?: PeriodLike[];

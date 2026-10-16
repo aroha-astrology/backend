@@ -4,16 +4,14 @@
 
 import { logger } from '../../logger.js';
 import { calculateAshtakavarga, detectAllYogas } from '../../astro-engine/index.js';
-import { analyzeAllDoshas } from '../../astro-engine/doshas/index.js';
+import { analyzeAllDoshasAt } from '../../astro-engine/doshas/index.js';
 import type { SwarmState, Finding } from '../state.js';
 
 /**
  * Profiler pipeline node: runs Ashtakavarga, yoga detection, and dosha
  * analysis on the computed chart, producing profile findings.
  */
-export async function profilerNode(
-  state: SwarmState,
-): Promise<Partial<SwarmState>> {
+export async function profilerNode(state: SwarmState): Promise<Partial<SwarmState>> {
   logger.debug({ requestId: state.requestId }, 'profiler: enter');
 
   if (!state.metrology) {
@@ -104,17 +102,16 @@ export async function profilerNode(
 
     // ── Dosha Analysis ────────────────────────────────────────────────────
     try {
-      // We need Saturn's current transit longitude for Sade Sati.
-      // Use the natal Saturn longitude as a fallback (transit data would
-      // come from a separate service in production).
-      const saturn = chartData.planets.find((p) => p.planet === 'Saturn');
-      const saturnLongitude = saturn?.longitude ?? 0;
-
-      const doshas = analyzeAllDoshas(chartData, saturnLongitude);
+      // Sade Sati is a transit condition: it is read from where Saturn is
+      // today, never from the birth chart's Saturn (which this used before).
+      const doshas = await analyzeAllDoshasAt(chartData);
 
       // Process each dosha type
       const doshaEntries = Object.entries(doshas) as Array<
-        [string, { present: boolean; severity?: string; description?: string; [k: string]: unknown }]
+        [
+          string,
+          { present: boolean; severity?: string; description?: string; [k: string]: unknown },
+        ]
       >;
 
       for (const [doshaName, doshaResult] of doshaEntries) {
@@ -122,7 +119,8 @@ export async function profilerNode(
           findings.push({
             id: `dosha-${doshaName}`,
             kind: 'dosha',
-            claim: `${doshaName.charAt(0).toUpperCase() + doshaName.slice(1)} Dosha detected` +
+            claim:
+              `${doshaName.charAt(0).toUpperCase() + doshaName.slice(1)} Dosha detected` +
               (doshaResult.severity ? ` (severity: ${doshaResult.severity})` : ''),
             evidence: { ...doshaResult },
           });

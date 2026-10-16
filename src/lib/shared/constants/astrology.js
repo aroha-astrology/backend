@@ -148,7 +148,7 @@ export const KOOTA_MAX_SCORES = {
     Nadi: 8,
 };
 export const NAKSHATRA_GANA = {
-    0: 'Deva', 1: 'Manushya', 2: 'Deva', 3: 'Manushya', 4: 'Deva', 5: 'Manushya',
+    0: 'Deva', 1: 'Manushya', 2: 'Rakshasa', 3: 'Manushya', 4: 'Deva', 5: 'Manushya',
     6: 'Deva', 7: 'Deva', 8: 'Rakshasa', 9: 'Rakshasa', 10: 'Manushya', 11: 'Manushya',
     12: 'Deva', 13: 'Rakshasa', 14: 'Deva', 15: 'Rakshasa', 16: 'Deva', 17: 'Rakshasa',
     18: 'Rakshasa', 19: 'Manushya', 20: 'Manushya', 21: 'Deva', 22: 'Rakshasa', 23: 'Rakshasa',
@@ -172,8 +172,8 @@ export const NAKSHATRA_YONI = {
 };
 export const NAKSHATRA_NADI = {
     0: 'Aadi', 1: 'Madhya', 2: 'Antya', 3: 'Antya', 4: 'Madhya', 5: 'Aadi',
-    6: 'Aadi', 7: 'Madhya', 8: 'Antya', 9: 'Aadi', 10: 'Madhya', 11: 'Antya',
-    12: 'Antya', 13: 'Madhya', 14: 'Aadi', 15: 'Aadi', 16: 'Madhya', 17: 'Antya',
+    6: 'Aadi', 7: 'Madhya', 8: 'Antya', 9: 'Antya', 10: 'Madhya', 11: 'Aadi',
+    12: 'Aadi', 13: 'Madhya', 14: 'Antya', 15: 'Antya', 16: 'Madhya', 17: 'Aadi',
     18: 'Aadi', 19: 'Madhya', 20: 'Antya', 21: 'Antya', 22: 'Madhya', 23: 'Aadi',
     24: 'Aadi', 25: 'Madhya', 26: 'Antya',
 };

@@ -108,7 +108,7 @@ describe('generateCareerMonthlyNarrative', () => {
     );
     const call = state.generate.mock.calls[0]?.[0];
     const content = call.messages.map((m: { content: string }) => m.content).join('\n');
-    expect(content).toContain('Classically-associated industries: none available.');
+    expect(content).toContain('Traditionally-associated industries: none available.');
   });
 
   it('embeds present dosha cautions (obstacles) as GIVEN FACTS, or "none" when absent (the doshaYoga.cautions gap fix)', async () => {

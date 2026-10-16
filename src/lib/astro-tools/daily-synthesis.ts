@@ -9,7 +9,6 @@
 //   5. Kakshya daily score (how many planets in bindu-yielding compartments)
 //   6. Tara Bala + Chandrabala (lunar day quality)
 //   7. Double-transit (Jupiter ∥ Saturn simultaneous aspect)
-//   +  Panchaka danger screening
 // =============================================================================
 
 import {
@@ -26,8 +25,6 @@ import { dailyLunarAssessment } from './tara-bala.js';
 import { detectDoubleTransit, dashaLordTransitQuality, SIGNS } from './transit.js';
 import { findTransitEvents } from './transit-events.js';
 import { reduceToSingleDigit } from '../astro-engine/numerology/chaldean.js';
-import { computePanchaka } from './panchaka.js';
-import { calculateTithi } from '../astro-engine/panchang/tithi.js';
 import { findPeriodAsOf, type RawDashaPeriod } from './dasha-reading.js';
 import type { Category, CategoryReading } from '@aroha-astrology/shared';
 
@@ -79,7 +76,13 @@ export interface DailySynthesisResult {
   kakshya: unknown;
   lunar: unknown;
   doubleTransit: unknown[];
-  panchaka: unknown;
+  /**
+   * Always null. Panchaka judges one moment (it adds the sign rising at that
+   * moment), so a whole day has none; the birth Lagna was fed in here before
+   * (audit item DSY2). The field stays so stored readings and clients keep
+   * their shape.
+   */
+  panchaka: null;
   /** SAV bindu count per transit sign */
   savTransit: Record<string, number>;
   /**
@@ -231,7 +234,7 @@ async function getCurrentSky(asOf?: string): Promise<{
 // BPHS mandates a strict hierarchy, not a flat sum of equal layers:
 // Mahadasha sets the absolute ceiling/floor of what a period can deliver,
 // Antardasha narrows that range toward its own theme, and Gochara (transits:
-// Kakshya, Vedha, Tara Bala/Chandrabala, Panchaka) only decides WHERE within
+// Kakshya, Vedha, Tara Bala/Chandrabala) only decides WHERE within
 // that already-bounded range a given day lands. A brilliant transit during a
 // debilitated Mahadasha still can't outrank a mediocre transit during an
 // exalted one — that's the whole point of the hierarchy, and is exactly what
@@ -306,14 +309,19 @@ export function narrowByAntardasha(
  * half a point inside the band and rounded to the same score for weeks.
  * Stretching around that median by 3× lets ordinary transit swings reach the
  * band's ends (a clearly good or hard day) while an average day stays mid-band.
+ *
+ * 0.45 was set while a Panchaka term still took 0.5 off about 56% of days.
+ * That term is gone (audit item DSY2: it was fed the birth Lagna), which
+ * raised the mean fraction by 0.062 over 24 charts × 60 days (2026-10-09), so
+ * the centre moves up by the same amount to keep an average day mid-band.
  */
-const GOCHARA_TYPICAL_MEDIAN = 0.45;
+const GOCHARA_TYPICAL_MEDIAN = 0.51;
 const GOCHARA_STRETCH = 3;
 
 /**
  * Gochara (transits) never set the band — they only decide where within it a
  * given day falls, expressed as a 0 (worst) .. 1 (best) fraction. Combines
- * Kakshya, Tara Bala/Chandrabala, Vedha, and Panchaka the same way the old
+ * Kakshya, Tara Bala/Chandrabala and Vedha the same way the old
  * flat model weighted them, just renormalized onto [0,1] instead of added to
  * an absolute score.
  */
@@ -321,9 +329,8 @@ export function gocharaFraction(
   kakshya: Record<string, unknown>,
   lunar: Record<string, unknown> | undefined,
   vedhaBlockedCount: number,
-  panchaka: Record<string, unknown> | undefined,
 ): number {
-  let raw = 0; // ranges roughly [-2.5, 2] across all inputs below
+  let raw = 0; // ranges roughly [-2, 2] across all inputs below
 
   const kakshyaMap: Record<string, number> = { good: 1, average: 0, poor: -0.5 };
   raw += kakshyaMap[(kakshya.quality as string) ?? 'average'] ?? 0;
@@ -335,13 +342,10 @@ export function gocharaFraction(
 
   raw -= vedhaBlockedCount * 0.2;
 
-  if (panchaka?.isDangerous) raw -= 0.5;
-
-  // raw's typical range is [-2.5, 2] (best case 1 + 1 = 2; worst case
-  // -0.5 - 1 - 0.5 - a few tenths of Vedha blocks = around -2.5); an
-  // unusually large Vedha block count can push raw further negative, which
-  // the final clamp below simply saturates to fraction 0 rather than going
-  // out of range.
+  // raw's typical range is [-2, 2] (best case 1 + 1 = 2; worst case
+  // -0.5 - 1 - a few tenths of Vedha blocks = around -2). The scale below
+  // keeps its old [-2.5, 2] span so the stretch constants above still apply;
+  // an unusually large Vedha block count simply saturates at fraction 0.
   const fraction = clamp((raw + 2.5) / 4.5, 0, 1);
   return clamp(0.5 + (fraction - GOCHARA_TYPICAL_MEDIAN) * GOCHARA_STRETCH, 0, 1);
 }
@@ -358,7 +362,6 @@ export function computeAggregateScore(
   kakshya: Record<string, unknown>,
   lunar: Record<string, unknown> | undefined,
   vedhaBlockedCount: number,
-  panchaka: Record<string, unknown>,
 ): AggregateScoreResult {
   const reasoning: string[] = [];
 
@@ -378,11 +381,11 @@ export function computeAggregateScore(
     );
   }
 
-  const fraction = gocharaFraction(kakshya, lunar, vedhaBlockedCount, panchaka);
+  const fraction = gocharaFraction(kakshya, lunar, vedhaBlockedCount);
   const raw = narrowedBand[0] + fraction * (narrowedBand[1] - narrowedBand[0]);
   const score = clamp(Math.round(raw), 1, 5);
   reasoning.push(
-    `Today's transits (Kakshya/lunar day quality/Vedha/Panchaka) place the day at ${(fraction * 100).toFixed(0)}% through that range, giving a final score of ${score}/5.`,
+    `Today's transits (Kakshya/lunar day quality/Vedha) place the day at ${(fraction * 100).toFixed(0)}% through that range, giving a final score of ${score}/5.`,
   );
 
   return {
@@ -534,17 +537,6 @@ export async function synthesizeDailyForecast(
   const satSign = transitSigns['Saturn'] ?? 0;
   const doubleTransit = detectDoubleTransit(jupSign, satSign, natalMoonSignIdx);
 
-  // ── 7. Panchaka ──────────────────────────────────────────────────────────
-  // Panchaka needs tithi, vara, nakshatra, lagna indices (all 1-based).
-  const varaIndex = now.getUTCDay() + 1; // 1=Sunday .. 7=Saturday
-  const tithi = calculateTithi(transitLons['Moon'] ?? 0, transitLons['Sun'] ?? 0);
-  const panchakaResult = computePanchaka(
-    tithi.number, // real tithi (1-30), not a nakshatra-derived proxy
-    varaIndex,
-    (transitMoonNakIdx ?? 0) + 1, // nakshatra 1-based
-    natalAscSignIdx + 1, // lagna 1-based
-  );
-
   // ── Score ─────────────────────────────────────────────────────────────────
   const { score, band, reasoning } = computeAggregateScore(
     mdQuality,
@@ -552,7 +544,6 @@ export async function synthesizeDailyForecast(
     kakshya as unknown as Record<string, unknown>,
     lunar as unknown as Record<string, unknown> | undefined,
     vedhaBlockedCount,
-    panchakaResult as unknown as Record<string, unknown>,
   );
 
   // ── Remedies ──────────────────────────────────────────────────────────────
@@ -589,7 +580,7 @@ export async function synthesizeDailyForecast(
     kakshya,
     lunar,
     doubleTransit,
-    panchaka: panchakaResult,
+    panchaka: null,
     savTransit,
     remedies,
   };

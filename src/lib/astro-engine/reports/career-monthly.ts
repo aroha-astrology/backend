@@ -82,12 +82,12 @@ function industryFitForTenthLord(tenthLordPlanet: string | undefined): IndustryF
   if (!likelyIndustries) {
     return {
       likelyIndustries: [],
-      note: `No classical industry association is catalogued for ${tenthLordPlanet}.`,
+      note: `No traditional industry association is catalogued for ${tenthLordPlanet}.`,
     };
   }
   const note = NODE_PLANETS.has(tenthLordPlanet)
-    ? `Unconventional pairing: ${tenthLordPlanet} (10th-house lord) has no fixed classical karakatva of its own, but is commonly associated with these fields in modern Vedic career astrology.`
-    : `Classical industry associations for the 10th-house lord, ${tenthLordPlanet}.`;
+    ? `Unconventional pairing: ${tenthLordPlanet} (10th-house lord) has no fixed traditional karakatva of its own, but is commonly associated with these fields in modern Vedic career astrology.`
+    : `Traditional industry associations for the 10th-house lord, ${tenthLordPlanet}.`;
   return { likelyIndustries: [...likelyIndustries], note };
 }
 

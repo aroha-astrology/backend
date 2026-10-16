@@ -212,7 +212,7 @@ export const MatchmakingResponseSchema = z
         matched: z
           .boolean()
           .describe(
-            'Both EFFECTIVELY Manglik (present and not classically cancelled) or both not — ' +
+            'Both EFFECTIVELY Manglik (present and not traditionally cancelled) or both not — ' +
               'traditionally considered compatible either way. A dosha that is present but ' +
               'cancelled counts as not-Manglik here, same as never having it.',
           ),

@@ -27,6 +27,7 @@ import { inferGenderFromName } from '../names/name-lookup.js';
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
+import { missingPersonInputs } from './numerology.js';
 import type { ReportSharedFacts } from './report-shared-facts.js';
 import type { ReportScoreContext } from '../../../modules/reports/report-generator.types.js';
 
@@ -57,6 +58,8 @@ export interface NameChangeScores extends Record<string, unknown>, ReportSharedF
   currentName: string;
   /** The DOB actually used ('YYYY-MM-DD') — same fallback reasoning as `currentName`. */
   dob: string;
+  /** 'name' and/or 'dob' when a stand-in was used for it; empty for a real report. */
+  missingInputs: Array<'name' | 'dob'>;
   /** Full numerological signature of `currentName` — mulank, bhagyank, pythagorean, chaldean,
    * soulUrge, personality, target numbers, alignment classification, friendly/enemy numbers. */
   alignment: NameAlignmentResult;
@@ -118,6 +121,7 @@ export function computeNameChangeScores(
     lifeContext,
     currentName,
     dob: dobString,
+    missingInputs: missingPersonInputs(ctx),
     gender,
     alignment,
     variants,

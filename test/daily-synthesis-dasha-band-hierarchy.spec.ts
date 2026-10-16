@@ -87,30 +87,22 @@ describe('gocharaFraction: transits position the score WITHIN the band, in [0,1]
     for (const kq of qualities) {
       for (const lq of lunarQualities) {
         for (const vedhaCount of [0, 1, 2, 5]) {
-          for (const dangerous of [true, false]) {
-            const fraction = gocharaFraction({ quality: kq }, { overallQuality: lq }, vedhaCount, {
-              isDangerous: dangerous,
-            });
-            expect(fraction).toBeGreaterThanOrEqual(0);
-            expect(fraction).toBeLessThanOrEqual(1);
-          }
+          const fraction = gocharaFraction({ quality: kq }, { overallQuality: lq }, vedhaCount);
+          expect(fraction).toBeGreaterThanOrEqual(0);
+          expect(fraction).toBeLessThanOrEqual(1);
         }
       }
     }
   });
 
   it('rates a good Kakshya + excellent lunar day higher than a poor Kakshya + poor lunar day', () => {
-    const good = gocharaFraction({ quality: 'good' }, { overallQuality: 'excellent' }, 0, {
-      isDangerous: false,
-    });
-    const bad = gocharaFraction({ quality: 'poor' }, { overallQuality: 'poor' }, 3, {
-      isDangerous: true,
-    });
+    const good = gocharaFraction({ quality: 'good' }, { overallQuality: 'excellent' }, 0);
+    const bad = gocharaFraction({ quality: 'poor' }, { overallQuality: 'poor' }, 3);
     expect(good).toBeGreaterThan(bad);
   });
 
-  it('handles missing lunar/panchaka data without throwing', () => {
-    expect(() => gocharaFraction({ quality: 'average' }, undefined, 0, undefined)).not.toThrow();
+  it('handles missing lunar data without throwing', () => {
+    expect(() => gocharaFraction({ quality: 'average' }, undefined, 0)).not.toThrow();
   });
 });
 
@@ -127,7 +119,6 @@ describe('computeAggregateScore: the full hierarchy — MD sets bounds, AD narro
       { quality: 'good' },
       { overallQuality: 'excellent' },
       0,
-      { isDangerous: false },
     );
     expect(bestCase.score).toBeLessThanOrEqual(Math.round(ceiling));
 
@@ -138,7 +129,6 @@ describe('computeAggregateScore: the full hierarchy — MD sets bounds, AD narro
       { quality: 'poor' },
       { overallQuality: 'poor' },
       5,
-      { isDangerous: true },
     );
     expect(worstCase.score).toBeGreaterThanOrEqual(Math.max(1, Math.round(floor)));
   });
@@ -152,7 +142,6 @@ describe('computeAggregateScore: the full hierarchy — MD sets bounds, AD narro
           { quality: 'average' },
           { overallQuality: 'average' },
           0,
-          { isDangerous: false },
         );
         expect(result.score).toBeGreaterThanOrEqual(1);
         expect(result.score).toBeLessThanOrEqual(5);
@@ -167,7 +156,6 @@ describe('computeAggregateScore: the full hierarchy — MD sets bounds, AD narro
       { quality: 'good' },
       { overallQuality: 'good' },
       0,
-      { isDangerous: false },
     );
     expect(result.reasoning.length).toBeGreaterThan(0);
     expect(result.reasoning.join(' ')).toMatch(/mahadasha|major/i);
@@ -180,7 +168,6 @@ describe('computeAggregateScore: the full hierarchy — MD sets bounds, AD narro
       { quality: 'good' },
       { overallQuality: 'excellent' },
       0,
-      { isDangerous: false },
     );
     const withBadTransits = computeAggregateScore(
       undefined,
@@ -188,7 +175,6 @@ describe('computeAggregateScore: the full hierarchy — MD sets bounds, AD narro
       { quality: 'poor' },
       { overallQuality: 'poor' },
       3,
-      { isDangerous: true },
     );
     expect(withGoodTransits.score).toBeGreaterThan(withBadTransits.score);
   });

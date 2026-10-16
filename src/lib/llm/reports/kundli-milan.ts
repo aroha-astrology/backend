@@ -19,14 +19,14 @@ import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import { reportFactsMessage } from './report-facts-message.js';
 
 const GROUNDING_RULE =
-  "The Guna Milan score, Dashakoota score and its per-porutham breakdown and overall verdict, Manglik status, compatibility band, both people's Navamsa (D9) charts, and primary-person dosha/yoga facts below are GIVEN FACTS, already computed by a deterministic classical Vedic algorithm. State them verbatim in your prose. Never recompute, second-guess, round differently, or contradict any of these numbers — your job is ONLY to explain what they mean in plain language.";
+  "The Guna Milan score, Dashakoota score and its per-porutham breakdown and overall verdict, Manglik status, compatibility band, both people's Navamsa (D9) charts, and primary-person dosha/yoga facts below are GIVEN FACTS, already computed by a deterministic traditional Vedic algorithm. State them verbatim in your prose. Never recompute, second-guess, round differently, or contradict any of these numbers — your job is ONLY to explain what they mean in plain language.";
 const PLAIN_LANGUAGE_RULE =
-  'Write for someone with zero astrology background. Avoid untranslated Sanskrit/technical jargon where a plain-language equivalent exists (e.g. explain "Guna Milan" as a classical 36-point compatibility score the first time you use the term, rather than assuming the reader already knows it). Talk about real relationship themes (temperament, health, family harmony, communication), not planetary mechanics.';
+  'Write for someone with zero astrology background. Avoid untranslated Sanskrit/technical jargon where a plain-language equivalent exists (e.g. explain "Guna Milan" as a traditional 36-point compatibility score the first time you use the term, rather than assuming the reader already knows it). Talk about real relationship themes (temperament, health, family harmony, communication), not planetary mechanics.';
 const SAFETY_RULE =
-  'This is advisory guidance for reflection, never a guarantee about the relationship\'s success or failure, and never a substitute for the couple\'s own judgment. Use tendency language ("suggests", "classically associated with"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
+  'This is advisory guidance for reflection, never a guarantee about the relationship\'s success or failure, and never a substitute for the couple\'s own judgment. Use tendency language ("suggests", "traditionally associated with"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing a Kundli Milan (marriage compatibility) report for a mobile astrology app. The app already computed the Guna Milan score, Dashakoota score, and Manglik Dosha status for both people, plus a small set of additional dosha/yoga facts for the primary person (person1) only, using classical rules. Your job is ONLY to write the narrative explanation.
+  return `You are writing a Kundli Milan (marriage compatibility) report for a mobile astrology app. The app already computed the Guna Milan score, Dashakoota score, and Manglik Dosha status for both people, plus a small set of additional dosha/yoga facts for the primary person (person1) only, using traditional rules. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -37,7 +37,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 5 sections, in this order:
-1. Heading close to "What Your Guna Milan Score Means" — 1-2 paragraphs explaining the total score out of 36, referencing the compatibility band given, highlighting the 1-2 strongest and weakest Kootas from the breakdown data, and briefly noting both people's given Navamsa (D9) Lagna as a corroborating classical layer on the same compatibility theme (not a separate topic).
+1. Heading close to "What Your Guna Milan Score Means" — 1-2 paragraphs explaining the total score out of 36, referencing the compatibility band given, highlighting the 1-2 strongest and weakest Kootas from the breakdown data, and briefly noting both people's given Navamsa (D9) Lagna as a corroborating traditional layer on the same compatibility theme (not a separate topic).
 2. Heading close to "Dashakoota Deep Dive" — 1-2 paragraphs: state the given Dashakoota overall verdict plainly, directly answering "what's the overall Dashakoot verdict on our compatibility" — then weave in what the given per-porutham breakdown says about health and longevity (Dina porutham), finances/progeny/children together (Mahendra porutham), and family stability/harmony at home (Rajju porutham, if its description flags a concern) — using the SAME given-fact, plain-language discipline as the rest of this report. If a specific theme's porutham isn't clearly favorable or unfavorable from the given description, don't force a claim about it.
 3. Heading close to "Manglik Compatibility" — 1-2 paragraphs explaining each person's Manglik (Mangal Dosha) status given, and what a cancellation means in plain terms if one applies.
 4. Heading close to "Your Chart's Additional Facts" — 1 paragraph on the primary person's (person1's) additional dosha/yoga facts given. Explicitly state that this panel reflects ONLY person1's chart, not person2's (the app does not compute this analysis for the partner). If no cautions are listed, note briefly that none were flagged.
@@ -47,10 +47,10 @@ Each paragraph should be 2-4 sentences. Second person for person1 ("you"), third
 }
 
 const RISK_GROUNDING_RULE =
-  'The life-area synastry facts below (severity + evidence for wealth, health, children, harmony, career, timing, intimacy, in-laws) are ALSO GIVEN FACTS, computed by the same deterministic classical rules — the same synastry read the pricier Compatibility Match Report uses. State severities and evidence verbatim. Never invent a risk or benefit beyond what is listed.';
+  'The life-area synastry facts below (severity + evidence for wealth, health, children, harmony, career, timing, intimacy, in-laws) are ALSO GIVEN FACTS, computed by the same deterministic traditional rules — the same synastry read the pricier Compatibility Match Report uses. State severities and evidence verbatim. Never invent a risk or benefit beyond what is listed.';
 
 function narrativeSystemPromptCall2(): string {
-  return `You are writing additional sections for a Kundli Milan (marriage compatibility) report for a mobile astrology app. The app already computed a classical synastry read across 8 life areas for this couple — wealth, health, children, harmony, career, timing, intimacy, in-laws — each with a severity (benefit/neutral/caution/serious) and supporting evidence. Your job is ONLY to write the narrative explanation for these.
+  return `You are writing additional sections for a Kundli Milan (marriage compatibility) report for a mobile astrology app. The app already computed a traditional synastry read across 8 life areas for this couple — wealth, health, children, harmony, career, timing, intimacy, in-laws — each with a severity (benefit/neutral/caution/serious) and supporting evidence. Your job is ONLY to write the narrative explanation for these.
 
 ${RISK_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -110,7 +110,7 @@ function buildFacts(scores: KundliMilanScores): string {
   lines.push(
     `Manglik status — person1: ${scores.manglikStatus.person1 ? 'present' : 'not present'}; ` +
       `person2: ${scores.manglikStatus.person2 ? 'present' : 'not present'}; ` +
-      `classically cancelled: ${scores.manglikStatus.cancelled ? 'yes' : 'no'}.`,
+      `traditionally cancelled: ${scores.manglikStatus.cancelled ? 'yes' : 'no'}.`,
   );
 
   lines.push(
@@ -186,7 +186,7 @@ async function generateSection(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'kundli_milan'),
       { role: 'user', content: userPrompt },
     ],
   });

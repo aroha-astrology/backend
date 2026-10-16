@@ -1,5 +1,5 @@
 // =============================================================================
-// Personalized daily lucky elements — Chaldean numerology
+// Daily colour and today's number — Chaldean numerology
 // =============================================================================
 // Replaced the natal-Moon-nakshatra/pada + Mahadasha-lord formula below:
 //   luckyNumber = ((moonNakshatra * 4 + moonPada) % 9) + 1
@@ -9,13 +9,18 @@
 // numerology (astro-engine/numerology/chaldean.ts) genuinely varies by date,
 // derived from the user's own birth date (Moolank) rather than an arbitrary
 // nakshatra/pada hash.
+//
+// The number is the day of the month added down to one digit. It is the same
+// for every reader, so it is called "today's number" and is not presented as a
+// personal lucky number (audit NM2).
 // =============================================================================
 
 import { moolank, dailyNumerology } from './numerology/chaldean.js';
 
 export interface DailyLuckyElements {
   luckyColor: string;
-  luckyNumber: number;
+  /** Today's number: the same for everyone, not personal. */
+  todaysNumber: number;
 }
 
 /**
@@ -32,6 +37,6 @@ export function getDailyLuckyElements(
   dateString: string,
 ): DailyLuckyElements {
   const moolankValue = dateOfBirth ? moolank(dateOfBirth) : 1;
-  const { luckyNumber, luckyColor } = dailyNumerology(new Date(dateString), moolankValue);
-  return { luckyColor, luckyNumber };
+  const { todaysNumber, luckyColor } = dailyNumerology(new Date(dateString), moolankValue);
+  return { luckyColor, todaysNumber };
 }

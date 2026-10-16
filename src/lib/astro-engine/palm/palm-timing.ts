@@ -488,8 +488,9 @@ const WEIGHTS = { timing: 0.5, scores: 0.3, mounts: 0.2 } as const;
 
 /**
  * One agreement figure from three independent comparisons:
- *  - timing: each palm-dated event against the chart's window (match or chart-dated = 1,
- *    adjusted = 0.5, no window at all = 0);
+ *  - timing: each palm-dated event against the chart's window (match = 1, adjusted = 0.5,
+ *    no window at all = 0). An event the hand gave no age for is dated from the chart and
+ *    is left out: there is nothing of the hand's to compare (audit item PM3);
  *  - scores: the palm's own six area scores (before any clamping) within the chart's ±2 band;
  *  - mounts: developed/flat mounts the chart's planet strength corroborates vs contradicts.
  * Parts with nothing to compare are left out and the weights renormalised; null when no part
@@ -502,11 +503,9 @@ export function computeKundliMatch(input: {
   chartFacts: PalmRuleFact[];
 }): KundliMatch | null {
   const t = input.tally;
-  const timingTotal = t ? t.match + t.adjusted + t.chart + t.unsupported : 0;
+  const timingTotal = t ? t.match + t.adjusted + t.unsupported : 0;
   const timing: AgreementPart | null =
-    t && timingTotal > 0
-      ? { agree: t.match + t.chart + 0.5 * t.adjusted, total: timingTotal }
-      : null;
+    t && timingTotal > 0 ? { agree: t.match + 0.5 * t.adjusted, total: timingTotal } : null;
 
   let scores: AgreementPart | null = null;
   if (input.palmScores && input.chartScores) {

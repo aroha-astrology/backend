@@ -2,10 +2,10 @@
 // Ashtakavarga Shodhana (reduction) — Trikona, Ekadhipatya, and Shodhya Pinda
 // =============================================================================
 // Raw Bhinnashtakavarga/Sarvashtakavarga bindu counts (calculateBhinnaAshtakavarga
-// / calculateSarvaAshtakavarga in ./ashtakavarga.ts) are the classical starting
-// point, but two further reductions are required before the counts are used
-// for fine-grained transit judgment — see the audit this module responds to
-// (docs/superpowers/specs equivalent: the 2026-07-30 predictive-engine plan).
+// / calculateSarvaAshtakavarga in ./ashtakavarga.ts) are the starting point;
+// the two reductions and the Pindas below follow Bṛhat Parāśara Horā Śāstra
+// chapters 67-69 (source register BPHS-67, BPHS-68, BPHS-69), tested by hand in
+// test/audit/ashtakavarga-reduction.audit.spec.ts.
 // This file is purely additive: it never modifies ashtakavarga.ts's raw
 // tables, so every existing consumer of calculateBhinnaAshtakavarga/
 // calculateSarvaAshtakavarga is unaffected.
@@ -36,10 +36,11 @@ export const TRIKONA_GROUPS: readonly (readonly [number, number, number])[] = [
 ];
 
 /**
- * Trikona Shodhana: for each trine group, subtract the group's minimum bindu
- * count from all three members. If any member already has 0 bindus, the
- * whole group is reduced to 0 (per B.V. Raman's Ashtakavarga System — a
- * single "empty" sign in a trine nullifies the trine's shared strength).
+ * Trikona Shodhana (BPHS 67.4-5): in each trine take the smallest of the three
+ * counts and subtract it from all three; if the three are equal all become
+ * zero. "ekasmin bhavane śūnyaṃ tat trikoṇaṃ na śodhayet": if ANY sign of a
+ * trine has no bindus, that trine is left as it is. (This used to zero the
+ * whole trine, which the verse does not say.)
  *
  * Pure function over a single planet's 12-sign bindu array; does not mutate
  * its input.
@@ -48,12 +49,9 @@ export function trikonaShodhana(bindus: readonly number[]): number[] {
   const result = [...bindus];
   for (const group of TRIKONA_GROUPS) {
     const values = group.map((i) => bindus[i] ?? 0);
-    if (values.some((v) => v === 0)) {
-      for (const i of group) result[i] = 0;
-    } else {
-      const min = Math.min(...values);
-      for (const i of group) result[i] = (result[i] ?? 0) - min;
-    }
+    if (values.some((v) => v === 0)) continue;
+    const min = Math.min(...values);
+    for (const i of group) result[i] = (result[i] ?? 0) - min;
   }
   return result;
 }
@@ -75,21 +73,19 @@ export const DUAL_LORDSHIP_PAIRS: readonly { lord: Planet; signs: readonly [numb
 ];
 
 /**
- * Ekadhipatya Shodhana: for each dual-lordship pair, occupancy by a natal
- * planet decides which sign's bindus survive. Classical sources describe the
- * one-occupied case unambiguously; the both-occupied/both-vacant cases are
- * less consistently documented across texts, so this implements a single
- * deterministic, documented convention rather than guessing at authority it
- * can't verify:
+ * Ekadhipatya Shodhana (BPHS 68.2-6), done on the trine-reduced counts, for
+ * the two signs of each planet that rules two:
  *
- * - Both signs occupied by a natal planet: no reduction (occupancy in both
- *   halves of the lordship is taken as evidence both deserve to stand).
- * - Exactly one occupied: the occupied sign wins ONLY if its bindu count is
- *   >= the vacant sign's — in that case the vacant sign is zeroed. If the
- *   vacant sign actually has MORE bindus, neither sign is touched (occupancy
- *   is not allowed to overrule a clearly stronger vacant sign).
- * - Neither occupied: the lower-bindu sign of the pair is zeroed; an exact
- *   tie zeroes the second sign of the pair (deterministic tie-break).
+ * - If either sign has no bindus left, nothing is done ("kṣetradvaye phalāni
+ *   syuḥ": only when both signs have a number).
+ * - Both signs hold a planet: nothing is done.
+ * - One holds a planet: if its count is at least the other's, the empty sign
+ *   goes to zero; if it is smaller, its count is taken off the empty sign.
+ * - Neither holds a planet: equal counts both go to zero; otherwise the
+ *   smaller is taken off both (the smaller becomes zero).
+ * - Cancer and Leo are not touched: the Moon and the Sun rule one sign each.
+ *
+ * Rahu and Ketu count as planets for this, as the book's own example does.
  *
  * Must run AFTER trikonaShodhana — operates on already-trine-reduced bindus.
  */
@@ -99,17 +95,18 @@ export function ekadhipatyaShodhana(reduced: readonly number[], chartData: Chart
 
   for (const { signs } of DUAL_LORDSHIP_PAIRS) {
     const [a, b] = signs;
-    const aOccupied = occupiedSigns.has(a);
-    const bOccupied = occupiedSigns.has(b);
     const aVal = result[a] ?? 0;
     const bVal = result[b] ?? 0;
+    if (aVal === 0 || bVal === 0) continue;
 
+    const aOccupied = occupiedSigns.has(a);
+    const bOccupied = occupiedSigns.has(b);
     if (aOccupied && bOccupied) continue;
 
     if (!aOccupied && !bOccupied) {
-      // Strictly lower loses; an exact tie zeroes the second sign of the pair.
-      if (aVal < bVal) result[a] = 0;
-      else result[b] = 0;
+      const smaller = Math.min(aVal, bVal);
+      result[a] = aVal - smaller;
+      result[b] = bVal - smaller;
       continue;
     }
 
@@ -117,8 +114,7 @@ export function ekadhipatyaShodhana(reduced: readonly number[], chartData: Chart
     const vacantIndex = aOccupied ? b : a;
     const occupiedVal = result[occupiedIndex] ?? 0;
     const vacantVal = result[vacantIndex] ?? 0;
-    if (occupiedVal >= vacantVal) result[vacantIndex] = 0;
-    // else: leave both as-is.
+    result[vacantIndex] = occupiedVal >= vacantVal ? 0 : vacantVal - occupiedVal;
   }
 
   return result;
@@ -132,10 +128,8 @@ export function reduceBindus(bindus: readonly number[], chartData: ChartData): n
 // ---------------------------------------------------------------------------
 // Shodhya Pinda (Rasi Pinda + Graha Pinda)
 // ---------------------------------------------------------------------------
-// Fixed classical multiplier tables — verified against astrobix.com/learn's
-// dedicated Shodhya Pinda reference (cross-checked across two independent
-// fetches; a third page's numbers looked like a worked single-chart example
-// rather than the general table and were discarded as unreliable).
+// Multipliers of BPHS 69.1-4 (source register BPHS-69), identical to the ones
+// this file used before the audit.
 
 /** Rashi Gunakar — one fixed multiplier per sign, Aries(0)..Pisces(11). */
 export const RASHI_GUNAKAR: readonly number[] = [7, 10, 8, 4, 10, 5, 7, 8, 9, 5, 11, 12];
@@ -157,36 +151,48 @@ export const GRAHA_GUNAKAR: Record<
 export interface ShodhyaPinda {
   /** Sum over signs of (reduced bindus x that sign's Rashi Gunakar). */
   rasiPinda: number;
-  /** Sum over signs of (reduced bindus x this planet's fixed Graha Gunakar). */
+  /** Sum over the seven planets of (reduced bindus of the sign it stands in x its Graha Gunakar). */
   grahaPinda: number;
-  /** rasiPinda + grahaPinda — the planet's final Shodhya Pinda strength. */
+  /** rasiPinda + grahaPinda — the Yoga Pinda of BPHS 69. */
   shodhyaPinda: number;
 }
 
-export function shodhyaPinda(
-  reducedBindus: readonly number[],
-  planet: keyof typeof GRAHA_GUNAKAR,
-): ShodhyaPinda {
+/**
+ * Pinda Sadhana (BPHS 69.1-4). Rasi Pinda: each sign's reduced count times
+ * the sign's multiplier, added up. Graha Pinda: for each planet in the chart
+ * (Rahu and Ketu are not counted), the reduced count of the sign it stands in
+ * times the planet's multiplier, added up. Their sum is the Yoga Pinda.
+ * Worked example in the chapter: Rasi Pinda 100, Graha Pinda 48, Yoga Pinda 148.
+ * (The Graha Pinda used to be the total of all twelve counts times the
+ * multiplier of the planet whose table it is, which is not what the chapter says.)
+ */
+export function shodhyaPinda(reducedBindus: readonly number[], chartData: ChartData): ShodhyaPinda {
   let rasiPinda = 0;
   for (let i = 0; i < 12; i++) {
     rasiPinda += (reducedBindus[i] ?? 0) * (RASHI_GUNAKAR[i] ?? 0);
   }
-  const grahaGunakar = GRAHA_GUNAKAR[planet];
-  const totalReducedBindus = reducedBindus.reduce((sum, b) => sum + b, 0);
-  const grahaPinda = totalReducedBindus * grahaGunakar;
+  let grahaPinda = 0;
+  for (const p of chartData.planets) {
+    if (!(p.planet in GRAHA_GUNAKAR)) continue;
+    grahaPinda +=
+      (reducedBindus[p.signIndex] ?? 0) * GRAHA_GUNAKAR[p.planet as keyof typeof GRAHA_GUNAKAR];
+  }
   return { rasiPinda, grahaPinda, shodhyaPinda: rasiPinda + grahaPinda };
 }
 
 // ---------------------------------------------------------------------------
-// Interpretation bands (audit-specified thresholds, replacing the ±1-point
-// evaluateSignStrength band already in ashtakavarga.ts for reduced tables)
+// Interpretation bands: modern rules of thumb for RAW counts
 // ---------------------------------------------------------------------------
+// BPHS chapters 66-70 give no such bands (ANCIENT SOURCE NOT VERIFIED). They are
+// meant for the raw Sarvashtakavarga (337 points, 28 a sign on average) and the
+// raw Bhinnashtakavarga. The reduced tables total about 85, so these bands must
+// NOT be applied to them: they called almost every sign a "karmic-struggle zone"
+// (audit item A5). Nothing in the app applies them to reduced counts any more.
 
 export type SavStrength = 'power-center' | 'baseline' | 'karmic-struggle' | 'moderate';
 
-/** SAV interpretation: >=30 a power center (even malefics deliver good results
- * here), <=25 a karmic-struggle zone (results demand real effort), 28 is the
- * classical cosmic baseline; values between get a moderate label. */
+/** SAV band for a RAW sign total: >=30 a power center, <=25 a karmic-struggle
+ * zone, exactly 28 the average; values between get a moderate label. */
 export function evaluateSavBand(sarvaBinduCount: number): SavStrength {
   if (sarvaBinduCount >= 30) return 'power-center';
   if (sarvaBinduCount <= 25) return 'karmic-struggle';
@@ -194,8 +200,8 @@ export function evaluateSavBand(sarvaBinduCount: number): SavStrength {
   return 'moderate';
 }
 
-/** BAV interpretation: >=4 bindus is the classical mandate for a transiting
- * planet to deliver favorable results in that sign; below is an obstructed transit. */
+/** BAV band for a RAW count: 4 or more bindus is the usual rule of thumb for a
+ * transiting planet to give good results in that sign. Not from BPHS. */
 export function hasBinduMandate(bavBinduCount: number): boolean {
   return bavBinduCount >= 4;
 }
@@ -242,10 +248,7 @@ export function computeReducedAshtakavarga(
   const shodhyaPindaByPlanet: Record<string, ShodhyaPinda> = {};
   for (const b of bhinna) {
     if (b.planet in GRAHA_GUNAKAR) {
-      shodhyaPindaByPlanet[b.planet] = shodhyaPinda(
-        b.bindus,
-        b.planet as keyof typeof GRAHA_GUNAKAR,
-      );
+      shodhyaPindaByPlanet[b.planet] = shodhyaPinda(b.bindus, chartData);
     }
   }
 

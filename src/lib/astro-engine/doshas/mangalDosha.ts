@@ -180,8 +180,8 @@ function buildDescription(
 
   if (type === 'cancelled') {
     const reason =
-      cancellations[0]?.replace(/ - cancellation applies$/, '') ?? 'a classical exception';
-    return `Mars sits in house ${marsHouseFromLagna} from your ${refText}, which would normally form Mangal Dosha, but ${reason} — a classical cancellation that substantially neutralizes its effect.`;
+      cancellations[0]?.replace(/ - cancellation applies$/, '') ?? 'a traditional exception';
+    return `Mars sits in house ${marsHouseFromLagna} from your ${refText}, which would normally form Mangal Dosha, but ${reason} — a traditional cancellation that substantially neutralizes its effect.`;
   }
   if (type === 'full') {
     return `Mars afflicts all three reference points (Lagna, Moon, and Venus) from house ${marsHouseFromLagna}, forming a full Mangal Dosha with no cancellation — traditionally significant for marriage timing and marital harmony.`;
@@ -268,7 +268,7 @@ export function detectMangalDosha(chartData: ChartData, birthDate?: string): Man
   // an informational note to the description when a birth date is supplied.
   if (present && birthDate && computeAge(birthDate) >= 28) {
     description +=
-      ' Note: some practitioners informally consider Mangal Dosha to weaken after age 28, though this belief has no basis in classical texts — treat it as a cultural note, not an astrological rule.';
+      ' Note: some practitioners informally consider Mangal Dosha to weaken after age 28, though this belief has no basis in traditional texts — treat it as a cultural note, not an astrological rule.';
   }
 
   return {

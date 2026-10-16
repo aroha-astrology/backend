@@ -187,7 +187,7 @@ function buildPositivesAndCautions(a: Omit<MobileNumberAnalysis, 'positives' | '
   if (a.vibration === a.mulank) {
     positives.push({
       label: 'Matches Your Mulank',
-      detail: `This number's vibration (${a.vibration}) is exactly your own Mulank — the closest classical match a phone number can have.`,
+      detail: `This number's vibration (${a.vibration}) is exactly your own Mulank — the closest traditional match a phone number can have.`,
     });
   } else if ((FRIENDLY_MAP[a.mulank] ?? []).includes(a.vibration)) {
     positives.push({
@@ -197,7 +197,7 @@ function buildPositivesAndCautions(a: Omit<MobileNumberAnalysis, 'positives' | '
   } else if ((ENEMY_MAP[a.mulank] ?? []).includes(a.vibration)) {
     cautions.push({
       label: 'Clashes With Your Mulank',
-      detail: `Vibration ${a.vibration} is classically an enemy number to your Mulank ${a.mulank}.`,
+      detail: `Vibration ${a.vibration} is traditionally an enemy number to your Mulank ${a.mulank}.`,
     });
   }
 
@@ -209,7 +209,7 @@ function buildPositivesAndCautions(a: Omit<MobileNumberAnalysis, 'positives' | '
   } else if ((ENEMY_MAP[a.bhagyank] ?? []).includes(a.vibration)) {
     cautions.push({
       label: 'Clashes With Your Bhagyank',
-      detail: `Vibration ${a.vibration} is classically an enemy number to your Bhagyank ${a.bhagyank}.`,
+      detail: `Vibration ${a.vibration} is traditionally an enemy number to your Bhagyank ${a.bhagyank}.`,
     });
   }
 
@@ -217,32 +217,32 @@ function buildPositivesAndCautions(a: Omit<MobileNumberAnalysis, 'positives' | '
   if (favorablePairs.length > 0) {
     positives.push({
       label: 'Favorable Digit Pairs',
-      detail: `${favorablePairs.length} classically favorable consecutive pair(s) in this number (e.g. ${favorablePairs[0]?.pair}).`,
+      detail: `${favorablePairs.length} traditionally favorable consecutive pair(s) in this number (e.g. ${favorablePairs[0]?.pair}).`,
     });
   }
   const unfavorablePairs = a.digitPairs.filter((p) => !p.favorable);
   if (unfavorablePairs.length > 0) {
     cautions.push({
       label: 'Unfavorable Digit Pairs',
-      detail: `${unfavorablePairs.length} classically unfavorable consecutive pair(s) in this number (e.g. ${unfavorablePairs[0]?.pair}).`,
+      detail: `${unfavorablePairs.length} traditionally unfavorable consecutive pair(s) in this number (e.g. ${unfavorablePairs[0]?.pair}).`,
     });
   }
 
   if (a.zeroCount === 0) {
     positives.push({
       label: 'No Zeros',
-      detail: 'Zeros classically read as delay and obstruction — this number has none.',
+      detail: 'Zeros traditionally read as delay and obstruction — this number has none.',
     });
   } else if (a.endsWithZero) {
     cautions.push({
       label: 'Ends In Zero',
       detail:
-        'A trailing zero is the classical worst case for zeros — often read as recurring delays.',
+        'A trailing zero is the traditional worst case for zeros — often read as recurring delays.',
     });
   } else if (a.zeroCount >= 3) {
     cautions.push({
       label: 'Several Zeros',
-      detail: `This number carries ${a.zeroCount} zeros, which classically read as friction or delay.`,
+      detail: `This number carries ${a.zeroCount} zeros, which traditionally read as friction or delay.`,
     });
   }
 
@@ -266,7 +266,7 @@ function buildPositivesAndCautions(a: Omit<MobileNumberAnalysis, 'positives' | '
     positives.push({
       label: 'Neutral Reading',
       detail:
-        'Nothing strongly favorable or unfavorable stood out — a classically balanced number.',
+        'Nothing strongly favorable or unfavorable stood out — a traditionally balanced number.',
     });
   }
 

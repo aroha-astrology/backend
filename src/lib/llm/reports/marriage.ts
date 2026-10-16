@@ -38,9 +38,9 @@ import { reportFactsMessage } from './report-facts-message.js';
 type MarriageScoresWithStrength = MarriageScores & { planetStrength?: PlanetStrengthRow[] };
 
 const GROUNDING_RULE =
-  "Every score, label, date, house sign, trait-tilt number, and dosha/yoga fact below is a GIVEN FACT, already computed by a deterministic classical Vedic algorithm — the SAME algorithm the app's AI chat feature uses for its own timing answers about this exact chart. State these facts verbatim in your prose. Never recompute, second-guess, round differently, invent a new number, or contradict any of them — your job is ONLY to explain what they mean in plain language.";
+  "Every score, label, date, house sign, trait-tilt number, and dosha/yoga fact below is a GIVEN FACT, already computed by a deterministic traditional Vedic algorithm — the SAME algorithm the app's AI chat feature uses for its own timing answers about this exact chart. State these facts verbatim in your prose. Never recompute, second-guess, round differently, invent a new number, or contradict any of them — your job is ONLY to explain what they mean in plain language.";
 const SAFETY_RULE =
-  'This is advisory guidance for reflection, never a guarantee about if or when marriage will happen, and never a substitute for the reader\'s own judgment and choices. Use tendency language ("suggests", "classically associated with", "tends to"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
+  'This is advisory guidance for reflection, never a guarantee about if or when marriage will happen, and never a substitute for the reader\'s own judgment and choices. Use tendency language ("suggests", "traditionally associated with", "tends to"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
 const TONE_RULE =
   'Tone: encouraging but honest — never falsely reassuring, never alarmist. If the band is "slow_build", frame it as patience and groundwork rather than a problem; if "accelerated", frame it as genuine momentum without overpromising a date.';
 /** The "uiData" object's schema is shared across all 4 narrative calls (every possible field from
@@ -77,7 +77,7 @@ function formatAgeBands(bands: AgeBand[]): string {
 }
 
 function narrativeSystemPromptCall1(): string {
-  return `You are writing the opening section of a Marriage Report for a mobile Vedic astrology app. The app already computed a marriage score, a band classification, Manglik Dosha status, a ranked set of favorable timing windows, an age-based confidence table, and Jupiter's own supplementary timing window using classical rules. Your job is ONLY to write the narrative explanation.
+  return `You are writing the opening section of a Marriage Report for a mobile Vedic astrology app. The app already computed a marriage score, a band classification, Manglik Dosha status, a ranked set of favorable timing windows, an age-based confidence table, and Jupiter's own supplementary timing window using traditional rules. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -94,13 +94,13 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 2 sections, in this order:
 1. Heading close to "At A Glance" — 1-2 paragraphs stating the band given (do NOT state the underlying numeric score), explaining what the band means in plain language (e.g. a "slow_build" band means the groundwork is still forming, not that marriage won't happen), and mentioning the Manglik status given (including what a cancellation means in plain terms, if cancelled).
-2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a classical marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout. If a Planet Strength table is given below, you MUST ALSO include a "uiData" object on THIS section (section 2) with a string field per planet in that table, keyed EXACTLY as "planetStrength_" followed by the planet's name in lowercase (e.g. "planetStrength_saturn"): a 1-2 line explanation of what that planet's given strength percentage and any retrograde/combust flag mean in plain language, tied to that planet's classical significations (e.g. Saturn → discipline/endurance, Moon → emotional stability, Mercury → communication) rather than marriage specifically, since this table covers the whole chart. Omit the uiData object entirely if no Planet Strength table is given. ${UI_DATA_NULL_RULE}
+2. Heading close to "Marriage Timing" — 1-3 paragraphs about the given timing windows (or their absence — if none were found, say so plainly, never invent a date), the age-based confidence table (explain it as "here's roughly when the chart's own patterns look strongest, by your age," not a guarantee), and Jupiter's own supplementary window as clearly separate, secondary color (Jupiter is a traditional marriage/dharma significator, but its own window is NOT a second competing prediction — frame the primary windows as the headline answer). Do not invent a specific date beyond the month/year range given. Apply the relationship-status framing rule above throughout. If a Planet Strength table is given below, you MUST ALSO include a "uiData" object on THIS section (section 2) with a string field per planet in that table, keyed EXACTLY as "planetStrength_" followed by the planet's name in lowercase (e.g. "planetStrength_saturn"): a 1-2 line explanation of what that planet's given strength percentage and any retrograde/combust flag mean in plain language, tied to that planet's traditional significations (e.g. Saturn → discipline/endurance, Moon → emotional stability, Mercury → communication) rather than marriage specifically, since this table covers the whole chart. Omit the uiData object entirely if no Planet Strength table is given. ${UI_DATA_NULL_RULE}
 
 Write in a clear, natural style. Second person ("you").`;
 }
 
 function narrativeSystemPromptCall2(): string {
-  return `You are writing the second section of a Marriage Report for a mobile Vedic astrology app. The app already computed the 7th house sign (partnership house) and its classical temperament association, the Navamsa (D9) chart — the classical marriage/spouse/inner-strength varga, read ALONGSIDE the D1 7th house, never in place of it — a partner archetype with 5 trait-tilt scores, why the 7th-lord/Venus/Jupiter are strong or weak, and the 4th-lord strength (family/home significator) plus an in-laws note. Your job is ONLY to write the narrative explanation.
+  return `You are writing the second section of a Marriage Report for a mobile Vedic astrology app. The app already computed the 7th house sign (partnership house) and its traditional temperament association, the Navamsa (D9) chart — the traditional marriage/spouse/inner-strength varga, read ALONGSIDE the D1 7th house, never in place of it — a partner archetype with 5 trait-tilt scores, why the 7th-lord/Venus/Jupiter are strong or weak, and the 4th-lord strength (family/home significator) plus an in-laws note. Your job is ONLY to write the narrative explanation.
 
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -113,7 +113,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Who You Will Marry" — 2-4 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts. Weave in the specific reasons given for the 7th-lord, Venus, and Jupiter strengths. Mention the given Navamsa Lagna and house placements of Venus and Jupiter. If the Ashtakavarga summary flags the 7th house, weave that in. Explicitly frame this as classical sign-quality lore/tendency, NOT a specific prediction about a real individual. You MUST ALSO include a "uiData" object on this section with these string fields filled in: "planetImpact_seventhLord" (a 1-3 line explanation of its meaning, strength, and impact), "planetImpact_venus" (1-3 lines), "planetImpact_jupiter" (1-3 lines), and "seventhHouseImpact" (1-3 lines). ${UI_DATA_NULL_RULE}
+1. Heading close to "Who You Will Marry" — 2-4 paragraphs sketching general values/temperament qualities associated with the 7th house sign and the given partner archetype's trait tilts. Weave in the specific reasons given for the 7th-lord, Venus, and Jupiter strengths. Mention the given Navamsa Lagna and house placements of Venus and Jupiter. If the Ashtakavarga summary flags the 7th house, weave that in. Explicitly frame this as traditional sign-quality lore/tendency, NOT a specific prediction about a real individual. You MUST ALSO include a "uiData" object on this section with these string fields filled in: "planetImpact_seventhLord" (a 1-3 line explanation of its meaning, strength, and impact), "planetImpact_venus" (1-3 lines), "planetImpact_jupiter" (1-3 lines), and "seventhHouseImpact" (1-3 lines). ${UI_DATA_NULL_RULE}
 2. Heading close to "Family & In-Laws" — 1-2 paragraphs on family/in-law harmony grounded in the 4th-lord strength and in-laws note given.
 
 Write in a clear, natural style. Second person ("you").`;
@@ -133,8 +133,8 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[], "uiData": object}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Money After Marriage" — 1-3 paragraphs on how finances are classically read to shift after marriage, grounded in the given 2nd/11th house facts.
-2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. If a Remedies list is given below, you MUST ALSO include a "uiData" object on this section with, for EACH remedy planet given, two string fields filled in, keyed EXACTLY as "remedyEffect_" and "remedyDuration_" followed by that planet's name in lowercase (e.g. "remedyEffect_venus", "remedyDuration_venus"): "remedyEffect_<planet>" is a 1-2 line explanation of what performing THAT SPECIFIC already-given remedy is classically believed to strengthen for this person's marriage, tied to that planet's role (e.g. Venus → love/harmony, Jupiter → blessings/growth); "remedyDuration_<planet>" is one short, practical guideline for how long or how often to continue it (e.g. "Continue for at least 40 Fridays" or "Every Thursday for about 4 months"), matching the remedy's own weekday if it names one. Explaining an already-given remedy's effect and duration here is your job, not a new recommendation — never suggest a different remedy, puja, gemstone or purchase than the one given. Omit the uiData object entirely if no Remedies list is given. ${UI_DATA_NULL_RULE}
+1. Heading close to "Money After Marriage" — 1-3 paragraphs on how finances are traditionally read to shift after marriage, grounded in the given 2nd/11th house facts.
+2. Heading close to "What's Going For You" (covering the given favorable yogas) followed within the SAME section by a second paragraph on "What To Hold Carefully" (covering the given cautions/doshas), explicitly framed as what to stay mindful of especially in the early years after the wedding. If a Remedies list is given below, you MUST ALSO include a "uiData" object on this section with, for EACH remedy planet given, two string fields filled in, keyed EXACTLY as "remedyEffect_" and "remedyDuration_" followed by that planet's name in lowercase (e.g. "remedyEffect_venus", "remedyDuration_venus"): "remedyEffect_<planet>" is a 1-2 line explanation of what performing THAT SPECIFIC already-given remedy is traditionally believed to strengthen for this person's marriage, tied to that planet's role (e.g. Venus → love/harmony, Jupiter → blessings/growth); "remedyDuration_<planet>" is one short, practical guideline for how long or how often to continue it (e.g. "Continue for at least 40 Fridays" or "Every Thursday for about 4 months"), matching the remedy's own weekday if it names one. Explaining an already-given remedy's effect and duration here is your job, not a new recommendation — never suggest a different remedy, puja, gemstone or purchase than the one given. Omit the uiData object entirely if no Remedies list is given. ${UI_DATA_NULL_RULE}
 
 Write in a clear, natural style. Second person ("you").`;
 }
@@ -173,7 +173,7 @@ function buildFactsCall1(scores: MarriageScoresWithStrength): string {
   lines.push(
     `Manglik (Mangal Dosha): ${scores.manglik.isManglik ? 'present' : 'not present'}` +
       (scores.manglik.isManglik
-        ? `, classically cancelled: ${scores.manglik.cancelled ? 'yes' : 'no'}`
+        ? `, traditionally cancelled: ${scores.manglik.cancelled ? 'yes' : 'no'}`
         : '') +
       '.',
   );
@@ -188,7 +188,7 @@ function buildFactsCall1(scores: MarriageScoresWithStrength): string {
   );
   if (scores.spouseSynastry) {
     lines.push(
-      `SPOUSE DATA PROVIDED — this reader is married and supplied their real spouse's birth details. Guna Milan compatibility: ${scores.spouseSynastry.gunaMilanScore}/${scores.spouseSynastry.gunaMaxScore} (${scores.spouseSynastry.compatibilityBand}). Spouse's own Manglik status: ${scores.spouseSynastry.manglikStatus.spouse ? 'present' : 'not present'}${scores.spouseSynastry.manglikStatus.spouse ? `, classically cancelled: ${scores.spouseSynastry.manglikStatus.cancelled ? 'yes' : 'no'}` : ''}.${scores.spouseName ? ` Spouse's name: ${scores.spouseName}.` : ''}`,
+      `SPOUSE DATA PROVIDED — this reader is married and supplied their real spouse's birth details. Guna Milan compatibility: ${scores.spouseSynastry.gunaMilanScore}/${scores.spouseSynastry.gunaMaxScore} (${scores.spouseSynastry.compatibilityBand}). Spouse's own Manglik status: ${scores.spouseSynastry.manglikStatus.spouse ? 'present' : 'not present'}${scores.spouseSynastry.manglikStatus.spouse ? `, traditionally cancelled: ${scores.spouseSynastry.manglikStatus.cancelled ? 'yes' : 'no'}` : ''}.${scores.spouseName ? ` Spouse's name: ${scores.spouseName}.` : ''}`,
     );
   }
   if (scores.planetStrength && scores.planetStrength.length > 0) {
@@ -207,7 +207,9 @@ function buildFactsCall1(scores: MarriageScoresWithStrength): string {
 function buildFactsCall2(scores: MarriageScores): string {
   const lines: string[] = [];
   lines.push(`7th house sign: ${scores.seventhHouseSign ?? 'unavailable'}.`);
-  lines.push(`Classical temperament association for this sign: ${scores.seventhHouseTemperament}.`);
+  lines.push(
+    `Traditional temperament association for this sign: ${scores.seventhHouseTemperament}.`,
+  );
   const navamsa = scores.vargas?.[0];
   lines.push(
     navamsa
@@ -226,7 +228,7 @@ function buildFactsCall2(scores: MarriageScores): string {
   lines.push(`Partner archetype label: ${scores.partnerArchetype.label}.`);
   lines.push(`Partner archetype description: ${scores.partnerArchetype.description}`);
   lines.push(
-    `Trait tilts (0-10 scale, backed by classical planetary strength): ${scores.partnerArchetype.traits
+    `Trait tilts (0-10 scale, backed by traditional planetary strength): ${scores.partnerArchetype.traits
       .map((t) => `${t.label}: ${t.score}`)
       .join(', ')}.`,
   );
@@ -435,7 +437,7 @@ async function callAndParse(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'marriage'),
       { role: 'user', content: 'Write this part of the Marriage Report narrative.' },
     ],
   });

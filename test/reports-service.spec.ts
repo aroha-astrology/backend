@@ -96,7 +96,7 @@ vi.mock('../src/modules/birth-profiles/profile-context.js', () => ({
   resolveProfileContext: state.resolveProfileContext,
 }));
 
-vi.mock('../src/lib/swarm/agents/metrologist.js', () => ({
+vi.mock('../src/lib/swarm/agents/ephemeris.js', () => ({
   computeMetrology: state.computeMetrology,
 }));
 
@@ -2200,5 +2200,56 @@ describe('voteNextReport', () => {
     state.recordNextReportVote.mockResolvedValue(false);
     const result = await voteNextReport('user-1', 'wealth');
     expect(result).toEqual({ alreadyVoted: true });
+  });
+});
+
+describe('getReportForUser carries the basis block (audit release R4)', () => {
+  it('a ready report names its calculation basis, rule origins and safety class', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn(),
+      translateNarrative: vi.fn(),
+    };
+    state.findKundliByUserId.mockResolvedValue({ chartData: {} });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      }),
+    );
+
+    const dto = await getReportForUser('report-1', 'user-1', 'en');
+    expect(dto).toMatchObject({
+      status: 'ready',
+      basis: { safety_classification: 'relationship', source_profile: 'aroha-parashari-v2' },
+    });
+    const basis = (
+      dto as { basis: { traditional_rules: unknown[]; aroha_proprietary_rules: unknown[] } }
+    ).basis;
+    expect(basis.traditional_rules.length).toBeGreaterThan(0);
+    expect(basis.aroha_proprietary_rules.length).toBeGreaterThan(0);
+  });
+
+  it('a translated report carries it too', async () => {
+    state.REPORT_GENERATORS.marriage = {
+      key: 'marriage',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative: vi.fn(),
+      translateNarrative: vi.fn().mockResolvedValue([{ heading: 'हिंदी', paragraphs: ['पैरा'] }]),
+    };
+    state.findKundliByUserId.mockResolvedValue({ chartData: {} });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }] },
+      }),
+    );
+
+    const dto = await getReportForUser('report-1', 'user-1', 'hi');
+    expect(dto).toMatchObject({
+      status: 'ready',
+      basis: { safety_classification: 'relationship' },
+    });
   });
 });

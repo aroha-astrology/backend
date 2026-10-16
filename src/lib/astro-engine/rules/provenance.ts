@@ -1,0 +1,1120 @@
+/**
+ * Provenance registry — every feature and rule in the engine has an entry
+ * here tagging it with its historical classification and source ids.
+ *
+ * The five classification tags mirror the brief exactly:
+ *   ANCIENT_CLASSICAL   — rule directly supported by a verified old primary text
+ *   LATER_CLASSICAL     — traditional roots but not the earliest core corpus
+ *   MODERN_ASTROLOGICAL — a 20th-century or later system (KP, Lal Kitab, etc.)
+ *   AROHA_PROPRIETARY   — Aroha's own scoring, blending, or AI layer
+ *   UNVERIFIED          — no source check completed yet
+ *
+ * Source ids (e.g. "BPHS-SHB-001") are short opaque strings that map to
+ * rows in D-source-register.md.  They are added incrementally as texts are
+ * actually read; an empty array means the check is pending.
+ *
+ * API responses, report payloads, and AI prompts should call
+ * `getProvenance(featureId)` and include the result as a `calculation_basis`
+ * field rather than hard-coding the word "classical".
+ *
+ * This file is part of Release R0.  All entries start as UNVERIFIED; the
+ * classification and source arrays are filled in as each batch is audited.
+ */
+
+// ---------------------------------------------------------------------------
+// Tag type
+// ---------------------------------------------------------------------------
+
+export type ProvenanceTag =
+  | 'ANCIENT_CLASSICAL'
+  | 'LATER_CLASSICAL'
+  | 'MODERN_ASTROLOGICAL'
+  | 'AROHA_PROPRIETARY'
+  | 'UNVERIFIED';
+
+// ---------------------------------------------------------------------------
+// Source id
+// ---------------------------------------------------------------------------
+
+/** Short opaque id matching a row in D-source-register.md. */
+export type SourceId = string;
+
+// ---------------------------------------------------------------------------
+// Provenance entry
+// ---------------------------------------------------------------------------
+
+export interface ProvenanceEntry {
+  featureId: string;
+  featureName: string;
+  tag: ProvenanceTag;
+  /** Source ids from D-source-register.md that support this classification. */
+  sourceIds: SourceId[];
+  /** Free-text note displayed in the audit matrix. */
+  note?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Registry
+// ---------------------------------------------------------------------------
+
+/**
+ * Master registry keyed by featureId.
+ *
+ * Feature ids are stable strings used throughout the engine, API, and audit
+ * documents.  Prefix conventions:
+ *   SHB-*   Shadbala sub-balas
+ *   AKV-*   Ashtakavarga
+ *   VCH-*   Divisional charts
+ *   VMD-*   Vimshottari dasha
+ *   CHD-*   Chara dasha
+ *   YGN-*   Yogini dasha
+ *   DOH-*   Dosha engine
+ *   YGA-*   Yoga engine
+ *   MT-*    Matchmaking / Ashtakoota / Dashakoota
+ *   PAN-*   Panchanga
+ *   MUH-*   Muhurta
+ *   KP-*    KP system
+ *   TAJ-*   Varshaphal / Tajika
+ *   LKB-*   Lal Kitab
+ *   NUM-*   Numerology
+ *   ACG-*   Astrocartography
+ *   VST-*   Vastu
+ *   PLM-*   Palmistry
+ *   GEM-*   Gemstones
+ *   YNT-*   Yantras
+ *   PPK-*   Pancha Pakshi
+ *   REC-*   Rectification
+ *   RPT-*   Reports / provenance blocks
+ *   ARCH-*  Architecture (ephemeris service, decision engine)
+ */
+const REGISTRY: ProvenanceEntry[] = [
+  // -------------------------------------------------------------------------
+  // Shadbala
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'VAK-DIG',
+    featureName: 'Retrograde dignity reversal',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['UK-1.2'],
+    note: 'Uttara Kalamrita, First Kanda, chapter 2 (verse number not legible in the scan): exalted and retrograde is like debilitated, debilitated and retrograde has the strength of exaltation',
+  },
+  {
+    featureId: 'VAK-CHB',
+    featureName: 'Cheshta Bala in the Vakri analysis',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.24-25'],
+    note: 'The same figure as Shadbala (the Cheshta Kendra over 3); the Vakri analysis no longer has its own',
+  },
+  {
+    featureId: 'PLN-COM',
+    featureName: 'Combustion orbs',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['BPHS-7-combustion'],
+    note: 'The translator table in the notes to BPHS ch. 7, not a verse. Nodes are never combust. Saturn 15 against the OCR 16 is unresolved',
+  },
+  {
+    featureId: 'TJK-PVB',
+    featureName: 'Tajika Panchavargi Bala',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['TN-1.30-41'],
+    note: 'Tajika Neelakanthi chapter 1, verses 31-41. The book worked example for the Sun is reproduced. The hadda table is rebuilt from the verse numerals',
+  },
+  {
+    featureId: 'TJK-VRS',
+    featureName: 'Varsheshwara (lord of the year)',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['TN-1.60-67', 'TN-1.77-78'],
+    note: 'Tajika Neelakanthi chapter 1: the five officers, Tajika aspects to the Varsha lagna, the tie-breaks of verses 64-67. The tie-break by the ithasala of the Moon (the author view) is not built',
+  },
+  {
+    featureId: 'SHB-BHV',
+    featureName: 'Bhava Bala',
+    tag: 'UNVERIFIED',
+    sourceIds: ['BPHS-27.26-31'],
+    note: 'Read in the BPHS translation but not built: the summary is ambiguous, there is no worked example, and no screen uses it',
+  },
+  {
+    featureId: 'SHB-VIM',
+    featureName: 'Vimsopaka Bala (Shadvarga)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-16.17-27'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The book worked example (Venus 16.8) is reproduced. Only the six-division scheme is computed',
+  },
+  {
+    featureId: 'SHB-YUD',
+    featureName: 'Yuddha Bala (planetary war)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.20', 'BPHS-79.9'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The translator notes give other rules for who wins; the verses are followed',
+  },
+  {
+    featureId: 'SHB-UCH',
+    featureName: 'Uchcha Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.1'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'SHB-SAP',
+    featureName: 'Saptavargaja Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.2-4'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. Points 45/30/20/15/10/4/2; the older 45/30/22.5/15/7.5/3.75/1.875 set is a profile value without an old text',
+  },
+  {
+    featureId: 'SHB-OJH',
+    featureName: 'Ojhayugma Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.5'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'SHB-KEN',
+    featureName: 'Kendradi Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.5'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'SHB-DRK_pos',
+    featureName: 'Drekkana Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.6'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The translator note reverses neuter and female; the verse is followed',
+  },
+  {
+    featureId: 'SHB-DIG',
+    featureName: 'Dig Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.7-8'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'SHB-NAT',
+    featureName: 'Nathonnatha Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.8-9'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'SHB-PAK',
+    featureName: 'Paksha Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.10-11'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. Doubling of the Moon value is in the translator notes only',
+  },
+  {
+    featureId: 'SHB-TRI',
+    featureName: 'Tribhaga Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.12'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. 60 virupas (one rupa)',
+  },
+  {
+    featureId: 'SHB-VAR',
+    featureName: 'Dina Bala (day lord)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.13'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'SHB-MAS',
+    featureName: 'Masa Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.13'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. From the Ahargana, 30-day months of the day count',
+  },
+  {
+    featureId: 'SHB-ABD',
+    featureName: 'Abda (Varsha) Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.13'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. From the Ahargana, 360-day years of the day count',
+  },
+  {
+    featureId: 'SHB-HOR',
+    featureName: 'Hora Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.13'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. Equal hours from sunrise; the Panchang hora list is the almanac convention',
+  },
+  {
+    featureId: 'SHB-AYA',
+    featureName: 'Ayana Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.15-17'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. Khanda method; doubling of the Sun value is in the translator notes only',
+  },
+  {
+    featureId: 'SHB-CHE',
+    featureName: 'Chesta Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.18'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The eight-motion scheme of 27.21-23 is not implemented',
+  },
+  {
+    featureId: 'SHB-NAI',
+    featureName: 'Naisargika Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.14'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'SHB-DRK',
+    featureName: 'Drik Bala',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.19'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The "superadd Mercury and Jupiter" clause is read more than one way and not applied',
+  },
+  {
+    featureId: 'SHB-THR',
+    featureName: 'Shadbala minimum thresholds',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-27.32-36'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+
+  // -------------------------------------------------------------------------
+  // Ashtakavarga
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'AKV-BAV',
+    featureName: 'BAV contributor tables (337 total)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-9.1-9.7'],
+    note: 'All 56 lists match Bṛhat Jātaka 9.1-9.7 verse by verse',
+  },
+  {
+    featureId: 'AKV-TRI',
+    featureName: 'Trikona Shodhana',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-67'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'AKV-EKA',
+    featureName: 'Ekadhipatya Shodhana',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-68'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'AKV-RGK',
+    featureName: 'Rasi Gunakara',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-69'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'AKV-GGK',
+    featureName: 'Graha Gunakara',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-69'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'AKV-RP',
+    featureName: 'Rasi Pinda',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-69'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'AKV-GP',
+    featureName: 'Graha Pinda',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-69'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'AKV-SP',
+    featureName: 'Yoga (Shodhya) Pinda',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-69'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. Its use for timing (BPHS 70) is not implemented',
+  },
+
+  // -------------------------------------------------------------------------
+  // Divisional charts
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'VCH-D1',
+    featureName: 'D1 Rasi',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'The sign itself (BPHS 6.3). Nothing to compute',
+  },
+  {
+    featureId: 'VCH-D2',
+    featureName: 'D2 Hora',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-1.11'],
+    note: 'A second scheme is recorded in Bṛhat Jātaka 1.12 and is not offered',
+  },
+  {
+    featureId: 'VCH-D3',
+    featureName: 'D3 Drekkana',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-1.11'],
+    note: 'A second scheme is recorded in Bṛhat Jātaka 1.12 and is not offered',
+  },
+  {
+    featureId: 'VCH-D4',
+    featureName: 'D4 Chaturthamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.9: the lord of the sign itself and of its 4th, 7th and 10th',
+  },
+  {
+    featureId: 'VCH-D7',
+    featureName: 'D7 Saptamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.10: odd signs from the sign itself, even signs from the 7th',
+  },
+  {
+    featureId: 'VCH-D9',
+    featureName: 'D9 Navamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-1.6'],
+  },
+  {
+    featureId: 'VCH-D10',
+    featureName: 'D10 Dasamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.13: odd signs from the sign itself, even signs from the 9th',
+  },
+  {
+    featureId: 'VCH-D12',
+    featureName: 'D12 Dwadasamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-1.6'],
+  },
+  {
+    featureId: 'VCH-D16',
+    featureName: 'D16 Shodasamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.16: movable from Aries, fixed from Leo; the third start is read as Sagittarius (the translator renders it as the Ashvini-kumaras)',
+  },
+  {
+    featureId: 'VCH-D20',
+    featureName: 'D20 Vimsamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.17: movable from Aries, fixed from Sagittarius (capa), dual from Leo (mrgendra)',
+  },
+  {
+    featureId: 'VCH-D24',
+    featureName: 'D24 Siddhamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.22: odd signs from Leo, even signs from Cancer',
+  },
+  {
+    featureId: 'VCH-D27',
+    featureName: 'D27 Bhamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.24-26 gives the 27 lords from the movable sign; the start by element (Aries, Cancer, Libra, Capricorn) is the usual reading, not spelled out in the verse',
+  },
+  {
+    featureId: 'VCH-D30',
+    featureName: 'D30 Trimsamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-1.7', 'BPHS-6.27-28'],
+    note: 'Lords and widths are Bṛhat Jātaka 1.7; the sign drawn for each lord, by the parity of the sign, is BPHS 6.27-28',
+  },
+  {
+    featureId: 'VCH-D40',
+    featureName: 'D40 Khavedamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.29: odd signs from Aries, even signs from Libra',
+  },
+  {
+    featureId: 'VCH-D45',
+    featureName: 'D45 Akshavedamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.31: movable from Aries, fixed from Leo, dual from Sagittarius',
+  },
+  {
+    featureId: 'VCH-D60',
+    featureName: 'D60 Shastiamsa',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-6.9-33'],
+    note: 'BPHS 6.33: double the degrees, divide by 12, the remainder counts from the sign',
+  },
+  {
+    featureId: 'VCH-EXT',
+    featureName: 'D5/D6/D8/D11/D14/D21/D81/D108 (extra)',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'No old text for D5, D6, D8, D11, D14, D21, D81 or D108: an equal-division rule counted from the sign. Labelled not verified',
+  },
+
+  // -------------------------------------------------------------------------
+  // Dashas
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'VMD-CYC',
+    featureName: 'Vimshottari 120-year cycle',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-46.12-15'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The 120-year life span is given as the reason for the system',
+  },
+  {
+    featureId: 'VMD-DUR',
+    featureName: 'Vimshottari planetary durations',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-46.12-15'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'VMD-BAL',
+    featureName: 'Vimshottari birth balance',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-46.16'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The worked example in the book has a print slip in its intermediate figures; the final balance agrees with the rule',
+  },
+  {
+    featureId: 'VMD-ANT',
+    featureName: 'Vimshottari antardasha',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-51.1'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date',
+  },
+  {
+    featureId: 'VMD-PRA',
+    featureName: 'Vimshottari pratyantardasha',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-51.1'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. The same proportion as the antardasha, applied one level down',
+  },
+  { featureId: 'VMD-SOO', featureName: 'Vimshottari sookshma', tag: 'UNVERIFIED', sourceIds: [] },
+  { featureId: 'VMD-PRA2', featureName: 'Vimshottari prana', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'CHD-FULL',
+    featureName: 'Chara Dasha (complete)',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'K. V. Abhyankar summary of the Jaimini Sutras (register JS-ABH-52-70): node co-lords and their count fixed; start from the stronger of the 1st and 7th, antardasha and sequence direction not settled. No live caller',
+  },
+  {
+    featureId: 'YGN-FULL',
+    featureName: 'Yogini Dasha',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-46.195-199'],
+    note: 'Earliest verified text: Bṛhat Parāśara Horā Śāstra, whose surviving form is of disputed date. Start rule (star number + 3) mod 8 and the years 1 to 8 are in the verse; the sub-period proportion is the Vimshottari one and is not stated for this system',
+  },
+
+  // -------------------------------------------------------------------------
+  // Doshas
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'DOH-MNG',
+    featureName: 'Mangal Dosha',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The house list is the usual one; the ten cancellation rules are not all in the texts opened and come from later practice. Not changed',
+  },
+  {
+    featureId: 'DOH-KAL',
+    featureName: 'Kaal Sarp',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+    note: 'Not in any text opened (see register BPHS-83 for the serpent curse, a different rule about sonlessness). 12-name classification is modern — D2 fault; label MODERN_ASTROLOGICAL',
+  },
+  {
+    featureId: 'DOH-PIT',
+    featureName: 'Pitra Dosha',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Not in any text opened. The BPHS father curse (register BPHS-83.20-30) is eleven sonlessness combinations, none of them these indicators',
+  },
+  { featureId: 'DOH-GCH', featureName: 'Guru Chandal', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'DOH-GRH',
+    featureName: 'Grahan Dosha',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The BPHS rule is birth at an actual eclipse (register BPHS-91); the conjunction with Rahu or Ketu is a later reading',
+  },
+  {
+    featureId: 'DOH-KEM',
+    featureName: 'Kemadruma Dosha',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-13.3'],
+    note: 'Definition and the two cancellations are in Bṛhat Jātaka 13.3 and are the default. The later exemptions (a planet in an angle from the Moon, the aspect of Jupiter, Venus with the Moon) are the profile option kemadrumaExemptions later-tradition',
+  },
+  {
+    featureId: 'DOH-SAD',
+    featureName: 'Sade Sati',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Saturn over the 12th, 1st and 2nd from the Moon: a later popular system, no old text opened for the name. The dates come from the ephemeris',
+  },
+  { featureId: 'DOH-DHA', featureName: 'Dhaiya', tag: 'UNVERIFIED', sourceIds: [] },
+
+  // -------------------------------------------------------------------------
+  // Yoga engine
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'YGA-PMP',
+    featureName: 'Pancha Mahapurusha',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BS-68.1-2'],
+    note: 'The conditions (own or exalted sign, in an angle) are Bṛhat Saṃhitā 68. The result sentences shown to users are not from that text, which describes the body of each man; one translator reads the conditions as alternatives',
+  },
+  { featureId: 'YGA-RAJ', featureName: 'Raja Yoga', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'YGA-DKA',
+    featureName: 'Dharma-Karmadhipati Yoga',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+  },
+  {
+    featureId: 'YGA-VIP',
+    featureName: 'Viparita Raja Yoga',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The name is in none of the texts opened (Bṛhat Jātaka, BPHS translation, Phaladeepika). The two-of-three rule is Aroha own; Harsha, Sarala and Vimala (PD-6.57) are the nearest old rules',
+  },
+  {
+    featureId: 'YGA-SAR',
+    featureName: 'Saraswati Yoga',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-6.26-27'],
+    note: 'Phaladeepika 6.26. Strong Jupiter in the text has no number and is not applied',
+  },
+  {
+    featureId: 'YGA-PAR',
+    featureName: 'Parivartana Yogas (Dainya, Khala, Maha)',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-6.32-33'],
+    note: 'Phaladeepika 6.32-33: 30 Dainya, 8 Khala, 28 Maha pairs',
+  },
+  {
+    featureId: 'YGA-HSV',
+    featureName: 'Harsha, Sarala and Vimala yogas',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-6.57-69'],
+    note: 'Phaladeepika 6.57: the lord of the 6th, 8th or 12th in the 6th, 8th or 12th. A later work than the Bṛhat Jātaka; the BPHS translation has them only in a translator note',
+  },
+  {
+    featureId: 'YGA-NEE',
+    featureName: 'Neechabhanga',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-7.26-29'],
+    note: 'Phaladeepika 7.26-29. No Navamsa rule in those verses. The earlier engine set is the profile value neechabhangaRules earlier',
+  },
+  { featureId: 'YGA-DHA', featureName: 'Dhana Yogas', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'YGA-LAK',
+    featureName: 'Lakshmi Yoga',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The name is not in the BPHS translation or the Phaladeepika text searched',
+  },
+  {
+    featureId: 'YGA-GJK',
+    featureName: 'Gajakesari Yoga',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-36.3'],
+    note: 'BPHS 36.3 (Sanskrit read). The earlier engine rule, Jupiter in a kendra from the Moon, is the profile value gajakesariRule moon-kendra',
+  },
+  {
+    featureId: 'YGA-SHK',
+    featureName: 'Shakata Yoga',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-6.14'],
+    note: 'Phaladeepika 6.14: the Moon 6th, 8th or 12th from Jupiter, unless the Moon is in a kendra from the Lagna. The Bṛhat Jātaka has a different Śakaṭa (BJ-12.4)',
+  },
+  {
+    featureId: 'YGA-MBH',
+    featureName: 'Mahabhagya Yoga',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-6.14'],
+    note: 'Phaladeepika 6.14. The engine reports either the male or the female case because it does not know the reader sex',
+  },
+  {
+    featureId: 'YGA-SHA',
+    featureName: 'Sunapha/Anapha/Durudhara/Adhi',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+  },
+  {
+    featureId: 'YGA-BUD',
+    featureName: 'Budhaditya Yoga',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The name is not in the BPHS translation or the Phaladeepika text searched',
+  },
+  {
+    featureId: 'YGA-ASR',
+    featureName: 'Rajju, Musala, Nala (Asraya yogas)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-12.2'],
+  },
+  {
+    featureId: 'YGA-KED',
+    featureName: 'Kedara Yoga',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-12.10'],
+  },
+  {
+    featureId: 'YGA-SUN',
+    featureName: 'Sunapha, Anapha, Durudhura',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-13.3'],
+  },
+  {
+    featureId: 'YGA-ADH',
+    featureName: 'Adhi Yoga (from the Moon)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-13.2'],
+  },
+  {
+    featureId: 'YGA-VAS',
+    featureName: 'Vasumati Yoga',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-13.9'],
+  },
+
+  // -------------------------------------------------------------------------
+  // Shared rule tables
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'DIG-EXA',
+    featureName: 'Exaltation and debilitation, seven planets',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-1.13'],
+    note: 'Node entries in the shared table are not in this text',
+  },
+  {
+    featureId: 'GOC-AUS',
+    featureName: 'Transit: houses from the birth Moon that are benefic, seven planets',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BS-103.4'],
+    note: 'Rahu and Ketu rows (3, 6, 11) are not in the text. Mars in the 10th is favourable in the per-house verse but outside the summary the engine follows',
+  },
+  {
+    featureId: 'GOC-VED',
+    featureName: 'Transit: vedha (obstruction) pairs and their exemptions',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Not in Bṛhat Saṃhitā chapter 103 or the Bṛhat Jātaka. A later work is needed before this can be called classical',
+  },
+  {
+    featureId: 'DIG-NAT',
+    featureName: 'Benefic and malefic planets (waning Moon, Mercury by company)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-2.5'],
+    note: 'Node natures are not in this text. Aroha scoring heuristics (relocation, astrocartography, yantra, daily transit nudge, retrograde commentary, Lal Kitab debts) still use a fixed list and are Aroha conventions',
+  },
+  {
+    featureId: 'DIG-FRD',
+    featureName: 'Natural friends and enemies, seven planets',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-2.16-17'],
+    note: 'Node friendships are not in this text',
+  },
+  {
+    featureId: 'ASP-FUL',
+    featureName: 'Full aspects (7th; Saturn 3/10, Jupiter 5/9, Mars 4/8)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BJ-2.13'],
+  },
+
+  // -------------------------------------------------------------------------
+  // Matchmaking
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'MT-ASH',
+    featureName: 'Ashtakoota (8 factors, 36 points)',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+  },
+  { featureId: 'MT-DSH', featureName: 'Dashakoota (10 factors)', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'MT-GAN',
+    featureName: 'Gana koota (the gana of each star)',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['MC-6.21-33'],
+    note: 'Muhurta Chintamani 6.29, Krittika corrected. The point values are in the commentary and are not all legible',
+  },
+  {
+    featureId: 'MT-YON',
+    featureName: 'Yoni koota (animals and enemy pairs)',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['MC-6.21-33'],
+    note: 'Animals and the seven enemy pairs are Muhurta Chintamani 6.25-26. The 3, 2 and 1 point values and the friendly pairs are in no text opened',
+  },
+  {
+    featureId: 'MT-VAS',
+    featureName: 'Vashya koota',
+    tag: 'UNVERIFIED',
+    sourceIds: ['MC-6.21-33'],
+    note: 'The text (6.23) gives 2 or 0 in one direction; the engine five-group matrix with 0.5 and 1 is in no text opened',
+  },
+  {
+    featureId: 'MT-BHK',
+    featureName: 'Bhakoot koota',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['MC-6.21-33'],
+    note: 'Muhurta Chintamani 6.31-33: the 2-12, 5-9 and 6-8 faults and their exemptions (same or friendly sign lords, pure nadi, pure tara). Exemptions by navamsa lords and by vashya are not applied. The earlier rule is the profile value bhakootRule earlier',
+  },
+  {
+    featureId: 'MT-NAD',
+    featureName: 'Nadi koota (stars of the three nadis)',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['MC-6.34'],
+    note: 'Muhurta Chintamani 6.34 (a much later author than the Bṛhat Jātaka). The 8-point Nadi score and its place in a 36-point total are conventions',
+  },
+  {
+    featureId: 'MT-RIS',
+    featureName: 'Match risk scoring',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+    note: '36-point bands and match-risks.ts are Aroha scoring — M1, MT5',
+  },
+
+  // -------------------------------------------------------------------------
+  // Panchanga
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'PAN-TTH',
+    featureName: 'Tithi',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The Panchang screen reads tithi, nakshatra, yoga and karana at local noon, an Aroha convention; the sunrise reading is not in a text opened (PN4)',
+  },
+  { featureId: 'PAN-VAR', featureName: 'Vara', tag: 'UNVERIFIED', sourceIds: [] },
+  { featureId: 'PAN-NAK', featureName: 'Nakshatra', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'PAN-YOG',
+    featureName: 'Yoga (Panchanga)',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The Sun plus the Moon longitude in 27 parts of 13 deg 20 min, with an explicit floor. No old text opened for the auspicious and inauspicious split',
+  },
+  { featureId: 'PAN-KAR', featureName: 'Karana', tag: 'UNVERIFIED', sourceIds: [] },
+  { featureId: 'PAN-RIS', featureName: 'Sunrise/sunset/noon', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'PAN-RHK',
+    featureName: 'Rahu Kala',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Uses real sunrise (correct); DOC entry',
+  },
+  { featureId: 'PAN-GUL', featureName: 'Gulika', tag: 'UNVERIFIED', sourceIds: [] },
+  { featureId: 'PAN-YAM', featureName: 'Yamaganda', tag: 'UNVERIFIED', sourceIds: [] },
+  { featureId: 'PAN-ABH', featureName: 'Abhijit', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'PAN-CHO',
+    featureName: 'Choghadiya',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Uses real day length (correct); DOC entry. No old text found for the 16 periods or the night order (register, PN3)',
+  },
+  { featureId: 'PAN-HOR', featureName: 'Hora', tag: 'UNVERIFIED', sourceIds: [] },
+
+  // -------------------------------------------------------------------------
+  // Muhurta
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'MUH-FLT',
+    featureName: 'Muhurta filters (all)',
+    tag: 'UNVERIFIED',
+    sourceIds: ['BS-97-99'],
+    note: 'Only the marriage star list and the Rikta tithis are in Bṛhat Saṃhitā 97-99. The other categories, weekdays and tithi lists are from a work not yet opened. Karana (Vishti) and yoga (Vyatipata, Vaidhriti) are not modelled',
+  },
+  {
+    featureId: 'MUH-SRG',
+    featureName: 'Surgery muhurta category',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+    note: 'Health safety flag — SF1',
+  },
+
+  // -------------------------------------------------------------------------
+  // KP
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'KP-CLS',
+    featureName: 'KP classification',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+    note: 'Krishnamurti Paddhati — 20th century; not ancient Vedic',
+  },
+  {
+    featureId: 'KP-SUB',
+    featureName: 'KP 243 sub-divisions',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+  },
+  {
+    featureId: 'KP-249',
+    featureName: 'KP 1-249 horary numbering',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+    note: 'No 1-249 table exists in code; 2193 incorrect — K1, K2 faults',
+  },
+
+  // -------------------------------------------------------------------------
+  // Varshaphal / Tajika
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'TAJ-SR',
+    featureName: 'Solar return',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: [],
+    note: 'Tajika is a later tradition',
+  },
+  { featureId: 'TAJ-MUN', featureName: 'Muntha', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'TAJ-SAH',
+    featureName: 'Sahams',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Five sahams, each with its own formula, no text opened for them; the older document listed eight',
+  },
+
+  // -------------------------------------------------------------------------
+  // Lal Kitab
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'LKB-CLS',
+    featureName: 'Lal Kitab classification',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+    note: 'A 20th-century work (scans of the 1939, 1941 and 1952 editions exist); not a classical text',
+  },
+  {
+    featureId: 'LKB-PKG',
+    featureName: 'Pakka Ghar',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Lal Kitab gives each planet a fixed house of its own, separate from ordinary lordship. A 20th-century work whose scans are unreadable (register, Lal Kitab)',
+  },
+  {
+    featureId: 'LKB-DEB',
+    featureName: 'Lal Kitab debts',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+    note: 'In the legible part of the Hindi edition the debts go by the planets house, not by Parashari aspect or retrograde motion as the engine reads them. Not changed (the list is incomplete in the scan)',
+  },
+
+  // -------------------------------------------------------------------------
+  // Numerology
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'NUM-VED',
+    featureName: 'Vedic numerology (Mulank/Bhagyank)',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+  },
+  {
+    featureId: 'NUM-CHL',
+    featureName: 'Chaldean numerology',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+  },
+  {
+    featureId: 'NUM-PYT',
+    featureName: 'Pythagorean numerology',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+  },
+  {
+    featureId: 'NUM-LKY',
+    featureName: 'Today number (daily)',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+    note: 'The day of the month added down to one digit, the same for everyone, called today number since the audit (NM2). The older nakshatra formula is gone',
+  },
+
+  // -------------------------------------------------------------------------
+  // Astrocartography
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'ACG-MAP',
+    featureName: 'Astrocartography (ACG/MC/IC lines)',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+  },
+
+  // -------------------------------------------------------------------------
+  // Vastu
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'VST-ANC',
+    featureName: 'Vastu room-direction rules',
+    tag: 'UNVERIFIED',
+    sourceIds: ['BS-52.116-117', 'BJ-2.5b'],
+    note: 'Five rules have support in Bṛhat Saṃhitā 52 (puja NE, kitchen SE, store SW/NW, water N/NE good, SE/S/SW bad). Water in E and NW is rated acceptable against the text. The other rules, the score and the weights are not from it',
+  },
+  {
+    featureId: 'VST-SCR',
+    featureName: 'Vastu Harmony Score 0-100',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+  },
+
+  // -------------------------------------------------------------------------
+  // Palmistry
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'PLM-ANC',
+    featureName: 'Ancient Indian bodily-mark material',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+  },
+  {
+    featureId: 'PLM-CV',
+    featureName: 'Computer vision / palm detection',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+  },
+  {
+    featureId: 'PLM-REC',
+    featureName: 'Kundli-Palm reconciliation',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+  },
+
+  // -------------------------------------------------------------------------
+  // Gemstones
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'GEM-ANC',
+    featureName: 'Ancient gem/planet principles',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+  },
+  {
+    featureId: 'GEM-PRX',
+    featureName: 'Gemstone prescription',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Follows the corrected Shadbala. No old text opened for the stone to planet table beyond the common list',
+  },
+
+  // -------------------------------------------------------------------------
+  // Yantras
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'YNT-TBL',
+    featureName: 'Yantra magic-square tables',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'One table was called classical without a source; no old text found',
+  },
+
+  // -------------------------------------------------------------------------
+  // Pancha Pakshi
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'PPK-BRD',
+    featureName: 'Pancha Pakshi five birds',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+  },
+  {
+    featureId: 'PPK-YAM',
+    featureName: 'Pancha Pakshi yamas / time divisions',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Uses real sunrise (correct); DOC entry',
+  },
+
+  // -------------------------------------------------------------------------
+  // Reports
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'RPT-HLT',
+    featureName: 'Health report / health risk / surgery filter',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+    note: 'Safety flag SF1 — health claims need provenance block',
+  },
+  {
+    featureId: 'RPT-PRG',
+    featureName: 'Progeny / fertility report',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The sex tendency and the child count are no longer shown or written (SF2). The rest is Aroha scoring over the sphuta rules of the Phaladeepika',
+  },
+  {
+    featureId: 'RPT-PL',
+    featureName: 'Past-life report',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'A reflective story, not a fact (SF3): the narration says so and ascribes no guilt, debt or curse',
+  },
+  {
+    featureId: 'RPT-RPT',
+    featureName: 'All 16 commercial reports (provenance block)',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+    note: 'Every report now returns a basis block (rules/report-basis.ts): calculation_basis, source_profile, traditional_rules, modern_rules, aroha_proprietary_rules, unverified_rules, safety_classification. The report scores themselves are Aroha blends of a 30/60/90 scale (RP1)',
+  },
+
+  // -------------------------------------------------------------------------
+  // Architecture
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'ARCH-MET',
+    featureName: 'Ephemeris service (deterministic, renamed from Metrologist Agent)',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+    note: 'Renamed the ephemeris service: a deterministic chart computation, no language model (ARCH)',
+  },
+  {
+    featureId: 'ARCH-DEC',
+    featureName: 'Decision engine',
+    tag: 'AROHA_PROPRIETARY',
+    sourceIds: [],
+  },
+  { featureId: 'ARCH-BON', featureName: 'Aroha Bonds', tag: 'AROHA_PROPRIETARY', sourceIds: [] },
+];
+
+// ---------------------------------------------------------------------------
+// Lookup API
+// ---------------------------------------------------------------------------
+
+const _map = new Map<string, ProvenanceEntry>(REGISTRY.map((e) => [e.featureId, e]));
+
+/**
+ * Look up the provenance entry for a feature.
+ * Returns a synthetic UNVERIFIED entry if the id is not in the registry.
+ */
+export function getProvenance(featureId: string): ProvenanceEntry {
+  return (
+    _map.get(featureId) ?? {
+      featureId,
+      featureName: featureId,
+      tag: 'UNVERIFIED',
+      sourceIds: [],
+      note: 'Feature id not yet registered in provenance registry',
+    }
+  );
+}
+
+/**
+ * Human-readable label for use in API responses and prompts.
+ *
+ * Example: "ANCIENT_CLASSICAL — BPHS-SHB-001, BPHS-SHB-002"
+ */
+export function provenanceLabel(featureId: string): string {
+  const e = getProvenance(featureId);
+  const src = e.sourceIds.length > 0 ? ` — ${e.sourceIds.join(', ')}` : '';
+  return `${e.tag}${src}`;
+}
+
+/** All entries in registration order. */
+export function allProvenanceEntries(): ProvenanceEntry[] {
+  return REGISTRY;
+}

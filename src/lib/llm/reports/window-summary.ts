@@ -25,7 +25,7 @@ import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import { reportFactsMessage } from './report-facts-message.js';
 
 const GROUNDING_RULE =
-  "Each window's date range, confidence level, and dasha depth below are GIVEN FACTS, already computed by a deterministic classical Vedic algorithm. State the date range and confidence verbatim in plain language. Never invent a date, a planet name, or a reason not given here — you were NOT given the astrological reasoning behind each window, only its dates and confidence, so do not fabricate one.";
+  "Each window's date range, confidence level, and dasha depth below are GIVEN FACTS, already computed by a deterministic traditional Vedic algorithm. State the date range and confidence verbatim in plain language. Never invent a date, a planet name, or a reason not given here — you were NOT given the astrological reasoning behind each window, only its dates and confidence, so do not fabricate one.";
 const SAFETY_RULE =
   'This is advisory guidance for reflection, never a guarantee about what will happen in this window, and never a substitute for the reader\'s own judgment. Use tendency language ("suggests", "a period worth watching"), never an absolute prediction.';
 

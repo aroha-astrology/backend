@@ -3,3 +3,5 @@ dist
 coverage
 src/db/migrations
 package-lock.json
+src/lib/shared/**/*.js
+src/lib/shared/**/*.d.ts

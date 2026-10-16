@@ -29,11 +29,11 @@ import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import { reportFactsMessage } from './report-facts-message.js';
 
 const GROUNDING_RULE =
-  'The overall Guna Milan/Dashakoot scores, the Manglik Dosha status, the single biggest-risk life area, and the severity and evidence for each life area below are GIVEN FACTS, already computed by a deterministic classical Vedic analysis. Never invent, escalate, or soften any risk, score, or status beyond what is given, and never contradict the given severity — your job is ONLY to turn these given facts into readable prose.';
+  'The overall Guna Milan/Dashakoot scores, the Manglik Dosha status, the single biggest-risk life area, and the severity and evidence for each life area below are GIVEN FACTS, already computed by a deterministic traditional Vedic analysis. Never invent, escalate, or soften any risk, score, or status beyond what is given, and never contradict the given severity — your job is ONLY to turn these given facts into readable prose.';
 const PLAIN_LANGUAGE_RULE =
   'Write for someone with zero astrology background. Avoid untranslated Sanskrit/technical jargon where a plain-language equivalent exists. Talk about real post-marriage themes (money, health, family, children, career, timing, intimacy, in-laws), not planetary mechanics.';
 const SAFETY_RULE =
-  'This is advisory guidance for reflection, never a guarantee about the relationship\'s success, health, or safety, and never a substitute for the couple\'s own judgment or professional medical/legal advice. Use tendency language ("suggests", "classically associated with"), never absolute predictions. For a "caution" or "serious" health/accident finding, be honest and direct about the classical concern without being alarmist. For remedies, name ONLY classical non-commercial practices (mantra, fasting, charity/daan, worship of a specific deity) — never recommend purchasing a gemstone, booking a puja, or any specific paid product or service.';
+  'This is advisory guidance for reflection, never a guarantee about the relationship\'s success, health, or safety, and never a substitute for the couple\'s own judgment or professional medical/legal advice. Use tendency language ("suggests", "traditionally associated with"), never absolute predictions. For a "caution" or "serious" health/accident finding, be honest and direct about the traditional concern without being alarmist. For remedies, name ONLY traditional non-commercial practices (mantra, fasting, charity/daan, worship of a specific deity) — never recommend purchasing a gemstone, booking a puja, or any specific paid product or service.';
 
 const SECTIONS_SCHEMA = {
   type: 'object',
@@ -175,9 +175,9 @@ function formatManglikStatus(scores: MatchReportScores): string {
     return 'Manglik Dosha: not present for either person.';
   }
   if (person1 && person2) {
-    return `Manglik Dosha: present for BOTH people (${cancelled ? 'classically cancelled' : 'NOT classically cancelled — a real classical caution'}).`;
+    return `Manglik Dosha: present for BOTH people (${cancelled ? 'traditionally cancelled' : 'NOT traditionally cancelled — a real traditional caution'}).`;
   }
-  return `Manglik Dosha: present for only one person (${cancelled ? 'classically cancelled' : 'NOT cancelled — a real classical caution'}).`;
+  return `Manglik Dosha: present for only one person (${cancelled ? 'traditionally cancelled' : 'NOT cancelled — a real traditional caution'}).`;
 }
 
 /** Both people's Navamsa (D9) — computed by computeKundliMilanScores (via
@@ -251,9 +251,9 @@ For each section:
 - "key": exactly the life-area name it covers (one of: wealth, health, children, harmony, career, timing, intimacy, inlaws) — this is how the app matches your section back to the area, so it must be exact and never omitted.
 - "heading": a short, punchy hook sentence (under 100 characters) capturing the finding memorably — this is the ONE line the user reads first.
 - "paragraphs": an array with EXACTLY ONE string, 200-500 characters, plain language, explaining the finding and its practical implication.
-- For "caution" or "serious" areas — especially health — be honest and direct about what could classically go wrong (health/accident risk, financial volatility, family friction, etc.) without being alarmist, then add one constructive note.
+- For "caution" or "serious" areas — especially health — be honest and direct about what could traditionally go wrong (health/accident risk, financial volatility, family friction, etc.) without being alarmist, then add one constructive note.
 - For "benefit" areas, celebrate the finding concretely.
-- For the "harmony" card specifically: it is the reader's headline answer to "how compatible are we overall" and "do our Manglik doshas cancel out" — explicitly state the given overall Guna Milan (Ashtakoota) score out of its max and the given compatibility band, the given Dashakoot score out of its max, the given Manglik Dosha status for both people (present or not, and whether it classically cancels), and briefly both people's given Navamsa (D9) as a corroborating classical layer, alongside the Nadi/Bhakoot/Gana evidence.`;
+- For the "harmony" card specifically: it is the reader's headline answer to "how compatible are we overall" and "do our Manglik doshas cancel out" — explicitly state the given overall Guna Milan (Ashtakoota) score out of its max and the given compatibility band, the given Dashakoot score out of its max, the given Manglik Dosha status for both people (present or not, and whether it traditionally cancels), and briefly both people's given Navamsa (D9) as a corroborating traditional layer, alongside the Nadi/Bhakoot/Gana evidence.`;
 }
 
 function dosAndDontsSystemPrompt(): string {
@@ -270,7 +270,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 Write EXACTLY 3 sections, one per key below, each used exactly once:
 1. "key": "dos" — heading close to "Do's" — paragraphs: an array of 4-6 short actionable strings (each under 120 characters), practical good-practice recommendations tailored to the cautions found across the 8 areas.
 2. "key": "donts" — heading close to "Don'ts" — paragraphs: an array of 4-6 short strings, things to avoid or watch for, tailored to the same cautions. The FIRST string must explicitly name the given single biggest-risk life area (see the "Single biggest risk area" fact) — this is the reader's one clear headline answer to "what's our biggest risk area." Do this even when no area reached caution/serious severity — name the comparatively weakest area instead of skipping it.
-3. "key": "remedies" — heading close to "Classical Remedies" — paragraphs: an array of 2-4 short strings, ONLY classical non-commercial remedies (mantra, fasting, charity/daan, worship of a specific deity), one per string. If the 8 areas are mostly "benefit"/"neutral", keep these general and preventive rather than fear-based.
+3. "key": "remedies" — heading close to "Traditional Remedies" — paragraphs: an array of 2-4 short strings, ONLY traditional non-commercial remedies (mantra, fasting, charity/daan, worship of a specific deity), one per string. If the 8 areas are mostly "benefit"/"neutral", keep these general and preventive rather than fear-based.
 
 The "key" field must be exactly "dos", "donts", or "remedies" — this is how the app matches each section back to its slot, so it must be exact and never omitted.`;
 }
@@ -288,7 +288,7 @@ async function generateSection(
     responseSchema: KEYED_SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'match_report'),
       { role: 'user', content: userPrompt },
     ],
   });
@@ -326,7 +326,7 @@ export async function generateMatchReportNarrative(
       facts,
       scores.planetCondition,
       scores.vakriFacts,
-      "Write the Do's, Don'ts, and Classical Remedies sections.",
+      "Write the Do's, Don'ts, and Traditional Remedies sections.",
       MATCH_CLOSING_KEYS,
     ),
   ]);

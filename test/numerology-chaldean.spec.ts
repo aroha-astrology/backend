@@ -161,9 +161,9 @@ describe('dayVibration', () => {
 });
 
 describe('dailyNumerology', () => {
-  it('produces a luckyNumber equal to the day number and a color from the day ruler', () => {
+  it("produces today's number equal to the day number and a color from the day ruler", () => {
     const result = dailyNumerology(new Date('2026-08-01T00:00:00Z'), 3);
-    expect(result.luckyNumber).toBe(1);
+    expect(result.todaysNumber).toBe(1);
     expect(result.luckyColor).toBe('Gold'); // Sun's color
   });
 
@@ -171,7 +171,7 @@ describe('dailyNumerology', () => {
     const moolankValue = 4;
     const day1 = dailyNumerology(new Date('2026-08-01T00:00:00Z'), moolankValue);
     const day2 = dailyNumerology(new Date('2026-08-02T00:00:00Z'), moolankValue);
-    expect(day1.luckyNumber).not.toBe(day2.luckyNumber);
+    expect(day1.todaysNumber).not.toBe(day2.todaysNumber);
   });
 });
 

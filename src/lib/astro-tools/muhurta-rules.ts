@@ -48,6 +48,10 @@ export interface MuhurtaRule {
   unfavorableTithis: readonly number[];
   favorableWeekdays: readonly number[];
   unfavorableWeekdays: readonly number[];
+  /** Karanas to leave out, by name as the panchang spells them (e.g. 'Vishti'). */
+  unfavorableKaranas?: readonly string[];
+  /** Panchang yogas to leave out, by name (e.g. 'Vyatipata'). */
+  unfavorableYogas?: readonly string[];
 }
 
 /** Rikta ("empty") tithis — the 4th, 9th and 14th of each paksha — avoided for any new start. */
@@ -149,11 +153,16 @@ const PROPERTY: MuhurtaRule = {
   unfavorableWeekdays: [TUE, SAT],
 };
 
-/** Vivah nakshatras; the three Purvas and the fierce stars avoided, as are Ashtami and Navami. */
+/**
+ * Vivah nakshatras: the eleven of Bṛhat Saṃhitā 99.7 (Rohini, the three Uttaras, Revati,
+ * Mrigashira, Moola, Anuradha, Magha, Hasta, Swati). The three Purvas and the other fierce
+ * stars are avoided, as are Ashtami and Navami (those two tithis are not from that text).
+ */
 const MARRIAGE: MuhurtaRule = {
   favorableNakshatras: [
     'Rohini',
     'Mrigashira',
+    'Moola',
     'Magha',
     'UttaraPhalguni',
     'Hasta',
@@ -169,7 +178,6 @@ const MARRIAGE: MuhurtaRule = {
     'Ardra',
     'Ashlesha',
     'Jyeshtha',
-    'Moola',
     'PurvaPhalguni',
     'PurvaAshadha',
     'PurvaBhadrapada',
@@ -178,6 +186,9 @@ const MARRIAGE: MuhurtaRule = {
   unfavorableTithis: [...RIKTA, 8, 9, 23, 24, AMAVASYA],
   favorableWeekdays: [MON, WED, THU, FRI],
   unfavorableWeekdays: [TUE, SAT],
+  // Bṛhat Saṃhitā 99.8: leave out Vyatipata, Vaidhriti, Vishti and the Rikta days (audit MU3).
+  unfavorableKaranas: ['Vishti'],
+  unfavorableYogas: ['Vyatipata', 'Vaidhriti'],
 };
 
 /** Buying a vehicle: the movable and light stars; Ashtami and the fierce stars avoided. */

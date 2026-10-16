@@ -152,6 +152,11 @@ export interface ChartData {
   ayanamsa: Ayanamsa;
   ayanamsaValue: number;
   julianDay: number;
+  /**
+   * Sidereal longitude of the Midheaven (10th cusp), degrees. Absent on charts
+   * stored before it was added; Dig Bala then estimates it from the Ascendant.
+   */
+  midheaven?: number;
 }
 
 // ============================================================
@@ -166,6 +171,14 @@ export interface DashaPeriod {
   level: 'mahadasha' | 'antardasha' | 'pratyantardasha' | 'sookshma' | 'prana';
   subPeriods: DashaPeriod[];
   deity?: string;
+  /**
+   * Only on the Mahadasha a person is born into: when the whole period began,
+   * before birth. `startDate` stays the birth instant (what the dasha screen
+   * shows); sub-periods must be cut from the full period, so anything that
+   * rebuilds them reads this through `fullSpanOf` in dashas/vimshottari.ts.
+   * Absent on charts stored before the field existed.
+   */
+  fullStartDate?: Date;
 }
 
 export interface VimshottariDasha {
@@ -295,6 +308,12 @@ export interface PlanetShadbala {
   totalVirupas: number;
   requiredVirupas: number;
   isStrong: boolean;
+  /**
+   * Planetary war (BPHS 27.20): the difference of the two Shadbalas, added to the
+   * winner and taken from the loser. Already inside totalVirupas; 0 when the
+   * planet is in no war.
+   */
+  yuddhaBala?: number;
 }
 
 // ============================================================
@@ -343,11 +362,6 @@ export interface AshtakootaResult {
   scores: KootaScore[];
   totalScore: number;
   maxTotal: number;
-  mangalMatch: {
-    boyManglik: boolean;
-    girlManglik: boolean;
-    compatible: boolean;
-  };
   overallCompatibility: 'excellent' | 'good' | 'average' | 'below_average' | 'poor';
 }
 

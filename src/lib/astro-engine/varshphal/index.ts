@@ -75,6 +75,7 @@ export async function computeVarshphal(inputs: VarshphalInputs): Promise<Varshph
     muntha.signIndex,
     solarReturn.chart,
     solarReturn.isDayReturn,
+    solarReturn.dayContext,
   );
   const sahams = computeAllSahams(solarReturn.chart, solarReturn.isDayReturn);
 

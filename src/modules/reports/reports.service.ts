@@ -36,7 +36,7 @@ import {
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { todayForApp } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
-import { computeMetrology } from '../../lib/swarm/agents/metrologist.js';
+import { computeMetrology } from '../../lib/swarm/agents/ephemeris.js';
 import {
   chartConditionFacts,
   chartPlanetStrength,
@@ -112,6 +112,7 @@ import type {
   ReportStatsDto,
 } from './reports.schemas.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
+import { reportBasis } from '../../lib/astro-engine/rules/report-basis.js';
 
 /**
  * Bumped whenever the persisted `content` shape changes meaningfully (new section-skeleton /
@@ -558,7 +559,7 @@ function computeScoresWithCondition(
       for (const va of vakriAnalyses) {
         vakriFacts.push(...va.factsForLLM);
         vakriFacts.push(
-          `VAKRI ${va.planet} interpretation — Classical: ${va.interpretation.classical} | Interpretive: ${va.interpretation.interpretive} | Karmic: ${va.interpretation.karmic} (confidence: ${va.confidence.level})`,
+          `VAKRI ${va.planet} interpretation — Traditional: ${va.interpretation.traditional} | Interpretive: ${va.interpretation.interpretive} | Karmic: ${va.interpretation.karmic} (confidence: ${va.confidence.level})`,
         );
       }
     }
@@ -1431,6 +1432,12 @@ async function withTranslatedScoresProse(
  * subset of `scores` itself is ALSO translated for report types listed in
  * SCORES_PROSE_ALLOWLIST — see withTranslatedScoresProse above.
  */
+/** The basis block of a report type (audit release R4), or nothing for an unknown key. */
+function basisOf(reportKey: string): { basis?: NonNullable<ReturnType<typeof reportBasis>> } {
+  const basis = reportBasis(reportKey);
+  return basis ? { basis } : {};
+}
+
 export async function getReportForUser(
   id: string,
   userId: string,
@@ -1484,6 +1491,7 @@ export async function getReportForUser(
       scores: englishScores,
       isPreview: row.isPreview,
       sections: englishSections,
+      ...basisOf(row.reportKey),
     };
   }
 
@@ -1508,6 +1516,7 @@ export async function getReportForUser(
     periodMonth: row.periodMonth,
     scores,
     isPreview: row.isPreview,
+    ...basisOf(row.reportKey),
   };
 
   const sections = await withTranslatedSections(row, englishSections, generator, language);

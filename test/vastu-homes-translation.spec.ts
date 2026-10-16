@@ -157,7 +157,7 @@ describe('homes', () => {
       expect.objectContaining({
         userId: 'user-1',
         birthProfileId: 'profile-a',
-        ruleSetId: 'aroha-traditional-v1',
+        ruleSetId: 'aroha-traditional-v2',
       }),
     );
     expect(dto.archived).toBe(false);

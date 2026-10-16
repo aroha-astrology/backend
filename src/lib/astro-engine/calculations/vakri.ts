@@ -14,6 +14,7 @@ import {
 } from '@aroha-astrology/shared';
 
 import { isCombust } from './planet-state.js';
+import { calculateShadbala } from './shadbala.js';
 
 // =============================================================================
 // Types & Interfaces
@@ -93,7 +94,7 @@ export interface VakriAspectInfo {
 }
 
 export interface VakriInterpretations {
-  classical: string;
+  traditional: string;
   interpretive: string;
   karmic: string;
 }
@@ -208,7 +209,22 @@ export function calculateVakriCheshtaBala(
   planet: Planet,
   isRetrograde: boolean,
   speed: number,
+  /**
+   * The planet's Cheshta Bala from Shadbala (BPHS 27.24-25, the Cheshta Kendra over 3).
+   * When given it is the figure reported, so the two engines cannot disagree (audit VK2).
+   * Without it the older estimate below is used.
+   */
+  shadbalaCheshta?: number,
 ): VakriCheshtaBala {
+  if (shadbalaCheshta !== undefined && Number.isFinite(shadbalaCheshta)) {
+    const score = Math.round(shadbalaCheshta * 10) / 10;
+    return {
+      score,
+      level: score >= 50 ? 'maximum' : score >= 40 ? 'high' : score >= 25 ? 'moderate' : 'low',
+      description: `Cheshta Bala ${score} virupas, from the Cheshta Kendra (BPHS 27.24-25), the same figure Shadbala uses.`,
+    };
+  }
+
   if (planet === 'Sun' || planet === 'Moon' || planet === 'Rahu' || planet === 'Ketu') {
     return {
       score: 30,
@@ -333,8 +349,11 @@ export function calculateVakriDignity(
     baseDignity = 'neutral';
   }
 
-  // Uttara Kalamrita Khanda II, Sloka 6:
-  // "Vakri swoccagato'pi neechaphalam... neecho'pi vakri sthita ucchaphalam dadati"
+  // Uttara Kalamrita (Kalidasa, tr. P. S. Sastri), First Kanda, chapter 2, "Determination of
+  // the Strength" (register UK-1.2, audit VK1): "A planet exalted in the Rasi while
+  // retrograde is similar to a debilitated one ... A retrograde planet in his debilitation
+  // has the strength of exaltation." The verse number is not legible in the scan. The older
+  // comment gave a different chapter and verse and a Sanskrit line that is not in the text.
   if (isRetrograde) {
     if (baseDignity === 'debilitated') {
       return {
@@ -344,7 +363,7 @@ export function calculateVakriDignity(
           source: 'Uttara Kalamrita',
           effectiveStrength: 'exaltation_like_power',
           explanation:
-            'Classical rule (Uttara Kalamrita): A debilitated planet in retrograde motion gains profound motional vigor (Cheshta Bala) and resilience, expressing significant latent drive.',
+            'The Uttara Kalamrita (First Kanda, chapter 2, on strength) says a retrograde planet in its debilitation has the strength of exaltation.',
         },
       };
     }
@@ -357,7 +376,7 @@ export function calculateVakriDignity(
           source: 'Uttara Kalamrita',
           effectiveStrength: 'neecha_like_modification',
           explanation:
-            'Classical rule (Uttara Kalamrita): An exalted planet in retrograde motion internalizes its high status, requiring recalibration of outward results rather than effortless projection.',
+            'The Uttara Kalamrita (First Kanda, chapter 2, on strength) says a planet exalted in its sign while retrograde is like a debilitated one.',
         },
       };
     }
@@ -369,7 +388,7 @@ export function calculateVakriDignity(
         source: 'Uttara Kalamrita',
         effectiveStrength: 'enhanced_intensity',
         explanation:
-          'Retrograde motion intensifies the planet’s functional expression in this sign.',
+          'The Uttara Kalamrita (First Kanda, chapter 2, on strength) gives a retrograde planet the strength of exaltation.',
       },
     };
   }
@@ -428,12 +447,12 @@ export function generateVakriInterpretations(
   const houseDesc = houseNames[house] || `house ${house}`;
 
   // 1. Classical Layer
-  let classical = `${planet} is in Vakri (retrograde) motion in ${sign} in the ${houseDesc}, conferring elevated Cheshta Bala (motional strength). As lord of house(s) ${lordship.housesOwned.join(', ')}, its capacity to deliver its portfolio is amplified.`;
+  let traditional = `${planet} is in Vakri (retrograde) motion in ${sign} in the ${houseDesc}, conferring elevated Cheshta Bala (motional strength). As lord of house(s) ${lordship.housesOwned.join(', ')}, its capacity to deliver its portfolio is amplified.`;
   if (dignity.uttaraKalamritaModifier.applied) {
-    classical += ` ${dignity.uttaraKalamritaModifier.explanation}`;
+    traditional += ` ${dignity.uttaraKalamritaModifier.explanation}`;
   }
   if (dispositor) {
-    classical += ` Its dispositor is ${dispositor.planet} placed in house ${dispositor.house} (${dispositor.sign}), anchoring its manifestation.`;
+    traditional += ` Its dispositor is ${dispositor.planet} placed in house ${dispositor.house} (${dispositor.sign}), anchoring its manifestation.`;
   }
 
   // 2. Interpretive Layer (Psychological & Real-World Non-Linear Dynamic)
@@ -481,7 +500,7 @@ export function generateVakriInterpretations(
   }
 
   return {
-    classical,
+    traditional,
     interpretive,
     karmic,
   };
@@ -576,7 +595,12 @@ export function analyzeVakriPlanet(
   const motion = calculateVakriMotion(planet, speed, isRetrograde);
 
   // 2. Motional Strength (Cheshta Bala)
-  const cheshtaBala = calculateVakriCheshtaBala(planet, isRetrograde, speed);
+  const cheshtaBala = calculateVakriCheshtaBala(
+    planet,
+    isRetrograde,
+    speed,
+    calculateShadbala(chartData, null).find((r) => r.planet === planet)?.cheshtaBala,
+  );
 
   // 3. Lordship
   const lordship = getFunctionalLordship(planet, ascSignIndex);
@@ -587,7 +611,7 @@ export function analyzeVakriPlanet(
   // 5. Combustion & War
   const sunPos = chartData.planets.find((p) => p.planet === 'Sun');
   const sunLong = sunPos?.longitude ?? null;
-  const combust = isCombust(planet, planetPos.longitude, sunLong);
+  const combust = isCombust(planet, planetPos.longitude, sunLong, planetPos.isRetrograde);
 
   let combustionType: 'none' | 'inferior' | 'superior' | 'standard' = 'none';
   if (combust) {
@@ -622,7 +646,7 @@ export function analyzeVakriPlanet(
         dispPos.sign,
         Boolean(dispPos.isRetrograde),
       );
-      const dispCombust = isCombust(signLord, dispPos.longitude, sunLong);
+      const dispCombust = isCombust(signLord, dispPos.longitude, sunLong, dispPos.isRetrograde);
       dispositor = {
         planet: signLord,
         house: dispPos.house || 1,
@@ -729,7 +753,7 @@ export function analyzeVakriPlanet(
 
   if (dignity.uttaraKalamritaModifier.applied) {
     factsForLLM.push(
-      `Classical Uttara Kalamrita modifier: ${dignity.uttaraKalamritaModifier.effectiveStrength}.`,
+      `Traditional Uttara Kalamrita modifier: ${dignity.uttaraKalamritaModifier.effectiveStrength}.`,
     );
   }
 

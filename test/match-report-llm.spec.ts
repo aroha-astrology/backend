@@ -141,7 +141,7 @@ describe('generateMatchReportNarrative', () => {
       .map((m: { content: string }) => m.content)
       .join('\n');
     expect(content).toContain('BOTH people');
-    expect(content).toContain('classically cancelled');
+    expect(content).toContain('traditionally cancelled');
   });
 
   it('states plainly that Manglik Dosha is absent for both when neither chart has it (previously zero Manglik information reached the model in this case)', async () => {

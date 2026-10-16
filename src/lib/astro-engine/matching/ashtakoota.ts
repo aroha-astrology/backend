@@ -9,6 +9,7 @@
 // All calculations are deterministic with classical Vedic rules.
 // =============================================================================
 
+import { getActiveProfile } from '../rules/profile.js';
 import type {
   AshtakootaResult,
   KootaScore,
@@ -83,9 +84,8 @@ function calculateVarna(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaScor
     koota: 'Varna',
     maxScore: KOOTA_MAX_SCORES.Varna,
     score,
-    description: score === 1
-      ? 'Varna of boy is equal or higher than girl'
-      : 'Varna of boy is lower than girl',
+    description:
+      score === 1 ? 'Varna of boy is equal or higher than girl' : 'Varna of boy is lower than girl',
     compatibility: score === 1 ? 'excellent' : 'poor',
   };
 }
@@ -145,11 +145,12 @@ function calculateVashya(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaSco
     koota: 'Vashya',
     maxScore: KOOTA_MAX_SCORES.Vashya,
     score,
-    description: score >= 2
-      ? 'Good mutual attraction and compatibility'
-      : score >= 1
-        ? 'Moderate vashya compatibility'
-        : 'Lack of vashya compatibility',
+    description:
+      score >= 2
+        ? 'Good mutual attraction and compatibility'
+        : score >= 1
+          ? 'Moderate vashya compatibility'
+          : 'Lack of vashya compatibility',
     compatibility: compatibilityLabel(score, 2),
   };
 }
@@ -180,11 +181,12 @@ function calculateTara(nakshatraIndex1: number, nakshatraIndex2: number): KootaS
     koota: 'Tara',
     maxScore: KOOTA_MAX_SCORES.Tara,
     score,
-    description: score === 3
-      ? 'Tara is favorable in both directions'
-      : score >= 1.5
-        ? 'Tara is favorable in one direction'
-        : 'Tara is unfavorable in both directions',
+    description:
+      score === 3
+        ? 'Tara is favorable in both directions'
+        : score >= 1.5
+          ? 'Tara is favorable in one direction'
+          : 'Tara is unfavorable in both directions',
     compatibility: compatibilityLabel(score, 3),
   };
 }
@@ -289,10 +291,7 @@ function calculateYoni(nakshatraIndex1: number, nakshatraIndex2: number): KootaS
 // Both friends = 5, One friend one neutral = 4, Both neutral = 3,
 // One friend one enemy = 1, One neutral one enemy = 0.5, Both enemies = 0
 
-function getPlanetRelation(
-  planet1: Planet,
-  planet2: Planet,
-): 'friend' | 'neutral' | 'enemy' {
+function getPlanetRelation(planet1: Planet, planet2: Planet): 'friend' | 'neutral' | 'enemy' {
   if (planet1 === planet2) return 'friend';
   if (PLANET_FRIENDS[planet1]?.includes(planet2)) return 'friend';
   if (PLANET_ENEMIES[planet1]?.includes(planet2)) return 'enemy';
@@ -395,7 +394,37 @@ function calculateGana(nakshatraIndex1: number, nakshatraIndex2: number): KootaS
 // 2-12 (and 12-2), 6-8 (and 8-6), 5-9 (and 9-5) = 0 points (inauspicious)
 // All other combinations = 7 points
 
-function calculateBhakoot(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaScore {
+/**
+ * Muhurta Chintamani 6.32-33 (register MC-6.21-33, audit MT3): the sign lords
+ * being one planet, or friendly, lifts a Bhakoot fault, provided the nadi is
+ * pure; a 2nd-12th or 5th-9th also needs the tara pure. "Friendly" here is: neither
+ * lord counts the other an enemy and at least one counts the other a friend.
+ */
+function bhakootExempt(
+  moonSign1: ZodiacSign,
+  moonSign2: ZodiacSign,
+  dist: number,
+  nadiPure: boolean,
+  taraPure: boolean,
+): boolean {
+  if (!nadiPure) return false;
+  const lord1 = SIGN_LORDS[moonSign1];
+  const lord2 = SIGN_LORDS[moonSign2];
+  if (lord1 === lord2) return true;
+  const r1 = getPlanetRelation(lord1, lord2);
+  const r2 = getPlanetRelation(lord2, lord1);
+  const friendly = r1 !== 'enemy' && r2 !== 'enemy' && (r1 === 'friend' || r2 === 'friend');
+  if (!friendly) return false;
+  const shadashtaka = dist === 6 || dist === 8;
+  return shadashtaka || taraPure;
+}
+
+function calculateBhakoot(
+  moonSign1: ZodiacSign,
+  moonSign2: ZodiacSign,
+  nadiPure = false,
+  taraPure = false,
+): KootaScore {
   const dist = signDistance(moonSign1, moonSign2);
   const reverseDist = signDistance(moonSign2, moonSign1);
 
@@ -408,24 +437,27 @@ function calculateBhakoot(moonSign1: ZodiacSign, moonSign2: ZodiacSign): KootaSc
 
   let isBad = false;
   for (const [a, b] of inauspiciousPairs) {
-    if (
-      (dist === a && reverseDist === b) ||
-      (dist === b && reverseDist === a)
-    ) {
+    if ((dist === a && reverseDist === b) || (dist === b && reverseDist === a)) {
       isBad = true;
       break;
     }
   }
 
-  const score = isBad ? 0 : 7;
+  const exempt =
+    isBad &&
+    getActiveProfile().bhakootRule === 'muhurta-chintamani' &&
+    bhakootExempt(moonSign1, moonSign2, dist, nadiPure, taraPure);
+  const score = isBad && !exempt ? 0 : 7;
 
   return {
     koota: 'Bhakoot',
     maxScore: KOOTA_MAX_SCORES.Bhakoot,
     score,
-    description: isBad
-      ? `Bhakoot dosha: ${dist}-${reverseDist} relationship is inauspicious`
-      : 'Bhakoot is favorable',
+    description: exempt
+      ? `${dist}-${reverseDist} relationship, but the sign lords are one or friendly and the nadi is pure: the fault is lifted`
+      : isBad
+        ? `Bhakoot dosha: ${dist}-${reverseDist} relationship is inauspicious`
+        : 'Bhakoot is favorable',
     compatibility: score === 7 ? 'excellent' : 'poor',
   };
 }
@@ -460,11 +492,11 @@ function calculateNadi(nakshatraIndex1: number, nakshatraIndex2: number): KootaS
 function overallCompatibility(
   total: number,
 ): 'excellent' | 'good' | 'average' | 'below_average' | 'poor' {
-  if (total >= 28) return 'excellent';    // 28-36
-  if (total >= 21) return 'good';         // 21-27
-  if (total >= 18) return 'average';      // 18-20 (minimum acceptable)
+  if (total >= 28) return 'excellent'; // 28-36
+  if (total >= 21) return 'good'; // 21-27
+  if (total >= 18) return 'average'; // 18-20 (minimum acceptable)
   if (total >= 14) return 'below_average'; // 14-17
-  return 'poor';                           // <14
+  return 'poor'; // <14
 }
 
 // =============================================================================
@@ -489,15 +521,17 @@ export function calculateAshtakoota(
   moonSign1: ZodiacSign,
   moonSign2: ZodiacSign,
 ): AshtakootaResult {
+  const tara = calculateTara(nakshatraIndex1, nakshatraIndex2);
+  const nadi = calculateNadi(nakshatraIndex1, nakshatraIndex2);
   const scores: KootaScore[] = [
     calculateVarna(moonSign1, moonSign2),
     calculateVashya(moonSign1, moonSign2),
-    calculateTara(nakshatraIndex1, nakshatraIndex2),
+    tara,
     calculateYoni(nakshatraIndex1, nakshatraIndex2),
     calculateGrahaMaitri(moonSign1, moonSign2),
     calculateGana(nakshatraIndex1, nakshatraIndex2),
-    calculateBhakoot(moonSign1, moonSign2),
-    calculateNadi(nakshatraIndex1, nakshatraIndex2),
+    calculateBhakoot(moonSign1, moonSign2, nadi.score > 0, tara.score === KOOTA_MAX_SCORES.Tara),
+    nadi,
   ];
 
   const totalScore = scores.reduce((sum, s) => sum + s.score, 0);
@@ -506,12 +540,8 @@ export function calculateAshtakoota(
     scores,
     totalScore,
     maxTotal: 36,
-    mangalMatch: {
-      boyManglik: false,
-      girlManglik: false,
-      compatible: true,
-    },
+    // No Mangal verdict here: this function is given two Moons only, and
+    // Mangal Dosha is read from each full chart (doshas/mangalDosha.ts).
     overallCompatibility: overallCompatibility(totalScore),
   };
 }
-

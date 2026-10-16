@@ -32,7 +32,7 @@ const INCOME_RULE =
   'Check the facts for a "What the reader told us — how they earn today" line and write for that real situation. A salary / a job: steady pay, increments, spending and saving. Their own business, or freelance work: uneven inflow, customers or clients, payments due. Rent or property: rent and property matters. Not earning right now: NEVER write as though income is coming in or could "grow or dip" — write about spending, savings, money from family, and what this month supports for starting to earn. If no such line is given, do not assume a particular source of income, and say "any income" rather than "your salary" or "your business".';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Finance Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 2nd house (${HOUSE_SIGNIFICATIONS[2]}) and 11th house (${HOUSE_SIGNIFICATIONS[11]}), the Hora (D2) chart — the classical wealth/financial-stability varga, a corroborating layer alongside those houses, and a dosha/yoga check for any classical wealth-yoga or wealth-related dosha caution currently relevant. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Finance Report section for a mobile Vedic astrology app. The app already computed which Mahadasha/Antardasha planetary period rules the given month, a month score, a tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 2nd house (${HOUSE_SIGNIFICATIONS[2]}) and 11th house (${HOUSE_SIGNIFICATIONS[11]}), the Hora (D2) chart — the traditional wealth/financial-stability varga, a corroborating layer alongside those houses, and a dosha/yoga check for any traditional wealth-yoga or wealth-related dosha caution currently relevant. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -46,8 +46,8 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 3 sections, in this order:
-1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of money-flow themes (savings, incoming gains, spending pressure), briefly weaving in the given Hora (D2) placement and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 2nd/11th house as supporting classical color — explicitly state whether income looks more likely to grow or dip this month given the tone.
-2. Heading close to "Dosha & Yoga Check" — 1-2 paragraphs covering BOTH the given wealth-yoga finding(s) (if present, explain what they classically support for money flow this month; if none is present, say plainly that no major classical wealth-yoga stands out this month rather than inventing one) AND the given dosha caution finding(s) (frame plainly as a heads-up about possible unexpected expenses or money stress this month; if none is present, say so plainly and reassuringly). Then cover the given within-month sub-periods per SUB_PERIOD_RULE.
+1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of money-flow themes (savings, incoming gains, spending pressure), briefly weaving in the given Hora (D2) placement and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 2nd/11th house as supporting traditional color — explicitly state whether income looks more likely to grow or dip this month given the tone.
+2. Heading close to "Dosha & Yoga Check" — 1-2 paragraphs covering BOTH the given wealth-yoga finding(s) (if present, explain what they traditionally support for money flow this month; if none is present, say plainly that no major traditional wealth-yoga stands out this month rather than inventing one) AND the given dosha caution finding(s) (frame plainly as a heads-up about possible unexpected expenses or money stress this month; if none is present, say so plainly and reassuringly). Then cover the given within-month sub-periods per SUB_PERIOD_RULE.
 3. Heading close to "Practical Guidance" — 1-2 paragraphs of GENERAL, non-prescriptive behavioral framing tied to the tone — explicitly NOT financial advice, no specific investment/product recommendations — and explicitly touch on whether this looks like a favorable month to lend, borrow, or sign financial agreements given the tone.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -158,7 +158,12 @@ export async function generateFinanceMonthlyNarrative(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: narrativeSystemPrompt() },
-      reportFactsMessage(buildFacts(scores), scores.planetCondition, scores.vakriFacts),
+      reportFactsMessage(
+        buildFacts(scores),
+        scores.planetCondition,
+        scores.vakriFacts,
+        'finance_monthly',
+      ),
       { role: 'user', content: "Write this month's Finance report narrative." },
     ],
   });

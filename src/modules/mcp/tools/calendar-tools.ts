@@ -5,7 +5,13 @@ import type { PanchangData } from '@aroha-astrology/shared';
 import { MUHURTA_SPECS, type MuhurtaCategory } from '../../../lib/astro-tools/muhurta-rules.js';
 import type { WhyFactor } from '../../../lib/intelligence/types.js';
 import { getPanchang } from '../../astro/astro.service.js';
-import { buildResult, daySkies, MAX_RANGE_DAYS, MIN_RANGE_DAYS } from '../../decisions/decisions.service.js';
+import {
+  buildResult,
+  daySkies,
+  sunTimesFor,
+  MAX_RANGE_DAYS,
+  MIN_RANGE_DAYS,
+} from '../../decisions/decisions.service.js';
 import { tzOffsetHours } from '../../kundli/kundli.service.js';
 import { dateField, placeLabel, resolvePlaceOrProblem, todayIn } from '../birth.js';
 import { spaced, tithiName } from '../format.js';
@@ -55,7 +61,8 @@ function locate(
 
 const SOURCE_NOTE: Record<LocationSource, string> = {
   named_place: '',
-  approximate_location: " This is for the user's approximate location; tell them which city was used.",
+  approximate_location:
+    " This is for the user's approximate location; tell them which city was used.",
   default_new_delhi:
     ' No place was given, so New Delhi was used; tell the user and offer to redo it for their city.',
 };
@@ -91,6 +98,10 @@ function reasonText(why: WhyFactor): string | null {
       return `${tithiName(Number(p.tithi))} tithi is favourable`;
     case 'decide.why.tithiBad':
       return `${tithiName(Number(p.tithi))} tithi is avoided for new starts`;
+    case 'decide.why.karanaBad':
+      return `${p.karana} karana is avoided for a marriage`;
+    case 'decide.why.yogaBad':
+      return `${p.yoga} yoga is avoided for a marriage`;
     case 'decide.why.weekdayGood':
       return `${WEEKDAYS[Number(p.weekday)] ?? 'The weekday'} is favourable for this occasion`;
     case 'decide.why.weekdayBad':
@@ -131,7 +142,7 @@ export function registerCalendarTools(server: McpServer, base: ToolContext): voi
       name: 'get_panchang',
       title: 'Get panchang',
       description:
-        "Use this when the user asks for the Hindu calendar details of a day: tithi, nakshatra, yoga, karana, sunrise and sunset, Rahu Kaal, Abhijit Muhurta or choghadiya. " +
+        'Use this when the user asks for the Hindu calendar details of a day: tithi, nakshatra, yoga, karana, sunrise and sunset, Rahu Kaal, Abhijit Muhurta or choghadiya. ' +
         'Calculates the panchang for one date at one place. Times are local to that place. Defaults to today.',
       input: {
         date: dateField('Date to calculate for').optional(),
@@ -238,14 +249,18 @@ export function registerCalendarTools(server: McpServer, base: ToolContext): voi
       input: {
         occasion: z.enum(OCCASION_NAMES).describe('What the date is for'),
         place: placeField,
-        from: dateField('First day of the range').optional().describe('First day of the range, YYYY-MM-DD. Defaults to today.'),
+        from: dateField('First day of the range')
+          .optional()
+          .describe('First day of the range, YYYY-MM-DD. Defaults to today.'),
         days: z
           .number()
           .int()
           .min(MIN_RANGE_DAYS)
           .max(MAX_RANGE_DAYS)
           .optional()
-          .describe(`How many days to look at, ${MIN_RANGE_DAYS}-${MAX_RANGE_DAYS}. Defaults to 30.`),
+          .describe(
+            `How many days to look at, ${MIN_RANGE_DAYS}-${MAX_RANGE_DAYS}. Defaults to 30.`,
+          ),
       },
       output: {
         occasion: z.string(),
@@ -291,6 +306,11 @@ export function registerCalendarTools(server: McpServer, base: ToolContext): voi
         place,
         tzHours,
         approximateBirthTime: false,
+        sunTimes: await sunTimesFor(
+          skies.map((s) => s.date),
+          place,
+          tzHours,
+        ),
       });
 
       const structured = {

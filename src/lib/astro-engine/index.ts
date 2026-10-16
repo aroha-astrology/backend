@@ -70,9 +70,6 @@ export { calculateDashakoota } from './matching/dashakoota';
 // Panchang
 export * from './panchang/index';
 
-// Muhurta
-export { findBestMuhurta } from './muhurta/index';
-
 // Numerology
 export {
   calculateLifePath,

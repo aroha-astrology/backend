@@ -68,7 +68,9 @@ describe('computeSolarReturn', () => {
     expect(diffDeg * 3600).toBeLessThan(5);
   }, 30_000);
 
-  it('isDayReturn matches the Sun house placement (7-12 = day, 1-6 = night)', async () => {
+  // Since audit item S4 the flag comes from the real sunrise and sunset; the
+  // Sun's house agrees with it here because this return is well clear of both.
+  it('isDayReturn agrees with the Sun house placement away from sunrise and sunset', async () => {
     const birthDate = new Date(Date.UTC(1985, 2, 11, 23, 2));
     const birthJd = await dateToJulianDay(1985, 3, 12, 4, 32, 5.5);
     const natalPositions = await calculatePlanetPositions(birthJd);

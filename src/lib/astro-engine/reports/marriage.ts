@@ -204,10 +204,10 @@ function buildInLawsNote(
     : 'The 4th house sign is unavailable on this chart';
   const strengthPart =
     fourthLordStrength === 'strong'
-      ? 'its lord is classically strong, favoring smoother in-law and home-life integration'
+      ? 'its lord is traditionally strong, favoring smoother in-law and home-life integration'
       : fourthLordStrength === 'weak'
-        ? 'its lord is classically weak, calling for more patience and deliberate effort in family/in-law integration'
-        : 'its lord is classically average — a typical, unremarkable path with in-laws';
+        ? 'its lord is traditionally weak, calling for more patience and deliberate effort in family/in-law integration'
+        : 'its lord is traditionally average — a typical, unremarkable path with in-laws';
   return `${signPart}, and ${strengthPart}.`;
 }
 
@@ -222,7 +222,7 @@ function buildMoneyNote(
   const eleventhPart = eleventhHouseSign
     ? `the 11th house (gains and income) is in ${eleventhHouseSign}`
     : 'the 11th house sign is unavailable';
-  return `${secondPart}, and ${eleventhPart} — together the classical signature for how finances are read to shift after marriage.`;
+  return `${secondPart}, and ${eleventhPart} — together the traditional signature for how finances are read to shift after marriage.`;
 }
 
 const AGE_BAND_RANK: Record<AgeBand['confidence'], number> = {

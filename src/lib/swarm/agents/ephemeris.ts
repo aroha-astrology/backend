@@ -1,5 +1,5 @@
 // =============================================================================
-// Metrologist Agent - Ephemeris computation via the astro-engine
+// Ephemeris service - chart computation via the astro-engine (deterministic, no language model)
 // =============================================================================
 
 import { logger } from '../../logger.js';
@@ -107,9 +107,7 @@ function parseBirthRecord(record: BirthRecord): {
  * Compute full metrology for a birth record:
  * Julian day, planet positions, houses, chart, and Vimshottari dasha.
  */
-export async function computeMetrology(
-  record: BirthRecord,
-): Promise<Record<string, unknown>> {
+export async function computeMetrology(record: BirthRecord): Promise<Record<string, unknown>> {
   const { year, month, day, hour, minute, tzOffset, lat, lng } = parseBirthRecord(record);
 
   // Julian day
@@ -142,17 +140,15 @@ export async function computeMetrology(
 }
 
 /**
- * Metrologist pipeline node: extracts birthRecord from state,
+ * Ephemeris pipeline node: extracts birthRecord from state,
  * computes metrology, and returns the partial state update.
  */
-export async function metrologistNode(
-  state: SwarmState,
-): Promise<Partial<SwarmState>> {
-  logger.debug({ requestId: state.requestId }, 'metrologist: enter');
+export async function ephemerisNode(state: SwarmState): Promise<Partial<SwarmState>> {
+  logger.debug({ requestId: state.requestId }, 'ephemeris: enter');
 
   if (!state.birthRecord) {
     return {
-      errors: ['metrologist: no birth record available'],
+      errors: ['ephemeris: no birth record available'],
     };
   }
 
@@ -161,9 +157,9 @@ export async function metrologistNode(
     return { metrology };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error({ err, requestId: state.requestId }, 'metrologist: computation failed');
+    logger.error({ err, requestId: state.requestId }, 'ephemeris: computation failed');
     return {
-      errors: [`metrologist: ${message}`],
+      errors: [`ephemeris: ${message}`],
     };
   }
 }

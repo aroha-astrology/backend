@@ -122,11 +122,11 @@ function computeHealthFactor(
   ];
   if (flags1.length > 0)
     evidence.push(
-      `Person 1 has ${flags1.join(', ')} placed in the 8th house — classically a caution for health/accident risk.`,
+      `Person 1 has ${flags1.join(', ')} placed in the 8th house — traditionally a caution for health/accident risk.`,
     );
   if (flags2.length > 0)
     evidence.push(
-      `Person 2 has ${flags2.join(', ')} placed in the 8th house — classically a caution for health/accident risk.`,
+      `Person 2 has ${flags2.join(', ')} placed in the 8th house — traditionally a caution for health/accident risk.`,
     );
 
   // Two independent malefic-in-8th placements (one per person) is a stronger combined signal
@@ -237,7 +237,7 @@ function computeTimingFactor(
     severity = 'caution';
     score = 40;
     evidence.push(
-      'No clearly favorable Vimshottari window for marriage was found for person 1 within the near-term dasha lookahead — timing is less classically clear-cut, not necessarily unfavorable.',
+      'No clearly favorable Vimshottari window for marriage was found for person 1 within the near-term dasha lookahead — timing is less traditionally clear-cut, not necessarily unfavorable.',
     );
   } else {
     const yearsAway =

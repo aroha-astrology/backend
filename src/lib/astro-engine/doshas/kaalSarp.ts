@@ -137,7 +137,7 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
 
   const description = isPartial
     ? `A partial ${name} — nearly all planets are hemmed between Rahu (house ${rahuHouse}) and Ketu (house ${ketuHouse}), with one planet escaping the axis, which softens the dosha's intensity.`
-    : `${name} — every planet is hemmed between Rahu (house ${rahuHouse}) and Ketu (house ${ketuHouse}), the full classical form of Kaal Sarp Dosha.`;
+    : `${name} — every planet is hemmed between Rahu (house ${rahuHouse}) and Ketu (house ${ketuHouse}), the full form of Kaal Sarp Dosha, a later tradition rather than a rule of the old Parashari texts.`;
 
   return {
     present: true,

@@ -49,16 +49,16 @@ import { reportFactsMessage } from './report-facts-message.js';
 import { readerContextLines } from './reader-context.js';
 
 const SAFETY_RULE =
-  'This is advisory guidance for reflection, never a guarantee about if, when, or how many children a couple will have, and never a substitute for the reader\'s own choices or medical care. Use tendency language ("classically indicates", "tends to support", "the chart leans toward"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases beyond what is already given below.';
+  'This is advisory guidance for reflection, never a guarantee about if, when, or how many children a couple will have, and never a substitute for the reader\'s own choices or medical care. Use tendency language ("traditionally indicates", "tends to support", "the chart leans toward"), never absolute predictions. Do not recommend specific remedies, pujas, or purchases beyond what is already given below. Never say or hint whether a child is or will be a son or a daughter, never say how many children the couple has or will have, and never predict a birth: no old text the audit opened gives a rule for any of these, and the app does not offer them.';
 
 const PROVENANCE_RULE =
-  'Every classical fact below carries a "provenance" tag: TEXTUAL (a stated classical text rule, e.g. Phaladeepika), COMMENTARY (a later interpretive layer), SCHOOL-SPECIFIC (one lineage\'s rule, where another lineage teaches differently), MODERN-PRACTICE, or UNVALIDATED. When two facts disagree (e.g. the two child-sequence methods below), say plainly that classical schools differ here rather than picking one as correct — showing both readings IS the honest answer, not a hedge to apologize for.';
+  'Every traditional fact below carries a "provenance" tag: TEXTUAL (a stated traditional text rule, e.g. Phaladeepika), COMMENTARY (a later interpretive layer), SCHOOL-SPECIFIC (one lineage\'s rule, where another lineage teaches differently), MODERN-PRACTICE, or UNVALIDATED. When two facts disagree (e.g. the two child-sequence methods below), say plainly that traditional schools differ here rather than picking one as correct — showing both readings IS the honest answer, not a hedge to apologize for.';
 
 const NO_MEDICAL_CLAIMS_RULE =
   'CRITICAL: Beeja Sphuta and Kshetra Sphuta are astrological reproductive-CAPACITY indicators — NEVER call them a sperm/ovum/fertility test, and never imply they measure a real medical quantity (sperm count, ovarian reserve, uterine health). Likewise, any "obstruction" or node-affliction fact is a traditional indication of progeny obstruction — NEVER call it a miscarriage risk, a stillbirth risk, or any other medical outcome. Never deflect a progeny question to a doctor or fertility specialist, and never say astrology "cannot predict" this — read the chart directly and warmly, just never in clinical language.';
 
 const RETROSPECTIVE_RULE =
-  'The reproductive_capacity/child_sequence facts below may include a "children card" — present ONLY when the reader is 35 or older. When it is present, write about it as the classical chart CONFIRMING or reading back the children the reader most likely already has by this age — never as a prediction of an unborn child\'s sex or a countdown to a future birth. Unless the reader told us they have children, that they already have any is only likely, not known: say "any children you already have", never "your children".';
+  'The reproductive_capacity/child_sequence facts below may include a "children card" — present ONLY when the reader is 35 or older. When it is present, write about it as the traditional chart CONFIRMING or reading back the children the reader most likely already has by this age — never as a prediction of an unborn child\'s sex or a countdown to a future birth. Unless the reader told us they have children, that they already have any is only likely, not known: say "any children you already have", never "your children".';
 
 /**
  * Until the reader was asked, this report could only guess from age whether children already
@@ -68,26 +68,15 @@ const RETROSPECTIVE_RULE =
 const CHILDREN_RULE =
   'Check the facts for a "What the reader told us — children today" line; when given it is true and overrides any guess from age. NO children: never write as though any child exists — read the promise, the child sequence and the timing entirely as what the chart indicates ahead. One child: the first slot of the child sequence is that child, already born — never predict a "first child"; slots after it are further indications. Two or more children: the first slots are the children they already have; never write as though the couple is still waiting for a first child, and treat timing windows as relevant only to a possible further child. If no such line is given, do not assume either way.';
 
-function tendencyLine(t: {
-  male: number;
-  female: number;
-  contradictions: number;
-  tendency: string;
-  confidence: string;
-}): string {
-  return `male indications ${t.male}, female indications ${t.female}, contradictions ${t.contradictions} -> tendency: ${t.tendency} (confidence: ${t.confidence})`;
-}
-
 function d7Summary(d7: D7Progeny | null, label: string): string {
   if (!d7) return `${label}: D7 (Saptamsha) unavailable on this chart.`;
   const a = d7.methodA.slots[0];
   const b = d7.methodB.slots[0];
   return (
     `${label}: D7 Lagna ${d7.lagna}. ` +
-    `Method A (SCHOOL-SPECIFIC, gender-based first-child house): child 1 in D7 house ${d7.methodA.startHouse} (${a?.sign ?? 'n/a'}), sex tally ${a ? tendencyLine(a.sex) : 'n/a'}. ` +
-    `Method B (SCHOOL-SPECIFIC, 5th-house-always, direction by D7 Lagna polarity): child 1 in D7 house ${d7.methodB.startHouse} (${b?.sign ?? 'n/a'}), sex tally ${b ? tendencyLine(b.sex) : 'n/a'}. ` +
-    `The two methods ${d7.agreement ? 'AGREE' : 'DISAGREE'} on the eldest child's house (confidence: ${d7.confidence}). ` +
-    `This D7 supports roughly ${d7.supportedCount} of the first ${d7.maxChildren} slots checked without a strong obstruction indication.`
+    `Method A (SCHOOL-SPECIFIC, gender-based first-child house): child 1 in D7 house ${d7.methodA.startHouse} (${a?.sign ?? 'n/a'}). ` +
+    `Method B (SCHOOL-SPECIFIC, 5th-house-always, direction by D7 Lagna polarity): child 1 in D7 house ${d7.methodB.startHouse} (${b?.sign ?? 'n/a'}). ` +
+    `The two methods ${d7.agreement ? 'AGREE' : 'DISAGREE'} on the eldest child's house (confidence: ${d7.confidence}).`
   );
 }
 
@@ -98,7 +87,7 @@ function promiseLine(label: string, p: ProgenyPromise | null): string {
   const lines = [
     `${label} promise band (TEXTUAL/COMMENTARY composite): ${p.band}.`,
     `5th-house lord (${p.fifthHouseLord ?? 'unavailable'}): ${p.fifthHouseLordStrength}.`,
-    `Jupiter (Putra Karaka, the classical significator of children): ${p.jupiterStrength}.`,
+    `Jupiter (Putra Karaka, the traditional significator of children): ${p.jupiterStrength}.`,
     `Moon: ${p.moonStrength}.`,
   ];
   if (p.sphuta) {
@@ -119,7 +108,7 @@ function promiseLine(label: string, p: ProgenyPromise | null): string {
 }
 
 function narrativeSystemPromptCall1(): string {
-  return `You are writing the opening section of a Progeny Report for a mobile Vedic astrology app, covering a married or partnered couple who supplied both their own and their spouse's birth details. The app already computed each person's classical "progeny promise" (5th house, Jupiter, Moon, Beeja/Kshetra Sphuta, Putra Tithi) and each person's own D7 (Saptamsha) chart — the classical children/progeny varga. Your job is ONLY to write the narrative explanation.
+  return `You are writing the opening section of a Progeny Report for a mobile Vedic astrology app, covering a married or partnered couple who supplied both their own and their spouse's birth details. The app already computed each person's traditional "progeny promise" (5th house, Jupiter, Moon, Beeja/Kshetra Sphuta, Putra Tithi) and each person's own D7 (Saptamsha) chart — the traditional children/progeny varga. Your job is ONLY to write the narrative explanation.
 
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -134,14 +123,14 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 3 sections, in this order:
 1. Heading close to "Your Progeny Promise" — 2-3 paragraphs on the reader's and spouse's own promise bands (mother's vs father's, whichever applies to which person given their gender), naming the 5th-house-lord, Jupiter and Moon facts given, in plain language. If either promise is "unavailable", say so plainly and explain briefly why (unknown gender role) rather than inventing a band.
-2. Heading close to "The Saptamsha (D7) Reading" — 1-3 paragraphs on both people's D7 Lagna and what a Saptamsha chart classically represents (children, progeny, creative output), grounded in the given D7 facts for each chart.
-3. Heading close to "Reproductive Capacity, Classically Read" — 1-2 paragraphs explaining the Beeja/Kshetra Sphuta and Putra Tithi facts given, in the exact non-medical framing required above. Explicitly state once, plainly, that this is a traditional astrological reading, not a medical or fertility assessment.
+2. Heading close to "The Saptamsha (D7) Reading" — 1-3 paragraphs on both people's D7 Lagna and what a Saptamsha chart traditionally represents (children, progeny, creative output), grounded in the given D7 facts for each chart.
+3. Heading close to "Reproductive Capacity, Traditionally Read" — 1-2 paragraphs explaining the Beeja/Kshetra Sphuta and Putra Tithi facts given, in the exact non-medical framing required above. Explicitly state once, plainly, that this is a traditional astrological reading, not a medical or fertility assessment.
 
 Write in a clear, natural style. Second person ("you") for the reader, naming the spouse by name if given.`;
 }
 
 function narrativeSystemPromptCall2(): string {
-  return `You are writing the middle section of a Progeny Report. The app already computed a couple-level convergence band, a dual-school D7 child-sequence reading (two classical methods, which may agree or disagree) with a sex tally (counts of male/female/neutral indications, NOT a determined sex) for each expected child slot, and ranked dasha/Yogini timing windows for children. Your job is ONLY to write the narrative explanation.
+  return `You are writing the middle section of a Progeny Report. The app already computed a couple-level convergence band, a dual-school D7 child-sequence reading (two methods, which may agree or disagree) for the order of the child slots, and ranked dasha/Yogini timing windows for children. Your job is ONLY to write the narrative explanation.
 
 ${HOUSE_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -157,7 +146,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 3 sections, in this order:
 1. Heading close to "Together, What The Charts Show" — 1-2 paragraphs on the given couple convergence band, in plain language (e.g. "Strong convergence" means both charts' own promise independently point the same direction; "Conflict" means they read very differently and that gap itself is worth naming honestly).
-2. Heading close to "The Child Sequence" — 2-4 paragraphs walking through the given per-child D7 slots in order. For EACH child slot, report the sex tally as COUNTS with a tendency and confidence — e.g. "leans toward a daughter (6 female indications vs 2 male, moderate confidence)" — NEVER as a flat "this will be a boy/girl." If the two methods disagree on which house is the eldest child's, say so plainly and show both readings rather than picking one. If a "children card" (35+ retrospective) fact is given, follow ${RETROSPECTIVE_RULE.split(':')[0]} exactly.
+2. Heading close to "The Child Sequence" — 2-4 paragraphs walking through the given D7 slots in order: which D7 house and sign each stands for and any obstruction modifier it carries, as themes of family life. NEVER say or hint whether a child is a son or a daughter, and never say how many children there will be. If the two methods disagree on which house is the eldest child's, say so plainly and show both readings rather than picking one. If a "children card" (35+ retrospective) fact is given, follow ${RETROSPECTIVE_RULE.split(':')[0]} exactly.
 3. Heading close to "When The Timing Supports It" — 1-2 paragraphs on the given timing windows (or their absence — if none were found, say so plainly, never invent a date).
 
 Write in a clear, natural style. Second person ("you").`;
@@ -179,7 +168,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 3 sections, in this order:
 1. Heading close to "Obstructions To Hold Carefully" — 1-2 paragraphs on any node/Saturn/Mars obstruction modifiers given. CRITICAL: frame these as traditional indications of DELAY or OBSTRUCTION to work through, NEVER as a prediction of pregnancy loss, and NEVER as a hard stop — a modifier is not a verdict. If no slot carries a strong modifier, say so plainly and briefly rather than manufacturing a caution.
-2. Heading close to "Classical Remedies" — 1-2 paragraphs on the given favorable yogas ("what's going for you") and the given doshas needing awareness ("what to hold carefully"), framed gently. Do not recommend a specific remedy, mantra, puja or gemstone here — a separate part of the app already covers that; this section only explains the given yoga/dosha facts.
+2. Heading close to "Traditional Remedies" — 1-2 paragraphs on the given favorable yogas ("what's going for you") and the given doshas needing awareness ("what to hold carefully"), framed gently. Do not recommend a specific remedy, mantra, puja or gemstone here — a separate part of the app already covers that; this section only explains the given yoga/dosha facts.
 3. Heading close to "The Honest Outlook" — 1-2 closing paragraphs restating the couple convergence band as the headline takeaway, and explicitly, plainly stating once that this report is a structured traditional Jyotish framework whose predictive validity is not scientifically established — said warmly, as an honest closing note, not a legal disclaimer bolted on.
 
 Write in a clear, natural style. Second person ("you").`;
@@ -211,11 +200,8 @@ function buildFactsCall2(scores: ProgenyScores): string {
   lines.push(d7Summary(scores.childSequence, 'Child sequence'));
   if (scores.childrenCard) {
     lines.push(
-      `CHILDREN CARD PROVIDED — reader is 35 or older. Likely count supported by the chart: ${scores.childrenCard.likelyCount}. Method used: ${scores.childrenCard.method}. Per-slot readings: ${scores.childrenCard.sequence
-        .map(
-          (s) =>
-            `child ${s.index}: tendency ${s.tendency} (confidence ${s.confidence}, obstruction score ${s.obstructionScore}/3)`,
-        )
+      `CHILDREN CARD PROVIDED — reader is 35 or older. Method used: ${scores.childrenCard.method}. Per-slot readings: ${scores.childrenCard.sequence
+        .map((s) => `child ${s.index}: obstruction score ${s.obstructionScore}/3`)
         .join('; ')}. Note: ${scores.childrenCard.note}`,
     );
   }
@@ -337,7 +323,7 @@ async function callAndParse(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: systemPrompt },
-      reportFactsMessage(facts, condition, vakri),
+      reportFactsMessage(facts, condition, vakri, 'progeny'),
       { role: 'user', content: 'Write this part of the Progeny Report narrative.' },
     ],
   });

@@ -245,21 +245,23 @@ export function buildChaldeanProfile(dateOfBirth: string, name: string): Chaldea
 }
 
 export interface DailyNumerologyResult extends DayVibrationResult {
-  luckyNumber: number;
+  /** The day of the month added down to one digit: the same for every reader (audit NM2). */
+  todaysNumber: number;
   luckyColor: string;
 }
 
 /**
- * The actual daily "lucky number/color" replacement — genuinely varies day
- * to day (unlike both retired implementations), derived from today's date
- * number and colored by today's ruling planet, judged against the user's
- * own Moolank.
+ * Today's number and colour. The number is the day of the month added down to
+ * one digit, so it changes every day but is the SAME for every reader: it is
+ * not a personal lucky number and is not called one (audit NM2). The colour is
+ * the colour of the planet that rules that number. Only the compatibility and
+ * guidance in the vibration result are judged against the user's own Moolank.
  */
 export function dailyNumerology(date: Date, moolankValue: number): DailyNumerologyResult {
   const vibration = dayVibration(date, moolankValue);
   return {
     ...vibration,
-    luckyNumber: vibration.dayNumber,
+    todaysNumber: vibration.dayNumber,
     luckyColor: PLANET_COLOR[vibration.dayRuler] ?? 'Gold',
   };
 }

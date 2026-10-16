@@ -99,7 +99,7 @@ describe('buildSecondChartFacts — partner synastry', () => {
     const defaultOrder = await buildSecondChartFacts('user-1', userChart(), 'profile-1');
 
     const { calculateAshtakoota } = await import('../src/lib/astro-engine/matching/ashtakoota.js');
-    const { computeMetrology } = await import('../src/lib/swarm/agents/metrologist.js');
+    const { computeMetrology } = await import('../src/lib/swarm/agents/ephemeris.js');
     const him = makeProfile({});
     const met = await computeMetrology({
       date: him.dateOfBirth!,

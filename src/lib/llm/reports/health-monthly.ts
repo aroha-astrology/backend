@@ -23,12 +23,12 @@ const DISCLAIMER_RULE =
 const SUB_PERIOD_RULE =
   'The given within-month sub-periods (if any) break the month into specific date ranges, each with its own ruling planet and 0-100 score — directly answer "are there specific weeks this month I should be extra careful about my health" by naming the date range(s) with a notably LOWER score as a heads-up (early warning sign to watch for, not alarming) and any with a notably HIGHER score as an easier stretch. If no sub-periods are given, say plainly that no week-level breakdown is available for this chart rather than inventing one.';
 const CONNECTED_HOUSES_RULE =
-  'If any connected houses are given, name that specific classical house theme as the area needing the most attention this month — directly answering "which health areas need the most attention this month" — rather than only giving one combined score. If none are given, say the month\'s energy is spread evenly rather than concentrated in one area.';
+  'If any connected houses are given, name that specific traditional house theme as the area needing the most attention this month — directly answering "which health areas need the most attention this month" — rather than only giving one combined score. If none are given, say the month\'s energy is spread evenly rather than concentrated in one area.';
 const CONCERN_RULE =
   "If the reader gave an optional current health concern below, acknowledge it briefly and empathetically in the 'Practical Guidance' section and connect it to the given month score/tone/dosha framing where it genuinely fits — but the DISCLAIMER_RULE still applies in full: never diagnose it, never name it as a specific disease, never recommend a treatment. If no concern was given, skip this entirely rather than asking for one.";
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Health Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 6th house (${HOUSE_SIGNIFICATIONS[6]}), 1st house (${HOUSE_SIGNIFICATIONS[1]}), and 8th house (${HOUSE_SIGNIFICATIONS[8]}); the D6 and D30 divisional charts — the classical health-crisis and hardship/vulnerability vargas, a corroborating layer alongside those houses; whether any of three resilience-themed doshas (Kemdruma, Sade Sati, Grahan) are currently present; and whether any supportive/protective (benefic or mahapurusha) yoga is currently present. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Health Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 6th house (${HOUSE_SIGNIFICATIONS[6]}), 1st house (${HOUSE_SIGNIFICATIONS[1]}), and 8th house (${HOUSE_SIGNIFICATIONS[8]}); the D6 and D30 divisional charts — the traditional health-crisis and hardship/vulnerability vargas, a corroborating layer alongside those houses; whether any of three resilience-themed doshas (Kemdruma, Sade Sati, Grahan) are currently present; and whether any supportive/protective (benefic or mahapurusha) yoga is currently present. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -43,7 +43,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 3 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of vitality/energy/obstacles themes (never specific ailments or diagnoses), and naming the given connected house theme as the area needing the most attention this month (per CONNECTED_HOUSES_RULE).
-2. Heading close to "Your Health Balance This Month" — 2-3 paragraphs: BOTH the given supportive/protective factor(s) (if present, explain briefly what they classically support for vitality/resilience; if none, say so briefly rather than inventing one) AND the given dosha caution(s) — including how your stress and mental well-being (Kemdruma, if present, is specifically an emotional/mental resilience signal) is trending this month — (in plain language, framed as general energy/resilience themes to stay aware of — NEVER as a medical warning or diagnosis; if none, say so briefly and reassuringly rather than dwelling on it), briefly weaving in the given D6/D30 placements and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 1st/6th/8th house as supporting classical color (not a separate topic, never phrased as a diagnosis), THEN the given within-month sub-periods per SUB_PERIOD_RULE — together giving a full, balanced picture of energy and stress/resilience trends this month, not cautions alone.
+2. Heading close to "Your Health Balance This Month" — 2-3 paragraphs: BOTH the given supportive/protective factor(s) (if present, explain briefly what they traditionally support for vitality/resilience; if none, say so briefly rather than inventing one) AND the given dosha caution(s) — including how your stress and mental well-being (Kemdruma, if present, is specifically an emotional/mental resilience signal) is trending this month — (in plain language, framed as general energy/resilience themes to stay aware of — NEVER as a medical warning or diagnosis; if none, say so briefly and reassuringly rather than dwelling on it), briefly weaving in the given D6/D30 placements and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 1st/6th/8th house as supporting traditional color (not a separate topic, never phrased as a diagnosis), THEN the given within-month sub-periods per SUB_PERIOD_RULE — together giving a full, balanced picture of energy and stress/resilience trends this month, not cautions alone.
 3. Heading close to "Practical Guidance" — 1-2 paragraphs of GENERAL wellness-mindset framing tied to the tone (e.g. rest, pacing, routine), explicitly stating whether this is a favorable month to start a new health routine given the tone — explicitly NOT medical advice.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -161,7 +161,12 @@ export async function generateHealthMonthlyNarrative(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: narrativeSystemPrompt() },
-      reportFactsMessage(buildFacts(scores), scores.planetCondition, scores.vakriFacts),
+      reportFactsMessage(
+        buildFacts(scores),
+        scores.planetCondition,
+        scores.vakriFacts,
+        'health_monthly',
+      ),
       { role: 'user', content: "Write this month's Health report narrative." },
     ],
   });

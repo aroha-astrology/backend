@@ -62,7 +62,7 @@ const SE_VENUS = 3;
 const SE_MARS = 4;
 const SE_JUPITER = 5;
 const SE_SATURN = 6;
-const SE_MEAN_NODE = 10; // Rahu (Mean Node) — always retrograde, the classical Parashari choice
+const SE_MEAN_NODE = 10; // Rahu (Mean Node) — always retrograde, the traditional Parashari choice
 const SE_TRUE_NODE = 11; // Rahu (True/oscillating Node) — what Jagannatha Hora uses
 
 const SEFLG_SWIEPH = 2;
@@ -343,6 +343,23 @@ export async function calculateHouses(
   }
 
   return houses;
+}
+
+/**
+ * Sidereal longitude of the Midheaven (the meridian, the 10th cusp), in
+ * degrees. Needed for Dig Bala, which measures a planet from the actual
+ * meridian and nadir rather than from the sign boundaries of a whole-sign house.
+ */
+export async function calculateMidheaven(
+  jd: number,
+  lat: number,
+  lng: number,
+  ayanamsa: Ayanamsa = 'lahiri',
+): Promise<number> {
+  const swe = await getSwe();
+  swe.set_sid_mode(AYANAMSA_MAP[ayanamsa], 0, 0);
+  const result = swe.houses_ex(jd, SEFLG_SIDEREAL, lat, lng, 'W');
+  return normalizeDegree(result.ascmc[1]);
 }
 
 /**

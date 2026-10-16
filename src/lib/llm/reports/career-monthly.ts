@@ -36,7 +36,7 @@ const WORK_RULE =
   'Check the facts for a "What the reader told us — work today" line and write for that real situation. Employed in a job: write normally. Runs their own business: write about customers, orders, growth, staff and partners — never a boss, a raise, a promotion or switching jobs. Freelance or self-employed: write about clients, projects and rates. A student: write about studies, exams, internships and the first job ahead — never a current employer, colleagues or a raise. Not working right now: write about finding or returning to work and what this month supports — never a current job, colleagues, superiors or a raise. Wherever the section instructions below mention a raise, switching jobs, colleagues or superiors, replace them with the equivalent for the reader\'s real situation. If no such line is given, do not assume the reader is employed: phrase job-specific points conditionally ("if you are in a job…").';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing this month's Career Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 10th house (${HOUSE_SIGNIFICATIONS[10]}) and 6th house (${HOUSE_SIGNIFICATIONS[6]}); the Dashamsha (D10) chart — the classical career/profession/public-status varga, a corroborating layer alongside the 10th house; a "work style" archetype with 5 named trait tilts (0-10 each); whether a Raja Yoga (status/career-elevating combination) is present; whether either of two obstacle-themed doshas (Sade Sati, Kaal Sarp) is currently present; and a short list of classically-associated industries for the 10th-house lord's planet. Your job is ONLY to write the narrative explanation.
+  return `You are writing this month's Career Report for a mobile Vedic astrology app. The app already computed: which Mahadasha/Antardasha planetary period rules the given month; a month score and tone (challenging/mixed/favorable), based on how that period's ruling planet relates to the 10th house (${HOUSE_SIGNIFICATIONS[10]}) and 6th house (${HOUSE_SIGNIFICATIONS[6]}); the Dashamsha (D10) chart — the traditional career/profession/public-status varga, a corroborating layer alongside the 10th house; a "work style" archetype with 5 named trait tilts (0-10 each); whether a Raja Yoga (status/career-elevating combination) is present; whether either of two obstacle-themed doshas (Sade Sati, Kaal Sarp) is currently present; and a short list of traditionally-associated industries for the 10th-house lord's planet. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -51,8 +51,8 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 4 sections, in this order:
 1. Heading close to "This Month's Outlook" — 1-2 paragraphs explaining the tone and month score given, in terms of career momentum, workplace dynamics, and public standing themes. Explicitly state whether this looks like a good month to ask for a raise, switch jobs, or take a career risk, given the tone.
-2. Heading close to "Your Work Style" — 1-2 paragraphs weaving together the archetype label, its description, its 5 trait tilts given as an enduring personality tendency, the given Dashamsha (D10) Lagna/placements as a corroborating classical layer on the same career-identity theme, and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 10th house, THEN explicitly connect it to how you'll handle this month specifically given the tone and dosha/yoga findings — directly answering "what does my work archetype say about how I'll handle this month," not just describing the trait in the abstract. Also touch on how colleagues and superiors are likely to experience working with you this month, grounded in the given Collaboration trait tilt and the month's tone.
-3. Heading close to "Support & Obstacles This Month" — 1-2 paragraphs covering BOTH the given supportive yoga finding (if a Raja Yoga is present, explain what it classically means for status/career in plain language; if none is present, say so briefly and positively — absence of a specific yoga is not a bad sign) AND the given dosha caution finding (if a Sade Sati or Kaal Sarp caution is present, frame it plainly as an obstacle to be prepared for at work this month; if none is present, say so briefly) — together, directly answer whether this is a month to expect recognition or better to keep a lower profile. Then cover the given within-month sub-periods per SUB_PERIOD_RULE.
+2. Heading close to "Your Work Style" — 1-2 paragraphs weaving together the archetype label, its description, its 5 trait tilts given as an enduring personality tendency, the given Dashamsha (D10) Lagna/placements as a corroborating traditional layer on the same career-identity theme, and (only if it stands out as notably strong or weak) the given Ashtakavarga reading for the 10th house, THEN explicitly connect it to how you'll handle this month specifically given the tone and dosha/yoga findings — directly answering "what does my work archetype say about how I'll handle this month," not just describing the trait in the abstract. Also touch on how colleagues and superiors are likely to experience working with you this month, grounded in the given Collaboration trait tilt and the month's tone.
+3. Heading close to "Support & Obstacles This Month" — 1-2 paragraphs covering BOTH the given supportive yoga finding (if a Raja Yoga is present, explain what it traditionally means for status/career in plain language; if none is present, say so briefly and positively — absence of a specific yoga is not a bad sign) AND the given dosha caution finding (if a Sade Sati or Kaal Sarp caution is present, frame it plainly as an obstacle to be prepared for at work this month; if none is present, say so briefly) — together, directly answer whether this is a month to expect recognition or better to keep a lower profile. Then cover the given within-month sub-periods per SUB_PERIOD_RULE.
 4. Heading close to "Industries That Fit" — 1 paragraph naming ONLY the exact industries given in the industry-fit facts (if the list is empty, write a short general paragraph about following your own strengths instead of naming any industry) and a closing line of practical guidance tied to the month's tone (e.g. when to push forward vs. consolidate).
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
@@ -96,11 +96,11 @@ function buildFacts(scores: CareerMonthlyScores): string {
   }
   if (scores.industryFit.likelyIndustries.length > 0) {
     lines.push(
-      `Classically-associated industries: ${scores.industryFit.likelyIndustries.join(', ')}.`,
+      `Traditionally-associated industries: ${scores.industryFit.likelyIndustries.join(', ')}.`,
     );
     lines.push(`Industry-fit note: ${scores.industryFit.note}`);
   } else {
-    lines.push('Classically-associated industries: none available.');
+    lines.push('Traditionally-associated industries: none available.');
   }
   if (scores.subPeriods.length > 0) {
     lines.push('Within-month sub-periods (specific dates, ruling lord, tone):');
@@ -168,7 +168,12 @@ export async function generateCareerMonthlyNarrative(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: narrativeSystemPrompt() },
-      reportFactsMessage(buildFacts(scores), scores.planetCondition, scores.vakriFacts),
+      reportFactsMessage(
+        buildFacts(scores),
+        scores.planetCondition,
+        scores.vakriFacts,
+        'career_monthly',
+      ),
       { role: 'user', content: "Write this month's Career report narrative." },
     ],
   });

@@ -19,7 +19,7 @@ import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { requirePass } from '../../lib/entitlements.js';
 import { calculatePlanetPositions } from '../../lib/astro-engine/calculations/planetPositions.js';
-import { calculateFullPanchang } from '../../lib/astro-engine/panchang/index.js';
+import { calculateFullPanchang, getLocalSunTimes } from '../../lib/astro-engine/panchang/index.js';
 import { eclipsesBetween } from '../../lib/astro-engine/panchang/eclipse.js';
 import {
   dashaPeriodsInRange,
@@ -215,6 +215,27 @@ function toPersonal(ctx: ChartContext): PersonalChart {
   };
 }
 
+export type SunTimesByDate = Map<string, { sunrise: string; sunset: string }>;
+
+/**
+ * Real sunrise and sunset at the place for each date, so the best-time windows
+ * (Abhijit, Rahu Kaal, Choghadiya) are cut from the same times the Panchang
+ * shows. A date is left out where the Sun does not rise or set.
+ */
+export async function sunTimesFor(
+  dates: string[],
+  place: { lat: number; lon: number },
+  tzHours: number,
+): Promise<SunTimesByDate> {
+  const out: SunTimesByDate = new Map();
+  for (const date of dates) {
+    const [y, m, d] = ymd(date);
+    const times = await getLocalSunTimes(new Date(y, m - 1, d, 12), place.lat, place.lon, tzHours);
+    if (times) out.set(date, times);
+  }
+  return out;
+}
+
 /** Scores the range and picks windows, best dates (with the best time) and dates to avoid. */
 export function buildResult(opts: {
   mode: DecisionMode;
@@ -225,6 +246,8 @@ export function buildResult(opts: {
   personal?: PersonalChart;
   dashaOn?: (date: string) => DashaSupport | undefined;
   approximateBirthTime: boolean;
+  /** From `sunTimesFor`. Without it the day parts fall back to an estimated sunrise. */
+  sunTimes?: SunTimesByDate;
 }): DecisionResult {
   const scored = opts.skies.map((sky) =>
     scoreDay(sky, opts.spec, opts.mode, opts.personal, opts.dashaOn?.(sky.date)),
@@ -243,6 +266,7 @@ export function buildResult(opts: {
       sun,
       moon,
       opts.tzHours,
+      opts.sunTimes?.get(day.date),
     ) as {
       abhijitMuhurta?: { start: string; end: string };
       rahuKaal?: { start: string; end: string };
@@ -354,6 +378,11 @@ export async function runDecision(
     skies,
     place,
     tzHours,
+    sunTimes: await sunTimesFor(
+      skies.map((s) => s.date),
+      place,
+      tzHours,
+    ),
     personal: toPersonal(ctx),
     dashaOn: dashaSupportFor(ctx, mahadashas, spec, input.from, to),
     approximateBirthTime: profile.birthTimeAccuracy !== 'exact',
@@ -392,6 +421,11 @@ export async function runFindDate(
     skies,
     place,
     tzHours,
+    sunTimes: await sunTimesFor(
+      skies.map((s) => s.date),
+      place,
+      tzHours,
+    ),
     ...(loaded ? { personal: toPersonal(loaded.ctx) } : {}),
     approximateBirthTime: loaded ? loaded.profile.birthTimeAccuracy !== 'exact' : false,
   });

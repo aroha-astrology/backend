@@ -19,8 +19,14 @@ import type { PanchangData } from '@aroha-astrology/shared';
  * approximate; Nanakshahi: exact) — pre-v4 rows lack it, which would
  * silently make the monthly-calendar grid fall back to showing the same
  * tithi number for every region forever, for already-cached days.
+ * v5: same fields, different VALUES. Sunrise and sunset now come from the
+ * ephemeris instead of a rough formula, and Rahu Kaal, Gulika, Yamaganda,
+ * Abhijit, Choghadiya and the hora list are cut from them (engine source
+ * audit PN1/PN2). Without this bump every day already cached would keep
+ * serving the old times. Rolling back restores v4, whose rows are still in
+ * the table.
  */
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 
 /** Folds `CACHE_VERSION` into the DB key so a version bump can't collide with, or accidentally match, a row from a previous shape. */
 function versionedKey(refKey: string): string {

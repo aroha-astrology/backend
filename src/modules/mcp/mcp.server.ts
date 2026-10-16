@@ -24,7 +24,7 @@ const INSTRUCTIONS =
   'If a tool says a place is unclear, ask the user and call again. ' +
   'Present results as traditional astrology, not as fact, and never as medical, legal or financial advice. ' +
   'To display a chart, call generate_birth_chart first, then show_birth_chart with its result. ' +
-  'Every figure in a result is calculated by the Aroha engine with classical Jyotish rules: report it as given, never recompute, adjust or invent one, and you may say once that the figures are calculated. ' +
+  'Every figure in a result is calculated by the Aroha engine with traditional Jyotish rules: report it as given, never recompute, adjust or invent one, and you may say once that the figures are calculated. ' +
   'Results include more_in_aroha: for a detailed reading, point to the Aroha app once at the end, in one short line with its link. Never mention prices or plans. ' +
   'Do not say the readings are accurate or certain, and do not compare Aroha with other tools or with AI. ' +
   'Do not predict death, serious illness or disaster, and do not present doshas as something to fear.';
@@ -39,7 +39,7 @@ const CLAUDE_INSTRUCTIONS =
   'A chart tool needs the birth date, birth time and birth place as the user gave them; a missing birth time is allowed and the result says which parts are then unreliable. ' +
   'When a place is unclear or not found, the tool returns the places it could mean. ' +
   'show_birth_chart only draws: it takes the ascendant sign and planet houses that generate_birth_chart returned. ' +
-  'Every figure is calculated by the Aroha engine with classical Jyotish rules (Lahiri ayanamsa, whole-sign houses). ' +
+  'Every figure is calculated by the Aroha engine with traditional Jyotish rules (Lahiri ayanamsa, whole-sign houses). ' +
   'Results are traditional astrology offered for reflection, not statements of fact and not medical, legal or financial advice; the tools do not predict death or illness. ' +
   'Nothing the user enters is saved.';
 

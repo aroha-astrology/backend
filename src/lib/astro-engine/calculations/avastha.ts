@@ -12,8 +12,23 @@
 // All three are pure functions over data the chart already carries.
 // =============================================================================
 
-import { dashaLordTransitQuality } from '../../astro-tools/transit.js';
-import { calculateAllDivisionalChartsWithLagna } from '../charts/divisionalCharts.js';
+import type { ChartData, Planet, ZodiacSign } from '@aroha-astrology/shared';
+import { SIGN_LORDS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
+
+import {
+  calculateD2,
+  calculateD3,
+  calculateD9,
+  calculateD12,
+  calculateD30,
+} from '../charts/divisionalCharts.js';
+import {
+  rasiDignity,
+  vargaLordDignity,
+  vargaSignDignity,
+  warWinner,
+  type Dignity,
+} from './shadbala.js';
 
 /* -------------------------------------------------------------------------- */
 /* Baladi Avastha — the five "ages" of a planet by degree within its sign      */
@@ -66,10 +81,8 @@ export interface GrahaYuddhaResult {
 /**
  * Planetary wars in a chart: any two of the five true planets within 1 degree.
  *
- * Winner is decided by celestial latitude — the more northerly planet wins,
- * which is the rule most modern software follows and the one this engine can
- * actually evaluate (the alternative, apparent brightness, is not in the
- * position data). The loser is severely damaged regardless of its Shadbala.
+ * Winner (BPHS 79.9): Venus whichever side of the ecliptic she is on, otherwise the
+ * planet further north. The Shadbala side of the war is Yuddha Bala in shadbala.ts.
  */
 export function detectGrahaYuddha(
   planets: Array<{ planet: string; longitude?: number; latitude?: number }>,
@@ -87,12 +100,16 @@ export function detectGrahaYuddha(
       const separation = diff > 180 ? 360 - diff : diff;
       if (separation >= WAR_ORB) continue;
 
-      const aLat = Number(a.latitude ?? 0);
-      const bLat = Number(b.latitude ?? 0);
-      const aWins = aLat >= bLat;
+      // BPHS 79.9 (register BPHS-27.20 and 79.9): Venus wins, otherwise the planet further
+      // north; equal latitudes give no victor. Same rule as Yuddha Bala in Shadbala.
+      const winner = warWinner(
+        { planet: a.planet as never, latitude: Number(a.latitude ?? 0) },
+        { planet: b.planet as never, latitude: Number(b.latitude ?? 0) },
+      );
+      if (!winner) continue;
       wars.push({
-        winner: aWins ? a.planet : b.planet,
-        loser: aWins ? b.planet : a.planet,
+        winner,
+        loser: winner === a.planet ? b.planet : a.planet,
         separation: Math.round(separation * 100) / 100,
       });
     }
@@ -101,65 +118,102 @@ export function detectGrahaYuddha(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Vimsopaka Bala — dignity weighted across the divisional charts             */
+/* Vimsopaka Bala — twenty-point dignity across the divisions                 */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Shadvarga weights (the 6-chart scheme), summing to 20 — hence "Vimsopaka",
- * twenty-fold. A planet dignified in the Rasi chart but wrecked in the Navamsa
- * scores badly here even though the Rasi chart alone looks fine, which is
- * precisely the case a single-chart reading gets wrong.
+ * BPHS 16.17-27 (register BPHS-16.17-27, audit ST1). A planet's strength in a
+ * division is the division's weight (Swaviswa) times a Varga Viswa set by how the
+ * planet stands to the lord of that division, over 20. Shadvarga: Rasi 6, Hora 2,
+ * Drekkana 4, Navamsa 5, Dvadasamsa 2, Trimsamsa 1 (20 in all).
  */
-const SHADVARGA_WEIGHTS: Record<string, number> = {
-  D1: 6,
-  D2: 2,
-  D3: 4,
-  D9: 5,
-  D12: 2,
-  D30: 1,
+const SHADVARGA: ReadonlyArray<{ varga: string; swaviswa: number }> = [
+  { varga: 'Rasi', swaviswa: 6 },
+  { varga: 'Hora', swaviswa: 2 },
+  { varga: 'Drekkana', swaviswa: 4 },
+  { varga: 'Navamsa', swaviswa: 5 },
+  { varga: 'Dvadasamsa', swaviswa: 2 },
+  { varga: 'Trimsamsa', swaviswa: 1 },
+];
+
+/** Varga Viswa: 20 in an own division, 18 great friend, 15 friend, 10 equal, 7 enemy, 5 great enemy. */
+const VARGA_VISWA: Record<Dignity, number> = {
+  moolatrikona: 20,
+  own: 20,
+  adhimitra: 18,
+  mitra: 15,
+  sama: 10,
+  shatru: 7,
+  adhishatru: 5,
 };
+
+const VIMSOPAKA_PLANETS: Planet[] = [
+  'Sun',
+  'Moon',
+  'Mars',
+  'Mercury',
+  'Jupiter',
+  'Venus',
+  'Saturn',
+];
+
+export interface VimsopakaPart {
+  varga: string;
+  relation: Dignity;
+  swaviswa: number;
+  vargaViswa: number;
+  points: number;
+}
 
 export interface VimsopakaResult {
   planet: string;
-  /** 0-20. Classically: 15+ very strong, 10-15 good, 5-10 middling, below 5 weak. */
+  /** 0-20. BPHS 16.26-27: below 5 poor, 5-10 some good, 10-15 middling, 15 and over wholly favourable. */
   score: number;
+  parts?: VimsopakaPart[];
 }
 
 /**
- * Vimsopaka Bala for every planet in the chart.
- *
- * Dignity per varga is scored with `dashaLordTransitQuality`'s existing 0-5
- * `qualityScore` (exalted 5 ... debilitated 0) rather than a second dignity
- * table, so this can never disagree with the dignity the rest of the app
- * reports. Returns an empty array if the vargas cannot be computed.
+ * Vimsopaka Bala (Shadvarga) for the seven planets. The relation to the lord of each
+ * division is the five-fold one of Shadbala (natural friendship combined with the
+ * temporary one read from the sign chart). Returns an empty array if the chart
+ * cannot be read.
  */
 export function calculateVimsopakaBala(chartData: unknown): VimsopakaResult[] {
-  let vargas: Record<string, { planets: Array<{ planet: string; signIndex: number }> }>;
-  try {
-    vargas = calculateAllDivisionalChartsWithLagna(chartData as never);
-  } catch {
-    return [];
+  const chart = chartData as ChartData | null;
+  if (!chart || !Array.isArray(chart.planets) || chart.planets.length === 0) return [];
+
+  const results: VimsopakaResult[] = [];
+  for (const planet of VIMSOPAKA_PLANETS) {
+    const pos = chart.planets.find((p) => p.planet === planet);
+    if (!pos || !Number.isFinite(pos.longitude)) continue;
+    const lon = pos.longitude;
+    const planetSign = Math.floor((((lon % 360) + 360) % 360) / 30);
+    const horaLord: Planet = calculateD2(lon) === 4 ? 'Sun' : 'Moon';
+    const trimsamsaLord = SIGN_LORDS[ZODIAC_SIGNS[calculateD30(lon)] as ZodiacSign];
+
+    const relations: Dignity[] = [
+      rasiDignity(planet, lon, chart),
+      vargaLordDignity(planet, horaLord, planetSign, chart),
+      vargaSignDignity(planet, calculateD3(lon), planetSign, chart),
+      vargaSignDignity(planet, calculateD9(lon), planetSign, chart),
+      vargaSignDignity(planet, calculateD12(lon), planetSign, chart),
+      vargaLordDignity(planet, trimsamsaLord, planetSign, chart),
+    ];
+
+    const parts: VimsopakaPart[] = SHADVARGA.map((v, i) => {
+      const relation = relations[i]!;
+      const vargaViswa = VARGA_VISWA[relation];
+      return {
+        varga: v.varga,
+        relation,
+        swaviswa: v.swaviswa,
+        vargaViswa,
+        points: (v.swaviswa * vargaViswa) / 20,
+      };
+    });
+    const score = parts.reduce((sum, p) => sum + p.points, 0);
+    results.push({ planet, score: Math.round(score * 10) / 10, parts });
   }
-  if (!vargas) return [];
 
-  const totals = new Map<string, number>();
-  const maxWeight = Object.values(SHADVARGA_WEIGHTS).reduce((a, b) => a + b, 0);
-
-  for (const [varga, weight] of Object.entries(SHADVARGA_WEIGHTS)) {
-    const entry = vargas[varga];
-    if (!entry?.planets) continue;
-    for (const p of entry.planets) {
-      // qualityScore is 0-5; normalise to 0-1 and weight it.
-      const quality = dashaLordTransitQuality(p.planet, p.signIndex).qualityScore / 5;
-      totals.set(p.planet, (totals.get(p.planet) ?? 0) + quality * weight);
-    }
-  }
-
-  return [...totals.entries()]
-    .map(([planet, raw]) => ({
-      planet,
-      // Already on the 0-20 scale: weights sum to 20 and quality is 0-1.
-      score: Math.round((raw / maxWeight) * 20 * 10) / 10,
-    }))
-    .sort((a, b) => b.score - a.score);
+  return results.sort((a, b) => b.score - a.score);
 }

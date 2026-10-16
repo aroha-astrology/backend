@@ -2,7 +2,7 @@
 // Swarm Pipeline
 // =============================================================================
 // Orchestrates the multi-agent sequence:
-//   gateway → metrologist → synthesizer + profiler (sequential) → aggregator
+//   gateway → ephemeris → synthesizer + profiler (sequential) → aggregator
 //
 // TypeScript port of the Python LangGraph graph (graph.py).
 // We run synthesizer and profiler sequentially (not true parallel), merging
@@ -11,7 +11,7 @@
 
 import { logger } from '../logger.js';
 import { gatewayNode, compileResponse } from './agents/gateway.js';
-import { metrologistNode } from './agents/metrologist.js';
+import { ephemerisNode } from './agents/ephemeris.js';
 import { synthesizerNode } from './agents/synthesizer.js';
 import { profilerNode } from './agents/profiler.js';
 import { aggregatorNode } from './agents/aggregator.js';
@@ -78,13 +78,13 @@ export async function runPipeline(initialState: SwarmState): Promise<SwarmState>
   const needsMetrology: SwarmState['intent'][] = ['onboarding', 'daily_forecast', 'matchmaking'];
 
   if (needsMetrology.includes(state.intent)) {
-    // ── Metrologist ─────────────────────────────────────────────────────────
-    logger.info({ requestId: state.requestId }, 'pipeline: metrologist');
-    const metrologistPatch = await metrologistNode(state);
-    state = mergeState(state, metrologistPatch);
+    // ── Ephemeris ─────────────────────────────────────────────────────────
+    logger.info({ requestId: state.requestId }, 'pipeline: ephemeris');
+    const ephemerisPatch = await ephemerisNode(state);
+    state = mergeState(state, ephemerisPatch);
 
     if (state.errors.length > 0) {
-      logger.warn({ requestId: state.requestId }, 'pipeline: metrologist failed');
+      logger.warn({ requestId: state.requestId }, 'pipeline: ephemeris failed');
       // Don't abort — synthesizer/profiler will gracefully degrade
     }
 

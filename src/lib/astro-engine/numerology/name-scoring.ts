@@ -68,7 +68,7 @@ export function scoreCandidateName(
 
   if (a.enemy.includes(chaldean)) {
     score -= 10;
-    reasons.push(`One classical caution: also touches enemy number ${chaldean}`);
+    reasons.push(`One traditional caution: also touches enemy number ${chaldean}`);
   }
 
   return {

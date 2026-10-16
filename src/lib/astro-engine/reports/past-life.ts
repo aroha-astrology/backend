@@ -34,32 +34,32 @@ const HOUSE_AXIS_THEMES: Record<number, KarmicArchetype> = {
   1: {
     label: 'Self & Partnership Axis',
     description:
-      'Your Rahu/Ketu axis runs through the 1st and 7th houses — a classical theme of karma between self-identity and one-on-one partnership, learning where you end and another begins.',
+      'Your Rahu/Ketu axis runs through the 1st and 7th houses — a traditional theme of karma between self-identity and one-on-one partnership, learning where you end and another begins.',
   },
   2: {
     label: 'Resources & Shared Transformation Axis',
     description:
-      'Your Rahu/Ketu axis runs through the 2nd and 8th houses — a classical theme of karma between personal resources/values and shared or transformative resources, learning what is truly yours to hold versus what must be released or merged.',
+      'Your Rahu/Ketu axis runs through the 2nd and 8th houses — a traditional theme of karma between personal resources/values and shared or transformative resources, learning what is truly yours to hold versus what must be released or merged.',
   },
   3: {
     label: 'Effort & Belief Axis',
     description:
-      'Your Rahu/Ketu axis runs through the 3rd and 9th houses — a classical theme of karma between everyday effort/communication and higher belief/philosophy, learning to balance hands-on initiative with faith and a wider worldview.',
+      'Your Rahu/Ketu axis runs through the 3rd and 9th houses — a traditional theme of karma between everyday effort/communication and higher belief/philosophy, learning to balance hands-on initiative with faith and a wider worldview.',
   },
   4: {
     label: 'Roots & Career Axis',
     description:
-      'Your Rahu/Ketu axis runs through the 4th and 10th houses — a classical theme of karma between home/inner roots and career/public life, learning to balance private emotional grounding with public achievement.',
+      'Your Rahu/Ketu axis runs through the 4th and 10th houses — a traditional theme of karma between home/inner roots and career/public life, learning to balance private emotional grounding with public achievement.',
   },
   5: {
     label: 'Creative Self & Community Axis',
     description:
-      'Your Rahu/Ketu axis runs through the 5th and 11th houses — a classical theme of karma between personal creativity/romance and community/collective gain, learning to balance individual self-expression with belonging to a larger group.',
+      'Your Rahu/Ketu axis runs through the 5th and 11th houses — a traditional theme of karma between personal creativity/romance and community/collective gain, learning to balance individual self-expression with belonging to a larger group.',
   },
   6: {
     label: 'Service & Release Axis',
     description:
-      'Your Rahu/Ketu axis runs through the 6th and 12th houses — a classical theme of karma between daily service/health and surrender/the unseen, the axis most directly tied to release itself, balancing disciplined effort with letting go.',
+      'Your Rahu/Ketu axis runs through the 6th and 12th houses — a traditional theme of karma between daily service/health and surrender/the unseen, the axis most directly tied to release itself, balancing disciplined effort with letting go.',
   },
 };
 
@@ -68,7 +68,7 @@ const HOUSE_AXIS_THEMES: Record<number, KarmicArchetype> = {
 const DEFAULT_KARMIC_ARCHETYPE: KarmicArchetype = {
   label: 'Karmic Axis',
   description:
-    'Your Rahu/Ketu axis could not be placed on a specific house pair from the available chart data, so this theme stays general: a classical karmic thread between what you are still learning and what you are releasing.',
+    'Your Rahu/Ketu axis could not be placed on a specific house pair from the available chart data, so this theme stays general: a traditional karmic thread between what you are still learning and what you are releasing.',
 };
 
 /** Maps any house 1-12 to its axis id 1-6 (e.g. houses 1 and 7 both map to axis 1). */

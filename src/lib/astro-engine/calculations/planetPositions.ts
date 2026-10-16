@@ -23,6 +23,7 @@ import {
   calculatePlanetPositions as calculatePlanetPositionsCore,
   calculateHouses as calculateHousesCore,
   calculateAscendant as calculateAscendantCore,
+  calculateMidheaven,
   assignPlanetsToHouses,
 } from './planetPositions.core.js';
 import { EphemerisCache } from './ephemeris-cache.js';
@@ -121,10 +122,11 @@ export async function calculateChart(
   node?: LunarNodeType,
 ): Promise<ChartData> {
   const jd = await dateToJulianDay(year, month, day, hour, min, timezone);
-  const [planets, houses, ascendant] = await Promise.all([
+  const [planets, houses, ascendant, midheaven] = await Promise.all([
     calculatePlanetPositions(jd, ayanamsa, node),
     calculateHouses(jd, lat, lng, houseSystem, ayanamsa),
     calculateAscendant(jd, lat, lng, ayanamsa),
+    calculateMidheaven(jd, lat, lng, ayanamsa),
   ]);
 
   assignPlanetsToHouses(planets, houses);
@@ -144,5 +146,6 @@ export async function calculateChart(
     ayanamsa,
     ayanamsaValue,
     julianDay: jd,
+    midheaven,
   };
 }

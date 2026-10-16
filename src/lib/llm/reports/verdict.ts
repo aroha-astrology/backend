@@ -20,7 +20,7 @@ import { reportFactsMessage } from './report-facts-message.js';
 import type { ReportKey } from '../../../config/reports.js';
 
 const GROUNDING_RULE =
-  'Every fact in the JSON below was already computed by a deterministic classical Vedic algorithm. Never invent a new number, date, or fact not present in the JSON — only summarize and prioritize what is already there.';
+  'Every fact in the JSON below was already computed by a deterministic traditional Vedic algorithm. Never invent a new number, date, or fact not present in the JSON — only summarize and prioritize what is already there.';
 const SAFETY_RULE =
   'This is advisory guidance for reflection, never a guarantee about what will happen, and never a substitute for the reader\'s own judgment and choices. Use tendency language ("suggests", "tends to"), never absolute predictions.';
 
@@ -59,7 +59,7 @@ export const VERDICT_TOPIC: Record<ReportKey, string> = {
     "whether the reader's current name is numerologically aligned, and the suggested spelling/name changes",
   remedies: "the reader's Lal Kitab remedies — karmic debts, blind planets, and planet placements",
   progeny:
-    "the reader's and their spouse's prospects for children — classical progeny indications, the likely child sequence and its timing, NOT fertility as a medical matter",
+    "the reader's and their spouse's prospects for children — traditional progeny indications, the likely child sequence and its timing, NOT fertility as a medical matter",
   kp_annual:
     "the reader's next 12 months read through KP — which life areas the cuspal sub lords promise, the peak months and best windows, and the reader's own questions. Name months, never any score",
 };
@@ -204,7 +204,7 @@ export async function generateReportVerdict(
       // No explicit condition argument: `planetCondition` is one of the excluded keys
       // above (it's grounding, not this report's topic) — passing it again would just
       // reintroduce the cross-domain drift this function exists to remove.
-      reportFactsMessage(JSON.stringify(factsForVerdict(scores))),
+      reportFactsMessage(JSON.stringify(factsForVerdict(scores)), undefined, undefined, reportKey),
       { role: 'user', content: 'Write the Final Verdict card for this report.' },
     ],
   });

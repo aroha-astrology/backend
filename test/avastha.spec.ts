@@ -118,11 +118,11 @@ describe('avasthaAndWarFacts', () => {
     const chart = {
       planets: [
         { planet: 'Mars', signDegree: 10, signIndex: 0, longitude: 10, latitude: 1.5 },
-        { planet: 'Venus', signDegree: 10.4, signIndex: 0, longitude: 10.4, latitude: 0.2 },
+        { planet: 'Saturn', signDegree: 10.4, signIndex: 0, longitude: 10.4, latitude: 0.2 },
       ],
     };
     const facts = avasthaAndWarFacts(chart, planets).join('\n');
     expect(facts).toContain('Graha Yuddha');
-    expect(facts).toContain('Mars defeats Venus');
+    expect(facts).toContain('Mars defeats Saturn');
   });
 });

@@ -7,7 +7,10 @@
 // original worked example this follows exactly.
 // =============================================================================
 
-import { computeNumerologyScores } from '../../../lib/astro-engine/reports/numerology.js';
+import {
+  assertPersonInputs,
+  computeNumerologyScores,
+} from '../../../lib/astro-engine/reports/numerology.js';
 import {
   generateNumerologyNarrative,
   translateNumerologyNarrative,
@@ -32,6 +35,9 @@ const numerologyGenerator: ReportGenerator = {
     _language: 'en',
     progress?: SectionGenerationProgress,
   ): Promise<ReportSection[]> {
+    // A failed profile lookup must fail the purchase (retried, then refunded),
+    // never produce a paid report from the stand-in name or date of birth.
+    assertPersonInputs(scores, 'numerology');
     return generateNumerologyNarrative(scores as unknown as NumerologyScores, progress);
   },
   async translateNarrative(sections: ReportSection[], language: string): Promise<ReportSection[]> {

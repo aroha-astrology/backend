@@ -290,7 +290,7 @@ async function runCall(
     responseSchema: SECTIONS_SCHEMA,
     messages: [
       { role: 'system', content: system },
-      reportFactsMessage(facts, scores.planetCondition, scores.vakriFacts),
+      reportFactsMessage(facts, scores.planetCondition, scores.vakriFacts, 'kp_annual'),
       { role: 'user', content: user },
     ],
   });

@@ -184,6 +184,19 @@ describe('generatePastLifeNarrative', () => {
     expect(content.toLowerCase()).toContain('familiar');
     expect(content.toLowerCase()).toContain('fears or blocks');
   });
+
+  it('says it is a story from a tradition, not a fact, and never a guilt, debt or curse (audit SF3)', async () => {
+    state.generate.mockResolvedValueOnce(
+      JSON.stringify({ sections: [{ heading: 'H', paragraphs: ['p'] }] }),
+    );
+    await generatePastLifeNarrative(makeScores());
+    const call = state.generate.mock.calls[0]?.[0];
+    const content = call.messages.map((m: { content: string }) => m.content).join('\n');
+    expect(content).toMatch(/a story from a tradition of belief, not a fact/);
+    expect(content).toMatch(/never ascribe guilt, a debt or a curse/);
+    expect(content).not.toMatch(/classical condition where all planets/);
+    expect(content).toMatch(/later tradition/);
+  });
 });
 
 describe('translatePastLifeNarrative', () => {

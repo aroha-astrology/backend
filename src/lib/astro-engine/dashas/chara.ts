@@ -1,10 +1,5 @@
 // @ts-nocheck
-import type {
-  ZodiacSign,
-  ChartData,
-  CharaDasha,
-  Planet,
-} from '@aroha-astrology/shared';
+import type { ZodiacSign, ChartData, CharaDasha, Planet } from '@aroha-astrology/shared';
 
 import { ZODIAC_SIGNS, SIGN_LORDS } from '@aroha-astrology/shared';
 
@@ -67,7 +62,7 @@ function getPlanetSign(chartData: ChartData, planet: Planet): ZodiacSign {
  * Calculate the forward distance (in signs, 1-12) from `fromSign` to `toSign`.
  */
 function forwardDistance(from: ZodiacSign, to: ZodiacSign): number {
-  const diff = ((signIndex(to) - signIndex(from)) % 12 + 12) % 12;
+  const diff = (((signIndex(to) - signIndex(from)) % 12) + 12) % 12;
   return diff === 0 ? 12 : diff;
 }
 
@@ -75,7 +70,7 @@ function forwardDistance(from: ZodiacSign, to: ZodiacSign): number {
  * Calculate the backward distance (in signs, 1-12) from `fromSign` to `toSign`.
  */
 function backwardDistance(from: ZodiacSign, to: ZodiacSign): number {
-  const diff = ((signIndex(from) - signIndex(to)) % 12 + 12) % 12;
+  const diff = (((signIndex(from) - signIndex(to)) % 12) + 12) % 12;
   return diff === 0 ? 12 : diff;
 }
 
@@ -88,12 +83,13 @@ function backwardDistance(from: ZodiacSign, to: ZodiacSign): number {
  *
  * For most signs this is the standard sign lord. However, for Scorpio
  * and Aquarius, Jaimini uses a dual-lordship rule:
- *   - Scorpio: Mars and Ketu. Use whichever is stronger (here: the one
- *     further advanced in its sign, i.e. higher signDegree).
- *   - Aquarius: Saturn and Rahu. Same strength rule.
- *
- * If both planets are in the same sign-degree we fall back to the
- * traditional lord (Mars for Scorpio, Saturn for Aquarius).
+ *   - Scorpio: Mars and Ketu.
+ *   - Aquarius: Saturn and Rahu.
+ * K. V. Abhyankar's Jaimini Upadesa Sutras, Introduction para 53 (register JS-ABH-53,
+ * audit JM1): the nodes "move backwards ... they become the rulers when their degrees in
+ * a Rasi are less than those of others". So the node rules when its degree in its sign
+ * is the smaller; otherwise Mars or Saturn does (and on equal degrees, Mars or Saturn).
+ * This used to pick the node when its degree was the higher.
  */
 function jaiminiSignLord(sign: ZodiacSign, chartData: ChartData): Planet {
   if (sign === 'Scorpio') {
@@ -101,7 +97,7 @@ function jaiminiSignLord(sign: ZodiacSign, chartData: ChartData): Planet {
     const ketuPos = chartData.planets.find((p) => p.planet === 'Ketu');
     if (marsPos && ketuPos) {
       // Higher degree within its sign = stronger
-      return ketuPos.signDegree > marsPos.signDegree ? 'Ketu' : 'Mars';
+      return ketuPos.signDegree < marsPos.signDegree ? 'Ketu' : 'Mars';
     }
     return 'Mars';
   }
@@ -109,7 +105,7 @@ function jaiminiSignLord(sign: ZodiacSign, chartData: ChartData): Planet {
     const saturnPos = chartData.planets.find((p) => p.planet === 'Saturn');
     const rahuPos = chartData.planets.find((p) => p.planet === 'Rahu');
     if (saturnPos && rahuPos) {
-      return rahuPos.signDegree > saturnPos.signDegree ? 'Rahu' : 'Saturn';
+      return rahuPos.signDegree < saturnPos.signDegree ? 'Rahu' : 'Saturn';
     }
     return 'Saturn';
   }
@@ -133,10 +129,7 @@ function jaiminiSignLord(sign: ZodiacSign, chartData: ChartData): Planet {
  *
  * Duration is capped at 12 years (one full zodiac).
  */
-function charaDashaDuration(
-  sign: ZodiacSign,
-  chartData: ChartData,
-): number {
+function charaDashaDuration(sign: ZodiacSign, chartData: ChartData): number {
   const lord = jaiminiSignLord(sign, chartData);
   const lordSign = getPlanetSign(chartData, lord);
 
@@ -146,7 +139,11 @@ function charaDashaDuration(
   }
 
   let distance: number;
-  if (isOddSign(sign)) {
+  if (lord === 'Rahu' || lord === 'Ketu') {
+    // Jaimini Upadesa Sutras, Introduction para 53: "the years in their charge are determined
+    // by calculating backwards from the sign they occupy to the sign which they rule".
+    distance = backwardDistance(lordSign, sign);
+  } else if (isOddSign(sign)) {
     distance = forwardDistance(sign, lordSign);
   } else {
     distance = backwardDistance(sign, lordSign);
@@ -207,10 +204,7 @@ function charaDashaSignSequence(ascendantSign: ZodiacSign): ZodiacSign[] {
  * @param chartData      Full chart data with planet positions.
  * @returns              A `CharaDasha` object.
  */
-export function calculateCharaDasha(
-  ascendantSign: ZodiacSign,
-  chartData: ChartData,
-): CharaDasha {
+export function calculateCharaDasha(ascendantSign: ZodiacSign, chartData: ChartData): CharaDasha {
   const now = new Date();
   // Extract birth date from chartData's julian day isn't directly available
   // as a Date, so we derive it from the ascendant or use the first house cusp.
@@ -221,9 +215,7 @@ export function calculateCharaDasha(
   const signSequence = charaDashaSignSequence(ascendantSign);
 
   // Pre-compute durations for each sign in the sequence
-  const durations = signSequence.map((sign) =>
-    charaDashaDuration(sign, chartData),
-  );
+  const durations = signSequence.map((sign) => charaDashaDuration(sign, chartData));
 
   // Build sign dasha periods, cycling through the 12-sign sequence
   // until we cover at least 120 years.
@@ -299,4 +291,3 @@ function julianDayToDate(jd: number): Date {
 
   return new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
 }
-
