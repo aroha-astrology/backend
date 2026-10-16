@@ -583,18 +583,18 @@ const VARGA_LABELS: Record<string, string> = {
   D10: 'career, profession, public status',
   D11: 'sudden windfalls or losses',
   D12: 'parents, ancestry',
-  D14: 'general/auxiliary — classical domain not confidently sourced',
+  D14: 'general/auxiliary — traditional domain not confidently sourced',
   D16: 'vehicles, comforts, material happiness',
   D20: 'spirituality, religious devotion',
-  D21: 'general/auxiliary — classical domain not confidently sourced',
+  D21: 'general/auxiliary — traditional domain not confidently sourced',
   D24: 'education, learning, higher intelligence',
   D27: 'stamina, general strength, resilience',
   D30: 'hardships, health vulnerabilities, misfortune, hidden vices and boundary-testing tendencies',
   D40: 'inherited patterns from the maternal line',
   D45: 'character, ethics, paternal-line inheritance',
   D60: 'overall karmic destiny — the most fine-grained varga, time-sensitive',
-  D81: 'advanced subdivision of D9 — classical domain not confidently sourced',
-  D108: 'advanced subdivision of D9 — classical domain not confidently sourced',
+  D81: 'advanced subdivision of D9 — traditional domain not confidently sourced',
+  D108: 'advanced subdivision of D9 — traditional domain not confidently sourced',
 };
 
 /**
@@ -778,7 +778,7 @@ export function synthesisFacts(synthesis: DailySynthesisResult | null | undefine
   const facts: string[] = [];
 
   facts.push(
-    `DETERMINISTIC DAILY SCORE (computed from the classical layers below, not narrated): ${synthesis.score}/5. Your per-area scores must stay within 1 point of this — do not narrate a markedly better or worse day than this number supports.`,
+    `DETERMINISTIC DAILY SCORE (computed from the traditional layers below, not narrated): ${synthesis.score}/5. Your per-area scores must stay within 1 point of this — do not narrate a markedly better or worse day than this number supports.`,
   );
 
   // Why the score sits where it does — the Mahadasha/Antardasha/Gochara
@@ -1136,13 +1136,13 @@ export function planetStrengthFacts(
     .join(', ');
 
   facts.push(
-    `Planetary Strength (Shadbala — 100% is the classical minimum a planet needs to deliver what it promises): ${summary}.`,
+    `Planetary Strength (Shadbala — 100% is the traditional minimum a planet needs to deliver what it promises): ${summary}.`,
   );
 
   const weak = ranked.filter((s) => !s.isStrong).map((s) => s.planet);
   if (weak.length > 0) {
     facts.push(
-      `STRENGTH RULE: A yoga, house promise, or dasha result only delivers in proportion to the strength of the planet that rules it. These planets are below the classical minimum: ${weak.join(', ')}. When a combination listed anywhere above is ruled by one of them — or by a combust or debilitated planet — describe the promise as present but partial, delayed, or requiring effort. Never describe it as if it fires cleanly. Do NOT quote these percentages or the word "Shadbala" to the user; let them shape how confidently you phrase the result.`,
+      `STRENGTH RULE: A yoga, house promise, or dasha result only delivers in proportion to the strength of the planet that rules it. These planets are below the traditional minimum: ${weak.join(', ')}. When a combination listed anywhere above is ruled by one of them — or by a combust or debilitated planet — describe the promise as present but partial, delayed, or requiring effort. Never describe it as if it fires cleanly. Do NOT quote these percentages or the word "Shadbala" to the user; let them shape how confidently you phrase the result.`,
     );
   }
 

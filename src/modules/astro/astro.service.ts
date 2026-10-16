@@ -392,7 +392,7 @@ export function buildMatchRecommendation(
     const inactiveMangal = isActive1 ? mangal2 : mangal1;
     const cancelNote =
       inactiveMangal.present && inactiveMangal.type === 'cancelled'
-        ? ' (the other partner does have Mars in a Mangal Dosha house too, but it is classically cancelled there, so this is a genuine mismatch, not just an apparent one)'
+        ? ' (the other partner does have Mars in a Mangal Dosha house too, but it is traditionally cancelled there, so this is a genuine mismatch, not just an apparent one)'
         : '';
     parts.push(
       `Mangal Dosha is actively present in only one partner's chart${cancelNote} — traditionally this asymmetry is discussed with an astrologer, as a matching Mangal Dosha status (present or absent in both, after accounting for cancellation) is usually considered more favorable than a mismatch.`,
@@ -406,7 +406,7 @@ export function buildMatchRecommendation(
     (mangal2.present && mangal2.type === 'cancelled')
   ) {
     parts.push(
-      'Mangal Dosha was found in at least one chart but is classically cancelled there, so it does not affect compatibility.',
+      'Mangal Dosha was found in at least one chart but is traditionally cancelled there, so it does not affect compatibility.',
     );
   }
 

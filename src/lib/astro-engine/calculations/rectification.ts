@@ -84,7 +84,7 @@ const DOMAIN_HOUSES: Record<LifeEvent['domain'], number[]> = {
 
   // --- Family
   childbirth: [5, 9, 2],
-  bereavement: [8, 12, 2], // 2nd is the classical maraka
+  bereavement: [8, 12, 2], // 2nd is the traditional maraka
 
   // --- Home and money
   property_bought: [4, 12, 11], // 4th home, 12th outlay, 11th means

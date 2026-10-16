@@ -37,7 +37,7 @@ const CLAUDE_CALLS_PER_MINUTE = 600;
  * accurate, and no comparison with anyone else (OpenAI rejects both).
  */
 const HOW_CALCULATED =
-  "Calculated by Aroha's engine with the classical rules of Vedic astrology, the same working astrologers have traditionally done by hand. These are computed figures, not generated text.";
+  "Calculated by Aroha's engine with the traditional rules of Vedic astrology, the same working astrologers have traditionally done by hand. These are computed figures, not generated text.";
 
 /** Added to every result: how it was worked out, and where the detailed reading lives. */
 export const appLinkShape = {

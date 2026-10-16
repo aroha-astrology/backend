@@ -20,12 +20,12 @@ import { reportFactsMessage } from './report-facts-message.js';
 const GROUNDING_RULE =
   "Every karmic debt, Pakka Ghar placement, blind-planet flag, and planet remedy below is a GIVEN FACT, already computed by a deterministic Lal Kitab analysis of the reader's natal chart. Never recompute, second-guess, invent a new debt/placement, or invent a remedy beyond the ones given — your job is ONLY to explain what each given fact means and how to apply the given remedies.";
 const SAFETY_RULE =
-  'This is traditional Lal Kitab guidance for reflection and everyday lifestyle practice, never a guarantee about real-world outcomes, and never a substitute for the reader\'s own judgment or professional (medical/legal/financial) advice. Use tendency language ("classically associated with", "considered supportive of", "traditionally suggested to"), never absolute predictions. Lal Kitab remedies are deliberately simple, everyday, low-cost lifestyle actions (donations, household items, dietary habits, small rituals) — do NOT invent or recommend gemstones, expensive purchases, or elaborate rituals beyond what is given.';
+  'This is traditional Lal Kitab guidance for reflection and everyday lifestyle practice, never a guarantee about real-world outcomes, and never a substitute for the reader\'s own judgment or professional (medical/legal/financial) advice. Use tendency language ("traditionally associated with", "considered supportive of", "traditionally suggested to"), never absolute predictions. Lal Kitab remedies are deliberately simple, everyday, low-cost lifestyle actions (donations, household items, dietary habits, small rituals) — do NOT invent or recommend gemstones, expensive purchases, or elaborate rituals beyond what is given.';
 const EMPTY_SECTION_RULE =
   'If a given list (debts, Pakka Ghar placements, blind planets, or planet remedies) is EMPTY, say so plainly and briefly in that section — a neutral, reassuring statement that nothing of that type was flagged for this chart — rather than inventing an entry or skipping the section outright.';
 
 function narrativeSystemPrompt(): string {
-  return `You are writing a Remedies Report for a mobile Vedic astrology app, grounded in Lal Kitab (a practical, remedy-focused branch of Vedic astrology). The app already computed the reader's present karmic debts (Rin), Pakka Ghar (permanent house) placements, blind (obstructed) planets, and a natal remedy for each classical planet in its own house. Your job is ONLY to write the narrative explanation.
+  return `You are writing a Remedies Report for a mobile Vedic astrology app, grounded in Lal Kitab (a practical, remedy-focused branch of Vedic astrology). The app already computed the reader's present karmic debts (Rin), Pakka Ghar (permanent house) placements, blind (obstructed) planets, and a natal remedy for each traditional planet in its own house. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -37,7 +37,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 4 sections, in this order:
-1. Heading close to "Your Karmic Debts (Rin)" — for each given present debt, name it in plain language, explain what it classically indicates (using the given indicators), and state its given remedy. If none are present, say so per EMPTY_SECTION_RULE.
+1. Heading close to "Your Karmic Debts (Rin)" — for each given present debt, name it in plain language, explain what it traditionally indicates (using the given indicators), and state its given remedy. If none are present, say so per EMPTY_SECTION_RULE.
 2. Heading close to "Planet-by-Planet Remedies" — walk through each given planet's natal house and its given remedy/remedies, grouped naturally (2-4 sentences per planet is fine, or combine briefly-treated planets into one paragraph if there are many). Do not repeat a remedy verbatim twice.
 3. Heading close to "Your Strengths and Cautions" — explain the given Pakka Ghar placements as natural strengths (planets giving their fullest, most confident results), and the given blind planets as areas needing gentle extra attention (obstructed, so their results need the remedy work above to fully express). If either list is empty, say so per EMPTY_SECTION_RULE.
 4. Heading close to "How to Use These Remedies" — 1-2 paragraphs of practical guidance: pick 2-3 remedies to start with rather than all at once, practice them consistently (Lal Kitab remedies are traditionally given weeks-to-months to show effect, not days), and keep them as calm daily/weekly habits rather than one-off events. End with a brief, one-sentence restatement of SAFETY_RULE's framing.

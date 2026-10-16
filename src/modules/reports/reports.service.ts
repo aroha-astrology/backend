@@ -559,7 +559,7 @@ function computeScoresWithCondition(
       for (const va of vakriAnalyses) {
         vakriFacts.push(...va.factsForLLM);
         vakriFacts.push(
-          `VAKRI ${va.planet} interpretation — Classical: ${va.interpretation.classical} | Interpretive: ${va.interpretation.interpretive} | Karmic: ${va.interpretation.karmic} (confidence: ${va.confidence.level})`,
+          `VAKRI ${va.planet} interpretation — Traditional: ${va.interpretation.traditional} | Interpretive: ${va.interpretation.interpretive} | Karmic: ${va.interpretation.karmic} (confidence: ${va.confidence.level})`,
         );
       }
     }

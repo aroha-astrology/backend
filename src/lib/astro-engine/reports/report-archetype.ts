@@ -63,7 +63,7 @@ function describeTemperament(houseSign: string | undefined): string {
     return 'This placement carries a distinct temperament shaped by a chart placement whose sign is unavailable.';
   }
   const temperament = SIGN_TEMPERAMENT[houseSign] ?? UNKNOWN_SIGN_TEMPERAMENT;
-  return `Classically, this placement's sign (${houseSign}) suggests someone ${temperament}.`;
+  return `Traditionally, this placement's sign (${houseSign}) suggests someone ${temperament}.`;
 }
 
 /**

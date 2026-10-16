@@ -189,7 +189,7 @@ export function crossCheckPalmAgainstChart(
       facts.push({
         key: `chart.mount.${key}.conflict`,
         evidence: `Mount of ${label} is ${development} on the hand, but ${planet} is ${analysis.strength} in the birth chart (${analysis.reason}).`,
-        meaning: `The hand and the chart disagree about ${planet}. Name the disagreement plainly rather than picking a side or quietly dropping one of them — classically the hand shows what has been made of the chart's inheritance, so a strong mount over a weak planet reads as effort outrunning the birth promise, and the reverse as unused potential.`,
+        meaning: `The hand and the chart disagree about ${planet}. Name the disagreement plainly rather than picking a side or quietly dropping one of them — traditionally the hand shows what has been made of the chart's inheritance, so a strong mount over a weak planet reads as effort outrunning the birth promise, and the reverse as unused potential.`,
         source: 'Palm/chart cross-validation',
       });
     }

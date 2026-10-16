@@ -256,7 +256,7 @@ export function matchPalmRules(
       facts,
       'heartLine.forked',
       'Heart line forks at its end.',
-      'the classical balance of head and heart in love — able to feel deeply without losing judgement',
+      'the traditional balance of head and heart in love — able to feel deeply without losing judgement',
       'Cheiro / Western chiromancy',
     );
   }
@@ -374,7 +374,7 @@ export function matchPalmRules(
       facts,
       'fateLine.breaks',
       `Fate line shows ${fate.breaks} break(s).`,
-      'one or more deliberate changes of direction in working life — classically a redirection, not a failure',
+      'one or more deliberate changes of direction in working life — traditionally a redirection, not a failure',
       'Hasta Samudrika Shastra',
     );
   }
@@ -396,7 +396,7 @@ export function matchPalmRules(
       facts,
       'healthLine.present',
       'A health (Mercury) line is visible.',
-      'a constitution that registers stress physically first — classically a prompt toward routine and digestion care, never a statement of illness',
+      'a constitution that registers stress physically first — traditionally a prompt toward routine and digestion care, never a statement of illness',
       'Hasta Samudrika Shastra',
     );
   } else if (health && health.present === false) {
@@ -404,7 +404,7 @@ export function matchPalmRules(
       facts,
       'healthLine.absent',
       'No health (Mercury) line is visible.',
-      'classically the more fortunate reading — a robust constitution that does not carry stress in the body',
+      'traditionally the more fortunate reading — a robust constitution that does not carry stress in the body',
       'Hasta Samudrika Shastra',
     );
   }
@@ -422,7 +422,7 @@ export function matchPalmRules(
       facts,
       'ringOfSolomon.present',
       'A ring of Solomon is visible at the base of the index finger.',
-      'a natural aptitude for understanding people — the classical teacher and counsellor mark',
+      'a natural aptitude for understanding people — the traditional teacher and counsellor mark',
       'Hasta Samudrika Shastra',
     );
   }
@@ -480,7 +480,7 @@ export function matchPalmRules(
       facts,
       'childrenLines.count',
       `${hand.minorLines.childrenLines.count} children line(s) visible.`,
-      'classically read as significant nurturing bonds rather than a literal count of births — care given, never a prediction of how many',
+      'traditionally read as significant nurturing bonds rather than a literal count of births — care given, never a prediction of how many',
       'Hasta Samudrika Shastra',
     );
   }
@@ -490,7 +490,7 @@ export function matchPalmRules(
       facts,
       'bracelets.three',
       `${bracelets.count} wrist bracelets (rascettes) are visible.`,
-      'the classical auspicious count — a settled, well-supported foundation to build on',
+      'the traditional auspicious count — a settled, well-supported foundation to build on',
       'Hasta Samudrika Shastra',
     );
   } else if (bracelets && bracelets.count > 0 && bracelets.firstClear === false) {
@@ -627,9 +627,9 @@ const SPECIAL_MARKING_MEANING: Record<PalmSpecialMarking['symbol'], string> = {
   triangle: 'a protected, well-channeled talent in that area of the hand',
   square: 'a period of protection during hardship in that domain',
   cross: 'an obstacle or karmic lesson to work through in that domain',
-  fish: 'spiritual prosperity and good fortune (classically read at the life line’s end)',
+  fish: 'spiritual prosperity and good fortune (traditionally read at the life line’s end)',
   trident: 'a marked, almost providential blessing in that domain',
   mysticCross: 'an inclination toward the mystical or metaphysical',
-  yava: 'a mark classically associated with unusually good fortune',
+  yava: 'a mark traditionally associated with unusually good fortune',
   shankh: 'devotion and scholarly inclination',
 };

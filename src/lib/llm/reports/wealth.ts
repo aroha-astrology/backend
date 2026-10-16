@@ -58,7 +58,7 @@ function wealthReaderLines(scores: WealthScores): string[] {
 }
 
 function narrativeSystemPrompt(): string {
-  return `You are writing a Wealth Report for a mobile Vedic astrology app. The app already computed a wealth score, the 2nd-house lord and 11th-house lord strengths, Jupiter's placement, the Hora (D2) chart — the classical wealth/financial-stability/liquid-assets varga, a corroborating layer alongside the 2nd/11th houses, and a wealth pattern classification (steady_accumulation / volatile_gains / late_blooming) using classical rules. Your job is ONLY to write the narrative explanation.
+  return `You are writing a Wealth Report for a mobile Vedic astrology app. The app already computed a wealth score, the 2nd-house lord and 11th-house lord strengths, Jupiter's placement, the Hora (D2) chart — the traditional wealth/financial-stability/liquid-assets varga, a corroborating layer alongside the 2nd/11th houses, and a wealth pattern classification (steady_accumulation / volatile_gains / late_blooming) using traditional rules. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -69,14 +69,14 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Wealth Pattern" — 2 paragraphs explaining the wealth score and the wealth pattern given in plain language: steady_accumulation means wealth builds gradually through saving/holding; volatile_gains means income arrives in bursts rather than steadily; late_blooming means no strong early pattern either way, with momentum more likely to build later. Reference Jupiter's placement as the classical significator of abundance/wisdom around money, briefly the given Hora (D2) as a second, corroborating classical layer on the same wealth theme, and the given Ashtakavarga summary if it flags the 2nd or 11th house as notably strong or weak.
+1. Heading close to "Wealth Pattern" — 2 paragraphs explaining the wealth score and the wealth pattern given in plain language: steady_accumulation means wealth builds gradually through saving/holding; volatile_gains means income arrives in bursts rather than steadily; late_blooming means no strong early pattern either way, with momentum more likely to build later. Reference Jupiter's placement as the traditional significator of abundance/wisdom around money, briefly the given Hora (D2) as a second, corroborating traditional layer on the same wealth theme, and the given Ashtakavarga summary if it flags the 2nd or 11th house as notably strong or weak.
 2. Heading close to "Practical Guidance" — 1-2 paragraphs of GENERAL, non-prescriptive behavioral framing tied to the pattern (e.g. what mindset or habit tends to suit this pattern) — explicitly NOT financial advice, no specific investment/product recommendations.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
 
 function enrichedSystemPrompt(): string {
-  return `You are writing additional sections for a Wealth Report for a mobile Vedic astrology app. The app has already computed, using deterministic classical rules: (1) a ranked list of favorable wealth timing windows with confidence levels, plus an age-band table showing which of the user's upcoming age ranges those windows fall into; (2) a "money archetype" — a short archetype name plus 5 named trait tilts (0-10) themed around the 2nd house sign; (3) a dosha/yoga summary (what's classically supporting wealth vs. what needs care); (4) a single 0-10 "spending vs. saving" tilt score; and (5) a decade-by-decade wealth arc — a 0-100 score plus tone (challenging/mixed/favorable) for each of the next 3 decades. Your job is ONLY to write the narrative explanation for these.
+  return `You are writing additional sections for a Wealth Report for a mobile Vedic astrology app. The app has already computed, using deterministic traditional rules: (1) a ranked list of favorable wealth timing windows with confidence levels, plus an age-band table showing which of the user's upcoming age ranges those windows fall into; (2) a "money archetype" — a short archetype name plus 5 named trait tilts (0-10) themed around the 2nd house sign; (3) a dosha/yoga summary (what's traditionally supporting wealth vs. what needs care); (4) a single 0-10 "spending vs. saving" tilt score; and (5) a decade-by-decade wealth arc — a 0-100 score plus tone (challenging/mixed/favorable) for each of the next 3 decades. Your job is ONLY to write the narrative explanation for these.
 
 ${ENRICHED_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -89,7 +89,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 Write EXACTLY 5 sections, in this order:
 1. Heading close to "Wealth Timing" — 1-2 paragraphs covering the strongest given timing window(s), if any, and what the age-band table implies about when wealth themes are likely most active in the user's life; if no window was found, say so plainly and note the age bands can't show favorable timing either in that case.
 2. Heading close to "Your Money Archetype" — 1-2 paragraphs naming the given archetype and describing the 5 given trait tilts in plain language (which traits run high vs. low, e.g. "your caution tilt runs high while your risk-tolerance runs low").
-3. Heading close to "Dosha & Yoga Check" — 1 paragraph covering the given positives (yogas) and cautions (doshas) relevant to wealth; if both are empty, say plainly that no major classical wealth-dosha or wealth-yoga stands out on this chart.
+3. Heading close to "Dosha & Yoga Check" — 1 paragraph covering the given positives (yogas) and cautions (doshas) relevant to wealth; if both are empty, say plainly that no major traditional wealth-dosha or wealth-yoga stands out on this chart.
 4. Heading close to "Spending vs. Saving Tilt" — 1 paragraph explaining the given 0-10 tilt score in plain language (low = naturally saving/accumulating, high = naturally spending on gains/desires, middle = balanced).
 5. Heading close to "How Your Finances Change Decade By Decade" — 1-2 paragraphs walking through the given 3 decade bands and their scores/tones in order, framed as a long-arc pattern (not a fixed fate) — directly answer "how does my financial situation change decade by decade."
 
@@ -164,7 +164,7 @@ const INCOME_GROUNDING_RULE =
   'The income-source strengths and strongest-income-source verdict below are ALSO GIVEN FACTS, already computed by a deterministic algorithm comparing the 10th house (career/service), 7th house (trade/partnership), and 4th house (real estate/fixed assets) lord strengths. State them verbatim — never recompute or contradict which one is strongest.';
 
 function incomeSourceSystemPrompt(): string {
-  return `You are writing the final sections for a Wealth Report for a mobile Vedic astrology app. The app already computed, using classical rules, the natal strength of the three classical income-source houses — 10th (career/service, "salaried"), 7th (trade/partnership, "business"), and 4th (real estate/fixed assets, "property") — and which one reads strongest on this chart. Your job is ONLY to write the narrative explanation for these.
+  return `You are writing the final sections for a Wealth Report for a mobile Vedic astrology app. The app already computed, using traditional rules, the natal strength of the three traditional income-source houses — 10th (career/service, "salaried"), 7th (trade/partnership, "business"), and 4th (real estate/fixed assets, "property") — and which one reads strongest on this chart. Your job is ONLY to write the narrative explanation for these.
 
 ${INCOME_GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -175,7 +175,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 {"sections": [{"heading": string, "paragraphs": string[]}]}
 
 Write EXACTLY 2 sections, in this order:
-1. Heading close to "Your Strongest Income Path" — 1-2 paragraphs naming the given strongest income source (salaried/business/property) and the given strength of all three, explaining in plain language why that house classically supports this income type. This directly answers "is property, business, or salaried income my strongest wealth path." Write it as where the chart leans, never as how the reader earns today. If a "What the reader told us" line says how they earn today and it is a different path from the chart's strongest one, open with what they actually do and how that path reads on the chart, then present the chart's strongest path as a leaning that has not opened yet. If they told us they own no house or land and property is the strongest path, say plainly that nothing has come from property so far and that the chart only shows a leaning there, not a result. If they are not earning right now, never write as though they have an income.
+1. Heading close to "Your Strongest Income Path" — 1-2 paragraphs naming the given strongest income source (salaried/business/property) and the given strength of all three, explaining in plain language why that house traditionally supports this income type. This directly answers "is property, business, or salaried income my strongest wealth path." Write it as where the chart leans, never as how the reader earns today. If a "What the reader told us" line says how they earn today and it is a different path from the chart's strongest one, open with what they actually do and how that path reads on the chart, then present the chart's strongest path as a leaning that has not opened yet. If they told us they own no house or land and property is the strongest path, say plainly that nothing has come from property so far and that the chart only shows a leaning there, not a result. If they are not earning right now, never write as though they have an income.
 2. Heading close to "What to Actively Guard Against" — 1 paragraph of GENERAL, non-prescriptive guidance on financial risks or habits to watch for, grounded in the wealth pattern and spending-vs-saving tilt already given elsewhere in this report (do not invent a new fact) — this directly answers "what financial risks or leaks should I actively guard against." Explicitly NOT financial advice.
 
 Each paragraph should be 2-4 sentences. Second person ("you").`;

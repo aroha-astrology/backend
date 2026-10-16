@@ -94,7 +94,7 @@ export interface VakriAspectInfo {
 }
 
 export interface VakriInterpretations {
-  classical: string;
+  traditional: string;
   interpretive: string;
   karmic: string;
 }
@@ -447,12 +447,12 @@ export function generateVakriInterpretations(
   const houseDesc = houseNames[house] || `house ${house}`;
 
   // 1. Classical Layer
-  let classical = `${planet} is in Vakri (retrograde) motion in ${sign} in the ${houseDesc}, conferring elevated Cheshta Bala (motional strength). As lord of house(s) ${lordship.housesOwned.join(', ')}, its capacity to deliver its portfolio is amplified.`;
+  let traditional = `${planet} is in Vakri (retrograde) motion in ${sign} in the ${houseDesc}, conferring elevated Cheshta Bala (motional strength). As lord of house(s) ${lordship.housesOwned.join(', ')}, its capacity to deliver its portfolio is amplified.`;
   if (dignity.uttaraKalamritaModifier.applied) {
-    classical += ` ${dignity.uttaraKalamritaModifier.explanation}`;
+    traditional += ` ${dignity.uttaraKalamritaModifier.explanation}`;
   }
   if (dispositor) {
-    classical += ` Its dispositor is ${dispositor.planet} placed in house ${dispositor.house} (${dispositor.sign}), anchoring its manifestation.`;
+    traditional += ` Its dispositor is ${dispositor.planet} placed in house ${dispositor.house} (${dispositor.sign}), anchoring its manifestation.`;
   }
 
   // 2. Interpretive Layer (Psychological & Real-World Non-Linear Dynamic)
@@ -500,7 +500,7 @@ export function generateVakriInterpretations(
   }
 
   return {
-    classical,
+    traditional,
     interpretive,
     karmic,
   };
@@ -753,7 +753,7 @@ export function analyzeVakriPlanet(
 
   if (dignity.uttaraKalamritaModifier.applied) {
     factsForLLM.push(
-      `Classical Uttara Kalamrita modifier: ${dignity.uttaraKalamritaModifier.effectiveStrength}.`,
+      `Traditional Uttara Kalamrita modifier: ${dignity.uttaraKalamritaModifier.effectiveStrength}.`,
     );
   }
 

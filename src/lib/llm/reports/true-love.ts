@@ -53,7 +53,7 @@ const SAFETY_RULE =
 const GROUNDING_RULE_2 =
   'The timing windows, age bands, romantic archetype, trait tilts, decade-by-decade romance arc, and dosha/yoga facts below are GIVEN FACTS, already computed by a deterministic algorithm. State every date, confidence level, trait score (0-10), decade score/tone, and dosha/yoga label VERBATIM. Never invent a date, a number, or a planetary combination that is not listed here. If no timing windows or no dosha/yoga facts are listed, say so plainly rather than inventing one.';
 const SAFETY_RULE_2 =
-  'This is advisory guidance for reflection, never a guarantee about WHEN or with WHOM romance will happen, and never a substitute for the reader\'s own choices. Use tendency language ("suggests", "classically associated with"). If a caution (e.g. Mangal Dosha) is listed, mention it calmly and factually, never alarmingly, and do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
+  'This is advisory guidance for reflection, never a guarantee about WHEN or with WHOM romance will happen, and never a substitute for the reader\'s own choices. Use tendency language ("suggests", "traditionally associated with"). If a caution (e.g. Mangal Dosha) is listed, mention it calmly and factually, never alarmingly, and do not recommend specific remedies, pujas, or purchases — the app does not sell those here.';
 
 /**
  * This report was written for someone still looking for love, and said so to everyone: a
@@ -75,7 +75,7 @@ function statusLines(scores: TrueLoveScores): string[] {
 }
 
 function narrativeSystemPrompt(): string {
-  return `You are writing a True Love Report for a mobile Vedic astrology app. The app already computed a romance score, a partnership score, whether Venus sits in a key house, and a love-vs-arranged tilt (0-10, higher = more love-marriage-leaning) using classical rules. Your job is ONLY to write the narrative explanation.
+  return `You are writing a True Love Report for a mobile Vedic astrology app. The app already computed a romance score, a partnership score, whether Venus sits in a key house, and a love-vs-arranged tilt (0-10, higher = more love-marriage-leaning) using traditional rules. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE}
 ${PLAIN_LANGUAGE_RULE}
@@ -106,7 +106,7 @@ function buildFacts(scores: TrueLoveScores): string {
 }
 
 function narrativeSystemPromptCall2(): string {
-  return `You are writing the second part of a True Love Report for a mobile Vedic astrology app. The app already computed timing windows for love/partnership, an age-relative confidence table, a romantic archetype with 5 named trait tilts (0-10), the Navamsa (D9) chart — the classical marriage/inner-strength varga, a corroborating layer alongside the D1 facts, not a replacement — a decade-by-decade romance arc (a 0-100 score plus tone for each of the next 3 decades), and a dosha/yoga summary (a Mangal Dosha caution if present, a wealth-yoga positive if present) using classical rules. Your job is ONLY to write the narrative explanation.
+  return `You are writing the second part of a True Love Report for a mobile Vedic astrology app. The app already computed timing windows for love/partnership, an age-relative confidence table, a romantic archetype with 5 named trait tilts (0-10), the Navamsa (D9) chart — the traditional marriage/inner-strength varga, a corroborating layer alongside the D1 facts, not a replacement — a decade-by-decade romance arc (a 0-100 score plus tone for each of the next 3 decades), and a dosha/yoga summary (a Mangal Dosha caution if present, a wealth-yoga positive if present) using traditional rules. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE_2}
 ${PLAIN_LANGUAGE_RULE}
@@ -119,7 +119,7 @@ Return STRICT JSON only, no markdown fences, in this exact shape:
 
 Write EXACTLY 4 sections, in this order:
 1. Heading close to "Your Timing Windows" — 1-2 paragraphs summarizing the timing windows given (their date ranges and confidence levels) and what the age-band table implies about near-term versus later favorable periods. If no windows are listed, say so plainly rather than inventing one.
-2. Heading close to "Your Romantic Archetype" — 1-2 paragraphs naming the archetype given, describing the temperament sketch given, weaving in the 5 trait tilts as relative strengths (state the numbers given, never recompute them), and the given Navamsa Lagna/placements as a second, corroborating classical layer on the same romantic temperament (not a separate topic).
+2. Heading close to "Your Romantic Archetype" — 1-2 paragraphs naming the archetype given, describing the temperament sketch given, weaving in the 5 trait tilts as relative strengths (state the numbers given, never recompute them), and the given Navamsa Lagna/placements as a second, corroborating traditional layer on the same romantic temperament (not a separate topic).
 3. Heading close to "Blessings & Cautions" — 1 paragraph on the dosha/yoga facts given: mention the Mangal Dosha caution calmly if present, and the wealth-yoga positive if present. If neither is present, note briefly that no strong caution or featured yoga was flagged in this chart.
 4. Heading close to "How Your Romantic Life Unfolds Decade By Decade" — 1-2 paragraphs walking through the given 3 decade bands and their scores/tones in order, framed as a long-arc pattern (not a fixed fate) — directly answer "how does my romantic life unfold decade by decade."
 
@@ -127,12 +127,12 @@ Each paragraph should be 2-4 sentences. Second person ("you").`;
 }
 
 const GROUNDING_RULE_3 =
-  'The partner archetype, trait tilts, romantic archetype, and trait tilts below are GIVEN FACTS, already computed by a deterministic algorithm. State every label and trait score (0-10) VERBATIM. Never invent a fact, a number, or a specific detail (name, appearance, job, nationality) about a real individual — you are describing classical temperament tendencies, not a real person.';
+  'The partner archetype, trait tilts, romantic archetype, and trait tilts below are GIVEN FACTS, already computed by a deterministic algorithm. State every label and trait score (0-10) VERBATIM. Never invent a fact, a number, or a specific detail (name, appearance, job, nationality) about a real individual — you are describing traditional temperament tendencies, not a real person.';
 const SAFETY_RULE_3 =
   'This is advisory guidance for reflection, never a guarantee about who someone will meet or what patterns will repeat, and never a substitute for the reader\'s own choices and self-awareness. Use tendency language ("tends to", "often", "may notice") — never an absolute claim.';
 
 function narrativeSystemPromptCall3(): string {
-  return `You are writing the third and final part of a True Love Report for a mobile Vedic astrology app. The app already computed a partner archetype (a 7th-house-themed temperament sketch of the kind of person this reader is naturally drawn to, with 5 trait tilts), plus everything from earlier in this report (a romantic archetype with 5 trait tilts, a love-vs-arranged tilt, and a dosha/yoga summary) using classical rules. Your job is ONLY to write the narrative explanation.
+  return `You are writing the third and final part of a True Love Report for a mobile Vedic astrology app. The app already computed a partner archetype (a 7th-house-themed temperament sketch of the kind of person this reader is naturally drawn to, with 5 trait tilts), plus everything from earlier in this report (a romantic archetype with 5 trait tilts, a love-vs-arranged tilt, and a dosha/yoga summary) using traditional rules. Your job is ONLY to write the narrative explanation.
 
 ${GROUNDING_RULE_3}
 ${PLAIN_LANGUAGE_RULE}

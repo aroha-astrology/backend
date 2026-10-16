@@ -252,7 +252,7 @@ function computeChildrenCard(d7: D7Progeny | null, age: number | null): Children
       likelyCount: d7.supportedCount,
       sequence: slotsFor(d7.methodA),
       method: 'both',
-      note: 'Both classical child-sequence methods agree on the eldest child’s house.',
+      note: 'Both traditional child-sequence methods agree on the eldest child’s house.',
     };
   }
 
@@ -263,7 +263,7 @@ function computeChildrenCard(d7: D7Progeny | null, age: number | null): Children
     likelyCount: d7.supportedCount,
     sequence: slotsFor(d7.methodA),
     method: 'A',
-    note: 'The two classical child-sequence schools disagree on the eldest child’s house; shown here per the gender-based method.',
+    note: 'The two traditional child-sequence schools disagree on the eldest child’s house; shown here per the gender-based method.',
   };
 }
 
