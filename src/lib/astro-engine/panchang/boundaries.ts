@@ -24,6 +24,8 @@ import { NAKSHATRAS, NAKSHATRA_SPAN } from '@aroha-astrology/shared';
 export interface TithiBoundary {
   /** Local HH:mm this tithi ends. */
   endsAt: string;
+  /** Local civil date (YYYY-MM-DD) of `endsAt`; often the next day. */
+  endsOn: string;
   /** Name of the tithi that begins at `endsAt`. */
   nextName: string;
 }
@@ -31,6 +33,8 @@ export interface TithiBoundary {
 export interface NakshatraBoundary {
   /** Local HH:mm this nakshatra ends. */
   endsAt: string;
+  /** Local civil date (YYYY-MM-DD) of `endsAt`; often the next day. */
+  endsOn: string;
   /** Name of the nakshatra that begins at `endsAt`. */
   nextName: string;
 }
@@ -126,6 +130,12 @@ function jdToLocalHHmm(swe: any, jdUt: number, timezoneOffsetHours: number): str
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+/** Local civil date (YYYY-MM-DD) of a UT Julian day, rounded to the minute like jdToLocalHHmm. */
+function jdToLocalDate(jdUt: number, timezoneOffsetHours: number): string {
+  const ms = (jdUt - 2440587.5) * 86_400_000 + timezoneOffsetHours * 3_600_000 + 30_000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 /**
  * End time (+ next tithi name) for whichever tithi is current at `jd`.
  *
@@ -149,6 +159,7 @@ export async function getTithiBoundary(
 
   return {
     endsAt: jdToLocalHHmm(swe, crossingJd, timezoneOffsetHours),
+    endsOn: jdToLocalDate(crossingJd, timezoneOffsetHours),
     nextName: TITHI_NAMES[nextIndex],
   };
 }
@@ -173,6 +184,7 @@ export async function getNakshatraBoundary(
 
   return {
     endsAt: jdToLocalHHmm(swe, crossingJd, timezoneOffsetHours),
+    endsOn: jdToLocalDate(crossingJd, timezoneOffsetHours),
     nextName: NAKSHATRAS[nextIndex],
   };
 }

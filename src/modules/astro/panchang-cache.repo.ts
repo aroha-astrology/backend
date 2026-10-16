@@ -25,8 +25,12 @@ import type { PanchangData } from '@aroha-astrology/shared';
  * audit PN1/PN2). Without this bump every day already cached would keep
  * serving the old times. Rolling back restores v4, whose rows are still in
  * the table.
+ * v6: same fields, different VALUES again. The tithi, nakshatra, yoga and
+ * karana are now read at sunrise instead of local noon (panchangReferenceJd),
+ * so their names and end times change on days a limb turns between sunrise
+ * and noon; tithi/nakshatra also gained endsOn. Rolling back restores v5.
  */
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 
 /** Folds `CACHE_VERSION` into the DB key so a version bump can't collide with, or accidentally match, a row from a previous shape. */
 function versionedKey(refKey: string): string {

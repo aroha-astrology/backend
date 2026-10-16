@@ -15,7 +15,7 @@ import { calculateChoghadiya } from './choghadiya';
 import { buildHoraSchedule } from './hora';
 import { getMoonriseMoonset, getSunriseSunset } from './rise-set';
 import { getTithiBoundary, getNakshatraBoundary } from './boundaries';
-import { dateToJulianDay } from '../calculations/planetPositions.core';
+import { calculatePlanetPositions, dateToJulianDay } from '../calculations/planetPositions.core';
 
 export { calculateTithi } from './tithi';
 export { calculateNakshatra } from './nakshatra';
@@ -213,6 +213,12 @@ export async function calculateFullPanchangAsync(
   sunLong: number,
   moonLong: number,
   timezoneOffsetHours: number,
+  /**
+   * UT Julian day the Sun and Moon longitudes were read at; the end-time
+   * searches start from it so "ends at" belongs to the limb actually shown.
+   * Defaults to local noon of `date` for callers that pass noon longitudes.
+   */
+  referenceJd?: number,
 ): Promise<PanchangData> {
   const sunTimes = await getLocalSunTimes(date, latitude, longitude, timezoneOffsetHours);
 
@@ -226,10 +232,35 @@ export async function calculateFullPanchangAsync(
     sunTimes,
   );
 
-  // Reference moment for the boundary searches: local noon on `date`, same
-  // convention getPanchang (astro.service.ts) already uses to compute
-  // sunLong/moonLong in the first place.
-  const jdNoon = await dateToJulianDay(
+  const jdRef = referenceJd ?? (await localNoonJd(date, timezoneOffsetHours));
+
+  const [moonRiseSet, tithiBoundary, nakshatraBoundary] = await Promise.all([
+    getMoonriseMoonset(date, latitude, longitude, timezoneOffsetHours),
+    getTithiBoundary(jdRef, timezoneOffsetHours),
+    getNakshatraBoundary(jdRef, timezoneOffsetHours),
+  ]);
+
+  return {
+    ...base,
+    moonriseTime: moonRiseSet.moonrise ?? undefined,
+    moonsetTime: moonRiseSet.moonset ?? undefined,
+    tithi: {
+      ...base.tithi,
+      endsAt: tithiBoundary.endsAt,
+      endsOn: tithiBoundary.endsOn,
+      nextName: tithiBoundary.nextName,
+    },
+    nakshatra: {
+      ...base.nakshatra,
+      endsAt: nakshatraBoundary.endsAt,
+      endsOn: nakshatraBoundary.endsOn,
+      nextName: nakshatraBoundary.nextName,
+    },
+  };
+}
+
+function localNoonJd(date: Date, timezoneOffsetHours: number): Promise<number> {
+  return dateToJulianDay(
     date.getFullYear(),
     date.getMonth() + 1,
     date.getDate(),
@@ -237,24 +268,51 @@ export async function calculateFullPanchangAsync(
     0,
     timezoneOffsetHours,
   );
+}
 
-  const [moonRiseSet, tithiBoundary, nakshatraBoundary] = await Promise.all([
-    getMoonriseMoonset(date, latitude, longitude, timezoneOffsetHours),
-    getTithiBoundary(jdNoon, timezoneOffsetHours),
-    getNakshatraBoundary(jdNoon, timezoneOffsetHours),
-  ]);
+/**
+ * The moment a civil day's tithi, nakshatra, yoga and karana are read at:
+ * the real (ephemeris) sunrise at the place, the udaya convention drikpanchang
+ * and printed panchangs use. Until 2026-10 Aroha read them at local noon
+ * (engine audit PN4), which on days whose tithi changed between sunrise and
+ * noon showed the next day's tithi. Local noon remains only where the Sun
+ * does not rise that day.
+ */
+export async function panchangReferenceJd(
+  date: Date,
+  latitude: number,
+  longitude: number,
+  timezoneOffsetHours: number,
+): Promise<number> {
+  const { sunrise } = await getSunriseSunset(date, latitude, longitude, timezoneOffsetHours);
+  if (sunrise) return 2440587.5 + sunrise.getTime() / 86_400_000;
+  return localNoonJd(date, timezoneOffsetHours);
+}
 
-  return {
-    ...base,
-    moonriseTime: moonRiseSet.moonrise ?? undefined,
-    moonsetTime: moonRiseSet.moonset ?? undefined,
-    tithi: { ...base.tithi, endsAt: tithiBoundary.endsAt, nextName: tithiBoundary.nextName },
-    nakshatra: {
-      ...base.nakshatra,
-      endsAt: nakshatraBoundary.endsAt,
-      nextName: nakshatraBoundary.nextName,
-    },
-  };
+/**
+ * The full Panchang for one civil day at one place: reads the Sun and Moon at
+ * `panchangReferenceJd` and hands everything to calculateFullPanchangAsync.
+ * This is what getPanchang (astro.service.ts) serves to every screen.
+ */
+export async function calculateDayPanchang(
+  date: Date,
+  latitude: number,
+  longitude: number,
+  timezoneOffsetHours: number,
+): Promise<PanchangData> {
+  const jd = await panchangReferenceJd(date, latitude, longitude, timezoneOffsetHours);
+  const planets = await calculatePlanetPositions(jd);
+  const sunLong = planets.find((p) => p.planet === 'Sun')?.longitude ?? 0;
+  const moonLong = planets.find((p) => p.planet === 'Moon')?.longitude ?? 0;
+  return calculateFullPanchangAsync(
+    date,
+    latitude,
+    longitude,
+    sunLong,
+    moonLong,
+    timezoneOffsetHours,
+    jd,
+  );
 }
 
 function parseTimeToMin(time: string): number {

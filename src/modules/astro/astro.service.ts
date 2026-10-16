@@ -13,9 +13,7 @@ import {
   type PeriodicPeriod,
 } from '../../lib/swarm/index.js';
 import {
-  dateToJulianDay,
-  calculatePlanetPositions,
-  calculateFullPanchangAsync,
+  calculateDayPanchang,
   detectMangalDosha,
   getLalKitabRemedies,
   extractActions,
@@ -471,26 +469,9 @@ export async function getPanchang(
   // worldwide) passes its offset.
   const timezoneOffset = opts.timezoneOffsetHours ?? 5.5;
 
-  // Calculate Julian Day for noon local time
-  const jd = await dateToJulianDay(year, month, day, 12, 0, timezoneOffset);
-
-  // Get planet positions for Sun and Moon sidereal longitudes
-  const planets = await calculatePlanetPositions(jd);
-  const sun = planets.find((p) => p.planet === 'Sun');
-  const moon = planets.find((p) => p.planet === 'Moon');
-
-  const sunLong = sun?.longitude ?? 0;
-  const moonLong = moon?.longitude ?? 0;
-
-  // Calculate full panchang using the astro-engine
-  const panchang = await calculateFullPanchangAsync(
-    date,
-    lat,
-    lon,
-    sunLong,
-    moonLong,
-    timezoneOffset,
-  );
+  // The day's tithi, nakshatra, yoga and karana are read at the moment
+  // panchangReferenceJd picks (see astro-engine/panchang/index.ts).
+  const panchang = await calculateDayPanchang(date, lat, lon, timezoneOffset);
 
   await upsertCachedPanchang({ forDate: isoDate, refKey, lat, lon, data: panchang });
 
