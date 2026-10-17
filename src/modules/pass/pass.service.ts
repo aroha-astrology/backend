@@ -53,6 +53,8 @@ export const PASS_NOTIFICATION_TYPE = 'aroha_pass';
 /** What one tier gives, as the app shows it. */
 interface TierBenefits {
   questionsPerPeriod: number;
+  /** Free voice-call minutes per period. */
+  voiceFreeMinutes: number;
   reportDiscountPct: number;
   features: readonly PassFeature[];
 }
@@ -93,6 +95,7 @@ type Features = Awaited<ReturnType<typeof resolveFeaturesForUser>>;
 
 const benefitsOf = (e: PassEntitlement): TierBenefits => ({
   questionsPerPeriod: e.questions,
+  voiceFreeMinutes: e.voiceFreeMinutes,
   reportDiscountPct: e.reportDiscountPct,
   features: e.features,
 });
@@ -105,6 +108,7 @@ function offersFor(features: Features): PassOffer[] {
     pricePaise: features[t.key]?.pricePaise ?? t.fallbackPaise,
     play: { productId: PASS_PLAY_PRODUCT_ID, basePlanId: t.playBasePlan },
     questionsPerPeriod: t.questions,
+    voiceFreeMinutes: t.voiceFreeMinutes,
     reportDiscountPct: t.reportDiscountPct,
     features: t.features,
   }));

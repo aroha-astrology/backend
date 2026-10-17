@@ -24,18 +24,10 @@ export const PASS_FEATURES = [
 export type PassFeature = (typeof PASS_FEATURES)[number];
 
 /**
- * Voice-call minutes a member gets free in each Pass period, across all their
- * calls. Every tier includes voice call and gets the same number; after these
- * each minute is charged to the wallet at the `paid.voiceChat` price. See
- * modules/voice/voice.service.ts.
- */
-export const PASS_VOICE_FREE_MINUTES = 3;
-
-/**
  * Voice-call minutes every user gets free ONCE, Pass or not (the voice trial,
  * launched for Durga Puja 2026, admin switch `chat.voiceTrial`). Someone
  * without a Pass can talk for these and then sees the Pass lock; a member
- * spends them before their monthly PASS_VOICE_FREE_MINUTES.
+ * spends them before their tier's monthly `voiceFreeMinutes`.
  */
 export const VOICE_TRIAL_MINUTES = 3;
 
@@ -45,6 +37,11 @@ export const VOICE_TRIAL_MINUTES = 3;
  * every tier that is switched on and picks one. `variant` is what
  * user_subscriptions.price_variant stores: the letters are from when the three
  * were a price test with the same benefits.
+ *
+ * `voiceFreeMinutes`: voice-call minutes free in each Pass period, across all
+ * calls; after these each minute is charged to the wallet at the
+ * `paid.voiceChat` price (see modules/voice/voice.service.ts). Every tier got 3
+ * until 2026-10-17, when the owner set 10 / 15 / 20.
  */
 export const PASS_TIERS = [
   {
@@ -54,6 +51,7 @@ export const PASS_TIERS = [
     fallbackPaise: 19900,
     playBasePlan: 'pass-199',
     questions: 15,
+    voiceFreeMinutes: 10,
     reportDiscountPct: 10,
     features: ['timeline', 'bonds', 'voiceCall'],
   },
@@ -64,6 +62,7 @@ export const PASS_TIERS = [
     fallbackPaise: 29900,
     playBasePlan: 'pass-299',
     questions: 30,
+    voiceFreeMinutes: 15,
     reportDiscountPct: 20,
     features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall'],
   },
@@ -74,6 +73,7 @@ export const PASS_TIERS = [
     fallbackPaise: 39900,
     playBasePlan: 'pass-399',
     questions: 60,
+    voiceFreeMinutes: 20,
     reportDiscountPct: 30,
     features: PASS_FEATURES,
   },
@@ -84,6 +84,7 @@ export const PASS_TIERS = [
   fallbackPaise: number;
   playBasePlan: string;
   questions: number;
+  voiceFreeMinutes: number;
   reportDiscountPct: number;
   features: readonly PassFeature[];
 }>;
@@ -97,6 +98,8 @@ export interface PassEntitlement {
   tier: PassTier | null;
   /** Chat questions included per 30-day period. */
   questions: number;
+  /** Free voice-call minutes per 30-day period. */
+  voiceFreeMinutes: number;
   /** Percent off every report. */
   reportDiscountPct: number;
   features: readonly PassFeature[];
@@ -105,14 +108,19 @@ export interface PassEntitlement {
 const entitlementOf = (t: PassTierDef): PassEntitlement => ({
   tier: t.tier,
   questions: t.questions,
+  voiceFreeMinutes: t.voiceFreeMinutes,
   reportDiscountPct: t.reportDiscountPct,
   features: t.features,
 });
 
-/** A Pass from before the tiers keeps what it was sold with: every feature, 30 questions, 20% off. */
+/**
+ * A Pass from before the tiers keeps what it was sold with: every feature, 30
+ * questions, 20% off, and the middle tier's voice minutes.
+ */
 const LEGACY_ENTITLEMENT: PassEntitlement = {
   tier: null,
   questions: 30,
+  voiceFreeMinutes: 15,
   reportDiscountPct: 20,
   features: PASS_FEATURES,
 };

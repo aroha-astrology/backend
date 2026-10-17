@@ -15,8 +15,8 @@
 // here, which is where it is either taken from the member's free allowance or
 // charged to the wallet — or refused.
 //
-// Voice call is an Aroha Pass benefit (every tier). A member gets
-// PASS_VOICE_FREE_MINUTES free minutes in each Pass period, across all their
+// Voice call is an Aroha Pass benefit (every tier). A member gets their tier's
+// `voiceFreeMinutes` free in each Pass period (10 / 15 / 20), across all their
 // calls; after those, each minute costs the `paid.voiceChat` price from the
 // wallet, for as long as the wallet can pay.
 //
@@ -44,11 +44,7 @@ import type { ProfileContext } from '../birth-profiles/profile-context.js';
 import { insertAiUsage } from '../admin/ai-usage.repo.js';
 import { passEntitlement } from '../../lib/entitlements.js';
 import { findActivePass } from '../pass/pass.repo.js';
-import {
-  PASS_PERIOD_DAYS,
-  PASS_VOICE_FREE_MINUTES,
-  VOICE_TRIAL_MINUTES,
-} from '../pass/pass.config.js';
+import { PASS_PERIOD_DAYS, VOICE_TRIAL_MINUTES } from '../pass/pass.config.js';
 import * as voiceRepo from './voice.repo.js';
 import type { VoiceSessionRow } from '../../db/schema.js';
 import * as chatSessionsRepo from '../astro/chat-sessions.repo.js';
@@ -127,6 +123,8 @@ export interface VoiceAccess {
   passMember: boolean;
   /** Where the member's current Pass period began; null without a Pass. */
   freeSince: Date | null;
+  /** Free minutes the member's Pass tier gives per period; 0 without a Pass. */
+  passFreeMinutes: number;
   /** Trial minutes the user has not spent yet (0 when the trial is switched off). */
   trialLeft: number;
 }
@@ -222,16 +220,15 @@ export async function voiceMembership(userId: string): Promise<VoiceAccess> {
     passEntitlement(userId),
     trialMinutesLeft(userId),
   ]);
-  const passMember = pass?.features.includes('voiceCall') === true;
-  if (!passMember) {
-    if (trialLeft > 0) return { passMember: false, freeSince: null, trialLeft };
+  if (!pass || !pass.features.includes('voiceCall')) {
+    if (trialLeft > 0) return { passMember: false, freeSince: null, passFreeMinutes: 0, trialLeft };
     throw Errors.forbidden('PASS_REQUIRED');
   }
 
   const row = await findActivePass(userId).catch(() => null);
   const freeSince =
     row?.periodStart ?? row?.startedAt ?? new Date(Date.now() - PASS_PERIOD_DAYS * 86_400_000);
-  return { passMember: true, freeSince, trialLeft };
+  return { passMember: true, freeSince, passFreeMinutes: pass.voiceFreeMinutes, trialLeft };
 }
 
 /**
@@ -259,7 +256,7 @@ async function claimFreeMinute(
       userId,
       VOICE_MAX_MINUTES,
       access.freeSince,
-      PASS_VOICE_FREE_MINUTES,
+      access.passFreeMinutes,
     );
     if (row) return { row, source: 'pass' };
   }
@@ -402,10 +399,10 @@ async function minutesAhead(
   const [freeUsed, user] = await Promise.all([
     voiceRepo
       .countFreeVoiceMinutesUsed(userId, access.freeSince)
-      .catch(() => PASS_VOICE_FREE_MINUTES),
+      .catch(() => access.passFreeMinutes),
     findActiveUserById(userId).catch(() => undefined),
   ]);
-  const freeMinutesLeft = trialLeft + Math.max(0, PASS_VOICE_FREE_MINUTES - freeUsed);
+  const freeMinutesLeft = trialLeft + Math.max(0, access.passFreeMinutes - freeUsed);
   const walletMinutes =
     pricePaise > 0 ? Math.floor((user?.walletBalancePaise ?? 0) / pricePaise) : ceilingLeft;
   return {

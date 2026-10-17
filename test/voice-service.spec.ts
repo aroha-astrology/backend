@@ -138,9 +138,10 @@ const {
   VOICE_MAX_MINUTES,
 } = await import('../src/modules/voice/voice.service.js');
 
-const { PASS_VOICE_FREE_MINUTES, VOICE_TRIAL_MINUTES } = await import(
-  '../src/modules/pass/pass.config.js'
-);
+const { PASS_TIERS, VOICE_TRIAL_MINUTES } = await import('../src/modules/pass/pass.config.js');
+
+/** The member in these tests holds a Silver Pass: 10 free minutes a period. */
+const PASS_VOICE_FREE_MINUTES = 10;
 
 const PRICE = 2000;
 const USER = 'user-1';
@@ -166,7 +167,11 @@ beforeEach(() => {
   // minute is a wallet minute unless a test says otherwise (`withFreeMinutes`).
   state.passEntitlement
     .mockReset()
-    .mockResolvedValue({ tier: 'silver', features: ['timeline', 'bonds', 'voiceCall'] });
+    .mockResolvedValue({
+      tier: 'silver',
+      voiceFreeMinutes: PASS_VOICE_FREE_MINUTES,
+      features: ['timeline', 'bonds', 'voiceCall'],
+    });
   state.findActivePass.mockReset().mockResolvedValue({ periodStart: PERIOD_START });
   state.claimFreeVoiceMinute.mockReset().mockResolvedValue(null);
   state.countFreeVoiceMinutesUsed.mockReset().mockResolvedValue(PASS_VOICE_FREE_MINUTES);
@@ -373,9 +378,37 @@ describe('voice call is a Pass benefit', () => {
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
   });
 
-  it('every tier includes voice call, with the same free minutes', async () => {
-    const { PASS_TIERS } = await import('../src/modules/pass/pass.config.js');
+  it('every tier includes voice call', () => {
     for (const tier of PASS_TIERS) expect(tier.features, tier.tier).toContain('voiceCall');
+  });
+
+  // Owner, 2026-10-17: 3 free minutes for every tier became 10 / 15 / 20.
+  it('gives Silver 10, Gold 15 and Platinum 20 free minutes a period', () => {
+    expect(PASS_TIERS.map((t) => [t.tier, t.voiceFreeMinutes])).toEqual([
+      ['silver', 10],
+      ['gold', 15],
+      ['platinum', 20],
+    ]);
+  });
+
+  it("counts the member's own tier allowance, not a fixed number", async () => {
+    state.passEntitlement.mockResolvedValue({
+      tier: 'platinum',
+      voiceFreeMinutes: 20,
+      features: ['voiceCall'],
+    });
+    withFreeMinutes(1);
+
+    const grant = await startVoiceSession(USER, profile, 'en');
+
+    expect(state.claimFreeVoiceMinute).toHaveBeenCalledWith(
+      SESSION,
+      USER,
+      VOICE_MAX_MINUTES,
+      PERIOD_START,
+      20,
+    );
+    expect(grant.freeMinutesLeft).toBe(19);
   });
 });
 
@@ -440,11 +473,15 @@ describe('free Pass minutes', () => {
     });
 
     const grants = [await startVoiceSession(USER, profile, 'en')];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < PASS_VOICE_FREE_MINUTES + 1; i++) {
       grants.push(await extendVoiceSession(USER, SESSION, profile, 'en', 'h'));
     }
 
-    expect(grants.map((g) => g.freeMinute)).toEqual([true, true, true, false, false]);
+    expect(grants.map((g) => g.freeMinute)).toEqual([
+      ...Array<boolean>(PASS_VOICE_FREE_MINUTES).fill(true),
+      false,
+      false,
+    ]);
     expect(state.deductWalletBalance).toHaveBeenCalledTimes(2);
   });
 
@@ -554,18 +591,16 @@ describe('the voice trial: 3 free minutes once for every user', () => {
       passUsed += 1;
       return Promise.resolve(claimed(VOICE_TRIAL_MINUTES + passUsed));
     });
-    state.claimVoiceMinute.mockResolvedValue(claimed(7));
+    state.claimVoiceMinute.mockResolvedValue(claimed(VOICE_TRIAL_MINUTES + PASS_VOICE_FREE_MINUTES + 1));
 
     const grants = [await startVoiceSession(USER, profile, 'en')];
-    for (let i = 0; i < 6; i++) grants.push(await extendVoiceSession(USER, SESSION, profile, 'en', 'h'));
+    for (let i = 0; i < VOICE_TRIAL_MINUTES + PASS_VOICE_FREE_MINUTES; i++) {
+      grants.push(await extendVoiceSession(USER, SESSION, profile, 'en', 'h'));
+    }
 
     expect(grants.map((g) => (g.trialMinute ? 'trial' : g.freeMinute ? 'pass' : 'paid'))).toEqual([
-      'trial',
-      'trial',
-      'trial',
-      'pass',
-      'pass',
-      'pass',
+      ...Array<string>(VOICE_TRIAL_MINUTES).fill('trial'),
+      ...Array<string>(PASS_VOICE_FREE_MINUTES).fill('pass'),
       'paid',
     ]);
     expect(grants.every((g) => g.passMember)).toBe(true);

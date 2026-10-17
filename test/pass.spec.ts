@@ -233,6 +233,7 @@ describe('getPassStatus', () => {
         pricePaise: 14900,
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-199' },
         questionsPerPeriod: 15,
+        voiceFreeMinutes: 10,
         reportDiscountPct: 10,
         features: ['timeline', 'bonds', 'voiceCall'],
       },
@@ -242,6 +243,7 @@ describe('getPassStatus', () => {
         pricePaise: 29900,
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-299' },
         questionsPerPeriod: 30,
+        voiceFreeMinutes: 15,
         reportDiscountPct: 20,
         features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall'],
       },
@@ -251,6 +253,7 @@ describe('getPassStatus', () => {
         pricePaise: 39900,
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-399' },
         questionsPerPeriod: 60,
+        voiceFreeMinutes: 20,
         reportDiscountPct: 30,
         features: [
           'timeline',
