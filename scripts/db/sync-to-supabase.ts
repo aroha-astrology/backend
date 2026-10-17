@@ -15,9 +15,11 @@
  *     session pooler, and the live app still uses the source.
  *  2. One REPEATABLE READ transaction on the source exports a snapshot; the
  *     source fingerprint and pg_dump both read that same snapshot.
- *  3. The dump streams into `psql --single-transaction`: either the whole copy
- *     (plus the RLS lock-down) commits, or nothing changes and last night's copy
- *     stays. Forbidden lines (dropping public, extensions, roles) abort it.
+ *  3. One transaction on Supabase: empty the app schemas, load the dump, lock
+ *     the copy down (RLS), COMMIT — written only after pg_dump succeeded, so a
+ *     cut-off stream rolls back and last night's copy stays. Forbidden dump
+ *     lines (dropping public, extensions, roles) abort it. A size check first
+ *     keeps the load under the Supabase Free 500 MB limit.
  *  4. The copy is fingerprinted and compared; any data difference fails the run.
  *     --verify-only compares live data, so rows written since the copy are
  *     expected differences there.
@@ -39,7 +41,16 @@ import {
   type Comparison,
   type Fingerprint,
 } from './lib/fingerprint.js';
-import { checkUrls, filesToPrune, forbiddenDumpLine, lockDownSql, parseDbUrl } from './lib/guards.js';
+import {
+  checkUrls,
+  clearSchemasSql,
+  clipMessage,
+  diskBudgetProblem,
+  filesToPrune,
+  forbiddenDumpLine,
+  lockDownSql,
+  parseDbUrl,
+} from './lib/guards.js';
 
 type Mode = 'full' | 'dry-run' | 'verify-only';
 
@@ -48,6 +59,9 @@ const KEEP_REPORTS = 60;
 const BACKUP_DIR = process.env.DB_SYNC_BACKUP_DIR || join(homedir(), 'db-backups');
 const REPORT_DIR = join(BACKUP_DIR, 'reports');
 const ALLOWLIST_PATH = join(process.cwd(), 'scripts', 'db', 'schema-text-allowlist.json');
+// Peak size allowed during a load (old + new copy until COMMIT). Supabase Free
+// turns the database read-only past 500 MB; keep a margin below that.
+const MAX_BYTES = Number(process.env.SUPABASE_SYNC_MAX_MB || 450) * 1048576;
 
 interface Report {
   mode: Mode;
@@ -62,6 +76,10 @@ interface Report {
   dumpFile?: string;
   dumpBytes?: number;
   comparison?: Comparison;
+  /** Not failures: things worth knowing (stray Supabase schemas, tables removed from the copy). */
+  notes: string[];
+  sourceBytes?: number;
+  targetBytesBefore?: number;
   source?: Fingerprint;
 }
 
@@ -127,6 +145,8 @@ async function dumpAndLoad(opts: {
       '--no-owner',
       '--no-privileges',
       '--quote-all-identifiers',
+      // Fail fast instead of queueing behind a migration's exclusive lock.
+      '--lock-wait-timeout=60s',
       `--snapshot=${opts.snapshot}`,
     ],
     { env: libpqEnv(opts.sourceUrl, 'prefer'), stdio: ['ignore', 'pipe', 'pipe'] },
@@ -197,7 +217,7 @@ async function dumpAndLoad(opts: {
   };
 
   try {
-    if (psql) await write(psql.stdin!, 'BEGIN;\n');
+    if (psql) await write(psql.stdin!, `BEGIN;\n${clearSchemasSql(opts.schemas)}`);
     for await (const chunk of dump.stdout as AsyncIterable<Buffer>) {
       const text = carry + chunk.toString('utf8');
       const cut = text.lastIndexOf('\n');
@@ -233,6 +253,14 @@ async function dumpAndLoad(opts: {
   return statSync(opts.dumpPath).size;
 }
 
+/** A run killed mid-dump leaves a .partial file behind; never a usable backup. */
+function removePartials(dir: string): void {
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    if (name.endsWith('.partial')) rmSync(join(dir, name), { force: true });
+  }
+}
+
 function prune(dir: string, prefix: string, keep: number): void {
   if (!existsSync(dir)) return;
   const names = readdirSync(dir).filter((n) => n.startsWith(prefix) && !n.endsWith('.partial'));
@@ -245,12 +273,14 @@ function loadAllowlist(): Set<string> {
   return new Set(parsed.accepted ?? []);
 }
 
-async function notify(title: string, message: string): Promise<void> {
+/** True when Telegram accepted the message. */
+async function notify(title: string, message: string): Promise<boolean> {
   try {
     const { sendAlert } = await import('../../src/lib/notifications/telegram.js');
-    await sendAlert(title, message);
+    return await sendAlert(title, clipMessage(message));
   } catch (err) {
     console.error('telegram alert failed:', (err as Error).message);
+    return false;
   }
 }
 
@@ -263,6 +293,7 @@ function summarise(report: Report): string {
   if (report.seconds !== undefined) lines.push(`${report.seconds} s`);
   const warnings = report.comparison?.warnings.length ?? 0;
   if (warnings) lines.push(`${warnings} definition-text warning(s), see report`);
+  for (const n of report.notes) lines.push(`note: ${n}`);
   if (report.error) lines.push(report.error);
   for (const e of report.comparison?.errors.slice(0, 10) ?? []) lines.push(`- ${e}`);
   const more = (report.comparison?.errors.length ?? 0) - 10;
@@ -273,8 +304,9 @@ function summarise(report: Report): string {
 async function main(): Promise<number> {
   const mode = modeFromArgs(process.argv.slice(2));
   const started = new Date();
-  const report: Report = { mode, startedAt: started.toISOString(), ok: false };
+  const report: Report = { mode, startedAt: started.toISOString(), ok: false, notes: [] };
   mkdirSync(REPORT_DIR, { recursive: true, mode: 0o700 });
+  removePartials(BACKUP_DIR);
 
   const sourceUrl = process.env.DATABASE_URL ?? '';
   const targetUrl = process.env.SUPABASE_SYNC_URL ?? '';
@@ -291,10 +323,10 @@ async function main(): Promise<number> {
     const schemas = appSchemas(await listSchemas(source));
     report.schemas = schemas;
 
-    // The copy may only contain schemas the source has: anything else was
-    // created by someone else and would be destroyed or confused by the load.
+    // Schemas only Supabase has are never touched by the load or compared;
+    // they are only worth a mention (e.g. a new Supabase-managed schema).
     const strays = appSchemas(await listSchemas(target)).filter((s) => !schemas.includes(s));
-    if (strays.length) throw new Error(`refused: Supabase has schemas the source doesn't: ${strays.join(', ')}`);
+    if (strays.length) report.notes.push(`Supabase has extra schemas, left untouched: ${strays.join(', ')}`);
 
     const allow = loadAllowlist();
     const src = await source.reserve();
@@ -310,12 +342,24 @@ async function main(): Promise<number> {
       report.rows = totalRows(sourceFp);
 
       if (mode !== 'verify-only') {
-        // Tables in the copy that the source no longer has would survive a
-        // --clean load (it only drops what the dump knows about).
-        await applySessionSettings(dst);
-        const before = await takeFingerprint(dst, schemas);
-        const extra = Object.keys(before.tables).filter((t) => !(t in sourceFp.tables));
-        if (extra.length) throw new Error(`refused: Supabase has tables the source doesn't: ${extra.join(', ')}`);
+        const sizeSql = 'SELECT pg_database_size(current_database())::text AS bytes';
+        const [srcSize] = (await src.unsafe(sizeSql)) as unknown as [{ bytes: string }];
+        const [dstSize] = (await dst.unsafe(sizeSql)) as unknown as [{ bytes: string }];
+        report.sourceBytes = Number(srcSize.bytes);
+        report.targetBytesBefore = Number(dstSize.bytes);
+        if (mode === 'full') {
+          const tooBig = diskBudgetProblem(report.targetBytesBefore, report.sourceBytes, MAX_BYTES);
+          if (tooBig) throw new Error(`refused, copy not made: ${tooBig}`);
+        }
+
+        // Tables the source no longer has (dropped by a migration) are removed
+        // from the copy by the load; name them so it's never a surprise.
+        const copyTables = await dst<{ name: string }[]>`
+          select schemaname || '.' || tablename as name from pg_tables where schemaname in ${dst(schemas)}`;
+        const removed = copyTables.map((t) => t.name).filter((t) => !(t in sourceFp.tables));
+        if (removed.length && mode === 'full') {
+          report.notes.push(`removed from the copy (no longer in production): ${removed.join(', ')}`);
+        }
 
         const dumpPath = join(BACKUP_DIR, `aroha-${stamp(started)}.sql.gz`);
         report.dumpFile = dumpPath;
@@ -365,10 +409,13 @@ async function main(): Promise<number> {
   const title = report.ok ? `${label}: OK` : `${label}: FAILED`;
   const body = `${summarise(report)}\nreport: ${reportPath}`;
   console.log(`${title}\n${body}`);
-  await notify(title, body);
-  // 2 = failed but already reported; any other non-zero exit means the script
-  // itself crashed, and cron-db-sync-supabase.sh sends the alert instead.
-  return report.ok ? 0 : 2;
+  const sent = await notify(title, body);
+  // Exit codes for cron-db-sync-supabase.sh: 0 OK and reported, 2 FAILED and
+  // reported, 10 OK but Telegram didn't take it, 11 FAILED and not reported.
+  // Anything else means the script itself crashed. The wrapper alerts for
+  // everything except 0 and 2.
+  if (report.ok) return sent ? 0 : 10;
+  return sent ? 2 : 11;
 }
 
 main().then(

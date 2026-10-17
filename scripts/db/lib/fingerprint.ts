@@ -60,7 +60,7 @@ export interface TableFingerprint {
 export interface Fingerprint {
   /** Keyed by "schema.table". */
   tables: Record<string, TableFingerprint>;
-  /** Keyed by "schema.sequence"; null when the sequence was never used. */
+  /** Keyed by "schema.sequence": last value, or null when never used. Compared as "copy not behind source". */
   sequences: Record<string, string | null>;
   /** Keyed by "schema.type"; labels in sort order. */
   enums: Record<string, string[]>;
@@ -242,12 +242,17 @@ export function compareFingerprints(
     out,
     allow,
   );
+  // Sequences ignore snapshots: pg_dump reads each one a moment after the
+  // fingerprint did, so an insert in between legitimately moves it forward.
+  // The copy is right as long as it is not behind the source.
+  const notBehind = (a: string | null, b: string | null) =>
+    a === null || (b !== null && BigInt(b) >= BigInt(a));
   compareKeyed(
     'sequence',
     source.sequences,
     target.sequences,
-    same,
-    (k, a, b) => `sequence ${k}: ${a ?? 'unused'} in source, ${b ?? 'unused'} in copy`,
+    notBehind,
+    (k, a, b) => `sequence ${k}: ${a ?? 'unused'} in source, ${b ?? 'unused'} in copy (copy is behind)`,
     'error',
     out,
     allow,

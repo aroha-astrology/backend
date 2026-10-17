@@ -7,6 +7,9 @@ import {
 } from '../scripts/db/lib/fingerprint.js';
 import {
   checkUrls,
+  clearSchemasSql,
+  clipMessage,
+  diskBudgetProblem,
   filesToPrune,
   forbiddenDumpLine,
   lockDownSql,
@@ -181,9 +184,29 @@ describe('compareFingerprints', () => {
       migrations: 85,
     });
     const { errors } = compareFingerprints(fp(), copy);
-    expect(errors).toContain('sequence drizzle.__drizzle_migrations_id_seq: 86 in source, unused in copy');
+    expect(errors).toContain(
+      'sequence drizzle.__drizzle_migrations_id_seq: 86 in source, unused in copy (copy is behind)',
+    );
     expect(errors.some((e) => e.startsWith('enum public.plan_tier'))).toBe(true);
     expect(errors).toContain('drizzle migrations: 86 in source, 85 in copy');
+  });
+
+  it('accepts a sequence that moved on between the fingerprint and the dump, but not one that is behind', () => {
+    const seq = 'drizzle.__drizzle_migrations_id_seq';
+    expect(compareFingerprints(fp(), fp({ sequences: { [seq]: '87' } })).errors).toEqual([]);
+    expect(
+      compareFingerprints(fp({ sequences: { [seq]: null } }), fp({ sequences: { [seq]: '1' } })).errors,
+    ).toEqual([]);
+    expect(compareFingerprints(fp(), fp({ sequences: { [seq]: '85' } })).errors).toEqual([
+      `sequence ${seq}: 86 in source, 85 in copy (copy is behind)`,
+    ]);
+  });
+
+  it('compares sequence values as numbers, not text', () => {
+    const seq = 'public.big_seq';
+    expect(
+      compareFingerprints(fp({ sequences: { [seq]: '9' } }), fp({ sequences: { [seq]: '10' } })).errors,
+    ).toEqual([]);
   });
 
   it('only warns when a definition exists on both sides but prints differently', () => {
@@ -209,6 +232,56 @@ describe('compareFingerprints', () => {
 describe('totalRows', () => {
   it('adds up rows across tables', () => {
     expect(totalRows(fp())).toBe(89);
+  });
+});
+
+describe('clearSchemasSql', () => {
+  const sql = clearSchemasSql(['drizzle', 'public']);
+
+  it('drops other app schemas whole, so the dump recreates them', () => {
+    expect(sql).toContain('DROP SCHEMA IF EXISTS "drizzle" CASCADE;');
+  });
+
+  it('never drops schema public itself, only what is inside it', () => {
+    expect(sql).not.toMatch(/DROP SCHEMA[^;]*public/i);
+    expect(sql).toContain('DROP TABLE IF EXISTS public.%I CASCADE');
+    expect(sql).toContain('DROP SEQUENCE IF EXISTS public.%I CASCADE');
+    expect(sql).toContain('DROP TYPE IF EXISTS public.%I CASCADE');
+  });
+
+  it('leaves objects that belong to an extension alone', () => {
+    expect(sql.match(/d\.deptype = 'e'/g)?.length).toBe(4);
+  });
+
+  it('would pass its own dump-line safety check', () => {
+    for (const line of sql.split('\n')) expect(forbiddenDumpLine(line)).toBeNull();
+  });
+
+  it('skips public when it is not an app schema', () => {
+    expect(clearSchemasSql(['drizzle'])).not.toContain('$clear$');
+  });
+});
+
+describe('diskBudgetProblem', () => {
+  const MB = 1048576;
+
+  it('allows a load whose peak (copy + source) fits', () => {
+    expect(diskBudgetProblem(98 * MB, 92 * MB, 450 * MB)).toBeNull();
+  });
+
+  it('refuses a load that would cross the limit, naming the sizes', () => {
+    expect(diskBudgetProblem(240 * MB, 230 * MB, 450 * MB)).toMatch(
+      /peak at about 470 MB \(copy 240 MB \+ source 230 MB\), over the 450 MB limit/,
+    );
+  });
+});
+
+describe('clipMessage', () => {
+  it('keeps short messages and cuts long ones under the Telegram limit', () => {
+    expect(clipMessage('ok')).toBe('ok');
+    const long = clipMessage('x'.repeat(10000));
+    expect(long.length).toBeLessThanOrEqual(3500);
+    expect(long).toMatch(/cut, see report\)$/);
   });
 });
 

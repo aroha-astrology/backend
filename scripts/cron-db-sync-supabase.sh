@@ -47,11 +47,21 @@ fi
 
 echo "$(date -u +%FT%TZ) start"
 EXIT=0
-timeout 30m npx tsx scripts/db/sync-to-supabase.ts "$@" || EXIT=$?
+# timeout signals the whole process group (npx, node, pg_dump, psql), and
+# SIGKILLs it a minute later if anything ignored that — nothing may outlive the
+# run while holding the deploy lock. An unfinished load rolls back.
+timeout --kill-after=60s 30m npx tsx scripts/db/sync-to-supabase.ts "$@" || EXIT=$?
 echo "$(date -u +%FT%TZ) end (exit $EXIT)"
 
-# 0 = OK, 2 = FAILED and already reported by the script.
-if [ "$EXIT" -ne 0 ] && [ "$EXIT" -ne 2 ]; then
-  notify "DB copy to Supabase: FAILED - script crashed or timed out (exit ${EXIT}), see ~/cron-db-sync-supabase.log. Supabase keeps the previous copy."
-fi
+# Exit codes from the script: 0 OK + reported, 2 FAILED + reported,
+# 10 OK but its Telegram message didn't go out, 11 FAILED and not reported.
+# 124/137 = timed out; anything else = crashed.
+case "$EXIT" in
+  0|2) ;;
+  10) notify "DB copy to Supabase: OK (the detailed message failed to send, see ~/cron-db-sync-supabase.log)" ;;
+  11) notify "DB copy to Supabase: FAILED - see ~/cron-db-sync-supabase.log. Supabase keeps the previous copy." ;;
+  124|137) notify "DB copy to Supabase: FAILED - timed out after 30 min. Supabase keeps the previous copy." ;;
+  *) notify "DB copy to Supabase: FAILED - script crashed (exit ${EXIT}), see ~/cron-db-sync-supabase.log. Supabase keeps the previous copy." ;;
+esac
+[ "$EXIT" -eq 10 ] && exit 0
 exit "$EXIT"

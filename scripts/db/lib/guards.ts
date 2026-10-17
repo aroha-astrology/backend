@@ -138,6 +138,91 @@ $lockdown$;
 `;
 }
 
+/**
+ * SQL written before the dump, inside the same transaction: empty the app's
+ * schemas so the copy ends up exactly like the source. pg_dump --clean only
+ * drops what the source still has, so a table or enum dropped or renamed by a
+ * later migration would otherwise linger in the copy and fail every night.
+ * `public` itself is kept (Supabase owns it); every other app schema is
+ * dropped whole and the dump recreates it. Objects that belong to an
+ * extension are left alone.
+ */
+export function clearSchemasSql(schemas: string[]): string {
+  const others = schemas.filter((s) => s !== 'public');
+  const dropOthers = others
+    .map((s) => `DROP SCHEMA IF EXISTS "${s.replace(/"/g, '""')}" CASCADE;`)
+    .join('\n');
+  const clearPublic = schemas.includes('public')
+    ? `
+DO $clear$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT c.oid, c.relkind, c.relname FROM pg_class c
+    WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')
+  LOOP
+    EXECUTE format(
+      CASE r.relkind WHEN 'v' THEN 'DROP VIEW IF EXISTS public.%I CASCADE'
+                     WHEN 'm' THEN 'DROP MATERIALIZED VIEW IF EXISTS public.%I CASCADE'
+                     WHEN 'f' THEN 'DROP FOREIGN TABLE IF EXISTS public.%I CASCADE'
+                     ELSE 'DROP TABLE IF EXISTS public.%I CASCADE' END, r.relname);
+  END LOOP;
+  FOR r IN
+    SELECT c.relname FROM pg_class c
+    WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'S'
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')
+  LOOP
+    EXECUTE format('DROP SEQUENCE IF EXISTS public.%I CASCADE', r.relname);
+  END LOOP;
+  FOR r IN
+    SELECT p.oid::regprocedure::text AS sig FROM pg_proc p
+    WHERE p.pronamespace = 'public'::regnamespace
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
+  LOOP
+    EXECUTE 'DROP ROUTINE IF EXISTS ' || r.sig || ' CASCADE';
+  END LOOP;
+  FOR r IN
+    SELECT t.typname FROM pg_type t
+    WHERE t.typnamespace = 'public'::regnamespace AND t.typtype IN ('e', 'd', 'c', 'r')
+      AND (t.typtype <> 'c' OR (SELECT relkind FROM pg_class WHERE oid = t.typrelid) = 'c')
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e')
+  LOOP
+    EXECUTE format('DROP TYPE IF EXISTS public.%I CASCADE', r.typname);
+  END LOOP;
+END
+$clear$;`
+    : '';
+  return `-- Empty the app schemas first (written by scripts/db/sync-to-supabase.ts)\nSET client_min_messages = warning;\n${dropOthers}${clearPublic}\n`;
+}
+
+/**
+ * Supabase Free caps the database at 500 MB and turns it read-only past that.
+ * During the load the old and the new copy coexist until COMMIT, so the peak
+ * is roughly the copy's current size plus the source's size. Returns a reason
+ * to refuse, or null when it fits under `limitBytes`.
+ */
+export function diskBudgetProblem(
+  targetBytes: number,
+  sourceBytes: number,
+  limitBytes: number,
+): string | null {
+  const peak = targetBytes + sourceBytes;
+  if (peak <= limitBytes) return null;
+  const mb = (n: number) => `${Math.round(n / 1048576)} MB`;
+  return (
+    `the load would peak at about ${mb(peak)} (copy ${mb(targetBytes)} + source ${mb(sourceBytes)}), ` +
+    `over the ${mb(limitBytes)} limit (SUPABASE_SYNC_MAX_MB); Supabase Free turns a database read-only past 500 MB — ` +
+    'upgrade the plan or raise the limit before the next copy'
+  );
+}
+
+/** Telegram rejects messages over 4096 characters; keep well under it. */
+export function clipMessage(text: string, max = 3500): string {
+  const suffix = '\n... (cut, see report)';
+  return text.length <= max ? text : `${text.slice(0, max - suffix.length)}${suffix}`;
+}
+
 /** Newest-first file names to delete so only the `keep` newest remain. */
 export function filesToPrune(names: string[], keep: number): string[] {
   return [...names].sort().reverse().slice(keep);
