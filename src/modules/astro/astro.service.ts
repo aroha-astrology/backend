@@ -1660,7 +1660,7 @@ export async function* chatStream(
   // Best-effort like every other fetch here — an unreachable feature table just
   // means the astrologer reads money questions from the chart alone.
   const userFeatures = await resolveFeaturesForUser(userId).catch(
-    () => ({}) as Record<string, ResolvedFeature>,
+    (): Record<string, ResolvedFeature> => ({}),
   );
   if (userFeatures['chat.incomeAsk']?.enabled) profileFacts.push(INCOME_ASK_FACT);
   if (billing) profileFacts.push(chatPricingFact(billing.pricePaise, billing.source));
