@@ -12,6 +12,7 @@ import {
   type WalletTransactionRow,
 } from '../../db/schema.js';
 import { resolveDateRangePreset, sumPaidOrdersBetween } from '../admin/admin.repo.js';
+import { topUpBonusPaise } from './top-up-amounts.js';
 
 export async function findActiveCouponByCode(code: string): Promise<CouponRow | undefined> {
   const rows = await db
@@ -172,11 +173,15 @@ export async function confirmOrderAndGrantCredits(
     // (see validateCoupon); using amountPaise also covers any coupon order
     // still pending from before that.
     const grantPaise = order.amountPaise;
+    // The pack's offer (₹250 → ₹350, ₹500 → ₹750) is its own ledger row, so
+    // `purchase:*` rows stay exactly what was paid and the bonus shows in the
+    // history as a separate credit.
+    const bonusPaise = topUpBonusPaise(order.packId);
 
     const [userRow] = await tx
       .update(users)
       .set({
-        walletBalancePaise: sql`${users.walletBalancePaise} + ${grantPaise}`,
+        walletBalancePaise: sql`${users.walletBalancePaise} + ${grantPaise + bonusPaise}`,
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId))
@@ -188,8 +193,16 @@ export async function confirmOrderAndGrantCredits(
       userId,
       delta: grantPaise,
       reason: `purchase:${order.packId}`,
-      balanceAfter: userRow.walletBalancePaise,
+      balanceAfter: userRow.walletBalancePaise - bonusPaise,
     });
+    if (bonusPaise > 0) {
+      await tx.insert(walletTransactions).values({
+        userId,
+        delta: bonusPaise,
+        reason: `recharge_bonus:${order.packId}`,
+        balanceAfter: userRow.walletBalancePaise,
+      });
+    }
 
     return { order, walletBalancePaise: userRow.walletBalancePaise };
   });

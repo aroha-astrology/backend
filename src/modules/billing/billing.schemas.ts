@@ -33,6 +33,8 @@ export const TopUpAmountSchema = z
     amountPaise: z.number().openapi({ example: 20000 }),
     currency: z.string().openapi({ example: 'INR' }),
     label: z.string().openapi({ example: '₹200' }),
+    /** Extra wallet money on top of amountPaise; absent when the pack has no offer. */
+    bonusPaise: z.number().optional().openapi({ example: 10000 }),
     popular: z.boolean().optional(),
   })
   .openapi('TopUpAmount');

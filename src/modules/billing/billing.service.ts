@@ -25,23 +25,9 @@ import {
   fetchRazorpayOrderPayments,
 } from './razorpay.js';
 import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
+import { TOP_UP_AMOUNTS } from './top-up-amounts.js';
 
-/**
- * Fixed top-up catalog. Each entry is a 1:1 top-up (pay this amount, wallet
- * gets exactly this amount) — the `id`s here MUST match real one-time
- * product IDs configured in the Google Play Console with the same price,
- * since Play Billing products are fixed-price (see Task D1 in the rollout
- * plan). Small and rarely-changing enough to keep as code rather than a DB
- * table — bump amounts here, no migration needed (but DOES need a matching
- * Play Console product edit).
- */
-export const TOP_UP_AMOUNTS = [
-  { id: 'recharge_25', amountPaise: 2500, currency: 'INR', label: '₹25' },
-  { id: 'recharrge_50', amountPaise: 5000, currency: 'INR', label: '₹50' },
-  { id: '100_recharge', amountPaise: 10000, currency: 'INR', label: '₹100' },
-  { id: 'recharge_250', amountPaise: 25000, currency: 'INR', label: '₹250', popular: true },
-  { id: 'recharge_500', amountPaise: 50000, currency: 'INR', label: '₹500' },
-] as const;
+export { TOP_UP_AMOUNTS };
 
 export function getTopUpAmounts() {
   return TOP_UP_AMOUNTS;
@@ -472,7 +458,10 @@ export function parseReason(reason: string): {
   if (houseMatch) {
     return { kind: 'house_unlock', houseNumber: Number(houseMatch[1]), isRefund };
   }
-  if (base === 'admin_grant' || base === 'admin_deduction') {
+  // The extra money on a ₹250/₹500 recharge. It shows as a "Bonus" credit row
+  // (admin_adjustment with a positive delta), which every app build already
+  // labels, next to the recharge row for what was paid.
+  if (base === 'admin_grant' || base === 'admin_deduction' || base.startsWith('recharge_bonus:')) {
     return { kind: 'admin_adjustment', isRefund };
   }
   const reportMatch = base.match(REPORT_UNLOCK_RE);

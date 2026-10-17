@@ -64,6 +64,10 @@ describe('parseReason', () => {
     expect(parseReason('admin_deduction')).toEqual({ kind: 'admin_adjustment', isRefund: false });
   });
 
+  it('parses the recharge offer bonus as admin_adjustment, which the app shows as "Bonus"', () => {
+    expect(parseReason('recharge_bonus:recharge_250')).toEqual({ kind: 'admin_adjustment', isRefund: false });
+  });
+
   it('parses a refunded admin adjustment consistently, even though it should not occur in practice', () => {
     expect(parseReason('refund:admin_grant')).toEqual({ kind: 'admin_adjustment', isRefund: true });
   });
