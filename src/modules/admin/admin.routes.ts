@@ -34,6 +34,8 @@ import {
   AdminDeletionActionResponseSchema,
   AdminActiveUsersByLocationQuerySchema,
   AdminActiveUsersByLocationResponseSchema,
+  AdminOnboardingDropoffsQuerySchema,
+  AdminOnboardingDropoffsResponseSchema,
 } from './admin.schemas.js';
 import { resolveDateRangePreset, logAdminAction } from './admin.repo.js';
 import { activeUsersByLocation } from '../users/users.repo.js';
@@ -56,6 +58,7 @@ import {
   getRecurringUsers,
   getRetention,
   getUserDemographics,
+  getOnboardingDropoffs,
   listDeletionRequests,
   flagUserForDeletion,
   rejectDeletionRequest,
@@ -676,6 +679,35 @@ adminRouter.openapi(activeUsersByLocationRoute, async (c) => {
   const locations = await activeUsersByLocation(range);
   await auditRead(c, 'GET /v1/admin/active-users/by-location', { preset });
   return c.json({ locations }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/onboarding-dropoffs                                             */
+/* -------------------------------------------------------------------------- */
+
+const onboardingDropoffsRoute = createRoute({
+  method: 'get',
+  path: '/admin/onboarding-dropoffs',
+  tags: ['Admin'],
+  summary: 'People who signed up in the last N days and left without finishing onboarding',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: { query: AdminOnboardingDropoffsQuerySchema },
+  responses: {
+    200: {
+      description: 'Onboarding drop-offs, newest first',
+      content: { 'application/json': { schema: AdminOnboardingDropoffsResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(onboardingDropoffsRoute, async (c) => {
+  const { days } = c.req.valid('query');
+  const result = await getOnboardingDropoffs(days);
+  await auditRead(c, 'GET /v1/admin/onboarding-dropoffs', { days });
+  return c.json(result, 200);
 });
 
 /* -------------------------------------------------------------------------- */

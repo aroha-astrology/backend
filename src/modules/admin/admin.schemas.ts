@@ -454,3 +454,40 @@ export const AdminUserDemographicsResponseSchema = z
     languages: z.array(AdminDemographicsBucketSchema),
   })
   .openapi('AdminUserDemographicsResponse');
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/onboarding-dropoffs                                             */
+/* -------------------------------------------------------------------------- */
+
+export const AdminOnboardingDropoffsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30).openapi({ example: 30 }),
+});
+
+const AdminOnboardingDropoffSchema = z.object({
+  id: z.string(),
+  displayName: z.string().nullable(),
+  email: z.string().nullable(),
+  phoneE164: z.string().nullable(),
+  signInMethod: z.enum(['phone', 'email']),
+  createdAt: z.string(),
+  lastActiveAt: z.string().nullable(),
+  minutesActive: z.number().int(),
+  activeDays: z.number().int(),
+  lastStep: z.string().nullable(),
+  language: z.string().nullable(),
+  platform: z.string().nullable(),
+  country: z.string().nullable(),
+  city: z.string().nullable(),
+  likelyTest: z.enum(['test_lab', 'play_review']).nullable(),
+});
+
+export const AdminOnboardingDropoffsResponseSchema = z
+  .object({
+    days: z.number().int(),
+    signedUp: z.number().int(),
+    finished: z.number().int(),
+    left: z.number().int(),
+    likelyTest: z.number().int(),
+    users: z.array(AdminOnboardingDropoffSchema),
+  })
+  .openapi('AdminOnboardingDropoffsResponse');

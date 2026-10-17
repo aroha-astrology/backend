@@ -45,6 +45,7 @@ import {
   timeSpentHoursForWeek,
   userDemographics,
   retentionSnapshot,
+  onboardingDropoffs,
   type DateRange,
   type RetentionCohort,
   type UserDemographics,
@@ -502,6 +503,89 @@ export async function getRetention(now: Date = new Date()): Promise<RetentionDto
 /** Age-bracket, gender, and relationship-status breakdown across all (non-deleted) users, for the admin "User Demographics" card. */
 export async function getUserDemographics(): Promise<UserDemographics> {
   return userDemographics();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Left during onboarding                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Google signs into every new Play build with its own test devices. Two kinds
+ * show up as email sign-ups that never finish onboarding:
+ *  - Firebase Test Lab (the pre-launch report): `@cloudtestlabaccounts.com`.
+ *  - Play's review devices: a `firstnamelastname.12345@gmail.com` address,
+ *    which the 2026-10 investigation matched to Google IP ranges, two fixed
+ *    device fingerprints and random language taps.
+ * The second rule is a pattern, not proof, so the admin sees it as "likely".
+ */
+export function likelyTestAccount(email: string | null): 'test_lab' | 'play_review' | null {
+  if (!email) return null;
+  const e = email.toLowerCase();
+  if (e.endsWith('@cloudtestlabaccounts.com')) return 'test_lab';
+  if (/^[a-z]+\.\d{5}@gmail\.com$/.test(e)) return 'play_review';
+  return null;
+}
+
+export interface OnboardingDropoffDto {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  phoneE164: string | null;
+  signInMethod: 'phone' | 'email';
+  createdAt: string;
+  lastActiveAt: string | null;
+  minutesActive: number;
+  activeDays: number;
+  /** The question they were on when they left (onboarding ONBOARDING_STEP_NAMES); null before step tracking shipped. */
+  lastStep: string | null;
+  language: string | null;
+  platform: string | null;
+  country: string | null;
+  city: string | null;
+  likelyTest: 'test_lab' | 'play_review' | null;
+}
+
+export interface OnboardingDropoffsDto {
+  days: number;
+  signedUp: number;
+  finished: number;
+  left: number;
+  likelyTest: number;
+  users: OnboardingDropoffDto[];
+}
+
+/** People who signed up in the last `days` days and left without finishing onboarding, for the admin Overview. */
+export async function getOnboardingDropoffs(
+  days: number,
+  now: Date = new Date(),
+): Promise<OnboardingDropoffsDto> {
+  const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  const { signedUp, finished, rows } = await onboardingDropoffs(since, 300);
+  const list = rows.map((r) => ({
+    id: r.id,
+    displayName: r.displayName,
+    email: r.email,
+    phoneE164: r.phoneE164,
+    signInMethod: r.phoneE164 ? ('phone' as const) : ('email' as const),
+    createdAt: r.createdAt.toISOString(),
+    lastActiveAt: r.lastActiveAt?.toISOString() ?? null,
+    minutesActive: Math.round(r.secondsActive / 60),
+    activeDays: r.activeDays,
+    lastStep: r.onboardingStep,
+    language: r.contentLanguage,
+    platform: r.platform,
+    country: r.geoCountry,
+    city: r.geoCity,
+    likelyTest: likelyTestAccount(r.email),
+  }));
+  return {
+    days,
+    signedUp,
+    finished,
+    left: signedUp - finished,
+    likelyTest: list.filter((u) => u.likelyTest).length,
+    users: list,
+  };
 }
 
 /* -------------------------------------------------------------------------- */

@@ -577,6 +577,74 @@ export async function userDemographics(): Promise<UserDemographics> {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Left during onboarding                                                      */
+/* -------------------------------------------------------------------------- */
+
+export interface OnboardingDropoffRow {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  phoneE164: string | null;
+  createdAt: Date;
+  lastActiveAt: Date | null;
+  onboardingStep: string | null;
+  contentLanguage: string | null;
+  platform: string | null;
+  geoCountry: string | null;
+  geoCity: string | null;
+  secondsActive: number;
+  activeDays: number;
+}
+
+/**
+ * Sign-ups since `since` with no completed profile, newest first, plus the
+ * window's totals. Answers are only saved at the end of onboarding, so what is
+ * known about these people is the account itself, the step they reached
+ * (`onboarding_step`, written as they go) and the activity heartbeat.
+ */
+export async function onboardingDropoffs(
+  since: Date,
+  limit: number,
+): Promise<{ signedUp: number; finished: number; rows: OnboardingDropoffRow[] }> {
+  const [totals] = await db
+    .select({
+      signedUp: count(),
+      finished: sql<number>`count(${users.profileCompletedAt})::int`,
+    })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.createdAt, since)));
+
+  const rows = await db
+    .select({
+      id: users.id,
+      displayName: users.displayName,
+      email: users.email,
+      phoneE164: users.phoneE164,
+      createdAt: users.createdAt,
+      lastActiveAt: users.lastActiveAt,
+      onboardingStep: users.onboardingStep,
+      contentLanguage: users.contentLanguage,
+      platform: users.platform,
+      geoCountry: users.geoCountry,
+      geoCity: users.geoCity,
+      secondsActive: sql<number>`coalesce((SELECT sum(a.seconds_active) FROM ${userActivityDaily} a WHERE a.user_id = ${users.id}), 0)::int`,
+      activeDays: sql<number>`(SELECT count(*) FROM ${userActivityDaily} a WHERE a.user_id = ${users.id})::int`,
+    })
+    .from(users)
+    .where(
+      and(isNull(users.deletedAt), isNull(users.profileCompletedAt), gte(users.createdAt, since)),
+    )
+    .orderBy(desc(users.createdAt))
+    .limit(limit);
+
+  return {
+    signedUp: Number(totals?.signedUp ?? 0),
+    finished: Number(totals?.finished ?? 0),
+    rows: rows.map((r) => ({ ...r, phoneE164: decryptField(r.phoneE164) })),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Audit log                                                                   */
 /* -------------------------------------------------------------------------- */
 
