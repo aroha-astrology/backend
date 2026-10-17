@@ -27,7 +27,7 @@
 import { env } from '../../config/env.js';
 import { logger } from '../logger.js';
 import { alertThrottled } from '../notifications/alerts.js';
-import { pickKey, markRateLimited, poolSize } from './gemini-key-pool.js';
+import { pickKey, markRateLimited, poolSize, paidKeyNameAt } from './gemini-key-pool.js';
 import { recordPaidKeyUse } from './paid-usage.js';
 
 export class GeminiLiveTokenError extends Error {
@@ -138,7 +138,7 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
     // See gemini-client.ts: reaching the reserve means this mint is about to
     // be billed. Without this, paid voice usage was invisible — no Telegram
     // alert, no counter — since voice never writes an ai_usage row either.
-    if (picked.tier === 'paid') void recordPaidKeyUse('voice');
+    if (picked.tier === 'paid') void recordPaidKeyUse('voice', paidKeyNameAt(picked.index));
 
     const now = Date.now();
     const expiresAt = now + TOKEN_LIFETIME_MS;

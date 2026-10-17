@@ -45,6 +45,7 @@ vi.mock('../src/lib/llm/gemini-key-pool.js', () => ({
   markRateLimited: state.markRateLimited,
   earliestAvailableAt: state.earliestAvailableAt,
   poolSize: state.poolSize,
+  paidKeyNameAt: () => null,
 }));
 
 const { generate, stream, GeminiError } = await import('../src/lib/llm/gemini-client.js');

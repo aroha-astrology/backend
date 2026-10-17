@@ -55,7 +55,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  * Never throws: callers `void` this, and telemetry must not be able to fail a
  * user's request.
  */
-export async function recordPaidKeyUse(profileName: string): Promise<void> {
+export async function recordPaidKeyUse(
+  profileName: string,
+  keyName?: string | null,
+): Promise<void> {
   const day = pacificBudgetDay();
   const key = counterKey(day);
 
@@ -77,7 +80,8 @@ export async function recordPaidKeyUse(profileName: string): Promise<void> {
       'gemini:paid:first',
       'Gemini paid reserve activated',
       `Free key pool is exhausted — now serving from the PAID reserve (first billed ` +
-        `request of the ${day} budget day, triggered by "${profileName}"). ` +
+        `request of the ${day} budget day, triggered by "${profileName}"` +
+        `${keyName ? `, on paid key ${keyName}` : ''}). ` +
         `Users are unaffected; this is spend, not an outage. Free quota refills at ` +
         `midnight Pacific / 12:30 PM IST.`,
     );

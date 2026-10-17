@@ -19,6 +19,7 @@ import {
   markRateLimited,
   earliestAvailableAt,
   poolSize,
+  paidKeyNameAt,
   type KeyTier,
 } from './gemini-key-pool.js';
 import { msUntilNextPacificMidnight } from './quota-window.js';
@@ -419,7 +420,9 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       servedByTier = picked.tier;
       // Reaching the reserve means the free pool is dry and we are now billing.
       // Fire-and-forget: this is telemetry, it must never fail the request.
-      if (picked.tier === 'paid') void recordPaidKeyUse(opts.profile.name);
+      if (picked.tier === 'paid') {
+        void recordPaidKeyUse(opts.profile.name, paidKeyNameAt(picked.index));
+      }
 
       // Once a prior attempt saw a 5xx, every later attempt reaches for the
       // fallback model instead of retrying the one that just failed — same
@@ -694,7 +697,9 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
 
         streamedByTier = picked.tier;
         // See generate(): reaching the reserve means we have started billing.
-        if (picked.tier === 'paid') void recordPaidKeyUse(opts.profile.name);
+        if (picked.tier === 'paid') {
+          void recordPaidKeyUse(opts.profile.name, paidKeyNameAt(picked.index));
+        }
 
         streamedByModel = sawServerError && fallbackModel ? fallbackModel : model;
         const effectiveOpts: LLMRequestOptions =

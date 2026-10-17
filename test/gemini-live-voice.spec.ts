@@ -30,6 +30,7 @@ vi.mock('../src/lib/llm/gemini-key-pool.js', () => ({
   pickKey: vi.fn(() => Promise.resolve({ key: 'test-key', index: 0, tier: 'free' })),
   markRateLimited: vi.fn(),
   poolSize: () => 1,
+  paidKeyNameAt: () => null,
 }));
 
 const { mintLiveToken } = await import('../src/lib/llm/gemini-live-token.js');

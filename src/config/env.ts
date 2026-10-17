@@ -112,6 +112,12 @@ const EnvSchema = z
           .map((key) => key.trim())
           .filter(Boolean),
       ),
+    // A second billed key, named "subir2" in Admin -> Gemini Keys (the keys
+    // above are "subir1719"). That page sets which paid key is tried first.
+    GEMINI_PAID_API_KEY2: z
+      .string()
+      .default('')
+      .transform((value) => value.trim()),
     // Single-key fallback, kept for back-compat with existing deployments that
     // haven't migrated to GEMINI_API_KEYS yet. Optional now — validated below
     // (superRefine) so boot only fails if BOTH this and GEMINI_API_KEYS are
@@ -496,3 +502,12 @@ export const GEMINI_KEY_POOL: readonly string[] =
 export const GEMINI_PAID_KEY_POOL: readonly string[] = env.GEMINI_PAID_API_KEYS.filter(
   (key) => !GEMINI_KEY_POOL.includes(key),
 );
+
+// The second paid key ("subir2"), under the same rule. lib/llm/gemini-keys.ts
+// names every key and adds the ones pasted in Admin -> Gemini Keys.
+export const GEMINI_PAID_KEY2: string | null =
+  env.GEMINI_PAID_API_KEY2 &&
+  !GEMINI_KEY_POOL.includes(env.GEMINI_PAID_API_KEY2) &&
+  !GEMINI_PAID_KEY_POOL.includes(env.GEMINI_PAID_API_KEY2)
+    ? env.GEMINI_PAID_API_KEY2
+    : null;

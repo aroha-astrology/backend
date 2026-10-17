@@ -9,15 +9,20 @@
 // key ever hits its own cap) and fails over instantly to the next key on a 429
 // instead of blocking on a fixed backoff.
 //
-// TWO TIERS. GEMINI_KEY_POOL holds the free keys and is spent first, in
-// round-robin order. GEMINI_PAID_KEY_POOL holds billed keys that are held in
-// reserve and only handed out once EVERY free key is cooling down. The free
-// daily quota resets at midnight Pacific = 12:30 PM IST, which is the worst
-// possible alignment with an Indian evening peak: without a reserve, draining
-// the free pool at 10 PM leaves the app broken until lunchtime the next day.
-// The reserve turns that outage into a bill instead. Paid keys are deliberately
-// left out of the round-robin cursor — they are a fallback, not a share of
-// normal load.
+// TWO TIERS. Free keys are spent first, in round-robin order. Paid keys are
+// billed and held in reserve, only handed out once EVERY free key is cooling
+// down, and then in the order set on Admin -> Gemini Keys (subir2 first by
+// default). The free daily quota resets at midnight Pacific = 12:30 PM IST,
+// which is the worst possible alignment with an Indian evening peak: without a
+// reserve, draining the free pool at 10 PM leaves the app broken until
+// lunchtime the next day. The reserve turns that outage into a bill instead.
+// Paid keys are deliberately left out of the round-robin cursor — they are a
+// fallback, not a share of normal load.
+//
+// Which keys exist comes from gemini-keys.ts (.env plus the admin page), so the
+// list can change while the app runs. Cooldowns are therefore keyed by each
+// key's fingerprint, not its position: adding, removing or switching off a key
+// never moves a cooldown onto a different key.
 //
 // The app runs under pm2 in cluster mode (multiple Node processes), which is
 // exactly why per-process-only in-memory state would NOT correctly coordinate
@@ -35,16 +40,16 @@
 // SET ... PX (no companion command to combine it with).
 
 import { getRedis } from '../../config/redis.js';
-import { GEMINI_KEY_POOL, GEMINI_PAID_KEY_POOL } from '../../config/env.js';
 import { logger } from '../logger.js';
+import { cachedGeminiKeys, loadGeminiKeys, type GeminiKey, type KeyTier } from './gemini-keys.js';
 
-export type KeyTier = 'free' | 'paid';
+export type { KeyTier } from './gemini-keys.js';
 
 const REDIS_CALL_TIMEOUT_MS = 250;
 const CURSOR_KEY = 'gemini:pool:cursor';
 
-function cooldownKey(index: number): string {
-  return `gemini:pool:cooldown:${index}`;
+function cooldownKey(fingerprint: string): string {
+  return `gemini:pool:cooldown:${fingerprint.slice(0, 16)}`;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -67,35 +72,63 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 // times out or errors. Never coordinates across pm2 workers; that's Redis's
 // job in the primary path above.
 let localCursor = 0;
-const localCooldowns = new Map<number, number>(); // index -> cooldown-expiry epoch ms
+const localCooldowns = new Map<string, number>(); // fingerprint -> cooldown-expiry epoch ms
 
-function isLocallyCoolingDown(index: number): boolean {
-  const expiresAt = localCooldowns.get(index);
+function isLocallyCoolingDown(fingerprint: string): boolean {
+  const expiresAt = localCooldowns.get(fingerprint);
   return expiresAt !== undefined && expiresAt > Date.now();
 }
 
-// Indices are flat and contiguous across both tiers: 0..freeCount()-1 are free
-// keys, freeCount()..poolSize()-1 are paid. That keeps every index-keyed piece
-// of machinery here (cooldownKey, markRateLimited, localCooldowns,
-// earliestAvailableAt) working unchanged — a paid key is just a higher index.
-// Read through functions rather than snapshotting at module load, since the
-// underlying env exports are swapped out per-test.
+/**
+ * The switched-on keys in pool order: every free key, then every paid key by
+ * its paid rank (ties keep list order). Indices are flat and contiguous across
+ * both tiers: 0..freeCount()-1 are free, the rest paid.
+ */
+function poolOrder(keys: GeminiKey[]): GeminiKey[] {
+  const on = keys.filter((key) => key.enabled);
+  const free = on.filter((key) => key.tier === 'free');
+  const paid = on
+    .map((key, position) => ({ key, position }))
+    .filter(({ key }) => key.tier === 'paid')
+    .sort((a, b) => a.key.paidRank - b.key.paidRank || a.position - b.position)
+    .map(({ key }) => key);
+  return [...free, ...paid];
+}
+
+// The order the last pick used. An index a caller got from pickKey() is read
+// against this, so markRateLimited(index) cools the key that was handed out.
+// It only changes when the key list itself changes (an admin edit). Filled on
+// first use, not at import, so loading this module never reads the env.
+let active: GeminiKey[] | null = null;
+
+function currentKeys(): GeminiKey[] {
+  active ??= poolOrder(cachedGeminiKeys());
+  return active;
+}
+
+async function refreshActive(): Promise<GeminiKey[]> {
+  active = poolOrder(await loadGeminiKeys());
+  return active;
+}
+
 function freeCount(): number {
-  return GEMINI_KEY_POOL.length;
+  return currentKeys().filter((key) => key.tier === 'free').length;
 }
 
+/** Switched-on keys, both tiers, as of the last pick. */
 export function poolSize(): number {
-  return GEMINI_KEY_POOL.length + GEMINI_PAID_KEY_POOL.length;
-}
-
-function keyAt(index: number): string | undefined {
-  const free = freeCount();
-  return index < free ? GEMINI_KEY_POOL[index] : GEMINI_PAID_KEY_POOL[index - free];
+  return currentKeys().length;
 }
 
 /** Which tier a flat pool index belongs to. Used for billing telemetry and alerting. */
 export function tierAt(index: number): KeyTier {
-  return index < freeCount() ? 'free' : 'paid';
+  return currentKeys()[index]?.tier ?? 'free';
+}
+
+/** Admin-facing name of the paid key at a flat pool index, or null for a free key. */
+export function paidKeyNameAt(index: number): string | null {
+  const key = currentKeys()[index];
+  return key?.tier === 'paid' ? key.name : null;
 }
 
 async function nextCursorValue(): Promise<number> {
@@ -112,31 +145,32 @@ async function nextCursorValue(): Promise<number> {
   }
 }
 
-async function isCoolingDown(index: number): Promise<boolean> {
+/** Whether a key (by fingerprint) is cooling down after a 429. Also read by Admin -> Gemini Keys. */
+export async function isCoolingDown(fingerprint: string): Promise<boolean> {
   try {
     const redis = getRedis();
-    const value = await withTimeout(redis.get(cooldownKey(index)), REDIS_CALL_TIMEOUT_MS);
+    const value = await withTimeout(redis.get(cooldownKey(fingerprint)), REDIS_CALL_TIMEOUT_MS);
     return value !== null;
   } catch (err) {
     logger.warn(
-      { err, index },
+      { err },
       'gemini-key-pool: Redis error checking cooldown, using local fallback state',
     );
-    return isLocallyCoolingDown(index);
+    return isLocallyCoolingDown(fingerprint);
   }
 }
 
 /**
- * Scan the half-open index range [start, end) for the first non-excluded,
- * non-cooling-down key.
+ * Scan the half-open index range [start, end) of `keys` for the first
+ * non-excluded, non-cooling-down key.
  *
  * `rotate` decides whether the shared round-robin cursor is consulted. It is
  * true for the free tier (spread load evenly) and false for the paid reserve
- * (it is a fallback, and burning a Redis INCR round trip to rotate what is
- * usually a single reserve key buys nothing). A single-key range likewise skips
- * the INCR — 0 % 1 is always 0, so the cursor cannot change the outcome.
+ * (it is a fallback, tried in the admin's order). A single-key range likewise
+ * skips the INCR — 0 % 1 is always 0, so the cursor cannot change the outcome.
  */
 async function scanRange(
+  keys: GeminiKey[],
   start: number,
   end: number,
   excluded: Set<number>,
@@ -150,10 +184,10 @@ async function scanRange(
   for (let i = 0; i < size; i++) {
     const index = start + ((offset + i) % size);
     if (excluded.has(index)) continue;
-    if (await isCoolingDown(index)) continue;
-    const key = keyAt(index);
-    if (key === undefined) continue; // index < end, so unreachable in practice
-    return { index, key, tier: tierAt(index) };
+    const entry = keys[index];
+    if (entry === undefined) continue; // index < end, so unreachable in practice
+    if (await isCoolingDown(entry.fingerprint)) continue;
+    return { index, key: entry.key, tier: entry.tier };
   }
   return null;
 }
@@ -165,7 +199,7 @@ async function scanRange(
  *
  * Free keys are handed out round-robin. The paid reserve is only reached once
  * every free key is excluded or cooling down, so a normal day never touches it
- * and never bills anything.
+ * and never bills anything. Paid keys are tried in their admin-set order.
  *
  * `preferPaid` inverts that order for one call: the caller has already burned
  * its free-tier attempts and this is the last try before the request fails the
@@ -181,32 +215,38 @@ export async function pickKey(
   exclude?: Set<number>,
   preferPaid = false,
 ): Promise<{ index: number; key: string; tier: KeyTier } | null> {
-  const total = poolSize();
+  const keys = await refreshActive();
+  const total = keys.length;
   if (total === 0) return null;
 
   const excluded = exclude ?? new Set<number>();
   const free = freeCount();
 
   if (preferPaid) {
-    const reserve = await scanRange(free, total, excluded, false);
+    const reserve = await scanRange(keys, free, total, excluded, false);
     if (reserve) return reserve;
   }
 
-  const fromFree = await scanRange(0, free, excluded, true);
+  const fromFree = await scanRange(keys, 0, free, excluded, true);
   if (fromFree) return fromFree;
 
-  return scanRange(free, total, excluded, false);
+  return scanRange(keys, free, total, excluded, false);
 }
 
 /** Mark index as rate-limited for `cooldownMs`, excluding it from pickKey() until it clears. */
 export async function markRateLimited(index: number, cooldownMs: number): Promise<void> {
+  const fingerprint = currentKeys()[index]?.fingerprint;
+  if (fingerprint === undefined) return;
   // Recorded locally first (and unconditionally) so that if Redis becomes
   // unreachable later in this same process, the fallback path still knows
   // about a cooldown this process itself just observed.
-  localCooldowns.set(index, Date.now() + cooldownMs);
+  localCooldowns.set(fingerprint, Date.now() + cooldownMs);
   try {
     const redis = getRedis();
-    await withTimeout(redis.set(cooldownKey(index), '1', 'PX', cooldownMs), REDIS_CALL_TIMEOUT_MS);
+    await withTimeout(
+      redis.set(cooldownKey(fingerprint), '1', 'PX', cooldownMs),
+      REDIS_CALL_TIMEOUT_MS,
+    );
   } catch (err) {
     logger.warn(
       { err, index, cooldownMs },
@@ -221,27 +261,27 @@ export async function markRateLimited(index: number, cooldownMs: number): Promis
  * key is free, rather than sleeping a fixed schedule blind to that state.
  */
 export async function earliestAvailableAt(): Promise<number> {
-  const size = poolSize();
-  if (size === 0) return Date.now();
+  const keys = currentKeys();
+  if (keys.length === 0) return Date.now();
 
   let minRemainingMs: number | null = null;
 
-  for (let index = 0; index < size; index++) {
+  for (const { fingerprint } of keys) {
     let ttlMs: number;
     try {
       const redis = getRedis();
-      ttlMs = await withTimeout(redis.pttl(cooldownKey(index)), REDIS_CALL_TIMEOUT_MS);
+      ttlMs = await withTimeout(redis.pttl(cooldownKey(fingerprint)), REDIS_CALL_TIMEOUT_MS);
     } catch (err) {
       logger.warn(
-        { err, index },
+        { err },
         'gemini-key-pool: Redis error reading cooldown TTL, using local fallback state',
       );
-      const localExpiry = localCooldowns.get(index);
+      const localExpiry = localCooldowns.get(fingerprint);
       ttlMs = localExpiry !== undefined ? Math.max(0, localExpiry - Date.now()) : -2;
     }
 
     // ioredis PTTL: -2 = key doesn't exist, -1 = exists with no TTL. Either
-    // way this index isn't cooling down, so at least one key is free right now.
+    // way this key isn't cooling down, so at least one key is free right now.
     if (ttlMs < 0) {
       return Date.now();
     }
@@ -257,4 +297,5 @@ export async function earliestAvailableAt(): Promise<number> {
 export function __resetForTests(): void {
   localCursor = 0;
   localCooldowns.clear();
+  active = null;
 }

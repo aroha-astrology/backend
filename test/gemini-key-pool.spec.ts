@@ -44,19 +44,41 @@ function createFakeRedis() {
 const state = vi.hoisted(() => ({
   keyPool: ['key-0', 'key-1', 'key-2', 'key-3'] as string[],
   paidKeyPool: [] as string[],
+  // Per paid key, parallel to paidKeyPool; missing entries default (name paid-N, rank N, on).
+  paidKeyNames: [] as string[],
+  paidRanks: [] as number[],
+  // Keys (by key string) switched off on Admin -> Gemini Keys.
+  disabled: new Set<string>(),
 }));
 
-vi.mock('../src/config/env.js', () => ({
-  env: { LOG_LEVEL: 'silent' },
-  get GEMINI_KEY_POOL() {
-    return state.keyPool;
-  },
-  get GEMINI_PAID_KEY_POOL() {
-    return state.paidKeyPool;
-  },
-  isProduction: false,
-  isTest: true,
-}));
+// Stands in for .env + the gemini_keys table. Fingerprint = 'fp-' + key, so a
+// cooldown on key 'key-2' lives at 'gemini:pool:cooldown:fp-key-2'.
+vi.mock('../src/lib/llm/gemini-keys.js', () => {
+  const build = () => [
+    ...state.keyPool.map((key, i) => ({
+      fingerprint: `fp-${key}`,
+      name: `free-${i + 1}`,
+      tier: 'free' as const,
+      key,
+      enabled: !state.disabled.has(key),
+      paidRank: 100,
+      source: 'env' as const,
+    })),
+    ...state.paidKeyPool.map((key, i) => ({
+      fingerprint: `fp-${key}`,
+      name: state.paidKeyNames[i] ?? `paid-${i}`,
+      tier: 'paid' as const,
+      key,
+      enabled: !state.disabled.has(key),
+      paidRank: state.paidRanks[i] ?? i,
+      source: 'env' as const,
+    })),
+  ];
+  return {
+    loadGeminiKeys: () => Promise.resolve(build()),
+    cachedGeminiKeys: () => build(),
+  };
+});
 
 let fakeRedis: ReturnType<typeof createFakeRedis>;
 let redisShouldFail = false;
@@ -81,6 +103,9 @@ beforeEach(() => {
   vi.useRealTimers();
   state.keyPool = ['key-0', 'key-1', 'key-2', 'key-3'];
   state.paidKeyPool = [];
+  state.paidKeyNames = [];
+  state.paidRanks = [];
+  state.disabled = new Set();
   fakeRedis = createFakeRedis();
   redisShouldFail = false;
   // Reset the module's local (in-process fallback) state between tests too,
@@ -89,10 +114,17 @@ beforeEach(() => {
 });
 
 describe('poolSize', () => {
-  it('reflects GEMINI_KEY_POOL length', () => {
+  it('reflects the number of keys', async () => {
     expect(pool.poolSize()).toBe(4);
     state.keyPool = ['only-one'];
+    await pool.pickKey();
     expect(pool.poolSize()).toBe(1);
+  });
+
+  it('leaves switched-off keys out', async () => {
+    state.disabled = new Set(['key-1']);
+    await pool.pickKey();
+    expect(pool.poolSize()).toBe(3);
   });
 });
 
@@ -151,9 +183,9 @@ describe('markRateLimited + cooldown exclusion', () => {
     await pool.markRateLimited(2, 1000);
     // Directly age out the cooldown key rather than sleeping — same
     // TTL-expiry mechanism createFakeRedis uses internally.
-    const cooldownEntry = fakeRedis.store.get('gemini:pool:cooldown:2');
+    const cooldownEntry = fakeRedis.store.get('gemini:pool:cooldown:fp-key-2');
     expect(cooldownEntry).toBeDefined();
-    fakeRedis.store.set('gemini:pool:cooldown:2', {
+    fakeRedis.store.set('gemini:pool:cooldown:fp-key-2', {
       value: cooldownEntry!.value,
       expiresAt: Date.now() - 1,
     });
@@ -169,7 +201,7 @@ describe('markRateLimited + cooldown exclusion', () => {
   it('sets a PX TTL on the cooldown key matching cooldownMs', async () => {
     await pool.markRateLimited(0, 12_345);
     expect(fakeRedis.set).toHaveBeenCalledWith(
-      'gemini:pool:cooldown:0',
+      'gemini:pool:cooldown:fp-key-0',
       expect.anything(),
       'PX',
       12_345,
@@ -245,6 +277,7 @@ describe('Redis outage fail-open', () => {
 describe('pool of size 1', () => {
   beforeEach(() => {
     state.keyPool = ['solo-key'];
+    pool.__resetForTests();
   });
 
   it('pickKey returns the sole key when not cooling', async () => {
@@ -271,6 +304,7 @@ describe('paid reserve tier', () => {
   beforeEach(() => {
     state.keyPool = ['free-0', 'free-1'];
     state.paidKeyPool = ['paid-key'];
+    pool.__resetForTests();
   });
 
   it('counts both tiers in poolSize, so the client failover budget reaches the reserve', () => {
@@ -344,8 +378,8 @@ describe('paid reserve tier', () => {
     expect((await pool.pickKey())!.tier).toBe('paid');
 
     // Age out index 1's cooldown the same way the round-robin suite does.
-    const entry = fakeRedis.store.get('gemini:pool:cooldown:1');
-    fakeRedis.store.set('gemini:pool:cooldown:1', {
+    const entry = fakeRedis.store.get('gemini:pool:cooldown:fp-free-1');
+    fakeRedis.store.set('gemini:pool:cooldown:fp-free-1', {
       value: entry!.value,
       expiresAt: Date.now() - 1,
     });
@@ -395,5 +429,68 @@ describe('paid reserve tier', () => {
     await pool.markRateLimited(0, 60_000);
     await pool.markRateLimited(1, 60_000);
     expect(await pool.pickKey()).toBeNull();
+  });
+});
+
+describe('paid keys in the admin-set order', () => {
+  // 0-1 free. Paid keys sort by paid rank: subir2 (rank 0, as .env gives it) at
+  // index 2, subir1719 (rank 1) at index 3, until the admin reorders them.
+  beforeEach(() => {
+    state.keyPool = ['free-0', 'free-1'];
+    state.paidKeyPool = ['paid-1719', 'paid-2'];
+    state.paidKeyNames = ['subir1719', 'subir2'];
+    state.paidRanks = [1, 0];
+    pool.__resetForTests();
+  });
+
+  it('uses subir2 first by default', async () => {
+    expect(await pool.pickKey(new Set(), true)).toEqual({ index: 2, key: 'paid-2', tier: 'paid' });
+  });
+
+  it('uses subir1719 first once the admin ranks it first', async () => {
+    state.paidRanks = [0, 1];
+    expect(await pool.pickKey(new Set(), true)).toEqual({
+      index: 2,
+      key: 'paid-1719',
+      tier: 'paid',
+    });
+  });
+
+  it('follows the order when the free keys run out, not only on preferPaid', async () => {
+    await pool.markRateLimited(0, 60_000);
+    await pool.markRateLimited(1, 60_000);
+    expect((await pool.pickKey())!.key).toBe('paid-2');
+  });
+
+  it('falls over to the next paid key when the first one is cooling', async () => {
+    await pool.markRateLimited(2, 60_000);
+    expect((await pool.pickKey(new Set(), true))!.key).toBe('paid-1719');
+  });
+
+  it('keeps a cooldown on the same key after the admin reorders the keys', async () => {
+    await pool.markRateLimited(2, 60_000); // subir2
+    state.paidRanks = [0, 1]; // subir1719 first now; subir2 moves to index 3
+    const picked = await pool.pickKey(new Set(), true);
+    expect(picked!.key).toBe('paid-1719');
+    // subir2 is still cooling, so with subir1719 excluded the reserve has nothing left.
+    expect(await pool.pickKey(new Set([0, 1, 2]), true)).toBeNull();
+  });
+
+  it('never hands out a switched-off key', async () => {
+    state.disabled = new Set(['paid-2']);
+    expect((await pool.pickKey(new Set(), true))!.key).toBe('paid-1719');
+    state.disabled = new Set(['free-0', 'free-1']);
+    expect((await pool.pickKey())!.key).toBe('paid-2');
+  });
+
+  it('still spends free keys before any paid key', async () => {
+    expect((await pool.pickKey())!.tier).toBe('free');
+  });
+
+  it('names each paid index, and none for a free one', async () => {
+    await pool.pickKey();
+    expect(pool.paidKeyNameAt(0)).toBeNull();
+    expect(pool.paidKeyNameAt(2)).toBe('subir2');
+    expect(pool.paidKeyNameAt(3)).toBe('subir1719');
   });
 });

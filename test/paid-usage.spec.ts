@@ -63,6 +63,13 @@ describe('recordPaidKeyUse', () => {
     expect(message).toContain('Users are unaffected');
   });
 
+  it('says which paid key started billing', async () => {
+    await recordPaidKeyUse('chat', 'subir2');
+
+    const [, , message] = state.alertThrottled.mock.calls[0] as string[];
+    expect(message).toContain('on paid key subir2');
+  });
+
   it('stays quiet for ordinary follow-up requests', async () => {
     for (let i = 0; i < 40; i++) await recordPaidKeyUse('report');
 

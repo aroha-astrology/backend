@@ -3238,3 +3238,45 @@ export const storyEvents = pgTable(
 );
 
 export type StoryEventRow = typeof storyEvents.$inferSelect;
+
+/* -------------------------------------------------------------------------- */
+/* gemini_keys — Admin -> Gemini Keys                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every Gemini API key the pool may use, beyond what .env says (see
+ * lib/llm/gemini-keys.ts). A key from .env gets a row the first time the admin
+ * page lists it, so it can be renamed, moved between tiers or switched off;
+ * its secret stays in .env only (`secret` is null). A key pasted on the admin
+ * page has `source` 'admin' and its secret here, encrypted (encryptField).
+ */
+export const geminiKeys = pgTable('gemini_keys', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  /** sha256 hex of the key: matches a .env key to its row and refuses duplicates. */
+  fingerprint: text('fingerprint').notNull().unique(),
+  /** 'env' | 'admin'. */
+  source: text('source').notNull(),
+  name: text('name').notNull(),
+  /** 'free' | 'paid'. Free keys are spent first, round-robin; paid keys only after. */
+  tier: text('tier').notNull(),
+  /** Encrypted key for an 'admin' row; null for an 'env' row. */
+  secret: text('secret'),
+  enabled: boolean('enabled').notNull().default(true),
+  /** Order among paid keys, lowest first. */
+  paidRank: integer('paid_rank').notNull().default(100),
+  lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
+  lastTestOk: boolean('last_test_ok'),
+  lastTestMessage: text('last_test_message'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedBy: text('updated_by'),
+});
+
+export type GeminiKeyRow = typeof geminiKeys.$inferSelect;
+export type NewGeminiKeyRow = typeof geminiKeys.$inferInsert;
