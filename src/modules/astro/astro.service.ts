@@ -650,8 +650,10 @@ import { and, eq } from 'drizzle-orm';
 import { translateForecastContent } from '../../lib/llm/horoscope.js';
 import { INCOME_ASK_FACT } from '../../lib/chat-income.js';
 import { chatPricingFact } from '../../lib/chat-pricing.js';
+import { chatAppGuideFacts } from '../../lib/chat-app-guide.js';
+import { passEntitlement } from '../../lib/entitlements.js';
 import type { QuestionSource } from '../pass/question-billing.js';
-import { resolveFeaturesForUser } from '../features/features.service.js';
+import { resolveFeaturesForUser, type ResolvedFeature } from '../features/features.service.js';
 
 async function getCachedForecastTranslation<T>(
   forDate: string,
@@ -1657,11 +1659,16 @@ export async function* chatStream(
   // is switched on from Admin -> Features with no prompt edit and no deploy.
   // Best-effort like every other fetch here — an unreachable feature table just
   // means the astrologer reads money questions from the chart alone.
-  const incomeAskEnabled = await resolveFeaturesForUser(userId)
-    .then((features) => features['chat.incomeAsk']?.enabled ?? false)
-    .catch(() => false);
-  if (incomeAskEnabled) profileFacts.push(INCOME_ASK_FACT);
+  const userFeatures = await resolveFeaturesForUser(userId).catch(
+    () => ({}) as Record<string, ResolvedFeature>,
+  );
+  if (userFeatures['chat.incomeAsk']?.enabled) profileFacts.push(INCOME_ASK_FACT);
   if (billing) profileFacts.push(chatPricingFact(billing.pricePaise, billing.source));
+  // Which app screens to point this user to, and whether their Pass covers
+  // each (see chatAppGuideFacts). Best-effort: no Pass lookup means the
+  // guide reads as if they had none, which only ever shows a lock they can buy past.
+  const userPass = await passEntitlement(userId).catch(() => null);
+  profileFacts.push(...chatAppGuideFacts(userFeatures, userPass));
 
   // Today's Panchang at the ACTIVE PROFILE's birth location — best-effort,
   // never blocks the reply (a missing place of birth, or the panchang engine

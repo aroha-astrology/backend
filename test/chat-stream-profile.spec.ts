@@ -46,6 +46,11 @@ vi.mock('../src/modules/features/features.service.js', () => ({
   resolveFeaturesForUser: vi.fn(() => Promise.resolve({})),
 }));
 
+// The app-guide lines read the user's Pass — another real db lookup that hangs here.
+vi.mock('../src/lib/entitlements.js', () => ({
+  passEntitlement: vi.fn(() => Promise.resolve(null)),
+}));
+
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   getKundliForUser: state.getKundliForUser,
   withLiveSadeSati: state.withLiveSadeSati,
