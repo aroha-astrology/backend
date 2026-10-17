@@ -19,7 +19,7 @@ const server = serve(
   {
     fetch: app.fetch,
     port: env.PORT,
-    hostname: '0.0.0.0',
+    hostname: env.HOST,
   },
   (info) => {
     logger.info(

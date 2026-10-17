@@ -404,6 +404,39 @@ cd ~/aroha-backend && npm run db:migrate
 Rotate the password with `ALTER ROLE atulgoel PASSWORD '<new>';`, update `DATABASE_URL`
 in the server `.env`, then `pm2 restart aroha-api`.
 
+#### Supabase copy (nightly, production stays on EC2)
+
+The production database is copied into the Supabase project `aroha-prod`
+(Mumbai) every night, ahead of a planned move. **The live API does not use
+Supabase**; `DATABASE_URL` still points at the EC2 Postgres.
+
+- **What runs:** `scripts/cron-db-sync-supabase.sh` at 17:33 UTC (23:03 IST),
+  which runs `npx tsx scripts/db/sync-to-supabase.ts`. One consistent snapshot of
+  the EC2 database is dumped and loaded into Supabase in a single transaction,
+  then every table is compared (row count + content hash), plus sequences, enums,
+  the drizzle migration count and every column/index/constraint definition.
+  Either the whole copy lands and matches, or Supabase keeps the previous night's copy.
+- **Server state (not in the repo):** `SUPABASE_SYNC_URL` in `~/aroha-backend/.env`
+  (the Supabase **session pooler** URL, port 5432) and the crontab line:
+  `33 17 * * * /home/ec2-user/aroha-backend/scripts/cron-db-sync-supabase.sh >> /home/ec2-user/cron-db-sync-supabase.log 2>&1`
+- **Result:** a Telegram message every night ("DB copy to Supabase: OK" or
+  "FAILED" with the reason), a JSON report in `~/db-backups/reports/`, and the
+  compressed dump in `~/db-backups/` (newest 7 kept — the EC2 database's only backup).
+- **By hand:** `npx tsx scripts/db/sync-to-supabase.ts --dry-run` (dump + checks,
+  Supabase untouched), `--verify-only` (compare production now with the copy; rows
+  written since the copy show as differences), or no flag for a full run.
+- **Safety:** the script refuses to run unless the source is this box's database,
+  the target is a Supabase host on the session pooler, and the live app still uses
+  the box database — so after the switch it stops by itself instead of overwriting
+  live data. Dumps that would drop `public`, an extension or a role are aborted.
+  Every copied table gets row level security and the `anon`/`authenticated` roles
+  lose access, so Supabase's public REST API can't read user data.
+- **Warnings:** a definition that prints differently on Postgres 17 is a warning,
+  not a failure. Once reviewed, add its exact text to
+  `scripts/db/schema-text-allowlist.json`. Data differences can't be allow-listed.
+- **Restore a dump:** `gunzip -c ~/db-backups/aroha-<stamp>.sql.gz | psql "<url>" -v ON_ERROR_STOP=1`
+  (the dump drops and recreates the app's tables, so only run it against the database you mean to replace).
+
 #### Daily horoscope CRON (server state — not in the repo)
 
 Personalized horoscopes are generated for every active user once a day by the OS

@@ -5,6 +5,10 @@ const EnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().default(3000),
+    // Interface to listen on. Production listens on every interface behind
+    // nginx; a private second instance (the Supabase-copy check backend) sets
+    // 127.0.0.1 so it is never reachable from outside the box.
+    HOST: z.string().min(1).default('0.0.0.0'),
     LOG_LEVEL: z
       .enum(['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace'])
       .default('info'),
@@ -19,6 +23,14 @@ const EnvSchema = z
       ),
 
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+    // Connections per process. Unset keeps the old default (10 in production,
+    // 5 elsewhere); a pooled host with a small pool (Supabase Free: 15) sets it
+    // lower, because pm2 runs one pool per worker.
+    DB_POOL_MAX: z.coerce.number().int().positive().optional(),
+    // TLS to Postgres. Unset keeps the old default ('prefer' in production, off
+    // elsewhere — 'require' broke the EC2 Postgres on 2026-07-17, see db.ts).
+    // Supabase supports TLS, so it can use 'require'.
+    DB_SSL: z.enum(['prefer', 'require', 'off']).optional(),
 
     SUPABASE_URL: z.string().url().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),

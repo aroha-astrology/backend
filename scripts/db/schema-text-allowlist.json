@@ -1,0 +1,4 @@
+{
+  "about": "Definition-text differences between the EC2 database and its Supabase copy that were reviewed and accepted (e.g. PG 17 printing a default differently). Each entry is the exact warning text from a sync report. Data differences can never be accepted here.",
+  "accepted": []
+}
