@@ -13,6 +13,7 @@ import {
 } from '../../db/schema.js';
 import { resolveDateRangePreset, sumPaidOrdersBetween } from '../admin/admin.repo.js';
 import { topUpBonusPaise } from './top-up-amounts.js';
+import { coinPackById, coinPackCreditPaise } from '../../config/coin-packs.js';
 
 export async function findActiveCouponByCode(code: string): Promise<CouponRow | undefined> {
   const rows = await db
@@ -172,11 +173,15 @@ export async function confirmOrderAndGrantCredits(
     // coupon user paid ₹500 and was credited ₹400. Coupons are switched off
     // (see validateCoupon); using amountPaise also covers any coupon order
     // still pending from before that.
-    const grantPaise = order.amountPaise;
-    // The pack's offer (₹250 → ₹350, ₹500 → ₹750) is its own ledger row, so
-    // `purchase:*` rows stay exactly what was paid and the bonus shows in the
+    //
+    // A coin pack (v7) credits its coins whatever currency the buyer paid in: the order's
+    // amount is then a price in cents/pence/paise of THAT currency, not wallet money.
+    const coinPack = coinPackById(order.packId);
+    const grantPaise = coinPack ? coinPackCreditPaise(coinPack).purchased : order.amountPaise;
+    // The pack's offer (₹250 → ₹350, ₹500 → ₹750, or a coin pack's bonus coins) is its own
+    // ledger row, so `purchase:*` rows stay exactly what was paid and the bonus shows in the
     // history as a separate credit.
-    const bonusPaise = topUpBonusPaise(order.packId);
+    const bonusPaise = coinPack ? coinPackCreditPaise(coinPack).bonus : topUpBonusPaise(order.packId);
 
     const [userRow] = await tx
       .update(users)

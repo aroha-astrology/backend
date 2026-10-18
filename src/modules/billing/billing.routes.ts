@@ -8,6 +8,7 @@ import {
   BillingPlanResponseSchema,
   BillingBalanceResponseSchema,
   TopUpAmountsResponseSchema,
+  TopUpAmountsQuerySchema,
   ValidateCouponBodySchema,
   CouponValidationResponseSchema,
   CheckoutBodySchema,
@@ -21,7 +22,7 @@ import {
   VerifyRazorpayBodySchema,
 } from './billing.schemas.js';
 import {
-  getTopUpAmounts,
+  listTopUps,
   validateCoupon,
   checkout,
   confirmPayment,
@@ -111,6 +112,7 @@ const packsRoute = createRoute({
   tags: ['Billing'],
   summary: 'List purchasable top-up amounts',
   security: [{ bearerAuth: [] }],
+  request: { query: TopUpAmountsQuerySchema },
   responses: {
     200: {
       description: 'Credit packs',
@@ -121,10 +123,16 @@ const packsRoute = createRoute({
 });
 
 billingRouter.openapi(packsRoute, async (c) => {
+  const user = c.get('user');
+  const { currency } = c.req.valid('query');
+  const listing = await listTopUps(user.id, user.currentCountry ?? user.geoCountry, currency);
   return c.json(
     {
-      amounts: getTopUpAmounts() as unknown as TopUpAmount[],
+      amounts: listing.amounts as unknown as TopUpAmount[],
       razorpayEnabled: isRazorpayConfigured(),
+      coinPacks: listing.coinPacks,
+      currency: listing.currency,
+      currencies: listing.currencies,
     },
     200,
   );
@@ -277,8 +285,11 @@ const razorpayOrderRoute = createRoute({
 
 billingRouter.openapi(razorpayOrderRoute, async (c) => {
   const user = c.get('user');
-  const { packId } = c.req.valid('json');
-  const { order, razorpayOrderId, razorpayKeyId } = await startRazorpayCheckout(user.id, packId);
+  const { packId, currency } = c.req.valid('json');
+  const { order, razorpayOrderId, razorpayKeyId } = await startRazorpayCheckout(user.id, packId, {
+    country: user.currentCountry ?? user.geoCountry,
+    currency,
+  });
   return c.json({ order: toOrderDto(order), razorpayOrderId, razorpayKeyId }, 200);
 });
 

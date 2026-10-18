@@ -877,6 +877,8 @@ export const orders = pgTable(
     discountPaise: integer('discount_paise').notNull().default(0),
     finalAmountPaise: integer('final_amount_paise').notNull(),
     currency: text('currency').notNull().default('INR'),
+    /** What a coin-pack order charged, in the minor unit of `currency` (migration 0092). Null on older orders, where `amountPaise` was the charge. `finalAmountPaise` stays the rupee list price so revenue sums keep adding rupees. */
+    chargedMinor: integer('charged_minor'),
     couponId: uuid('coupon_id').references(() => coupons.id),
     couponCode: text('coupon_code'),
     status: orderStatusEnum('status').notNull().default('pending'),

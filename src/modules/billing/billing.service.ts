@@ -26,6 +26,17 @@ import {
 } from './razorpay.js';
 import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
 import { TOP_UP_AMOUNTS } from './top-up-amounts.js';
+import {
+  COIN_CURRENCIES,
+  COIN_PACKS,
+  coinPackById,
+  coinPackCreditPaise,
+  currencyForCountry,
+  formatPackPrice,
+  isCoinCurrency,
+  type CoinCurrency,
+} from '../../config/coin-packs.js';
+import { isFeatureOn } from '../features/features.service.js';
 
 export { TOP_UP_AMOUNTS };
 
@@ -33,10 +44,113 @@ export function getTopUpAmounts() {
   return TOP_UP_AMOUNTS;
 }
 
-function findTopUpAmount(id: string) {
-  const amount = TOP_UP_AMOUNTS.find((a) => a.id === id);
-  if (!amount) throw Errors.badRequest(`Unknown top-up amount "${id}"`);
-  return amount;
+/**
+ * What one purchase is: an old top-up amount or a v7 coin pack. `amountPaise` is always the rupee
+ * figure the admin revenue sums add; `chargedMinor` is what the buyer is actually charged in
+ * `currency` (set only for a coin pack).
+ */
+export interface Sellable {
+  id: string;
+  amountPaise: number;
+  currency: string;
+  chargedMinor: number | null;
+}
+
+/**
+ * The currency a web (Razorpay) buyer is quoted and charged in. With money.razorpayIntl off every
+ * order is in rupees, as before. With it on: the currency the app asked for, else the one for the
+ * buyer's country.
+ */
+export async function resolveChargeCurrency(
+  userId: string,
+  country: string | null | undefined,
+  requested?: string,
+): Promise<CoinCurrency> {
+  if (!(await isFeatureOn(userId, 'money.razorpayIntl'))) return 'INR';
+  return isCoinCurrency(requested) ? requested : currencyForCountry(country);
+}
+
+/**
+ * Finds what a pack id sells. An old top-up id always resolves (an app build from before the coin
+ * packs, or an order already in flight). A coin-pack id resolves only while money.coinPacks is on
+ * for this user, so nobody can start a coin-pack order through the API while the offer is off.
+ */
+async function findSellable(
+  userId: string,
+  id: string,
+  currency: CoinCurrency = 'INR',
+): Promise<Sellable> {
+  const old = TOP_UP_AMOUNTS.find((a) => a.id === id);
+  if (old) {
+    return { id: old.id, amountPaise: old.amountPaise, currency: old.currency, chargedMinor: null };
+  }
+  const pack = coinPackById(id);
+  if (pack && (await isFeatureOn(userId, 'money.coinPacks'))) {
+    return {
+      id: pack.id,
+      amountPaise: pack.prices.INR,
+      currency,
+      chargedMinor: pack.prices[currency],
+    };
+  }
+  throw Errors.badRequest(`Unknown top-up amount "${id}"`);
+}
+
+/** The rows of `GET /billing/top-up-amounts`, in the shape of the old top-up list. */
+export interface TopUpListing {
+  amounts: Array<{
+    id: string;
+    amountPaise: number;
+    currency: string;
+    label: string;
+    bonusPaise?: number;
+    popular?: boolean;
+    coins?: number;
+    name?: string;
+  }>;
+  /** True when the list is the coin packs. */
+  coinPacks: boolean;
+  /** The currency the labels are quoted in (always INR for the old list). */
+  currency: CoinCurrency;
+  /** Currencies the website can charge in right now. */
+  currencies: CoinCurrency[];
+}
+
+/**
+ * The packs to show this user. With money.coinPacks off, the old top-up amounts exactly as before.
+ * With it on, the four coin packs priced in the buyer's currency (rupees unless money.razorpayIntl
+ * is on). Play shows its own local price when the app opens its sheet.
+ */
+export async function listTopUps(
+  userId: string,
+  country: string | null | undefined,
+  requestedCurrency?: string,
+): Promise<TopUpListing> {
+  if (!(await isFeatureOn(userId, 'money.coinPacks'))) {
+    return {
+      amounts: TOP_UP_AMOUNTS.map((a) => ({ ...a })),
+      coinPacks: false,
+      currency: 'INR',
+      currencies: ['INR'],
+    };
+  }
+  const currency = await resolveChargeCurrency(userId, country, requestedCurrency);
+  const intl = await isFeatureOn(userId, 'money.razorpayIntl');
+  return {
+    amounts: COIN_PACKS.map((pack) => ({
+      id: pack.id,
+      amountPaise: pack.prices[currency],
+      currency,
+      label: formatPackPrice(pack.prices[currency], currency),
+      bonusPaise: coinPackCreditPaise(pack).bonus,
+      ...(pack.popular ? { popular: true } : {}),
+      coins: pack.purchasedCoins + pack.bonusCoins,
+      name: pack.name,
+    })),
+    coinPacks: true,
+    currency,
+    currencies: intl ? [...COIN_CURRENCIES] : ['INR'],
+  };
 }
 
 /**
@@ -47,7 +161,9 @@ function findTopUpAmount(id: string) {
  * coupon box get a clean "not available" instead of an error.
  */
 export function validateCoupon(code: string, packId: string) {
-  findTopUpAmount(packId);
+  if (!TOP_UP_AMOUNTS.some((a) => a.id === packId) && !coinPackById(packId)) {
+    throw Errors.badRequest(`Unknown top-up amount "${packId}"`);
+  }
   return { valid: false, code, message: 'Coupons are not available right now' };
 }
 
@@ -57,7 +173,8 @@ export function validateCoupon(code: string, packId: string) {
  * ignored: the order always credits exactly what Play charges.
  */
 export async function checkout(userId: string, packId: string, _couponCode?: string) {
-  const amount = findTopUpAmount(packId);
+  // Play charges its own local price, so the order is recorded at the rupee list price.
+  const amount = await findSellable(userId, packId);
   return insertOrder({
     userId,
     packId: amount.id,
@@ -65,6 +182,7 @@ export async function checkout(userId: string, packId: string, _couponCode?: str
     discountPaise: 0,
     finalAmountPaise: amount.amountPaise,
     currency: amount.currency,
+    chargedMinor: null,
     couponId: null,
     couponCode: null,
     status: 'pending',
@@ -80,9 +198,11 @@ export async function checkout(userId: string, packId: string, _couponCode?: str
 export async function startRazorpayCheckout(
   userId: string,
   packId: string,
+  opts: { country?: string | null; currency?: string } = {},
 ): Promise<{ order: OrderRow; razorpayOrderId: string; razorpayKeyId: string }> {
   const razorpayKeyId = getRazorpayKeyId();
-  const amount = findTopUpAmount(packId);
+  const currency = await resolveChargeCurrency(userId, opts.country, opts.currency);
+  const amount = await findSellable(userId, packId, currency);
   const order = await insertOrder({
     userId,
     packId: amount.id,
@@ -90,13 +210,15 @@ export async function startRazorpayCheckout(
     discountPaise: 0,
     finalAmountPaise: amount.amountPaise,
     currency: amount.currency,
+    chargedMinor: amount.chargedMinor,
     couponId: null,
     couponCode: null,
     status: 'pending',
     gatewayProvider: 'razorpay',
   });
   const razorpayOrderId = await createRazorpayOrder({
-    amountPaise: order.amountPaise,
+    // What the buyer is charged, in the minor unit of the order's currency.
+    amountPaise: order.chargedMinor ?? order.amountPaise,
     currency: order.currency,
     receipt: order.id,
   });

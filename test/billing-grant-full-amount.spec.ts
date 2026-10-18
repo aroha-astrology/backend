@@ -87,4 +87,27 @@ describe('confirmOrderAndGrantCredits', () => {
       expect.objectContaining({ delta: 2500, reason: `purchase:${packId}`, balanceAfter: 123_456 }),
     ]);
   });
+
+  // v7 coin packs: the coins are credited whatever currency the buyer paid in. The order's
+  // amount is then a price in cents/pence/paise of that currency, never wallet money.
+  it.each([
+    ['coins_100', 'INR', 9900, 10000, 0],
+    ['coins_330', 'USD', 499, 30000, 3000],
+    ['coins_700', 'EUR', 999, 60000, 10000],
+    ['coins_1800', 'GBP', 1799, 150000, 30000],
+  ])('%s paid in %s credits its coins, not its price', async (packId, currency, charged, paid, bonus) => {
+    state.order = { id: 'order-4', userId: 'user-1', packId, currency, amountPaise: 29900, chargedMinor: charged, status: 'paid' };
+    state.ledger = [];
+
+    await confirmOrderAndGrantCredits('order-4', 'user-1', 'razorpay-payment');
+
+    expect(state.ledger).toEqual(
+      bonus === 0
+        ? [expect.objectContaining({ delta: paid, reason: `purchase:${packId}`, balanceAfter: 123_456 })]
+        : [
+            expect.objectContaining({ delta: paid, reason: `purchase:${packId}`, balanceAfter: 123_456 - bonus }),
+            expect.objectContaining({ delta: bonus, reason: `recharge_bonus:${packId}`, balanceAfter: 123_456 }),
+          ],
+    );
+  });
 });

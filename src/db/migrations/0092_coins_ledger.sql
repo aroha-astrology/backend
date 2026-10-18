@@ -15,6 +15,11 @@
 --    picked yet, which counts as classic (today's look). Read by the audience filter; the picker
 --    itself arrives with the two looks.
 --
+-- 6. orders.charged_minor: what a coin-pack order actually charged, in the minor unit of its own
+--    currency (cents, pence, paise). final_amount_paise stays the pack's RUPEE list price for every
+--    order, so the admin revenue sums keep adding rupees; for a dollar buyer it is the list-price
+--    equivalent, not the dollars received.
+--
 -- Hand-written (post-0050 convention): IF NOT EXISTS makes this safe to re-run.
 
 ALTER TABLE "wallet_transactions"
@@ -35,3 +40,6 @@ ALTER TABLE "feature_flags"
 ALTER TABLE "users"
   ADD COLUMN IF NOT EXISTS "ui_skin" text
     CHECK ("ui_skin" IS NULL OR "ui_skin" IN ('CLASSIC_VEDIC', 'MODERN_COSMIC'));
+
+ALTER TABLE "orders"
+  ADD COLUMN IF NOT EXISTS "charged_minor" integer;

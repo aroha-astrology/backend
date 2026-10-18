@@ -36,6 +36,10 @@ export const TopUpAmountSchema = z
     /** Extra wallet money on top of amountPaise; absent when the pack has no offer. */
     bonusPaise: z.number().optional().openapi({ example: 10000 }),
     popular: z.boolean().optional(),
+    /** Coin packs only: the coins the pack gives in all (paid + bonus). */
+    coins: z.number().int().optional().openapi({ example: 330 }),
+    /** Coin packs only: the pack's display name. */
+    name: z.string().optional().openapi({ example: 'Popular Pack' }),
   })
   .openapi('TopUpAmount');
 
@@ -44,8 +48,21 @@ export const TopUpAmountsResponseSchema = z
     amounts: z.array(TopUpAmountSchema),
     /** False when this server has no Razorpay keys; the web app then hides that payment option. */
     razorpayEnabled: z.boolean().default(false),
+    /** True when `amounts` are the coin packs (money.coinPacks on); then `amountPaise` is the price in the minor unit of `currency`. */
+    coinPacks: z.boolean().default(false),
+    /** The currency the labels are quoted in. */
+    currency: z.string().default('INR'),
+    /** Currencies the website can charge in right now (only INR until money.razorpayIntl is on). */
+    currencies: z.array(z.string()).default(['INR']),
   })
   .openapi('TopUpAmountsResponse');
+
+export const TopUpAmountsQuerySchema = z.object({
+  currency: z
+    .enum(['INR', 'USD', 'EUR', 'GBP'])
+    .optional()
+    .openapi({ param: { name: 'currency', in: 'query' }, description: 'Quote the coin packs in this currency (honoured only while money.razorpayIntl is on)' }),
+});
 
 /* -------------------------------------------------------------------------- */
 /* Coupon validation                                                           */
@@ -196,7 +213,11 @@ export const ConfirmGooglePlayBodySchema = z
 /* -------------------------------------------------------------------------- */
 
 export const RazorpayCheckoutBodySchema = z
-  .object({ packId: z.string().min(1) })
+  .object({
+    packId: z.string().min(1),
+    /** Charge in this currency (honoured only while money.razorpayIntl is on; otherwise rupees). */
+    currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
+  })
   .openapi('RazorpayCheckoutBody');
 
 export const RazorpayCheckoutResponseSchema = z
