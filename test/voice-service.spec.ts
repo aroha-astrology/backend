@@ -1053,3 +1053,79 @@ describe('submitVoiceFeedback — "how was your call?"', () => {
     expect(state.alertThrottled).not.toHaveBeenCalled();
   });
 });
+
+describe('voice calls in 15-second slices (money.voiceSlices)', () => {
+  const SLICE = 500;
+
+  /** The switch is on, and the session's last minute was granted `secondsAgo` seconds ago. */
+  function sliced(opts: { secondsAgo: number; minutesCharged?: number; freeMinutes?: number }) {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'paid.voiceChat': { enabled: true, pricePaise: PRICE },
+      'money.voiceSlices': { enabled: true, pricePaise: null },
+      'money.voiceSlice': { enabled: true, pricePaise: SLICE },
+    });
+    state.getVoiceSession.mockResolvedValue({
+      id: SESSION,
+      active: true,
+      minutesCharged: opts.minutesCharged ?? 3,
+      freeMinutes: opts.freeMinutes ?? 0,
+      updatedAt: new Date(Date.now() - opts.secondsAgo * 1000),
+    });
+  }
+
+  it('a call hung up 20 seconds into its last paid minute pays 2 slices and gets the other 10 coins back', async () => {
+    sliced({ secondsAgo: 20 });
+
+    await endVoiceSessionForUser(USER, SESSION, true);
+
+    expect(state.addWalletBalance).toHaveBeenCalledWith(USER, 1000, 'refund:voice_slice', {
+      idempotencyKey: `voice_slice_refund:${SESSION}`,
+    });
+  });
+
+  it('hanging up within the first slice gets 15 coins back', async () => {
+    sliced({ secondsAgo: 4 });
+    await endVoiceSessionForUser(USER, SESSION);
+    expect(state.addWalletBalance).toHaveBeenCalledWith(USER, 1500, 'refund:voice_slice', expect.anything());
+  });
+
+  it('a minute used to the end gives nothing back', async () => {
+    sliced({ secondsAgo: 58 });
+    await endVoiceSessionForUser(USER, SESSION, true);
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('a free last minute (trial or Pass) costs nothing, so there is nothing to give back', async () => {
+    sliced({ secondsAgo: 10, minutesCharged: 2, freeMinutes: 2 });
+    await endVoiceSessionForUser(USER, SESSION, true);
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('does nothing, and does not even read the session, while the switch is off', async () => {
+    await endVoiceSessionForUser(USER, SESSION, true);
+    expect(state.getVoiceSession).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('a second /end for the same call (the page-unload handler) refunds nothing: only the call that ended it settles', async () => {
+    sliced({ secondsAgo: 20 });
+    state.endVoiceSession.mockResolvedValue(null);
+    await endVoiceSessionForUser(USER, SESSION, true);
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('a call that never connected keeps the existing whole-minute refund and is not sliced', async () => {
+    sliced({ secondsAgo: 5 });
+    state.endVoiceSessionWithRefund.mockResolvedValue({ refundedMinutes: 1, free: false });
+    await endVoiceSessionForUser(USER, SESSION, false);
+    expect(state.addWalletBalance).toHaveBeenCalledTimes(1);
+    expect(state.addWalletBalance).toHaveBeenCalledWith(USER, PRICE, 'refund:voice_minute');
+  });
+
+  it('a failed refund never stops the call from ending', async () => {
+    sliced({ secondsAgo: 20 });
+    state.addWalletBalance.mockRejectedValue(new Error('db down'));
+    await expect(endVoiceSessionForUser(USER, SESSION, true)).resolves.toBeUndefined();
+    expect(state.endVoiceSession).toHaveBeenCalledWith(SESSION, USER);
+  });
+});

@@ -46,6 +46,7 @@ import { passEntitlement } from '../../lib/entitlements.js';
 import { findActivePass } from '../pass/pass.repo.js';
 import { PASS_PERIOD_DAYS, VOICE_TRIAL_MINUTES } from '../pass/pass.config.js';
 import * as voiceRepo from './voice.repo.js';
+import { unusedSliceRefundPaise } from './voice-slices.js';
 import type { VoiceSessionRow } from '../../db/schema.js';
 import * as chatSessionsRepo from '../astro/chat-sessions.repo.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
@@ -72,6 +73,10 @@ const DEFAULT_MINUTE_PRICE_PAISE = 2000;
 
 const WALLET_REASON_CHARGE = 'voice_minute';
 const WALLET_REASON_REFUND = 'refund:voice_minute';
+const WALLET_REASON_SLICE_REFUND = 'refund:voice_slice';
+
+/** Fail-open fallback for `money.voiceSlice`, the price of one 15-second slice. */
+const DEFAULT_SLICE_PRICE_PAISE = 500;
 
 /**
  * How long after a minute is granted `/end connected:false` still refunds it.
@@ -488,6 +493,11 @@ export async function endVoiceSessionForUser(
   connected?: boolean,
   transcript?: ChatHistoryTurn[],
 ): Promise<void> {
+  // With money.voiceSlices on, read the session BEFORE it is ended: its last-updated time is when the
+  // last minute was granted, which is what the unused slices are measured from.
+  const slicing =
+    connected === false ? null : await sliceSettlementInputs(userId, voiceSessionId).catch(() => null);
+
   if (connected === false) {
     try {
       const refund = await voiceRepo.endVoiceSessionWithRefund(
@@ -526,11 +536,69 @@ export async function endVoiceSessionForUser(
     return null;
   });
 
+  if (row && slicing) {
+    await refundUnusedSlices(userId, voiceSessionId, slicing).catch((err: unknown) => {
+      logger.warn({ err, userId, voiceSessionId }, 'voice: unused-slice refund failed');
+    });
+  }
+
   if (row && transcript && transcript.length > 0) {
     await persistTranscript(userId, row.birthProfileId, transcript, row.id).catch((err: unknown) => {
       logger.warn({ err, userId, voiceSessionId }, 'voice: failed to persist call transcript');
     });
   }
+}
+
+interface SliceSettlementInputs {
+  /** When the last minute was granted: the moment its slices started counting. */
+  lastMinuteAt: Date;
+  pricePaise: number;
+  slicePaise: number;
+}
+
+/**
+ * What is needed to settle a call's last paid minute in 15-second slices, or null when slicing does
+ * not apply: the switch is off, the session is already over, or its last minute was a free one (a trial
+ * or Pass minute costs nothing, so there is nothing to give back).
+ */
+async function sliceSettlementInputs(
+  userId: string,
+  voiceSessionId: string,
+): Promise<SliceSettlementInputs | null> {
+  const features = await resolveFeaturesForUser(userId);
+  if (features['money.voiceSlices']?.enabled !== true) return null;
+
+  const session = await voiceRepo.getVoiceSession(voiceSessionId, userId);
+  if (!session || !session.active) return null;
+  // A call spends its free minutes first, so the last minute was paid exactly when more minutes were
+  // charged than were free.
+  if (session.minutesCharged <= session.freeMinutes) return null;
+
+  return {
+    lastMinuteAt: session.updatedAt,
+    pricePaise: features['paid.voiceChat']?.pricePaise ?? DEFAULT_MINUTE_PRICE_PAISE,
+    slicePaise: features['money.voiceSlice']?.pricePaise ?? DEFAULT_SLICE_PRICE_PAISE,
+  };
+}
+
+/**
+ * Gives back the slices of the last paid minute that the call did not use. Keyed by the session, so
+ * a second /end for the same call (the page-unload handler after the hang-up) cannot pay it twice.
+ */
+async function refundUnusedSlices(
+  userId: string,
+  voiceSessionId: string,
+  inputs: SliceSettlementInputs,
+): Promise<void> {
+  const refundPaise = unusedSliceRefundPaise({
+    elapsedMs: Date.now() - inputs.lastMinuteAt.getTime(),
+    pricePaise: inputs.pricePaise,
+    slicePaise: inputs.slicePaise,
+  });
+  if (refundPaise <= 0) return;
+  await addWalletBalance(userId, refundPaise, WALLET_REASON_SLICE_REFUND, {
+    idempotencyKey: `voice_slice_refund:${voiceSessionId}`,
+  });
 }
 
 /**

@@ -997,7 +997,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   { key: 'money.houseBundle', label: 'All 12 houses in one go, while the house offer is on (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 14900 },
   {
     key: 'money.voiceSlices',
-    label: 'Voice calls billed in 15-second slices after the free minutes, instead of whole minutes',
+    label: 'Voice calls: pay in 15-second slices after the free minutes (an early hang-up gives the unused slices back), and a gentler silence rule (asks after 10 s, hangs up after 15 s)',
     group: 'money',
     defaultEnabled: false,
     tag: 'new',
