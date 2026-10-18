@@ -736,6 +736,9 @@ export function toOrderDto(order: OrderRow) {
     discountPaise: order.discountPaise,
     finalAmountPaise: order.finalAmountPaise,
     currency: order.currency,
+    // What the buyer is charged in `currency`'s minor unit; null on an order from before coin packs,
+    // where finalAmountPaise (rupees) was the charge.
+    chargedMinor: order.chargedMinor ?? null,
     couponCode: order.couponCode,
     status: order.status,
     gatewayProvider: order.gatewayProvider,

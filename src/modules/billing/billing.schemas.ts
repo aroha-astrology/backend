@@ -106,6 +106,8 @@ export const OrderSchema = z
     discountPaise: z.number(),
     finalAmountPaise: z.number(),
     currency: z.string(),
+    /** What the buyer is charged, in the minor unit of `currency`; null on orders from before coin packs. */
+    chargedMinor: z.number().nullable().default(null),
     couponCode: z.string().nullable(),
     status: OrderStatusSchema,
     gatewayProvider: z.string(),
