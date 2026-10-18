@@ -389,6 +389,12 @@ export const users = pgTable(
     groupQuestionsUsed: integer('group_questions_used').notNull().default(0),
     /** When that period began; null = never asked. Reset lazily on the next question. */
     groupQuestionsPeriodStart: timestamp('group_questions_period_start', { withTimezone: true }),
+    /** Free extra-profile slots taken (money.freeProfiles, migration 0092). Counted when used, so deleting a free profile does not give the slot back. */
+    freeProfilesUsed: smallint('free_profiles_used').notNull().default(0),
+    /** True for an account created while the 3-stage signup bonus (money.signupDrip) was on; only these get stages 2 and 3. Migration 0092. */
+    signupDrip: boolean('signup_drip').notNull().default(false),
+    /** The experience the user picked: 'CLASSIC_VEDIC' or 'MODERN_COSMIC'; null = not picked yet (counts as classic). Migration 0092. */
+    uiSkin: text('ui_skin').$type<'CLASSIC_VEDIC' | 'MODERN_COSMIC'>(),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
@@ -737,9 +743,18 @@ export const walletTransactions = pgTable(
      * than the balance (paid top-ups have no lot) but never to more.
      */
     remainingPaise: integer('remaining_paise'),
+    /**
+     * Optional replay guard (migration 0092). A write carrying a key is refused when this user
+     * already has a row with the same key, so a retried charge, a repeated grant or a second
+     * refund for the same charge is a no-op. NULL on every older row.
+     */
+    idempotencyKey: text('idempotency_key'),
   },
   (table) => ({
     userIdx: index('wallet_transactions_user_id_idx').on(table.userId),
+    userIdemUnique: uniqueIndex('wallet_transactions_user_idem_unique')
+      .on(table.userId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} IS NOT NULL`),
   }),
 );
 
@@ -2367,6 +2382,8 @@ export const featureFlags = pgTable('feature_flags', {
    * kill switch for a model key: disabled resolves back to the global GEMINI_MODEL regardless of
    * what is selected here — see modelOf() in features.service.ts. */
   model: text('model'),
+  /** Which section the feature is for: 'all', 'classic' (Indian look) or 'cosmic' (international look). Null = the registry's `defaultAudience`. Set from Admin -> Features (migration 0092). */
+  audience: text('audience').$type<'all' | 'classic' | 'cosmic'>(),
   /** Set only on a false→true enabled transition (see admin.service.ts's updateFeature) — a
    * price/model-only edit while already enabled leaves this untouched. Drives the report
    * catalogue's "New" badge (config/reports.ts's computeIsNewReport); null means "never

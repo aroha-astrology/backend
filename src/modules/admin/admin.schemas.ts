@@ -103,6 +103,10 @@ export const AdminFeatureRowSchema = z
     model: z.string().nullable(),
     modelOptions: z.array(z.string()),
     tag: z.string().nullable(),
+    /** The section the feature is for right now: 'all', 'classic' (Indian look) or 'cosmic' (international look). */
+    audience: z.enum(['all', 'classic', 'cosmic']),
+    /** What the registry starts it at, so the board can show "changed". */
+    defaultAudience: z.enum(['all', 'classic', 'cosmic']),
   })
   .openapi('AdminFeatureRow');
 
@@ -119,6 +123,8 @@ export const UpdateFeatureBodySchema = z
     /** Omitted = leave the current selection; null = clear it back to the registry default.
      * Validated against the key's own `modelOptions` in updateFeature(). */
     model: z.string().nullable().optional(),
+    /** Omitted = leave the current audience; a value sets it for everyone (admin groups still bypass it). */
+    audience: z.enum(['all', 'classic', 'cosmic']).optional(),
   })
   .openapi('UpdateFeatureBody');
 

@@ -430,6 +430,7 @@ describe('PUT /v1/admin/features', () => {
       // Already enabled by its registry default (no prior override row) — not a false->true
       // transition, so no fresh enabledAt.
       null,
+      'all',
     );
     expect(body.pricePaise).toBe(14900);
     expect(body.originalPricePaise).toBe(49900);

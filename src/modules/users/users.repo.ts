@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import { db } from '../../config/db.js';
 import { CLAIM_CAMPAIGNS } from '../../config/campaigns.js';
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
+import { isUniqueViolation } from '../../lib/db-errors.js';
 import { resolveGeoForIp } from '../../lib/geo-lookup.js';
 import {
   users,
@@ -325,57 +326,111 @@ export async function consumeExpiringCredits(
 }
 
 /**
+ * Optional replay guard for a wallet write (migration 0092). With a key, the
+ * write happens at most once per (user, key): a retry of the same request, or a
+ * second refund for the same charge, finds the first row and does nothing.
+ * Without one the write behaves exactly as it always has.
+ */
+export interface WalletWriteOptions {
+  idempotencyKey?: string;
+}
+
+/** The key a refund of a keyed charge carries, so the charge can be refunded once and only once. */
+export function refundKeyFor(chargeKey: string): string {
+  return `refund:${chargeKey}`;
+}
+
+async function hasLedgerKey(tx: WalletTx, userId: string, key: string): Promise<boolean> {
+  const [prior] = await tx
+    .select({ id: walletTransactions.id })
+    .from(walletTransactions)
+    .where(and(eq(walletTransactions.userId, userId), eq(walletTransactions.idempotencyKey, key)))
+    .limit(1);
+  return Boolean(prior);
+}
+
+/**
  * Atomically deduct `amountPaise` from the wallet if (and only if) the user
  * has enough. Same claim-style primitive as `unlockHouseForUser` — the
  * balance check and the debit happen in one conditional UPDATE so two
  * concurrent spends can never both succeed against a balance that only
  * covers one of them.
+ *
+ * With `opts.idempotencyKey` a replay returns true without charging again (the
+ * first call already did). Two requests racing on one key: both pass the probe,
+ * the unique index lets only one ledger row in, and the loser's transaction
+ * rolls back its debit and also answers true.
  */
 export async function deductWalletBalance(
   userId: string,
   amountPaise: number,
   reason: string,
+  opts: WalletWriteOptions = {},
 ): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [charged] = await tx
-      .update(users)
-      .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${amountPaise}` })
-      .where(and(eq(users.id, userId), gte(users.walletBalancePaise, amountPaise)))
-      .returning({ walletBalancePaise: users.walletBalancePaise });
-    if (!charged) return false;
+  const key = opts.idempotencyKey;
+  try {
+    return await db.transaction(async (tx) => {
+      if (key && (await hasLedgerKey(tx, userId, key))) return true;
 
-    await tx.insert(walletTransactions).values({
-      userId,
-      delta: -amountPaise,
-      reason,
-      balanceAfter: charged.walletBalancePaise,
+      const [charged] = await tx
+        .update(users)
+        .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${amountPaise}` })
+        .where(and(eq(users.id, userId), gte(users.walletBalancePaise, amountPaise)))
+        .returning({ walletBalancePaise: users.walletBalancePaise });
+      if (!charged) return false;
+
+      await tx.insert(walletTransactions).values({
+        userId,
+        delta: -amountPaise,
+        reason,
+        balanceAfter: charged.walletBalancePaise,
+        ...(key ? { idempotencyKey: key } : {}),
+      });
+      await consumeExpiringCredits(tx, userId, amountPaise);
+      return true;
     });
-    await consumeExpiringCredits(tx, userId, amountPaise);
-    return true;
-  });
+  } catch (err) {
+    if (key && isUniqueViolation(err)) return true;
+    throw err;
+  }
 }
 
-/** Add `amountPaise` back to the wallet (e.g. refunding a charge whose async job failed). */
+/**
+ * Add `amountPaise` back to the wallet (e.g. refunding a charge whose async job
+ * failed). Returns false when nothing was written: the user does not exist, or
+ * `opts.idempotencyKey` was already used (a repeated refund or grant).
+ */
 export async function addWalletBalance(
   userId: string,
   amountPaise: number,
   reason: string,
-): Promise<void> {
-  await db.transaction(async (tx) => {
-    const [updated] = await tx
-      .update(users)
-      .set({ walletBalancePaise: sql`${users.walletBalancePaise} + ${amountPaise}` })
-      .where(eq(users.id, userId))
-      .returning({ walletBalancePaise: users.walletBalancePaise });
-    if (!updated) return;
+  opts: WalletWriteOptions = {},
+): Promise<boolean> {
+  const key = opts.idempotencyKey;
+  try {
+    return await db.transaction(async (tx) => {
+      if (key && (await hasLedgerKey(tx, userId, key))) return false;
 
-    await tx.insert(walletTransactions).values({
-      userId,
-      delta: amountPaise,
-      reason,
-      balanceAfter: updated.walletBalancePaise,
+      const [updated] = await tx
+        .update(users)
+        .set({ walletBalancePaise: sql`${users.walletBalancePaise} + ${amountPaise}` })
+        .where(eq(users.id, userId))
+        .returning({ walletBalancePaise: users.walletBalancePaise });
+      if (!updated) return false;
+
+      await tx.insert(walletTransactions).values({
+        userId,
+        delta: amountPaise,
+        reason,
+        balanceAfter: updated.walletBalancePaise,
+        ...(key ? { idempotencyKey: key } : {}),
+      });
+      return true;
     });
-  });
+  } catch (err) {
+    if (key && isUniqueViolation(err)) return false;
+    throw err;
+  }
 }
 
 /**

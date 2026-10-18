@@ -1,4 +1,5 @@
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
+import { grantSignupStage } from './signup-drip.js';
 import { addDays } from '../purchase-plan/purchase-plan.dates.js';
 import { payoutOf } from '../features/features.service.js';
 import { claimCampaignBonus } from '../users/users.repo.js';
@@ -158,5 +159,9 @@ export async function claimDailyReward(
   const currentDay = positionInCycle(streakRun(dates, today), claimedToday);
   const amountPaise = amountForDay(currentDay, basePaise, bonusPaise, stepPaise);
   const expiresAt = new Date(now.getTime() + EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-  return claimCampaignBonus(userId, reasonForDate(today), amountPaise, expiresAt);
+  const result = await claimCampaignBonus(userId, reasonForDate(today), amountPaise, expiresAt);
+  // Stage 2 of the 3-stage signup bonus (money.signupDrip): the first check-in on a later day.
+  // A no-op for everyone who did not sign up under it, and for a repeat.
+  if (result.claimed) await grantSignupStage(userId, 2, now);
+  return result;
 }

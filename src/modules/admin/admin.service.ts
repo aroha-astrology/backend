@@ -1,4 +1,4 @@
-import { FEATURE_REGISTRY, isKnownFeatureKey } from '../../config/features.js';
+import { FEATURE_REGISTRY, isKnownFeatureKey, type FeatureAudience } from '../../config/features.js';
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { getReportDef } from '../../config/reports.js';
 import { Errors } from '../../lib/errors.js';
@@ -158,6 +158,10 @@ export interface AdminFeatureRow {
   modelOptions: string[];
   /** Registry `tag` (e.g. `new` for roadmap features) — drives the admin board NEW badge/filter. */
   tag: string | null;
+  /** The section the feature is for now: 'all', 'classic' (Indian look) or 'cosmic' (international look). */
+  audience: FeatureAudience;
+  /** The registry's starting value, so the board can mark a feature whose audience was changed. */
+  defaultAudience: FeatureAudience;
 }
 
 /** Merges FEATURE_REGISTRY (the source of truth for what features exist) with resolveFeatures()'s admin overrides. */
@@ -180,6 +184,8 @@ export async function listFeaturesForAdmin(): Promise<AdminFeatureRow[]> {
         : (resolved[feature.key]?.model ?? feature.defaultModel ?? null),
     modelOptions: [...(feature.modelOptions ?? [])],
     tag: feature.tag ?? null,
+    audience: resolved[feature.key]?.audience ?? feature.defaultAudience ?? 'all',
+    defaultAudience: feature.defaultAudience ?? 'all',
   }));
 }
 
@@ -203,6 +209,7 @@ export async function updateFeature(
   originalPricePaise: number | null | undefined,
   model: string | null | undefined,
   adminPhone: string,
+  audience?: FeatureAudience,
 ): Promise<AdminFeatureRow> {
   if (!isKnownFeatureKey(key)) {
     throw Errors.badRequest(`Unknown feature key "${key}"`);
@@ -231,6 +238,9 @@ export async function updateFeature(
   // not make an old report look freshly launched again.
   const wasEnabled = current?.enabled ?? registryEntry.defaultEnabled;
   const resolvedEnabledAt = enabled && !wasEnabled ? new Date() : (current?.enabledAt ?? null);
+  // Omitted = keep the current audience (an override, or the registry's starting value).
+  const resolvedAudience: FeatureAudience =
+    audience ?? current?.audience ?? registryEntry.defaultAudience ?? 'all';
 
   const row = await upsertFeatureOverride(
     key,
@@ -240,6 +250,7 @@ export async function updateFeature(
     resolvedModel,
     adminPhone,
     resolvedEnabledAt,
+    resolvedAudience,
   );
   invalidateFeatureCache();
   await logAdminAction(adminPhone, 'PUT /v1/admin/features', {
@@ -248,6 +259,7 @@ export async function updateFeature(
     pricePaise: resolvedPrice,
     originalPricePaise: resolvedOriginalPrice,
     model: resolvedModel,
+    audience: resolvedAudience,
   });
 
   return {
@@ -260,6 +272,8 @@ export async function updateFeature(
     model: row.enabled ? row.model : null,
     modelOptions: [...(registryEntry.modelOptions ?? [])],
     tag: registryEntry.tag ?? null,
+    audience: row.audience ?? registryEntry.defaultAudience ?? 'all',
+    defaultAudience: registryEntry.defaultAudience ?? 'all',
   };
 }
 

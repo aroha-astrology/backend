@@ -151,6 +151,8 @@ describe('listFeaturesForAdmin', () => {
       model: null,
       modelOptions: [],
       tag: null,
+      audience: 'all',
+      defaultAudience: 'all',
     });
     // A key with no override falls back to its registry default.
     const navHome = result.find((f) => f.key === 'nav.home');
@@ -164,6 +166,8 @@ describe('listFeaturesForAdmin', () => {
       model: null,
       modelOptions: [],
       tag: null,
+      audience: 'all',
+      defaultAudience: 'all',
     });
   });
 
@@ -215,6 +219,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       null,
+      'all',
     );
     expect(state.invalidateFeatureCache).toHaveBeenCalledTimes(1);
     expect(state.logAdminAction).toHaveBeenCalledWith(
@@ -232,6 +237,8 @@ describe('updateFeature', () => {
       model: null,
       modelOptions: [],
       tag: null,
+      audience: 'all',
+      defaultAudience: 'all',
     });
   });
 
@@ -258,6 +265,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       null,
+      'all',
     );
   });
 
@@ -284,6 +292,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       null,
+      'all',
     );
   });
 
@@ -310,6 +319,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       null,
+      'all',
     );
   });
 
@@ -334,6 +344,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       null,
+      'all',
     );
   });
 
@@ -358,6 +369,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       null,
+      'all',
     );
     expect(result.pricePaise).toBe(14900);
     expect(result.originalPricePaise).toBe(49900);
@@ -394,6 +406,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       new Date('2026-09-04T12:00:00Z'),
+      'all',
     );
     vi.useRealTimers();
   });
@@ -428,6 +441,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       originalEnabledAt,
+      'all',
     );
   });
 
@@ -461,6 +475,7 @@ describe('updateFeature', () => {
       null,
       '+919999111111',
       originalEnabledAt,
+      'all',
     );
   });
 });

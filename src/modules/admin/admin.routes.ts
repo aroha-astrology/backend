@@ -221,7 +221,7 @@ const updateFeatureRoute = createRoute({
 });
 
 adminRouter.openapi(updateFeatureRoute, async (c) => {
-  const { key, enabled, pricePaise, originalPricePaise, model } = c.req.valid('json');
+  const { key, enabled, pricePaise, originalPricePaise, model, audience } = c.req.valid('json');
   const row = await updateFeature(
     key,
     enabled,
@@ -229,6 +229,7 @@ adminRouter.openapi(updateFeatureRoute, async (c) => {
     originalPricePaise,
     model,
     adminPhoneOf(c),
+    audience,
   );
   return c.json(row, 200);
 });

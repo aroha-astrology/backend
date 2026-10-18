@@ -1,6 +1,6 @@
-import { FEATURE_REGISTRY, offeredModel } from '../../config/features.js';
+import { FEATURE_REGISTRY, offeredModel, type FeatureAudience } from '../../config/features.js';
 import { logger } from '../../lib/logger.js';
-import { findAllFeatureOverrides } from './features.repo.js';
+import { findAllFeatureOverrides, findUserSkin } from './features.repo.js';
 import {
   listGroupIdsForUser,
   listAllGroupFeatureOverrides,
@@ -19,6 +19,10 @@ export interface ResolvedFeature {
    * use the global default model — either because the key declares no `modelOptions`, or
    * because its toggle is off (the kill switch). See `modelOf()`. */
   model: string | null;
+  /** Which section the feature is for ('all', 'classic' or 'cosmic'). Already folded into `enabled` by
+   * `resolveFeaturesForUser`; the global resolution reports it so the admin board can show it.
+   * Optional so a hand-built row (tests, older callers) reads as 'all'. */
+  audience?: FeatureAudience;
   /** When this key was last flipped false->true by an admin — see schema.ts's featureFlags.enabledAt
    * doc comment. Null for a key still on its registry default (never explicitly enabled). */
   enabledAt: Date | null;
@@ -43,6 +47,7 @@ function registryDefaults(): Record<string, ResolvedFeature> {
       pricePaise: feature.defaultPricePaise ?? null,
       originalPricePaise: feature.defaultOriginalPricePaise ?? null,
       model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
+      audience: feature.defaultAudience ?? 'all',
       enabledAt: null,
     };
   }
@@ -80,6 +85,7 @@ export async function resolveFeatures(): Promise<Record<string, ResolvedFeature>
         // the toggle off is a one-click revert that doesn't require remembering which model
         // was the default. See FeatureDef.modelOptions.
         model: row.enabled ? offeredModel(row.key, row.model ?? def.defaultModel ?? null) : null,
+        audience: row.audience ?? def.defaultAudience ?? 'all',
         enabledAt: row.enabledAt,
       };
     }
@@ -162,6 +168,22 @@ export async function payoutOf(userId: string, key: string, fallback: number): P
 }
 
 /**
+ * Is a new (ship-dark) switch ON for this user? Fails CLOSED: an unknown key, or one with no
+ * resolved row, counts as off — the opposite of `requireFeature`, because every v7 switch must
+ * do nothing until the owner turns it on (for everyone, or for an admin user group to try it).
+ */
+export async function isFeatureOn(userId: string, key: string): Promise<boolean> {
+  const features = await resolveFeaturesForUser(userId);
+  return features[key]?.enabled === true;
+}
+
+/** `isFeatureOn` for callers with no user yet (account creation): the global switch only. */
+export async function isFeatureOnGlobally(key: string): Promise<boolean> {
+  const features = await resolveFeatures();
+  return features[key]?.enabled === true;
+}
+
+/**
  * `payoutOf` for callers with no user yet — account creation, and the
  * signed-out sign-in screen. Same disabled-pays-nothing rule, but resolved
  * globally: a not-yet-created account belongs to no group.
@@ -226,23 +248,23 @@ export function invalidateGroupOverrideCache(): void {
  * `resolveFeatures()`: a group-lookup or group-override DB error degrades to
  * the global result rather than blanking the user's flags entirely.
  */
-export async function resolveFeaturesForUser(
+async function resolveWithGroups(
   userId: string,
-): Promise<Record<string, ResolvedFeature>> {
+): Promise<{ features: Record<string, ResolvedFeature>; groupEnabled: ReadonlySet<string> }> {
   const base = await resolveFeatures();
 
   let groupIds: string[];
   let overrides: AllGroupFeatureOverride[];
   try {
     groupIds = await listGroupIdsForUser(userId);
-    if (groupIds.length === 0) return base;
+    if (groupIds.length === 0) return { features: base, groupEnabled: NO_KEYS };
     overrides = await cachedGroupOverrides();
   } catch (err) {
     logger.error(
       { err, userId },
       'resolveFeaturesForUser: group lookup failed, falling back to base result',
     );
-    return base;
+    return { features: base, groupEnabled: NO_KEYS };
   }
 
   const memberGroupIds = new Set(groupIds);
@@ -266,7 +288,7 @@ export async function resolveFeaturesForUser(
     }
   }
 
-  if (disabledKeys.size === 0 && enabledKeys.size === 0) return base;
+  if (disabledKeys.size === 0 && enabledKeys.size === 0) return { features: base, groupEnabled: NO_KEYS };
 
   const merged: Record<string, ResolvedFeature> = {};
   for (const [key, value] of Object.entries(base)) {
@@ -277,6 +299,7 @@ export async function resolveFeaturesForUser(
         pricePaise: value.pricePaise,
         originalPricePaise: value.originalPricePaise,
         model: value.model,
+        audience: value.audience,
         enabledAt: value.enabledAt,
       };
     } else if (enabledKeys.has(key)) {
@@ -288,11 +311,69 @@ export async function resolveFeaturesForUser(
         // the global model), not "force null" — same convention `modelOf`
         // already uses for the global row.
         model: enabledModelByKey.get(key) ?? value.model,
+        audience: value.audience,
         enabledAt: value.enabledAt,
       };
     } else {
       merged[key] = value;
     }
   }
-  return merged;
+  return { features: merged, groupEnabled: enabledKeys };
+}
+
+const NO_KEYS: ReadonlySet<string> = new Set();
+
+/** How long a user's picked look is remembered in-process; same order as the feature cache. */
+const EXPERIENCE_TTL_MS = 30_000;
+const experienceCache = new Map<string, { audience: 'classic' | 'cosmic'; expiresAt: number }>();
+
+/** The section a user is in: 'cosmic' once they pick the international look, else 'classic' (also while unpicked). */
+async function experienceOf(userId: string): Promise<'classic' | 'cosmic'> {
+  const hit = experienceCache.get(userId);
+  if (hit && hit.expiresAt > Date.now()) return hit.audience;
+  const skin = await findUserSkin(userId);
+  const audience = skin === 'MODERN_COSMIC' ? 'cosmic' : 'classic';
+  experienceCache.set(userId, { audience, expiresAt: Date.now() + EXPERIENCE_TTL_MS });
+  return audience;
+}
+
+/** Forget a user's remembered look, so a change of experience shows at once. */
+export function invalidateExperienceCache(userId: string): void {
+  experienceCache.delete(userId);
+}
+
+/**
+ * The feature map for one user: `resolveWithGroups` above, then the audience filter. A feature
+ * whose audience is 'classic' or 'cosmic' is switched off for a user in the other section, even
+ * if its toggle is on. Two things skip the filter: an audience of 'all' (the common case, which
+ * costs nothing: no extra lookup happens until some enabled feature has a narrower audience),
+ * and a feature switched on for one of the user's admin groups, so the owner can try an
+ * international feature from a classic-look test account.
+ *
+ * Must never throw: if the user's look cannot be read, the filter is skipped and the result is
+ * the group-resolved map, the same fail-safe discipline as the rest of this file.
+ */
+export async function resolveFeaturesForUser(
+  userId: string,
+): Promise<Record<string, ResolvedFeature>> {
+  const { features, groupEnabled } = await resolveWithGroups(userId);
+
+  const narrowed = Object.entries(features).filter(
+    ([key, f]) => f.enabled && (f.audience ?? 'all') !== 'all' && !groupEnabled.has(key),
+  );
+  if (narrowed.length === 0) return features;
+
+  let experience: 'classic' | 'cosmic';
+  try {
+    experience = await experienceOf(userId);
+  } catch (err) {
+    logger.error({ err, userId }, 'resolveFeaturesForUser: audience lookup failed, filter skipped');
+    return features;
+  }
+
+  const out = { ...features };
+  for (const [key, f] of narrowed) {
+    if (f.audience !== experience) out[key] = { ...f, enabled: false, model: null };
+  }
+  return out;
 }

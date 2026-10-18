@@ -11,6 +11,7 @@ import {
   updateUserById,
 } from '../users/users.repo.js';
 import { globalPayoutOf } from '../features/features.service.js';
+import { openingBalanceForNewUser } from '../rewards/signup-drip.js';
 
 /** Only used if the feature registry somehow has no price for the key — see config/features.ts. */
 export const SIGNUP_BONUS_FALLBACK_PAISE = 20100;
@@ -77,13 +78,15 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
   }
 
   const phoneE164 = typeof token.phone_number === 'string' ? token.phone_number : null;
-  const walletBalancePaise = await signupBonusPaise();
+  // The opening balance: the whole bonus now, or stage 1 of 3 while money.signupDrip is on.
+  const { walletBalancePaise, signupDrip } = await openingBalanceForNewUser(signupBonusPaise);
   try {
     const created = await insertUser({
       firebaseUid: token.uid,
       phoneE164,
       email,
       walletBalancePaise,
+      signupDrip,
     });
     return finish(created, true);
   } catch (err) {
@@ -131,6 +134,7 @@ export async function establishSession(token: DecodedIdToken): Promise<Establish
         phoneE164,
         email: null,
         walletBalancePaise,
+        signupDrip,
       });
       return finish(created, true);
     }

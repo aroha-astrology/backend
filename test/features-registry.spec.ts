@@ -88,6 +88,14 @@ describe('roadmap features (tag "new")', () => {
       'paid.digitalYantra',
       'paid.digitalWallpaper',
       'nav.relocation',
+      'money.coins',
+      'money.coinPacks',
+      'money.razorpayIntl',
+      'money.signupDrip',
+      'money.freeProfiles',
+      'money.houseOffer',
+      'money.voiceSlices',
+      'money.passCoins',
     ];
     const tagged = new Set(NEW.map((f) => f.key));
     for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);

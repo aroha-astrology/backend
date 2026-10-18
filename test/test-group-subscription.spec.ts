@@ -103,6 +103,9 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
     lastFreeFollowUpAt: null,
     questionCredits: 0,
     groupQuestionsUsed: 0,
+    freeProfilesUsed: 0,
+    signupDrip: false,
+    uiSkin: null,
     groupQuestionsPeriodStart: null,
   };
 

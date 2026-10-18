@@ -44,6 +44,7 @@ describe('resolveFeatures — merge behavior', () => {
         // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
         // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
         model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
+        audience: feature.defaultAudience ?? 'all',
         // Never explicitly enabled by an admin (still on its registry default).
         enabledAt: null,
       });
@@ -72,6 +73,8 @@ describe('resolveFeatures — merge behavior', () => {
       pricePaise: 12345,
       originalPricePaise: 19999,
       model: null,
+      // The override row has no audience, so the registry's starting audience applies.
+      audience: target.defaultAudience ?? 'all',
       enabledAt,
     });
   });
@@ -99,6 +102,7 @@ describe('resolveFeatures — merge behavior', () => {
         // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
         // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
         model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
+        audience: feature.defaultAudience ?? 'all',
         // Never explicitly enabled by an admin (still on its registry default).
         enabledAt: null,
       });
@@ -186,6 +190,7 @@ describe('resolveFeatures — DB failure fallback', () => {
         // Only the `ai` model-picker keys carry a defaultModel, and a disabled key resolves
         // to null (= use the global GEMINI_MODEL) — see FeatureDef.modelOptions.
         model: feature.defaultEnabled ? (feature.defaultModel ?? null) : null,
+        audience: feature.defaultAudience ?? 'all',
         // Never explicitly enabled by an admin (still on its registry default).
         enabledAt: null,
       });

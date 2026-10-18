@@ -11,11 +11,32 @@
 
 import { SELECTABLE_OMNIRUSH_MODELS } from './omnirush-models.js';
 
+/**
+ * Which section of the app a feature is for. 'classic' = users on the Indian look (Classic Vedic),
+ * 'cosmic' = users on the international look (Modern Cosmic), 'all' = both. A user who has not
+ * picked a look yet counts as classic. The owner changes it per feature in Admin -> Features.
+ */
+export type FeatureAudience = 'all' | 'classic' | 'cosmic';
+
+export const FEATURE_AUDIENCES: readonly FeatureAudience[] = ['all', 'classic', 'cosmic'];
+
 export interface FeatureDef {
   key: string;
   label: string;
-  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral' | 'ai' | 'rewards' | 'chat';
+  group:
+    | 'nav'
+    | 'home'
+    | 'paid'
+    | 'reports'
+    | 'panchang'
+    | 'referral'
+    | 'ai'
+    | 'rewards'
+    | 'chat'
+    | 'money';
   defaultEnabled: boolean;
+  /** Starting audience; 'all' when absent. An admin override on the board wins. */
+  defaultAudience?: FeatureAudience;
   /**
    * For `paid`/`reports` keys this is a PRICE the user is charged. For
    * `referral` keys it is a PAYOUT the user receives (or, for the cap, a
@@ -914,6 +935,78 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     key: 'nav.relocation',
     label: 'Aroha Relocation — compare cities for career, love, money and more (Aroha Pass only)',
     group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+
+  // =========================================================================
+  // money — Aroha Coins and the v7 price offers (Sprint 1 of the v7 build)
+  // =========================================================================
+  // 1 Aroha Coin = ₹1 = 100 paise, so the wallet itself does not change. Every switch in this
+  // group ships OFF (owner's rule, 2026-10-18) and does nothing while off. Turn each on from
+  // Admin -> Features, or enable it for an admin user group first to try it.
+  {
+    key: 'money.coins',
+    label: 'Aroha Coins — show 🪙 coins instead of ₹ everywhere in the app (₹ stays only on the payment sheet)',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'money.coinPacks',
+    label: 'Coin packs — the 4 packs (100 / 330 / 700 / 1,800 coins) replace the current top-up amounts',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'money.razorpayIntl',
+    label: 'Razorpay for coins and the Pass on the website in USD / EUR / GBP and more (needs Razorpay International Payments)',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'money.signupDrip',
+    label: 'Signup bonus in 3 stages (day 1, first check-in on a later day, first extra profile) instead of all at once',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // The three stage amounts. Used only while money.signupDrip is on; an amount set to 0 or its
+  // toggle turned off skips that stage.
+  { key: 'money.signupFirst', label: 'Signup bonus stage 1 — on signup (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 10100 },
+  { key: 'money.signupSecond', label: 'Signup bonus stage 2 — first check-in on a later day (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 5000 },
+  { key: 'money.signupThird', label: 'Signup bonus stage 3 — first extra profile added (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 5000 },
+  {
+    key: 'money.freeProfiles',
+    label: 'Extra profiles — the first 3 are free, then the price below (free with Aroha Pass)',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  { key: 'money.profileExtra', label: 'Extra profile after the free ones (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 9900 },
+  {
+    key: 'money.houseOffer',
+    label: 'House insights — house 1 and the current dasha house free, single houses and an all-12 bundle at the prices below',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  { key: 'money.houseSingle', label: 'One house, while the house offer is on (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 2500 },
+  { key: 'money.houseBundle', label: 'All 12 houses in one go, while the house offer is on (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 14900 },
+  {
+    key: 'money.voiceSlices',
+    label: 'Voice calls billed in 15-second slices after the free minutes, instead of whole minutes',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  { key: 'money.voiceSlice', label: 'Voice call, per 15 seconds, while slices are on (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 500 },
+  {
+    key: 'money.passCoins',
+    label: 'Aroha Pass monthly coin gift — Gold 100, Platinum 200 each month',
+    group: 'money',
     defaultEnabled: false,
     tag: 'new',
   },
