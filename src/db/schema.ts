@@ -333,6 +333,18 @@ export const users = pgTable(
     currentTimezone: text('current_timezone'),
     currentCountry: text('current_country'),
 
+    // --- sky context: home place, travel and NRI mode (migration 0094) ----
+    /** The place the user calls home (not their birth place). */
+    homeLocation: jsonb('home_location').$type<PlaceOfBirth>(),
+    /** IANA zone of home; adopted from the device the first time the travel pill is on. */
+    homeTimezone: text('home_timezone'),
+    /** HOME, TRAVEL_SYNCED (times for where the device is) or TRAVEL_DISMISSED (keep home while away). */
+    skyMode: text('sky_mode').$type<'HOME' | 'TRAVEL_SYNCED' | 'TRAVEL_DISMISSED'>().notNull().default('HOME'),
+    /** The device zone the user said "keep home" for; asked again when it changes. */
+    skyDismissedTz: text('sky_dismissed_tz'),
+    /** Lives outside India and wants the Delhi times beside the local ones. */
+    isNri: boolean('is_nri').notNull().default(false),
+
     // --- localization ------------------------------------------------------
     locale: text('locale'),
     contentLanguage: text('content_language'),

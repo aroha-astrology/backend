@@ -1022,6 +1022,20 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     tag: 'new',
   },
   {
+    key: 'experience.travelPill',
+    label: 'Travel pill — when the phone is in another time zone than home, offer to show Panchang and daily times for where the user is (they can keep home instead)',
+    group: 'experience',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'experience.nriMode',
+    label: 'NRI mode — a Settings switch for people living outside India: Panchang shows local times beside Delhi (IST)',
+    group: 'experience',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
     key: 'experience.picker',
     label: 'Choose your experience — every user picks Classic Vedic or Modern Cosmic once (onboarding, or on next open for existing users); Settings then allows one free change and one every 30 days',
     group: 'experience',
