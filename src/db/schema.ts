@@ -395,6 +395,10 @@ export const users = pgTable(
     signupDrip: boolean('signup_drip').notNull().default(false),
     /** The experience the user picked: 'CLASSIC_VEDIC' or 'MODERN_COSMIC'; null = not picked yet (counts as classic). Migration 0092. */
     uiSkin: text('ui_skin').$type<'CLASSIC_VEDIC' | 'MODERN_COSMIC'>(),
+    /** When the look was last CHANGED (not first picked); the 30-day wait counts from here. Migration 0093. */
+    uiSkinChangedAt: timestamp('ui_skin_changed_at', { withTimezone: true }),
+    /** True once the user used their one free change of look. Migration 0093. */
+    uiSkinFreeChangeUsed: boolean('ui_skin_free_change_used').notNull().default(false),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
@@ -3291,6 +3295,32 @@ export const geminiKeys = pgTable('gemini_keys', {
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedBy: text('updated_by'),
+});
+
+/** One row per pick or change of look, for support and the admin Users page (migration 0093). */
+export const uiSkinChanges = pgTable('ui_skin_changes', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  fromSkin: text('from_skin'),
+  toSkin: text('to_skin').notNull(),
+  kind: text('kind').$type<'first_pick' | 'free_change' | 'change' | 'reset'>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+/** Small owner-edited JSON documents; key 'home.layout' is Admin -> Home Layout (migration 0093). */
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),

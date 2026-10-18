@@ -47,6 +47,7 @@ const baseOrder = {
   createdAt: new Date('2026-07-16T00:00:00Z'),
   paidAt: null,
   verifiedAt: null,
+  chargedMinor: null,
 };
 
 beforeEach(() => {

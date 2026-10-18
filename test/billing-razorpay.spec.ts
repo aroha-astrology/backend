@@ -53,6 +53,7 @@ const baseOrder = {
   createdAt: new Date('2026-08-02T00:00:00Z'),
   paidAt: null,
   verifiedAt: null,
+  chargedMinor: null,
 };
 
 const goodParams = {

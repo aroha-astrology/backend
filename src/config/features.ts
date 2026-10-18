@@ -33,7 +33,8 @@ export interface FeatureDef {
     | 'ai'
     | 'rewards'
     | 'chat'
-    | 'money';
+    | 'money'
+    | 'experience';
   defaultEnabled: boolean;
   /** Starting audience; 'all' when absent. An admin override on the board wins. */
   defaultAudience?: FeatureAudience;
@@ -1007,6 +1008,16 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     key: 'money.passCoins',
     label: 'Aroha Pass monthly coin gift — Gold 100, Platinum 200 each month',
     group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // =========================================================================
+  // experience — the two looks and the Home order (Sprint 2 of the v7 build)
+  // =========================================================================
+  {
+    key: 'experience.picker',
+    label: 'Choose your experience — every user picks Classic Vedic or Modern Cosmic once (onboarding, or on next open for existing users); Settings then allows one free change and one every 30 days',
+    group: 'experience',
     defaultEnabled: false,
     tag: 'new',
   },

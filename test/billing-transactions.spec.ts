@@ -125,6 +125,7 @@ const baseOrder = {
   createdAt: new Date('2026-07-10T00:00:00Z'),
   paidAt: new Date('2026-07-10T00:00:01Z'),
   verifiedAt: new Date('2026-07-10T00:00:01Z'),
+  chargedMinor: null,
 };
 
 const baseLedgerRow = {
