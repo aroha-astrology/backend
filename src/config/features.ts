@@ -1015,6 +1015,13 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // experience — the two looks and the Home order (Sprint 2 of the v7 build)
   // =========================================================================
   {
+    key: 'experience.homeLayout',
+    label: "Home card order set by the owner (Admin → Home Layout) — switched on for an admin user group only, that group sees the draft; switched on for everyone, everyone sees the published order",
+    group: 'experience',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
     key: 'experience.picker',
     label: 'Choose your experience — every user picks Classic Vedic or Modern Cosmic once (onboarding, or on next open for existing users); Settings then allows one free change and one every 30 days',
     group: 'experience',
