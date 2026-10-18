@@ -326,6 +326,27 @@ export async function consumeExpiringCredits(
 }
 
 /**
+ * Takes one of the free extra-profile slots, once per call, only while fewer than `max` are used.
+ * One conditional UPDATE, so two profiles created at the same moment cannot both take the last slot.
+ */
+export async function claimFreeProfileSlot(userId: string, max: number): Promise<boolean> {
+  const [row] = await db
+    .update(users)
+    .set({ freeProfilesUsed: sql`${users.freeProfilesUsed} + 1` })
+    .where(and(eq(users.id, userId), lt(users.freeProfilesUsed, max)))
+    .returning({ used: users.freeProfilesUsed });
+  return Boolean(row);
+}
+
+/** Gives a free slot back (the profile it was taken for could not be created). Never goes below 0. */
+export async function releaseFreeProfileSlot(userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ freeProfilesUsed: sql`GREATEST(${users.freeProfilesUsed} - 1, 0)` })
+    .where(eq(users.id, userId));
+}
+
+/**
  * Optional replay guard for a wallet write (migration 0092). With a key, the
  * write happens at most once per (user, key): a retry of the same request, or a
  * second refund for the same charge, finds the first row and does nothing.

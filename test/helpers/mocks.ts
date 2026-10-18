@@ -76,6 +76,9 @@ export function makeUserRow(overrides: Partial<UserRow> = {}): UserRow {
     unlockedHouses: [],
     gemstoneUnlockedAt: null,
     gemstoneWeightKg: null,
+    freeProfilesUsed: 0,
+    signupDrip: false,
+    uiSkin: null,
     ...overrides,
   };
 }

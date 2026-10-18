@@ -1,4 +1,5 @@
 import type { NewUserRow, NewUserConsentLogRow, UserRow } from '../../db/schema.js';
+import { FREE_PROFILE_SLOTS } from '../../config/money.js';
 import { env } from '../../config/env.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { Errors } from '../../lib/errors.js';
@@ -206,6 +207,9 @@ export function toUserDto(
     platform: row.platform,
     walletBalancePaise: row.walletBalancePaise,
     questionCredits: row.questionCredits,
+    // Free extra-profile slots still open. Meaningful only while money.freeProfiles is on (the
+    // app reads that switch from `features`); 0 otherwise-or-when-used-up is the same to the UI.
+    freeProfilesLeft: Math.max(0, FREE_PROFILE_SLOTS - row.freeProfilesUsed),
     nextReportVote: row.nextReportVote,
     // When the free chat follow-up is next usable; null = usable now. See
     // lib/chat-follow-up.ts — the server re-checks atomically on the tap itself.

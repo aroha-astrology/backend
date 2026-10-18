@@ -14,6 +14,11 @@ const state = vi.hoisted(() => ({
   createBirthProfile: vi.fn(),
   requestKundliGeneration: vi.fn(),
   touchUserLastActive: vi.fn(),
+  claimFreeProfileSlot: vi.fn(),
+  releaseFreeProfileSlot: vi.fn(),
+  isFeatureOn: vi.fn(),
+  hasPass: vi.fn(),
+  grantSignupStage: vi.fn(),
 }));
 
 vi.mock('../src/config/db.js', () => {
@@ -38,6 +43,21 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   addWalletBalance: state.addWalletBalance,
   updateUserById: state.updateUserById,
   touchUserLastActive: state.touchUserLastActive,
+  claimFreeProfileSlot: state.claimFreeProfileSlot,
+  releaseFreeProfileSlot: state.releaseFreeProfileSlot,
+  refundKeyFor: (key: string) => `refund:${key}`,
+}));
+
+// The v7 switches are off unless a test turns one on; everything else in features.service is real.
+vi.mock('../src/modules/features/features.service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/modules/features/features.service.js')>()),
+  isFeatureOn: state.isFeatureOn,
+}));
+
+vi.mock('../src/lib/entitlements.js', () => ({ hasPass: state.hasPass }));
+
+vi.mock('../src/modules/rewards/signup-drip.js', () => ({
+  grantSignupStage: state.grantSignupStage,
 }));
 
 vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
@@ -106,6 +126,11 @@ beforeEach(() => {
   state.createBirthProfile.mockReset();
   state.requestKundliGeneration.mockReset().mockResolvedValue(undefined);
   state.touchUserLastActive.mockReset().mockResolvedValue(undefined);
+  state.claimFreeProfileSlot.mockReset().mockResolvedValue(false);
+  state.releaseFreeProfileSlot.mockReset().mockResolvedValue(undefined);
+  state.isFeatureOn.mockReset().mockResolvedValue(false);
+  state.hasPass.mockReset().mockResolvedValue(false);
+  state.grantSignupStage.mockReset().mockResolvedValue(0);
 });
 
 describe('GET /v1/profiles', () => {
@@ -175,7 +200,11 @@ describe('POST /v1/profiles', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('id-1', 20000, 'profile_creation');
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('id-1', 20000, 'profile_creation', {
+      idempotencyKey: expect.stringMatching(/^profile_creation:/),
+    });
+    // Switch off: no free slot is taken and the signup stage 3 check still runs (a no-op for most users).
+    expect(state.claimFreeProfileSlot).not.toHaveBeenCalled();
     expect(state.createBirthProfile).toHaveBeenCalledWith(
       'id-1',
       expect.objectContaining(CREATE_BODY),
@@ -215,7 +244,13 @@ describe('POST /v1/profiles', () => {
     });
 
     expect(res.status).toBe(500);
-    expect(state.addWalletBalance).toHaveBeenCalledWith('id-1', 20000, 'refund:profile_creation');
+    expect(state.addWalletBalance).toHaveBeenCalledWith('id-1', 20000, 'refund:profile_creation', {
+      // The refund carries the key that matches this attempt's charge, so it can be paid only once.
+      idempotencyKey: expect.stringMatching(/^refund:profile_creation:/),
+    });
+    const charge = state.deductWalletBalance.mock.calls[0]![3] as { idempotencyKey: string };
+    const refund = state.addWalletBalance.mock.calls[0]![3] as { idempotencyKey: string };
+    expect(refund.idempotencyKey).toBe(`refund:${charge.idempotencyKey}`);
     expect(state.updateUserById).not.toHaveBeenCalled();
     expect(state.requestKundliGeneration).not.toHaveBeenCalled();
   });
@@ -252,6 +287,77 @@ describe('POST /v1/profiles', () => {
     expect(state.addWalletBalance).not.toHaveBeenCalled();
     // Kundli generation still fires for the new (just not-yet-active) profile.
     expect(state.requestKundliGeneration).toHaveBeenCalledWith('id-1', 'new-profile');
+  });
+});
+
+describe('POST /v1/profiles with money.freeProfiles on', () => {
+  const post = () =>
+    createApp().request('/v1/profiles', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify(CREATE_BODY),
+    });
+
+  beforeEach(() => {
+    state.isFeatureOn.mockImplementation((_user: string, key: string) =>
+      Promise.resolve(key === 'money.freeProfiles'),
+    );
+    state.deductWalletBalance.mockResolvedValue(true);
+    state.createBirthProfile.mockResolvedValue(makeBirthProfileRow({ id: 'new-profile' }));
+  });
+
+  it('a free slot takes no money and no ledger row', async () => {
+    state.claimFreeProfileSlot.mockResolvedValue(true);
+    const res = await post();
+    expect(res.status).toBe(201);
+    expect(state.claimFreeProfileSlot).toHaveBeenCalledWith('id-1', 3);
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.grantSignupStage).toHaveBeenCalledWith('id-1', 3);
+  });
+
+  it('with the slots used up a Pass member still adds a profile free', async () => {
+    state.claimFreeProfileSlot.mockResolvedValue(false);
+    state.hasPass.mockResolvedValue(true);
+    const res = await post();
+    expect(res.status).toBe(201);
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('with the slots used up and no Pass the price is the money.profileExtra amount (99 coins)', async () => {
+    state.claimFreeProfileSlot.mockResolvedValue(false);
+    const res = await post();
+    expect(res.status).toBe(201);
+    expect(state.deductWalletBalance).toHaveBeenCalledWith('id-1', 9900, 'profile_creation', {
+      idempotencyKey: expect.stringMatching(/^profile_creation:/),
+    });
+  });
+
+  it('a profile that fails to be created gives the free slot back, and charges nothing to refund', async () => {
+    state.claimFreeProfileSlot.mockResolvedValue(true);
+    state.createBirthProfile.mockRejectedValue(new Error('db exploded'));
+    const res = await post();
+    expect(res.status).toBe(500);
+    expect(state.releaseFreeProfileSlot).toHaveBeenCalledWith('id-1');
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('a paid profile that fails to be created is refunded and no slot is released', async () => {
+    state.claimFreeProfileSlot.mockResolvedValue(false);
+    state.createBirthProfile.mockRejectedValue(new Error('db exploded'));
+    const res = await post();
+    expect(res.status).toBe(500);
+    expect(state.addWalletBalance).toHaveBeenCalledWith('id-1', 9900, 'refund:profile_creation', {
+      idempotencyKey: expect.stringMatching(/^refund:profile_creation:/),
+    });
+    expect(state.releaseFreeProfileSlot).not.toHaveBeenCalled();
+  });
+
+  it('still answers 409 when the price cannot be paid', async () => {
+    state.claimFreeProfileSlot.mockResolvedValue(false);
+    state.deductWalletBalance.mockResolvedValue(false);
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect(state.createBirthProfile).not.toHaveBeenCalled();
   });
 });
 

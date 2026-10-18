@@ -1,8 +1,19 @@
 import type { BirthProfileRow, UserRow } from '../../db/schema.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
-import { addWalletBalance, deductWalletBalance, updateUserById } from '../users/users.repo.js';
-import { priceOf } from '../features/features.service.js';
+import crypto from 'node:crypto';
+import {
+  addWalletBalance,
+  claimFreeProfileSlot,
+  deductWalletBalance,
+  refundKeyFor,
+  releaseFreeProfileSlot,
+  updateUserById,
+} from '../users/users.repo.js';
+import { isFeatureOn, priceOf } from '../features/features.service.js';
+import { hasPass } from '../../lib/entitlements.js';
+import { FREE_PROFILE_SLOTS } from '../../config/money.js';
+import { grantSignupStage } from '../rewards/signup-drip.js';
 import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { createBirthProfile } from './birth-profiles.service.js';
 import {
@@ -26,6 +37,9 @@ import type { ProfileDto } from './profiles.schemas.js';
  * `paid.profileCreation` price resolved via `priceOf()` — never this constant.
  */
 export const PROFILE_CREATION_FALLBACK_PAISE = 20000;
+
+/** Fail-open fallback for `money.profileExtra`, the price after the free slots while money.freeProfiles is on. */
+export const PROFILE_EXTRA_FALLBACK_PAISE = 9900;
 
 function primaryProfileDto(user: UserRow): ProfileDto {
   return {
@@ -101,22 +115,53 @@ export async function createProfile(
   // Admin-set price, resolved once and reused for the refund below — the
   // onboarding screen quotes this same resolved value via
   // useFeature('paid.profileCreation'), so the two can't drift.
-  const pricePaise = await priceOf(
+  //
+  // With money.freeProfiles on (v7 offer): the first FREE_PROFILE_SLOTS extra profiles cost nothing,
+  // then a Pass member adds them free, and anyone else pays `money.profileExtra`. With it off the
+  // price is exactly what it always was.
+  let pricePaise = await priceOf(
     user.id,
     'paid.profileCreation',
     PROFILE_CREATION_FALLBACK_PAISE,
   );
+  let tookFreeSlot = false;
+  if (await isFeatureOn(user.id, 'money.freeProfiles')) {
+    if (await claimFreeProfileSlot(user.id, FREE_PROFILE_SLOTS)) {
+      tookFreeSlot = true;
+      pricePaise = 0;
+    } else if (await hasPass(user.id)) {
+      pricePaise = 0;
+    } else {
+      pricePaise = await priceOf(user.id, 'money.profileExtra', PROFILE_EXTRA_FALLBACK_PAISE);
+    }
+  }
 
-  const charged = await deductWalletBalance(user.id, pricePaise, 'profile_creation');
-  if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
+  // One key per attempt: the refund below carries the matching refund key, so a charge can be
+  // given back once and only once, even if this code path is ever retried.
+  const chargeKey = `profile_creation:${crypto.randomUUID()}`;
+  if (pricePaise > 0) {
+    const charged = await deductWalletBalance(user.id, pricePaise, 'profile_creation', {
+      idempotencyKey: chargeKey,
+    });
+    if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
+  }
 
   let created: BirthProfileRow;
   try {
     created = await createBirthProfile(user.id, body);
   } catch (err) {
-    await addWalletBalance(user.id, pricePaise, 'refund:profile_creation').catch(() => {});
+    if (pricePaise > 0) {
+      await addWalletBalance(user.id, pricePaise, 'refund:profile_creation', {
+        idempotencyKey: refundKeyFor(chargeKey),
+      }).catch(() => {});
+    }
+    if (tookFreeSlot) await releaseFreeProfileSlot(user.id).catch(() => {});
     throw err;
   }
+
+  // Stage 3 of the 3-stage signup bonus (money.signupDrip): the first extra profile. A no-op for
+  // everyone who did not sign up under it, and for the second profile onward.
+  void grantSignupStage(user.id, 3);
 
   let activated = true;
   try {

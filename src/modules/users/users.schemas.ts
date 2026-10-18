@@ -276,6 +276,10 @@ export const UserSchema = z
       .number()
       .int()
       .describe('Prepaid chat questions from Question Packs (spent before the wallet)'),
+    freeProfilesLeft: z
+      .number()
+      .int()
+      .describe('Free extra-profile slots still open (counts only while the money.freeProfiles switch is on)'),
     unlockedHouses: z.array(z.number().int()),
     nextReportVote: z.string().nullable(),
     nextFreeFollowUpAt: z

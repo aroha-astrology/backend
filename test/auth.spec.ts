@@ -66,6 +66,8 @@ vi.mock('../src/modules/features/features.service.js', () => ({
   resolveFeaturesForUser: state.resolveFeaturesForUser,
   // The opening wallet balance a new account gets (admin `rewards.signupBonus`).
   globalPayoutOf: state.globalPayoutOf,
+  // money.signupDrip is off in every test here; signup-drip.test covers it on.
+  isFeatureOnGlobally: () => Promise.resolve(false),
 }));
 
 vi.mock('../src/modules/feedback/feedback.repo.js', () => ({
@@ -137,6 +139,8 @@ describe('POST /v1/auth/session', () => {
       phoneE164: '+911111111111',
       email: null,
       walletBalancePaise: 20100,
+
+      signupDrip: false,
     });
     expect(state.globalPayoutOf).toHaveBeenCalledWith('rewards.signupBonus', 20100);
     // Notification fires without awaiting, but in vitest it'll synchronously trigger the mock call
@@ -272,6 +276,8 @@ describe('POST /v1/auth/session', () => {
         phoneE164: null,
         email: 'newuser@example.com',
         walletBalancePaise: 20100,
+
+        signupDrip: false,
       });
     });
 
@@ -390,6 +396,8 @@ describe('POST /v1/auth/session', () => {
         phoneE164: null,
         email: null,
         walletBalancePaise: 20100,
+
+        signupDrip: false,
       });
     });
 
@@ -468,6 +476,8 @@ describe('POST /v1/auth/session', () => {
       phoneE164: '+911111119999',
       email: null,
       walletBalancePaise: 20100,
+
+      signupDrip: false,
     });
   });
 
