@@ -17,6 +17,7 @@ import {
   addWalletBalance,
   unlockHouseForUser,
   unlockGemstoneForUser,
+  unlockAllHousesForUser,
   HOUSE_UNLOCK_FALLBACK_PAISE,
   GEMSTONE_UNLOCK_FALLBACK_PAISE,
 } from '../src/modules/users/users.repo.js';
@@ -215,5 +216,64 @@ describe('unlockGemstoneForUser', () => {
     await unlockGemstoneForUser('user-1', 68);
 
     expect(updateChain.calls.set).toMatchObject({ gemstoneWeightKg: 68 });
+  });
+});
+
+describe('house offer: free houses and the bundle', () => {
+  it('a free house (price 0) unlocks without a ledger row', async () => {
+    const { insertMock } = setupTransaction([{ walletBalancePaise: 5000 }]);
+
+    expect(await unlockHouseForUser('user-1', 7, 0)).toBe(true);
+
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('a paid house still writes its negative ledger row', async () => {
+    const { insertMock, insertChain } = setupTransaction([{ walletBalancePaise: 2500 }]);
+
+    expect(await unlockHouseForUser('user-1', 4, 2500)).toBe(true);
+
+    expect(insertMock).toHaveBeenCalledWith(walletTransactions);
+    expect(insertChain.calls.values).toEqual({
+      userId: 'user-1',
+      delta: -2500,
+      reason: 'house_unlock:4',
+      balanceAfter: 2500,
+    });
+  });
+
+  it('the bundle sets all twelve houses, guards on balance and on a house still being locked, and logs one row', async () => {
+    const { updateChain, insertMock, insertChain } = setupTransaction([{ walletBalancePaise: 1000 }]);
+
+    expect(await unlockAllHousesForUser('user-1', 14900)).toBe(true);
+
+    expect(updateChain.calls.set).toHaveProperty('walletBalancePaise');
+    expect(updateChain.calls.set).toHaveProperty('unlockedHouses');
+    const query = compile(updateChain.calls.where);
+    expect(query.sql).toContain('cardinality');
+    expect(query.params).toEqual(['user-1', 14900]);
+    expect(insertMock).toHaveBeenCalledWith(walletTransactions);
+    expect(insertChain.calls.values).toEqual({
+      userId: 'user-1',
+      delta: -14900,
+      reason: 'house_unlock_all',
+      balanceAfter: 1000,
+    });
+  });
+
+  it('the bundle is refused (false, no ledger row) when the guard fails: short balance or nothing left to unlock', async () => {
+    const { insertMock } = setupTransaction([]);
+
+    expect(await unlockAllHousesForUser('user-1', 14900)).toBe(false);
+
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('a bundle that costs nothing (only free houses left) writes no ledger row', async () => {
+    const { insertMock } = setupTransaction([{ walletBalancePaise: 5000 }]);
+
+    expect(await unlockAllHousesForUser('user-1', 0)).toBe(true);
+
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });

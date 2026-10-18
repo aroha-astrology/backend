@@ -1,7 +1,8 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
-import { resolveFeaturesForUser } from '../features/features.service.js';
+import { isFeatureOn, resolveFeaturesForUser } from '../features/features.service.js';
+import { unlockAllHouses, unlockHouseWithOffer } from '../kundli/house-offer.service.js';
 import { hasGivenFeedback } from '../feedback/feedback.repo.js';
 import {
   ensureReferralCode,
@@ -128,6 +129,28 @@ const unlockHouseRoute = createRoute({
     401: errorResponse('Unauthorized'),
     409: errorResponse('Conflict (Insufficient balance or already unlocked)'),
     422: errorResponse('Validation failed'),
+  },
+});
+
+const unlockAllHousesRoute = createRoute({
+  method: 'post',
+  path: '/me/unlock-all-houses',
+  tags: ['Users'],
+  summary: 'Unlock every house still locked for the bundle price (house offer)',
+  description:
+    'Charges the lower of the bundle price (`money.houseBundle`) and the single-house price for ' +
+    'each house still locked, free houses excluded. 403 FEATURE_DISABLED while the house offer ' +
+    '(`money.houseOffer`) is off.',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser] as const,
+  responses: {
+    200: {
+      description: 'Success',
+      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('The house offer is switched off'),
+    409: errorResponse('Conflict (Insufficient balance or every house already unlocked)'),
   },
 });
 
@@ -347,7 +370,20 @@ usersRouter.openapi(unlockHouseRoute, async (c) => {
   const user = c.get('user');
   const body = c.req.valid('json');
   const profile = await resolveActiveProfileContext(user);
-  await unlockHouse(user.id, profile.birthProfileId, body.houseNumber);
+  // With the house offer on, house 1 and the Mahadasha house are free and the rest cost the single
+  // price; with it off this is exactly the one-price unlock it always was.
+  if (await isFeatureOn(user.id, 'money.houseOffer')) {
+    await unlockHouseWithOffer(user, profile, body.houseNumber);
+  } else {
+    await unlockHouse(user.id, profile.birthProfileId, body.houseNumber);
+  }
+  return c.json({ success: true }, 200);
+});
+
+usersRouter.openapi(unlockAllHousesRoute, async (c) => {
+  const user = c.get('user');
+  const profile = await resolveActiveProfileContext(user);
+  await unlockAllHouses(user, profile);
   return c.json({ success: true }, 200);
 });
 

@@ -360,14 +360,70 @@ export async function unlockHouseForOwnedProfile(
         .returning({ id: birthProfiles.id });
       if (!unlocked) throw new UnlockGuardFailed();
 
-      await tx.insert(walletTransactions).values({
-        userId: ownerUserId,
-        delta: -pricePaise,
-        reason: `house_unlock:${houseNumber}:profile:${id}`,
-        balanceAfter: charged.walletBalancePaise,
-      });
-      await consumeExpiringCredits(tx, ownerUserId, pricePaise);
+      // A free house (price 0, the v7 house offer) unlocks without touching the ledger.
+      if (pricePaise > 0) {
+        await tx.insert(walletTransactions).values({
+          userId: ownerUserId,
+          delta: -pricePaise,
+          reason: `house_unlock:${houseNumber}:profile:${id}`,
+          balanceAfter: charged.walletBalancePaise,
+        });
+        await consumeExpiringCredits(tx, ownerUserId, pricePaise);
+      }
 
+      return true;
+    });
+  } catch (err) {
+    if (err instanceof UnlockGuardFailed) return false;
+    throw err;
+  }
+}
+
+/**
+ * The v7 house bundle for an ADDITIONAL profile: all twelve houses for `pricePaise`. Same two
+ * guarded steps in one transaction as `unlockHouseForOwnedProfile` (charge the owner, then set the
+ * houses on the profile row), so a failed second step rolls the charge back.
+ */
+export async function unlockAllHousesForOwnedProfile(
+  id: string,
+  ownerUserId: string,
+  pricePaise: number,
+): Promise<boolean> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [charged] = await tx
+        .update(users)
+        .set({ walletBalancePaise: sql`${users.walletBalancePaise} - ${pricePaise}` })
+        .where(and(eq(users.id, ownerUserId), gte(users.walletBalancePaise, pricePaise)))
+        .returning({ walletBalancePaise: users.walletBalancePaise });
+      if (!charged) throw new UnlockGuardFailed();
+
+      const [unlocked] = await tx
+        .update(birthProfiles)
+        .set({
+          unlockedHouses: sql`ARRAY[1,2,3,4,5,6,7,8,9,10,11,12]::integer[]`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(birthProfiles.id, id),
+            eq(birthProfiles.ownerUserId, ownerUserId),
+            isNull(birthProfiles.deletedAt),
+            sql`cardinality(coalesce(${birthProfiles.unlockedHouses}, ARRAY[]::integer[])) < 12`,
+          ),
+        )
+        .returning({ id: birthProfiles.id });
+      if (!unlocked) throw new UnlockGuardFailed();
+
+      if (pricePaise > 0) {
+        await tx.insert(walletTransactions).values({
+          userId: ownerUserId,
+          delta: -pricePaise,
+          reason: `house_unlock_all:profile:${id}`,
+          balanceAfter: charged.walletBalancePaise,
+        });
+        await consumeExpiringCredits(tx, ownerUserId, pricePaise);
+      }
       return true;
     });
   } catch (err) {

@@ -29,6 +29,9 @@ import {
   type KundliRequiredField,
 } from './kundli.service.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
+import { isFeatureOn } from '../features/features.service.js';
+import { getHouseOffer } from './house-offer.js';
+import { ensureFreeHousesUnlocked } from './house-offer.service.js';
 
 /** Don't re-run a failed generation on the engine more often than this. */
 const FAILED_RETRY_COOLDOWN_MS = 30_000;
@@ -263,6 +266,47 @@ function fireHouseInsightGeneration(
   });
 }
 
+const HouseOfferSchema = z
+  .object({
+    enabled: z.boolean(),
+    freeHouses: z.array(z.number().int()),
+    singlePaise: z.number().int(),
+    bundlePaise: z.number().int(),
+    bundleDuePaise: z.number().int(),
+    lockedPaidHouses: z.array(z.number().int()),
+    unlockedHouses: z.array(z.number().int()),
+  })
+  .openapi('HouseOffer');
+
+const getHouseOfferRoute = createRoute({
+  method: 'get',
+  path: '/kundli/houses/offer',
+  tags: ['Kundli'],
+  summary: 'The house-insight offer for the active profile (free houses, single and bundle prices)',
+  description:
+    'While the house offer (`money.houseOffer`) is off this answers `enabled: false` and the app ' +
+    'keeps its one-price unlock. While on, it also marks the free houses (house 1 and the current ' +
+    'Mahadasha house) as unlocked, so asking for the offer is what makes them free.',
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: { description: 'The offer', content: { 'application/json': { schema: HouseOfferSchema } } },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+kundliRouter.openapi(getHouseOfferRoute, async (c) => {
+  const user = c.get('user');
+  let profile = await resolveActiveProfileContext(user);
+  if (await isFeatureOn(user.id, 'money.houseOffer')) {
+    const newlyFree = await ensureFreeHousesUnlocked(user, profile);
+    if (newlyFree.length > 0) {
+      profile = { ...profile, unlockedHouses: [...profile.unlockedHouses, ...newlyFree] };
+    }
+  }
+  const offer = await getHouseOffer(user, profile);
+  return c.json({ ...offer, unlockedHouses: profile.unlockedHouses }, 200);
+});
+
 const getHouseInsightRoute = createRoute({
   method: 'get',
   path: '/kundli/houses/{house}/insight',
@@ -290,9 +334,17 @@ const getHouseInsightRoute = createRoute({
 
 kundliRouter.openapi(getHouseInsightRoute, async (c) => {
   const user = c.get('user');
-  const profile = await resolveActiveProfileContext(user);
+  let profile = await resolveActiveProfileContext(user);
   const { house } = c.req.valid('param');
   const { language } = c.req.valid('query');
+
+  // House offer (money.houseOffer): a free house (house 1, the Mahadasha house) that is not marked
+  // unlocked yet is unlocked here, so it never shows a lock even if the app skipped the offer call.
+  if (!profile.unlockedHouses.includes(house) && (await isFeatureOn(user.id, 'money.houseOffer'))) {
+    if ((await ensureFreeHousesUnlocked(user, profile)).includes(house)) {
+      profile = { ...profile, unlockedHouses: [...profile.unlockedHouses, house] };
+    }
+  }
 
   if (!profile.unlockedHouses.includes(house)) {
     return c.json(

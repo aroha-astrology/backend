@@ -1411,13 +1411,54 @@ export async function unlockHouseForUser(
       .returning({ walletBalancePaise: users.walletBalancePaise });
     if (!unlocked) return false;
 
-    await tx.insert(walletTransactions).values({
-      userId,
-      delta: -pricePaise,
-      reason: `house_unlock:${houseNumber}`,
-      balanceAfter: unlocked.walletBalancePaise,
-    });
-    await consumeExpiringCredits(tx, userId, pricePaise);
+    // A free house (price 0, the v7 house offer) unlocks without touching the ledger.
+    if (pricePaise > 0) {
+      await tx.insert(walletTransactions).values({
+        userId,
+        delta: -pricePaise,
+        reason: `house_unlock:${houseNumber}`,
+        balanceAfter: unlocked.walletBalancePaise,
+      });
+      await consumeExpiringCredits(tx, userId, pricePaise);
+    }
+    return true;
+  });
+}
+
+const ALL_HOUSES_SQL = sql`ARRAY[1,2,3,4,5,6,7,8,9,10,11,12]::integer[]`;
+
+/**
+ * Unlocks all twelve houses of the primary profile for `pricePaise` (the v7 house bundle), in one
+ * conditional UPDATE: enough balance AND at least one house still locked. False when either fails,
+ * so a double tap cannot charge twice. A price of 0 (only free houses left) writes no ledger row.
+ */
+export async function unlockAllHousesForUser(userId: string, pricePaise: number): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [unlocked] = await tx
+      .update(users)
+      .set({
+        walletBalancePaise: sql`${users.walletBalancePaise} - ${pricePaise}`,
+        unlockedHouses: ALL_HOUSES_SQL,
+      })
+      .where(
+        and(
+          eq(users.id, userId),
+          gte(users.walletBalancePaise, pricePaise),
+          sql`cardinality(${users.unlockedHouses}) < 12`,
+        ),
+      )
+      .returning({ walletBalancePaise: users.walletBalancePaise });
+    if (!unlocked) return false;
+
+    if (pricePaise > 0) {
+      await tx.insert(walletTransactions).values({
+        userId,
+        delta: -pricePaise,
+        reason: 'house_unlock_all',
+        balanceAfter: unlocked.walletBalancePaise,
+      });
+      await consumeExpiringCredits(tx, userId, pricePaise);
+    }
     return true;
   });
 }
