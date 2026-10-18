@@ -436,25 +436,38 @@ export function buildMatchRecommendation(
  * back to a rounded-to-2-decimal-places key (still shared across nearby
  * users, just not pre-warmed), so no location ever skips the cache.
  */
+/** True for a zone name the runtime knows (e.g. "America/New_York", "Asia/Kolkata", "UTC"). */
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Today's civil date (YYYY-MM-DD) in an IANA zone. */
+export function civilDateIn(timeZone: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(now);
+}
+
 export async function getPanchang(
   lat: number,
   lon: number,
   dateStr?: string,
-  opts: { bypassCache?: boolean; timezoneOffsetHours?: number } = {},
+  opts: {
+    bypassCache?: boolean;
+    timezoneOffsetHours?: number;
+    /** IANA zone of the place (e.g. the device's own zone abroad). Sets the clock times and, with no `dateStr`, "today". */
+    timeZone?: string;
+  } = {},
 ) {
-  const date = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
+  const localDate = dateStr ?? (opts.timeZone ? civilDateIn(opts.timeZone) : undefined);
+  const date = localDate ? new Date(localDate + 'T12:00:00') : new Date();
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const day = date.getDate();
   const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-  const refKey = snapToReferencePoint(lat, lon) ?? roundCoordToLocationKey(lat, lon);
-  if (!opts.bypassCache) {
-    const cached = await findCachedPanchang(isoDate, refKey);
-    if (cached) {
-      return { date: isoDate, ...cached.data };
-    }
-  }
 
   // India's civil clock is a single fixed UTC+5:30 nationwide (anchored to
   // 82.5°E, not local solar longitude) — it is NOT derivable from (lat, lon).
@@ -463,11 +476,24 @@ export async function getPanchang(
   // instead of 5.5 for every city west of ~78.75°E — i.e. Delhi, Mumbai, and
   // Bengaluru (3 of the 5 warmed reference points), shifting sunrise/sunset
   // and every derived window (Rahu/Gulika/Yamaganda Kaal, Abhijit Muhurta,
-  // Choghadiya, Hora) ~30min early. The app only serves Indian panchang, so
-  // the real civil offset is the default instead of a re-derived approximation.
-  // A caller that knows the place's timezone (the ChatGPT tools resolve cities
-  // worldwide) passes its offset.
-  const timezoneOffset = opts.timezoneOffsetHours ?? 5.5;
+  // Choghadiya, Hora) ~30min early. So IST stays the default. A caller that
+  // knows the place's zone passes it: the app sends the device's IANA zone
+  // (users abroad), the ChatGPT tools pass the resolved city's offset. The
+  // offset is taken at local noon of that date, so DST is right for the day.
+  const timezoneOffset =
+    opts.timezoneOffsetHours ??
+    (opts.timeZone ? tzOffsetHoursForProfile(opts.timeZone, new Date(Date.UTC(year, month - 1, day, 12))) : 5.5);
+
+  // IST rows keep the plain key, so the warmed Indian cache is shared exactly as before. Any other
+  // offset gets its own key: the same coordinates read on another clock give other times.
+  const placeKey = snapToReferencePoint(lat, lon) ?? roundCoordToLocationKey(lat, lon);
+  const refKey = timezoneOffset === 5.5 ? placeKey : `${placeKey}@${timezoneOffset}`;
+  if (!opts.bypassCache) {
+    const cached = await findCachedPanchang(isoDate, refKey);
+    if (cached) {
+      return { date: isoDate, ...cached.data };
+    }
+  }
 
   // The day's tithi, nakshatra, yoga and karana are read at the moment
   // panchangReferenceJd picks (see astro-engine/panchang/index.ts).
@@ -534,6 +560,8 @@ export async function getPanchangMonth(
   month: number,
   lat: number,
   lon: number,
+  /** IANA zone of the place; IST when absent (see getPanchang). */
+  timeZone?: string,
 ): Promise<PanchangMonthResult> {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -544,7 +572,7 @@ export async function getPanchangMonth(
   const days = await Promise.all(
     dayNumbers.map(async (day) => {
       const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const panchang = await getPanchang(lat, lon, isoDate);
+      const panchang = await getPanchang(lat, lon, isoDate, { timeZone });
       const { isFullMoon, isNewMoon, isEkadashi } = classifyTithiForCalendar(panchang.tithi.number);
       if (day === midMonthDay) {
         regionalMonths = panchang.regionalMonths ?? null;

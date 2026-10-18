@@ -293,6 +293,8 @@ export interface PanchangData {
     };
     /** All 24 planetary hours for the day, starting at sunrise. */
     hora?: Hora[];
+    /** 'solarNoon' when the day windows use solar noon ± 6 h (above 55° latitude, day under 4 h or over 20 h). */
+    dayTimesMode?: 'sunrise' | 'solarNoon';
 }
 export type RegionId = 'north' | 'south' | 'west' | 'east' | 'gujarat' | 'odisha' | 'assam' | 'tamil' | 'malayalam' | 'punjab' | 'kannada';
 export type MonthSystem = 'purnimanta' | 'amanta' | 'solar' | 'fixed_solar';

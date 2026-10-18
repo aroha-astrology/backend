@@ -69,14 +69,7 @@ function estimateSunriseSunset(
   cosHourAngle = Math.max(-1, Math.min(1, cosHourAngle));
   const hourAngle = Math.acos(cosHourAngle) * (180 / Math.PI);
 
-  // Solar noon in minutes from midnight (UTC)
-  // Equation of time approximation
-  const B = (360 / 365) * (dayOfYear - 81) * (Math.PI / 180);
-  const equationOfTime = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
-
-  // Solar noon in local time (offset by longitude, 4 min per degree)
-  const solarNoonUTC = 720 - 4 * longitude - equationOfTime; // in minutes from midnight UTC
-  const solarNoonLocal = solarNoonUTC + timezoneOffsetHours * 60;
+  const solarNoonLocal = solarNoonLocalMinutes(dayOfYear, longitude, timezoneOffsetHours);
 
   // Sunrise and sunset
   const sunriseMin = solarNoonLocal - (hourAngle / 360) * 24 * 60;
@@ -94,6 +87,55 @@ function estimateSunriseSunset(
   return {
     sunrise: formatTime(sunriseMin),
     sunset: formatTime(sunsetMin),
+  };
+}
+
+/** Local solar noon in minutes after local midnight (NOAA equation of time, 4 min per degree of longitude). */
+function solarNoonLocalMinutes(dayOfYear: number, longitude: number, timezoneOffsetHours: number): number {
+  const B = (360 / 365) * (dayOfYear - 81) * (Math.PI / 180);
+  const equationOfTime = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+  const solarNoonUTC = 720 - 4 * longitude - equationOfTime; // in minutes from midnight UTC
+  return solarNoonUTC + timezoneOffsetHours * 60;
+}
+
+/** Above this latitude a day can be too short or too long to cut Rahu Kaal and the other windows from. */
+export const HIGH_LATITUDE_DEG = 55;
+/** Day lengths (minutes) outside this range switch the windows to solar noon ± 6 h. */
+export const MIN_USABLE_DAY_MIN = 4 * 60;
+export const MAX_USABLE_DAY_MIN = 20 * 60;
+
+/**
+ * The sunrise and sunset the day windows (Rahu Kaal, Gulika, Yamaganda, Abhijit, Choghadiya, Hora)
+ * are cut from. Normally the real ones. Above 55° latitude, when the day is under 4 h or over 20 h,
+ * or the Sun does not rise or set at all, an 8-fold split of that day would give windows minutes long
+ * or nearly a day long, so the windows use solar noon ± 6 h instead (`mode: 'solarNoon'`). Solar noon
+ * is the midpoint of the real sunrise and sunset when both exist, else the NOAA estimate.
+ */
+export function dayWindowSunTimes(
+  real: { sunrise: string; sunset: string } | undefined,
+  date: Date,
+  latitude: number,
+  longitude: number,
+  timezoneOffsetHours: number,
+): { times: { sunrise: string; sunset: string } | undefined; mode: 'sunrise' | 'solarNoon' } {
+  if (Math.abs(latitude) <= HIGH_LATITUDE_DEG) return { times: real, mode: 'sunrise' };
+
+  let solarNoon: number;
+  if (real) {
+    const rise = parseTimeToMin(real.sunrise);
+    const length = (((parseTimeToMin(real.sunset) - rise) % 1440) + 1440) % 1440;
+    if (length >= MIN_USABLE_DAY_MIN && length <= MAX_USABLE_DAY_MIN) {
+      return { times: real, mode: 'sunrise' };
+    }
+    solarNoon = rise + length / 2;
+  } else {
+    const start = new Date(date.getFullYear(), 0, 0);
+    const dayOfYear = Math.floor((date.getTime() - start.getTime()) / 86_400_000);
+    solarNoon = solarNoonLocalMinutes(dayOfYear, longitude, timezoneOffsetHours);
+  }
+  return {
+    times: { sunrise: formatMinToTime(solarNoon - 360), sunset: formatMinToTime(solarNoon + 360) },
+    mode: 'solarNoon',
   };
 }
 
@@ -221,16 +263,25 @@ export async function calculateFullPanchangAsync(
   referenceJd?: number,
 ): Promise<PanchangData> {
   const sunTimes = await getLocalSunTimes(date, latitude, longitude, timezoneOffsetHours);
+  const windows = dayWindowSunTimes(sunTimes, date, latitude, longitude, timezoneOffsetHours);
 
-  const base = calculateFullPanchang(
+  const windowed = calculateFullPanchang(
     date,
     latitude,
     longitude,
     sunLong,
     moonLong,
     timezoneOffsetHours,
-    sunTimes,
+    windows.times,
   );
+  // Sunrise and sunset themselves stay the real ones even when the windows use solar noon.
+  const shownSun =
+    windows.mode === 'solarNoon'
+      ? (sunTimes ?? estimateSunriseSunset(date, latitude, longitude, timezoneOffsetHours))
+      : undefined;
+  const base: PanchangData = shownSun
+    ? { ...windowed, sunriseTime: shownSun.sunrise, sunsetTime: shownSun.sunset, dayTimesMode: windows.mode }
+    : { ...windowed, dayTimesMode: windows.mode };
 
   const jdRef = referenceJd ?? (await localNoonJd(date, timezoneOffsetHours));
 

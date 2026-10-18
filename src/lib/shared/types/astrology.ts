@@ -464,6 +464,12 @@ export interface PanchangData {
   choghadiya?: { day: Choghadiya[]; night: Choghadiya[] };
   /** All 24 planetary hours for the day, starting at sunrise. */
   hora?: Hora[];
+  /**
+   * What Rahu Kaal, Gulika, Yamaganda, Abhijit, Choghadiya and Hora were cut from. 'sunrise' everywhere
+   * the day is a usable length; 'solarNoon' above 55° latitude when the day is under 4 h or over 20 h
+   * (or the Sun does not rise or set), where the windows use solar noon ± 6 h instead.
+   */
+  dayTimesMode?: 'sunrise' | 'solarNoon';
 }
 
 // ── Regional calendar variants ───────────────────────────────────────────────

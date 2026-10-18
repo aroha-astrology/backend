@@ -343,6 +343,18 @@ astroRouter.openapi(matchmakingRoute, async (c) => {
 /* GET /panchang                                                         */
 /* -------------------------------------------------------------------------- */
 
+/** Optional IANA zone of the place. Without it the panchang is on IST, as it always was. */
+const TimeZoneQuery = z
+  .string()
+  .max(64)
+  .refine(astroService.isValidTimeZone, { message: 'Unknown time zone' })
+  .optional()
+  .openapi({
+    param: { name: 'tz', in: 'query' },
+    example: 'America/New_York',
+    description: 'IANA time zone for the clock times and "today" (defaults to Asia/Kolkata)',
+  });
+
 const PanchangQuerySchema = z.object({
   lat: z
     .string()
@@ -375,6 +387,7 @@ const PanchangQuerySchema = z.object({
       example: '2025-01-15',
       description: 'Date in YYYY-MM-DD format (defaults to today)',
     }),
+  tz: TimeZoneQuery,
 });
 
 const panchangRoute = createRoute({
@@ -405,6 +418,7 @@ const panchangRoute = createRoute({
             regionalMonths: z.any().optional(),
             choghadiya: z.any().optional(),
             hora: z.any().optional(),
+            dayTimesMode: z.enum(['sunrise', 'solarNoon']).optional(),
           }),
         },
       },
@@ -414,8 +428,8 @@ const panchangRoute = createRoute({
 });
 
 astroRouter.openapi(panchangRoute, async (c) => {
-  const { lat, lon, date } = c.req.valid('query');
-  const result = await astroService.getPanchang(lat, lon, date);
+  const { lat, lon, date, tz } = c.req.valid('query');
+  const result = await astroService.getPanchang(lat, lon, date, { timeZone: tz });
   return c.json(result, 200);
 });
 
@@ -448,6 +462,7 @@ const PanchangMonthQuerySchema = z.object({
     .transform(Number)
     .pipe(z.number().min(-180).max(180))
     .openapi({ param: { name: 'lon', in: 'query' } }),
+  tz: TimeZoneQuery,
 });
 
 const panchangMonthRoute = createRoute({
@@ -476,8 +491,8 @@ const panchangMonthRoute = createRoute({
 });
 
 astroRouter.openapi(panchangMonthRoute, async (c) => {
-  const { year, month, lat, lon } = c.req.valid('query');
-  const { days, regionalMonths } = await astroService.getPanchangMonth(year, month, lat, lon);
+  const { year, month, lat, lon, tz } = c.req.valid('query');
+  const { days, regionalMonths } = await astroService.getPanchangMonth(year, month, lat, lon, tz);
   return c.json({ year, month, days, regionalMonths }, 200);
 });
 

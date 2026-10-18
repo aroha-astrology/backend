@@ -29,8 +29,14 @@ import type { PanchangData } from '@aroha-astrology/shared';
  * karana are now read at sunrise instead of local noon (panchangReferenceJd),
  * so their names and end times change on days a limb turns between sunrise
  * and noon; tithi/nakshatra also gained endsOn. Rolling back restores v5.
+ * v7: the payload gained dayTimesMode (high-latitude solar-noon windows), and
+ * refKey now carries the clock offset for anything not on IST
+ * ("<place>@-4"). Before v7 a ChatGPT-tool lookup of a foreign city was cached
+ * under the plain coordinate key with that city's offset, so a later IST read
+ * of the same spot could get it; v7 starts clean. Indian values are unchanged.
+ * Rolling back restores v6.
  */
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 
 /** Folds `CACHE_VERSION` into the DB key so a version bump can't collide with, or accidentally match, a row from a previous shape. */
 function versionedKey(refKey: string): string {
