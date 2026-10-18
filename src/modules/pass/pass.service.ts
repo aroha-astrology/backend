@@ -55,6 +55,8 @@ interface TierBenefits {
   questionsPerPeriod: number;
   /** Free voice-call minutes per period. */
   voiceFreeMinutes: number;
+  /** Coins gifted each period; 0 while money.passCoins is off or for a tier without a gift. */
+  monthlyCoins?: number;
   reportDiscountPct: number;
   features: readonly PassFeature[];
 }
@@ -109,6 +111,7 @@ function offersFor(features: Features): PassOffer[] {
     play: { productId: PASS_PLAY_PRODUCT_ID, basePlanId: t.playBasePlan },
     questionsPerPeriod: t.questions,
     voiceFreeMinutes: t.voiceFreeMinutes,
+    monthlyCoins: features['money.passCoins']?.enabled === true ? t.monthlyCoins : 0,
     reportDiscountPct: t.reportDiscountPct,
     features: t.features,
   }));

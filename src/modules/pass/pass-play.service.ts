@@ -17,6 +17,7 @@ import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { PASS_PLAY_PRODUCT_ID, PASS_TIERS } from './pass.config.js';
 import { findPassByExternalId, insertPass, renewPass, updatePlayPass } from './pass.repo.js';
+import { grantPassMonthlyCoins } from './pass-coins.js';
 
 const MS_PER_DAY = 86_400_000;
 const LIVE_STATES = new Set(['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD']);
@@ -89,7 +90,10 @@ export async function syncPlayPass(
     const prevEnd = existing.periodEnd?.getTime() ?? 0;
     if (live && sub.expiry!.getTime() > prevEnd + MS_PER_DAY) {
       // A renewal: the next period starts where the last one ended, with a fresh quota.
-      await renewPass(existing.id, { start: existing.periodEnd ?? new Date(), end: sub.expiry! });
+      const start = existing.periodEnd ?? new Date();
+      await renewPass(existing.id, { start, end: sub.expiry! });
+      // The new period's coin gift (money.passCoins), once per period.
+      await grantPassMonthlyCoins(existing.userId, existing.priceVariant, existing.id, start);
     }
     await updatePlayPass(existing.id, {
       status: live ? 'active' : sub.state === 'SUBSCRIPTION_STATE_CANCELED' ? 'active' : 'expired',
@@ -104,7 +108,7 @@ export async function syncPlayPass(
 
   if (!live || !userId) return false;
   const tier = tierOf(sub.basePlanId);
-  await insertPass({
+  const created = await insertPass({
     userId,
     source: 'google_play',
     externalId: purchaseToken,
@@ -114,6 +118,8 @@ export async function syncPlayPass(
     periodStart: new Date(),
     periodEnd: sub.expiry!,
   });
+  // The first period's coin gift (money.passCoins).
+  await grantPassMonthlyCoins(userId, tier?.variant ?? null, created.id, created.periodStart ?? new Date());
   return true;
 }
 

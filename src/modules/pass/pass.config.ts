@@ -38,6 +38,9 @@ export const VOICE_TRIAL_MINUTES = 3;
  * user_subscriptions.price_variant stores: the letters are from when the three
  * were a price test with the same benefits.
  *
+ * `monthlyCoins`: coins gifted at the start of each Pass period while the `money.passCoins`
+ * switch is on (v7 spec: Gold 100, Platinum 200).
+ *
  * `voiceFreeMinutes`: voice-call minutes free in each Pass period, across all
  * calls; after these each minute is charged to the wallet at the
  * `paid.voiceChat` price (see modules/voice/voice.service.ts). Every tier got 3
@@ -52,6 +55,7 @@ export const PASS_TIERS = [
     playBasePlan: 'pass-199',
     questions: 15,
     voiceFreeMinutes: 10,
+    monthlyCoins: 0,
     reportDiscountPct: 10,
     features: ['timeline', 'bonds', 'voiceCall'],
   },
@@ -63,6 +67,7 @@ export const PASS_TIERS = [
     playBasePlan: 'pass-299',
     questions: 30,
     voiceFreeMinutes: 15,
+    monthlyCoins: 100,
     reportDiscountPct: 20,
     features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall'],
   },
@@ -74,6 +79,7 @@ export const PASS_TIERS = [
     playBasePlan: 'pass-399',
     questions: 60,
     voiceFreeMinutes: 20,
+    monthlyCoins: 200,
     reportDiscountPct: 30,
     features: PASS_FEATURES,
   },
@@ -85,6 +91,7 @@ export const PASS_TIERS = [
   playBasePlan: string;
   questions: number;
   voiceFreeMinutes: number;
+  monthlyCoins: number;
   reportDiscountPct: number;
   features: readonly PassFeature[];
 }>;
