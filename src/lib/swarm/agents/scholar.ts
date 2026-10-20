@@ -13,7 +13,12 @@ import {
 } from '../../chat-grounding.js';
 import { POLICY_SYSTEM_DIRECTIVE } from '../../content-policy.js';
 import { normalizeFollowUp } from '../../chat-follow-up.js';
-import { expandIncomeMarkers, incomeQuestionFor } from '../../chat-income.js';
+import {
+  expandIncomeMarkers,
+  FAMILY_INCOME_MARKER,
+  INCOME_MARKER,
+  incomeQuestionFor,
+} from '../../chat-income.js';
 import type { SwarmState } from '../state.js';
 
 // =============================================================================
@@ -162,7 +167,7 @@ const VOICE_DELIVERY = `Delivery matters as much as the words. Speak the way an 
  * now carries every such moment; this rule makes it the only source, and makes
  * a user's correction something to check rather than argue with or give in to.
  */
-const TRANSIT_DATES = `When a planet changes sign, changes nakshatra, or turns retrograde or direct, the date and time come ONLY from the UPCOMING TRANSITS lines in the chart data. Quote them exactly (date, time in IST, sign, nakshatra, and the house it means for this user), never work a date out and never recall one from memory. A transit date is a computed fact, not a prediction, so DATE_SPECIFICITY's "window, not a day" rule does not apply to it. Build any timing reading on these real dates: a planet that moves back into the previous sign before settling (retrograde) gives two dates, and say so. If the user names a different date, check it against those lines and say plainly which is right, with the date and time. If the event lies beyond the dates listed, say it is further out than you can time precisely rather than guessing.`;
+const TRANSIT_DATES = `When a planet changes sign, changes nakshatra, or turns retrograde or direct, the date and time come ONLY from the UPCOMING TRANSITS lines in the chart data. Quote them exactly (date, time in IST, sign, nakshatra, and the house it means for this user), never work a date out and never recall one from memory. A transit date is a computed fact, not a prediction, so DATE_SPECIFICITY's "window, not a day" rule does not apply to it. Build any timing reading on these real dates, and read the planet's "Signs in turn": when it will slip back into the previous sign before settling (retrograde), ALWAYS say so in the same reply, with both spans (for example: in Leo from 31 Oct 2026, back in Cancer from 25 Jan 2027, settled in Leo from 26 Jun 2027) — a reading built on the first entry alone is wrong. If the user names a different date, check it against those lines and say plainly which is right, with the date and time. If the event lies beyond the dates listed, say it is further out than you can time precisely rather than guessing.`;
 
 const HEDGE_LANGUAGE = `Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
 
@@ -1351,6 +1356,19 @@ export async function* streamDirectModeParagraph(
   // dropped. A question in the MIDDLE of a reply is flushed in order by the
   // next sentence, exactly as before.
   let heldQuestion = '';
+  // An income marker the model wrote into the prose instead of on the "Ask
+  // next:" line (seen live, 2026-10-20): taken out of the text so the raw
+  // "{{income}}" never reaches the chat, and turned into the income chips below.
+  let strayMarker = '';
+  const pullMarker = (text: string): string => {
+    if (!text.includes('{{')) return text;
+    for (const marker of [FAMILY_INCOME_MARKER, INCOME_MARKER]) {
+      if (!text.includes(marker)) continue;
+      strayMarker = strayMarker || marker;
+      text = text.split(marker).join(' ');
+    }
+    return text.replace(/\s{2,}/g, ' ').trim();
+  };
 
   for await (const delta of llmStream({ profile: CHAT_PROFILE, messages, signal, model })) {
     if (inAskNext) {
@@ -1379,7 +1397,7 @@ export async function* streamDirectModeParagraph(
         break;
       }
 
-      const cleaned = stripUnitMarkers(next.unit);
+      const cleaned = pullMarker(stripUnitMarkers(next.unit));
       if (!cleaned) continue;
 
       if (!next.sentence) {
@@ -1439,7 +1457,7 @@ export async function* streamDirectModeParagraph(
   if (inAskNext) {
     askNext += buffer;
   } else {
-    const rest = stripUnitMarkers(buffer);
+    const rest = pullMarker(stripUnitMarkers(buffer));
     const leftover = pending ? (rest ? `${pending} ${rest}` : pending) : rest;
     if (leftover) {
       if (heldQuestion) {
@@ -1476,6 +1494,8 @@ export async function* streamDirectModeParagraph(
     return !astrologersQuestion;
   });
   if (userVoiced.length > 0) suggestion = `Ask next: ${userVoiced.join(' | ')}`;
+  // The prose carried the income ask: it becomes the chips, as if written on its own line.
+  if (strayMarker && !suggestion.includes('{{')) suggestion = `Ask next: ${strayMarker}`;
   // An income ask gets its own app-owned question in place of whatever the
   // model wrote (or didn't write) as the closing question — the chips
   // otherwise land with no visible context for what they mean (see

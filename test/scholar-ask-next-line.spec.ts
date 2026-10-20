@@ -129,6 +129,21 @@ describe('direct-mode "Ask next:" handling', () => {
     expect(body).toContain('Which range is your monthly income in?');
   });
 
+  // Seen live 2026-10-20 (1 reply in 9): the model put the token at the end of
+  // the prose instead of on an "Ask next:" line, and the raw "{{income}}" reached
+  // the chat. A stray marker in the body is now treated as the income ask.
+  it.each([
+    'Knowing your monthly income range tells me how fast this can grow. {{income}}',
+    'Knowing your monthly income range tells me how fast this can grow.\n{{income}}',
+  ])('turns a stray income marker in the prose into the chips (%#)', async (reply) => {
+    const out = await render(reply);
+    expect(out).not.toContain('{{income}}');
+    const { body, followUp } = splitFollowUp(out);
+    expect(followUp).toContain('₹25,000');
+    expect(body).toContain('Which range is your monthly income in?');
+    expect(body).toContain('Knowing your monthly income range tells me how fast this can grow.');
+  });
+
   it("replaces the model's own closing question with the app-owned income question, without duplicating it", async () => {
     const out = await render(
       'Your finances are steadying. What is your rough monthly income?\nAsk next: {{income}}',

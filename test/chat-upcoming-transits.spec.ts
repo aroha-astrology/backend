@@ -11,7 +11,7 @@ import { buildGroundingFacts, type GroundingSource } from '../src/lib/chat-groun
 /**
  * Bug (2026-10-20, owner's phone): asked about Jupiter's move into Leo, Baba Ji
  * said "August 8, 2027". The real ingress is 31 Oct 2026 (Drik Panchang: 12:50 PM
- * IST, the engine 12:03). Chat only ever saw today's sign per planet, so it had
+ * IST, the engine 12:03 before the Lahiri VP285 fix, 12:50 after it). Chat only ever saw today's sign per planet, so it had
  * no date to quote and invented one. These assert the chat grounding now carries
  * the real dates, with the house for the user's own chart.
  */
@@ -56,7 +56,12 @@ describe('chat grounding: upcoming transit dates', () => {
 
       // Dates checked against Drik Panchang (New Delhi) on 2026-10-20.
       expect(jupiter).toContain(
-        `enters Leo 31 Oct 2026, 12:03 IST (Magha nakshatra; house ${house(leo, asc)} from your Lagna, house ${house(leo, moon)} from your Moon)`,
+        `enters Leo 31 Oct 2026, 12:50 IST (Magha nakshatra; house ${house(leo, asc)} from your Lagna, house ${house(leo, moon)} from your Moon)`,
+      );
+      // The first entry is short: chat must see that it reverses before settling.
+      expect(jupiter).toContain('(Magha nakshatra; house ');
+      expect(jupiter).toContain(
+        '— first entry only: back in Cancer from 25 Jan 2027, settles in Leo from 26 Jun 2027',
       );
       expect(jupiter).toContain('turns retrograde 13 Dec 2026');
       expect(jupiter).toContain('moves back into Cancer 25 Jan 2027');

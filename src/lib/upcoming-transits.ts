@@ -156,6 +156,25 @@ function eventText(
   return `${verb} ${e.toSign} ${formatIst(e.exactAt)} (${where})`;
 }
 
+/**
+ * On a forward entry the planet will reverse out of before settling:
+ * " — first entry only: back in Cancer from 25 Jan 2027, settles in Leo from
+ * 26 Jun 2027". Put on the date itself because a prompt rule alone did not
+ * stop the model quoting Jupiter's 31 Oct entry as the whole story.
+ */
+function firstEntryNote(e: TransitEvent, later: TransitEvent[]): string {
+  if (e.eventType !== 'ingress' || e.planet === 'Rahu' || e.planet === 'Ketu') return '';
+  const from = SIGNS.indexOf(e.fromSign);
+  if (SIGNS.indexOf(e.toSign ?? '') !== (from + 1) % 12) return '';
+  const out = later.find((x) => x.eventType === 'ingress');
+  if (!out || out.toSign !== e.fromSign) return '';
+  const settle = later
+    .slice(later.indexOf(out) + 1)
+    .find((x) => x.eventType === 'ingress' && x.toSign === e.toSign);
+  const settles = settle ? `, settles in ${e.toSign} from ${formatIstDay(settle.exactAt)}` : '';
+  return ` — first entry only: back in ${e.fromSign} from ${formatIstDay(out.exactAt)}${settles}`;
+}
+
 function currentText(
   p: PlanetPosition,
   ascSignIndex: number | null,
@@ -166,6 +185,35 @@ function currentText(
   const retro = p.isRetrograde && !node ? ', retrograde' : '';
   const house = houseNote(p.signIndex, ascSignIndex, moonSignIndex);
   return `now in ${SIGNS[p.signIndex]} ${p.signDegree.toFixed(1)}° (${nakshatraName(p.nakshatra)} nakshatra${retro})${house ? `, ${house}` : ''}`;
+}
+
+/** "31 Oct 2026" */
+function formatIstDay(date: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+}
+
+/**
+ * Each sign the planet will be in, with its span: "Leo 31 Oct 2026 - 25 Jan
+ * 2027, Cancer 25 Jan 2027 - 26 Jun 2027, ...". Spelled out because, given only
+ * the list of crossings, the model quoted Jupiter's first entry into Leo and
+ * left out that it slips back into Cancer for five months before settling.
+ */
+function staysText(currentSignIndex: number, ingresses: TransitEvent[], until: Date): string {
+  const spans: string[] = [];
+  let sign = SIGNS[currentSignIndex];
+  let from: string | null = null;
+  for (const e of ingresses) {
+    spans.push(`${sign} ${from ? `${from} - ` : 'until '}${formatIstDay(e.exactAt)}`);
+    sign = e.toSign ?? sign;
+    from = formatIstDay(e.exactAt);
+  }
+  spans.push(`${sign} from ${from} (beyond ${istDateString(until)} not computed)`);
+  return spans.join(', ');
 }
 
 /**
@@ -195,7 +243,10 @@ export function upcomingTransitFacts(
     );
     const items: Dated[] = sky.events
       .filter((e) => e.planet === planet && ahead(e.exactAt))
-      .map((e) => ({ at: e.exactAt, text: eventText(e, ascSignIndex, moonSignIndex) }));
+      .map((e, i, all) => ({
+        at: e.exactAt,
+        text: eventText(e, ascSignIndex, moonSignIndex) + firstEntryNote(e, all.slice(i + 1)),
+      }));
 
     if (slow) {
       for (const n of sky.nakshatraChanges) {
@@ -218,7 +269,11 @@ export function upcomingTransitFacts(
       items.length > 0
         ? `Next: ${items.map((i) => i.text).join('; ')}.`
         : `No change of sign${slow ? ' or nakshatra' : ''} before ${untilText}.`;
-    lines.push(`${planet} — ${currentText(p, ascSignIndex, moonSignIndex)}. ${next}`);
+    const stays =
+      slow && ingresses.length > 0
+        ? ` Signs in turn: ${staysText(p.signIndex, ingresses, until)}.`
+        : '';
+    lines.push(`${planet} — ${currentText(p, ascSignIndex, moonSignIndex)}. ${next}${stays}`);
   }
 
   if (lines.length === 0) return [];
