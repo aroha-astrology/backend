@@ -10,11 +10,12 @@
 // ephemeris-search machinery as the transit pre-alert pipeline
 // (astro-tools/transit-events.ts) and builds a full phase timeline from them.
 //
-// Kept as a separate module from sadeSati.ts: the live/cheap arithmetic path
-// (detectCurrentSadeSati) still exists and is still what chat-grounding,
-// reports, and the fast dosha read use — this module is for the richer
-// phase-timeline view (used by the Saturn-phase persistence/alert cron,
-// Phase 2.3, and the "Astro Arun Pandit"-style framing the audit asked for).
+// Kept as a separate module from sadeSati.ts, which still holds the
+// arithmetic estimate (detectSadeSati). detectCurrentSadeSati — what
+// chat-grounding, reports and the dosha read use — now takes its window dates
+// from detectRealSadeSati below and keeps the estimate only as a fallback when
+// the ephemeris scan fails. This module also feeds the Saturn-phase
+// persistence/alert cron (Phase 2.3).
 // =============================================================================
 
 import { calculatePlanetPositions } from '../calculations/planetPositions.js';

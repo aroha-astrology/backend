@@ -295,6 +295,8 @@ export async function calculateFullPanchangAsync(
     ...base,
     moonriseTime: moonRiseSet.moonrise ?? undefined,
     moonsetTime: moonRiseSet.moonset ?? undefined,
+    moonriseNextDay: moonRiseSet.moonriseNextDay,
+    moonsetNextDay: moonRiseSet.moonsetNextDay,
     tithi: {
       ...base.tithi,
       endsAt: tithiBoundary.endsAt,

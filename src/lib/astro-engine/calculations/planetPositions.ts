@@ -33,6 +33,9 @@ export { dateToJulianDay };
 
 const MAX_CACHE_ENTRIES = 2000;
 
+/** SEFLG_SWIEPH | SEFLG_NONUT: the Swiss Ephemeris files, without nutation (mean ayanamsa). */
+const SEFLG_SWIEPH_NONUT = 2 | 64;
+
 const planetPositionsCache = new EphemerisCache<PlanetPosition[]>(MAX_CACHE_ENTRIES);
 const housesCache = new EphemerisCache<HouseData[]>(MAX_CACHE_ENTRIES);
 const ascendantCache = new EphemerisCache<AscendantData>(MAX_CACHE_ENTRIES);
@@ -137,7 +140,12 @@ export async function calculateChart(
   // main-thread swe instance's sid_mode at all.
   const swe = await getSwe();
   swe.set_sid_mode(AYANAMSA_MAP[ayanamsa], 0, 0);
-  const ayanamsaValue = swe.get_ayanamsa(jd);
+  // `jd` is UT, so the _ut variant; Lahiri reports the mean ayanamsa, the
+  // value its planet positions subtract (see calculatePlanetPositions).
+  const ayanamsaValue =
+    ayanamsa === 'lahiri'
+      ? swe.get_ayanamsa_ex_ut(jd, SEFLG_SWIEPH_NONUT)
+      : swe.get_ayanamsa_ut(jd);
 
   return {
     planets,
