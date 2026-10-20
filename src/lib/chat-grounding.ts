@@ -45,6 +45,7 @@ import {
   calculateKarakamshaSignIndex,
 } from './astro-engine/charts/jaiminiPoints.js';
 import { FAMILY_BRACKET_LABELS, INCOME_BRACKET_LABELS } from './chat-income.js';
+import { upcomingTransitFactsNow } from './upcoming-transits.js';
 
 /**
  * IST, not UTC — duplicated (not imported) from
@@ -1512,6 +1513,15 @@ export async function buildGroundingFacts(
     transitLabel,
   );
   if (doubleTransitFact) facts.push(doubleTransitFact);
+
+  // --- Upcoming transits: every dated sign / nakshatra change ahead ---------
+  // Chat and voice only. Kept this early so clip() (which cuts from the tail)
+  // never drops it: without it the model has no transit date to quote and
+  // invents one. The horoscope ('periodic', with asOfDate) has its own
+  // period events instead (see periodEventFacts).
+  if (scope === 'full' && !asOfDate) {
+    facts.push(...(await upcomingTransitFactsNow(now, ascSignIndex, moon?.signIndex ?? null)));
+  }
 
   // --- Lal Kitab remedy for the worst NATALLY debilitated classical planet -
   // Reuses the same 108-combination remedy database wired into GET

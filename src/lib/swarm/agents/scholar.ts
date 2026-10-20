@@ -155,6 +155,15 @@ const OUTPUT_STYLE_VOICE = `You are speaking OUT LOUD in a live conversation, no
  */
 const VOICE_DELIVERY = `Delivery matters as much as the words. Speak the way an old teacher speaks: low, unhurried and settled, with a calm that never tips into flatness. Land on your words rather than hurrying past them, and let a short pause fall before something that matters. Warm, but never chatty; certain, but never loud — you do not perform authority, you simply have it. Hold this same steadiness when the chart carries difficult news: an even voice is what reassures, not a bright one. None of this licenses a longer answer — the length limit still holds exactly as stated, and the pauses live inside those two or three sentences, never beyond them.`;
 
+/**
+ * Asked "when does Jupiter enter Leo?", chat answered "August 8, 2027". The
+ * real ingress is 31 October 2026, and when the user said so, the model had
+ * nothing to check it against. The UPCOMING TRANSITS block (upcoming-transits.ts)
+ * now carries every such moment; this rule makes it the only source, and makes
+ * a user's correction something to check rather than argue with or give in to.
+ */
+const TRANSIT_DATES = `When a planet changes sign, changes nakshatra, or turns retrograde or direct, the date and time come ONLY from the UPCOMING TRANSITS lines in the chart data. Quote them exactly (date, time in IST, sign, nakshatra, and the house it means for this user), never work a date out and never recall one from memory. A transit date is a computed fact, not a prediction, so DATE_SPECIFICITY's "window, not a day" rule does not apply to it. Build any timing reading on these real dates: a planet that moves back into the previous sign before settling (retrograde) gives two dates, and say so. If the user names a different date, check it against those lines and say plainly which is right, with the date and time. If the event lies beyond the dates listed, say it is further out than you can time precisely rather than guessing.`;
+
 const HEDGE_LANGUAGE = `Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
 
 const DATE_SPECIFICITY = `When the user asks "when" something will happen — including when they ask for "the exact date" or "the exact day" — answer with a window/period (e.g. "the second half of March," "between mid-April and early May," a named transit or dasha-bounded range), sized to how precisely the chart data actually supports it. A single specific day is false precision astrology can't back up, so the window IS the answer: open the reply with it, stated plainly and with confidence, the same way you would answer any other timing question. Do not apologise for it and do not open by saying what you are unable to give — if they pressed for one day, narrow to the tightest stretch the chart data supports and say that is the stretch to watch. The "no exact date" rule governs the PREDICTED EVENT only — it never applies to the boundary dates of a period the chart data already states (a dasha/antardasha or a favorable window). Those are given facts, not forecasts: quote them exactly as given.`;
@@ -638,6 +647,7 @@ const SHARED_PROMPT_RULES = [
   RESPONSE_DISCIPLINE,
   HEDGE_LANGUAGE,
   DATE_SPECIFICITY,
+  TRANSIT_DATES,
   PAST_IS_FOR_VERIFICATION_ONLY,
   RANKED_WINDOWS,
   HOPEFUL_TIMING,
@@ -684,6 +694,10 @@ function systemPrompt(now: Date, style: ChatOutputStyle = 'direct'): string {
  * context window and CHAT_PROFILE's budget (see config/llm.ts) — this is not
  * a tight fit, it's headroom so the newly-added data (the whole point of this
  * change) is never the thing silently cut by `clip()` below.
+ * Raised again 28000 -> 36000 when the UPCOMING TRANSITS block (~5,000 chars,
+ * see upcoming-transits.ts) was added: a real chart's full fact set went from
+ * ~24,800 to ~29,900 chars, and the overflow would have cut the Gochar
+ * snapshot and Jaimini points off the tail.
  */
 /**
  * Framing for the <user_facts> block, shared by the text and voice prompt
@@ -711,7 +725,7 @@ const USER_FACTS_PREAMBLE =
   `now stand by. Only if the user themselves raises the earlier date do you need to address it directly ` +
   `— otherwise don't volunteer that an earlier date existed at all.`;
 
-const MAX_CONTEXT_CHARS = 28000;
+const MAX_CONTEXT_CHARS = 36000;
 function clip(s: string, max = MAX_CONTEXT_CHARS): string {
   return s.length > max ? `${s.slice(0, max)}…[truncated]` : s;
 }

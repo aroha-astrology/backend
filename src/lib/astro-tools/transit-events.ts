@@ -265,6 +265,66 @@ export async function findTransitEvents(from: Date, to: Date): Promise<TransitEv
   return events;
 }
 
+export interface NakshatraChange {
+  planet: string;
+  fromNakshatra: string;
+  toNakshatra: string;
+  /** The moment the planet crosses into `toNakshatra`, to roughly the minute. */
+  exactAt: Date;
+  isRetrograde: boolean;
+}
+
+/**
+ * Scan `[from, to)` day by day for every moment one of `planets` crosses into
+ * another nakshatra, sorted chronologically.
+ *
+ * Daily sampling is safe for the slow planets this is meant for (Jupiter,
+ * Saturn, Rahu, Ketu): none moves anywhere near a 13°20' nakshatra in a day.
+ * Do not pass the Moon, which crosses one about every day.
+ */
+export async function findNakshatraChanges(
+  from: Date,
+  to: Date,
+  planets: readonly string[],
+): Promise<NakshatraChange[]> {
+  const changes: NakshatraChange[] = [];
+
+  let jdPrev = jdFromDate(from);
+  let prev = await calculatePlanetPositions(jdPrev);
+  const jdEnd = jdFromDate(to);
+
+  for (let jd = jdPrev + 1; jd <= jdEnd; jd += 1) {
+    const curr = await calculatePlanetPositions(jd);
+
+    for (const planet of planets) {
+      const a = positionOf(prev, planet);
+      const b = positionOf(curr, planet);
+      if (!a || !b || a.nakshatraIndex === b.nakshatraIndex) continue;
+
+      const startIndex = a.nakshatraIndex;
+      const exactJd = await refine(
+        jdPrev,
+        jd,
+        (positions) => positionOf(positions, planet)?.nakshatraIndex === startIndex,
+      );
+      const entered = positionOf(await calculatePlanetPositions(exactJd), planet) ?? b;
+      changes.push({
+        planet,
+        fromNakshatra: a.nakshatra,
+        toNakshatra: entered.nakshatra,
+        exactAt: dateFromJd(exactJd),
+        isRetrograde: entered.isRetrograde,
+      });
+    }
+
+    jdPrev = jd;
+    prev = curr;
+  }
+
+  changes.sort((x, y) => x.exactAt.getTime() - y.exactAt.getTime());
+  return changes;
+}
+
 // ---------------------------------------------------------------------------
 // Collision selection
 // ---------------------------------------------------------------------------
