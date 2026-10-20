@@ -46,16 +46,7 @@ import {
 } from './astro-engine/charts/jaiminiPoints.js';
 import { FAMILY_BRACKET_LABELS, INCOME_BRACKET_LABELS } from './chat-income.js';
 import { upcomingTransitFactsNow } from './upcoming-transits.js';
-
-/**
- * IST, not UTC — duplicated (not imported) from
- * swarm/agents/scholar.ts's identical `todayIST` to avoid a circular import
- * (scholar.ts already imports this file). Genuinely a one-line formatting
- * rule; keep both in sync if it ever changes.
- */
-function todayIST(now: Date): string {
-  return now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-}
+import { dateInZone, userZone, zoneLabel } from './user-time-zone.js';
 
 export interface GroundingSource {
   /** kundli.chartData — planets, houses (with lord), ascendant. */
@@ -68,6 +59,8 @@ export interface GroundingSource {
   doshas: Record<string, unknown> | null;
   /** kundli.ashtakavargaData — AshtakavargaData ({ bhinna, sarva }). */
   ashtakavarga: Record<string, unknown> | null;
+  /** The user's IANA zone (users.current_timezone) for "today" and transit times; IST when absent. */
+  timeZone?: string | null;
 }
 
 interface HouseFact {
@@ -483,12 +476,16 @@ export function bhinnashtakavargaFacts(
  * `kundli.service.ts`'s `birthInputsForProfile`: `gender` is read off the
  * resolved (possibly non-primary) `profile` — if the active chat is grounded
  * on a child/partner's saved profile, the gender that belongs in the prompt
- * is THEIRS, not the account owner's. `relationshipStatus`/`interestAreas`
- * have no per-profile equivalent (not on `ProfileContext`) and stay sourced
- * from the account-level `user` row regardless of which profile is active.
+ * is THEIRS, not the account owner's. `relationshipStatus`, `interestAreas`
+ * and the income brackets have no per-profile equivalent: they describe the
+ * account owner only, so they are left out when the reading is about a saved
+ * family profile (`birthProfileId` set). Sending them used to tell the model
+ * that the owner's mother was single because the owner was.
  */
 export function buildProfileFacts(
   profile: {
+    /** null/absent = the account owner's own profile. */
+    birthProfileId?: string | null;
     gender?: string | null;
     birthTimeAccuracy?: string | null;
     timeOfBirth?: string | null;
@@ -530,6 +527,9 @@ export function buildProfileFacts(
   if (profile.birthTimeAccuracy === 'unknown') {
     facts.push(unknownBirthTimeGuidance(profile.timeOfBirth));
   }
+
+  // Everything below is about the account owner, not a saved family profile.
+  if (profile.birthProfileId) return facts;
 
   if (user.relationshipStatus) {
     facts.push(
@@ -1388,8 +1388,9 @@ export async function buildGroundingFacts(
   // from the tail), and is the single fact every temporal question depends
   // on getting right — see scholar.ts's TEMPORAL_ANCHOR for the matching
   // system-prompt instruction this reinforces.
+  const zone = userZone(src.timeZone);
   facts.push(
-    `TODAY'S DATE: ${todayIST(now)} (IST). Any window below that ended before this date has already passed.`,
+    `TODAY'S DATE: ${dateInZone(now, zone)} (${zoneLabel(zone, now)}, the user's own clock). Any window below that ended before this date has already passed.`,
   );
 
   // --- Deterministic daily synthesis (horoscope pipeline only) -----------
@@ -1520,7 +1521,9 @@ export async function buildGroundingFacts(
   // invents one. The horoscope ('periodic', with asOfDate) has its own
   // period events instead (see periodEventFacts).
   if (scope === 'full' && !asOfDate) {
-    facts.push(...(await upcomingTransitFactsNow(now, ascSignIndex, moon?.signIndex ?? null)));
+    facts.push(
+      ...(await upcomingTransitFactsNow(now, ascSignIndex, moon?.signIndex ?? null, zone)),
+    );
   }
 
   // --- Lal Kitab remedy for the worst NATALLY debilitated classical planet -

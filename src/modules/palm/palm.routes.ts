@@ -86,7 +86,13 @@ const createRoute_ = createRoute({
 palmRouter.openapi(createRoute_, async (c) => {
   const user = c.get('user');
   const profile = await resolveActiveProfileContext(user);
-  const result = await createPalmReading(user, profile.birthProfileId, profile.gender);
+  const body = c.req.valid('json');
+  const result = await createPalmReading(
+    user,
+    profile.birthProfileId,
+    profile.gender,
+    body.primaryHand,
+  );
   return c.json(result, 200);
 });
 

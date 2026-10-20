@@ -102,6 +102,9 @@ export interface D7Progeny {
   methodB: ChildSequence;
   /** Whether both schools put child #1 in the same house. */
   agreement: boolean;
+  /** False when the native's gender is unknown: Method A cannot be applied, so `methodA` then
+   * holds Method B's sequence and `agreement` is false (one school is not corroboration). */
+  genderKnown: boolean;
   confidence: Confidence;
   /**
    * How many children the D7 supports, as a heuristic over the first `maxChildren` slots --
@@ -264,9 +267,8 @@ function buildSequence(
  * Runs both child-sequence schools over one person's D7.
  *
  * `personGender` only steers Method A (male native -> 5th, female native -> 9th). When it is
- * 'other' or unknown, Method A falls back to the 5th -- the same house Method B uses -- which
- * collapses the two schools into agreement. That is a real loss of signal, so the caller should
- * report the gender as unknown rather than presenting the resulting agreement as corroboration.
+ * 'other' or unknown, Method A cannot be applied. It used to fall back to the male 5th, which
+ * also made the two schools "agree"; now only Method B is used, and it is not called agreement.
  *
  * Returns null when the D7 has no usable Lagna.
  */
@@ -286,9 +288,7 @@ export function computeD7Progeny(
     if (idx >= 0) houses[planet] = mod12(idx - lagnaIdx) + 1;
   }
 
-  // Method A -- male native reads the 5th, female native the 9th; always forward.
-  const startA = personGender === 'female' ? 9 : 5;
-  const methodA = buildSequence('A', startA, 'forward', lagnaIdx, houses, chart, maxChildren);
+  const genderKnown = personGender === 'male' || personGender === 'female';
 
   // Method B -- the 5th for both, direction set by D7 Lagna polarity.
   const methodB = buildSequence(
@@ -301,7 +301,13 @@ export function computeD7Progeny(
     maxChildren,
   );
 
-  const agreement = methodA.slots[0]?.house === methodB.slots[0]?.house;
+  // Method A -- male native reads the 5th, female native the 9th; always forward. Without a
+  // gender it has no starting house, so Method B stands in for it.
+  const methodA = genderKnown
+    ? buildSequence('A', personGender === 'female' ? 9 : 5, 'forward', lagnaIdx, houses, chart, maxChildren)
+    : methodB;
+
+  const agreement = genderKnown && methodA.slots[0]?.house === methodB.slots[0]?.house;
 
   const supportedCount = methodA.slots.filter((s) => s.obstructionScore < 2).length;
 
@@ -311,6 +317,7 @@ export function computeD7Progeny(
     methodA,
     methodB,
     agreement,
+    genderKnown,
     confidence: agreement ? 'moderate' : 'low',
     supportedCount,
     maxChildren,

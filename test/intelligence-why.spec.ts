@@ -214,6 +214,18 @@ describe('baselineBirthTimeConfidence', () => {
     expect(pct('approximate', null)).toBeGreaterThan(pct('unknown', null));
   });
 
+  it('treats a time with no accuracy on file as approximate, like the Kundli card does', () => {
+    // Accounts made before accuracy was collected. The Kundli card and Decide already
+    // read these as approximate; the confidence score called them "stated exact".
+    expect(
+      baselineBirthTimeConfidence({
+        timeOfBirth: '08:26',
+        birthTimeAccuracy: null,
+        birthTimeSource: null,
+      }),
+    ).toEqual({ pct: 45, level: 'low', basis: 'stated_approximate' });
+  });
+
   it('reports 0 with no time at all, and levels by threshold', () => {
     expect(
       baselineBirthTimeConfidence({

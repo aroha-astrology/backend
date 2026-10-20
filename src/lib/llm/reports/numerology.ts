@@ -133,7 +133,11 @@ function buildFactsCall2(scores: NumerologyScores): string {
   lines.push(
     `Challenge numbers by age bracket: ${challenges.phases.map((p) => `age ${p.ageRange}: ${p.challenge}`).join('; ')}.`,
   );
-  lines.push(`Kua Number: ${scores.kua.kuaNumber}. Feng Shui element: ${scores.kua.element}.`);
+  lines.push(
+    scores.kua
+      ? `Kua Number: ${scores.kua.kuaNumber}. Feng Shui element: ${scores.kua.element}.`
+      : "Kua Number: not worked out. Its formula differs for men and women and the reader's gender is not known. Do not give a Kua number or element; if Kua comes up, say it needs their gender.",
+  );
   return lines.join('\n');
 }
 

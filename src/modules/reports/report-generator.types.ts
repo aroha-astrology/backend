@@ -12,6 +12,9 @@ export interface ReportScoreContext {
    * `buildReportScoreContext`, never from `partnerInputToBirthRecord` (which only reads the 5
    * chart-math fields). Used purely for narrative personalization, never chart computation. */
   partnerName?: string | null;
+  /** The partner's gender when the purchase said it (the Compatibility page's boy/girl sides).
+   * Sets the boy/girl order for Guna Milan; without it both orders are scored and the lower used. */
+  partnerGender?: 'male' | 'female' | null;
   /**
    * kundli.doshaData — DoshaAnalysis (mangal, kaalSarp, sadeSati, pitra, kemDruma, grahan,
    * guruChandal), same shape chat-grounding.ts's GroundingSource.doshas reads.

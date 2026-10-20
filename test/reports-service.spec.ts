@@ -1441,6 +1441,62 @@ describe('buildReportScoreContext — partnerName', () => {
   });
 });
 
+describe('buildReportScoreContext — nothing assumed about the person', () => {
+  const owner = { relationshipStatus: 'single', phoneE164: '+919800000000' };
+
+  it("gives a saved family profile none of the account owner's own facts", async () => {
+    // A report about the owner's mother used to read the owner's "single" and phone as hers.
+    state.findActiveUserById.mockResolvedValue(makeUser(owner as Partial<UserRow>));
+    state.resolveProfileContext.mockResolvedValue({ birthProfileId: 'mother', gender: 'female' });
+    const ctx = await buildReportScoreContext(
+      { userId: 'user-1', birthProfileId: 'mother', input: null },
+      null,
+      null,
+    );
+    expect(ctx.personRelationshipStatus).toBeNull();
+    expect(ctx.personPhone).toBeNull();
+  });
+
+  it('keeps them for the account owner', async () => {
+    state.findActiveUserById.mockResolvedValue(makeUser(owner as Partial<UserRow>));
+    state.resolveProfileContext.mockResolvedValue({ birthProfileId: null, gender: 'male' });
+    const ctx = await buildReportScoreContext({ userId: 'user-1', birthProfileId: null, input: null }, null, null);
+    expect(ctx.personRelationshipStatus).toBe('single');
+    expect(ctx.personPhone).toBe('+919800000000');
+  });
+
+  it('fills a missing gender from the report question, never from a guess', async () => {
+    state.resolveProfileContext.mockResolvedValue({ birthProfileId: null, gender: null });
+    const answered = await buildReportScoreContext(
+      { userId: 'user-1', birthProfileId: null, input: { answers: { readerGender: 'female' } } },
+      null,
+      null,
+    );
+    expect(answered.personGender).toBe('female');
+    const skipped = await buildReportScoreContext({ userId: 'user-1', birthProfileId: null, input: null }, null, null);
+    expect(skipped.personGender).toBeNull();
+  });
+
+  it('never lets the answer override a gender already on the profile', async () => {
+    state.resolveProfileContext.mockResolvedValue({ birthProfileId: null, gender: 'male' });
+    const ctx = await buildReportScoreContext(
+      { userId: 'user-1', birthProfileId: null, input: { answers: { readerGender: 'female' } } },
+      null,
+      null,
+    );
+    expect(ctx.personGender).toBe('male');
+  });
+
+  it("reads the partner's gender from the purchase", async () => {
+    const ctx = await buildReportScoreContext(
+      { userId: 'user-1', birthProfileId: null, input: { dateOfBirth: '1990-01-01', gender: 'male' } },
+      null,
+      null,
+    );
+    expect(ctx.partnerGender).toBe('male');
+  });
+});
+
 describe('getReportCatalogueForUser', () => {
   it("merges the catalogue with resolved feature pricing and the user's own purchases", async () => {
     state.resolveFeaturesForUser.mockResolvedValue({

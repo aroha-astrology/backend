@@ -26,6 +26,9 @@ export const PartnerBirthDetailsSchema = z
      * used purely to pre-fill the place-autocomplete input on a later purchase; never used for
      * chart computation (latitude/longitude/timezone already carry that). */
     placeLabel: z.string().optional(),
+    /** The partner's gender, when the screen knows it (the Compatibility page's boy/girl
+     * sides). Sets the boy/girl order for Guna Milan; never guessed when absent. */
+    gender: z.enum(['male', 'female']).optional(),
   })
   .openapi('PartnerBirthDetails');
 

@@ -30,7 +30,7 @@ import {
   type StoredMahadasha,
 } from '../../lib/astro-engine/dashas/dasha-range.js';
 import { detectMangalDosha } from '../../lib/astro-engine/doshas/mangalDosha.js';
-import { calculateAshtakoota } from '../../lib/astro-engine/matching/ashtakoota.js';
+import { calculateAshtakootaForPair } from '../../lib/astro-engine/matching/ashtakoota.js';
 import {
   buildChartContext,
   houseFrom,
@@ -436,10 +436,11 @@ export function pairAshtakoota(
   selfGender: Gender,
   otherGender: Gender,
 ) {
-  const sign = (ctx: ChartContext) => ZODIAC_SIGNS[ctx.moonSignIndex]!;
-  const selfFirst = !(selfGender === 'female' && otherGender === 'male');
-  const [a, b] = selfFirst ? [self, them] : [them, self];
-  return calculateAshtakoota(a.moonNakshatraIndex, b.moonNakshatraIndex, sign(a), sign(b));
+  const moon = (ctx: ChartContext) => ({
+    nakshatraIndex: ctx.moonNakshatraIndex,
+    sign: ZODIAC_SIGNS[ctx.moonSignIndex]!,
+  });
+  return calculateAshtakootaForPair(moon(self), moon(them), selfGender, otherGender);
 }
 
 /**

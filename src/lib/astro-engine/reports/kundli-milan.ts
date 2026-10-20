@@ -10,8 +10,8 @@
 // =============================================================================
 
 import type { ZodiacSign } from '@aroha-astrology/shared';
-import { calculateAshtakoota } from '../matching/ashtakoota.js';
-import { calculateDashakoota } from '../matching/dashakoota.js';
+import { calculateAshtakootaForPair } from '../matching/ashtakoota.js';
+import { calculateDashakootaForPair } from '../matching/dashakoota.js';
 import { detectMangalDosha } from '../doshas/mangalDosha.js';
 import { computeMatchRiskFactors, type MatchRiskFactor } from '../matching/match-risks.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
@@ -40,18 +40,15 @@ export interface MoonPlacement {
  * and it already has its own passing test coverage; refactoring it is out of
  * scope for the reports feature.
  *
- * Falls back to Ashwini/Aries (index 0 / 'Aries') if the chart is missing or
- * has no Moon entry — same defensive fallback matchmake() uses. In practice
- * this only matters if generation is somehow triggered before a chart is
- * fully ready.
+ * Null when the chart is missing or its Moon has no nakshatra or sign. This
+ * used to fall back to Ashwini in Aries, which turned a not-ready chart into a
+ * made-up Guna score instead of an error.
  */
-export function getMoonPlacement(chart: Record<string, unknown> | null): MoonPlacement {
+export function getMoonPlacement(chart: Record<string, unknown> | null): MoonPlacement | null {
   const planets = (chart?.planets ?? []) as Array<Record<string, unknown>>;
   const moon = planets.find((p) => p.planet === 'Moon');
-  return {
-    nakshatraIndex: (moon?.nakshatraIndex as number | undefined) ?? 0,
-    sign: (moon?.sign as ZodiacSign | undefined) ?? 'Aries',
-  };
+  if (!moon || !Number.isInteger(moon.nakshatraIndex) || typeof moon.sign !== 'string') return null;
+  return { nakshatraIndex: moon.nakshatraIndex as number, sign: moon.sign as ZodiacSign };
 }
 
 export type CompatibilityBand = 'poor' | 'average' | 'good' | 'excellent';
@@ -88,7 +85,7 @@ export interface KundliMilanScores extends Record<string, unknown>, ReportShared
    * (match-report.ts) extends this interface and its own test fixtures construct literals without
    * this field; making it required would force updates there, out of scope for this change.
    */
-  dashakootaCompatibility?: ReturnType<typeof calculateDashakoota>['overallCompatibility'];
+  dashakootaCompatibility?: ReturnType<typeof calculateDashakootaForPair>['overallCompatibility'];
   manglikStatus: {
     person1: boolean;
     person2: boolean;
@@ -143,19 +140,12 @@ export function computeKundliMilanScores(
 
   const moon1 = getMoonPlacement(chart1);
   const moon2 = getMoonPlacement(chart2);
+  // Generation marks the row failed and refunds it; never score a made-up Moon.
+  if (!moon1 || !moon2) throw new Error('kundli_milan: a Moon position is missing from a chart');
 
-  const ashtakoota = calculateAshtakoota(
-    moon1.nakshatraIndex,
-    moon2.nakshatraIndex,
-    moon1.sign,
-    moon2.sign,
-  );
-  const dashakoota = calculateDashakoota(
-    moon1.nakshatraIndex,
-    moon2.nakshatraIndex,
-    moon1.sign,
-    moon2.sign,
-  );
+  // The buyer used to be read as the boy whatever their gender.
+  const ashtakoota = calculateAshtakootaForPair(moon1, moon2, ctx.personGender, ctx.partnerGender);
+  const dashakoota = calculateDashakootaForPair(moon1, moon2, ctx.personGender, ctx.partnerGender);
 
   // detectMangalDosha's declared parameter is `ChartData` (a much stricter shape than the
   // `Record<string, unknown> | null` this module receives from ReportScoreContext); ashtakoota.ts/

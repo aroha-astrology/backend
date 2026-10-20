@@ -102,4 +102,19 @@ describe('chat grounding: upcoming transit dates', () => {
     },
     SLOW,
   );
+  it(
+    "states today's date and transit moments on the user's own clock abroad",
+    async () => {
+      // A user in London used to be told India's date and Indian times.
+      const src = { ...(await sourceFor()), timeZone: 'Europe/London' };
+      const lateEvening = new Date('2026-10-20T20:00:00Z'); // 21 Oct 01:30 in India, 20 Oct in London
+      const facts = await buildGroundingFacts(src, undefined, lateEvening, null, undefined, 'full');
+      expect(facts[0]).toContain("TODAY'S DATE: 2026-10-20 (BST, the user's own clock)");
+      const jupiter = facts.find((f) => f.startsWith('Jupiter — now in Cancer'));
+      // 12:50 IST on 31 Oct is 07:20 in London, after the clocks go back on 25 Oct.
+      expect(jupiter).toContain('enters Leo 31 Oct 2026, 07:20 GMT');
+      expect(facts.find((f) => f.startsWith('UPCOMING TRANSITS'))).toContain('Europe/London');
+    },
+    SLOW,
+  );
 });

@@ -25,6 +25,7 @@ import {
   type TransitEvent,
 } from './astro-tools/transit-events.js';
 import { SIGNS } from './astro-tools/transit.js';
+import { INDIA_TZ, dateInZone, zoneLabel } from './user-time-zone.js';
 
 /** Planets listed with two years of events, nakshatra changes included. */
 export const SLOW_PLANETS: readonly string[] = ['Jupiter', 'Saturn', 'Rahu', 'Ketu'];
@@ -81,10 +82,10 @@ export function upcomingSkyEvents(now: Date): Promise<SkyEvents> {
 // Formatting (pure)
 // ---------------------------------------------------------------------------
 
-/** "31 Oct 2026, 12:03 IST" */
-export function formatIst(date: Date): string {
+/** "31 Oct 2026, 12:03 IST" — or the same moment on the user's own clock ("06:33 GMT"). */
+export function formatIst(date: Date, timeZone: string = INDIA_TZ): string {
   const text = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata',
+    timeZone,
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -92,7 +93,7 @@ export function formatIst(date: Date): string {
     minute: '2-digit',
     hourCycle: 'h23',
   }).format(date);
-  return `${text} IST`;
+  return `${text} ${zoneLabel(timeZone, date)}`;
 }
 
 /** "PurvaPhalguni" -> "Purva Phalguni", the way a reader writes it. */
@@ -135,10 +136,11 @@ function eventText(
   e: TransitEvent,
   ascSignIndex: number | null,
   moonSignIndex: number | null,
+  timeZone: string,
 ): string {
   if (e.eventType !== 'ingress') {
     const verb = e.eventType === 'retrograde' ? 'turns retrograde' : 'turns direct';
-    return `${verb} ${formatIst(e.exactAt)} in ${e.fromSign}`;
+    return `${verb} ${formatIst(e.exactAt, timeZone)} in ${e.fromSign}`;
   }
   const from = SIGNS.indexOf(e.fromSign);
   const to = SIGNS.indexOf(e.toSign ?? '');
@@ -153,7 +155,7 @@ function eventText(
   ]
     .filter(Boolean)
     .join('; ');
-  return `${verb} ${e.toSign} ${formatIst(e.exactAt)} (${where})`;
+  return `${verb} ${e.toSign} ${formatIst(e.exactAt, timeZone)} (${where})`;
 }
 
 /**
@@ -163,7 +165,7 @@ function eventText(
  * model quotes, because a prompt rule and a trailing "first entry only" note
  * both left it quoting Jupiter's 31 Oct entry as the whole story.
  */
-function firstEntryNote(e: TransitEvent, later: TransitEvent[]): string {
+function firstEntryNote(e: TransitEvent, later: TransitEvent[], timeZone: string): string {
   if (e.eventType !== 'ingress' || e.planet === 'Rahu' || e.planet === 'Ketu') return '';
   const from = SIGNS.indexOf(e.fromSign);
   if (SIGNS.indexOf(e.toSign ?? '') !== (from + 1) % 12) return '';
@@ -173,9 +175,9 @@ function firstEntryNote(e: TransitEvent, later: TransitEvent[]): string {
     .slice(later.indexOf(out) + 1)
     .find((x) => x.eventType === 'ingress' && x.toSign === e.toSign);
   const settles = settle
-    ? ` and settles in ${e.toSign} for good from ${formatIstDay(settle.exactAt)}`
+    ? ` and settles in ${e.toSign} for good from ${formatIstDay(settle.exactAt, timeZone)}`
     : '';
-  return ` BUT ONLY BRIEFLY: it moves back into ${e.fromSign} on ${formatIstDay(out.exactAt)}${settles}`;
+  return ` BUT ONLY BRIEFLY: it moves back into ${e.fromSign} on ${formatIstDay(out.exactAt, timeZone)}${settles}`;
 }
 
 function currentText(
@@ -191,9 +193,9 @@ function currentText(
 }
 
 /** "31 Oct 2026" */
-function formatIstDay(date: Date): string {
+function formatIstDay(date: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata',
+    timeZone,
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -206,14 +208,19 @@ function formatIstDay(date: Date): string {
  * the list of crossings, the model quoted Jupiter's first entry into Leo and
  * left out that it slips back into Cancer for five months before settling.
  */
-function staysText(currentSignIndex: number, ingresses: TransitEvent[], until: Date): string {
+function staysText(
+  currentSignIndex: number,
+  ingresses: TransitEvent[],
+  until: Date,
+  timeZone: string,
+): string {
   const spans: string[] = [];
   let sign = SIGNS[currentSignIndex];
   let from: string | null = null;
   for (const e of ingresses) {
-    spans.push(`${sign} ${from ? `${from} - ` : 'until '}${formatIstDay(e.exactAt)}`);
+    spans.push(`${sign} ${from ? `${from} - ` : 'until '}${formatIstDay(e.exactAt, timeZone)}`);
     sign = e.toSign ?? sign;
-    from = formatIstDay(e.exactAt);
+    from = formatIstDay(e.exactAt, timeZone);
   }
   spans.push(`${sign} from ${from} (beyond ${istDateString(until)} not computed)`);
   return spans.join(', ');
@@ -230,6 +237,8 @@ export function upcomingTransitFacts(
   now: Date,
   ascSignIndex: number | null,
   moonSignIndex: number | null,
+  /** The user's clock (see user-time-zone.ts); IST when unknown. */
+  timeZone: string = INDIA_TZ,
 ): string[] {
   const fastUntil = new Date(now.getTime() + FAST_HORIZON_DAYS * MS_PER_DAY);
   const lines: string[] = [];
@@ -248,7 +257,9 @@ export function upcomingTransitFacts(
       .filter((e) => e.planet === planet && ahead(e.exactAt))
       .map((e, i, all) => ({
         at: e.exactAt,
-        text: eventText(e, ascSignIndex, moonSignIndex) + firstEntryNote(e, all.slice(i + 1)),
+        text:
+          eventText(e, ascSignIndex, moonSignIndex, timeZone) +
+          firstEntryNote(e, all.slice(i + 1), timeZone),
       }));
 
     if (slow) {
@@ -261,28 +272,28 @@ export function upcomingTransitFacts(
         if (sameAsIngress) continue;
         items.push({
           at: n.exactAt,
-          text: `moves into ${nakshatraName(n.toNakshatra)} nakshatra ${formatIst(n.exactAt)}`,
+          text: `moves into ${nakshatraName(n.toNakshatra)} nakshatra ${formatIst(n.exactAt, timeZone)}`,
         });
       }
     }
     items.sort((a, b) => a.at.getTime() - b.at.getTime());
 
-    const untilText = istDateString(until);
+    const untilText = dateInZone(until, timeZone);
     const next =
       items.length > 0
         ? `Next: ${items.map((i) => i.text).join('; ')}.`
         : `No change of sign${slow ? ' or nakshatra' : ''} before ${untilText}.`;
     const stays =
       slow && ingresses.length > 0
-        ? ` Signs in turn: ${staysText(p.signIndex, ingresses, until)}.`
+        ? ` Signs in turn: ${staysText(p.signIndex, ingresses, until, timeZone)}.`
         : '';
     lines.push(`${planet} — ${currentText(p, ascSignIndex, moonSignIndex)}. ${next}${stays}`);
   }
 
   if (lines.length === 0) return [];
   const header =
-    `UPCOMING TRANSITS (exact moments from the Aroha ephemeris, Lahiri sidereal, in IST; ` +
-    `Jupiter/Saturn/Rahu/Ketu through ${istDateString(sky.scannedTo)}, the others for the next ${FAST_HORIZON_DAYS} days). ` +
+    `UPCOMING TRANSITS (exact moments from the Aroha ephemeris, Lahiri sidereal, on the user's own clock, ${timeZone}; ` +
+    `Jupiter/Saturn/Rahu/Ketu through ${dateInZone(sky.scannedTo, timeZone)}, the others for the next ${FAST_HORIZON_DAYS} days). ` +
     `These are the only transit dates you may state: quote them exactly as given, never work one out or recall one. ` +
     `"House N from your Lagna/Moon" is the house that sign is for this user.`;
   return [header, ...lines];
@@ -297,13 +308,14 @@ export async function upcomingTransitFactsNow(
   now: Date,
   ascSignIndex: number | null,
   moonSignIndex: number | null,
+  timeZone: string = INDIA_TZ,
 ): Promise<string[]> {
   try {
     const [sky, current] = await Promise.all([
       upcomingSkyEvents(now),
       calculatePlanetPositions(jdFromDate(now)),
     ]);
-    return upcomingTransitFacts(sky, current, now, ascSignIndex, moonSignIndex);
+    return upcomingTransitFacts(sky, current, now, ascSignIndex, moonSignIndex, timeZone);
   } catch {
     return [];
   }

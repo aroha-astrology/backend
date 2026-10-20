@@ -37,7 +37,7 @@ export interface SkyPlanet {
   isRetrograde: boolean;
 }
 
-/** The sky at local noon of one day, at the place the choice is for. */
+/** The sky at sunrise of one day (local noon where the Sun does not rise), at the place the choice is for. */
 export interface DaySky {
   /** Local 'YYYY-MM-DD'. */
   date: string;
@@ -359,7 +359,7 @@ export function scoreDay(
       params: { tithi: day.tithi },
     });
   }
-  // Karana and yoga, read from the Sun and Moon at the same noon as the tithi.
+  // Karana and yoga, read from the Sun and Moon at the same sunrise as the tithi.
   // Only a rule that names some (marriage: Bṛhat Saṃhitā 99.8) looks at them.
   if (rule.unfavorableKaranas?.length || rule.unfavorableYogas?.length) {
     const sun = day.planets.find((p) => p.planet === 'Sun');

@@ -3,7 +3,6 @@ import {
   namesStartingWith,
   namesHittingTarget,
   rankNamesForTargets,
-  inferGenderFromName,
 } from '../src/lib/astro-engine/names/name-lookup.js';
 import {
   computeNameAlignment,
@@ -66,24 +65,6 @@ describe('gender pool excludes cross-listed ambiguous names', () => {
   it('still surfaces "Aditya" when no gender is stated (full corpus)', () => {
     const mixed = namesStartingWith('Adi', 500).map((n) => n.toLowerCase());
     expect(mixed).toContain('aditya');
-  });
-});
-
-describe('inferGenderFromName', () => {
-  it("guesses female from a name that's ONLY in the female slice", () => {
-    expect(inferGenderFromName('Arpna Sharma')).toBe('female');
-  });
-
-  it('returns null for a name absent from the corpus entirely', () => {
-    expect(inferGenderFromName('Zyxqlmnop')).toBeNull();
-  });
-
-  it('returns null (not a guess) for an ambiguous cross-listed name', () => {
-    expect(inferGenderFromName('Aditya')).toBeNull();
-  });
-
-  it('only looks at the first token, ignoring the surname', () => {
-    expect(inferGenderFromName('Arpna Verma')).toBe('female');
   });
 });
 

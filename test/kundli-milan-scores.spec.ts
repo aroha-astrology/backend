@@ -31,12 +31,13 @@ describe('getMoonPlacement', () => {
     expect(getMoonPlacement(chart)).toEqual({ nakshatraIndex: 5, sign: 'Cancer' });
   });
 
-  it('falls back to Ashwini/Aries when the chart has no Moon entry', () => {
-    expect(getMoonPlacement({ planets: [] })).toEqual({ nakshatraIndex: 0, sign: 'Aries' });
+  // It used to fall back to Ashwini in Aries, which scored a made-up Moon.
+  it('is null when the chart has no Moon entry', () => {
+    expect(getMoonPlacement({ planets: [] })).toBeNull();
   });
 
-  it('falls back to Ashwini/Aries when the chart is null', () => {
-    expect(getMoonPlacement(null)).toEqual({ nakshatraIndex: 0, sign: 'Aries' });
+  it('is null when the chart is null', () => {
+    expect(getMoonPlacement(null)).toBeNull();
   });
 });
 
@@ -129,11 +130,33 @@ describe('computeKundliMilanScores', () => {
     expect(scores.manglikStatus.cancelled).toBe(true);
   });
 
-  it('handles a null partnerChart defensively without throwing', () => {
+  it('refuses to score without the partner chart instead of inventing their Moon', () => {
     const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
     expect(() =>
       computeKundliMilanScores({ chart: chart1, partnerChart: null }, null),
-    ).not.toThrow();
+    ).toThrow('Moon position is missing');
+  });
+
+  it('puts the man first when the buyer is a woman and the partner a man', () => {
+    const her = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const him = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+    const scores = computeKundliMilanScores(
+      { chart: her, partnerChart: him, personGender: 'female', partnerGender: 'male' },
+      null,
+    );
+    expect(scores.gunaMilanScore).toBe(calculateAshtakoota(20, 3, 'Capricorn', 'Taurus').totalScore);
+  });
+
+  it('uses the lower of the two orders when neither gender is known', () => {
+    const a = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
+    const b = makeChart({ moonNakshatraIndex: 20, moonSign: 'Capricorn' });
+    const scores = computeKundliMilanScores({ chart: a, partnerChart: b }, null);
+    expect(scores.gunaMilanScore).toBe(
+      Math.min(
+        calculateAshtakoota(3, 20, 'Taurus', 'Capricorn').totalScore,
+        calculateAshtakoota(20, 3, 'Capricorn', 'Taurus').totalScore,
+      ),
+    );
   });
 });
 

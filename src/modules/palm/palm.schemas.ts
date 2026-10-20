@@ -13,6 +13,9 @@ export const PalmSlotSchema = z.enum(PALM_CAPTURE_SLOTS);
 export const CreatePalmReadingBodySchema = z
   .object({
     birthProfileId: z.string().uuid().optional(),
+    /** The hand to read as the main one. Needed only when the profile's gender is neither male
+     * nor female, since the classical rule picks the hand by gender; otherwise ignored. */
+    primaryHand: z.enum(['left', 'right']).optional(),
   })
   .openapi('CreatePalmReadingBody');
 

@@ -20,7 +20,7 @@ interface PlanetOpts {
 
 interface ChartOpts {
   ascendantSignIndex?: number;
-  moon?: PlanetOpts & { longitude?: number };
+  moon?: PlanetOpts & { longitude?: number; nakshatraIndex?: number };
   mars?: PlanetOpts;
   venus?: PlanetOpts;
   jupiter?: PlanetOpts;
@@ -453,8 +453,9 @@ describe('computeMarriageScores — spouse synastry', () => {
   });
 
   it('spouseSynastry is populated when ctx.partnerChart is present', () => {
-    const chart = makeChart({ moon: { sign: 'Cancer', house: 4 } });
-    const partnerChart = makeChart({ moon: { sign: 'Taurus', house: 4 } });
+    // Pushya (Cancer) and Rohini (Taurus): synastry needs each Moon's nakshatra, never a stand-in.
+    const chart = makeChart({ moon: { sign: 'Cancer', house: 4, nakshatraIndex: 7 } });
+    const partnerChart = makeChart({ moon: { sign: 'Taurus', house: 4, nakshatraIndex: 3 } });
     const scores = computeMarriageScores(
       { chart, partnerChart, partnerName: 'Priya' },
       null,

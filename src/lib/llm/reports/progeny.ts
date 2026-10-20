@@ -74,9 +74,13 @@ function d7Summary(d7: D7Progeny | null, label: string): string {
   const b = d7.methodB.slots[0];
   return (
     `${label}: D7 Lagna ${d7.lagna}. ` +
-    `Method A (SCHOOL-SPECIFIC, gender-based first-child house): child 1 in D7 house ${d7.methodA.startHouse} (${a?.sign ?? 'n/a'}). ` +
+    (d7.genderKnown
+      ? `Method A (SCHOOL-SPECIFIC, gender-based first-child house): child 1 in D7 house ${d7.methodA.startHouse} (${a?.sign ?? 'n/a'}). `
+      : "Method A (gender-based) NOT APPLIED: the reader's gender is not known, so only Method B below is used. Do not describe two methods agreeing. ") +
     `Method B (SCHOOL-SPECIFIC, 5th-house-always, direction by D7 Lagna polarity): child 1 in D7 house ${d7.methodB.startHouse} (${b?.sign ?? 'n/a'}). ` +
-    `The two methods ${d7.agreement ? 'AGREE' : 'DISAGREE'} on the eldest child's house (confidence: ${d7.confidence}).`
+    (d7.genderKnown
+      ? `The two methods ${d7.agreement ? 'AGREE' : 'DISAGREE'} on the eldest child's house (confidence: ${d7.confidence}).`
+      : `One method only (confidence: ${d7.confidence}).`)
   );
 }
 

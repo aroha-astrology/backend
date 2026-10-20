@@ -9,8 +9,8 @@
 // contract as computeMarriageScores/computeKundliMilanScores.
 // =============================================================================
 
-import { calculateAshtakoota } from '../matching/ashtakoota.js';
-import { calculateDashakoota } from '../matching/dashakoota.js';
+import { calculateAshtakootaForPair } from '../matching/ashtakoota.js';
+import { calculateDashakootaForPair } from '../matching/dashakoota.js';
 import { detectMangalDosha } from '../doshas/mangalDosha.js';
 import { computeMatchRiskFactors, type MatchRiskFactor } from '../matching/match-risks.js';
 import { computeReportVargas, type ReportVarga } from './report-vargas.js';
@@ -29,7 +29,7 @@ export interface SpouseSynastry {
   compatibilityBand: CompatibilityBand;
   dashakootaScore: number;
   dashakootaMaxScore: number;
-  dashakootaCompatibility: ReturnType<typeof calculateDashakoota>['overallCompatibility'];
+  dashakootaCompatibility: ReturnType<typeof calculateDashakootaForPair>['overallCompatibility'];
   manglikStatus: { self: boolean; spouse: boolean; cancelled: boolean };
   /** Same 8 life-area synastry read (wealth/health/children/harmony/career/timing/intimacy/
    * inlaws) kundli_milan/match_report already use — see match-risks.ts. */
@@ -49,24 +49,17 @@ export function computeSpouseSynastry(
   selfChart: Record<string, unknown> | null,
   spouseChart: Record<string, unknown> | null,
   dashaData: Record<string, unknown> | null,
+  selfGender?: string | null,
+  spouseGender?: string | null,
 ): SpouseSynastry | null {
   if (!selfChart || !spouseChart) return null;
 
   const moonSelf = getMoonPlacement(selfChart);
   const moonSpouse = getMoonPlacement(spouseChart);
+  if (!moonSelf || !moonSpouse) return null;
 
-  const ashtakoota = calculateAshtakoota(
-    moonSelf.nakshatraIndex,
-    moonSpouse.nakshatraIndex,
-    moonSelf.sign,
-    moonSpouse.sign,
-  );
-  const dashakoota = calculateDashakoota(
-    moonSelf.nakshatraIndex,
-    moonSpouse.nakshatraIndex,
-    moonSelf.sign,
-    moonSpouse.sign,
-  );
+  const ashtakoota = calculateAshtakootaForPair(moonSelf, moonSpouse, selfGender, spouseGender);
+  const dashakoota = calculateDashakootaForPair(moonSelf, moonSpouse, selfGender, spouseGender);
 
   // detectMangalDosha's declared parameter is the stricter `ChartData` shape — same defensive
   // cast kundli-milan.ts's computeKundliMilanScores uses around this same call.

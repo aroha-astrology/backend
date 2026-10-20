@@ -26,75 +26,11 @@ function parseTime(time: string): number {
 }
 
 /**
- * Format total minutes from midnight into "HH:MM".
- */
-function formatTime(totalMinutes: number): string {
-  let mins = totalMinutes;
-  if (mins < 0) mins += 24 * 60;
-  if (mins >= 24 * 60) mins -= 24 * 60;
-  const h = Math.floor(mins / 60);
-  const m = Math.floor(mins % 60);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-/**
- * Calculate the current planetary hora.
- *
- * The day is divided into 24 horas (not necessarily 60 minutes each).
- * Day horas: sunrise to sunset divided into 12 equal parts.
- * Night horas: sunset to next sunrise divided into 12 equal parts.
- * The first hora of the day belongs to the weekday lord, then cycles
- * through the Chaldean order.
- *
- * @param sunrise - Sunrise time as "HH:MM"
- * @param currentTime - Current time as "HH:MM"
- * @param dayOfWeek - Day of week (0=Sunday, ..., 6=Saturday)
- * @returns Hora object with ruling planet, time range, and auspiciousness
- */
-export function calculateHora(sunrise: string, currentTime: string, dayOfWeek: number): Hora {
-  const sunriseMin = parseTime(sunrise);
-  const currentMin = parseTime(currentTime);
-
-  // Assume sunset is approximately 12 hours after sunrise for hora calculation
-  // (actual sunset would be passed if available, but hora traditionally uses
-  // 12 equal day horas and 12 equal night horas based on actual day/night length)
-  // For simplicity and determinism, we calculate based on 24 horas from sunrise.
-  // Day = 12 horas, Night = 12 horas. Using average 1 hora = 60 min for now.
-  // A more precise version would accept sunset as well.
-
-  // Calculate minutes elapsed since sunrise
-  let elapsed = currentMin - sunriseMin;
-  if (elapsed < 0) elapsed += 24 * 60; // past midnight, wrap around
-
-  // Each hora = 60 minutes (24 horas in a day)
-  const horaIndex = Math.floor(elapsed / 60) % 24;
-
-  // Find the starting planet (weekday lord)
-  const weekdayLord = WEEKDAY_LORDS[dayOfWeek];
-  const startIdx = HORA_ORDER.indexOf(weekdayLord);
-
-  // Current hora planet
-  const planetIdx = (startIdx + horaIndex) % 7;
-  const planet = HORA_ORDER[planetIdx];
-
-  // Hora start and end times
-  const horaStartMin = sunriseMin + horaIndex * 60;
-  const horaEndMin = horaStartMin + 60;
-
-  return {
-    planet,
-    startTime: formatTime(horaStartMin),
-    endTime: formatTime(horaEndMin),
-    isAuspicious: BENEFIC_HORA_PLANETS.has(planet),
-  };
-}
-
-/**
  * All 24 horas of one day, in order: twelve equal parts of the daylight span
  * (sunrise to sunset) and twelve equal parts of the night. The first belongs
  * to the weekday lord and the rest follow HORA_ORDER without a break at
- * sunset. `calculateHora` above uses a fixed 60 minutes instead, which is
- * only right at the equinox (audit item PN2).
+ * sunset. A fixed 60-minute hora (the old calculateHora, removed) is only right
+ * at the equinox (audit item PN2).
  *
  * @param sunrise - "HH:MM" local
  * @param sunset - "HH:MM" local

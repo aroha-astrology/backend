@@ -19,13 +19,16 @@ import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { requirePass } from '../../lib/entitlements.js';
 import { calculatePlanetPositions } from '../../lib/astro-engine/calculations/planetPositions.js';
-import { calculateFullPanchang, getLocalSunTimes } from '../../lib/astro-engine/panchang/index.js';
+import {
+  calculateFullPanchang,
+  getLocalSunTimes,
+  panchangReferenceJd,
+} from '../../lib/astro-engine/panchang/index.js';
 import { eclipsesBetween } from '../../lib/astro-engine/panchang/eclipse.js';
 import {
   dashaPeriodsInRange,
   type StoredMahadasha,
 } from '../../lib/astro-engine/dashas/dasha-range.js';
-import { jdFromDate } from '../../lib/astro-tools/transit-events.js';
 import {
   bestTimeOfDay,
   findWindows,
@@ -69,7 +72,6 @@ export const MAX_RANGE_DAYS = 90;
 const BEST_DAYS = 5;
 const CAUTION_DAYS = 5;
 const MS_PER_DAY = 86_400_000;
-const DEFAULT_PLACE = { name: 'New Delhi', lat: 28.6139, lon: 77.209, tz: 'Asia/Kolkata' };
 
 export interface BestDay {
   date: string;
@@ -117,12 +119,18 @@ function localNoon(date: string, tz: number): Date {
   return new Date(Date.UTC(y, m - 1, d, 12) - tz * 3_600_000);
 }
 
-/** The sky at local noon for each day, plus eclipse days (by the place's calendar date). */
+/**
+ * The sky at sunrise at the place for each day (local noon only where the Sun does not
+ * rise), plus eclipse days by the place's calendar date. Sunrise is the moment the
+ * Panchang screen reads a day's tithi, nakshatra, yoga and karana at; this used to be
+ * local noon, so on a day whose tithi changed in the morning Decide named the next one.
+ */
 export async function daySkies(
   from: string,
   days: number,
   tzHours: number,
   ayanamsa: string | null,
+  place: { lat: number; lon: number },
 ): Promise<DaySky[]> {
   const dates = Array.from({ length: days }, (_, i) => addDays(from, i));
   const eclipses = await eclipsesBetween(
@@ -141,13 +149,15 @@ export async function daySkies(
 
   return Promise.all(
     dates.map(async (date) => {
+      const [y, m, d] = ymd(date);
+      // Same day handle getPanchang passes for the same date.
+      const jd = await panchangReferenceJd(new Date(y, m - 1, d, 12), place.lat, place.lon, tzHours);
       const sky = await calculatePlanetPositions(
-        jdFromDate(localNoon(date, tzHours)),
+        jd,
         (ayanamsa ?? 'lahiri') as Parameters<typeof calculatePlanetPositions>[1],
       );
       const sun = sky.find((p) => p.planet === 'Sun')!;
       const moon = sky.find((p) => p.planet === 'Moon')!;
-      const [y, m, d] = ymd(date);
       return {
         date,
         weekday: new Date(Date.UTC(y, m - 1, d)).getUTCDay(),
@@ -174,6 +184,7 @@ function dashaSupportFor(
   spec: CategorySpec,
   from: string,
   to: string,
+  tzHours: number,
 ): (date: string) => DashaSupport | undefined {
   const spans = dashaPeriodsInRange(
     mahadashas,
@@ -202,7 +213,7 @@ function dashaSupportFor(
     };
   });
   return (date) => {
-    const at = localNoon(date, 5.5);
+    const at = localNoon(date, tzHours);
     return spans.find((s) => s.start <= at && at < s.end)?.support;
   };
 }
@@ -338,11 +349,17 @@ async function store(opts: {
   return toDto(row);
 }
 
+/**
+ * The place a choice is for. A missing place used to become New Delhi and a place without a
+ * time zone took India's; both now stop with a clear error instead of scoring the wrong sky.
+ * Every place the app's picker saves carries coordinates and a time zone.
+ */
 function placeOf(loc: PlaceOfBirth | null | undefined): DecisionInput['place'] {
-  if (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon)) {
-    return { name: loc.name ?? null, lat: loc.lat, lon: loc.lon, tz: loc.tz || 'Asia/Kolkata' };
+  if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lon)) {
+    throw Errors.badRequest('PLACE_REQUIRED');
   }
-  return DEFAULT_PLACE;
+  if (!loc.tz) throw Errors.badRequest('PLACE_TIMEZONE_REQUIRED');
+  return { name: loc.name ?? null, lat: loc.lat, lon: loc.lon, tz: loc.tz };
 }
 
 async function mahadashasFor(
@@ -366,12 +383,12 @@ export async function runDecision(
   if (!loaded) throw Errors.conflict('CHART_NOT_READY');
   const { profile, ctx } = loaded;
   const mahadashas = await mahadashasFor(user.id, profile.birthProfileId);
-  const place = placeOf(user.currentLocation ?? user.placeOfBirth);
+  const place = placeOf(user.currentLocation ?? profile.placeOfBirth ?? user.placeOfBirth);
   const tzHours = tzOffsetHours(place.tz, localNoon(input.from, 5.5));
   const spec = DECISION_SPECS[input.category];
   const to = addDays(input.from, input.days - 1);
 
-  const skies = await daySkies(input.from, input.days, tzHours, ctx.calculation.ayanamsa);
+  const skies = await daySkies(input.from, input.days, tzHours, ctx.calculation.ayanamsa, place);
   const result = buildResult({
     mode: 'decision',
     spec,
@@ -384,7 +401,7 @@ export async function runDecision(
       tzHours,
     ),
     personal: toPersonal(ctx),
-    dashaOn: dashaSupportFor(ctx, mahadashas, spec, input.from, to),
+    dashaOn: dashaSupportFor(ctx, mahadashas, spec, input.from, to, tzHours),
     approximateBirthTime: profile.birthTimeAccuracy !== 'exact',
   });
 
@@ -414,6 +431,7 @@ export async function runFindDate(
     input.days,
     tzHours,
     loaded?.ctx.calculation.ayanamsa ?? null,
+    place,
   );
   const result = buildResult({
     mode: 'muhurta',

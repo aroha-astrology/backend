@@ -256,6 +256,15 @@ function computeChildrenCard(d7: D7Progeny | null, age: number | null): Children
     };
   }
 
+  if (!d7.genderKnown) {
+    return {
+      likelyCount: d7.supportedCount,
+      sequence: slotsFor(d7.methodB),
+      method: 'B',
+      note: 'Only the 5th-house method is shown: the gender-based method needs your gender, which is not on file.',
+    };
+  }
+
   // Disagreement -- show Method A only in the primary sequence (it is gender-aware, the more
   // commonly taught lineage for a mixed-gender couple), but say plainly that the schools differ
   // rather than silently picking a winner.

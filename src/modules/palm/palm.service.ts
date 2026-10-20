@@ -119,10 +119,17 @@ const PRIMARY_SLOTS = [
 const SECONDARY_SLOTS = ['secondaryFront', 'secondaryPercussion'] as const;
 const ALL_SLOTS = [...PRIMARY_SLOTS, ...SECONDARY_SLOTS] as const;
 
-/** Male -> right hand, female -> left hand (classical Indian rule). 'other'/unset defaults to
- * right — documented, not hidden — since the tradition has no third-gender convention. */
-export function resolvePrimaryHand(gender: UserRow['gender']): 'left' | 'right' {
-  return gender === 'female' ? 'left' : 'right';
+/** Male -> right hand, female -> left hand (classical Indian rule). The tradition has no rule
+ * for anyone else, so for 'other' or no gender on file the reader picks the hand themselves;
+ * without that choice this throws 400 HAND_REQUIRED instead of quietly reading the right hand. */
+export function resolvePrimaryHand(
+  gender: UserRow['gender'],
+  chosen?: 'left' | 'right',
+): 'left' | 'right' {
+  if (gender === 'female') return 'left';
+  if (gender === 'male') return 'right';
+  if (chosen) return chosen;
+  throw Errors.badRequest('HAND_REQUIRED');
 }
 
 function secondaryHandOf(primaryHand: 'left' | 'right'): 'left' | 'right' {
@@ -189,8 +196,9 @@ export async function createPalmReading(
   /** The gender of the PROFILE being read (a family member's palm follows their gender, not the
    * account owner's). */
   gender: UserRow['gender'],
+  chosenHand?: 'left' | 'right',
 ): Promise<{ readingId: string; primaryHand: string }> {
-  const primaryHand = resolvePrimaryHand(gender);
+  const primaryHand = resolvePrimaryHand(gender, chosenHand);
   const row = await createPendingPalmReading(user.id, birthProfileId, primaryHand);
   return { readingId: row.id, primaryHand };
 }
