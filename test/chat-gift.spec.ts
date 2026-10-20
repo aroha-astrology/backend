@@ -107,6 +107,18 @@ describe('the Dussehra announcement', () => {
     expect(chatGiftLaunchCopy('fr')).toEqual(chatGiftLaunchCopy('en'));
   });
 
+  it('takes the count and the deadline from the campaign config, not from the wording', () => {
+    expect(chatGiftLaunchCopy('en').body).toContain(
+      'your next 2 questions are on us. Ask before 21 October, 11:59 pm.',
+    );
+    expect(chatGiftLaunchCopy('hi').body).toContain('अगले 2 सवाल');
+    expect(chatGiftLaunchCopy('hi').body).toContain('21 अक्टूबर, 11:59 pm तक');
+    const other = { key: 'x', questions: 3, validUntil: new Date('2026-11-01T18:00:00+05:30') };
+    expect(chatGiftLaunchCopy('en', other).body).toContain(
+      'your next 3 questions are on us. Ask before 1 November, 6:00 pm.',
+    );
+  });
+
   it('is filed under Offers, so a user who turned Offers off gets the bell only', () => {
     expect(categoryOf(CHAT_GIFT_LAUNCH_TYPE)).toBe('marketing');
     expect(categoryOf(CHAT_GIFT_LAUNCH_TEST_TYPE)).toBe('marketing');

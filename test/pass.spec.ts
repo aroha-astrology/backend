@@ -28,6 +28,12 @@ const state = vi.hoisted(() => ({
   acknowledge: vi.fn(),
 }));
 
+// No festival gift running: billing goes straight to the Pass / packs / wallet.
+vi.mock('../src/modules/pass/chat-gifts.repo.js', () => ({
+  consumeChatGift: vi.fn().mockResolvedValue(false),
+  refundChatGift: vi.fn(),
+  getActiveChatGift: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('../src/modules/pass/pass.repo.js', () => ({
   findActivePass: () => Promise.resolve(held.active),
   consumePassQuestion: state.consumePassQuestion,

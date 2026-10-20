@@ -17,7 +17,7 @@ import pLimit from 'p-limit';
 import { logger } from '../../lib/logger.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import { normalizeLang, type LangCode } from '../cron/broadcast-copy.js';
-import { DUSSEHRA_2026_GIFT } from '../../config/chat-gifts.js';
+import { DUSSEHRA_2026_GIFT, type ChatGiftCampaign } from '../../config/chat-gifts.js';
 import { listChatGiftHolders } from './chat-gifts.repo.js';
 import { listUserIdsNotified } from './pass.repo.js';
 
@@ -28,42 +28,69 @@ export const CHAT_GIFT_LAUNCH_LINK = '/ai-chat';
 /** Matches the other admin broadcasts. */
 const SEND_CONCURRENCY = 10;
 
+/**
+ * {{questions}}, {{date}} and {{time}} are filled from DUSSEHRA_2026_GIFT
+ * (config/chat-gifts.ts), the one place the gift's size and end are set, so
+ * the push can never promise a different count or deadline from the one the
+ * billing enforces.
+ */
 const LAUNCH_COPY: Record<LangCode, { title: string; body: string }> = {
   en: {
     title: '🏹 Happy Dussehra! Yogi Baba just got sharper',
-    body: 'His readings now follow the exact planetary dates and times. To celebrate, your next 2 questions are on us. Ask before 21 Oct, 11:59 PM.',
+    body: 'His readings now follow the exact planetary dates and times. To celebrate, your next {{questions}} questions are on us. Ask before {{date}}, {{time}}.',
   },
   hi: {
     title: '🏹 दशहरा की शुभकामनाएँ! योगी बाबा अब और सटीक',
-    body: 'अब उनके उत्तर ग्रहों की सही तारीख़ और समय पर आधारित हैं। इस ख़ुशी में आपके अगले 2 सवाल हमारी ओर से मुफ़्त। 21 अक्टूबर, रात 11:59 बजे तक पूछें।',
+    body: 'अब उनके उत्तर ग्रहों की सही तारीख़ और समय पर आधारित हैं। इस ख़ुशी में आपके अगले {{questions}} सवाल हमारी ओर से मुफ़्त। {{date}}, {{time}} तक पूछें।',
   },
   bn: {
     title: '🏹 শুভ বিজয়া! যোগী বাবা এখন আরও নির্ভুল',
-    body: 'এখন তাঁর উত্তর গ্রহের সঠিক তারিখ ও সময় মেনে চলে। তাই আপনার পরের ২টি প্রশ্ন আমাদের তরফ থেকে বিনামূল্যে। ২১ অক্টোবর রাত ১১:৫৯-এর মধ্যে জিজ্ঞেস করুন।',
+    body: 'এখন তাঁর উত্তর গ্রহের সঠিক তারিখ ও সময় মেনে চলে। তাই আপনার পরের {{questions}}টি প্রশ্ন আমাদের তরফ থেকে বিনামূল্যে। {{date}}, {{time}}-এর মধ্যে জিজ্ঞেস করুন।',
   },
   mr: {
     title: '🏹 दसऱ्याच्या शुभेच्छा! योगी बाबा आता अधिक अचूक',
-    body: 'आता त्यांची उत्तरे ग्रहांच्या अचूक तारखा आणि वेळेवर आधारित आहेत. यानिमित्त तुमचे पुढचे 2 प्रश्न आमच्याकडून मोफत. 21 ऑक्टोबर, रात्री 11:59 पर्यंत विचारा.',
+    body: 'आता त्यांची उत्तरे ग्रहांच्या अचूक तारखा आणि वेळेवर आधारित आहेत. यानिमित्त तुमचे पुढचे {{questions}} प्रश्न आमच्याकडून मोफत. {{date}}, {{time}} पर्यंत विचारा.',
   },
   te: {
     title: '🏹 దసరా శుభాకాంక్షలు! యోగి బాబా ఇప్పుడు మరింత ఖచ్చితంగా',
-    body: 'ఇప్పుడు ఆయన సమాధానాలు గ్రహాల ఖచ్చితమైన తేదీలు, సమయాలను అనుసరిస్తాయి. ఈ సందర్భంగా మీ తదుపరి 2 ప్రశ్నలు మా తరఫున ఉచితం. అక్టోబర్ 21, రాత్రి 11:59 లోపు అడగండి.',
+    body: 'ఇప్పుడు ఆయన సమాధానాలు గ్రహాల ఖచ్చితమైన తేదీలు, సమయాలను అనుసరిస్తాయి. ఈ సందర్భంగా మీ తదుపరి {{questions}} ప్రశ్నలు మా తరఫున ఉచితం. {{date}}, {{time}} లోపు అడగండి.',
   },
   ta: {
     title: '🏹 விஜயதசமி வாழ்த்துகள்! யோகி பாபா இப்போது இன்னும் துல்லியமாக',
-    body: 'இப்போது அவரது பதில்கள் கிரகங்களின் சரியான தேதிகள், நேரங்களைப் பின்பற்றுகின்றன. இதைக் கொண்டாட உங்கள் அடுத்த 2 கேள்விகள் எங்கள் சார்பில் இலவசம். அக்டோபர் 21, இரவு 11:59 க்குள் கேளுங்கள்.',
+    body: 'இப்போது அவரது பதில்கள் கிரகங்களின் சரியான தேதிகள், நேரங்களைப் பின்பற்றுகின்றன. இதைக் கொண்டாட உங்கள் அடுத்த {{questions}} கேள்விகள் எங்கள் சார்பில் இலவசம். {{date}}, {{time}} க்குள் கேளுங்கள்.',
   },
   gu: {
     title: '🏹 દશેરાની શુભેચ્છા! યોગી બાબા હવે વધુ સચોટ',
-    body: 'હવે તેમના જવાબો ગ્રહોની ચોક્કસ તારીખો અને સમય પર આધારિત છે. આ ખુશીમાં તમારા આગલા 2 પ્રશ્નો અમારા તરફથી મફત. 21 ઑક્ટોબર, રાત્રે 11:59 સુધીમાં પૂછો.',
+    body: 'હવે તેમના જવાબો ગ્રહોની ચોક્કસ તારીખો અને સમય પર આધારિત છે. આ ખુશીમાં તમારા આગલા {{questions}} પ્રશ્નો અમારા તરફથી મફત. {{date}}, {{time}} સુધીમાં પૂછો.',
   },
 };
 
-export function chatGiftLaunchCopy(locale: string | null | undefined): {
-  title: string;
-  body: string;
-} {
-  return LAUNCH_COPY[normalizeLang(locale)];
+/** Day and month, then the clock time, in the reader's language and IST (latin digits). */
+function deadlineParts(lang: LangCode, until: Date): { date: string; time: string } {
+  const opts = { timeZone: 'Asia/Kolkata', numberingSystem: 'latn' } as const;
+  const locale = `${lang}-IN`;
+  return {
+    date: new Intl.DateTimeFormat(locale, { ...opts, day: 'numeric', month: 'long' }).format(until),
+    time: new Intl.DateTimeFormat(locale, { ...opts, hour: 'numeric', minute: '2-digit' }).format(
+      until,
+    ),
+  };
+}
+
+export function chatGiftLaunchCopy(
+  locale: string | null | undefined,
+  campaign: ChatGiftCampaign = DUSSEHRA_2026_GIFT,
+): { title: string; body: string } {
+  const lang = normalizeLang(locale);
+  const { date, time } = deadlineParts(lang, campaign.validUntil);
+  const copy = LAUNCH_COPY[lang];
+  return {
+    title: copy.title,
+    body: copy.body
+      .replace('{{questions}}', String(campaign.questions))
+      .replace('{{date}}', date)
+      .replace('{{time}}', time),
+  };
 }
 
 export interface ChatGiftLaunchSend {
