@@ -16,6 +16,7 @@ import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { getClientIp } from '../../lib/client-ip.js';
 import { Errors } from '../../lib/errors.js';
 import { UpdateMeBodySchema, UserSchema, NotificationSchema } from './users.schemas.js';
+import { getActiveChatGift } from '../pass/chat-gifts.repo.js';
 import {
   requestAccountDeletion,
   toUserDto,
@@ -295,8 +296,17 @@ usersRouter.openapi(getMeRoute, async (c) => {
   const feedbackGiven = await hasGivenFeedback(user.id);
   const claimedCampaigns = await getClaimedCampaignKeys(user.id, CLAIM_CAMPAIGN_KEYS);
   const activeClaimableCampaign = await resolveActiveClaimableCampaign(user, claimedCampaigns);
+  const chatGift = await getActiveChatGift(user.id).catch(() => null);
   return c.json(
-    toUserDto(user, profile, features, feedbackGiven, claimedCampaigns, activeClaimableCampaign),
+    toUserDto(
+      user,
+      profile,
+      features,
+      feedbackGiven,
+      claimedCampaigns,
+      activeClaimableCampaign,
+      chatGift,
+    ),
     200,
   );
 });
@@ -313,8 +323,17 @@ usersRouter.openapi(patchMeRoute, async (c) => {
   const feedbackGiven = await hasGivenFeedback(next.id);
   const claimedCampaigns = await getClaimedCampaignKeys(next.id, CLAIM_CAMPAIGN_KEYS);
   const activeClaimableCampaign = await resolveActiveClaimableCampaign(next, claimedCampaigns);
+  const chatGift = await getActiveChatGift(next.id).catch(() => null);
   return c.json(
-    toUserDto(next, profile, features, feedbackGiven, claimedCampaigns, activeClaimableCampaign),
+    toUserDto(
+      next,
+      profile,
+      features,
+      feedbackGiven,
+      claimedCampaigns,
+      activeClaimableCampaign,
+      chatGift,
+    ),
     200,
   );
 });

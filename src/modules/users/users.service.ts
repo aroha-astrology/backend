@@ -1,4 +1,5 @@
 import type { NewUserRow, NewUserConsentLogRow, UserRow } from '../../db/schema.js';
+import type { ActiveChatGift } from '../pass/chat-gifts.repo.js';
 import { env } from '../../config/env.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { Errors } from '../../lib/errors.js';
@@ -132,6 +133,8 @@ export function toUserDto(
     amountPaise: number;
     validUntil: string;
   } | null,
+  /** The running gift questions, via `getActiveChatGift()` (pass/chat-gifts.repo.ts). */
+  chatGift: ActiveChatGift | null = null,
 ): UserDto {
   return {
     id: row.id,
@@ -206,6 +209,7 @@ export function toUserDto(
     platform: row.platform,
     walletBalancePaise: row.walletBalancePaise,
     questionCredits: row.questionCredits,
+    chatGift,
     nextReportVote: row.nextReportVote,
     // When the free chat follow-up is next usable; null = usable now. See
     // lib/chat-follow-up.ts — the server re-checks atomically on the tap itself.

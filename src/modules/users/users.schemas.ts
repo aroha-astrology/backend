@@ -276,6 +276,18 @@ export const UserSchema = z
       .number()
       .int()
       .describe('Prepaid chat questions from Question Packs (spent before the wallet)'),
+    chatGift: z
+      .object({
+        campaign: z.string(),
+        questionsLeft: z.number().int(),
+        questionsTotal: z.number().int(),
+        validUntil: z.string(),
+      })
+      .nullable()
+      .describe(
+        'Free gift questions still running for an occasion (spent before everything else), ' +
+          'or null. validUntil is ISO 8601.',
+      ),
     unlockedHouses: z.array(z.number().int()),
     nextReportVote: z.string().nullable(),
     nextFreeFollowUpAt: z

@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
+import { getActiveChatGift } from '../pass/chat-gifts.repo.js';
 import { requireFirebaseToken } from '../../middleware/auth.js';
 import { toUserDto, resolveActiveClaimableCampaign } from '../users/users.service.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
@@ -79,6 +80,8 @@ authRouter.openapi(sessionRoute, async (c) => {
   const activeClaimableCampaign = created
     ? null
     : await resolveActiveClaimableCampaign(user, claimedCampaigns);
+  // Gift questions go to users who existed when a campaign was granted, never a new signup.
+  const chatGift = created ? null : await getActiveChatGift(user.id).catch(() => null);
   const body = {
     user: toUserDto(
       user,
@@ -87,6 +90,7 @@ authRouter.openapi(sessionRoute, async (c) => {
       feedbackGiven,
       claimedCampaigns,
       activeClaimableCampaign,
+      chatGift,
     ),
     created,
   };

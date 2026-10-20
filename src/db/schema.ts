@@ -3280,3 +3280,37 @@ export const geminiKeys = pgTable('gemini_keys', {
 
 export type GeminiKeyRow = typeof geminiKeys.$inferSelect;
 export type NewGeminiKeyRow = typeof geminiKeys.$inferInsert;
+
+/**
+ * Gift questions (migration 0092): free chat questions handed out for an
+ * occasion, one row per user per campaign. Spent before the Pass, Question
+ * Pack credits and the wallet (pass/question-billing.ts), and only until
+ * `validUntil`. See pass/chat-gifts.repo.ts.
+ */
+export const chatGifts = pgTable(
+  'chat_gifts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Campaign key, e.g. 'dussehra_2026' (config/chat-gifts.ts). */
+    campaign: text('campaign').notNull(),
+    questions: integer('questions').notNull(),
+    used: integer('used').notNull().default(0),
+    validUntil: timestamp('valid_until', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userCampaignUnique: uniqueIndex('chat_gifts_user_campaign_unique').on(
+      table.userId,
+      table.campaign,
+    ),
+  }),
+);
+
+export type ChatGiftRow = typeof chatGifts.$inferSelect;

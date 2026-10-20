@@ -30,6 +30,8 @@ const CATEGORY_BY_TYPE: Record<string, NotificationCategory> = {
   pass_launch_test: 'marketing',
   voice_trial_launch: 'marketing',
   voice_trial_launch_test: 'marketing',
+  chat_gift_dussehra_2026: 'marketing',
+  chat_gift_dussehra_2026_test: 'marketing',
   daily_reading: 'dailyHoroscope',
   weekly_reading: 'dailyHoroscope',
   monthly_reading: 'dailyHoroscope',

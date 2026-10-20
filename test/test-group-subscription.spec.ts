@@ -5,6 +5,7 @@ import { chargeQuestion, refundQuestion } from '../src/modules/pass/question-bil
 import { chatPricingFact } from '../src/lib/chat-pricing.js';
 import * as userGroupsRepo from '../src/modules/user-groups/user-groups.repo.js';
 import * as passRepo from '../src/modules/pass/pass.repo.js';
+import * as chatGiftsRepo from '../src/modules/pass/chat-gifts.repo.js';
 import * as usersRepo from '../src/modules/users/users.repo.js';
 import * as featuresService from '../src/modules/features/features.service.js';
 import type { UserRow } from '../src/db/schema.js';
@@ -109,6 +110,8 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(passRepo, 'findActivePass').mockResolvedValue(null);
+    // No festival gift running: these cases are about the group allowance itself.
+    vi.spyOn(chatGiftsRepo, 'consumeChatGift').mockResolvedValue(false);
     vi.spyOn(userGroupsRepo, 'listGroupIdsForUser').mockImplementation((userId: string) => {
       return Promise.resolve(userId === testUserId ? ['group-tester-1'] : []);
     });
