@@ -158,9 +158,10 @@ function eventText(
 
 /**
  * On a forward entry the planet will reverse out of before settling:
- * " — first entry only: back in Cancer from 25 Jan 2027, settles in Leo from
- * 26 Jun 2027". Put on the date itself because a prompt rule alone did not
- * stop the model quoting Jupiter's 31 Oct entry as the whole story.
+ * " BUT ONLY BRIEFLY: it moves back into Cancer on 25 Jan 2027 and settles in
+ * Leo for good from 26 Jun 2027". Worded as part of the same sentence the
+ * model quotes, because a prompt rule and a trailing "first entry only" note
+ * both left it quoting Jupiter's 31 Oct entry as the whole story.
  */
 function firstEntryNote(e: TransitEvent, later: TransitEvent[]): string {
   if (e.eventType !== 'ingress' || e.planet === 'Rahu' || e.planet === 'Ketu') return '';
@@ -171,8 +172,10 @@ function firstEntryNote(e: TransitEvent, later: TransitEvent[]): string {
   const settle = later
     .slice(later.indexOf(out) + 1)
     .find((x) => x.eventType === 'ingress' && x.toSign === e.toSign);
-  const settles = settle ? `, settles in ${e.toSign} from ${formatIstDay(settle.exactAt)}` : '';
-  return ` — first entry only: back in ${e.fromSign} from ${formatIstDay(out.exactAt)}${settles}`;
+  const settles = settle
+    ? ` and settles in ${e.toSign} for good from ${formatIstDay(settle.exactAt)}`
+    : '';
+  return ` BUT ONLY BRIEFLY: it moves back into ${e.fromSign} on ${formatIstDay(out.exactAt)}${settles}`;
 }
 
 function currentText(

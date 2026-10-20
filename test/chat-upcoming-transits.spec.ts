@@ -61,7 +61,7 @@ describe('chat grounding: upcoming transit dates', () => {
       // The first entry is short: chat must see that it reverses before settling.
       expect(jupiter).toContain('(Magha nakshatra; house ');
       expect(jupiter).toContain(
-        '— first entry only: back in Cancer from 25 Jan 2027, settles in Leo from 26 Jun 2027',
+        'BUT ONLY BRIEFLY: it moves back into Cancer on 25 Jan 2027 and settles in Leo for good from 26 Jun 2027',
       );
       expect(jupiter).toContain('turns retrograde 13 Dec 2026');
       expect(jupiter).toContain('moves back into Cancer 25 Jan 2027');
