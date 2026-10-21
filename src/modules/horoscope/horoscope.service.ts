@@ -33,6 +33,7 @@ import {
 } from './horoscope.repo.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { notifyError } from '../../lib/notifications/telegram.js';
+import { userZone } from '../../lib/user-time-zone.js';
 
 /** The app's reference timezone — horoscopes are dated by the IST calendar day. */
 const APP_TZ = 'Asia/Kolkata';
@@ -95,9 +96,17 @@ function addOneDay(forDate: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
-/** The start date (period's `forDate`) of the period containing today, in IST. */
-export function currentPeriodStart(period: HoroscopePeriod): string {
-  const today = todayForApp();
+/**
+ * The start date (period's `forDate`) of the period containing `at`, on the
+ * reader's own calendar: a user in London gets their new day at London
+ * midnight, not India's. IST when no zone is given.
+ */
+export function currentPeriodStart(
+  period: HoroscopePeriod,
+  timeZone: string = APP_TZ,
+  at: Date = new Date(),
+): string {
+  const today = dateInTz(at, userZone(timeZone));
   if (period === 'daily') return today;
   if (period === 'tomorrow') return addOneDay(today);
   if (period === 'weekly') return mondayOf(today);
@@ -320,7 +329,7 @@ export async function requestHoroscopeGeneration(
   period: HoroscopePeriod,
   opts: { forDate?: string; force?: boolean; retryForever?: boolean } = {},
 ): Promise<'generated' | 'skipped' | 'failed'> {
-  const forDate = opts.forDate ?? currentPeriodStart(period);
+  const forDate = opts.forDate ?? currentPeriodStart(period, userZone(user.currentTimezone));
   const periodKey = periodKeyFor(period, forDate);
 
   // No birth date = nothing to read a chart from. Guarded here rather than in
@@ -430,9 +439,11 @@ export async function runHoroscopeBatch(
               // — the admin cost dashboard's per-user filter silently drops
               // this entire agent. See reports.service.ts's fireReportGeneration
               // for the same pattern applied to the same problem.
+              // No forDate given = each user's own current period, on their
+              // own clock; the run itself stays keyed on the IST date.
               return await runWithRequestContext({ userId: user.id }, () =>
                 requestHoroscopeGeneration(user, profile, period, {
-                  forDate,
+                  ...(opts.forDate ? { forDate: opts.forDate } : {}),
                   force,
                 }),
               );

@@ -15,6 +15,7 @@ import {
   istNoon,
   runBirthTimeCheck,
 } from './insights.service.js';
+import { dateInZone, userZone } from '../../lib/user-time-zone.js';
 import { getAstroWeather } from './weather.service.js';
 import { getCalendar, MAX_CALENDAR_DAYS } from './calendar.service.js';
 import { getTimeline } from './timeline.service.js';
@@ -193,7 +194,11 @@ const weatherRoute = createRoute({
 
 insightsRouter.openapi(weatherRoute, async (c) => {
   const { date } = c.req.valid('query');
-  const weather = await getAstroWeather(c.get('user'), date ?? istToday());
+  // Today on the reader's own clock, so the horoscope scores it reads are
+  // the same day's horoscope the reader sees.
+  const user = c.get('user');
+  const today = dateInZone(new Date(), userZone(user.currentTimezone));
+  const weather = await getAstroWeather(user, date ?? today);
   return c.json(weather as unknown as Record<string, unknown>, 200);
 });
 

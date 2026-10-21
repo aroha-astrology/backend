@@ -107,6 +107,14 @@ export const GetHoroscopeQuerySchema = z.object({
     .max(35)
     .optional()
     .openapi({ param: { name: 'language', in: 'query' } }),
+  /** The device's IANA zone, so "today" is the reader's own day. Falls back
+   * to `users.current_timezone`, then IST; an unknown zone counts as absent. */
+  tz: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .openapi({ param: { name: 'tz', in: 'query' }, example: 'Europe/London' }),
 });
 
 /** 202 body when a horoscope isn't ready yet — the client should poll GET again. */
@@ -142,7 +150,7 @@ export const HoroscopeRunBodySchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
       .optional()
-      .describe('Override the date; defaults to the current period (IST).'),
+      .describe("Override the date; defaults to each user's current period on their own clock."),
     force: z.boolean().optional().describe('Regenerate even if one already exists for the period.'),
     limit: z.number().int().positive().max(100000).optional().describe('Cap users processed.'),
     includeDormant: z

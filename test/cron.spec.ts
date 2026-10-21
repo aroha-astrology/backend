@@ -309,7 +309,7 @@ describe('GET /v1/horoscope', () => {
       expect.objectContaining({ id: 'id-1' }),
       expect.objectContaining({ birthProfileId: null }),
       'daily',
-      { retryForever: true },
+      { forDate: '2026-06-26', retryForever: true },
     );
   });
 
@@ -398,7 +398,7 @@ describe('GET /v1/horoscope — additional (non-primary) profile', () => {
       expect.objectContaining({ id: 'id-1' }),
       expect.objectContaining({ birthProfileId: 'profile-a', displayName: 'Bob' }),
       'daily',
-      { retryForever: true },
+      { forDate: '2026-06-26', retryForever: true },
     );
   });
 

@@ -20,6 +20,7 @@ import { getMoonTransitRemedy } from '../../lib/astro-engine/lalkitab/transitRem
 import type { WhyFactor } from '../../lib/intelligence/types.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { findHoroscope } from '../horoscope/horoscope.repo.js';
+import { dateInZone, userZone } from '../../lib/user-time-zone.js';
 import { istDate } from '../insights/calendar.service.js';
 import { istNoon, loadChartContext } from '../insights/insights.service.js';
 import { streakOf } from '../journal/journal.service.js';
@@ -202,7 +203,10 @@ export async function getPracticeToday(
   const date = istDate(now);
   const loaded = await loadChartContext(user, istNoon(date)).catch(() => null);
   const profile = loaded?.profile ?? (await resolveActiveProfileContext(user));
-  const horoscope = await findHoroscope(user.id, profile.birthProfileId, 'daily', date);
+  // The remedy comes from the horoscope the reader sees today, which is dated
+  // on their own clock (see currentPeriodStart), not from India's date.
+  const horoscopeDate = dateInZone(now, userZone(user.currentTimezone));
+  const horoscope = await findHoroscope(user.id, profile.birthProfileId, 'daily', horoscopeDate);
   const remedy =
     horoscope?.status === 'ready'
       ? ((

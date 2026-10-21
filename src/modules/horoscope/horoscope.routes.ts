@@ -22,6 +22,7 @@ import {
   type ProfileContext,
 } from '../birth-profiles/profile-context.js';
 import type { UserRow } from '../../db/schema.js';
+import { userZone } from '../../lib/user-time-zone.js';
 import type { HoroscopePeriod } from './horoscope.schemas.js';
 
 /** Don't re-run a failed generation more often than this. */
@@ -57,8 +58,13 @@ export const horoscopeRouter = new OpenAPIHono();
 horoscopeRouter.use('*', requireUser);
 
 /** Kick off generation without blocking the response — always retries indefinitely on failure, since nothing else is waiting on this one user's run. */
-function fireGeneration(user: UserRow, profile: ProfileContext, period: HoroscopePeriod): void {
-  void requestHoroscopeGeneration(user, profile, period, { retryForever: true }).catch(
+function fireGeneration(
+  user: UserRow,
+  profile: ProfileContext,
+  period: HoroscopePeriod,
+  forDate: string,
+): void {
+  void requestHoroscopeGeneration(user, profile, period, { forDate, retryForever: true }).catch(
     (err: unknown) => {
       logger.error({ err, userId: user.id, period }, 'horoscope background generation errored');
     },
@@ -99,14 +105,15 @@ const getHoroscopeRoute = createRoute({
 horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
   const user = c.get('user');
   const profile = await resolveActiveProfileContext(user);
-  const { period, language } = c.req.valid('query');
+  const { period, language, tz } = c.req.valid('query');
 
-  const forDate = currentPeriodStart(period);
+  // The reader's own day: the device's zone, else the saved one, else IST.
+  const forDate = currentPeriodStart(period, userZone(tz ?? user.currentTimezone));
   const periodKey = periodKeyFor(period, forDate);
   const existing = await findHoroscope(user.id, profile.birthProfileId, period, periodKey);
 
   if (!existing) {
-    fireGeneration(user, profile, period);
+    fireGeneration(user, profile, period, forDate);
     return c.json({ status: 'generating' as const }, 202);
   }
 
@@ -161,13 +168,13 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
   }
 
   if (existing.status === 'generating') {
-    if (isStaleGenerating(existing)) fireGeneration(user, profile, period);
+    if (isStaleGenerating(existing)) fireGeneration(user, profile, period, forDate);
     return c.json({ status: 'generating' as const }, 202);
   }
 
   // 'failed'
   if (Date.now() - existing.updatedAt.getTime() > FAILED_RETRY_COOLDOWN_MS) {
-    fireGeneration(user, profile, period);
+    fireGeneration(user, profile, period, forDate);
   }
   return c.json({ status: 'failed' as const }, 202);
 });
