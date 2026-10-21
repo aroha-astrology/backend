@@ -178,3 +178,24 @@ describe('getPracticeToday / completePractice', () => {
     await expect(completePractice(user, 'lalKitab')).rejects.toThrow('PRACTICE_ITEM_NOT_OFFERED');
   });
 });
+
+describe("practice on the reader's own day", () => {
+  // 25 Sep 2026 02:00 UTC = 07:30 IST on the 25th, 22:00 on the 24th in New York.
+  const LATE_NY = new Date('2026-09-25T02:00:00Z');
+
+  it("dates today's items by the reader's zone", async () => {
+    expect((await getPracticeToday(makeUserRow(), LATE_NY)).date).toBe('2026-09-25');
+    expect((await getPracticeToday(makeUserRow(), LATE_NY, 'America/New_York')).date).toBe(
+      '2026-09-24',
+    );
+  });
+
+  it("marks an item done on the reader's day", async () => {
+    const user = makeUserRow();
+    await completePractice(user, 'weekday', 'Pacific/Kiritimati');
+    const [, date] = state.markPracticeDone.mock.calls[0] as [string, string, string];
+    expect(date).toBe(
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Kiritimati' }).format(new Date()),
+    );
+  });
+});

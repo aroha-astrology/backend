@@ -149,3 +149,22 @@ describe('eclipsesBetween', () => {
     ]);
   }, 60_000);
 });
+
+describe("calendar dates on the reader's own clock", () => {
+  it('dates a sign change by the zone it is read in', () => {
+    // 22 Oct 2026 01:00 UTC = 06:30 IST on the 22nd, 21:00 on the 21st in New York.
+    const change = [ingress('Venus', 'Virgo', 'Libra', '2026-10-22T01:00:00Z')];
+    expect(transitEvents(ctx, change)[0]!.date).toBe('2026-10-22');
+    expect(transitEvents(ctx, change, 'America/New_York')[0]!.date).toBe('2026-10-21');
+  });
+
+  it("reads the festival table for the reader's days, from their midnight", () => {
+    // New York's 15-24 Aug 2028: 15 Aug 00:00 EDT = 04:00 UTC.
+    const events = festivalEvents(
+      new Date('2028-08-15T04:00:00Z'),
+      new Date('2028-08-25T04:00:00Z'),
+      'America/New_York',
+    );
+    expect(events.map((e) => e.params.name)).toEqual(['Independence Day', 'Ganesh Chaturthi']);
+  });
+});

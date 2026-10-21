@@ -22,7 +22,7 @@ import {
   type ProfileContext,
 } from '../birth-profiles/profile-context.js';
 import type { UserRow } from '../../db/schema.js';
-import { userZone } from '../../lib/user-time-zone.js';
+import { readerZone } from '../../lib/user-time-zone.js';
 import type { HoroscopePeriod } from './horoscope.schemas.js';
 
 /** Don't re-run a failed generation more often than this. */
@@ -108,7 +108,7 @@ horoscopeRouter.openapi(getHoroscopeRoute, async (c) => {
   const { period, language, tz } = c.req.valid('query');
 
   // The reader's own day: the device's zone, else the saved one, else IST.
-  const forDate = currentPeriodStart(period, userZone(tz ?? user.currentTimezone));
+  const forDate = currentPeriodStart(period, readerZone(tz, user.currentTimezone));
   const periodKey = periodKeyFor(period, forDate);
   const existing = await findHoroscope(user.id, profile.birthProfileId, period, periodKey);
 

@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireAnyFeature } from '../../middleware/feature.js';
+import { readerZone, ReaderTzQuery } from '../../lib/user-time-zone.js';
 import { PRACTICE_ITEM_IDS, completePractice, getPracticeToday } from './practice.service.js';
 
 const ErrorSchema = z
@@ -36,6 +37,7 @@ const todayRoute = createRoute({
   summary: "Today's practice: 3-4 small items with their reasons, what's done, and the streak",
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, practicePage] as const,
+  request: { query: z.object({ tz: ReaderTzQuery }) },
   responses: {
     200: { description: "Today's practice", content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
@@ -44,7 +46,9 @@ const todayRoute = createRoute({
 });
 
 practiceRouter.openapi(todayRoute, async (c) => {
-  const today = await getPracticeToday(c.get('user'));
+  const user = c.get('user');
+  const zone = readerZone(c.req.valid('query').tz, user.currentTimezone);
+  const today = await getPracticeToday(user, new Date(), zone);
   return c.json(today as unknown as Record<string, unknown>, 200);
 });
 
@@ -56,6 +60,7 @@ const completeRoute = createRoute({
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, practicePage] as const,
   request: {
+    query: z.object({ tz: ReaderTzQuery }),
     body: {
       required: true,
       content: { 'application/json': { schema: z.object({ itemId: z.enum(PRACTICE_ITEM_IDS) }) } },
@@ -70,6 +75,8 @@ const completeRoute = createRoute({
 });
 
 practiceRouter.openapi(completeRoute, async (c) => {
-  const today = await completePractice(c.get('user'), c.req.valid('json').itemId);
+  const user = c.get('user');
+  const zone = readerZone(c.req.valid('query').tz, user.currentTimezone);
+  const today = await completePractice(user, c.req.valid('json').itemId, zone);
   return c.json(today as unknown as Record<string, unknown>, 200);
 });

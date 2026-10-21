@@ -19,8 +19,7 @@ import { buildChartContext } from '../../lib/intelligence/chart-context.js';
 import type { LifeArea } from '../../lib/intelligence/areas.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
-import { istDate } from '../insights/calendar.service.js';
-import { istNoon } from '../insights/insights.service.js';
+import { dateInZone, noonInZone, userZone } from '../../lib/user-time-zone.js';
 import {
   RATING_FIELDS,
   deleteJournalEntry,
@@ -96,11 +95,12 @@ function addDays(date: string, days: number): string {
 export async function journalSnapshot(
   user: UserRow,
   date: string,
+  timeZone: string = userZone(user.currentTimezone),
 ): Promise<JournalSnapshot | null> {
   const kundli = await findKundliByUserId(user.id, null);
   if (!kundli) return null;
   const profile = await resolveProfileContext(user, null);
-  const ctx = await buildChartContext(kundli, profile, istNoon(date));
+  const ctx = await buildChartContext(kundli, profile, noonInZone(date, timeZone));
   const moon = ctx?.transits.find((t) => t.planet === 'Moon');
   if (!ctx || !moon) return null;
   return {
@@ -115,8 +115,10 @@ export async function journalSnapshot(
 export async function listEntries(
   user: UserRow,
   range: { from?: string; to?: string },
+  timeZone: string = userZone(user.currentTimezone),
 ): Promise<{ today: string; entries: JournalEntryDto[] }> {
-  const today = istDate(new Date());
+  // The reader's own day (see readerZone), so the check-in rolls at their midnight.
+  const today = dateInZone(new Date(), timeZone);
   const to = range.to ?? today;
   const from = range.from ?? addDays(to, -(DEFAULT_LIST_DAYS - 1));
   const entries = await listJournalEntries(user.id, { from, to });
@@ -137,8 +139,9 @@ export async function saveEntry(
   user: UserRow,
   date: string,
   input: SaveEntryInput,
+  timeZone: string = userZone(user.currentTimezone),
 ): Promise<JournalEntryDto> {
-  if (date > istDate(new Date())) throw Errors.badRequest('JOURNAL_DATE_IN_FUTURE');
+  if (date > dateInZone(new Date(), timeZone)) throw Errors.badRequest('JOURNAL_DATE_IN_FUTURE');
   const [existing] = await listJournalEntries(user.id, { from: date, to: date, limit: 1 });
 
   const ratings = Object.fromEntries(
@@ -149,7 +152,7 @@ export async function saveEntry(
 
   const snapshot =
     existing?.snapshot ??
-    (await journalSnapshot(user, date).catch((err: unknown) => {
+    (await journalSnapshot(user, date, timeZone).catch((err: unknown) => {
       logger.warn({ err, userId: user.id }, 'journal snapshot failed — saving without it');
       return null;
     }));
@@ -279,9 +282,12 @@ export function buildInsights(entries: readonly JournalEntryDto[], today: string
   };
 }
 
-export async function journalInsights(user: UserRow): Promise<JournalInsights> {
+export async function journalInsights(
+  user: UserRow,
+  timeZone: string = userZone(user.currentTimezone),
+): Promise<JournalInsights> {
   const entries = await listJournalEntries(user.id, { limit: 1000 });
-  return buildInsights(entries.map(toDto), istDate(new Date()));
+  return buildInsights(entries.map(toDto), dateInZone(new Date(), timeZone));
 }
 
 /** Every dated life event in the journal, oldest first — ready for a Birth Time Confidence check. */

@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireAnyFeature, requireFeature } from '../../middleware/feature.js';
+import { readerZone, ReaderTzQuery } from '../../lib/user-time-zone.js';
 import { LIFE_EVENT_DOMAINS } from '../../lib/astro-engine/calculations/rectification.js';
 import {
   MAX_EVENTS_PER_DAY,
@@ -48,7 +49,9 @@ const listRoute = createRoute({
   summary: 'Journal entries in a date range (default: the last 60 days)',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, cardOrPage] as const,
-  request: { query: z.object({ from: DateSchema.optional(), to: DateSchema.optional() }) },
+  request: {
+    query: z.object({ from: DateSchema.optional(), to: DateSchema.optional(), tz: ReaderTzQuery }),
+  },
   responses: {
     200: { description: 'Entries', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
@@ -57,7 +60,9 @@ const listRoute = createRoute({
 });
 
 journalRouter.openapi(listRoute, async (c) => {
-  const list = await listEntries(c.get('user'), c.req.valid('query'));
+  const user = c.get('user');
+  const { tz, ...range } = c.req.valid('query');
+  const list = await listEntries(user, range, readerZone(tz, user.currentTimezone));
   return c.json(list as unknown as Record<string, unknown>, 200);
 });
 
@@ -68,6 +73,7 @@ const insightsRoute = createRoute({
   summary: 'Patterns in your own entries, by dasha period and by the day’s star (self-reflection)',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireFeature('nav.journal')] as const,
+  request: { query: z.object({ tz: ReaderTzQuery }) },
   responses: {
     200: { description: 'Insights', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
@@ -76,7 +82,9 @@ const insightsRoute = createRoute({
 });
 
 journalRouter.openapi(insightsRoute, async (c) => {
-  const insights = await journalInsights(c.get('user'));
+  const user = c.get('user');
+  const zone = readerZone(c.req.valid('query').tz, user.currentTimezone);
+  const insights = await journalInsights(user, zone);
   return c.json(insights as unknown as Record<string, unknown>, 200);
 });
 
@@ -108,6 +116,7 @@ const saveRoute = createRoute({
   middleware: [requireUser, cardOrPage] as const,
   request: {
     params: z.object({ date: DateSchema }),
+    query: z.object({ tz: ReaderTzQuery }),
     body: {
       required: true,
       content: {
@@ -134,7 +143,13 @@ const saveRoute = createRoute({
 });
 
 journalRouter.openapi(saveRoute, async (c) => {
-  const entry = await saveEntry(c.get('user'), c.req.valid('param').date, c.req.valid('json'));
+  const user = c.get('user');
+  const entry = await saveEntry(
+    user,
+    c.req.valid('param').date,
+    c.req.valid('json'),
+    readerZone(c.req.valid('query').tz, user.currentTimezone),
+  );
   return c.json(entry as unknown as Record<string, unknown>, 200);
 });
 

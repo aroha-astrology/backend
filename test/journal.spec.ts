@@ -228,3 +228,22 @@ describe('journalLifeEvents', () => {
     });
   });
 });
+
+describe("journal on the reader's own day", () => {
+  it("refuses India's date as the future for a New York evening, but takes New York's today", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // 20 Oct 2026 20:00 in New York = 21 Oct 05:30 IST.
+    vi.setSystemTime(new Date('2026-10-21T00:00:00Z'));
+    try {
+      state.existing = [];
+      state.upsertJournalEntry.mockClear();
+      await expect(saveEntry(USER, '2026-10-21', { mood: 3 }, 'America/New_York')).rejects.toThrow(
+        'JOURNAL_DATE_IN_FUTURE',
+      );
+      await saveEntry(USER, '2026-10-20', { mood: 3 }, 'America/New_York');
+      expect(state.upsertJournalEntry).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

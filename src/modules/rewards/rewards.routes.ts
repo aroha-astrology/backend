@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireFeature } from '../../middleware/feature.js';
+import { userZone } from '../../lib/user-time-zone.js';
 import { getDailyRewardState, claimDailyReward } from './rewards.service.js';
 import { grantPermissionReward } from './permission-rewards.service.js';
 import { DailyRewardStateSchema, ClaimDailyRewardResponseSchema } from './rewards.schemas.js';
@@ -46,7 +47,9 @@ const getDailyRewardRoute = createRoute({
 
 rewardsRouter.openapi(getDailyRewardRoute, async (c) => {
   const user = c.get('user');
-  const state = await getDailyRewardState(user.id);
+  // The saved zone, never one from the request: a zone picked per call could
+  // claim a day early or fill in a missed one.
+  const state = await getDailyRewardState(user.id, new Date(), userZone(user.currentTimezone));
   return c.json(state, 200);
 });
 
@@ -56,7 +59,8 @@ const claimDailyRewardRoute = createRoute({
   tags: ['Rewards'],
   summary: "Claim today's daily login reward",
   description:
-    'Idempotent per IST calendar day — a repeat call the same day returns `claimed: false` ' +
+    "Idempotent per calendar day on the user's saved zone (IST when none) — a repeat call " +
+    'the same day returns `claimed: false` ' +
     'with the unchanged balance rather than crediting twice.',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireFeature('nav.rewards')] as const,
@@ -72,7 +76,7 @@ const claimDailyRewardRoute = createRoute({
 
 rewardsRouter.openapi(claimDailyRewardRoute, async (c) => {
   const user = c.get('user');
-  const result = await claimDailyReward(user.id);
+  const result = await claimDailyReward(user.id, new Date(), userZone(user.currentTimezone));
   return c.json(result, 200);
 });
 
