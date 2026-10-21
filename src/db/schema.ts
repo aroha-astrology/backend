@@ -2646,9 +2646,23 @@ export interface PalmMountRegion {
   radius: number;
 }
 
+export interface PalmLandmarkPoint {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface PalmLandmarksData {
+  points: PalmLandmarkPoint[];
+  handedness?: 'Left' | 'Right';
+  handednessScore?: number;
+  imageWidth?: number;
+  imageHeight?: number;
+}
+
 export type PalmMountReliefData = Record<
   string,
-  Record<string, number> | Record<string, PalmMountRegion>
+  Record<string, number> | Record<string, PalmMountRegion> | PalmLandmarksData
 >;
 
 export const palmReadings = pgTable(

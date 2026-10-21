@@ -62,6 +62,20 @@ export const PalmReadingListResponseSchema = z
  * drift from the OpenAPI response contract — same pattern as reports.schemas.ts's ReportDto. */
 export type PalmReadingDto = z.infer<typeof PalmReadingResponseSchema>;
 
+export const PalmLandmarkPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  z: z.number().default(0),
+});
+
+export const PalmLandmarksSchema = z.object({
+  points: z.array(PalmLandmarkPointSchema),
+  handedness: z.enum(['Left', 'Right']).optional(),
+  handednessScore: z.number().optional(),
+  imageWidth: z.number().optional(),
+  imageHeight: z.number().optional(),
+});
+
 export const SaveMountReliefBodySchema = z
   .object({
     hand: z.enum(['primary', 'secondary']),
@@ -74,5 +88,6 @@ export const SaveMountReliefBodySchema = z
     regions: z
       .record(z.string(), z.object({ cx: z.number(), cy: z.number(), radius: z.number() }))
       .optional(),
+    landmarks: PalmLandmarksSchema.optional(),
   })
   .openapi('SaveMountReliefBody');

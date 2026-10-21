@@ -190,8 +190,8 @@ const mountReliefRoute = createRoute({
 palmRouter.openapi(mountReliefRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const { hand, scores, regions } = c.req.valid('json');
-  await saveHandMountRelief(user.id, id, hand, scores, regions);
+  const { hand, scores, regions, landmarks } = c.req.valid('json');
+  await saveHandMountRelief(user.id, id, hand, scores, regions, landmarks);
   return c.json({ ok: true }, 200);
 });
 
@@ -199,7 +199,7 @@ const analyzeRoute = createRoute({
   method: 'post',
   path: '/palm/readings/{id}/analyze',
   tags: ['Palm'],
-  summary: 'FREE — kick off Stage A (vision measurement) once all 6 frames are uploaded',
+  summary: 'FREE — kick off Stage A (vision measurement) once all 3 frames are uploaded',
   description:
     'No wallet charge. Produces the free teaser: hand element, confidence score, and the ' +
     'annotated line/mount overlay. Poll GET /palm/readings/{id} until status is "observed", ' +

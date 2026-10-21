@@ -97,15 +97,17 @@ export async function saveMountRelief(
   hand: 'primary' | 'secondary',
   scores: Record<string, number>,
   regions?: Record<string, { cx: number; cy: number; radius: number }>,
+  landmarks?: PalmMountReliefData[string],
 ): Promise<void> {
   const row = await findPalmReadingById(readingId);
   if (!row) return;
-  // Regions live under a sibling key rather than inside the score map so the shape the rules
+  // Regions and landmarks live under sibling keys rather than inside the score map so the shape the rules
   // engine reads (mountRelief.primary -> mount -> 0-1 score) is unchanged.
   const mountRelief: PalmMountReliefData = {
     ...row.mountRelief,
     [hand]: scores,
     ...(regions ? { [`${hand}Regions`]: regions } : {}),
+    ...(landmarks ? { [`${hand}Landmarks`]: landmarks } : {}),
   };
   await db
     .update(palmReadings)

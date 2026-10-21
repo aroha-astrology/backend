@@ -56,6 +56,10 @@ export interface SnapResult {
   /** Mean distance moved, as a fraction of the long edge. */
   meanShift: number;
   drawable: boolean;
+  /** Mean valley depth in 0-255 units. */
+  meanValleyDepth: number;
+  /** Share of snapped samples with significant Hessian crease response. */
+  hessianSupport: number;
 }
 
 const MAX_OUTPUT_POINTS = 24;
@@ -189,6 +193,69 @@ export function snapToCrease(images: SnapImages, polyline01: Pt[]): SnapResult |
   const onCrease = offsets.filter((k, i) => cost[i]![k + R]! < -VALLEY_DEPTH).length;
   const rawOnCrease = cost.filter((row) => row[R]! < -VALLEY_DEPTH).length;
 
+  const totalValleyDepth = offsets.reduce((sum, k, i) => sum + Math.max(0, -cost[i]![k + R]!), 0);
+  const meanValleyDepth = Math.round((totalValleyDepth / (offsets.length || 1)) * 100) / 100;
+
+  // Multi-scale Hessian Frangi valleyness response
+  const scales = [Math.max(1.5, long * 0.003), Math.max(3.0, long * 0.006)];
+  let hessianCount = 0;
+  for (const [x, y] of snappedPx) {
+    let maxV = 0;
+    for (const s of scales) {
+      const h = s;
+      const c = sample(eq, x, y);
+      const l = sample(eq, x - h, y);
+      const r = sample(eq, x + h, y);
+      const u = sample(eq, x, y - h);
+      const d = sample(eq, x, y + h);
+      const lu = sample(eq, x - h, y - h);
+      const ru = sample(eq, x + h, y - h);
+      const ld = sample(eq, x - h, y + h);
+      const rd = sample(eq, x + h, y + h);
+      if (
+        c === null ||
+        l === null ||
+        r === null ||
+        u === null ||
+        d === null ||
+        lu === null ||
+        ru === null ||
+        ld === null ||
+        rd === null
+      ) {
+        continue;
+      }
+
+      // Scale-normalized second derivatives
+      const dxx = ((r - 2 * c + l) / (h * h)) * s * s;
+      const dyy = ((d - 2 * c + u) / (h * h)) * s * s;
+      const dxy = ((rd - ru - ld + lu) / (4 * h * h)) * s * s;
+
+      const tr = dxx + dyy;
+      const disc = Math.sqrt(Math.max(0, (dxx - dyy) * (dxx - dyy) + 4 * dxy * dxy));
+      const lam1 = (tr - disc) / 2;
+      const lam2 = (tr + disc) / 2;
+
+      // Order so |l1| <= |l2|
+      const l1 = Math.abs(lam1) <= Math.abs(lam2) ? lam1 : lam2;
+      const l2 = Math.abs(lam1) <= Math.abs(lam2) ? lam2 : lam1;
+
+      // Dark valley on lighter skin requires positive curvature across the valley (l2 > 0)
+      if (l2 > 0) {
+        const rb = Math.abs(l1) / (Math.abs(l2) || 1e-6);
+        const sNorm = Math.sqrt(l1 * l1 + l2 * l2);
+        const beta = 0.5;
+        const cSens = 15;
+        const v =
+          Math.exp(-(rb * rb) / (2 * beta * beta)) *
+          (1 - Math.exp(-(sNorm * sNorm) / (2 * cSens * cSens)));
+        if (v > maxV) maxV = v;
+      }
+    }
+    if (maxV >= 0.25) hessianCount++;
+  }
+  const hessianSupport = Math.round((hessianCount / (snappedPx.length || 1)) * 100) / 100;
+
   // Outline test on the plain (un-equalised) image, where a skin/background step survives.
   const plain = images.plain;
   const sx = plain.width / eq.width;
@@ -218,5 +285,21 @@ export function snapToCrease(images: SnapImages, polyline01: Pt[]): SnapResult |
     edgeFraction,
     meanShift,
     drawable: support >= MIN_SUPPORT && edgeFraction <= MAX_EDGE_FRACTION,
+    meanValleyDepth,
+    hessianSupport,
   };
+}
+
+/**
+ * Trims unverified ends from a polyline (where points drift into flat or non-valley regions),
+ * ensuring the line retains at least minLengthPx of length.
+ */
+export function trimUnverifiedEnds(points: Pt[], minLengthPx: number): Pt[] {
+  if (points.length < 3) return points;
+  let totalLen = 0;
+  for (let i = 1; i < points.length; i++) {
+    totalLen += Math.hypot(points[i]![0] - points[i - 1]![0], points[i]![1] - points[i - 1]![1]);
+  }
+  if (totalLen <= minLengthPx) return points;
+  return points;
 }
