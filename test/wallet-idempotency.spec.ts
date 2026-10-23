@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // A wallet write that carries an idempotency key happens at most once per
-// (user, key) (migration 0092): a retried charge never charges twice, and a
+// (user, key) (migration 0094): a retried charge never charges twice, and a
 // second refund for the same charge pays nothing. The transaction handle is
 // faked the same way test/users-repo-wallet.spec.ts does it, plus the
 // "is this key already in the ledger" probe.

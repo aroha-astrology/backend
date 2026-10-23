@@ -347,7 +347,7 @@ export async function releaseFreeProfileSlot(userId: string): Promise<void> {
 }
 
 /**
- * Optional replay guard for a wallet write (migration 0092). With a key, the
+ * Optional replay guard for a wallet write (migration 0094). With a key, the
  * write happens at most once per (user, key): a retry of the same request, or a
  * second refund for the same charge, finds the first row and does nothing.
  * Without one the write behaves exactly as it always has.

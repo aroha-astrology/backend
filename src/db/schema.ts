@@ -333,7 +333,7 @@ export const users = pgTable(
     currentTimezone: text('current_timezone'),
     currentCountry: text('current_country'),
 
-    // --- sky context: home place, travel and NRI mode (migration 0094) ----
+    // --- sky context: home place, travel and NRI mode (migration 0096) ----
     /** The place the user calls home (not their birth place). */
     homeLocation: jsonb('home_location').$type<PlaceOfBirth>(),
     /** IANA zone of home; adopted from the device the first time the travel pill is on. */
@@ -401,15 +401,15 @@ export const users = pgTable(
     groupQuestionsUsed: integer('group_questions_used').notNull().default(0),
     /** When that period began; null = never asked. Reset lazily on the next question. */
     groupQuestionsPeriodStart: timestamp('group_questions_period_start', { withTimezone: true }),
-    /** Free extra-profile slots taken (money.freeProfiles, migration 0092). Counted when used, so deleting a free profile does not give the slot back. */
+    /** Free extra-profile slots taken (money.freeProfiles, migration 0094). Counted when used, so deleting a free profile does not give the slot back. */
     freeProfilesUsed: smallint('free_profiles_used').notNull().default(0),
-    /** True for an account created while the 3-stage signup bonus (money.signupDrip) was on; only these get stages 2 and 3. Migration 0092. */
+    /** True for an account created while the 3-stage signup bonus (money.signupDrip) was on; only these get stages 2 and 3. Migration 0094. */
     signupDrip: boolean('signup_drip').notNull().default(false),
-    /** The experience the user picked: 'CLASSIC_VEDIC' or 'MODERN_COSMIC'; null = not picked yet (counts as classic). Migration 0092. */
+    /** The experience the user picked: 'CLASSIC_VEDIC' or 'MODERN_COSMIC'; null = not picked yet (counts as classic). Migration 0094. */
     uiSkin: text('ui_skin').$type<'CLASSIC_VEDIC' | 'MODERN_COSMIC'>(),
-    /** When the look was last CHANGED (not first picked); the 30-day wait counts from here. Migration 0093. */
+    /** When the look was last CHANGED (not first picked); the 30-day wait counts from here. Migration 0095. */
     uiSkinChangedAt: timestamp('ui_skin_changed_at', { withTimezone: true }),
-    /** True once the user used their one free change of look. Migration 0093. */
+    /** True once the user used their one free change of look. Migration 0095. */
     uiSkinFreeChangeUsed: boolean('ui_skin_free_change_used').notNull().default(false),
     unlockedHouses: integer('unlocked_houses')
       .array()
@@ -760,7 +760,7 @@ export const walletTransactions = pgTable(
      */
     remainingPaise: integer('remaining_paise'),
     /**
-     * Optional replay guard (migration 0092). A write carrying a key is refused when this user
+     * Optional replay guard (migration 0094). A write carrying a key is refused when this user
      * already has a row with the same key, so a retried charge, a repeated grant or a second
      * refund for the same charge is a no-op. NULL on every older row.
      */
@@ -893,7 +893,7 @@ export const orders = pgTable(
     discountPaise: integer('discount_paise').notNull().default(0),
     finalAmountPaise: integer('final_amount_paise').notNull(),
     currency: text('currency').notNull().default('INR'),
-    /** What a coin-pack order charged, in the minor unit of `currency` (migration 0092). Null on older orders, where `amountPaise` was the charge. `finalAmountPaise` stays the rupee list price so revenue sums keep adding rupees. */
+    /** What a coin-pack order charged, in the minor unit of `currency` (migration 0094). Null on older orders, where `amountPaise` was the charge. `finalAmountPaise` stays the rupee list price so revenue sums keep adding rupees. */
     chargedMinor: integer('charged_minor'),
     couponId: uuid('coupon_id').references(() => coupons.id),
     couponCode: text('coupon_code'),
@@ -2400,7 +2400,7 @@ export const featureFlags = pgTable('feature_flags', {
    * kill switch for a model key: disabled resolves back to the global GEMINI_MODEL regardless of
    * what is selected here — see modelOf() in features.service.ts. */
   model: text('model'),
-  /** Which section the feature is for: 'all', 'classic' (Indian look) or 'cosmic' (international look). Null = the registry's `defaultAudience`. Set from Admin -> Features (migration 0092). */
+  /** Which section the feature is for: 'all', 'classic' (Indian look) or 'cosmic' (international look). Null = the registry's `defaultAudience`. Set from Admin -> Features (migration 0094). */
   audience: text('audience').$type<'all' | 'classic' | 'cosmic'>(),
   /** Set only on a false→true enabled transition (see admin.service.ts's updateFeature) — a
    * price/model-only edit while already enabled leaves this untouched. Drives the report
@@ -3313,7 +3313,7 @@ export const geminiKeys = pgTable('gemini_keys', {
   updatedBy: text('updated_by'),
 });
 
-/** One row per pick or change of look, for support and the admin Users page (migration 0093). */
+/** One row per pick or change of look, for support and the admin Users page (migration 0095). */
 export const uiSkinChanges = pgTable('ui_skin_changes', {
   id: uuid('id')
     .primaryKey()
@@ -3329,7 +3329,7 @@ export const uiSkinChanges = pgTable('ui_skin_changes', {
     .default(sql`now()`),
 });
 
-/** Small owner-edited JSON documents; key 'home.layout' is Admin -> Home Layout (migration 0093). */
+/** Small owner-edited JSON documents; key 'home.layout' is Admin -> Home Layout (migration 0095). */
 export const appSettings = pgTable('app_settings', {
   key: text('key').primaryKey(),
   value: jsonb('value').notNull(),
