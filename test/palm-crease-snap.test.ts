@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snapToCrease, trimUnverifiedEnds } from '../src/lib/palm/crease-snap.js';
+import { snapToCrease } from '../src/lib/palm/crease-snap.js';
 import type { SnapImages } from '../src/lib/palm/image-prep.js';
 
 function makeMockImagesWithCrease(): SnapImages {
@@ -42,15 +42,5 @@ describe('crease-snap', () => {
     expect(typeof res!.meanValleyDepth).toBe('number');
     expect(typeof res!.hessianSupport).toBe('number');
     expect(res!.support).toBeGreaterThan(0.5);
-  });
-
-  it('trimUnverifiedEnds preserves points when length is within limit', () => {
-    const pts: Array<[number, number]> = [
-      [0.2, 0.5],
-      [0.5, 0.5],
-      [0.8, 0.5],
-    ];
-    const trimmed = trimUnverifiedEnds(pts, 100);
-    expect(trimmed).toHaveLength(pts.length);
   });
 });

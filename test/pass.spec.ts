@@ -26,6 +26,7 @@ const state = vi.hoisted(() => ({
   notifyUser: vi.fn(),
   subscriptionsv2Get: vi.fn(),
   acknowledge: vi.fn(),
+  insertOrder: vi.fn(),
 }));
 
 // No festival gift running: billing goes straight to the Pass / packs / wallet.
@@ -54,6 +55,9 @@ vi.mock('../src/modules/pass/pass.repo.js', () => ({
 vi.mock('../src/modules/user-groups/user-groups.repo.js', () => ({
   listGroupIdsForUser: () => Promise.resolve([]),
 }));
+vi.mock('../src/modules/billing/billing.repo.js', () => ({
+  insertOrder: state.insertOrder,
+}));
 vi.mock('../src/modules/features/features.service.js', () => ({
   resolveFeaturesForUser: () => Promise.resolve(held.features),
 }));
@@ -76,6 +80,7 @@ import { chargeQuestion, refundQuestion } from '../src/modules/pass/question-bil
 import { passReportDiscountPct, requirePass } from '../src/lib/entitlements.js';
 import {
   buyQuestionPack,
+  startQuestionPackCheckout,
   getPassStatus,
   runPassRenewals,
 } from '../src/modules/pass/pass.service.js';
@@ -241,7 +246,7 @@ describe('getPassStatus', () => {
         questionsPerPeriod: 15,
         voiceFreeMinutes: 10,
         reportDiscountPct: 10,
-        features: ['timeline', 'bonds', 'voiceCall'],
+        features: ['timeline', 'bonds', 'voiceCall', 'palm'],
       },
       {
         tier: 'gold',
@@ -251,7 +256,15 @@ describe('getPassStatus', () => {
         questionsPerPeriod: 30,
         voiceFreeMinutes: 15,
         reportDiscountPct: 20,
-        features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall'],
+        features: [
+          'timeline',
+          'bonds',
+          'decisions',
+          'findMyDate',
+          'birthTime',
+          'voiceCall',
+          'palm',
+        ],
       },
       {
         tier: 'platinum',
@@ -269,6 +282,7 @@ describe('getPassStatus', () => {
           'birthTime',
           'relocation',
           'voiceCall',
+          'palm',
         ],
       },
     ]);
@@ -291,7 +305,7 @@ describe('getPassStatus', () => {
       questionsPerPeriod: 15,
       questionsLeft: 11,
       reportDiscountPct: 10,
-      features: ['timeline', 'bonds', 'voiceCall'],
+      features: ['timeline', 'bonds', 'voiceCall', 'palm'],
     });
 
     held.active = passRow({ source: 'google_play', priceVariant: 'C', questionsUsed: 70 });
@@ -304,15 +318,35 @@ describe('getPassStatus', () => {
   });
 });
 
-describe('buyQuestionPack', () => {
-  it('refuses a pack that is off; charges and credits one that is on', async () => {
-    const user = makeUserRow({ id: 'user-1' });
-    await expect(buyQuestionPack(user, 'small')).rejects.toThrow('QUESTION_PACK_NOT_AVAILABLE');
+describe('Question Packs (Google Play only since 2026-10-23)', () => {
+  it('never takes a pack from the wallet', async () => {
     held.features = { 'paid.questionPackSmall': on(4900) };
-    const s = await buyQuestionPack(user, 'small');
-    expect(state.deductWalletBalance).toHaveBeenCalledWith('user-1', 4900, 'question_pack:small');
-    expect(state.addQuestionCredits).toHaveBeenCalledWith('user-1', 5);
-    expect(s.questionCredits).toBe(5);
+    await expect(buyQuestionPack(makeUserRow({ id: 'user-1' }), 'small')).rejects.toThrow(
+      'QUESTION_PACK_PLAY_ONLY',
+    );
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.addQuestionCredits).not.toHaveBeenCalled();
+  });
+
+  it('refuses a pack that is off; records a pending Play order for one that is on', async () => {
+    const user = makeUserRow({ id: 'user-1' });
+    await expect(startQuestionPackCheckout(user, 'small')).rejects.toThrow(
+      'QUESTION_PACK_NOT_AVAILABLE',
+    );
+    expect(state.insertOrder).not.toHaveBeenCalled();
+
+    held.features = { 'paid.questionPackMedium': on(9900) };
+    const r = await startQuestionPackCheckout(user, 'medium');
+    expect(r).toEqual({ productId: 'question_pack_12', questions: 12 });
+    expect(state.insertOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        packId: 'question_pack_12',
+        amountPaise: 9900,
+        status: 'pending',
+      }),
+    );
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
   });
 });
 

@@ -2717,6 +2717,9 @@ export const palmReadings = pgTable(
     /** Stage-A imageQuality-derived overall confidence, 0-100. */
     confidenceScore: integer('confidence_score'),
     unlocked: boolean('unlocked').notNull().default(false),
+    /** When the full reading was unlocked. The Pass allows one unlock per period, counted by this
+     * (not created_at, or readings scanned before subscribing could all be unlocked at once). */
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }),
     pricePaidPaise: integer('price_paid_paise'),
     model: text('model'),
     /** Claim token, same fencing pattern as gemstone_recommendations.startedAt /
@@ -2737,6 +2740,7 @@ export const palmReadings = pgTable(
       table.userId,
       table.framesHash,
     ),
+    userUnlockedIdx: index('palm_readings_user_unlocked_idx').on(table.userId, table.unlockedAt),
   }),
 );
 

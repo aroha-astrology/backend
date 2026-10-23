@@ -14,7 +14,17 @@ import { SELECTABLE_OMNIRUSH_MODELS } from './omnirush-models.js';
 export interface FeatureDef {
   key: string;
   label: string;
-  group: 'nav' | 'home' | 'paid' | 'reports' | 'panchang' | 'referral' | 'ai' | 'rewards' | 'chat';
+  group:
+    | 'nav'
+    | 'home'
+    | 'paid'
+    | 'reports'
+    | 'panchang'
+    | 'referral'
+    | 'ai'
+    | 'rewards'
+    | 'chat'
+    | 'palm';
   defaultEnabled: boolean;
   /**
    * For `paid`/`reports` keys this is a PRICE the user is charged. For
@@ -254,9 +264,12 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   },
   // Defaults OFF — see home.palmReading above for why. Gate this one deliberately from
   // Admin -> Features once the live vision model and cost-per-reading have been validated.
+  // 2026-10-23 (owner): the full reading is an Aroha Pass benefit (every tier, one per Pass
+  // period), never a wallet charge. This key is now only the on/off switch for the unlock; its
+  // price is not charged.
   {
     key: 'paid.palmReading',
-    label: 'Palm Reading',
+    label: 'Palm Reading (full reading: Aroha Pass only, price not charged)',
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 9900,
@@ -569,13 +582,21 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // real creases, and its low-effort traces landed within 0.1-0.4% of the frame of its
   // default-effort ones in half the time (~50 s vs ~100 s); gpt-6-sol drew the life line along
   // the thumb's outline. Any Omnirush failure falls back to Gemini (GEMINI_MODEL).
+  //
+  // 2026-10-23 (owner): both moved to Gemini, which now reads the same contact sheet with the
+  // same prompt and parser as Omnirush (timing marks and line confidence included). Measured that
+  // day on two palm photos: 3.1 and 3.5 Flash-Lite put the heart line on the finger-base creases
+  // and the life line on the little-finger side, and the gate let them through; 3.8 Flash placed
+  // every line on its crease both times (~25 s, about Rs 1.5-2 a scan at $0.75/$3.75 per 1M).
+  // So the scan uses 3.8 Flash, and the paid text (no pixels) the cheapest, 3.1 Flash-Lite
+  // ($0.25/$1.50, about Rs 0.4 a reading).
   {
     key: 'ai.palmVisionModel',
     label: 'Palm — vision model (free scan: lines, mounts, timing marks)',
     group: 'ai',
     defaultEnabled: true,
     modelOptions: SELECTABLE_PALM_MODELS,
-    defaultModel: 'gpt-6-astra:low',
+    defaultModel: 'gemini-3.8-flash',
   },
   {
     key: 'ai.palmInterpretModel',
@@ -583,7 +604,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: true,
     modelOptions: SELECTABLE_PALM_MODELS,
-    defaultModel: 'gpt-6-astra:low',
+    defaultModel: 'gemini-3.1-flash-lite',
   },
   // 2026-08-28: the three highest-traffic/most-reasoning-heavy surfaces
   // (personalized horoscope, AI chat, paid reports) previously had NO model
@@ -914,6 +935,38 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     key: 'nav.relocation',
     label: 'Aroha Relocation — compare cities for career, love, money and more (Aroha Pass only)',
     group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+
+  // Palmistry V2 (2026-10). Each switch is one part of the new pipeline, so it can be tried on
+  // an admin group and compared with the old behaviour on real scans before it reaches anyone.
+  // The thresholds behind the first three are not yet calibrated on a review set of real palms.
+  {
+    key: 'palm.strictGate',
+    label: 'Palm — strict line gate (inner-palm outline from the hand points, tighter thresholds)',
+    group: 'palm',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'palm.biometricOverride',
+    label: 'Palm — measured finger/thumb/palm shape replaces the model’s guess',
+    group: 'palm',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'palm.autoCapture',
+    label: 'Palm — camera takes the photo by itself once the hand is steady and sharp',
+    group: 'palm',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'palm.mountsToggle',
+    label: 'Palm — Lines / Mounts switch on the free scan',
+    group: 'palm',
     defaultEnabled: false,
     tag: 'new',
   },

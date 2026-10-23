@@ -50,6 +50,9 @@ export const PalmReadingResponseSchema = z
     observations: z.record(z.string(), z.unknown()).optional(),
     scores: z.record(z.string(), z.number()).optional(),
     synthesis: z.record(z.string(), z.unknown()).optional(),
+    /** Only on an 'observed', not-yet-unlocked reading: whether the reader's Aroha Pass covers
+     * the full reading, and how many they have left this Pass period. */
+    allowance: z.object({ passMember: z.boolean(), left: z.number() }).optional(),
     error: z.string().nullable().optional(),
   })
   .openapi('PalmReadingResponse');

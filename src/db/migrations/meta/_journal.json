@@ -652,6 +652,13 @@
       "when": 1792480000000,
       "tag": "0092_chat_gifts",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1792740000000,
+      "tag": "0093_palm_unlocked_at",
+      "breakpoints": true
     }
   ]
 }

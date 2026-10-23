@@ -24,8 +24,9 @@ import {
   verifyRazorpaySignature,
   fetchRazorpayOrderPayments,
 } from './razorpay.js';
-import { notifyWalletTopUp } from '../../lib/notifications/telegram.js';
+import { notifyQuestionPackBought, notifyWalletTopUp } from '../../lib/notifications/telegram.js';
 import { TOP_UP_AMOUNTS } from './top-up-amounts.js';
+import { questionPackForProduct } from '../pass/pass.config.js';
 
 export { TOP_UP_AMOUNTS };
 
@@ -228,6 +229,19 @@ async function notifyTopUp(userId: string, amountPaise: number, newBalancePaise:
   );
 }
 
+/** Fire-and-forget admin Telegram ping for a Question Pack bought on Play. */
+async function notifyPackBought(userId: string, amountPaise: number, questions: number) {
+  const buyer = await findActiveUserById(userId);
+  notifyQuestionPackBought({
+    userId,
+    contact: buyer?.phoneE164 ?? buyer?.email ?? null,
+    amountPaise,
+    questions,
+  }).catch((err) =>
+    logger.warn({ err, userId }, 'Failed to send Question Pack Telegram notification'),
+  );
+}
+
 async function getUserWalletBalance(userId: string): Promise<number> {
   const user = await findActiveUserById(userId);
   if (!user) throw Errors.notFound('User not found');
@@ -295,7 +309,9 @@ export async function confirmGooglePlayPurchase(
 
   // Fresh grant only (not the idempotent-replay/already-paid branches above) —
   // avoids sending a duplicate admin notification if this call gets retried.
-  await notifyTopUp(userId, order.amountPaise, result.walletBalancePaise);
+  const pack = questionPackForProduct(productId);
+  if (pack) await notifyPackBought(userId, order.amountPaise, pack.questions);
+  else await notifyTopUp(userId, order.amountPaise, result.walletBalancePaise);
 
   return result;
 }

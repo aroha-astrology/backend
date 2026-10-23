@@ -289,17 +289,3 @@ export function snapToCrease(images: SnapImages, polyline01: Pt[]): SnapResult |
     hessianSupport,
   };
 }
-
-/**
- * Trims unverified ends from a polyline (where points drift into flat or non-valley regions),
- * ensuring the line retains at least minLengthPx of length.
- */
-export function trimUnverifiedEnds(points: Pt[], minLengthPx: number): Pt[] {
-  if (points.length < 3) return points;
-  let totalLen = 0;
-  for (let i = 1; i < points.length; i++) {
-    totalLen += Math.hypot(points[i]![0] - points[i - 1]![0], points[i]![1] - points[i - 1]![1]);
-  }
-  if (totalLen <= minLengthPx) return points;
-  return points;
-}

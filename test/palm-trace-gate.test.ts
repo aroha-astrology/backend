@@ -128,6 +128,25 @@ describe('buildInnerPalmPolygon & pointInPolygon', () => {
   });
 });
 
+describe('gateTraces (live gate, palm.strictGate off)', () => {
+  // Hand points pointing the fingers DOWN, unlike the model's fingersUp.
+  const downLandmarks = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5 }));
+  downLandmarks[0] = { x: 0.5, y: 0.2 };
+  downLandmarks[9] = { x: 0.5, y: 0.7 };
+
+  it("ignores the hand points: keeps the model's orientation", () => {
+    const obs = baseObs();
+    gateTraces(obs, makeMockImages(), { strictGate: false, landmarks: downLandmarks });
+    expect(obs.orientation).toBe('fingersUp');
+  });
+
+  it('the strict gate does use them', () => {
+    const obs = baseObs();
+    gateTraces(obs, makeMockImages(), { strictGate: true, landmarks: downLandmarks });
+    expect(obs.orientation).toBe('fingersDown');
+  });
+});
+
 describe('gateTraces (strict mode)', () => {
   it('suppresses line when confidence is undefined under strict gate (Step 4B)', () => {
     const obs = baseObs();

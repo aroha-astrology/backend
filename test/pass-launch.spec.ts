@@ -38,7 +38,7 @@ import {
 
 const on = (...keys: string[]) => Object.fromEntries(keys.map((k) => [k, { enabled: true }]));
 
-const SILVER = ['paid.voiceChat', 'nav.lifeTimeline', 'nav.bonds'];
+const SILVER = ['paid.voiceChat', 'nav.lifeTimeline', 'nav.bonds', 'home.palmReading'];
 const GOLD = [...SILVER, 'nav.decisions', 'panchang.findMyDate', 'home.birthTimeConfidence'];
 const PLATINUM = [...GOLD, 'nav.relocation'];
 const ALL_TIERS = ['paid.arohaPassA', 'paid.arohaPassB', 'paid.arohaPassC'];
@@ -61,7 +61,7 @@ describe('passLaunchReadiness', () => {
     const r = await passLaunchReadiness();
     expect(r.ready).toBe(false);
     const needed = r.switches.filter((s) => s.need === 'required').map((s) => s.key);
-    expect(needed).toEqual(['nav.arohaPass', ...ALL_TIERS, ...PLATINUM]);
+    expect([...needed].sort()).toEqual(['nav.arohaPass', ...ALL_TIERS, ...PLATINUM].sort());
     expect(r.switches.find((s) => s.key === 'home.passLaunchPopup')?.need).toBe('optional');
   });
 

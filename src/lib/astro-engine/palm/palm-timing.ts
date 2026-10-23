@@ -218,15 +218,6 @@ function oriented(key: PalmLineKey, line: Pt[], h: CanonicalHand): Pt[] {
   return reverse ? [...line].reverse() : line;
 }
 
-function anatomicalHeadLineAge(fraction: number): number {
-  const f = Math.max(0, Math.min(1, fraction));
-  if (f <= 0.35) return 16 + (f / 0.35) * (30 - 16);
-  if (f <= 0.5) return 30 + ((f - 0.35) / 0.15) * (35 - 30);
-  if (f <= 0.65) return 35 + ((f - 0.5) / 0.15) * (45 - 35);
-  if (f <= 0.8) return 45 + ((f - 0.65) / 0.15) * (55 - 45);
-  return 55 + ((f - 0.8) / 0.2) * (70 - 55);
-}
-
 /** Age at a point on a line, or null when the geometry to date it isn't there. */
 function ageOnLine(
   key: PalmTimedLine,
@@ -240,7 +231,7 @@ function ageOnLine(
   // A mark more than ~6% of the frame away from its own drawn line is not on it.
   if (loc.distance > 0.06) return null;
   if (key === 'lifeLine') return { age: loc.fraction * 80, at: loc.point };
-  if (key === 'headLine') return { age: anatomicalHeadLineAge(loc.fraction), at: loc.point };
+  if (key === 'headLine') return { age: loc.fraction * 70, at: loc.point };
   if (key === 'fateLine' || key === 'sunLine') {
     const { y0, y1 } = h.box;
     const height = y1 - y0 || 1;

@@ -107,7 +107,9 @@ export function gateTraces(
 ): GateSummary {
   const summary: GateSummary = { drawn: [], suppressed: [], suppressedReason: {} };
   const strict = options?.strictGate === true;
-  const landmarks = options?.landmarks;
+  // The hand points (orientation, inner-palm outline) are part of the strict gate only: the
+  // polygon is not yet checked on real palms, so the live gate keeps the model's own box.
+  const landmarks = strict ? options?.landmarks : undefined;
 
   // Use landmark orientation when available
   if (landmarks && landmarks.length >= 21) {
@@ -190,11 +192,7 @@ export function gateTraces(
         passesThresholds = true;
       }
 
-      if (polygon && polygon.length >= 3) {
-        const inside = snap.polyline.filter((pt) => pointInPolygon(pt, polygon)).length;
-        onPalm = inside / snap.polyline.length >= MIN_INSIDE;
-        if (!onPalm && !reason) reason = 'line wanders off palm polygon';
-      } else if (box) {
+      if (box) {
         const inside = snap.polyline.filter(
           ([x, y]) =>
             x >= box[0] - BOX_MARGIN &&
