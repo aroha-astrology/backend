@@ -401,6 +401,8 @@ export function computeMarriageScores(
     chart,
     ctx.partnerChart ?? null,
     ctx.dashaData ?? null,
+    ctx.personGender,
+    ctx.partnerGender,
   );
 
   return {

@@ -39,61 +39,29 @@ function expectCloseTime(actual: string | null, expected: string, toleranceMin: 
 }
 
 describe('getMoonriseMoonset', () => {
-  // Reference: 27 July 2026, Delhi — a competing Panchang app showed
-  // Moonrise 5:01 PM (17:01) and Moonset 2:29 AM the following day. This
-  // implementation searches independently within each civil day (local
-  // midnight to midnight) rather than pairing an evening rise with the
-  // following morning's set — see rise-set.ts's doc comment — so its
-  // "moonset for 2026-07-27" is the set completing the PREVIOUS evening's
-  // rise (early morning of the 27th itself), not the "next day" value the
-  // reference labels this as. Both this implementation's own values and the
-  // reference were independently sanity-checked here: the underlying JD/
-  // timezone pipeline this depends on resolves the Shukla Trayodashi tithi
-  // boundary to within 1 minute of a third-party reference (see the
-  // getTithiBoundary test below), so the ~40-55min gap on rise/set is
-  // attributed to the reference's different rise/set definition and/or
-  // day-pairing convention, not a bug here — hence the wide (not
-  // "exact-to-the-second") tolerance the task spec itself calls for.
-  it('computes a plausible moonrise/moonset for a known reference date (Delhi, 27 July 2026)', async () => {
-    const result = await getMoonriseMoonset(
-      localDate('2026-07-27'),
-      DELHI_LAT,
-      DELHI_LON,
-      IST_OFFSET,
-    );
+  // Drik Panchang's convention (rise-set.ts): disc centre, no refraction, and
+  // the first rise and set after the day's sunrise, flagged when after
+  // midnight. Every value below was read off Drik's day page for New Delhi
+  // (geoname-id 1261481) on 2026-10-20 and must match it to the minute. The
+  // 27 July reference this test used before (17:01 / 02:29, from another app)
+  // was wrong by about an hour; Drik shows 18:00 / 04:05.
+  const DRIK: Array<[string, string | null, boolean, string | null, boolean]> = [
+    // date, moonrise, rise next day, moonset, set next day
+    ['2026-07-27', '18:00', false, '04:05', true],
+    ['2026-07-14', null, false, '19:32', false], // Drik: "No Moonrise"
+    ['2026-10-20', '14:23', false, '01:22', true],
+    ['2026-10-25', '17:00', false, '06:23', true],
+    ['2026-11-03', '01:47', true, '13:59', false],
+  ];
 
-    expectCloseTime(result.moonrise, '17:01', 90);
-    expectCloseTime(result.moonset, '02:29', 90);
-  });
-
-  // Verified via direct probing of swe_rise_trans: the Moon's ~50min/day
-  // rise-time creep means 2026-08-07 (Delhi) has no moonrise falling within
-  // its own civil day (the prior day's rise is still "current" past
-  // midnight, and the next rise doesn't happen until after this day ends).
-  it('returns null (not a fabricated time) when the Moon does not rise within the civil day', async () => {
-    const result = await getMoonriseMoonset(
-      localDate('2026-08-07'),
-      DELHI_LAT,
-      DELHI_LON,
-      IST_OFFSET,
-    );
-    expect(result.moonrise).toBeNull();
-    // The absence is specific to rise; moonset that same day is a real,
-    // unrelated event and should still resolve to a time.
-    expect(result.moonset).not.toBeNull();
-  });
-
-  // Same phenomenon, the "no moonset" side: 2026-08-21 (Delhi) has a
-  // moonrise but no moonset within its own civil day.
-  it('returns null for moonset (not moonrise) on the day the pattern flips', async () => {
-    const result = await getMoonriseMoonset(
-      localDate('2026-08-21'),
-      DELHI_LAT,
-      DELHI_LON,
-      IST_OFFSET,
-    );
-    expect(result.moonrise).not.toBeNull();
-    expect(result.moonset).toBeNull();
+  it.each(DRIK)('matches Drik Panchang on %s', async (date, rise, riseNext, set, setNext) => {
+    const result = await getMoonriseMoonset(localDate(date), DELHI_LAT, DELHI_LON, IST_OFFSET);
+    if (rise === null) expect(result.moonrise).toBeNull();
+    else expectCloseTime(result.moonrise, rise, 1);
+    expect(result.moonriseNextDay).toBe(riseNext);
+    if (set === null) expect(result.moonset).toBeNull();
+    else expectCloseTime(result.moonset, set, 1);
+    expect(result.moonsetNextDay).toBe(setNext);
   });
 
   it('never throws, even for a nonsensical location', async () => {

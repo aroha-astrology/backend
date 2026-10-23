@@ -160,7 +160,13 @@ export function matchPalmRules(
     // this mount. Only meaningful when the vision model committed to flat or prominent —
     // there's nothing to corroborate or contradict against a "normal" rating.
     const relief = mountRelief?.[key];
-    if (relief === undefined || development === 'normal') continue;
+    if (
+      relief === undefined ||
+      development === 'normal' ||
+      (hand.imageQuality?.lighting != null && hand.imageQuality.lighting < 6)
+    ) {
+      continue;
+    }
     const cvSaysFlat = relief < CV_FLAT_THRESHOLD;
     const cvSaysProminent = relief > CV_PROMINENT_THRESHOLD;
     const agrees =
@@ -314,6 +320,14 @@ export function matchPalmRules(
       'headLine.separation.attached',
       'Head line begins joined to the life line.',
       'a cautious start closely tied to family expectation, with independence arriving later and deliberately',
+      'Cheiro / Hasta Samudrika Shastra',
+    );
+  } else if (head.present && head.separation === 'separated') {
+    pushIfMeaningful(
+      facts,
+      'headLine.separation.separated',
+      'Head line is moderately separated from the life line at its origin.',
+      'a self-reliant mind that thinks independently while remaining mindful of practical consequences',
       'Cheiro / Hasta Samudrika Shastra',
     );
   }

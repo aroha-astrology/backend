@@ -86,7 +86,13 @@ const createRoute_ = createRoute({
 palmRouter.openapi(createRoute_, async (c) => {
   const user = c.get('user');
   const profile = await resolveActiveProfileContext(user);
-  const result = await createPalmReading(user, profile.birthProfileId, profile.gender);
+  const body = c.req.valid('json');
+  const result = await createPalmReading(
+    user,
+    profile.birthProfileId,
+    profile.gender,
+    body.primaryHand,
+  );
   return c.json(result, 200);
 });
 
@@ -184,8 +190,8 @@ const mountReliefRoute = createRoute({
 palmRouter.openapi(mountReliefRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
-  const { hand, scores, regions } = c.req.valid('json');
-  await saveHandMountRelief(user.id, id, hand, scores, regions);
+  const { hand, scores, regions, landmarks } = c.req.valid('json');
+  await saveHandMountRelief(user.id, id, hand, scores, regions, landmarks);
   return c.json({ ok: true }, 200);
 });
 
@@ -193,7 +199,7 @@ const analyzeRoute = createRoute({
   method: 'post',
   path: '/palm/readings/{id}/analyze',
   tags: ['Palm'],
-  summary: 'FREE — kick off Stage A (vision measurement) once all 6 frames are uploaded',
+  summary: 'FREE — kick off Stage A (vision measurement) once all 3 frames are uploaded',
   description:
     'No wallet charge. Produces the free teaser: hand element, confidence score, and the ' +
     'annotated line/mount overlay. Poll GET /palm/readings/{id} until status is "observed", ' +
@@ -238,8 +244,9 @@ const unlockRoute = createRoute({
   method: 'post',
   path: '/palm/readings/{id}/unlock',
   tags: ['Palm'],
-  summary: 'PAID — charge and kick off Stage B/C (the full interpretation) for an observed reading',
+  summary: 'AROHA PASS — kick off Stage B (the full interpretation) for an observed reading',
   description:
+    'Aroha Pass only (every tier, one full reading per Pass period); never charges the wallet. ' +
     'Requires the reading to already be "observed" (the free scan must finish first). Reads ' +
     'the already-stored Stage A observations — does not re-download frames or call the ' +
     'vision model again.',
@@ -252,9 +259,11 @@ const unlockRoute = createRoute({
       content: { 'application/json': { schema: z.object({ status: z.string() }) } },
     },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('Consent required or feature disabled'),
+    403: errorResponse(
+      'Consent required, feature disabled, PASS_REQUIRED, or PALM_PERIOD_LIMIT (used this period)',
+    ),
     404: errorResponse('Not found'),
-    409: errorResponse('Insufficient credits, already generating, or scan not finished yet'),
+    409: errorResponse('Already generating, or scan not finished yet'),
   },
 });
 palmRouter.openapi(unlockRoute, async (c) => {

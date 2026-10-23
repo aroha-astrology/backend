@@ -20,8 +20,8 @@ import { getMoonTransitRemedy } from '../../lib/astro-engine/lalkitab/transitRem
 import type { WhyFactor } from '../../lib/intelligence/types.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { findHoroscope } from '../horoscope/horoscope.repo.js';
-import { istDate } from '../insights/calendar.service.js';
-import { istNoon, loadChartContext } from '../insights/insights.service.js';
+import { dateInZone, noonInZone, userZone } from '../../lib/user-time-zone.js';
+import { loadChartContext } from '../insights/insights.service.js';
 import { streakOf } from '../journal/journal.service.js';
 import { listPracticeDone, markPracticeDone } from './practice.repo.js';
 
@@ -198,9 +198,11 @@ export function summarizeDone(
 export async function getPracticeToday(
   user: UserRow,
   now: Date = new Date(),
+  timeZone: string = userZone(user.currentTimezone),
 ): Promise<PracticeToday> {
-  const date = istDate(now);
-  const loaded = await loadChartContext(user, istNoon(date)).catch(() => null);
+  // The reader's own day (see readerZone): items, streak and the remedy all use it.
+  const date = dateInZone(now, timeZone);
+  const loaded = await loadChartContext(user, noonInZone(date, timeZone)).catch(() => null);
   const profile = loaded?.profile ?? (await resolveActiveProfileContext(user));
   const horoscope = await findHoroscope(user.id, profile.birthProfileId, 'daily', date);
   const remedy =
@@ -235,8 +237,9 @@ export async function getPracticeToday(
 export async function completePractice(
   user: UserRow,
   itemId: PracticeItemId,
+  timeZone: string = userZone(user.currentTimezone),
 ): Promise<PracticeToday> {
-  const today = await getPracticeToday(user);
+  const today = await getPracticeToday(user, new Date(), timeZone);
   if (!today.items.some((i) => i.id === itemId))
     throw Errors.badRequest('PRACTICE_ITEM_NOT_OFFERED');
   await markPracticeDone(user.id, today.date, itemId);

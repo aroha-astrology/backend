@@ -545,3 +545,34 @@ export function calculateAshtakoota(
     overallCompatibility: overallCompatibility(totalScore),
   };
 }
+
+/** One person's Moon, as Ashtakoota reads it. */
+export interface MatchMoon {
+  nakshatraIndex: number;
+  sign: ZodiacSign;
+}
+
+/**
+ * Ashtakoota for two people when the boy/girl order is not a given. The tables put the
+ * boy's Moon first; with one male and one female that order is used. For any other pair
+ * (a gender not on file, 'other', or two of the same) nothing says who is "the boy", so
+ * both orders are scored and the lower total is used, the careful reading, instead of
+ * quietly treating the first person as the boy. Only Varna depends on the order, so the
+ * two totals differ by at most one point.
+ */
+export function calculateAshtakootaForPair(
+  a: MatchMoon,
+  b: MatchMoon,
+  genderA: string | null | undefined,
+  genderB: string | null | undefined,
+): AshtakootaResult & { orderKnown: boolean } {
+  if (genderA === 'male' && genderB === 'female') {
+    return { ...calculateAshtakoota(a.nakshatraIndex, b.nakshatraIndex, a.sign, b.sign), orderKnown: true };
+  }
+  if (genderA === 'female' && genderB === 'male') {
+    return { ...calculateAshtakoota(b.nakshatraIndex, a.nakshatraIndex, b.sign, a.sign), orderKnown: true };
+  }
+  const ab = calculateAshtakoota(a.nakshatraIndex, b.nakshatraIndex, a.sign, b.sign);
+  const ba = calculateAshtakoota(b.nakshatraIndex, a.nakshatraIndex, b.sign, a.sign);
+  return { ...(ba.totalScore < ab.totalScore ? ba : ab), orderKnown: false };
+}

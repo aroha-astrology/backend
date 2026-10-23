@@ -564,3 +564,24 @@ export function calculateDashakoota(
   };
 }
 
+/**
+ * Dashakoota when the boy/girl order is not a given — same rule as ashtakoota.ts's
+ * calculateAshtakootaForPair: one male and one female uses that order; any other pair is
+ * scored both ways and the lower total is used, instead of reading the first person as the boy.
+ */
+export function calculateDashakootaForPair(
+  a: { nakshatraIndex: number; sign: ZodiacSign },
+  b: { nakshatraIndex: number; sign: ZodiacSign },
+  genderA: string | null | undefined,
+  genderB: string | null | undefined,
+): DashakootaResult {
+  if (genderA === 'male' && genderB === 'female') {
+    return calculateDashakoota(a.nakshatraIndex, b.nakshatraIndex, a.sign, b.sign);
+  }
+  if (genderA === 'female' && genderB === 'male') {
+    return calculateDashakoota(b.nakshatraIndex, a.nakshatraIndex, b.sign, a.sign);
+  }
+  const ab = calculateDashakoota(a.nakshatraIndex, b.nakshatraIndex, a.sign, b.sign);
+  const ba = calculateDashakoota(b.nakshatraIndex, a.nakshatraIndex, b.sign, a.sign);
+  return ba.totalScore < ab.totalScore ? ba : ab;
+}

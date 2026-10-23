@@ -98,14 +98,16 @@ describe('computeNumerologyScores — Lo Shu Grid, Challenge Numbers, Name Plane
     expect(scores.kua).toEqual(getKuaData(new Date(DOB).getUTCFullYear(), 'female'));
   });
 
-  it('falls back to the male Kua formula when gender is "other" (documented judgment call — the classical formula is binary)', () => {
+  // The classical formula has only a male and a female branch. These used to read
+  // everyone else as male; now there is no Kua number until the gender is known.
+  it('gives no Kua number when gender is "other"', () => {
     const scores = computeNumerologyScores(makeCtx({ personGender: 'other' }), null, NOW);
-    expect(scores.kua).toEqual(getKuaData(new Date(DOB).getUTCFullYear(), 'male'));
+    expect(scores.kua).toBeNull();
   });
 
-  it('falls back to the male Kua formula when gender is missing', () => {
+  it('gives no Kua number when gender is missing', () => {
     const scores = computeNumerologyScores(makeCtx({ personGender: null }), null, NOW);
-    expect(scores.kua).toEqual(getKuaData(new Date(DOB).getUTCFullYear(), 'male'));
+    expect(scores.kua).toBeNull();
   });
 });
 

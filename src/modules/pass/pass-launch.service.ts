@@ -38,6 +38,7 @@ const FEATURE_SWITCH: Record<PassFeature, string> = {
   findMyDate: 'panchang.findMyDate',
   birthTime: 'home.birthTimeConfidence',
   relocation: 'nav.relocation',
+  palm: 'home.palmReading',
 };
 
 const LAUNCH_COPY: Record<LangCode, { title: string; body: string }> = {

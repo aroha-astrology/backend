@@ -121,8 +121,7 @@ function buildFacts(scores: NameChangeScores, suggestions: ScoredName[]): string
       'Suggested spelling variants: NONE — the deterministic method found no small edit reaching a target number for this exact name.',
     );
   }
-  // Computed by computeNameChangeScores as ctx.personGender when stated, else a best-effort
-  // guess from the reader's own first name (see inferGenderFromName) — stated here so the
+  // ctx.personGender when stated, else null (never guessed) — stated here so the
   // model can name which pool the alternative names were drawn from (see NAME_SUGGESTION_RULE),
   // rather than the reader having no way to tell a real gender-corpus mismatch from a bug.
   lines.push(

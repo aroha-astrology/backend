@@ -132,12 +132,10 @@ export interface NumerologyScores extends Record<string, unknown>, ReportSharedF
   monthlyForecast: NumerologyMonthForecast[];
 
   namePlanes: NamePlanes;
-  /** Kua Number + Feng Shui element. `calculateKuaNumber`'s formula is a classical binary
-   * male/female formula with no third branch — `ctx.personGender === 'female'` maps to
-   * `'female'`, everything else (`'male'`, `'other'`, missing/null) maps to `'male'`. This is a
-   * documented judgment call (see `ReportScoreContext.personGender`'s own doc comment), not a
-   * claim that the classical formula itself has a non-binary form. */
-  kua: KuaData;
+  /** Kua Number + Feng Shui element. The classical formula has a male and a female branch and
+   * nothing else, so this is null when the reader's gender is neither on file nor given in the
+   * report questions. It used to read everyone without a gender as male. */
+  kua: KuaData | null;
 
   /** Whether the current name's Chaldean number aligns with the birth-derived target numbers —
    * answers "does my current name numerologically support my birth-date numbers, or work
@@ -200,8 +198,8 @@ function resolveDob(ctx: ReportScoreContext): { dobString: string; dob: Date } {
   return { dobString: FALLBACK_DOB, dob: new Date(FALLBACK_DOB) };
 }
 
-function resolveGender(ctx: ReportScoreContext): 'male' | 'female' {
-  return ctx.personGender === 'female' ? 'female' : 'male';
+function resolveGender(ctx: ReportScoreContext): 'male' | 'female' | null {
+  return ctx.personGender === 'female' || ctx.personGender === 'male' ? ctx.personGender : null;
 }
 
 /**
@@ -244,7 +242,7 @@ export function computeNumerologyScores(
   const monthlyForecast = generateMonthlyForecast(dob, now.getUTCFullYear(), now.getUTCMonth() + 1);
 
   const namePlanes = getNamePlanes(name);
-  const kua = getKuaData(dob.getUTCFullYear(), gender);
+  const kua = gender ? getKuaData(dob.getUTCFullYear(), gender) : null;
 
   const nameAlignment = computeNameAlignment(name, dob);
   const luckyDayColor = LUCKY_DAY_COLOR_BY_MULANK[mulank] ?? {

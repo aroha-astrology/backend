@@ -35,8 +35,13 @@ import type { PanchangData } from '@aroha-astrology/shared';
  * under the plain coordinate key with that city's offset, so a later IST read
  * of the same spot could get it; v7 starts clean. Indian values are unchanged.
  * Rolling back restores v6.
+ * v8: same fields plus moonriseNextDay/moonsetNextDay, different VALUES: moonrise
+ * and moonset follow Drik Panchang (disc centre, no refraction, first after
+ * sunrise), and every position moved with the Lahiri VP285 + Delta T fix in
+ * planetPositions.core.ts (tithi/nakshatra ends ~1 minute earlier). Rolling
+ * back restores v7.
  */
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 
 /** Folds `CACHE_VERSION` into the DB key so a version bump can't collide with, or accidentally match, a row from a previous shape. */
 function versionedKey(refKey: string): string {

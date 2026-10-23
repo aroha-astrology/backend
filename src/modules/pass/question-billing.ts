@@ -10,14 +10,20 @@ import {
   refundPassQuestion,
 } from './pass.repo.js';
 import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
+import { consumeChatGift, refundChatGift } from './chat-gifts.repo.js';
 
-/** Where a chat question was paid from. 'group' = an admin-group member's free allowance. */
-export type QuestionSource = 'free' | 'group' | 'pass' | 'credits' | 'wallet';
+/**
+ * Where a chat question was paid from. 'group' = an admin-group member's free
+ * allowance; 'gift' = an occasion's free questions (config/chat-gifts.ts).
+ */
+export type QuestionSource = 'free' | 'gift' | 'group' | 'pass' | 'credits' | 'wallet';
 
 export const CHAT_REASON = 'chat_message';
 
 /**
- * Pays for one chat question: the Aroha Pass's monthly quota first, then a
+ * Pays for one chat question: a running gift question first (it is free and
+ * expires, so it goes before anything the user paid for), then the Aroha
+ * Pass's monthly quota, then a
  * Question Pack credit, then the wallet at `pricePaise`. Each step is one
  * atomic UPDATE, so two concurrent questions can't spend the same unit.
  * Null when none of them can cover it. With no Pass and no credits — every
@@ -32,6 +38,9 @@ export async function chargeQuestion(
   pricePaise: number,
 ): Promise<QuestionSource | null> {
   if (pricePaise <= 0) return 'free';
+  // Before the test-group branch too, so a group member's gift counts down
+  // exactly like everyone else's.
+  if (await consumeChatGift(userId)) return 'gift';
   const inGroup = (await listGroupIdsForUser(userId).catch(() => [])).length > 0;
   if (inGroup) {
     if (await findActivePass(userId)) return (await consumePassQuestion(userId)) ? 'pass' : 'free';
@@ -49,7 +58,8 @@ export async function refundQuestion(
   pricePaise: number,
 ): Promise<void> {
   try {
-    if (source === 'pass') await refundPassQuestion(userId);
+    if (source === 'gift') await refundChatGift(userId);
+    else if (source === 'pass') await refundPassQuestion(userId);
     else if (source === 'group') await refundGroupQuestion(userId);
     else if (source === 'credits') await addQuestionCredits(userId, 1);
     else if (source === 'wallet')

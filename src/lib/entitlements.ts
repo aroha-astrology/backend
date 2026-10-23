@@ -7,13 +7,16 @@
  * Relocation are Pass-only: each calls `requirePass()` with its own name
  * before doing anything, and the app shows a "subscribe" lock on
  * PASS_REQUIRED, which is also the answer when the user's tier doesn't
- * include that feature. The chat quota and the report discount come from the
- * tier too. A Pass counts while its current period hasn't ended.
+ * include that feature. Palm Reading's full reading is a benefit of every tier,
+ * one per Pass period (the photo scan stays free). The chat quota and the
+ * report discount come from the tier too. A Pass counts while its current
+ * period hasn't ended.
  */
 import { Errors } from './errors.js';
 import {
   entitlementForRow,
   GROUP_ENTITLEMENT,
+  PASS_PERIOD_DAYS,
   type PassEntitlement,
   type PassFeature,
 } from '../modules/pass/pass.config.js';
@@ -39,6 +42,18 @@ export async function hasPass(userId: string): Promise<boolean> {
 /** Percent off reports for this user: their Pass tier's discount, 0 without a Pass. */
 export async function passReportDiscountPct(userId: string): Promise<number> {
   return (await passEntitlement(userId))?.reportDiscountPct ?? 0;
+}
+
+/**
+ * Where the user's current Pass period began, for allowances counted per period (palm
+ * readings). A member of an admin user group has the top Pass with no subscription row, so
+ * their period is the last PASS_PERIOD_DAYS days, the same rule voice minutes use.
+ */
+export async function passPeriodStart(userId: string, now: Date = new Date()): Promise<Date> {
+  const row = await findActivePass(userId).catch(() => null);
+  return (
+    row?.periodStart ?? row?.startedAt ?? new Date(now.getTime() - PASS_PERIOD_DAYS * 86_400_000)
+  );
 }
 
 /** Throws 403 PASS_REQUIRED unless the user has a live Aroha Pass whose tier includes `feature`. */

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import { palmReadings, type PalmMountReliefData, type PalmReadingRow } from '../../db/schema.js';
 
@@ -97,15 +97,17 @@ export async function saveMountRelief(
   hand: 'primary' | 'secondary',
   scores: Record<string, number>,
   regions?: Record<string, { cx: number; cy: number; radius: number }>,
+  landmarks?: PalmMountReliefData[string],
 ): Promise<void> {
   const row = await findPalmReadingById(readingId);
   if (!row) return;
-  // Regions live under a sibling key rather than inside the score map so the shape the rules
+  // Regions and landmarks live under sibling keys rather than inside the score map so the shape the rules
   // engine reads (mountRelief.primary -> mount -> 0-1 score) is unchanged.
   const mountRelief: PalmMountReliefData = {
     ...row.mountRelief,
     [hand]: scores,
     ...(regions ? { [`${hand}Regions`]: regions } : {}),
+    ...(landmarks ? { [`${hand}Landmarks`]: landmarks } : {}),
   };
   await db
     .update(palmReadings)
@@ -220,10 +222,34 @@ export async function markPalmReadingUnlocked(
   readingId: string,
   pricePaidPaise: number,
 ): Promise<void> {
+  const now = new Date();
   await db
     .update(palmReadings)
-    .set({ unlocked: true, pricePaidPaise, updatedAt: new Date() })
+    .set({ unlocked: true, unlockedAt: now, pricePaidPaise, updatedAt: now })
     .where(eq(palmReadings.id, readingId));
+}
+
+/**
+ * Full readings the user unlocked since `since`, leaving out `exceptId` (a retry of the same
+ * reading is not a second one) and failed ones (the member can scan again instead).
+ */
+export async function countPalmUnlocksSince(
+  userId: string,
+  since: Date,
+  exceptId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(palmReadings)
+    .where(
+      and(
+        eq(palmReadings.userId, userId),
+        gte(palmReadings.unlockedAt, since),
+        ne(palmReadings.id, exceptId),
+        ne(palmReadings.status, 'failed'),
+      ),
+    );
+  return row?.n ?? 0;
 }
 
 export async function savePalmTranslation(

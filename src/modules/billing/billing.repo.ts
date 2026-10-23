@@ -14,6 +14,7 @@ import {
 import { resolveDateRangePreset, sumPaidOrdersBetween } from '../admin/admin.repo.js';
 import { topUpBonusPaise } from './top-up-amounts.js';
 import { coinPackById, coinPackCreditPaise } from '../../config/coin-packs.js';
+import { questionPackForProduct } from '../pass/pass.config.js';
 
 export async function findActiveCouponByCode(code: string): Promise<CouponRow | undefined> {
   const rows = await db
@@ -166,6 +167,21 @@ export async function confirmOrderAndGrantCredits(
       .returning();
 
     if (!order) return undefined;
+
+    // A Question Pack (bought on Play since 2026-10-23) grants chat questions, not wallet money.
+    const pack = questionPackForProduct(order.packId);
+    if (pack) {
+      const [packUser] = await tx
+        .update(users)
+        .set({
+          questionCredits: sql`${users.questionCredits} + ${pack.questions}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, userId))
+        .returning({ walletBalancePaise: users.walletBalancePaise });
+      if (!packUser) throw new Error('User not found while granting a purchased Question Pack');
+      return { order, walletBalancePaise: packUser.walletBalancePaise };
+    }
 
     // Google Play is the only way to pay and always charges the product's full
     // price, so the wallet gets the full pack amount. This used to grant

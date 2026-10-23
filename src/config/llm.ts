@@ -460,7 +460,8 @@ export const PALM_OBSERVE_PROFILE: GenerationProfile = {
   temperature: 0.1,
   jsonMode: true,
   stream: false,
-  maxTokens: 4096,
+  // 8192: the strict schema asks for 8-14 points on every line plus timing marks.
+  maxTokens: 8192,
 };
 
 /**

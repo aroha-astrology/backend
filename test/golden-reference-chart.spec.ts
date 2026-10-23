@@ -89,19 +89,26 @@ describe('external truth: Rahu and Ketu are exactly opposite', () => {
 
 describe('frozen snapshot: 1990-05-20 06:30 IST, Mumbai (Lahiri, whole-sign)', () => {
   // Regenerate with scripts/_ref-chart.mts if these ever change ON PURPOSE.
+  // Changed on purpose 2026-10-20 (CALCULATION_VERSION 2026.10.2): Lahiri now
+  // follows the Indian Astronomical Ephemeris / Drik Panchang (VP285, true
+  // positions minus the mean ayanamsa) and positions are computed from UT.
+  // Every longitude moved by seconds of arc; no sign, house, nakshatra or pada
+  // changed. Verified externally against Drik's 2026-2027 ingress times (8,
+  // Jupiter to the minute) and its 20 Oct 2026 tithi/nakshatra ends; Drik's
+  // position page for 1990 sits behind a CAPTCHA, so this chart is not.
   const EXPECTED = {
-    ayanamsa: 23.722724,
-    ascendant: { sign: 'Taurus', degree: 11.2075, nakshatra: 'Rohini', pada: 1 },
+    ayanamsa: 23.729113,
+    ascendant: { sign: 'Taurus', degree: 11.2011, nakshatra: 'Rohini', pada: 1 },
     planets: {
-      Sun: { lon: 35.045228, sign: 'Taurus', house: 1, nakshatra: 'Krittika', pada: 3 },
-      Moon: { lon: 333.01073, sign: 'Pisces', house: 11, nakshatra: 'PurvaBhadrapada', pada: 4 },
-      Mars: { lon: 327.97606, sign: 'Aquarius', house: 10, nakshatra: 'PurvaBhadrapada', pada: 3 },
-      Mercury: { lon: 14.524486, sign: 'Aries', house: 12, nakshatra: 'Bharani', pada: 1 },
-      Jupiter: { lon: 76.687369, sign: 'Gemini', house: 2, nakshatra: 'Ardra', pada: 4 },
-      Venus: { lon: 354.288061, sign: 'Pisces', house: 11, nakshatra: 'Revati', pada: 3 },
-      Saturn: { lon: 271.430419, sign: 'Capricorn', house: 9, nakshatra: 'UttaraAshadha', pada: 2 },
-      Rahu: { lon: 287.372702, sign: 'Capricorn', house: 9, nakshatra: 'Shravana', pada: 3 },
-      Ketu: { lon: 107.372702, sign: 'Cancer', house: 3, nakshatra: 'Ashlesha', pada: 1 },
+      Sun: { lon: 35.042703, sign: 'Taurus', house: 1, nakshatra: 'Krittika', pada: 3 },
+      Moon: { lon: 333.01688, sign: 'Pisces', house: 11, nakshatra: 'PurvaBhadrapada', pada: 4 },
+      Mars: { lon: 327.973389, sign: 'Aquarius', house: 10, nakshatra: 'PurvaBhadrapada', pada: 3 },
+      Mercury: { lon: 14.521474, sign: 'Aries', house: 12, nakshatra: 'Bharani', pada: 1 },
+      Jupiter: { lon: 76.684337, sign: 'Gemini', house: 2, nakshatra: 'Ardra', pada: 4 },
+      Venus: { lon: 354.285659, sign: 'Pisces', house: 11, nakshatra: 'Revati', pada: 3 },
+      Saturn: { lon: 271.427243, sign: 'Capricorn', house: 9, nakshatra: 'UttaraAshadha', pada: 2 },
+      Rahu: { lon: 287.366277, sign: 'Capricorn', house: 9, nakshatra: 'Shravana', pada: 3 },
+      Ketu: { lon: 107.366277, sign: 'Cancer', house: 3, nakshatra: 'Ashlesha', pada: 1 },
     },
   } as const;
 
@@ -206,6 +213,7 @@ describe('every stored ayanamsa preference actually changes the chart', () => {
     // Spot-check the two that used to fall back, against measured 1990 values.
     expect(values.get('fagan_bradley')!).toBeCloseTo(24.6059, 3);
     expect(values.get('yukteshwar')!).toBeCloseTo(22.3444, 3);
-    expect(values.get('lahiri')!).toBeCloseTo(23.7227, 3);
+    // Drik / Indian Astronomical Ephemeris Lahiri (VP285, mean): ~23" above plain SE Lahiri's 23.7227.
+    expect(values.get('lahiri')!).toBeCloseTo(23.7291, 3);
   }, 60_000);
 });

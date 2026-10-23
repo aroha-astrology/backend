@@ -15,6 +15,7 @@ import {
   istNoon,
   runBirthTimeCheck,
 } from './insights.service.js';
+import { dateInZone, readerZone, ReaderTzQuery } from '../../lib/user-time-zone.js';
 import { getAstroWeather } from './weather.service.js';
 import { getCalendar, MAX_CALENDAR_DAYS } from './calendar.service.js';
 import { getTimeline } from './timeline.service.js';
@@ -169,11 +170,6 @@ insightsRouter.openapi(applyRoute, async (c) => {
 /* GET /astro-weather — the daily view (Astro Weather + Your Day)              */
 /* -------------------------------------------------------------------------- */
 
-/** Today in IST, as YYYY-MM-DD. */
-function istToday(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-}
-
 const weatherRoute = createRoute({
   method: 'get',
   path: '/astro-weather',
@@ -182,7 +178,7 @@ const weatherRoute = createRoute({
     "The day's astro weather: overall trend, area scores, Moon changes and the day's windows",
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireAnyFeature(['home.astroWeather', 'home.yourDay'])] as const,
-  request: { query: z.object({ date: DateSchema.optional() }) },
+  request: { query: z.object({ date: DateSchema.optional(), tz: ReaderTzQuery }) },
   responses: {
     200: { description: 'Astro weather', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
@@ -192,8 +188,12 @@ const weatherRoute = createRoute({
 });
 
 insightsRouter.openapi(weatherRoute, async (c) => {
-  const { date } = c.req.valid('query');
-  const weather = await getAstroWeather(c.get('user'), date ?? istToday());
+  const { date, tz } = c.req.valid('query');
+  // Today on the reader's own clock, so the horoscope scores it reads are
+  // the same day's horoscope the reader sees.
+  const user = c.get('user');
+  const zone = readerZone(tz, user.currentTimezone);
+  const weather = await getAstroWeather(user, date ?? dateInZone(new Date(), zone), zone);
   return c.json(weather as unknown as Record<string, unknown>, 200);
 });
 
@@ -213,6 +213,7 @@ const calendarRoute = createRoute({
     query: z.object({
       from: DateSchema.optional(),
       days: z.coerce.number().int().min(1).max(MAX_CALENDAR_DAYS).default(90),
+      tz: ReaderTzQuery,
     }),
   },
   responses: {
@@ -224,8 +225,10 @@ const calendarRoute = createRoute({
 });
 
 insightsRouter.openapi(calendarRoute, async (c) => {
-  const { from, days } = c.req.valid('query');
-  const calendar = await getCalendar(c.get('user'), from ?? istToday(), days);
+  const { from, days, tz } = c.req.valid('query');
+  const user = c.get('user');
+  const zone = readerZone(tz, user.currentTimezone);
+  const calendar = await getCalendar(user, from ?? dateInZone(new Date(), zone), days, zone);
   return c.json(calendar as unknown as Record<string, unknown>, 200);
 });
 

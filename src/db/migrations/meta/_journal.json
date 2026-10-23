@@ -647,23 +647,37 @@
       "breakpoints": true
     },
     {
+      "idx": 92,
+      "version": "7",
+      "when": 1792480000000,
+      "tag": "0092_chat_gifts",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1792740000000,
+      "tag": "0093_palm_unlocked_at",
+      "breakpoints": true
+    },
+    {
       "idx": 94,
       "version": "7",
-      "when": 1790700000000,
+      "when": 1792800000000,
       "tag": "0094_coins_ledger",
       "breakpoints": true
     },
     {
       "idx": 95,
       "version": "7",
-      "when": 1790800000000,
+      "when": 1792810000000,
       "tag": "0095_experience_and_settings",
       "breakpoints": true
     },
     {
       "idx": 96,
       "version": "7",
-      "when": 1790900000000,
+      "when": 1792820000000,
       "tag": "0096_sky_context",
       "breakpoints": true
     }

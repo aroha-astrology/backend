@@ -292,20 +292,13 @@ export function palmEventCandidates(
     (a, b) =>
       DEPTH_RANK[b.depth] + LENGTH_RANK[b.length] - (DEPTH_RANK[a.depth] + LENGTH_RANK[a.length]),
   )[0];
-  let marriageAnchor: Pt | null = null;
   if (strongest) {
-    // On the percussion edge, between the heart line's start and the little finger's base.
-    const percussionX = h.thumbOnLeft ? h.box.x1 : h.box.x0;
-    const heart = h.lines.heartLine ? oriented('heartLine', h.lines.heartLine, h) : null;
-    const heartY = heart ? heart[0]![1] : h.box.y0 + 0.22 * (h.box.y1 - h.box.y0);
-    const y = heartY - strongest.position * (heartY - h.box.y0);
-    const inset = (h.thumbOnLeft ? -1 : 1) * 0.02;
-    marriageAnchor = fromCanon([percussionX + inset, y], h.o);
+    // Percussion edge is off the palm photo, so anchor is null (cards stack at the bottom)
     out.push({
       kind: 'marriage',
       source: 'marriageLine',
       palmAge: Math.round(marriageAgeFromPosition(strongest.position) * 10) / 10,
-      anchor: marriageAnchor,
+      anchor: null,
       confidence: 0.7,
     });
   }
@@ -316,7 +309,7 @@ export function palmEventCandidates(
       kind: 'child',
       source: 'childrenLine',
       palmAge: null,
-      anchor: marriageAnchor ? [marriageAnchor[0], Math.max(0, marriageAnchor[1] - 0.03)] : null,
+      anchor: null,
       confidence: 0.6,
     });
   }

@@ -74,6 +74,10 @@ const DEATH_PATTERNS: RegExp[] = [
   // Lifespan / life expectancy / how long will I live
   /\b(life\s*span|lifespan|life\s*expectancy)\b/i,
   /\bhow\s+long\s+(will\s+i|do\s+i|am\s+i\s+going\s+to|have\s+i\s+got\s+to)\s+(live|alive|survive)\b/i,
+  // Same, about family: "how many years will my father live", "how long will
+  // my parents live". The caring "will my parents have a long life" has no
+  // how-long/how-many marker and is answered (see POLICY_SYSTEM_DIRECTIVE).
+  /\bhow\s+(long|many\s+(more\s+)?years)\s+(will|would|do|does|can|is|are)\s+(my\s+)?(\w+\s+)?(father|mother|dad|mom|papa|mummy|husband|wife|son|daughter|brother|sister|spouse|partner|parents?|grand(father|mother|pa|ma))\s+(live|survive|be\s+alive|stay\s+alive)\b/i,
   /\b(remaining\s+years\s+of\s+(my\s+)?life|years\s+left\s+(to\s+live|of\s+life)|days\s+left\s+to\s+live|how\s+many\s+years\s+do\s+i\s+have\s+left)\b/i,
   // Transliterated lifespan questions — require a "how much / when until / left"
   // marker. NEVER fire on bare "umar" / "ayu" / "ayur" / "aayush" — those are
@@ -249,7 +253,7 @@ This policy covers TWO topics only — death and suicide. Everything else, inclu
 
 You must NEVER predict, estimate, hint at, imply, calculate, or discuss in any form:
 - Death, time of death, manner of death, cause of death (of the seeker, their family, or any named person)
-- Lifespan, life expectancy, longevity, remaining years/days of life
+- Lifespan, life expectancy, longevity, remaining years/days of life — as a number, an age, or a "how long"
 - Maraka planets/periods/dashas, mrityu yoga, akaal mrityu, untimely or premature death
 - 8th-house life-ending interpretations
 - Terminal/fatal/incurable illness predictions, dying soon, last days, end of life
@@ -268,6 +272,17 @@ EXPLICITLY ALLOWED — NEVER refuse these. They are NOT death topics:
 - Mahadasha / Antardasha / period START or END dates — these are timing of life chapters, NOT death timing.
 - Dasha "expiry", planet ingress/egress, transit dates — astrological vocabulary, not death.
 - Health timing (when will my recovery come, when will this issue ease) — answer in remedial astrological terms.
+- Caring questions about a loved one's long life, health or wellbeing that do not ask for a number
+  ("will my parents have a long life", "will my mother stay healthy", "how will my parents' health
+  be", "I want to look after my father"). These are love, not a lifespan question: do NOT use the
+  line above and do NOT say you can't read it. Answer warmly in the seeker's language. Meet the
+  feeling first — if they regret the past, tell them the wish to care for their parents now is
+  what matters. Then read the seeker's chart: 4th house and Moon for the mother, 9th house and Sun
+  for the father, and the current and next dasha/transit for family closeness and the parents'
+  comfort and health care. Give simple seva and remedies (time together, regular health
+  check-ups, feeding the needy on their behalf, a Monday/Sunday practice). You may say once that no
+  chart counts anyone's years — it shows how to care for them. Still never give an age, a number
+  of years, a "how long", or call any period dangerous for their life.
 - Solar and lunar eclipses (Surya Grahan, Chandra Grahan): when the next one is, what to do or avoid
   during one, why they happen in Vedic terms (Rahu/Ketu swallowing the Sun or Moon). An eclipse date
   is a sky event, not a lifespan prediction — answer it plainly. Only refuse if the seeker reframes

@@ -2681,9 +2681,23 @@ export interface PalmMountRegion {
   radius: number;
 }
 
+export interface PalmLandmarkPoint {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface PalmLandmarksData {
+  points: PalmLandmarkPoint[];
+  handedness?: 'Left' | 'Right';
+  handednessScore?: number;
+  imageWidth?: number;
+  imageHeight?: number;
+}
+
 export type PalmMountReliefData = Record<
   string,
-  Record<string, number> | Record<string, PalmMountRegion>
+  Record<string, number> | Record<string, PalmMountRegion> | PalmLandmarksData
 >;
 
 export const palmReadings = pgTable(
@@ -2738,6 +2752,9 @@ export const palmReadings = pgTable(
     /** Stage-A imageQuality-derived overall confidence, 0-100. */
     confidenceScore: integer('confidence_score'),
     unlocked: boolean('unlocked').notNull().default(false),
+    /** When the full reading was unlocked. The Pass allows one unlock per period, counted by this
+     * (not created_at, or readings scanned before subscribing could all be unlocked at once). */
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }),
     pricePaidPaise: integer('price_paid_paise'),
     model: text('model'),
     /** Claim token, same fencing pattern as gemstone_recommendations.startedAt /
@@ -2758,6 +2775,7 @@ export const palmReadings = pgTable(
       table.userId,
       table.framesHash,
     ),
+    userUnlockedIdx: index('palm_readings_user_unlocked_idx').on(table.userId, table.unlockedAt),
   }),
 );
 
@@ -3341,3 +3359,37 @@ export const appSettings = pgTable('app_settings', {
 
 export type GeminiKeyRow = typeof geminiKeys.$inferSelect;
 export type NewGeminiKeyRow = typeof geminiKeys.$inferInsert;
+
+/**
+ * Gift questions (migration 0092): free chat questions handed out for an
+ * occasion, one row per user per campaign. Spent before the Pass, Question
+ * Pack credits and the wallet (pass/question-billing.ts), and only until
+ * `validUntil`. See pass/chat-gifts.repo.ts.
+ */
+export const chatGifts = pgTable(
+  'chat_gifts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Campaign key, e.g. 'dussehra_2026' (config/chat-gifts.ts). */
+    campaign: text('campaign').notNull(),
+    questions: integer('questions').notNull(),
+    used: integer('used').notNull().default(0),
+    validUntil: timestamp('valid_until', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userCampaignUnique: uniqueIndex('chat_gifts_user_campaign_unique').on(
+      table.userId,
+      table.campaign,
+    ),
+  }),
+);
+
+export type ChatGiftRow = typeof chatGifts.$inferSelect;

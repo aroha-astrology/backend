@@ -7,9 +7,10 @@ import { z } from '@hono/zod-openapi';
 export const BirthInputSchema = z
   .object({
     date: z.string().openapi({ example: '1990-05-15', description: 'Birth date (YYYY-MM-DD)' }),
-    time: z.string().default('12:00').openapi({
+    time: z.string().optional().openapi({
       example: '14:30',
-      description: 'Birth time (HH:mm), defaults to 12:00 if unknown',
+      description:
+        'Birth time (HH:mm). When left out the chart is cast for 12:00 and timeAccuracy becomes "unknown".',
     }),
     latitude: z.number().min(-90).max(90).openapi({ example: 28.6139 }),
     longitude: z.number().min(-180).max(180).openapi({ example: 77.209 }),
@@ -21,12 +22,19 @@ export const BirthInputSchema = z
      * results — including Lagna-referenced Mangal Dosha — are sensitive to
      * exact birth time; 'unknown' means `time` is a placeholder/default, not
      * a real reported time, and Lagna-based results should be caveated. */
-    timeAccuracy: z.enum(['exact', 'approximate', 'unknown']).default('exact').openapi({
+    timeAccuracy: z.enum(['exact', 'approximate', 'unknown']).optional().openapi({
       example: 'exact',
       description:
-        'Confidence in the birth time above; "unknown" means it is a default/placeholder',
+        'Confidence in the birth time above. Defaults to "exact" when a time is given and "unknown" when it is not.',
     }),
   })
+  // A left-out time used to become 12:00 AND default to 'exact', so a chart cast
+  // for a stand-in noon was presented as a real one. No time now means unknown.
+  .transform((b) => ({
+    ...b,
+    time: b.time || '12:00',
+    timeAccuracy: b.timeAccuracy ?? (b.time ? ('exact' as const) : ('unknown' as const)),
+  }))
   .openapi('BirthInput');
 
 export type BirthInput = z.infer<typeof BirthInputSchema>;
@@ -157,6 +165,10 @@ export const OnboardingResponseSchema = z
     summary: z.string(),
     charts: z.record(z.unknown()).optional(),
     insights: z.array(z.string()).optional(),
+    /** How sure the birth time is; 'unknown' when none was given. */
+    timeAccuracy: z.enum(['exact', 'approximate', 'unknown']).optional(),
+    /** Which parts of the chart a non-exact time can move; absent for an exact time. */
+    caveat: z.string().optional(),
   })
   .openapi('OnboardingResponse');
 

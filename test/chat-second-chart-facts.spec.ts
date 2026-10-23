@@ -126,7 +126,9 @@ describe('buildSecondChartFacts — partner synastry', () => {
     ).totalScore;
 
     expect(guna(herAsking[0]!)).toBe(String(manFirst));
-    expect(guna(defaultOrder[0]!)).toBe(String(askerFirst));
+    // The asker's gender unknown: nobody is "the boy", so the lower of the two
+    // orders is used rather than reading the asker as the boy.
+    expect(guna(defaultOrder[0]!)).toBe(String(Math.min(manFirst, askerFirst)));
   }, 30_000);
 });
 

@@ -32,6 +32,9 @@ export function chatPricingFact(pricePaise: number, source: QuestionSource | nul
   const counted =
     'It is charged per question asked, never per minute the way most astrology apps charge — ' +
     'so they can take their time.';
+  if (source === 'gift') {
+    return `CHAT PRICING: this question is a free gift question, on the house for a festival offer, and runs out soon; after the gift questions, each question costs ${price}. ${counted}`;
+  }
   if (source === 'pass') {
     return `CHAT PRICING: this user has an Aroha Pass, and their questions come out of its monthly allowance; once that is used up, each question costs ${price}. ${counted}`;
   }

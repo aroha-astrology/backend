@@ -32,7 +32,7 @@ import { calculateFullPanchangAsync } from '../../src/lib/astro-engine/panchang/
 describe('[PN1] Find My Date uses the same sunrise as the Panchang', () => {
   it('Delhi, week of 27 July 2026: each best day carries the Panchang’s Rahu Kaal', async () => {
     const place = { lat: 28.6139, lon: 77.209 };
-    const skies = await daySkies('2026-07-27', 7, 5.5, null);
+    const skies = await daySkies('2026-07-27', 7, 5.5, null, place);
     const sunTimes = await sunTimesFor(
       skies.map((s) => s.date),
       place,

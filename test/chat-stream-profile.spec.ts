@@ -240,8 +240,9 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     expect(userFacts).toEqual([{ fact: 'loves painting', followUpQuestion: null }]);
     expect(extraFacts).toContain("User's gender: female");
     expect(extraFacts).not.toContain("User's gender: male");
-    // relationshipStatus has no per-profile equivalent — still sourced from the account.
-    expect((extraFacts as string[]).some((f) => f.includes('married'))).toBe(true);
+    // relationshipStatus is the ACCOUNT OWNER's (no per-profile copy), so a reading about
+    // another profile must not be told it — it used to describe that person as married.
+    expect((extraFacts as string[]).some((f) => f.includes('married'))).toBe(false);
   });
 
   it('falls back to primary-profile scoping when no profile is passed in at all (e.g. a caller that never resolved one)', async () => {

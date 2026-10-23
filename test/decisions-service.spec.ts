@@ -86,7 +86,7 @@ beforeEach(async () => {
 
 describe('daySkies', () => {
   it("reads each day's weekday, tithi and nakshatra at local noon and marks eclipse days", async () => {
-    const skies = await daySkies('2026-08-10', 20, 5.5, 'lahiri');
+    const skies = await daySkies('2026-08-10', 20, 5.5, 'lahiri', { lat: 28.6139, lon: 77.209 });
     expect(skies).toHaveLength(20);
     expect(skies[0]).toMatchObject({ date: '2026-08-10', weekday: 1 });
     const byDate = new Map(skies.map((s) => [s.date, s]));

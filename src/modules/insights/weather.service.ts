@@ -23,7 +23,8 @@ import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { findHoroscope } from '../horoscope/horoscope.repo.js';
 import { getPanchang } from '../astro/astro.service.js';
 import { panchangLocationFor } from '../purchase-plan/purchase-plan.service.js';
-import { istNoon, loadChartContext } from './insights.service.js';
+import { loadChartContext } from './insights.service.js';
+import { midnightInZone, noonInZone, userZone } from '../../lib/user-time-zone.js';
 
 /** The four rows Astro Weather shows, and the horoscope category each reads its score from. */
 export const WEATHER_AREAS = [
@@ -110,6 +111,16 @@ export function istTime(at: Date): string {
   }).format(at);
 }
 
+/** "18:18" on the zone's clock. */
+export function timeInZone(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(at);
+}
+
 interface ChoghadiyaPeriod {
   name: string;
   type: 'good' | 'bad' | 'neutral';
@@ -163,8 +174,13 @@ function isIndianTimezone(tz: string | null | undefined): boolean {
   return tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta';
 }
 
-export async function getAstroWeather(user: UserRow, date: string): Promise<AstroWeather> {
-  const asOf = istNoon(date);
+export async function getAstroWeather(
+  user: UserRow,
+  date: string,
+  timeZone: string = userZone(user.currentTimezone),
+): Promise<AstroWeather> {
+  // The day and its sky are read on the reader's clock (see readerZone).
+  const asOf = noonInZone(date, timeZone);
   const loaded = await loadChartContext(user, asOf);
   if (!loaded) throw Errors.conflict('CHART_NOT_READY');
   const { profile, ctx } = loaded;
@@ -175,7 +191,7 @@ export async function getAstroWeather(user: UserRow, date: string): Promise<Astr
     synthesizeDailyForecastFromKundli(
       kundli?.chartData,
       kundli?.dashaData,
-      istNoon(addDays(date, 1)).toISOString(),
+      noonInZone(addDays(date, 1), timeZone).toISOString(),
     ),
     findHoroscope(user.id, profile.birthProfileId, 'daily', date),
   ]);
@@ -194,12 +210,12 @@ export async function getAstroWeather(user: UserRow, date: string): Promise<Astr
   });
 
   const overallScore = today?.score ?? 3;
-  const dayStart = new Date(`${date}T00:00:00+05:30`);
+  const dayStart = midnightInZone(date, timeZone);
   const dayEnd = new Date(dayStart.getTime() + 86_400_000);
   const moments: WeatherMoment[] = (await findMoonChanges(dayStart, dayEnd)).map((m) => ({
     kind: m.kind === 'sign' ? 'moonSign' : 'moonNakshatra',
     at: m.exactAt.toISOString(),
-    time: istTime(m.exactAt),
+    time: timeInZone(m.exactAt, timeZone),
     from: m.from,
     to: m.to,
   }));

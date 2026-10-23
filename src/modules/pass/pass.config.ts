@@ -20,6 +20,7 @@ export const PASS_FEATURES = [
   'birthTime',
   'relocation',
   'voiceCall',
+  'palm',
 ] as const;
 export type PassFeature = (typeof PASS_FEATURES)[number];
 
@@ -30,6 +31,12 @@ export type PassFeature = (typeof PASS_FEATURES)[number];
  * spends them before their tier's monthly `voiceFreeMinutes`.
  */
 export const VOICE_TRIAL_MINUTES = 3;
+
+/**
+ * Full palm readings a member may unlock in one Pass period (owner, 2026-10-23: every tier,
+ * one a month). The photo scan itself stays free for everyone.
+ */
+export const PALM_READINGS_PER_PERIOD = 1;
 
 /**
  * The three Passes, cheapest first. Each is its own admin key (on/off and the
@@ -57,7 +64,7 @@ export const PASS_TIERS = [
     voiceFreeMinutes: 10,
     monthlyCoins: 0,
     reportDiscountPct: 10,
-    features: ['timeline', 'bonds', 'voiceCall'],
+    features: ['timeline', 'bonds', 'voiceCall', 'palm'],
   },
   {
     tier: 'gold',
@@ -69,7 +76,7 @@ export const PASS_TIERS = [
     voiceFreeMinutes: 15,
     monthlyCoins: 100,
     reportDiscountPct: 20,
-    features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall'],
+    features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall', 'palm'],
   },
   {
     tier: 'platinum',
@@ -148,9 +155,38 @@ export function entitlementForRow(row: {
 /** The Play subscription product; its base plans are the three tiers (set in Play Console). */
 export const PASS_PLAY_PRODUCT_ID = 'aroha_pass_monthly';
 
+/**
+ * Question Packs are bought through Google Play (owner, 2026-10-23), never from the wallet.
+ * `playProductId` is a one-time (consumable) product in Play Console, priced at
+ * `fallbackPaise`: Play charges its own fixed price, so the admin price is display only and
+ * must be kept equal to Play's.
+ */
 export const QUESTION_PACKS = [
-  { pack: 'small', key: 'paid.questionPackSmall', questions: 5, fallbackPaise: 4900 },
-  { pack: 'medium', key: 'paid.questionPackMedium', questions: 12, fallbackPaise: 9900 },
-  { pack: 'large', key: 'paid.questionPackLarge', questions: 30, fallbackPaise: 19900 },
+  {
+    pack: 'small',
+    key: 'paid.questionPackSmall',
+    questions: 5,
+    fallbackPaise: 4900,
+    playProductId: 'question_pack_5',
+  },
+  {
+    pack: 'medium',
+    key: 'paid.questionPackMedium',
+    questions: 12,
+    fallbackPaise: 9900,
+    playProductId: 'question_pack_12',
+  },
+  {
+    pack: 'large',
+    key: 'paid.questionPackLarge',
+    questions: 30,
+    fallbackPaise: 19900,
+    playProductId: 'question_pack_30',
+  },
 ] as const;
+
+/** The pack a Play product id buys, or undefined for any other product (wallet top-ups). */
+export function questionPackForProduct(productId: string) {
+  return QUESTION_PACKS.find((p) => p.playProductId === productId);
+}
 export type QuestionPack = (typeof QUESTION_PACKS)[number]['pack'];

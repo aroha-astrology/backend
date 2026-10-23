@@ -14,7 +14,10 @@
  * package.json (deliberately pinned, not a caret range, so the resolved ephemeris can't
  * silently drift underneath a cached chart on a routine `npm install`).
  */
-export const CALCULATION_VERSION = '2026.10.1';
+// 2026.10.2: Lahiri now matches the Indian Astronomical Ephemeris / Drik Panchang
+// (VP285, true positions minus the mean ayanamsa), and positions are computed
+// from UT (they were ~69 s early, Delta T). Every planet moves 10-40 arcsec.
+export const CALCULATION_VERSION = '2026.10.2';
 export const EPHEMERIS_VERSION = 'swisseph-wasm@0.0.5';
 
 /**

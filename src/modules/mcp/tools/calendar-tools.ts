@@ -298,7 +298,7 @@ export function registerCalendarTools(server: McpServer, base: ToolContext): voi
 
       // General dates only: the day's panchang at the place, with no birth chart.
       // (Matching dates to a person's own chart is Find My Date in the app.)
-      const skies = await daySkies(from, days, tzHours, null);
+      const skies = await daySkies(from, days, tzHours, null, place);
       const result = buildResult({
         mode: 'muhurta',
         spec: MUHURTA_SPECS[OCCASIONS[args.occasion]],

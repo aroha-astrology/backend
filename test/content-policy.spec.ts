@@ -12,6 +12,8 @@ describe('classifyUserMessage — death topic blocking', () => {
     ['en age', 'at what age will I die'],
     ['en lifespan', 'What is my lifespan according to my chart'],
     ['en how long', 'how long will I live'],
+    ['en family how many years', 'How many years will my father live?'],
+    ['en family how long', 'how long will my parents live'],
     ['en family father', 'When will my father pass away'],
     ['en family wife', 'will my wife die before me'],
     ['en outlive', 'Will I outlive my husband?'],
@@ -137,6 +139,10 @@ describe('classifyUserMessage — non-death astrology questions', () => {
     'Tell me an ayurvedic remedy for my Vata imbalance',
     'My friend Ayush wants to know about his chart',
     'meri shaadi ki umar kya hai',
+    // Caring wellbeing questions — answered by the model (2026-10-22 alert).
+    'Will my parents have long life, untill now i only troubled them. I want to look after them.',
+    'Will my mother live long? I want to take care of her.',
+    'Mere papa ki lambi umar hogi kya?',
     'aaj ki tareekh kya hai',
     // Regression pin for the 2026-08-12 bug: these got the death-policy
     // "against the law" refusal even though none of the DEATH_PATTERNS match
@@ -275,5 +281,10 @@ describe('POLICY_SYSTEM_DIRECTIVE', () => {
     const lower = POLICY_SYSTEM_DIRECTIVE.toLowerCase();
     expect(lower).toMatch(/eclipse|grahan/);
     expect(lower).toMatch(/deit(y|ies)/);
+  });
+
+  it("allows caring questions about a loved one's long life — regression pin for the 2026-10-22 parents refusal", () => {
+    expect(POLICY_SYSTEM_DIRECTIVE).toContain("Caring questions about a loved one's long life");
+    expect(POLICY_SYSTEM_DIRECTIVE).toMatch(/never give an age, a number\s+of years/i);
   });
 });

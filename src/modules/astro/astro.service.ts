@@ -22,6 +22,7 @@ import {
   buildKarmicProfile,
   type KarmicProfile,
 } from '../../lib/astro-engine/lalkitab/karmicProfile.js';
+import { Errors } from '../../lib/errors.js';
 import {
   computeAnnualRotation,
   completedYearsOfAge,
@@ -94,7 +95,13 @@ import type {
   ForecastResponse,
   MatchmakingResponse,
 } from './astro.schemas.js';
-import type { MangalDosha, RegionId, RegionalMonth, Planet } from '@aroha-astrology/shared';
+import type {
+  MangalDosha,
+  RegionId,
+  RegionalMonth,
+  Planet,
+  ZodiacSign,
+} from '@aroha-astrology/shared';
 
 /* -------------------------------------------------------------------------- */
 /* Onboarding                                                                  */
@@ -132,7 +139,16 @@ export async function onboard(
     insights: Array.isArray(response.findings)
       ? (response.findings as Array<{ claim: string }>).map((f) => f.claim)
       : [],
+    timeAccuracy: body.birth.timeAccuracy,
+    ...(body.birth.timeAccuracy === 'exact' ? {} : { caveat: birthTimeCaveat(body.birth.timeAccuracy) }),
   };
+}
+
+/** What a chart cast from a non-exact birth time can and cannot be trusted for. */
+export function birthTimeCaveat(accuracy: 'approximate' | 'unknown'): string {
+  return accuracy === 'unknown'
+    ? 'No birth time was given, so this chart is cast for 12:00 noon. The ascendant, the houses and anything read from them may be wrong. Planet signs are reliable, except the Moon on a day it changes sign.'
+    : 'The birth time is approximate. The ascendant, house placements and dasha dates may shift with a more exact time; planet signs stay accurate.';
 }
 
 /* -------------------------------------------------------------------------- */
@@ -274,10 +290,19 @@ export async function matchmake(
   const moon1 = planets1.find((p) => p.planet === 'Moon');
   const moon2 = planets2.find((p) => p.planet === 'Moon');
 
-  const nak1 = (moon1?.nakshatraIndex as number) ?? 0;
-  const nak2 = (moon2?.nakshatraIndex as number) ?? 0;
-  const sign1 = (moon1?.sign as string) ?? 'Aries';
-  const sign2 = (moon2?.sign as string) ?? 'Aries';
+  // A missing Moon used to be scored as Ashwini in Aries — a made-up Guna score.
+  if (
+    !Number.isInteger(moon1?.nakshatraIndex) ||
+    !Number.isInteger(moon2?.nakshatraIndex) ||
+    typeof moon1?.sign !== 'string' ||
+    typeof moon2?.sign !== 'string'
+  ) {
+    throw Errors.internal('Could not work out the Moon position for one of the charts');
+  }
+  const nak1 = moon1.nakshatraIndex as number;
+  const nak2 = moon2.nakshatraIndex as number;
+  const sign1 = moon1.sign;
+  const sign2 = moon2.sign;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
   const result = calculateAshtakoota(nak1, nak2, sign1 as any, sign2 as any);
@@ -1377,19 +1402,21 @@ export async function buildSecondChartFacts(
     const userMoon = (
       (groundingSource.chart?.planets ?? []) as Array<Record<string, unknown>>
     ).find((p) => p.planet === 'Moon');
-    if (userMoon) {
-      const { calculateAshtakoota } = await import('../../lib/astro-engine/matching/ashtakoota.js');
-      // Ashtakoota takes the boy's Moon first. Same ordering rule as Aroha
-      // Bonds (bonds.service.ts pairAshtakoota), so chat and the Bonds page
-      // give one Guna score for the same couple.
-      const selfFirst = !(selfGender === 'female' && profile.gender === 'male');
-      const [first, second] = selfFirst ? [userMoon, moon] : [moon, userMoon];
-      const nak1 = Number(first.nakshatraIndex ?? 0);
-      const nak2 = Number(second.nakshatraIndex ?? 0);
-      const sign1 = asString(first.sign, 'Aries');
-      const sign2 = asString(second.sign, 'Aries');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
-      const result = calculateAshtakoota(nak1, nak2, sign1 as any, sign2 as any);
+    // A Moon without its nakshatra or sign used to be read as Ashwini in Aries, a
+    // made-up Guna score. Now the score line is simply left out.
+    const moonOf = (p: Record<string, unknown> | undefined) =>
+      p && Number.isInteger(p.nakshatraIndex) && typeof p.sign === 'string'
+        ? { nakshatraIndex: p.nakshatraIndex as number, sign: p.sign as ZodiacSign }
+        : null;
+    const mine = moonOf(userMoon);
+    const theirs = moonOf(moon);
+    if (mine && theirs) {
+      const { calculateAshtakootaForPair } = await import(
+        '../../lib/astro-engine/matching/ashtakoota.js'
+      );
+      // Same pair rule as Aroha Bonds (bonds.service.ts pairAshtakoota), so chat
+      // and the Bonds page give one Guna score for the same couple.
+      const result = calculateAshtakootaForPair(mine, theirs, selfGender, profile.gender);
       const nadi = result.scores.find((s) => s.koota === 'Nadi');
       const bhakoot = result.scores.find((s) => s.koota === 'Bhakoot');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
@@ -1652,6 +1679,7 @@ export async function* chatStream(
     // a user their (possibly months/years-stale) cached phase.
     doshas: kundli?.status === 'ready' ? await withLiveSadeSati(kundli.doshaData ?? null) : null,
     ashtakavarga: kundli?.status === 'ready' ? (kundli.ashtakavargaData ?? null) : null,
+    timeZone: user?.currentTimezone ?? null,
   };
   // A profile that onboarded with an unknown birth time will NEVER get a
   // ready kundli (see kundli.service.ts#missingKundliParams) — distinct from

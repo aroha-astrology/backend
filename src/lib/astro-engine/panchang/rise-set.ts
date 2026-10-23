@@ -30,16 +30,15 @@
 // reusing the same `getSwe()` singleton planetPositions.core.ts uses for
 // swe.calc()/swe.julday()/etc.
 //
-// Convention: standard visible rise/set — upper limb of the disc, with
-// standard atmospheric refraction (no SE_BIT_* flags set). This is the
-// conventional definition used by most public rise/set sources (distinct
-// from the Hindu-specific SE_BIT_HINDU_RISING convention — geocentric,
-// disc-center, no refraction — which some Panchang engines use specifically
-// for sunrise-anchored tithi/nakshatra bookkeeping; this codebase's sunrise/
-// sunset already comes from a separate NOAA approximation untouched by this
-// change, so there is no existing swisseph-based sunrise convention to match
-// here — the standard definition is the reasonable, well-documented default
-// for a directly-displayed "moonrise"/"moonset" data point).
+// Convention (moonrise/moonset): Drik Panchang's. The Moon rises and sets when
+// the CENTRE of its disc crosses the horizon, without refraction, and the day
+// runs from sunrise: the moonrise and moonset shown are the first ones after
+// that day's sunrise, flagged when they fall after midnight. Checked against
+// Drik for New Delhi on 20 Oct, 25 Oct and 3 Nov 2026 (a waxing, a full and a
+// waning Moon), to the minute. The old convention (upper limb with refraction,
+// searched from midnight) ran ~4 minutes early and, after midnight, showed the
+// PREVIOUS night's moonset (00:29 where Drik shows 01:22 the next morning).
+// Sunrise/sunset below keep the standard upper limb with refraction.
 
 import { dateToJulianDay, getSwe } from '../calculations/planetPositions.core';
 
@@ -48,12 +47,20 @@ const SE_MOON = 1;
 const SEFLG_SWIEPH = 2;
 const SE_CALC_RISE = 1;
 const SE_CALC_SET = 2;
+const SE_BIT_DISC_CENTER = 256;
+const SE_BIT_NO_REFRACTION = 512;
+/** Drik Panchang's moonrise: the disc's centre on the horizon, no refraction. */
+const MOON_RISE_SET_BITS = SE_BIT_DISC_CENTER | SE_BIT_NO_REFRACTION;
 
 export interface MoonRiseSet {
-  /** Local HH:mm moonrise, or null if the Moon does not rise within this civil day. */
+  /** Local HH:mm of the first moonrise after this day's sunrise, or null if none before the next. */
   moonrise: string | null;
-  /** Local HH:mm moonset, or null if the Moon does not set within this civil day. */
+  /** Local HH:mm of the first moonset after this day's sunrise, or null if none before the next. */
   moonset: string | null;
+  /** The moonrise falls after midnight, on the next calendar date. */
+  moonriseNextDay: boolean;
+  /** The moonset falls after midnight, on the next calendar date. */
+  moonsetNextDay: boolean;
 }
 
 /**
@@ -131,19 +138,18 @@ function jdToLocalHHmm(swe: any, jdUt: number, timezoneOffsetHours: number): str
 }
 
 /**
- * Compute local-time moonrise and moonset for the civil day `date` falls on,
- * at (latitude, longitude). Moonrise and moonset are searched independently,
- * each starting from that day's local midnight — because the Moon rises
- * ~50 minutes later each day, roughly once a month a given civil day has no
- * moonrise (the previous day's rise is still "current" past midnight) or no
- * moonset (this day's rise doesn't set until after the next midnight). Those
- * are legitimate, real astronomical conditions, not errors — this returns
- * `null` for whichever side is absent rather than fabricating a time, and
+ * Compute local-time moonrise and moonset for the panchang day `date` falls
+ * on, at (latitude, longitude): the first of each after that day's sunrise
+ * (the Hindu day runs sunrise to sunrise), as Drik Panchang shows them. Either
+ * can fall after midnight (flagged *NextDay), and either can be missing: the
+ * Moon rises ~50 minutes later each day, so about once a month a day has no
+ * moonrise or no moonset before the next sunrise. That is real, not an error —
+ * this returns `null` for the absent side rather than fabricating a time, and
  * never throws (any unexpected swisseph failure is treated the same way).
+ * Where the Sun does not rise (polar), the day starts at local midnight.
  *
  * @param date - Calendar date to compute for (only the Y/M/D are used — the
- *   time-of-day component of `date` is ignored; the search always starts at
- *   that date's local midnight).
+ *   time-of-day component of `date` is ignored).
  * @param latitude - Geographic latitude.
  * @param longitude - Geographic longitude.
  * @param timezoneOffsetHours - Civil UTC offset in hours (e.g. 5.5 for IST) —
@@ -169,23 +175,26 @@ export async function getMoonriseMoonset(
       timezoneOffsetHours,
     );
 
+    const sunriseJd = await riseTransUt(dayStartUt, longitude, latitude, 0, SE_CALC_RISE, SE_SUN);
+    const from = withinCivilDay(sunriseJd, dayStartUt) ? (sunriseJd as number) : dayStartUt;
+
     const [riseJd, setJd] = await Promise.all([
-      riseTransUt(dayStartUt, longitude, latitude, 0, SE_CALC_RISE),
-      riseTransUt(dayStartUt, longitude, latitude, 0, SE_CALC_SET),
+      riseTransUt(from, longitude, latitude, 0, SE_CALC_RISE | MOON_RISE_SET_BITS),
+      riseTransUt(from, longitude, latitude, 0, SE_CALC_SET | MOON_RISE_SET_BITS),
     ]);
+    // Before the next sunrise, i.e. within this panchang day.
+    const inDay = (jd: number | null): jd is number => jd !== null && jd >= from && jd < from + 1;
 
     return {
-      moonrise: withinCivilDay(riseJd, dayStartUt)
-        ? jdToLocalHHmm(swe, riseJd as number, timezoneOffsetHours)
-        : null,
-      moonset: withinCivilDay(setJd, dayStartUt)
-        ? jdToLocalHHmm(swe, setJd as number, timezoneOffsetHours)
-        : null,
+      moonrise: inDay(riseJd) ? jdToLocalHHmm(swe, riseJd, timezoneOffsetHours) : null,
+      moonset: inDay(setJd) ? jdToLocalHHmm(swe, setJd, timezoneOffsetHours) : null,
+      moonriseNextDay: inDay(riseJd) && riseJd >= dayStartUt + 1,
+      moonsetNextDay: inDay(setJd) && setJd >= dayStartUt + 1,
     };
   } catch {
     // Never throw — moonrise/moonset is an additive data point; any
     // unexpected failure degrades to "unavailable today", not a broken page.
-    return { moonrise: null, moonset: null };
+    return { moonrise: null, moonset: null, moonriseNextDay: false, moonsetNextDay: false };
   }
 }
 

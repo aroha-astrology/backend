@@ -132,9 +132,12 @@ describe('verify: childbirth chat-fix end-to-end', () => {
     // old unbounded search's far antardasha-tier windows did — a deliberate,
     // informative growth, not bloat. 26000 keeps a real 2000-char margin
     // below the actual clip() ceiling rather than pinning the exact number.
+    // Raised again 26000 -> 34000 with MAX_CONTEXT_CHARS 28000 -> 36000, when the
+    // UPCOMING TRANSITS block (~5,000 chars of dated sign and nakshatra changes)
+    // joined the facts; same 2000-char margin below the new ceiling.
     const chartDataBlockChars = facts.map((f) => `- ${f}`).join('\n').length;
     console.log('=== Total CHART DATA block size (chars) ===', chartDataBlockChars);
-    expect(chartDataBlockChars).toBeLessThan(26000);
+    expect(chartDataBlockChars).toBeLessThan(34000);
 
     // 7. Build the ACTUAL messages array scholarStream sends to Gemini, for
     // the exact reported question.
@@ -151,7 +154,7 @@ describe('verify: childbirth chat-fix end-to-end', () => {
     const systemPromptContent = messages[0]!.content;
     console.log('=== SYSTEM PROMPT length (chars) ===', systemPromptContent.length);
 
-    expect(systemPromptContent).toContain(`formatted as ${todayIST} in IST`);
+    expect(systemPromptContent).toContain(`formatted as ${todayIST}, on the user's own clock, IST`);
     expect(systemPromptContent).toContain("Never invent or presume the user's life circumstances");
     expect(systemPromptContent).toContain('legitimate accuracy check');
     expect(systemPromptContent).toContain('CURRENT/NEXT/THEN');

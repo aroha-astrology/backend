@@ -1,5 +1,5 @@
-import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { grantSignupStage } from './signup-drip.js';
+import { dateInZone, INDIA_TZ } from '../../lib/user-time-zone.js';
 import { addDays } from '../purchase-plan/purchase-plan.dates.js';
 import { payoutOf } from '../features/features.service.js';
 import { claimCampaignBonus } from '../users/users.repo.js';
@@ -36,7 +36,7 @@ export interface DailyRewardState {
 }
 
 /**
- * Length of the consecutive run of IST calendar dates in `claimedDates` ending
+ * Length of the consecutive run of calendar dates in `claimedDates` ending
  * at `today` (if today was claimed) or at `today - 1` (if not) — 0 if neither
  * today nor yesterday was claimed, i.e. the streak is already broken.
  * `claimCampaignBonus`'s reason-based dedupe means every claim is exactly one
@@ -110,9 +110,10 @@ async function resolveAmounts(
 export async function getDailyRewardState(
   userId: string,
   now: Date = new Date(),
+  timeZone: string = INDIA_TZ,
 ): Promise<DailyRewardState> {
   const { basePaise, bonusPaise, stepPaise } = await resolveAmounts(userId);
-  const today = istDateString(now);
+  const today = dateInZone(now, timeZone);
   const dates = await claimedDatesThroughGap(userId, today);
   const dateSet = new Set(dates);
   const claimedToday = dateSet.has(today);
@@ -142,7 +143,7 @@ export async function getDailyRewardState(
 }
 
 /**
- * Claims today's ladder amount. Idempotent per IST day — `claimCampaignBonus`
+ * Claims today's ladder amount. Idempotent per day — `claimCampaignBonus`
  * refuses a second `wallet_transactions` insert for the same `reason` inside
  * a row-locked transaction, so a duplicate call (double-tap, race between
  * devices) returns `claimed: false` with the unchanged balance rather than
@@ -151,9 +152,10 @@ export async function getDailyRewardState(
 export async function claimDailyReward(
   userId: string,
   now: Date = new Date(),
+  timeZone: string = INDIA_TZ,
 ): Promise<{ claimed: boolean; walletBalancePaise: number }> {
   const { basePaise, bonusPaise, stepPaise } = await resolveAmounts(userId);
-  const today = istDateString(now);
+  const today = dateInZone(now, timeZone);
   const dates = await claimedDatesThroughGap(userId, today);
   const claimedToday = dates.includes(today);
   const currentDay = positionInCycle(streakRun(dates, today), claimedToday);

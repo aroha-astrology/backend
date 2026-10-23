@@ -68,8 +68,18 @@ const SE_TRUE_NODE = 11; // Rahu (True/oscillating Node) — what Jagannatha Hor
 const SEFLG_SWIEPH = 2;
 const SEFLG_SIDEREAL = 65536;
 const SEFLG_SPEED = 256;
+const SEFLG_NONUT = 64;
 
-const SE_SIDM_LAHIRI = 1;
+/**
+ * Lahiri as the Indian Astronomical Ephemeris (and so Drik Panchang) uses it.
+ * Swiss Ephemeris' plain SE_SIDM_LAHIRI (1) sits 10-25 arcsec away from it,
+ * which moved slow-planet sign changes 23 minutes to 3 hours off every
+ * published panchang (Jupiter into Leo: 12:03 vs Drik's 12:50 on 31 Oct
+ * 2026). Checked against 8 Drik ingress times 2026-2027: Jupiter and Saturn
+ * land within 3 arcsec with this mode plus the mean-ayanamsa convention in
+ * calculatePlanetPositions.
+ */
+const SE_SIDM_LAHIRI_VP285 = 44;
 const SE_SIDM_KRISHNAMURTI = 5;
 const SE_SIDM_B_V_RAMAN = 3;
 const SE_SIDM_TRUE_CITRA = 27;
@@ -91,7 +101,7 @@ const SE_SIDM_YUKTESHWAR = 7;
  * what every other Indian app shows, and parity matters more than the argument.
  */
 export const AYANAMSA_MAP: Record<Ayanamsa, number> = {
-  lahiri: SE_SIDM_LAHIRI,
+  lahiri: SE_SIDM_LAHIRI_VP285,
   krishnamurti: SE_SIDM_KRISHNAMURTI,
   raman: SE_SIDM_B_V_RAMAN,
   true_chitra: SE_SIDM_TRUE_CITRA,
@@ -222,18 +232,37 @@ export async function calculatePlanetPositions(
 
   const calcFlags = SEFLG_SWIEPH | SEFLG_SIDEREAL | SEFLG_SPEED;
 
+  // Lahiri follows the Indian Astronomical Ephemeris: a planet's true
+  // (nutated) tropical longitude minus the MEAN ayanamsa. Swiss Ephemeris'
+  // own sidereal mode subtracts a nutated ayanamsa instead, so nutation
+  // cancels out and positions drift up to ~17 arcsec from every Indian
+  // panchang. The nodes are mean quantities and stay on the plain sidereal
+  // path, which is what matches Drik for Rahu. The ayanamsa's own daily
+  // motion is taken off the speed so stations land where they should.
+  const indianEphemeris = ayanamsa === 'lahiri';
+  const meanAyanamsa = indianEphemeris ? swe.get_ayanamsa_ex_ut(jd, SEFLG_SWIEPH | SEFLG_NONUT) : 0;
+  const ayanamsaPerDay = indianEphemeris
+    ? swe.get_ayanamsa_ex_ut(jd + 1, SEFLG_SWIEPH | SEFLG_NONUT) - meanAyanamsa
+    : 0;
+
   const positions: PlanetPosition[] = [];
   let rahuLongitude = 0;
   let rahuLatitude = 0;
   let rahuSpeed = 0;
 
   for (const { planet, seId } of planetSeIds(node)) {
-    // Use calc() which returns an object with named fields
-    const result = swe.calc(jd, seId, calcFlags);
+    // calc_ut, not calc: `jd` is Universal Time (dateToJulianDay) and swe_calc
+    // expects Terrestrial Time, so calc() placed every planet where it was
+    // ~69 s (Delta T) earlier. For the Moon that is ~37 arcsec, which made
+    // tithi and nakshatra end times about a minute late against Drik Panchang.
+    // calc_ut returns [lon, lat, dist, lonSpeed, latSpeed, distSpeed].
+    const isNode = seId === SE_MEAN_NODE || seId === SE_TRUE_NODE;
+    const tropical = indianEphemeris && !isNode;
+    const result = swe.calc_ut(jd, seId, tropical ? SEFLG_SWIEPH | SEFLG_SPEED : calcFlags);
 
-    const longitude = normalizeDegree(result.longitude);
-    const latitude = result.latitude;
-    const speed = result.longitudeSpeed;
+    const longitude = normalizeDegree(tropical ? result[0] - meanAyanamsa : result[0]);
+    const latitude = result[1];
+    const speed = tropical ? result[3] - ayanamsaPerDay : result[3];
     const isRetrograde = speed < 0;
 
     const signIndex = getSignIndex(longitude);

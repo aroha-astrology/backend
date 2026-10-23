@@ -13,6 +13,9 @@ export const PalmSlotSchema = z.enum(PALM_CAPTURE_SLOTS);
 export const CreatePalmReadingBodySchema = z
   .object({
     birthProfileId: z.string().uuid().optional(),
+    /** The hand to read as the main one. Needed only when the profile's gender is neither male
+     * nor female, since the classical rule picks the hand by gender; otherwise ignored. */
+    primaryHand: z.enum(['left', 'right']).optional(),
   })
   .openapi('CreatePalmReadingBody');
 
@@ -47,6 +50,9 @@ export const PalmReadingResponseSchema = z
     observations: z.record(z.string(), z.unknown()).optional(),
     scores: z.record(z.string(), z.number()).optional(),
     synthesis: z.record(z.string(), z.unknown()).optional(),
+    /** Only on an 'observed', not-yet-unlocked reading: whether the reader's Aroha Pass covers
+     * the full reading, and how many they have left this Pass period. */
+    allowance: z.object({ passMember: z.boolean(), left: z.number() }).optional(),
     error: z.string().nullable().optional(),
   })
   .openapi('PalmReadingResponse');
@@ -58,6 +64,20 @@ export const PalmReadingListResponseSchema = z
 /** Derived from the schema (not hand-declared) so the service's DTO can never structurally
  * drift from the OpenAPI response contract — same pattern as reports.schemas.ts's ReportDto. */
 export type PalmReadingDto = z.infer<typeof PalmReadingResponseSchema>;
+
+export const PalmLandmarkPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  z: z.number().default(0),
+});
+
+export const PalmLandmarksSchema = z.object({
+  points: z.array(PalmLandmarkPointSchema),
+  handedness: z.enum(['Left', 'Right']).optional(),
+  handednessScore: z.number().optional(),
+  imageWidth: z.number().optional(),
+  imageHeight: z.number().optional(),
+});
 
 export const SaveMountReliefBodySchema = z
   .object({
@@ -71,5 +91,6 @@ export const SaveMountReliefBodySchema = z
     regions: z
       .record(z.string(), z.object({ cx: z.number(), cy: z.number(), radius: z.number() }))
       .optional(),
+    landmarks: PalmLandmarksSchema.optional(),
   })
   .openapi('SaveMountReliefBody');

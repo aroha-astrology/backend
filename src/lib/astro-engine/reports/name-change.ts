@@ -23,7 +23,6 @@
 
 import { computeNameAlignment, type NameAlignmentResult } from '../numerology/nameCorrection.js';
 import { generateSpellingVariants } from '../names/name-variants.js';
-import { inferGenderFromName } from '../names/name-lookup.js';
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
@@ -64,15 +63,10 @@ export interface NameChangeScores extends Record<string, unknown>, ReportSharedF
    * soulUrge, personality, target numbers, alignment classification, friendly/enemy numbers. */
   alignment: NameAlignmentResult;
   /**
-   * The reader's own gender — `ctx.personGender` when it's stated, else a best-effort guess
-   * from the reader's OWN first name against the corpus (`inferGenderFromName`) when it isn't.
-   * Narrowed to the binary the name corpus is split on either way. Drives which corpus slice
-   * the narrative layer's alternative-first-name list is drawn from (`rankNamesForTargets`) —
-   * a man must never be handed a female-coded name. Stays `null` (search the full corpus) only
-   * when BOTH sources come up empty — an account with no gender on file whose first name also
-   * isn't in this (non-exhaustive, few-thousand-name) corpus. Unlike numerology's Kua formula
-   * there's no classical reason to force a binary when neither source has an answer, so at that
-   * point we genuinely don't guess.
+   * The reader's own gender — `ctx.personGender` (the profile's, or the one they gave in the
+   * report questions). Drives which corpus slice the alternative-first-name list is drawn from
+   * (`rankNamesForTargets`). `null` when neither says, and then names of any gender are
+   * searched and the narrative says so. It used to be guessed from the reader's first name.
    */
   gender: 'male' | 'female' | null;
   /** Up to 12 deterministic spelling variants that already hit one of `alignment.targets`, at
@@ -114,7 +108,7 @@ export function computeNameChangeScores(
   const gender =
     ctx.personGender === 'male' || ctx.personGender === 'female'
       ? ctx.personGender
-      : inferGenderFromName(currentName);
+      : null;
 
   return {
     header,

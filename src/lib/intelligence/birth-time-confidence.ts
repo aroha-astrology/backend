@@ -36,7 +36,11 @@ export function baselineBirthTimeConfidence(profile: {
   const make = (pct: number, basis: ConfidenceBasis) => ({ pct, level: levelFor(pct), basis });
   if (!profile.timeOfBirth) return make(0, 'missing');
   if (profile.birthTimeAccuracy === 'unknown') return make(20, 'part_of_day');
-  if (profile.birthTimeAccuracy === 'approximate') return make(45, 'stated_approximate');
+  // No accuracy on file (accounts from before it was asked) counts as approximate, the same
+  // as the Kundli card and Decide read it; it used to score as a stated exact time.
+  if (profile.birthTimeAccuracy === 'approximate' || profile.birthTimeAccuracy === null) {
+    return make(45, 'stated_approximate');
+  }
   const documented =
     profile.birthTimeSource === 'birth_certificate' ||
     profile.birthTimeSource === 'hospital_record';

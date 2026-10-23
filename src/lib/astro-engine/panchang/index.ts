@@ -23,7 +23,7 @@ export { calculatePanchangYoga } from './yoga';
 export { calculateKarana } from './karana';
 export { calculateRahuKaal, calculateGulikaKaal, calculateYamagandaKaal } from './rahuKaal';
 export { calculateChoghadiya } from './choghadiya';
-export { calculateHora, buildHoraSchedule } from './hora';
+export { buildHoraSchedule } from './hora';
 export { calculateRegionalMonths } from './regional';
 export { getMoonriseMoonset } from './rise-set';
 export { getTithiBoundary, getNakshatraBoundary } from './boundaries';
@@ -295,6 +295,8 @@ export async function calculateFullPanchangAsync(
     ...base,
     moonriseTime: moonRiseSet.moonrise ?? undefined,
     moonsetTime: moonRiseSet.moonset ?? undefined,
+    moonriseNextDay: moonRiseSet.moonriseNextDay,
+    moonsetNextDay: moonRiseSet.moonsetNextDay,
     tithi: {
       ...base.tithi,
       endsAt: tithiBoundary.endsAt,

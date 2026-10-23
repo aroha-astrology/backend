@@ -8,18 +8,29 @@
 
 import { createHash } from 'node:crypto';
 
+/** The 3 slots the current app captures.  PRIMARY_SLOTS === PALM_CAPTURE_SLOTS. */
 export const PALM_CAPTURE_SLOTS = [
   'primaryFront',
   'primaryPercussion',
-  'primaryDorsal',
   'primaryFingertips',
-  'secondaryFront',
-  'secondaryPercussion',
 ] as const;
 
 export type PalmCaptureSlot = (typeof PALM_CAPTURE_SLOTS)[number];
 
-const SLOT_SET = new Set<string>(PALM_CAPTURE_SLOTS);
+export const PRIMARY_SLOTS = PALM_CAPTURE_SLOTS;
+export const ALL_SLOTS = PALM_CAPTURE_SLOTS;
+
+/**
+ * Old slot names that existed before the 6→3 reduction (2026-10).  The upload
+ * route still accepts them so that a user who started a capture on an older app
+ * version can finish without an error.  They are NOT part of PALM_CAPTURE_SLOTS
+ * and are not required for analyze().
+ */
+export const LEGACY_SLOTS = ['primaryDorsal', 'secondaryFront', 'secondaryPercussion'] as const;
+
+export type LegacyPalmCaptureSlot = (typeof LEGACY_SLOTS)[number];
+
+const SLOT_SET = new Set<string>([...PALM_CAPTURE_SLOTS, ...LEGACY_SLOTS]);
 
 /** Private bucket path for one captured frame. Slot is validated against the
  * fixed known set — never interpolated from unchecked user input — so this
@@ -38,12 +49,12 @@ export function buildFramePath(userId: string, readingId: string, slot: string):
  * re-upload — see palm_readings.frames_hash — so a repeat submission skips
  * the vision call entirely.
  */
-export function computeFramesHash(frames: Partial<Record<PalmCaptureSlot, Buffer>>): string {
+export function computeFramesHash(frames: Partial<Record<string, Buffer>>): string {
   const hash = createHash('sha256');
   const slots = Object.keys(frames).sort();
   for (const slot of slots) {
     hash.update(slot);
-    hash.update(frames[slot as PalmCaptureSlot]!);
+    hash.update(frames[slot]!);
   }
   return hash.digest('hex');
 }

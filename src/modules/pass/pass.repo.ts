@@ -1,7 +1,8 @@
-import { and, desc, eq, gt, gte, isNull, lt, lte, not, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, not, or, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   notifications,
+  orders,
   subscriptionPlans,
   userSubscriptions,
   users,
@@ -14,6 +15,7 @@ import {
   GROUP_ENTITLEMENT,
   PASS_PERIOD_DAYS,
   PASS_PLAN_NAME,
+  QUESTION_PACKS,
 } from './pass.config.js';
 
 export type PassSource = 'wallet' | 'google_play';
@@ -381,12 +383,32 @@ export async function passStats(now: Date = new Date()): Promise<PassStats> {
     .groupBy(sql`1`);
   const pass = money.find((m) => m.kind === 'pass');
   const pack = money.find((m) => m.kind === 'pack');
+  // Since 2026-10-23 packs are bought on Google Play: paid orders for a pack product.
+  const [playPacks] = await db
+    .select({
+      n: sql<number>`count(*)::int`,
+      paise: sql<number>`coalesce(sum(${orders.amountPaise}), 0)::int`,
+    })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.status, 'paid'),
+        gte(orders.paidAt, since),
+        inArray(
+          orders.packId,
+          QUESTION_PACKS.map((p) => p.playProductId),
+        ),
+      ),
+    );
 
   return {
     active: { total: active.length, bySource, byVariant },
     walletRevenuePaise30d: pass?.paise ?? 0,
     started30d: started?.n ?? 0,
     endedOrCancelled30d: ended?.n ?? 0,
-    packSales30d: { count: pack?.n ?? 0, revenuePaise: pack?.paise ?? 0 },
+    packSales30d: {
+      count: (pack?.n ?? 0) + (playPacks?.n ?? 0),
+      revenuePaise: (pack?.paise ?? 0) + (playPacks?.paise ?? 0),
+    },
   };
 }

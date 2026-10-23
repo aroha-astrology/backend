@@ -16,6 +16,9 @@
 // Coordinates come back on the WHOLE sheet (a model's native frame — asking
 // for panel-relative numbers is an avoidable source of error) and are mapped
 // onto panel A here; anything outside panel A is dropped, not moved.
+//
+// Since 2026-10-23 the Gemini scan (palm.service.ts observeHandGemini) uses this
+// same sheet, prompt, schema and parser, so both models return the same fields.
 // =============================================================================
 
 import type { ContactSheet } from '../../palm/image-prep.js';

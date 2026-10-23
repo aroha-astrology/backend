@@ -11,16 +11,17 @@
 // pass-play.service.ts. It is never paid from the wallet. Rows with source
 // 'wallet' are from before that rule: they run to their end and never renew.
 // A user sees every tier that is on and picks one. Question Packs: prepaid
-// chat questions bought from the wallet; chat spends Pass quota, then pack
-// credits, then the wallet (question-billing.ts).
+// chat questions, bought through Google Play like the Pass (never from the
+// wallet, since 2026-10-23): a pending order, the Play purchase, then
+// billing.service.ts's confirmGooglePlayPurchase grants the questions. Chat
+// spends Pass quota, then pack credits, then the wallet (question-billing.ts).
 // =============================================================================
 
 import type { UserRow, UserSubscriptionRow } from '../../db/schema.js';
 import { Errors } from '../../lib/errors.js';
-import { logger } from '../../lib/logger.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
-import { addWalletBalance, deductWalletBalance } from '../users/users.repo.js';
+import { insertOrder } from '../billing/billing.repo.js';
 import {
   entitlementForRow,
   GROUP_ENTITLEMENT,
@@ -36,7 +37,6 @@ import {
   type QuestionPack,
 } from './pass.config.js';
 import {
-  addQuestionCredits,
   expireLapsedPasses,
   expirePass,
   findActivePass,
@@ -169,25 +169,42 @@ export async function getPassStatus(user: UserRow): Promise<PassStatus> {
   };
 }
 
-export async function buyQuestionPack(user: UserRow, pack: QuestionPack): Promise<PassStatus> {
+/**
+ * The old wallet purchase. Packs are Google Play only since 2026-10-23 (owner: "they can't
+ * recharge it using their current balance"), so this always refuses; the route stays so an
+ * open tab gets a clear answer.
+ */
+export function buyQuestionPack(_user: UserRow, _pack: QuestionPack): Promise<never> {
+  return Promise.reject(Errors.forbidden('QUESTION_PACK_PLAY_ONLY'));
+}
+
+/**
+ * Starts a Google Play purchase of a Question Pack: records the pending order that
+ * confirmGooglePlayPurchase (billing.service.ts) matches by (user, product) once Play has
+ * charged, and returns the product to launch. Play charges its own fixed price; the order keeps
+ * the price the app showed.
+ */
+export async function startQuestionPackCheckout(
+  user: UserRow,
+  pack: QuestionPack,
+): Promise<{ productId: string; questions: number }> {
   const def = QUESTION_PACKS.find((p) => p.pack === pack)!;
   const features = await resolveFeaturesForUser(user.id);
   if (features[def.key]?.enabled !== true) throw Errors.forbidden('QUESTION_PACK_NOT_AVAILABLE');
   const price = features[def.key]?.pricePaise ?? def.fallbackPaise;
-  const reason = `question_pack:${pack}`;
-
-  const charged = await deductWalletBalance(user.id, price, reason);
-  if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
-  let credits: number;
-  try {
-    credits = await addQuestionCredits(user.id, def.questions);
-  } catch (err) {
-    await addWalletBalance(user.id, price, `refund:${reason}`).catch((e: unknown) =>
-      logger.error({ err: e, userId: user.id }, 'pass: pack refund failed'),
-    );
-    throw err;
-  }
-  return getPassStatus({ ...user, questionCredits: credits });
+  await insertOrder({
+    userId: user.id,
+    packId: def.playProductId,
+    amountPaise: price,
+    discountPaise: 0,
+    finalAmountPaise: price,
+    currency: 'INR',
+    couponId: null,
+    couponCode: null,
+    status: 'pending',
+    gatewayProvider: 'google_play',
+  });
+  return { productId: def.playProductId, questions: def.questions };
 }
 
 /* -------------------------------------------------------------------------- */

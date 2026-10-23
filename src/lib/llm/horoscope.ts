@@ -511,7 +511,10 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
   // though buildHoroscopeContext (horoscope.service.ts) already collects all
   // four onto ctx.profile. Reusing the shared helper means the horoscope and
   // the chat never describe the same user differently.
-  const profileFacts = buildProfileFacts(ctx.profile, ctx.profile);
+  const profileFacts = buildProfileFacts(
+    { ...ctx.profile, birthProfileId: ctx.birthProfileId },
+    ctx.profile,
+  );
 
   // Age — never supplied before, even though STRUCTURED_JSON_RULE's education
   // guidance asks the model to judge whether the person is "clearly not a

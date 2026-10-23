@@ -114,3 +114,32 @@ describe('daily reward over 60 days of daily claims with the expiry sweep runnin
     expect(paid).toEqual(shown);
   });
 });
+
+describe("daily reward on the reader's own day", () => {
+  beforeEach(() => {
+    ledger.length = 0;
+  });
+
+  it('gives a New York user a new day at New York midnight, not India midnight', async () => {
+    // 20 Oct 2026 20:00 in New York = 21 Oct 05:30 IST.
+    clock = new Date('2026-10-21T00:00:00Z');
+    expect((await claimDailyReward('u1', clock, 'America/New_York')).claimed).toBe(true);
+    // 21 Oct 08:00 in New York = 21 Oct 17:30 IST: the same India day, but a new New York day.
+    clock = new Date('2026-10-21T12:00:00Z');
+    const state = await getDailyRewardState('u1', clock, 'America/New_York');
+    expect(state.claimedToday).toBe(false);
+    expect(state.currentDay).toBe(2);
+    expect((await claimDailyReward('u1', clock, 'America/New_York')).claimed).toBe(true);
+    expect(ledger.map((r) => r.reason)).toEqual([
+      'daily_reward:2026-10-20',
+      'daily_reward:2026-10-21',
+    ]);
+  });
+
+  it('still allows one claim a day: a second tap later the same New York day is refused', async () => {
+    clock = new Date('2026-10-21T13:00:00Z'); // 09:00 New York
+    await claimDailyReward('u1', clock, 'America/New_York');
+    clock = new Date('2026-10-22T02:00:00Z'); // 22:00 New York, already the 22nd in India
+    expect((await claimDailyReward('u1', clock, 'America/New_York')).claimed).toBe(false);
+  });
+});

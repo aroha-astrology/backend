@@ -174,6 +174,7 @@ async function buildSessionInstruction(
     // voice call never states a possibly months-stale cached phase.
     doshas: ready ? await withLiveSadeSati(kundli.doshaData ?? null) : null,
     ashtakavarga: ready ? (kundli.ashtakavargaData ?? null) : null,
+    timeZone: user?.currentTimezone ?? null,
   };
 
   const chartFacts = await buildGroundingFacts(groundingSource).catch(() => []);
@@ -191,6 +192,7 @@ async function buildSessionInstruction(
     // profile) — used ONLY for the one-time call-connected opening greeting,
     // never for the rest of the conversation. See buildVoiceSystemInstruction.
     displayName: profile.displayName,
+    timeZone: user?.currentTimezone ?? null,
   });
 }
 

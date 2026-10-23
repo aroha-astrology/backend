@@ -2,7 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireAdmin, requireUser } from '../../middleware/auth.js';
 import { requireAnyFeature, requireFeature } from '../../middleware/feature.js';
 import { QUESTION_PACKS } from './pass.config.js';
-import { buyQuestionPack, getPassStatus } from './pass.service.js';
+import { buyQuestionPack, getPassStatus, startQuestionPackCheckout } from './pass.service.js';
 import { confirmPlayPass } from './pass-play.service.js';
 import { passStats } from './pass.repo.js';
 import { passLaunchReadiness, sendPassLaunch } from './pass-launch.service.js';
@@ -92,22 +92,49 @@ const buyPackRoute = createRoute({
   method: 'post',
   path: '/question-packs/{pack}/buy',
   tags: ['Pass'],
-  summary: 'Buy a Question Pack (prepaid chat questions) from the wallet',
+  summary: 'RETIRED — packs are bought through Google Play; always 403 QUESTION_PACK_PLAY_ONLY',
   security: [{ bearerAuth: [] }],
   middleware: [requireUser, requireAnyFeature(PACK_KEYS)] as const,
   request: { params: z.object({ pack: z.enum(PACK_NAMES) }) },
   responses: {
-    200: { description: 'Status', content: { 'application/json': { schema: Json } } },
+    200: { description: 'Never returned', content: { 'application/json': { schema: Json } } },
     401: errorResponse('Unauthorized'),
-    403: errorResponse('That pack is switched off'),
-    409: errorResponse('INSUFFICIENT_CREDITS'),
+    403: errorResponse('QUESTION_PACK_PLAY_ONLY'),
   },
 });
 
 passRouter.openapi(buyPackRoute, async (c) => {
   const pack = c.req.valid('param').pack as (typeof QUESTION_PACKS)[number]['pack'];
-  const status = await buyQuestionPack(c.get('user'), pack);
-  return c.json(status as unknown as Record<string, unknown>, 200);
+  return buyQuestionPack(c.get('user'), pack);
+});
+
+const packCheckoutRoute = createRoute({
+  method: 'post',
+  path: '/question-packs/{pack}/checkout',
+  tags: ['Pass'],
+  summary:
+    'Start a Google Play purchase of a Question Pack: records the pending order and returns the ' +
+    'Play product to launch. Confirm with POST /billing/confirm-google-play, as for top-ups.',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireAnyFeature(PACK_KEYS)] as const,
+  request: { params: z.object({ pack: z.enum(PACK_NAMES) }) },
+  responses: {
+    200: {
+      description: 'Pending order recorded',
+      content: {
+        'application/json': {
+          schema: z.object({ productId: z.string(), questions: z.number() }),
+        },
+      },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('That pack is switched off'),
+  },
+});
+
+passRouter.openapi(packCheckoutRoute, async (c) => {
+  const pack = c.req.valid('param').pack as (typeof QUESTION_PACKS)[number]['pack'];
+  return c.json(await startQuestionPackCheckout(c.get('user'), pack), 200);
 });
 
 /* -------------------------------------------------------------------------- */

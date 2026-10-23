@@ -402,13 +402,13 @@ async function fetchPersonContext(
       personName: profile.displayName ?? null,
       personDob: profile.dateOfBirth ?? null,
       personGender: profile.gender ?? null,
-      // Account-level, not per-profile — same sourcing chat-grounding.ts's
-      // buildProfileFacts already uses for this field (see that comment).
-      personRelationshipStatus: user.relationshipStatus ?? null,
-      // Also account-level (no per-profile phone) — see ReportScoreContext.personPhone's doc
-      // comment for why this is safe to source here (numerology's phone block computes FROM
-      // it, never echoes it back raw).
-      personPhone: user.phoneE164 ?? null,
+      // Account-level fields describe the account owner only (no per-profile copy), so a
+      // report for a saved family profile gets none — it used to read the owner's
+      // relationship status and phone number as that person's. Same rule as
+      // chat-grounding.ts's buildProfileFacts.
+      personRelationshipStatus: profile.birthProfileId ? null : (user.relationshipStatus ?? null),
+      // Numerology's phone block computes FROM it, never echoes it back raw.
+      personPhone: profile.birthProfileId ? null : (user.phoneE164 ?? null),
       personTimeOfBirth: profile.timeOfBirth ?? null,
       personBirthTimeAccuracy: profile.birthTimeAccuracy ?? null,
       personBirthPlace: profile.placeOfBirth
@@ -610,11 +610,26 @@ export async function buildReportScoreContext(
   partnerChart: Record<string, unknown> | null,
 ): Promise<ReportScoreContext> {
   const personContext = await fetchPersonContext(row.userId, row.birthProfileId);
+  const userAnswers = answersFromInput(row.input);
+  // A profile with no male/female on file gets asked in the report questions (frontend
+  // lib/report-questions.ts READER_GENDER). The answer fills that gap for every report type
+  // (Kua, Progeny's first-child house, Name Change's name pool, Guna order), so none guesses.
+  const answeredGender = userAnswers?.readerGender;
+  if (
+    personContext.personGender !== 'male' &&
+    personContext.personGender !== 'female' &&
+    (answeredGender === 'male' || answeredGender === 'female')
+  ) {
+    personContext.personGender = answeredGender;
+  }
   const partnerName = typeof row.input?.name === 'string' ? row.input.name : null;
+  const partnerGender =
+    row.input?.gender === 'male' || row.input?.gender === 'female' ? row.input.gender : null;
   const ctx: ReportScoreContext = {
     chart: kundli?.chartData ?? null,
     partnerChart,
     partnerName,
+    partnerGender,
     partnerTimeOfBirth: typeof row.input?.timeOfBirth === 'string' ? row.input.timeOfBirth : null,
     partnerBirthTimeAccuracy:
       typeof row.input?.timeAccuracy === 'string' ? row.input.timeAccuracy : null,
@@ -623,7 +638,7 @@ export async function buildReportScoreContext(
     ashtakavargaData: kundli?.ashtakavargaData ?? null,
     dashaData: kundli?.dashaData ?? null,
     ...personContext,
-    userAnswers: answersFromInput(row.input),
+    userAnswers,
   };
   // A generator that needs extra ephemeris work before its pure computeScores (kp_annual's
   // KP-ayanamsa Placidus chart) does it here, so all four call sites — generation, every

@@ -16,6 +16,7 @@ import { ZODIAC_SIGNS, type Planet } from '@aroha-astrology/shared';
 import type { UserRow } from '../../db/schema.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
+import { dateInZone, INDIA_TZ, midnightInZone, userZone } from '../../lib/user-time-zone.js';
 import {
   findTransitEvents,
   PLANET_WEIGHT,
@@ -86,8 +87,8 @@ export function istDate(at: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(at);
 }
 
-function midpoint(start: Date, end: Date): string {
-  return istDate(new Date((start.getTime() + end.getTime()) / 2));
+function midpoint(start: Date, end: Date, timeZone: string): string {
+  return dateInZone(new Date((start.getTime() + end.getTime()) / 2), timeZone);
 }
 
 /* ---------------------------- global transit cache ------------------------- */
@@ -97,7 +98,7 @@ const transitCache = new Map<string, { at: number; value: Promise<TransitEvent[]
 const TRANSIT_TTL_MS = 12 * 3_600_000;
 
 function transitsBetween(from: Date, to: Date): Promise<TransitEvent[]> {
-  const key = `${istDate(from)}:${istDate(to)}`;
+  const key = `${from.toISOString()}:${to.toISOString()}`;
   const hit = transitCache.get(key);
   if (hit && Date.now() - hit.at < TRANSIT_TTL_MS) return hit.value;
   const value = findTransitEvents(from, to);
@@ -109,7 +110,11 @@ function transitsBetween(from: Date, to: Date): Promise<TransitEvent[]> {
 
 /* -------------------------------- builders -------------------------------- */
 
-export function transitEvents(ctx: ChartContext, transits: TransitEvent[]): CalendarEvent[] {
+export function transitEvents(
+  ctx: ChartContext,
+  transits: TransitEvent[],
+  timeZone: string = INDIA_TZ,
+): CalendarEvent[] {
   const out: CalendarEvent[] = [];
   for (const t of transits) {
     const signName = t.eventType === 'ingress' ? t.toSign! : t.fromSign;
@@ -124,7 +129,7 @@ export function transitEvents(ctx: ChartContext, transits: TransitEvent[]): Cale
     const event: CalendarEvent = {
       id: `${t.eventType}:${t.planet}:${t.exactAt.toISOString()}`,
       kind: t.eventType,
-      date: t.forDate,
+      date: dateInZone(t.exactAt, timeZone),
       exactAt: t.exactAt.toISOString(),
       area: areaOfHouse(house),
       tone,
@@ -152,7 +157,7 @@ export function transitEvents(ctx: ChartContext, transits: TransitEvent[]): Cale
     );
     if (next) {
       e.endDate = next.date;
-      e.peakDate = midpoint(new Date(e.exactAt!), new Date(next.exactAt!));
+      e.peakDate = midpoint(new Date(e.exactAt!), new Date(next.exactAt!), timeZone);
     }
   }
   return out;
@@ -163,6 +168,7 @@ export function dashaEvents(
   mahadashas: StoredMahadasha[],
   from: Date,
   to: Date,
+  timeZone: string = INDIA_TZ,
 ): CalendarEvent[] {
   const out: CalendarEvent[] = [];
   const startsInRange = (d: Date) => d.getTime() >= from.getTime() && d.getTime() < to.getTime();
@@ -176,9 +182,9 @@ export function dashaEvents(
     out.push({
       id: `antardasha:${span.lords.join('-')}:${span.startDate.toISOString()}`,
       kind: 'dashaChange',
-      date: istDate(span.startDate),
-      endDate: istDate(span.endDate),
-      peakDate: midpoint(span.startDate, span.endDate),
+      date: dateInZone(span.startDate, timeZone),
+      endDate: dateInZone(span.endDate, timeZone),
+      peakDate: midpoint(span.startDate, span.endDate, timeZone),
       ...(areas[0] ? { area: areas[0] } : {}),
       tone,
       weight: 80,
@@ -190,7 +196,7 @@ export function dashaEvents(
           planet,
           effect: tone,
           textKey: 'why.dasha.antardasha',
-          params: { planet, until: istDate(span.endDate) },
+          params: { planet, until: dateInZone(span.endDate, timeZone) },
         },
       ],
     });
@@ -209,9 +215,9 @@ export function dashaEvents(
     out.push({
       id: `pratyantar:${span.lords.join('-')}:${span.startDate.toISOString()}`,
       kind: 'areaWindow',
-      date: istDate(span.startDate),
-      endDate: istDate(span.endDate),
-      peakDate: midpoint(span.startDate, span.endDate),
+      date: dateInZone(span.startDate, timeZone),
+      endDate: dateInZone(span.endDate, timeZone),
+      peakDate: midpoint(span.startDate, span.endDate, timeZone),
       area,
       tone,
       weight: tone > 0 ? 60 : 50,
@@ -223,7 +229,7 @@ export function dashaEvents(
           planet,
           effect: tone,
           textKey: 'why.dasha.antardashaKaraka',
-          params: { planet, until: istDate(span.endDate) },
+          params: { planet, until: dateInZone(span.endDate, timeZone) },
         },
       ],
     });
@@ -235,6 +241,7 @@ export async function saturnPhaseEvents(
   ctx: ChartContext,
   from: Date,
   to: Date,
+  timeZone: string = INDIA_TZ,
 ): Promise<CalendarEvent[]> {
   const segments = await buildSaturnPhaseTimeline(ctx.moonSignIndex, from, to);
   return segments
@@ -244,8 +251,8 @@ export async function saturnPhaseEvents(
       return {
         id: `saturn:${s.phase}:${s.startDate.toISOString()}`,
         kind: 'saturnPhase' as const,
-        date: istDate(s.startDate),
-        endDate: istDate(s.endDate),
+        date: dateInZone(s.startDate, timeZone),
+        endDate: dateInZone(s.endDate, timeZone),
         area: 'overall' as const,
         tone: -1 as const,
         weight: 90,
@@ -265,10 +272,12 @@ export async function saturnPhaseEvents(
     });
 }
 
-export function festivalEvents(from: Date, to: Date): CalendarEvent[] {
+export function festivalEvents(from: Date, to: Date, timeZone: string = INDIA_TZ): CalendarEvent[] {
   const out: CalendarEvent[] = [];
-  for (let t = from.getTime(); t < to.getTime(); t += 86_400_000) {
-    const date = istDate(new Date(t));
+  // Step from noon, so a 23- or 25-hour daylight-saving day never skips or
+  // repeats a date. Festival dates are India's calendar dates, as listed.
+  for (let t = from.getTime() + 12 * 3_600_000; t < to.getTime(); t += 86_400_000) {
+    const date = dateInZone(new Date(t), timeZone);
     for (const f of getFestivalsForDate(date)) {
       out.push({
         id: `festival:${date}:${f.name}`,
@@ -290,9 +299,12 @@ export async function getCalendar(
   user: UserRow,
   fromDate: string,
   days: number,
+  timeZone: string = userZone(user.currentTimezone),
 ): Promise<CalendarResponse> {
   const span = Math.min(Math.max(days, 1), MAX_CALENDAR_DAYS);
-  const from = new Date(`${fromDate}T00:00:00+05:30`);
+  // Days start at the reader's own midnight, and every event is dated on
+  // their clock (see readerZone).
+  const from = midnightInZone(fromDate, timeZone);
   const to = new Date(from.getTime() + span * 86_400_000);
 
   const loaded = await loadChartContext(user, from);
@@ -314,14 +326,14 @@ export async function getCalendar(
 
   const moonEnd = new Date(Math.min(to.getTime(), from.getTime() + MOON_SIGN_DAYS * 86_400_000));
   const [transits, saturn, eclipses, moons] = await Promise.all([
-    safe('transits', async () => transitEvents(ctx, await transitsBetween(from, to))),
-    safe('saturn', () => saturnPhaseEvents(ctx, from, to)),
+    safe('transits', async () => transitEvents(ctx, await transitsBetween(from, to), timeZone)),
+    safe('saturn', () => saturnPhaseEvents(ctx, from, to, timeZone)),
     safe('eclipses', async () =>
       (await eclipsesBetween(from, to)).map(
         (e): CalendarEvent => ({
           id: `eclipse:${e.kind}:${e.at.toISOString()}`,
           kind: 'eclipse',
-          date: istDate(e.at),
+          date: dateInZone(e.at, timeZone),
           exactAt: e.at.toISOString(),
           tone: -1,
           weight: 70,
@@ -335,7 +347,7 @@ export async function getCalendar(
         (m): CalendarEvent => ({
           id: `moon:${m.exactAt.toISOString()}`,
           kind: 'moonSign',
-          date: m.forDate,
+          date: dateInZone(m.exactAt, timeZone),
           exactAt: m.exactAt.toISOString(),
           area: areaOfHouse(houseFrom(ctx.moonSignIndex, m.toIndex)),
           tone: isFavourableTransit('Moon', houseFrom(ctx.moonSignIndex, m.toIndex)) ? 1 : -1,
@@ -349,12 +361,16 @@ export async function getCalendar(
 
   const events = [
     ...transits,
-    ...dashaEvents(ctx, mahadashas, from, to),
+    ...dashaEvents(ctx, mahadashas, from, to, timeZone),
     ...saturn,
     ...eclipses,
-    ...festivalEvents(from, to),
+    ...festivalEvents(from, to, timeZone),
     ...moons,
   ].sort((a, b) => a.date.localeCompare(b.date) || b.weight - a.weight);
 
-  return { from: istDate(from), to: istDate(new Date(to.getTime() - 1)), events };
+  return {
+    from: dateInZone(from, timeZone),
+    to: dateInZone(new Date(to.getTime() - 1), timeZone),
+    events,
+  };
 }

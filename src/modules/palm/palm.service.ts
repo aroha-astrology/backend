@@ -30,7 +30,9 @@ import {
   PALM_TRANSLATION_PROFILE,
   MODEL,
 } from '../../config/llm.js';
-import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
+import { addWalletBalance } from '../users/users.repo.js';
+import { passEntitlement, passPeriodStart, requirePass } from '../../lib/entitlements.js';
+import { PALM_READINGS_PER_PERIOD } from '../pass/pass.config.js';
 import { resolveFeaturesForUser, modelForUser } from '../features/features.service.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { analyzePlanetStrengths } from '../../lib/astro-engine/gemstones.js';
@@ -51,6 +53,7 @@ import {
   markPalmReadingReady,
   markPalmReadingFailed,
   markPalmReadingUnlocked,
+  countPalmUnlocksSince,
   savePalmTranslation,
   findStaleGeneratingPalmReadings,
   saveMountRelief,
@@ -87,16 +90,21 @@ import type { StoredMahadasha } from '../../lib/astro-engine/dashas/dasha-range.
 import { buildChartContext } from '../../lib/intelligence/chart-context.js';
 import { laneBands, type TimelineArea } from '../insights/timeline.service.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
-import { computeFramesHash, type PalmCaptureSlot } from '../../lib/palm/storage-paths.js';
-import { matchPalmRules, type PalmRuleFact } from '../../lib/astro-engine/palm/palm-rules.js';
+import {
+  computeFramesHash,
+  PRIMARY_SLOTS,
+  ALL_SLOTS,
+  type PalmCaptureSlot,
+} from '../../lib/palm/storage-paths.js';
+import { matchPalmRules } from '../../lib/astro-engine/palm/palm-rules.js';
+import { computePalmBiometrics } from '../../lib/astro-engine/palm/palm-biometrics.js';
+import type { PalmMountReliefData, PalmLandmarksData } from '../../db/schema.js';
 import {
   chartDomainScores,
   clampToChart,
   crossCheckPalmAgainstChart,
 } from '../../lib/astro-engine/palm/palm-chart.js';
-import { buildObserveMessages, parseObserveResponse } from '../../lib/llm/palm/observe.js';
 import { buildInterpretPrompt, parseInterpretResponse } from '../../lib/llm/palm/interpret.js';
-import { buildSynthesizePrompt, parseSynthesizeResponse } from '../../lib/llm/palm/synthesize.js';
 import type { PalmHandObservations } from '../../lib/astro-engine/palm/palm-types.js';
 import type { PalmLineNote } from '../../lib/llm/palm/interpret.js';
 import type { ReportSection } from '../../modules/reports/report-generator.types.js';
@@ -108,25 +116,18 @@ export const PALM_FEATURE_KEY = 'paid.palmReading';
  * the global MODEL until someone picks a model in the dashboard. */
 const PALM_VISION_MODEL_KEY = 'ai.palmVisionModel';
 const PALM_INTERPRET_MODEL_KEY = 'ai.palmInterpretModel';
-const DEFAULT_PALM_PRICE_PAISE = 9900;
 
-const PRIMARY_SLOTS = [
-  'primaryFront',
-  'primaryPercussion',
-  'primaryDorsal',
-  'primaryFingertips',
-] as const;
-const SECONDARY_SLOTS = ['secondaryFront', 'secondaryPercussion'] as const;
-const ALL_SLOTS = [...PRIMARY_SLOTS, ...SECONDARY_SLOTS] as const;
-
-/** Male -> right hand, female -> left hand (classical Indian rule). 'other'/unset defaults to
- * right — documented, not hidden — since the tradition has no third-gender convention. */
-export function resolvePrimaryHand(gender: UserRow['gender']): 'left' | 'right' {
-  return gender === 'female' ? 'left' : 'right';
-}
-
-function secondaryHandOf(primaryHand: 'left' | 'right'): 'left' | 'right' {
-  return primaryHand === 'left' ? 'right' : 'left';
+/** Male -> right hand, female -> left hand (classical Indian rule). The tradition has no rule
+ * for anyone else, so for 'other' or no gender on file the reader picks the hand themselves;
+ * without that choice this throws 400 HAND_REQUIRED instead of quietly reading the right hand. */
+export function resolvePrimaryHand(
+  gender: UserRow['gender'],
+  chosen?: 'left' | 'right',
+): 'left' | 'right' {
+  if (gender === 'female') return 'left';
+  if (gender === 'male') return 'right';
+  if (chosen) return chosen;
+  throw Errors.badRequest('HAND_REQUIRED');
 }
 
 /** Which mount corresponds to which Navagraha planet — used to correlate palm observations
@@ -176,21 +177,15 @@ function buildPalmChartFacts(kundli: KundliRow | undefined): string {
   return lines.join('\n');
 }
 
-function factsSummary(facts: PalmRuleFact[]): string {
-  return (
-    facts.map((f) => `- ${f.evidence} => ${f.meaning}`).join('\n') ||
-    '(no notable markings observed)'
-  );
-}
-
 export async function createPalmReading(
   user: UserRow,
   birthProfileId: string | null,
   /** The gender of the PROFILE being read (a family member's palm follows their gender, not the
    * account owner's). */
   gender: UserRow['gender'],
+  chosenHand?: 'left' | 'right',
 ): Promise<{ readingId: string; primaryHand: string }> {
-  const primaryHand = resolvePrimaryHand(gender);
+  const primaryHand = resolvePrimaryHand(gender, chosenHand);
   const row = await createPendingPalmReading(user.id, birthProfileId, primaryHand);
   return { readingId: row.id, primaryHand };
 }
@@ -249,6 +244,7 @@ export async function saveHandMountRelief(
   hand: 'primary' | 'secondary',
   scores: Record<string, unknown>,
   regions?: Record<string, { cx: number; cy: number; radius: number }>,
+  landmarks?: PalmMountReliefData[string],
 ): Promise<void> {
   await loadOwnedReading(userId, readingId); // ownership check; throws 404 if not the caller's reading
   const clean: Record<string, number> = {};
@@ -262,9 +258,6 @@ export async function saveHandMountRelief(
   for (const key of MOUNT_KEYS) {
     const region = regions?.[key];
     if (!region) continue;
-    // Same trust-boundary posture as the scores above: clamp into the normalized range and
-    // drop anything that isn't a finite number, rather than letting a bad payload put an
-    // overlay dot off-canvas on the user's own photograph.
     const { cx, cy, radius } = region;
     if (![cx, cy, radius].every((n) => typeof n === 'number' && Number.isFinite(n))) continue;
     cleanRegions[key] = {
@@ -273,12 +266,55 @@ export async function saveHandMountRelief(
       radius: Math.max(0, Math.min(0.5, radius)),
     };
   }
-  if (Object.keys(clean).length === 0 && Object.keys(cleanRegions).length === 0) return;
+
+  let cleanLandmarks: PalmLandmarksData | undefined;
+  if (
+    landmarks &&
+    typeof landmarks === 'object' &&
+    'points' in landmarks &&
+    Array.isArray((landmarks as PalmLandmarksData).points)
+  ) {
+    const rawLm = landmarks as PalmLandmarksData;
+    if (
+      rawLm.points.length === 21 &&
+      rawLm.points.every(
+        (pt) =>
+          typeof pt.x === 'number' &&
+          Number.isFinite(pt.x) &&
+          typeof pt.y === 'number' &&
+          Number.isFinite(pt.y),
+      )
+    ) {
+      cleanLandmarks = {
+        points: rawLm.points.map((pt) => ({
+          x: Math.max(0, Math.min(1, pt.x)),
+          y: Math.max(0, Math.min(1, pt.y)),
+          z: typeof pt.z === 'number' && Number.isFinite(pt.z) ? pt.z : 0,
+        })),
+        ...(rawLm.handedness === 'Left' || rawLm.handedness === 'Right'
+          ? { handedness: rawLm.handedness }
+          : {}),
+        ...(typeof rawLm.handednessScore === 'number' && Number.isFinite(rawLm.handednessScore)
+          ? { handednessScore: rawLm.handednessScore }
+          : {}),
+        ...(typeof rawLm.imageWidth === 'number' && rawLm.imageWidth > 0
+          ? { imageWidth: rawLm.imageWidth }
+          : {}),
+        ...(typeof rawLm.imageHeight === 'number' && rawLm.imageHeight > 0
+          ? { imageHeight: rawLm.imageHeight }
+          : {}),
+      };
+    }
+  }
+
+  if (Object.keys(clean).length === 0 && Object.keys(cleanRegions).length === 0 && !cleanLandmarks)
+    return;
   await saveMountRelief(
     readingId,
     hand,
     clean,
     Object.keys(cleanRegions).length > 0 ? cleanRegions : undefined,
+    cleanLandmarks,
   );
 }
 
@@ -287,7 +323,7 @@ function missingSlots(frames: Record<string, unknown>): string[] {
 }
 
 /**
- * FREE — triggers Stage A only, once all 6 frames are uploaded. No wallet charge: this is the
+ * FREE — triggers Stage A only, once all 3 frames are uploaded. No wallet charge: this is the
  * "scan is free" half of the plan's monetization design. Produces the teaser (hand element,
  * confidence score, annotated line/mount overlay); the interpretation text stays locked until
  * unlockPalmReading is called.
@@ -320,10 +356,13 @@ export async function analyzePalmReading(
 }
 
 /**
- * PAID — the "unlock the full report" half. Requires Stage A to have already completed
- * ('observed'). Charges the wallet, then triggers Stage B/C using the ALREADY-STORED
- * observations — no re-download, no re-running vision, so the unlock call is cheap and fast
- * relative to the free scan.
+ * The "unlock the full report" half, an Aroha Pass benefit (owner, 2026-10-23): every tier,
+ * PALM_READINGS_PER_PERIOD full readings per Pass period, never charged to the wallet. Requires
+ * Stage A to have already completed ('observed'), then runs Stage B using the ALREADY-STORED
+ * observations — no re-download, no re-running vision.
+ *
+ * Throws 403 PASS_REQUIRED without a Pass, 403 PALM_PERIOD_LIMIT once this period's reading is
+ * used. Retrying a reading that failed after it was unlocked doesn't count again.
  */
 export async function unlockPalmReading(
   user: UserRow,
@@ -338,17 +377,17 @@ export async function unlockPalmReading(
 
   const features = await resolveFeaturesForUser(user.id);
   if (features[PALM_FEATURE_KEY]?.enabled === false) throw Errors.forbidden('FEATURE_DISABLED');
-  const pricePaise = features[PALM_FEATURE_KEY]?.pricePaise ?? DEFAULT_PALM_PRICE_PAISE;
-
-  const charged = await deductWalletBalance(user.id, pricePaise, 'palm_unlock');
-  if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
+  await requirePass(user.id, 'palm');
+  if (!row.unlocked) {
+    const used = await countPalmUnlocksSince(user.id, await passPeriodStart(user.id), readingId);
+    if (used >= PALM_READINGS_PER_PERIOD) throw Errors.forbidden('PALM_PERIOD_LIMIT');
+  }
 
   const claimed = await claimPalmGeneration(readingId, ['observed', 'failed']);
-  if (!claimed) {
-    await addWalletBalance(user.id, pricePaise, 'refund:palm_unlock');
-    throw Errors.conflict('Reading is already being unlocked');
-  }
-  await markPalmReadingUnlocked(readingId, pricePaise);
+  if (!claimed) throw Errors.conflict('Reading is already being unlocked');
+  // Price 0 even on a retry: a wallet reading from before the Pass that failed was already
+  // refunded, and a stored price would refund it again if this run fails too.
+  await markPalmReadingUnlocked(readingId, 0);
 
   void runPalmGeneration(user, claimed).catch((err) => {
     logger.error({ err, readingId }, 'palm unlock background failure escaped runPalmGeneration');
@@ -357,18 +396,25 @@ export async function unlockPalmReading(
   return { status: 'generating' };
 }
 
+/** Whether the reader's Pass covers a full reading now, so the page can say so before a tap. */
+async function palmAllowance(
+  userId: string,
+  readingId: string,
+): Promise<{ passMember: boolean; left: number }> {
+  const pass = await passEntitlement(userId);
+  if (!pass?.features.includes('palm')) return { passMember: false, left: 0 };
+  const used = await countPalmUnlocksSince(userId, await passPeriodStart(userId), readingId);
+  return { passMember: true, left: Math.max(0, PALM_READINGS_PER_PERIOD - used) };
+}
+
 /** What each captured angle is called on a contact sheet (panel A is always the front). */
 const SLOT_VIEW: Record<string, string> = {
   primaryPercussion: 'side edge (little-finger side)',
-  primaryDorsal: 'back of the hand',
   primaryFingertips: 'fingertips',
-  secondaryPercussion: 'side edge (little-finger side)',
 };
 const SLOT_LABEL: Record<string, string> = {
   primaryPercussion: 'SIDE',
-  primaryDorsal: 'BACK',
   primaryFingertips: 'FINGERTIPS',
-  secondaryPercussion: 'SIDE',
 };
 
 /** Thrown when the photo isn't a palm at all — fails the scan with a retake message, no fallback. */
@@ -378,27 +424,62 @@ class NotAPalmError extends Error {
   }
 }
 
+/**
+ * One hand on Gemini. Since 2026-10-23 it reads the SAME labelled contact sheet with the same
+ * prompt, strict schema and parser as Omnirush, so a Gemini scan carries per-line confidence,
+ * orientation, the palm box, marriage-line positions and timing marks too. The older Gemini
+ * prompt (observe.ts) had none of these, so its readings dated no events and its lines skipped
+ * the confidence and on-palm checks.
+ */
 async function observeHandGemini(
   hand: 'left' | 'right',
   slots: readonly string[],
   buffers: Record<string, Buffer>,
   userId: string,
   model: string,
+  trace: boolean,
 ): Promise<PalmHandObservations> {
-  const frameInputs = slots.map((slot) => ({
-    slot,
-    dataUrl: `data:image/jpeg;base64,${buffers[slot]!.toString('base64')}`,
-  }));
-  const messages = buildObserveMessages({ hand, frames: frameInputs });
+  const [front, ...others] = slots;
+  const sheet = await buildContactSheet(
+    { label: 'FRONT', bytes: buffers[front!]! },
+    others.map((slot) => ({ label: SLOT_LABEL[slot] ?? slot, bytes: buffers[slot]! })),
+  );
+  const prompt =
+    buildOmnirushObservePrompt({
+      hand,
+      otherPanels: others.map((slot) => SLOT_VIEW[slot] ?? slot),
+      trace,
+    }) +
+    `\n\nReturn ONLY one JSON object (no markdown, no prose) that matches this JSON schema exactly, with every listed field present:\n` +
+    JSON.stringify(PALM_OBSERVE_SCHEMA);
   const raw = await generate({
     profile: PALM_OBSERVE_PROFILE,
-    messages,
+    messages: [
+      { role: 'system', content: OMNIRUSH_OBSERVE_SYSTEM },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          {
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${sheet.jpeg.toString('base64')}` },
+          },
+        ],
+      },
+    ],
     model,
     userId,
     timeoutMs: 90_000,
   });
-  const parsed = parseObserveResponse(raw);
-  if (!parsed) throw new Error(`Stage A (observe) returned unparseable output for ${hand} hand`);
+  let answer: unknown;
+  try {
+    answer = JSON.parse(cleanJsonString(raw));
+  } catch {
+    throw new Error(`Stage A (observe) returned unparseable output for ${hand} hand`);
+  }
+  if ((answer as { isPalm?: unknown } | null)?.isPalm === false) throw new NotAPalmError();
+  const parsed = parseOmnirushObservation(answer, sheet);
+  if (!parsed) throw new Error(`Stage A (observe) returned unusable output for ${hand} hand`);
   return parsed;
 }
 
@@ -455,9 +536,12 @@ async function observeHand(
         logger.warn({ err, hand, model }, 'palm: Omnirush observe failed, falling back to Gemini');
       }
     }
-    return { obs: await observeHandGemini(hand, slots, buffers, userId, MODEL), model: MODEL };
+    return {
+      obs: await observeHandGemini(hand, slots, buffers, userId, MODEL, trace),
+      model: MODEL,
+    };
   }
-  return { obs: await observeHandGemini(hand, slots, buffers, userId, model), model };
+  return { obs: await observeHandGemini(hand, slots, buffers, userId, model, trace), model };
 }
 
 /** Dispatches to the correct phase based on what's already stored on the claimed row — see
@@ -621,20 +705,75 @@ async function runObservationPhase(
   }
 
   const primaryHand = claimed.primaryHand as 'left' | 'right';
-  const secondaryHand = secondaryHandOf(primaryHand);
 
-  // The admin-picked vision model (gpt-6-astra:low by default, through Omnirush — no per-call
-  // cost) runs the free scan directly. Both hands go at once; Omnirush queues them if busy.
+  // The admin-picked vision model runs the free scan directly on the primary hand.
   const visionModel = await modelForUser(user.id, PALM_VISION_MODEL_KEY, MODEL);
-  const [primary, secondary] = await Promise.all([
-    observeHand(primaryHand, PRIMARY_SLOTS, frameBuffers, user.id, visionModel, true),
-    observeHand(secondaryHand, SECONDARY_SLOTS, frameBuffers, user.id, visionModel, false),
-  ]);
+  const primary = await observeHand(
+    primaryHand,
+    PRIMARY_SLOTS,
+    frameBuffers,
+    user.id,
+    visionModel,
+    true,
+  );
   const primaryObs = primary.obs;
-  const secondaryObs = secondary.obs;
+
+  const features = await resolveFeaturesForUser(user.id);
+  const landmarksData = claimed.mountRelief?.primaryLandmarks as PalmLandmarksData | undefined;
+
+  // Biometric override behind feature switch
+  // Distances need the photo's real size (x and y are normalised separately), so no size, no
+  // override.
+  if (
+    features['palm.biometricOverride']?.enabled &&
+    landmarksData?.points &&
+    landmarksData.points.length === 21 &&
+    landmarksData.imageWidth &&
+    landmarksData.imageHeight
+  ) {
+    const biometrics = computePalmBiometrics({
+      points: landmarksData.points,
+      imageWidth: landmarksData.imageWidth,
+      imageHeight: landmarksData.imageHeight,
+    });
+    if (
+      biometrics &&
+      (landmarksData.handednessScore ?? 1) >= 0.8 &&
+      primaryObs.orientation === 'fingersUp' &&
+      biometrics.spacing !== 'tight' &&
+      (!primaryObs.detectedHand || primaryObs.detectedHand === primaryHand)
+    ) {
+      const modelSaid = {
+        fingers: primaryObs.fingers ? { ...primaryObs.fingers } : null,
+        thumbSet: primaryObs.thumb.setAngle,
+        palmShape: primaryObs.handType.palmShape,
+        element: primaryObs.handType.element,
+      };
+      if (!primaryObs.fingers) {
+        primaryObs.fingers = {
+          indexVsRing: biometrics.indexVsRing,
+          littleFingerSet: biometrics.littleFingerSet,
+          dominantPhalange: biometrics.dominantPhalange,
+          spacing: biometrics.spacing,
+        };
+      } else {
+        primaryObs.fingers.indexVsRing = biometrics.indexVsRing;
+        primaryObs.fingers.littleFingerSet = biometrics.littleFingerSet;
+        primaryObs.fingers.dominantPhalange = biometrics.dominantPhalange;
+        primaryObs.fingers.spacing = biometrics.spacing;
+      }
+      primaryObs.thumb.setAngle = biometrics.thumbSet;
+      primaryObs.handType.palmShape = biometrics.computedPalmShape;
+      primaryObs.handType.element = biometrics.computedElement;
+      logger.info({ readingId, modelSaid, biometrics }, 'palm: biometric override applied');
+    }
+  }
 
   // Snap every traced line onto its real crease and withhold the ones that don't sit on one.
-  const gate = gateTraces(primaryObs, await loadSnapImages(frameBuffers.primaryFront!));
+  const gate = gateTraces(primaryObs, await loadSnapImages(frameBuffers.primaryFront!), {
+    strictGate: features['palm.strictGate']?.enabled === true,
+    landmarks: landmarksData?.points,
+  });
   logger.info({ readingId, model: primary.model, ...gate }, 'palm: trace gate');
 
   const kundli = await findKundliByUserId(user.id, claimed.birthProfileId);
@@ -663,14 +802,11 @@ async function runObservationPhase(
       })
     : null;
 
-  const confidenceScore = Math.round(
-    ((primaryObs.imageQuality.score + secondaryObs.imageQuality.score) / 2) * 10,
-  );
+  const confidenceScore = Math.round(primaryObs.imageQuality.score * 10);
 
   await markPalmReadingObserved(readingId, claimedAt, {
     observations: {
       primary: primaryObs,
-      secondary: secondaryObs,
       events,
       eventTally: tally,
       ...(questionAnswer ? { question: questionAnswer } : {}),
@@ -798,21 +934,18 @@ async function runInterpretationPhase(
   const readingId = claimed.id;
   const stored = claimed.observations as {
     primary: PalmHandObservations;
-    secondary: PalmHandObservations;
+    secondary?: PalmHandObservations;
     events?: PalmEvent[];
     eventTally?: TimingTally | null;
   };
   const primaryHand = claimed.primaryHand as 'left' | 'right';
-  const secondaryHand = secondaryHandOf(primaryHand);
   const primaryObs = stored.primary;
-  const secondaryObs = stored.secondary;
   const mountRelief = claimed.mountRelief as {
     primary?: Record<string, number>;
     secondary?: Record<string, number>;
   } | null;
 
   const primaryFacts = matchPalmRules(primaryObs, mountRelief?.primary);
-  const secondaryFacts = matchPalmRules(secondaryObs, mountRelief?.secondary);
 
   const kundli = await findKundliByUserId(user.id, claimed.birthProfileId);
   const chartFacts = buildPalmChartFacts(kundli);
@@ -841,34 +974,17 @@ async function runInterpretationPhase(
     lifeEvents: events.map(describeEvent),
     language: 'en',
   });
-  const synthesizePrompt = buildSynthesizePrompt({
-    primaryHandLabel: `${primaryHand} hand — vartamana karma (current, lived path)`,
-    secondaryHandLabel: `${secondaryHand} hand — purvakarma (inherited blueprint)`,
-    primaryFactsSummary: factsSummary(primaryFacts),
-    secondaryFactsSummary: factsSummary(secondaryFacts),
+
+  const interpretRaw = await palmText({
+    model: interpretModel,
+    profile: PALM_INTERPRET_PROFILE,
+    prompt: interpretPrompt,
+    userId: user.id,
   });
-  // Independent prompts — run together so the paid wait is one model run, not two.
-  const [interpretRaw, synthesizeRaw] = await Promise.all([
-    palmText({
-      model: interpretModel,
-      profile: PALM_INTERPRET_PROFILE,
-      prompt: interpretPrompt,
-      userId: user.id,
-    }),
-    palmText({
-      model: interpretModel,
-      profile: PALM_INTERPRET_PROFILE,
-      prompt: synthesizePrompt,
-      userId: user.id,
-    }),
-  ]);
   const interpretation = parseInterpretResponse(interpretRaw.text);
   if (!interpretation) throw new Error('Stage B (interpret) returned unparseable output');
   const { sections, lineNotes } = interpretation;
   const scores = clampToChart(interpretation.scores, chartScores);
-
-  const synthesis = parseSynthesizeResponse(synthesizeRaw.text);
-  if (!synthesis) throw new Error('Stage C (synthesize) returned unparseable output');
 
   const kundliMatch = computeKundliMatch({
     tally,
@@ -878,7 +994,7 @@ async function runInterpretationPhase(
   });
 
   await markPalmReadingReady(readingId, claimedAt, {
-    content: { sections, scores, synthesis, lineNotes, chartScores, events, kundliMatch },
+    content: { sections, scores, lineNotes, chartScores, events, kundliMatch },
     model: interpretRaw.model,
   });
   await notifyPalmReadingReady(user.id, readingId);
@@ -975,34 +1091,75 @@ function toDto(
   return dto as PalmReadingDto;
 }
 
+/** Puts a translated answer to the reader's question on the DTO (a copy: the row stays English). */
+function withQuestionAnswer(dto: PalmReadingDto, answer: string | undefined): void {
+  const loose = dto as Record<string, unknown>;
+  const question = loose.question as { answer?: string } | undefined;
+  if (answer && question) loose.question = { ...question, answer };
+}
+
 export async function getPalmReadingForUser(
   userId: string,
   readingId: string,
   language: string,
 ): Promise<PalmReadingDto> {
   const row = await loadOwnedReading(userId, readingId);
+  if (row.status === 'observed' && !row.unlocked) {
+    const dto = toDto(row);
+    dto.allowance = await palmAllowance(userId, readingId);
+    return dto;
+  }
   if (row.status !== 'ready' || language === 'en') return toDto(row);
-
-  const cached = row.translations?.[language] as
-    | { sections?: ReportSection[]; lineNotes?: Record<string, PalmLineNote> }
-    | undefined;
-  if (cached?.sections) return toDto(row, cached.sections, cached.lineNotes);
 
   const content = row.content as {
     sections?: ReportSection[];
     lineNotes?: Record<string, PalmLineNote>;
+    synthesis?: unknown;
   } | null;
+
+  const rawObs = row.observations;
+  const rawQ = rawObs?.question as { answer?: string } | undefined;
+  const storedAnswer = typeof rawQ?.answer === 'string' ? rawQ.answer : undefined;
+
+  const cached = row.translations?.[language] as
+    | {
+        sections?: ReportSection[];
+        lineNotes?: Record<string, PalmLineNote>;
+        synthesis?: unknown;
+        questionAnswer?: string;
+      }
+    | undefined;
+
+  const needsSynthesis = content?.synthesis !== undefined && cached?.synthesis === undefined;
+  const needsQuestion = Boolean(storedAnswer && cached?.questionAnswer === undefined);
+
+  if (cached?.sections && !needsSynthesis && !needsQuestion) {
+    const dto = toDto(row, cached.sections, cached.lineNotes);
+    if (cached.synthesis !== undefined) dto.synthesis = cached.synthesis as Record<string, unknown>;
+    withQuestionAnswer(dto, cached.questionAnswer);
+    return dto;
+  }
+
   const englishSections = content?.sections ?? [];
   const englishNotes = content?.lineNotes ?? {};
   try {
-    // Sections AND lineNotes go through in ONE call: the tap-a-line cards are the same
-    // reading in miniature, and translating them separately would double the cost while
-    // letting the two drift apart in tone and terminology.
+    const payloadToTranslate: Record<string, unknown> = {
+      sections: englishSections,
+      lineNotes: englishNotes,
+    };
+    if (content?.synthesis) payloadToTranslate.synthesis = content.synthesis;
+    if (storedAnswer) payloadToTranslate.questionAnswer = storedAnswer;
+
+    // Every key in the payload is asked back, so one call fills the whole cache entry.
     const prompt =
       `Translate the following JSON into ${language}, preserving the exact same shape ` +
-      `{ "sections": [{ "heading": string, "paragraphs": string[] }], "lineNotes": { "<id>": { "meaning": string, "prediction": string } } }. ` +
-      `Do not add or remove sections, paragraphs or lineNotes entries, and keep every lineNotes key EXACTLY as given (they are ids, not text).\n\n` +
-      JSON.stringify({ sections: englishSections, lineNotes: englishNotes });
+      `{ "sections": [{ "heading": string, "paragraphs": string[] }], "lineNotes": { "<id>": { "meaning": string, "prediction": string } }` +
+      (payloadToTranslate.synthesis
+        ? `, "synthesis": (the same keys as given; translate only the string values)`
+        : '') +
+      (payloadToTranslate.questionAnswer ? `, "questionAnswer": string` : '') +
+      ` }. Do not add or remove keys, sections, paragraphs or lineNotes entries, and keep every lineNotes key EXACTLY as given (they are ids, not text). Numbers stay numbers.\n\n` +
+      JSON.stringify(payloadToTranslate);
     const raw = await generate({
       profile: PALM_TRANSLATION_PROFILE,
       messages: [{ role: 'user', content: prompt }],
@@ -1011,14 +1168,23 @@ export async function getPalmReadingForUser(
     const translated = JSON.parse(cleanJsonString(raw)) as {
       sections?: ReportSection[];
       lineNotes?: Record<string, PalmLineNote>;
+      synthesis?: unknown;
+      questionAnswer?: string;
     };
     if (translated.sections) {
+      // A key the model dropped is cached in English rather than left out: a missing key makes
+      // every later open of this reading translate (and pay for) the whole reading again.
       const payload = {
         sections: translated.sections,
         lineNotes: translated.lineNotes ?? englishNotes,
+        ...(content?.synthesis ? { synthesis: translated.synthesis ?? content.synthesis } : {}),
+        ...(storedAnswer ? { questionAnswer: translated.questionAnswer ?? storedAnswer } : {}),
       };
       await savePalmTranslation(readingId, language, payload);
-      return toDto(row, payload.sections, payload.lineNotes);
+      const dto = toDto(row, payload.sections, payload.lineNotes);
+      if (payload.synthesis) dto.synthesis = payload.synthesis as Record<string, unknown>;
+      withQuestionAnswer(dto, payload.questionAnswer);
+      return dto;
     }
   } catch (err) {
     logger.warn({ err, readingId, language }, 'failed to translate palm reading');

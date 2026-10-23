@@ -78,21 +78,6 @@ function poolForGender(gender?: string | null): readonly string[] {
   return ALL_GIVEN_NAMES; // unisex names appear in both source lists — callers dedupe
 }
 
-/**
- * Best-effort gender guess for a reader who has none on file (`personGender` null/'other') —
- * looks their OWN first name up in the unambiguous gendered slices before name_change falls
- * back to searching the full ungendered corpus for alternative-name suggestions. Returns null
- * (search everything) when the name isn't in either slice — including when it simply isn't in
- * the corpus at all, which is common (this corpus is a few thousand names, not exhaustive).
- */
-export function inferGenderFromName(name: string): 'male' | 'female' | null {
-  const first = name.trim().split(/\s+/)[0]?.toLowerCase();
-  if (!first) return null;
-  if (FEMALE_ONLY_NAMES.some((n) => n.toLowerCase() === first)) return 'female';
-  if (MALE_ONLY_NAMES.some((n) => n.toLowerCase() === first)) return 'male';
-  return null;
-}
-
 /** Fisher-Yates on a copy — cheap over a few thousand strings, run once per lookup. */
 function shuffled_<T>(arr: readonly T[]): T[] {
   const copy = [...arr];

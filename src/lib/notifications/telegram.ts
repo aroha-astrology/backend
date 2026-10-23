@@ -68,6 +68,22 @@ export async function notifyWalletTopUp(fields: {
   return sendMessage(text);
 }
 
+/** A Question Pack bought through Google Play (questions, not wallet money). */
+export async function notifyQuestionPackBought(fields: {
+  userId: string;
+  contact?: string | null;
+  amountPaise: number;
+  questions: number;
+}): Promise<boolean> {
+  const text =
+    `💬 *Question Pack*\n\n` +
+    `User: \`${escapeMarkdown(fields.userId)}\`\n` +
+    (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
+    `Paid: ${escapeMarkdown(formatRupees(fields.amountPaise))} on Google Play\n` +
+    `Questions added: ${fields.questions}`;
+  return sendMessage(text);
+}
+
 export async function notifyError(context: string, error: unknown): Promise<boolean> {
   const msg = error instanceof Error ? error.message : String(error);
   return sendAlert(`Error: ${context}`, msg);

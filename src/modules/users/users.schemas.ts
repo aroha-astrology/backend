@@ -280,6 +280,18 @@ export const UserSchema = z
       .number()
       .int()
       .describe('Free extra-profile slots still open (counts only while the money.freeProfiles switch is on)'),
+    chatGift: z
+      .object({
+        campaign: z.string(),
+        questionsLeft: z.number().int(),
+        questionsTotal: z.number().int(),
+        validUntil: z.string(),
+      })
+      .nullable()
+      .describe(
+        'Free gift questions still running for an occasion (spent before everything else), ' +
+          'or null. validUntil is ISO 8601.',
+      ),
     unlockedHouses: z.array(z.number().int()),
     nextReportVote: z.string().nullable(),
     nextFreeFollowUpAt: z
