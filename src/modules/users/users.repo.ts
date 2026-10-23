@@ -1093,6 +1093,25 @@ const voiceRatingExpr = () => sql<number | null>`(
   where vs.user_id = users.id and vs.feedback_rating is not null
 )`;
 
+/** The tier key ('silver' | 'gold' | 'platinum') of the user's currently active Pass, null when none. */
+const passActiveTierExpr = () => sql<string | null>`(
+  select us.price_variant from user_subscriptions us
+  where us.user_id = users.id
+    and us.status = 'active'
+    and us.period_end > now()
+  order by us.period_end desc
+  limit 1
+)`;
+/** Period-end of the user's currently active Pass as an ISO UTC string, null when none. */
+const passActiveUntilExpr = () => sql<string | null>`(
+  select to_char(us.period_end at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from user_subscriptions us
+  where us.user_id = users.id
+    and us.status = 'active'
+    and us.period_end > now()
+  order by us.period_end desc
+  limit 1
+)`;
+
 /** Sum of `user_activity_daily.seconds_active` for this user over an inclusive IST date range.
  * Same hand-aliased-subquery style as claimedAmountExpr above, for the same reason: interpolating
  * the `userActivityDaily` column objects directly would render unqualified inside the subquery. */
@@ -1157,6 +1176,8 @@ export async function listUsersPage(
       voiceSeconds: voiceSecondsExpr(),
       voiceLastCalls: voiceLastCallsExpr(),
       voiceRating: voiceRatingExpr(),
+      passActiveTier: passActiveTierExpr(),
+      passActiveUntil: passActiveUntilExpr(),
     })
     .from(users)
     .where(userSearchWhere(q, contactType))

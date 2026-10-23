@@ -15,8 +15,10 @@
 import { getAndroidPublisher, GOOGLE_PLAY_PACKAGE_NAME } from '../../config/google-play.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
+import { notifyPassPurchase } from '../../lib/notifications/telegram.js';
 import { PASS_PLAY_PRODUCT_ID, PASS_TIERS } from './pass.config.js';
 import { findPassByExternalId, insertPass, renewPass, updatePlayPass } from './pass.repo.js';
+import { findActiveUserById } from '../users/users.repo.js';
 
 const MS_PER_DAY = 86_400_000;
 const LIVE_STATES = new Set(['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD']);
@@ -126,9 +128,26 @@ export async function confirmPlayPass(
   const sub = await fetchPlaySubscription(body.purchaseToken);
   if (sub.accountId && sub.accountId !== userId)
     throw Errors.forbidden('PLAY_SUBSCRIPTION_OTHER_ACCOUNT');
+  const existingBefore = await findPassByExternalId(body.purchaseToken);
   const recorded = await syncPlayPass(body.purchaseToken, sub, userId);
   if (!recorded) throw Errors.conflict('PLAY_SUBSCRIPTION_NOT_ACTIVE');
   if (!sub.acknowledged) await acknowledge(body.purchaseToken);
+
+  // Telegram alert — fire-and-forget so a notification failure never blocks the purchase
+  try {
+    const tier = tierOf(sub.basePlanId);
+    const user = await findActiveUserById(userId).catch(() => null);
+    void notifyPassPurchase({
+      userId,
+      contact: user?.phoneE164 ?? user?.email ?? null,
+      tier: tier?.tier ?? sub.basePlanId,
+      amountPaise: tier?.fallbackPaise ?? 0,
+      periodEnd: sub.expiry,
+      isRenewal: existingBefore !== null,
+    });
+  } catch {
+    // notification errors must never surface to the caller
+  }
 }
 
 /**
@@ -148,6 +167,22 @@ export async function handlePlaySubscriptionNotification(n: {
     const recorded = await syncPlayPass(n.purchaseToken, sub, sub.accountId);
     if (recorded && !sub.acknowledged && LIVE_STATES.has(sub.state))
       await acknowledge(n.purchaseToken);
+    if (recorded && n.notificationType === 2 && sub.accountId) {
+      try {
+        const tier = tierOf(sub.basePlanId);
+        const user = await findActiveUserById(sub.accountId).catch(() => null);
+        void notifyPassPurchase({
+          userId: sub.accountId,
+          contact: user?.phoneE164 ?? user?.email ?? null,
+          tier: tier?.tier ?? sub.basePlanId,
+          amountPaise: tier?.fallbackPaise ?? 0,
+          periodEnd: sub.expiry,
+          isRenewal: true,
+        });
+      } catch {
+        // notifications must never fail the RTDN ack
+      }
+    }
     if (!recorded) {
       logger.warn(
         { type: n.notificationType, tokenSuffix: n.purchaseToken.slice(-8), state: sub.state },

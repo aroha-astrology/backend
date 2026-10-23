@@ -1,4 +1,18 @@
-import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, not, or, sql } from 'drizzle-orm';
+import {
+  and,
+  count as drizzleCount,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  not,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   notifications,
@@ -10,6 +24,7 @@ import {
   type UserRow,
   type UserSubscriptionRow,
 } from '../../db/schema.js';
+import { decryptField } from '../../lib/crypto/field-encryption.js';
 import {
   entitlementForRow,
   GROUP_ENTITLEMENT,
@@ -411,4 +426,71 @@ export async function passStats(now: Date = new Date()): Promise<PassStats> {
       revenuePaise: (pack?.paise ?? 0) + (playPacks?.paise ?? 0),
     },
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Admin: paginated list of current pass subscribers                          */
+/* -------------------------------------------------------------------------- */
+
+export interface PassSubscriberRow {
+  userId: string;
+  displayName: string | null;
+  phoneE164: string | null;
+  tier: string | null;
+  source: string;
+  pricePaise: number;
+  periodEnd: string;
+  autoRenew: boolean;
+  startedAt: string;
+}
+
+export interface PassSubscribersPage {
+  subscribers: PassSubscriberRow[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export async function listPassSubscribers(
+  limit: number,
+  offset: number,
+  now: Date = new Date(),
+): Promise<PassSubscribersPage> {
+  const where = and(eq(userSubscriptions.status, 'active'), gt(userSubscriptions.periodEnd, now));
+
+  const [rows, [countRow]] = await Promise.all([
+    db
+      .select({
+        userId: userSubscriptions.userId,
+        displayName: users.displayName,
+        phoneE164: users.phoneE164,
+        tier: userSubscriptions.priceVariant,
+        source: userSubscriptions.source,
+        pricePaise: userSubscriptions.pricePaise,
+        periodEnd: userSubscriptions.periodEnd,
+        autoRenew: userSubscriptions.autoRenew,
+        startedAt: userSubscriptions.periodStart,
+      })
+      .from(userSubscriptions)
+      .innerJoin(users, eq(userSubscriptions.userId, users.id))
+      .where(where)
+      .orderBy(desc(userSubscriptions.periodEnd))
+      .limit(limit)
+      .offset(offset),
+    db.select({ n: drizzleCount() }).from(userSubscriptions).where(where),
+  ]);
+
+  const subscribers = rows.map((r) => ({
+    userId: r.userId,
+    displayName: r.displayName,
+    phoneE164: decryptField(r.phoneE164),
+    tier: r.tier,
+    source: r.source,
+    pricePaise: r.pricePaise,
+    periodEnd: r.periodEnd ? r.periodEnd.toISOString() : '',
+    autoRenew: r.autoRenew,
+    startedAt: r.startedAt ? r.startedAt.toISOString() : '',
+  }));
+
+  return { subscribers, total: Number(countRow?.n ?? 0), offset, limit };
 }
