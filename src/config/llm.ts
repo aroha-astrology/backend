@@ -32,6 +32,12 @@ export interface GenerationProfile {
    * leaves this unset keeps the default model exactly as before.
    */
   model?: string;
+  /**
+   * How long the model thinks before answering (`reasoning_effort` on Gemini's
+   * OpenAI-compatible endpoint). Unset = the model's own default. Thinking is
+   * billed as output and is most of the wait on the Gemini 3 Flash models.
+   */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
 }
 
 /**
@@ -61,6 +67,12 @@ export interface LLMRequestOptions {
   signal?: AbortSignal | undefined;
   /** Override default timeout for this call (e.g. a large background job). */
   timeoutMs?: number;
+  /**
+   * Override the 90 s ceiling on ALL attempts of this call together. Only for
+   * background jobs nobody waits on (the palm scan), so one slow attempt still
+   * leaves room for a retry.
+   */
+  totalBudgetMs?: number;
   /**
    * Attributes this call's `ai_usage` telemetry row (see gemini-client.ts's
    * `generate()`) to a user. Optional and not yet threaded through every
@@ -460,6 +472,9 @@ export const PALM_OBSERVE_PROFILE: GenerationProfile = {
   temperature: 0.1,
   jsonMode: true,
   stream: false,
+  // 2026-10-23: at its default thinking, gemini-3.8-flash took over 90 s on a real
+  // three-photo sheet and the scan failed. Measuring is a look-and-report task.
+  reasoningEffort: 'low',
   // 8192: the strict schema asks for 8-14 points on every line plus timing marks.
   maxTokens: 8192,
 };

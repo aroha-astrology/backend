@@ -5,7 +5,7 @@ import type { SnapImages } from '../src/lib/palm/image-prep.js';
 function makeMockImagesWithCrease(): SnapImages {
   const width = 100;
   const height = 100;
-  const data = new Uint8ClampedArray(width * height);
+  const data = new Uint8Array(width * height);
   // Default skin: 180
   data.fill(180);
 
@@ -16,7 +16,7 @@ function makeMockImagesWithCrease(): SnapImages {
 
   return {
     equalised: { data, width, height },
-    plain: { data: new Uint8ClampedArray(data), width, height },
+    plain: { data: new Uint8Array(data), width, height },
   };
 }
 

@@ -8,15 +8,24 @@
 
 import { createHash } from 'node:crypto';
 
-/** The 3 slots the current app captures.  PRIMARY_SLOTS === PALM_CAPTURE_SLOTS. */
+/**
+ * The photos the app captures, in order (owner, 2026-10-23: five). The thumb close-up and the
+ * low-angle mounts view were added after the first three; a scan needs only REQUIRED_SLOTS, so a
+ * capture started on an older app (three photos) still finishes, and the scan reads whichever of
+ * the other two are there.
+ */
 export const PALM_CAPTURE_SLOTS = [
   'primaryFront',
   'primaryPercussion',
   'primaryFingertips',
+  'primaryThumb',
+  'primaryMounts',
 ] as const;
 
 export type PalmCaptureSlot = (typeof PALM_CAPTURE_SLOTS)[number];
 
+/** The photos a scan cannot run without. */
+export const REQUIRED_SLOTS = ['primaryFront', 'primaryPercussion', 'primaryFingertips'] as const;
 export const PRIMARY_SLOTS = PALM_CAPTURE_SLOTS;
 export const ALL_SLOTS = PALM_CAPTURE_SLOTS;
 

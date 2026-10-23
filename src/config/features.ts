@@ -9,8 +9,6 @@
  * else needs to know about it until it's actually wired to a toggle point.
  */
 
-import { SELECTABLE_OMNIRUSH_MODELS } from './omnirush-models.js';
-
 export interface FeatureDef {
   key: string;
   label: string;
@@ -88,11 +86,8 @@ export const SELECTABLE_GEMINI_MODELS = [
   'gemini-2.5-flash-lite',
 ] as const;
 
-/** Palm reading's model pickers: the OpenAI models (through Omnirush) first, then Gemini. */
-export const SELECTABLE_PALM_MODELS: readonly string[] = [
-  ...SELECTABLE_OMNIRUSH_MODELS,
-  ...SELECTABLE_GEMINI_MODELS,
-];
+/** Palm reading's model pickers: Gemini only (owner, 2026-10-23: Omnirush is not used for palm). */
+export const SELECTABLE_PALM_MODELS: readonly string[] = [...SELECTABLE_GEMINI_MODELS];
 
 export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // nav

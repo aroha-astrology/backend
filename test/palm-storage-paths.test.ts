@@ -5,15 +5,27 @@ import {
   PALM_CAPTURE_SLOTS,
   PRIMARY_SLOTS,
   LEGACY_SLOTS,
+  REQUIRED_SLOTS,
 } from '../src/lib/palm/storage-paths';
 
 describe('PALM_CAPTURE_SLOTS', () => {
-  it('contains exactly 3 slots: primaryFront, primaryPercussion, primaryFingertips', () => {
+  it('captures five photos: front, side, four fingertips, thumb, low-angle mounts (2026-10-23)', () => {
     expect([...PALM_CAPTURE_SLOTS]).toEqual([
       'primaryFront',
       'primaryPercussion',
       'primaryFingertips',
+      'primaryThumb',
+      'primaryMounts',
     ]);
+  });
+
+  it('a scan needs only front, side and fingertips, so a 3-photo capture from an older app finishes', () => {
+    expect([...REQUIRED_SLOTS]).toEqual(['primaryFront', 'primaryPercussion', 'primaryFingertips']);
+  });
+
+  it('accepts the two new slots for upload', () => {
+    expect(buildFramePath('u', 'r', 'primaryThumb')).toBe('palm/u/r/primaryThumb.jpg');
+    expect(buildFramePath('u', 'r', 'primaryMounts')).toBe('palm/u/r/primaryMounts.jpg');
   });
 
   it('PRIMARY_SLOTS equals PALM_CAPTURE_SLOTS', () => {

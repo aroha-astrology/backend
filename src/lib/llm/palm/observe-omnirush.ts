@@ -193,11 +193,19 @@ export function buildOmnirushObservePrompt(input: OmnirushObserveInput): string 
           '; ',
         )}. Measure the hand using every panel, but trace creases and place points ONLY on panel A.`
     : `This photograph shows ONE hand, the person's ${input.hand} hand, palm side toward the camera.`;
+  // Panel-specific reading rules, only when that close-up was captured (2026-10-23: five photos).
+  const closeUps = input.otherPanels.some((p) => /fingertip|thumb/i.test(p))
+    ? `Read "fingerprints" ONLY from the fingertip and thumb close-up panels: one entry per finger whose print pattern you can actually see there; leave a finger out when its print is not clear. Never guess a print from the front view.`
+    : '';
+  const relief = input.otherPanels.some((p) => /low-angle/i.test(p))
+    ? `Judge each mount's development (flat / normal / prominent) mainly from the low-angle panel, where a raised mount stands out in relief against the palm; use the front view only to tell which mount is which. When the low-angle view does not show a mount clearly, say "normal".`
+    : '';
   const tracing = input.trace
     ? `For every line that is present, trace "polyline" as 8-14 [x, y] points in order from where the crease starts to where it ends, following every bend of the real crease. Omit nothing that is visible; use an empty polyline for a line that is absent.`
     : `Polylines are not needed for this hand: return an empty "polyline" for every line, but still measure each line's presence, length, depth, breaks, islands and forks.`;
   return [
     panels,
+    ...[closeUps, relief].filter(Boolean),
     `COORDINATES: every point is [x, y] as INTEGERS from 0 to 1000 relative to the WHOLE image: x=0 is the left edge, x=1000 the right edge, y=0 the top edge, y=1000 the bottom edge. Look at the actual pixels; never place a line where it "usually" is on a textbook hand.`,
     `HOW TO FIND EACH LINE (palm side, fingers up; mirror left/right if the thumb is on the other side):
 - heartLine: the highest long horizontal crease just below the finger bases. Starts at the outer edge of the palm below the little finger and runs toward the index or middle finger.

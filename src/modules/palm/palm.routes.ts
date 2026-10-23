@@ -199,7 +199,8 @@ const analyzeRoute = createRoute({
   method: 'post',
   path: '/palm/readings/{id}/analyze',
   tags: ['Palm'],
-  summary: 'FREE — kick off Stage A (vision measurement) once all 3 frames are uploaded',
+  summary:
+    'FREE — kick off Stage A (vision measurement) once front, side and fingertips are uploaded',
   description:
     'No wallet charge. Produces the free teaser: hand element, confidence score, and the ' +
     'annotated line/mount overlay. Poll GET /palm/readings/{id} until status is "observed", ' +
