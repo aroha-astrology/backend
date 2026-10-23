@@ -958,13 +958,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
-  {
-    key: 'palm.mountsToggle',
-    label: 'Palm — Lines / Mounts switch on the free scan',
-    group: 'palm',
-    defaultEnabled: false,
-    tag: 'new',
-  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));
