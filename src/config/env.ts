@@ -269,6 +269,11 @@ const EnvSchema = z
     // headers without full OIDC verification, so this is the same fail-closed
     // shared-secret pattern as CRON_SECRET, just carried in the URL instead.
     GOOGLE_PLAY_RTDN_SECRET: z.string().min(1).optional(),
+    // Pub/Sub push authentication (OIDC) for the same endpoint: the audience set on the
+    // push subscription, and optionally the service account it signs as. When set, a push
+    // with a valid Google-signed token is accepted without the URL secret.
+    GOOGLE_PLAY_RTDN_AUDIENCE: z.string().min(1).optional(),
+    GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT: z.string().min(1).optional(),
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
     TELEGRAM_ALERT_CHAT_ID: z.string().min(1).optional(),
     // Extra admin chat IDs allowed to use the /internal/telegram/webhook commands,

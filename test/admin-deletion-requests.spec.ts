@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   hardDeleteUserById: vi.fn(),
   requestAccountDeletion: vi.fn(),
   logAdminAction: vi.fn().mockResolvedValue(undefined),
+  cancelPlayPassesForDeletedUser: vi.fn().mockResolvedValue(undefined),
 }));
 
 const fakeEnv = vi.hoisted(() => ({
@@ -49,6 +50,10 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   listPendingDeletionRequestsBefore: state.listPendingDeletionRequestsBefore,
   clearDeletionRequest: state.clearDeletionRequest,
   hardDeleteUserById: state.hardDeleteUserById,
+}));
+
+vi.mock('../src/modules/pass/pass-play.service.js', () => ({
+  cancelPlayPassesForDeletedUser: state.cancelPlayPassesForDeletedUser,
 }));
 
 vi.mock('../src/modules/users/users.service.js', () => ({
@@ -196,6 +201,11 @@ describe('DELETE /v1/admin/deletion-requests/:id', () => {
 
     expect(res.status).toBe(200);
     expect(state.hardDeleteUserById).toHaveBeenCalledWith(USER_ID);
+    // The Play Pass is cancelled while its rows still exist (the delete cascades them away).
+    expect(state.cancelPlayPassesForDeletedUser).toHaveBeenCalledWith(USER_ID);
+    expect(state.cancelPlayPassesForDeletedUser.mock.invocationCallOrder[0]).toBeLessThan(
+      state.hardDeleteUserById.mock.invocationCallOrder[0]!,
+    );
     expect(body).toEqual({ id: USER_ID });
     expect(state.logAdminAction).toHaveBeenCalledWith(
       ADMIN_PHONE,

@@ -3,10 +3,13 @@ import { makeUserRow } from './helpers/mocks.js';
 
 // Typed with an explicit return so tsc accepts the objects assigned later
 // (a bare `null`/`{}` here would infer those literal types).
-const held = vi.hoisted((): { active: unknown; features: Record<string, unknown> } => ({
-  active: null,
-  features: {},
-}));
+const held = vi.hoisted(
+  (): { active: unknown; latestPlay: unknown; features: Record<string, unknown> } => ({
+    active: null,
+    latestPlay: null,
+    features: {},
+  }),
+);
 const state = vi.hoisted(() => ({
   consumePassQuestion: vi.fn(),
   consumeQuestionCredit: vi.fn(),
@@ -37,6 +40,8 @@ vi.mock('../src/modules/pass/chat-gifts.repo.js', () => ({
 }));
 vi.mock('../src/modules/pass/pass.repo.js', () => ({
   findActivePass: () => Promise.resolve(held.active),
+  findLatestPlayPass: () => Promise.resolve(held.latestPlay),
+  findLapsedPlayPass: () => Promise.resolve(null),
   consumePassQuestion: state.consumePassQuestion,
   consumeQuestionCredit: state.consumeQuestionCredit,
   refundPassQuestion: state.refundPassQuestion,
@@ -68,6 +73,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
 vi.mock('../src/lib/notifications/notify-user.js', () => ({ notifyUser: state.notifyUser }));
 vi.mock('../src/config/google-play.js', () => ({
   GOOGLE_PLAY_PACKAGE_NAME: 'com.aroha.astrology',
+  isGooglePlayConfigured: () => false,
   getAndroidPublisher: () => ({
     purchases: {
       subscriptionsv2: { get: state.subscriptionsv2Get },
@@ -117,6 +123,7 @@ function passRow(extra: Record<string, unknown> = {}) {
 beforeEach(() => {
   held.features = {};
   held.active = null;
+  held.latestPlay = null;
   for (const fn of [
     state.consumePassQuestion,
     state.consumeQuestionCredit,
@@ -315,6 +322,41 @@ describe('getPassStatus', () => {
       questionsPerPeriod: 60,
       questionsLeft: 0,
     });
+    expect(platinum.paymentIssue).toBeNull();
+  });
+
+  it('a renewal payment that failed: "grace" while the Pass still works, "hold" once it has stopped', async () => {
+    held.features = { 'nav.arohaPass': ON, 'paid.arohaPassB': on() };
+    held.active = passRow({
+      source: 'google_play',
+      priceVariant: 'B',
+      playState: 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD',
+    });
+    const grace = await getPassStatus(makeUserRow({ id: 'user-1' }));
+    expect(grace.paymentIssue).toBe('grace');
+    expect(grace.pass).toMatchObject({ tier: 'gold' });
+
+    held.active = null;
+    held.latestPlay = passRow({
+      source: 'google_play',
+      priceVariant: 'B',
+      status: 'expired',
+      playState: 'SUBSCRIPTION_STATE_ON_HOLD',
+    });
+    const hold = await getPassStatus(makeUserRow({ id: 'user-1' }));
+    expect(hold.pass).toBeNull();
+    expect(hold.paymentIssue).toBe('hold');
+    expect(hold.heldTier).toBe('gold');
+
+    // Expired for good (not a payment problem): nothing to fix.
+    held.latestPlay = passRow({
+      source: 'google_play',
+      status: 'expired',
+      playState: 'SUBSCRIPTION_STATE_EXPIRED',
+    });
+    const gone = await getPassStatus(makeUserRow({ id: 'user-1' }));
+    expect(gone.paymentIssue).toBeNull();
+    expect(gone.heldTier).toBeNull();
   });
 });
 
@@ -361,7 +403,13 @@ describe('runPassRenewals', () => {
     state.expireLapsedPasses.mockResolvedValue(2);
 
     const run = await runPassRenewals(NOW);
-    expect(run).toEqual({ lapsed: 1, reminded: 1, expired: 2 });
+    // No Play credentials in tests, so the Play reconcile asks no one.
+    expect(run).toEqual({
+      lapsed: 1,
+      reminded: 1,
+      expired: 2,
+      play: { checked: 0, renewed: 0, ended: 0, failed: 0 },
+    });
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
     expect(state.renewPass).not.toHaveBeenCalled();
     expect(state.expirePass).toHaveBeenCalledWith('due');
@@ -460,10 +508,14 @@ describe('Aroha Pass on Google Play', () => {
         acknowledged: true,
         accountId: 'user-1',
         linkedPurchaseToken: null,
+        latestOrderId: null,
+        expiredAccountId: null,
+        expiredPurchaseToken: null,
       },
       'user-1',
+      NOW,
     );
-    expect(state.renewPass).toHaveBeenCalledWith('sub-9', { start: row.periodEnd, end: next });
+    expect(state.renewPass).toHaveBeenCalledWith('sub-9', { start: NOW, end: next });
 
     await syncPlayPass(
       'tok-9',
@@ -476,6 +528,9 @@ describe('Aroha Pass on Google Play', () => {
         acknowledged: true,
         accountId: 'user-1',
         linkedPurchaseToken: null,
+        latestOrderId: null,
+        expiredAccountId: null,
+        expiredPurchaseToken: null,
       },
       'user-1',
     );

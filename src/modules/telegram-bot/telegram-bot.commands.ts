@@ -29,6 +29,7 @@ import { listActiveCoupons, insertCoupon, sumPaidOrdersToday } from '../billing/
 import { escapeMarkdown } from '../../lib/notifications/telegram.js';
 import { notifyUsersBatch } from '../../lib/notifications/notify-user.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
+import { cancelPlayPassesForDeletedUser } from '../pass/pass-play.service.js';
 
 /** Formats an integer paise amount as a ₹ string for plain-text Telegram messages. */
 function formatRupees(paise: number): string {
@@ -77,6 +78,8 @@ export async function cmdDeleteUser(idArg: string | undefined): Promise<string> 
   }
 
   try {
+    // Before the rows go: Google Play keeps charging a Pass until it is cancelled.
+    await cancelPlayPassesForDeletedUser(idArg);
     await hardDeleteUserById(idArg);
     return escapeMarkdown(`Successfully deleted user ${idArg} and all associated data.`);
   } catch (error) {

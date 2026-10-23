@@ -10,7 +10,9 @@
  * include that feature. Palm Reading's full reading is a benefit of every tier,
  * one per Pass period (the photo scan stays free). The chat quota and the
  * report discount come from the tier too. A Pass counts while its current
- * period hasn't ended.
+ * period hasn't ended; a Play Pass that has just reached its end is checked
+ * with Google first (its renewal notice may be late, or it is in a grace
+ * period), so a paying member is never shut out by a missing notice.
  */
 import { Errors } from './errors.js';
 import {
@@ -21,6 +23,7 @@ import {
   type PassFeature,
 } from '../modules/pass/pass.config.js';
 import { findActivePass } from '../modules/pass/pass.repo.js';
+import { refreshLapsedPlayPass } from '../modules/pass/pass-play.service.js';
 import { listGroupIdsForUser } from '../modules/user-groups/user-groups.repo.js';
 
 /** What the user's live Pass gives, or null without one. */
@@ -31,7 +34,8 @@ export async function passEntitlement(userId: string): Promise<PassEntitlement |
   } catch {
     // Fail open to standard pass check
   }
-  const row = await findActivePass(userId);
+  let row = await findActivePass(userId);
+  if (!row && (await refreshLapsedPlayPass(userId))) row = await findActivePass(userId);
   return row ? entitlementForRow(row) : null;
 }
 

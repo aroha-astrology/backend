@@ -11,6 +11,7 @@ import {
 } from './pass.repo.js';
 import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
 import { consumeChatGift, refundChatGift } from './chat-gifts.repo.js';
+import { refreshLapsedPlayPass } from './pass-play.service.js';
 
 /**
  * Where a chat question was paid from. 'group' = an admin-group member's free
@@ -47,6 +48,8 @@ export async function chargeQuestion(
     return (await consumeGroupQuestion(userId)) ? 'group' : 'free';
   }
   if (await consumePassQuestion(userId)) return 'pass';
+  // A Play Pass at its end whose renewal Google hasn't told us about yet: ask, then try again.
+  if ((await refreshLapsedPlayPass(userId)) && (await consumePassQuestion(userId))) return 'pass';
   if (await consumeQuestionCredit(userId)) return 'credits';
   return (await deductWalletBalance(userId, pricePaise, CHAT_REASON)) ? 'wallet' : null;
 }

@@ -96,11 +96,17 @@ export async function insertPass(values: {
   autoRenew: boolean;
   periodStart: Date;
   periodEnd: Date;
+  /** Questions already spent this period (a plan change carries them over). */
+  questionsUsed?: number;
+  playState?: string | null;
+  latestOrderId?: string | null;
+  playSyncedAt?: Date | null;
 }): Promise<UserSubscriptionRow> {
   const [row] = await db
     .insert(userSubscriptions)
     .values({
       ...values,
+      questionsUsed: values.questionsUsed ?? 0,
       planId: await passPlanId(),
       status: 'active',
       startedAt: values.periodStart,
@@ -294,15 +300,12 @@ export async function expireLapsedPasses(now: Date): Promise<number> {
       and(
         eq(userSubscriptions.status, 'active'),
         lte(userSubscriptions.periodEnd, now),
-        // Wallet auto-renewals are the cron's to try first; Play renewals arrive by RTDN.
+        // Wallet auto-renewals are the cron's to try first.
         sql`not (${userSubscriptions.source} = 'wallet' and ${userSubscriptions.autoRenew})`,
-        // Column-bound so the Date is serialised; a bare Date in sql`` crashes postgres-js.
-        not(
-          and(
-            eq(userSubscriptions.source, 'google_play'),
-            gt(userSubscriptions.periodEnd, new Date(now.getTime() - 3 * 86_400_000)),
-          )!,
-        ),
+        // A Play Pass ends only when Google says so (reconcilePlayPasses asks): ending it here
+        // on the date alone would cut off someone whose renewal notice is late or lost. Until
+        // then an out-of-date row gives nothing anyway, since findActivePass checks periodEnd.
+        not(eq(userSubscriptions.source, 'google_play')),
       ),
     )
     .returning({ id: userSubscriptions.id });
@@ -323,13 +326,131 @@ export async function findPassByExternalId(
 export async function updatePlayPass(
   id: string,
   patch: Partial<
-    Pick<UserSubscriptionRow, 'status' | 'autoRenew' | 'periodEnd' | 'expiresAt' | 'cancelledAt'>
+    Pick<
+      UserSubscriptionRow,
+      | 'status'
+      | 'autoRenew'
+      | 'periodEnd'
+      | 'expiresAt'
+      | 'cancelledAt'
+      | 'playState'
+      | 'latestOrderId'
+      | 'playSyncedAt'
+    >
   >,
 ): Promise<void> {
   await db
     .update(userSubscriptions)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(userSubscriptions.id, id));
+}
+
+const PLAY_STATE_GRACE = 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD';
+const PLAY_STATE_HOLD = 'SUBSCRIPTION_STATE_ON_HOLD';
+const PLAY_STATE_PAUSED = 'SUBSCRIPTION_STATE_PAUSED';
+/** How long after its end a Play Pass is still worth asking Google about (the longest account hold is 60 days). */
+const PLAY_WATCH_DAYS = 65;
+
+/**
+ * Play Passes the hourly reconcile asks Google about: still marked active and at (or within
+ * an hour of) their end, or in a grace period, on hold or paused — and not checked in the last
+ * 50 minutes. Oldest check first.
+ */
+export async function listPlayPassesToReconcile(
+  now: Date,
+  limit: number,
+): Promise<UserSubscriptionRow[]> {
+  const soon = new Date(now.getTime() + 60 * 60_000);
+  const watchFrom = new Date(now.getTime() - PLAY_WATCH_DAYS * 86_400_000);
+  const checkedBefore = new Date(now.getTime() - 50 * 60_000);
+  return db
+    .select()
+    .from(userSubscriptions)
+    .where(
+      and(
+        eq(userSubscriptions.source, 'google_play'),
+        or(
+          and(
+            eq(userSubscriptions.status, 'active'),
+            lte(userSubscriptions.periodEnd, soon),
+            gt(userSubscriptions.periodEnd, watchFrom),
+          ),
+          and(
+            inArray(userSubscriptions.playState, [
+              PLAY_STATE_GRACE,
+              PLAY_STATE_HOLD,
+              PLAY_STATE_PAUSED,
+            ]),
+            gt(userSubscriptions.updatedAt, watchFrom),
+          ),
+        ),
+        or(
+          isNull(userSubscriptions.playSyncedAt),
+          lt(userSubscriptions.playSyncedAt, checkedBefore),
+        ),
+      ),
+    )
+    .orderBy(sql`${userSubscriptions.playSyncedAt} asc nulls first`)
+    .limit(limit);
+}
+
+/**
+ * The user's Play Pass that has reached its end while still marked active and hasn't been
+ * checked with Google since `checkedBefore` (the on-demand check's work), if any.
+ */
+export async function findLapsedPlayPass(
+  userId: string,
+  now: Date,
+  checkedBefore: Date,
+): Promise<UserSubscriptionRow | null> {
+  const [row] = await db
+    .select()
+    .from(userSubscriptions)
+    .where(
+      and(
+        eq(userSubscriptions.userId, userId),
+        eq(userSubscriptions.source, 'google_play'),
+        eq(userSubscriptions.status, 'active'),
+        lte(userSubscriptions.periodEnd, now),
+        gt(userSubscriptions.periodEnd, new Date(now.getTime() - PLAY_WATCH_DAYS * 86_400_000)),
+        or(
+          isNull(userSubscriptions.playSyncedAt),
+          lt(userSubscriptions.playSyncedAt, checkedBefore),
+        ),
+      ),
+    )
+    .orderBy(desc(userSubscriptions.periodEnd))
+    .limit(1);
+  return row ?? null;
+}
+
+/** The user's newest Play Pass row of any status (the one a payment problem would be on). */
+export async function findLatestPlayPass(userId: string): Promise<UserSubscriptionRow | null> {
+  const [row] = await db
+    .select()
+    .from(userSubscriptions)
+    .where(and(eq(userSubscriptions.userId, userId), eq(userSubscriptions.source, 'google_play')))
+    .orderBy(desc(userSubscriptions.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+/** The user's Play Passes Google may still charge for (account deletion cancels them). */
+export async function listRenewingPlayPasses(userId: string): Promise<UserSubscriptionRow[]> {
+  return db
+    .select()
+    .from(userSubscriptions)
+    .where(
+      and(
+        eq(userSubscriptions.userId, userId),
+        eq(userSubscriptions.source, 'google_play'),
+        eq(userSubscriptions.autoRenew, true),
+        or(
+          eq(userSubscriptions.status, 'active'),
+          inArray(userSubscriptions.playState, [PLAY_STATE_HOLD, PLAY_STATE_PAUSED]),
+        ),
+      ),
+    );
 }
 
 /** Every user who already has a notification of `type` (how a one-off send avoids a second copy). */
@@ -347,6 +468,8 @@ export async function listUserIdsNotified(type: string): Promise<Set<string>> {
 
 export interface PassStats {
   active: { total: number; bySource: Record<string, number>; byVariant: Record<string, number> };
+  /** Play Passes whose renewal payment failed: still working (grace) and stopped (on hold). */
+  paymentIssues: { grace: number; onHold: number };
   /** Rupees taken for Passes (wallet) in the last 30 days, in paise. */
   walletRevenuePaise30d: number;
   started30d: number;
@@ -367,6 +490,18 @@ export async function passStats(now: Date = new Date()): Promise<PassStats> {
     const v = r.variant ?? 'none';
     byVariant[v] = (byVariant[v] ?? 0) + 1;
   }
+
+  const issues = await db
+    .select({ state: userSubscriptions.playState, n: sql<number>`count(*)::int` })
+    .from(userSubscriptions)
+    .where(
+      and(
+        eq(userSubscriptions.source, 'google_play'),
+        inArray(userSubscriptions.playState, [PLAY_STATE_GRACE, PLAY_STATE_HOLD]),
+        gt(userSubscriptions.updatedAt, new Date(now.getTime() - PLAY_WATCH_DAYS * 86_400_000)),
+      ),
+    )
+    .groupBy(userSubscriptions.playState);
 
   const [started] = await db
     .select({ n: sql<number>`count(*)::int` })
@@ -418,6 +553,10 @@ export async function passStats(now: Date = new Date()): Promise<PassStats> {
 
   return {
     active: { total: active.length, bySource, byVariant },
+    paymentIssues: {
+      grace: issues.find((r) => r.state === PLAY_STATE_GRACE)?.n ?? 0,
+      onHold: issues.find((r) => r.state === PLAY_STATE_HOLD)?.n ?? 0,
+    },
     walletRevenuePaise30d: pass?.paise ?? 0,
     started30d: started?.n ?? 0,
     endedOrCancelled30d: ended?.n ?? 0,
@@ -442,6 +581,8 @@ export interface PassSubscriberRow {
   periodEnd: string;
   autoRenew: boolean;
   startedAt: string;
+  /** Google's state for a Play Pass (grace period, ...); null otherwise. */
+  playState: string | null;
 }
 
 export interface PassSubscribersPage {
@@ -470,6 +611,7 @@ export async function listPassSubscribers(
         periodEnd: userSubscriptions.periodEnd,
         autoRenew: userSubscriptions.autoRenew,
         startedAt: userSubscriptions.periodStart,
+        playState: userSubscriptions.playState,
       })
       .from(userSubscriptions)
       .innerJoin(users, eq(userSubscriptions.userId, users.id))
@@ -490,6 +632,7 @@ export async function listPassSubscribers(
     periodEnd: r.periodEnd ? r.periodEnd.toISOString() : '',
     autoRenew: r.autoRenew,
     startedAt: r.startedAt ? r.startedAt.toISOString() : '',
+    playState: r.playState,
   }));
 
   return { subscribers, total: Number(countRow?.n ?? 0), offset, limit };

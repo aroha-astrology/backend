@@ -944,14 +944,25 @@ const PassRenewalsBodySchema = z
   .object({ dryRun: z.boolean().optional() })
   .openapi('PassRenewalsBody');
 const PassRenewalsResultSchema = z
-  .object({ lapsed: z.number(), reminded: z.number(), expired: z.number() })
+  .object({
+    lapsed: z.number(),
+    reminded: z.number(),
+    expired: z.number(),
+    play: z.object({
+      checked: z.number(),
+      renewed: z.number(),
+      ended: z.number(),
+      failed: z.number(),
+    }),
+  })
   .openapi('PassRenewalsResult');
 
 const passRenewalsRoute = createRoute({
   method: 'post',
   path: '/cron/pass-renewals',
   tags: ['Cron'],
-  summary: 'Remind about and expire Aroha Passes (never charges the wallet)',
+  summary:
+    'Remind about and expire wallet Aroha Passes, and check Play Passes at their end with Google (never charges the wallet)',
   description: 'Authenticated via the X-Cron-Secret header.',
   request: {
     body: { content: { 'application/json': { schema: PassRenewalsBodySchema } } },
