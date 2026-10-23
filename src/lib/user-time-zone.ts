@@ -92,3 +92,14 @@ export function midnightInZone(date: string, timeZone: string): Date {
 export function noonInZone(date: string, timeZone: string): Date {
   return new Date(midnightInZone(date, timeZone).getTime() + 12 * 3_600_000);
 }
+
+/**
+ * The instant a wall clock reads `minutes` after midnight of `date` in the zone (`minutes` may pass 1440
+ * for the small hours of the next morning). The offset is read again at the result, so a daylight-saving
+ * change in between still lands on the right hour.
+ */
+export function zonedInstant(date: string, timeZone: string, minutes: number): Date {
+  const wall = Date.parse(`${date}T00:00:00Z`) + minutes * 60_000;
+  const guess = wall - offsetMsAt(wall, timeZone);
+  return new Date(wall - offsetMsAt(guess, timeZone));
+}

@@ -708,6 +708,13 @@
       "when": 1792860000000,
       "tag": "0100_same_sky",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1792870000000,
+      "tag": "0101_daily_hooks",
+      "breakpoints": true
     }
   ]
 }

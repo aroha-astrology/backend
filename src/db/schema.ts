@@ -237,6 +237,8 @@ export type NotificationPrefs = {
   transitAlerts?: NotificationChannelPrefs;
   muhurta?: NotificationChannelPrefs;
   marketing?: NotificationChannelPrefs;
+  /** The eight daily-return hooks (Sprint 6); each hook can also be switched off on its own. */
+  hooks?: NotificationChannelPrefs;
 };
 
 /** Do-not-disturb window, interpreted in the user's current timezone. */
@@ -3416,6 +3418,125 @@ export const ritualState = pgTable('ritual_state', {
     .notNull()
     .default(sql`now()`),
 });
+
+/** One small JSON body per user, hook, profile and local day (migration 0101). */
+export const hookProgress = pgTable(
+  'hook_progress',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    hook: text('hook').notNull(),
+    profileKey: text('profile_key').notNull().default(''),
+    localDate: text('local_date').notNull(),
+    data: jsonb('data')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    uq: uniqueIndex('hook_progress_uq').on(table.userId, table.hook, table.profileKey, table.localDate),
+    hookDateIdx: index('hook_progress_hook_date_idx').on(table.hook, table.localDate),
+  }),
+);
+
+/** A paid or earned hook unlock; (user, hook, ref) is unique so nothing is charged or granted twice (migration 0101). */
+export const hookUnlocks = pgTable(
+  'hook_unlocks',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    hook: text('hook').notNull(),
+    ref: text('ref').notNull(),
+    coins: integer('coins').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    uq: uniqueIndex('hook_unlocks_uq').on(table.userId, table.hook, table.ref),
+  }),
+);
+
+/** Every hook push sent, per user and local day, for the daily cap (migration 0101). */
+export const hookPushLog = pgTable(
+  'hook_push_log',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    localDate: text('local_date').notNull(),
+    hook: text('hook').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userDateIdx: index('hook_push_log_user_date_idx').on(table.userId, table.localDate),
+  }),
+);
+
+/** "Tell me N minutes before" pushes (migration 0101). */
+export const hookAlarms = pgTable(
+  'hook_alarms',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    hook: text('hook').notNull(),
+    ref: text('ref').notNull(),
+    fireAt: timestamp('fire_at', { withTimezone: true }).notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    link: text('link'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    uq: uniqueIndex('hook_alarms_uq').on(table.userId, table.hook, table.ref),
+  }),
+);
+
+/** The manual 1-5 sleep score with the Moon nakshatra of that night (migration 0101). */
+export const sleepLogs = pgTable(
+  'sleep_logs',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    localDate: text('local_date').notNull(),
+    score: smallint('score').notNull(),
+    nakshatraIndex: smallint('nakshatra_index').notNull(),
+    signIndex: smallint('sign_index').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.localDate] }),
+  }),
+);
 
 /** Who is in an owner's Cosmic Circle: a saved profile or a linked account (migration 0098). */
 export const cosmicCircleMembers = pgTable(

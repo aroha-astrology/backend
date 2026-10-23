@@ -151,6 +151,7 @@ export const NotificationPrefsSchema = z
     transitAlerts: ChannelPrefsSchema.optional(),
     muhurta: ChannelPrefsSchema.optional(),
     marketing: ChannelPrefsSchema.optional(),
+    hooks: ChannelPrefsSchema.optional(),
   })
   .strict()
   .openapi('NotificationPrefs');

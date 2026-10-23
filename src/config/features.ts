@@ -41,6 +41,7 @@ export interface FeatureDef {
     | 'memory'
     | 'community'
     | 'lang'
+    | 'hooks'
     | 'palm';
   defaultEnabled: boolean;
   /** Starting audience; 'all' when absent. An admin override on the board wins. */
@@ -1173,6 +1174,89 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+  // =========================================================================
+  // hooks — the eight daily-return features (Sprint 6 of the v7 build). Four are built for the Indian look
+  // (Classic Vedic) and four for the international look (Modern Cosmic); the owner can open any of them to
+  // the other section on the board. Each ships off and has its own switch.
+  // =========================================================================
+  {
+    key: 'hooks.kundliRahasya',
+    label: 'Kundli Rahasya — 17 scrolls about your own chart, one opens each day (the next one at 8 PM after the morning ritual; any scroll early for a few coins, free with Gold and Platinum)',
+    group: 'hooks',
+    defaultEnabled: false,
+    defaultAudience: 'classic',
+    tag: 'new',
+  },
+  {
+    key: 'hooks.shubhLabh',
+    label: 'Shubh-Labh radar — a 24-hour green/amber/red strip of the best windows for money matters, from the hora, choghadiya, Rahu Kaal and your own Tara and Moon strength; today is free, a 7-day view and a 5-minutes-before alarm cost coins',
+    group: 'hooks',
+    defaultEnabled: false,
+    defaultAudience: 'classic',
+    tag: 'new',
+  },
+  {
+    key: 'hooks.gharKavach',
+    label: 'Ghar Ka Kavach — each morning picks the family member who could use the most care today, with 11 beads of one planet to chant for them; a streak fills the Kalash and a family week unlocks a free summary',
+    group: 'hooks',
+    defaultEnabled: false,
+    defaultAudience: 'classic',
+    tag: 'new',
+  },
+  {
+    key: 'hooks.sankalpDiya',
+    label: 'Sankalp Diya — light a diya in the day\'s best window (Abhijit; on Wednesdays Amrit or Shubh), a streak, a real count of diyas lit that day (hidden under 20) and a small coin gift on Ekadashi, Pradosh, Purnima and Amavasya',
+    group: 'hooks',
+    defaultEnabled: false,
+    defaultAudience: 'classic',
+    tag: 'new',
+  },
+  {
+    key: 'hooks.cosmicReceipts',
+    label: 'Cosmic Receipts — three timed cards a day (morning, afternoon, evening) from the Moon\'s aspects to your natal planets, each with its degree proof; an evening check-in (Nailed / Partly / Missed) and a share image',
+    group: 'hooks',
+    defaultEnabled: false,
+    defaultAudience: 'cosmic',
+    tag: 'new',
+  },
+  {
+    key: 'hooks.textTiming',
+    label: 'Text them now? — a green/amber/red timing suggestion for a saved profile (partner, crush, friend) with the best stretch of the day and a four-card decoder; an alert at the peak costs coins',
+    group: 'hooks',
+    defaultEnabled: false,
+    defaultAudience: 'cosmic',
+    tag: 'new',
+  },
+  {
+    key: 'hooks.sleepSync',
+    label: 'Sleep Sync — rate last night 1-5 and see it beside the Moon nakshatra; after 7 nights your top and bottom nakshatras; a 30-day pattern report costs coins (manual log only, no health claims)',
+    group: 'hooks',
+    defaultEnabled: false,
+    defaultAudience: 'cosmic',
+    tag: 'new',
+  },
+  {
+    key: 'hooks.mysteryDrop',
+    label: 'Mystery Synastry — one scratch card a day (6 PM) revealing which person in your circle has the strongest evening link with you, with the reason; with nobody in the circle yet, a public chart with a recorded birth time',
+    group: 'hooks',
+    defaultEnabled: false,
+    defaultAudience: 'cosmic',
+    tag: 'new',
+  },
+  {
+    key: 'home.timeMorph',
+    label: 'Time-of-day Home — the Home hero follows the morning / midday / evening / night slots set in Admin -> Home Layout, and a hook card is brought to the front when its moment arrives',
+    group: 'home',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // Amounts for the hooks (coins; 100 paise = 1 coin). A price key only matters while its feature is on.
+  { key: 'hooks.rahasyaUnlock', label: 'Open a Kundli Rahasya scroll early, coins (free with Gold and Platinum)', group: 'hooks', defaultEnabled: true, defaultPricePaise: 1500 },
+  { key: 'hooks.wealthWeek', label: '7-day Shubh-Labh view with alarms, coins', group: 'hooks', defaultEnabled: true, defaultPricePaise: 1500 },
+  { key: 'hooks.peekTomorrow', label: 'Peek at tomorrow\'s Cosmic Receipts, coins', group: 'hooks', defaultEnabled: true, defaultPricePaise: 1500 },
+  { key: 'hooks.textAlert', label: 'Text-peak alert, coins', group: 'hooks', defaultEnabled: true, defaultPricePaise: 1500 },
+  { key: 'hooks.sleepReport', label: '30-day sleep pattern report, coins', group: 'hooks', defaultEnabled: true, defaultPricePaise: 4900 },
+  { key: 'hooks.diyaReward', label: 'Sankalp Diya gift on Ekadashi, Pradosh, Purnima and Amavasya, coins (amount only)', group: 'hooks', defaultEnabled: true, defaultPricePaise: 500 },
   // =========================================================================
   // memory / chat.personas / community / lang — Baba Ji memory, guides, Same Sky rooms, languages (Sprint 4 of the v7 build)
   // =========================================================================
