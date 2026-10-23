@@ -17,6 +17,7 @@ const FRONTEND_ROUTES: RegExp[] = [
   /^\/$/,
   /^\/ai-chat$/,
   /^\/chat-history$/,
+  /^\/circles$/,
   /^\/compatibility$/,
   /^\/gemstones$/,
   /^\/gita\/[^/]+$/,

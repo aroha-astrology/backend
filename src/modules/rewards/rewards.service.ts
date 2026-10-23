@@ -3,7 +3,7 @@ import { dateInZone, INDIA_TZ } from '../../lib/user-time-zone.js';
 import { addDays } from '../purchase-plan/purchase-plan.dates.js';
 import { payoutOf } from '../features/features.service.js';
 import { claimCampaignBonus } from '../users/users.repo.js';
-import { recentDailyRewardReasons } from './rewards.repo.js';
+import { recentDailyRewardReasons, shieldedDatesOf } from './rewards.repo.js';
 
 const REASON_PREFIX = 'daily_reward:';
 export const CYCLE_LEN = 7;
@@ -89,10 +89,17 @@ export function amountForDay(
  * Claims are one row per IST day, so a full page with no gap in it means the run may go
  * further back, and the next page is bigger.
  */
-async function claimedDatesThroughGap(userId: string, today: string): Promise<string[]> {
+export async function claimedDatesThroughGap(userId: string, today: string): Promise<string[]> {
+  // Days a Morning Ritual shield covered count as claimed, so one missed day does not end the run.
+  // Empty for everyone without a ritual, which leaves the walk below exactly as it was.
+  const shielded = await shieldedDatesOf(userId);
   for (let limit = 32; ; limit *= 4) {
-    const dates = (await recentDailyRewardReasons(userId, limit)).map(dateFromReason);
-    if (dates.length < limit || streakRun(dates, today) < dates.length) return dates;
+    const claims = (await recentDailyRewardReasons(userId, limit)).map(dateFromReason);
+    const dates =
+      shielded.length === 0
+        ? claims
+        : [...new Set([...claims, ...shielded])].sort().reverse();
+    if (claims.length < limit || streakRun(dates, today) < dates.length) return dates;
   }
 }
 

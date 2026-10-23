@@ -3357,6 +3357,112 @@ export const appSettings = pgTable('app_settings', {
   updatedBy: text('updated_by'),
 });
 
+/** One Morning Ritual per user per local day (migration 0097). */
+export const ritualCompletions = pgTable(
+  'ritual_completions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    localDate: text('local_date').notNull(),
+    timeZone: text('time_zone').notNull(),
+    cardIndex: smallint('card_index').notNull(),
+    practice: text('practice').$type<'jap' | 'breath'>().notNull(),
+    mood: smallint('mood'),
+    streakDay: integer('streak_day').notNull(),
+    keyGranted: boolean('key_granted').notNull().default(false),
+    shieldEarned: boolean('shield_earned').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    userDateUq: uniqueIndex('ritual_completions_user_date_uq').on(table.userId, table.localDate),
+  }),
+);
+
+/** Shields, Cosmic Keys and the dates a shield covered (migration 0097). */
+export const ritualState = pgTable('ritual_state', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  shields: integer('shields').notNull().default(0),
+  cosmicKeys: integer('cosmic_keys').notNull().default(0),
+  shieldedDates: text('shielded_dates')
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+/** Who is in an owner's Cosmic Circle: a saved profile or a linked account (migration 0098). */
+export const cosmicCircleMembers = pgTable(
+  'cosmic_circle_members',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    ownerUserId: uuid('owner_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    profileId: uuid('profile_id').references(() => birthProfiles.id, { onDelete: 'cascade' }),
+    linkedUserId: uuid('linked_user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** Blind index of the person's birth details: the same person cannot be added twice. */
+    identityHash: text('identity_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    ownerIdx: index('cosmic_circle_members_owner_idx').on(table.ownerUserId),
+    ownerIdentityUq: uniqueIndex('cosmic_circle_members_owner_identity_uq').on(
+      table.ownerUserId,
+      table.identityHash,
+    ),
+  }),
+);
+
+/** One member's pulse for one local day (migration 0098). */
+export const cosmicCirclePulses = pgTable(
+  'cosmic_circle_pulses',
+  {
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => cosmicCircleMembers.id, { onDelete: 'cascade' }),
+    localDate: text('local_date').notNull(),
+    score: smallint('score').notNull(),
+    tone: text('tone').$type<'glow' | 'steady' | 'quiet' | 'care'>().notNull(),
+    notified: boolean('notified').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.memberId, table.localDate] }),
+  }),
+);
+
+/** /circle/invite/:code (migration 0098). One use per code. */
+export const cosmicCircleInvites = pgTable('cosmic_circle_invites', {
+  code: text('code').primaryKey(),
+  inviterUserId: uuid('inviter_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedByUserId: uuid('accepted_by_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+});
+
 export type GeminiKeyRow = typeof geminiKeys.$inferSelect;
 export type NewGeminiKeyRow = typeof geminiKeys.$inferInsert;
 

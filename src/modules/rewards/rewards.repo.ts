@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
-import { walletTransactions } from '../../db/schema.js';
+import { ritualState, walletTransactions } from '../../db/schema.js';
 
 /** Postgres regex for a claim row's `reason`: the date and nothing after it. The nightly
  * expiry sweep writes `daily_reward:<date>_expired` into the same ledger 30 days later;
@@ -25,4 +25,14 @@ export async function recentDailyRewardReasons(userId: string, limit: number): P
     .orderBy(desc(walletTransactions.createdAt))
     .limit(limit);
   return rows.map((r) => r.reason);
+}
+
+/** Days a Morning Ritual shield covered (empty for everyone without one). The streak counts them as claimed. */
+export async function shieldedDatesOf(userId: string): Promise<string[]> {
+  const [row] = await db
+    .select({ dates: ritualState.shieldedDates })
+    .from(ritualState)
+    .where(eq(ritualState.userId, userId))
+    .limit(1);
+  return row?.dates ?? [];
 }

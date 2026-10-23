@@ -35,6 +35,9 @@ export interface FeatureDef {
     | 'chat'
     | 'money'
     | 'experience'
+    | 'live'
+    | 'ritual'
+    | 'circles'
     | 'palm';
   defaultEnabled: boolean;
   /** Starting audience; 'all' when absent. An admin override on the board wins. */
@@ -1118,6 +1121,52 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     key: 'experience.picker',
     label: 'Choose your experience — every user picks Classic Vedic or Modern Cosmic once (onboarding, or on next open for existing users); Settings then allows one free change and one every 30 days',
     group: 'experience',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // =========================================================================
+  // live / ritual / circles — Now Bar, Morning Ritual, Cosmic Circles (Sprint 3 of the v7 build)
+  // =========================================================================
+  {
+    key: 'live.nowBar',
+    label: 'Now Bar — a Home card with what is running right now where the reader is: the hora, the choghadiya, whether Rahu Kaal is on, and the next good window (refreshed every 15 minutes)',
+    group: 'live',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'live.widget',
+    label: 'Home-screen widget feed — the small /v1/widgets/live-now answer the Android widget reads (needs the 1.17 app build for the widget itself)',
+    group: 'live',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'ritual.morning',
+    label: 'Morning Ritual — a daily Prashna card, 11 japs or 3 breaths and a mood check; completing it counts as the daily check-in (one merged streak, with a shield for a missed day and a Cosmic Key every 3rd day)',
+    group: 'ritual',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  { key: 'ritual.keyCoins', label: 'Cosmic Key, coins paid on every 3rd ritual day (amount only)', group: 'ritual', defaultEnabled: true, defaultPricePaise: 1000 },
+  {
+    key: 'circles.circles',
+    label: 'Cosmic Circles — a circle of up to 12 people from the saved profiles, each with a daily pulse (compatibility plus the Moon of the day); adding the first person pays signup stage 3',
+    group: 'circles',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'circles.invite',
+    label: 'Circle invite links — share /circle/invite/<code>; when a friend accepts, the two accounts are linked, the inviter gets signup stage 3 and no profile slot is used',
+    group: 'circles',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'circles.pulse',
+    label: 'Circle pulse push — one push a day (outside quiet hours) about the member whose day stands out; the pulse itself shows in the circle either way',
+    group: 'circles',
     defaultEnabled: false,
     tag: 'new',
   },

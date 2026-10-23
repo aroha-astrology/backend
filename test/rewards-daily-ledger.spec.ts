@@ -24,6 +24,7 @@ vi.mock('../src/modules/rewards/rewards.repo', async (importActual) => {
   const re = new RegExp(actual.DAILY_REWARD_CLAIM_PATTERN);
   return {
     ...actual,
+    shieldedDatesOf: () => Promise.resolve([]),
     recentDailyRewardReasons: (_userId: string, limit: number) =>
       Promise.resolve(
         ledger

@@ -44,6 +44,9 @@ import { storiesRouter } from './modules/stories/stories.routes.js';
 import { yantraRouter } from './modules/yantra/yantra.routes.js';
 import { relocationRouter } from './modules/relocation/relocation.routes.js';
 import { cronRouter } from './modules/cron/cron.routes.js';
+import { widgetsRouter } from './modules/widgets/widgets.routes.js';
+import { ritualRouter } from './modules/ritual/ritual.routes.js';
+import { circlesPublicRouter, circlesRouter } from './modules/circles/circles.routes.js';
 import { telegramBotRouter } from './modules/telegram-bot/telegram-bot.routes.js';
 import { mcpRouter } from './modules/mcp/mcp.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -127,6 +130,9 @@ export function createApp(): OpenAPIHono {
   // below are exactly that; supportRouter's own /support/tickets and
   // /admin/support/tickets/* routes are unaffected by moving earlier — they
   // already apply requireUser/requireAdmin per-route, not via a wildcard.
+  // Public like the two above: a widget and an invite landing card have no sign-in.
+  app.route('/v1', widgetsRouter);
+  app.route('/v1', circlesPublicRouter);
   app.route('/v1', supportRouter);
   app.route('/v1', usersRouter);
   app.route('/v1', birthProfilesRouter);
@@ -141,6 +147,8 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', experienceRouter);
   app.route('/v1', homeLayoutRouter);
   app.route('/v1', skyContextRouter);
+  app.route('/v1', ritualRouter);
+  app.route('/v1', circlesRouter);
   app.route('/v1', preferencesRouter);
   app.route('/v1', rewardsRouter);
   app.route('/v1', feedbackRouter);

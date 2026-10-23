@@ -25,6 +25,7 @@ import {
 } from './transit-alert.service.js';
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
 import { runFactNudge } from './fact-nudge.service.js';
+import { runCirclePulse } from './circle-pulse.service.js';
 import { FactNudgeBodySchema, FactNudgeResultSchema } from './fact-nudge.schemas.js';
 import {
   detectSaturnPhaseTransitions,
@@ -458,6 +459,51 @@ cronRouter.openapi(factNudgeRoute, async (c) => {
   const body = c.req.valid('json');
   const r = await runFactNudge({ force: body.force ?? false, dryRun: body.dryRun ?? false });
   return c.json(r, 200);
+});
+
+const circlePulseRoute = createRoute({
+  method: 'post',
+  path: '/cron/circle-pulse',
+  tags: ['Cron'],
+  summary: 'Prepare the daily Cosmic Circle pulses and send the one-a-day circle push',
+  description:
+    'Run hourly. For each owner whose local clock is 07:00-11:00 it makes sure every circle member ' +
+    'has its pulse for the day and, with circles.pulse on, sends one push about the member whose day stands ' +
+    'out. A no-op while circles.circles is off. Authenticated via X-Cron-Secret.',
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({ dryRun: z.boolean().optional() }).strict().openapi('CirclePulseBody'),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Run completed (or deliberately skipped)',
+      content: {
+        'application/json': {
+          schema: z
+            .object({
+              skipped: z.boolean(),
+              reason: z.string().optional(),
+              owners: z.number().int(),
+              pulsesReady: z.number().int(),
+              pushed: z.number().int(),
+            })
+            .openapi('CirclePulseResult'),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(circlePulseRoute, async (c) => {
+  const body = c.req.valid('json');
+  return c.json(await runCirclePulse({ dryRun: body.dryRun ?? false }), 200);
 });
 
 // ---------------------------------------------------------------------------

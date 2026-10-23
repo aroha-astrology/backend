@@ -680,6 +680,20 @@
       "when": 1792820000000,
       "tag": "0096_sky_context",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1792830000000,
+      "tag": "0097_morning_ritual",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1792840000000,
+      "tag": "0098_cosmic_circles",
+      "breakpoints": true
     }
   ]
 }

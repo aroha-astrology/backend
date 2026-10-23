@@ -21,6 +21,7 @@ const CATEGORY_BY_TYPE: Record<string, NotificationCategory> = {
   transit_alert: 'transitAlerts',
   saturn_phase_alert: 'transitAlerts',
   fact_nudge: 'transitAlerts',
+  circle_pulse: 'transitAlerts',
   festival_alert: 'muhurta',
   gift_campaign: 'marketing',
   referral_promo: 'marketing',
