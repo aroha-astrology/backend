@@ -21,6 +21,7 @@ import { db } from '../../config/db.js';
 import { CLAIM_CAMPAIGNS } from '../../config/campaigns.js';
 import { istDateString } from '../../lib/astro-tools/transit-events.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
+import { experienceStatus } from '../experience/experience-rules.js';
 import { resolveGeoForIp } from '../../lib/geo-lookup.js';
 import {
   users,
@@ -1233,13 +1234,24 @@ export async function listUsersPage(
       voiceSeconds: voiceSecondsExpr(),
       voiceLastCalls: voiceLastCallsExpr(),
       voiceRating: voiceRatingExpr(),
+      uiSkin: users.uiSkin,
+      uiSkinChangedAt: users.uiSkinChangedAt,
+      uiSkinFreeChangeUsed: users.uiSkinFreeChangeUsed,
     })
     .from(users)
     .where(userSearchWhere(q, contactType))
     .orderBy(sortDir === 'asc' ? asc(orderExpr) : desc(orderExpr))
     .limit(limit)
     .offset(offset);
-  return rows.map((row) => ({ ...row, phoneE164: decryptField(row.phoneE164) }));
+  const now = new Date();
+  return rows.map(({ uiSkinChangedAt, uiSkinFreeChangeUsed, ...row }) => ({
+    ...row,
+    phoneE164: decryptField(row.phoneE164),
+    uiSkinNextChangeAt: experienceStatus(
+      { skin: row.uiSkin, changedAt: uiSkinChangedAt, freeChangeUsed: uiSkinFreeChangeUsed },
+      now,
+    ).nextAllowedAt?.toISOString() ?? null,
+  }));
 }
 
 /**

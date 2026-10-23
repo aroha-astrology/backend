@@ -177,6 +177,10 @@ const AdminUserRowSchema = z.object({
   voiceLastCalls: z.array(z.string()),
   /** Average "how was your call?" stars, null when never answered. */
   voiceRating: z.number().nullable(),
+  /** The look the user picked (CLASSIC_VEDIC / MODERN_COSMIC), null before they choose. */
+  uiSkin: z.string().nullable(),
+  /** When their next change of look is allowed (ISO); null when allowed now or not chosen yet. */
+  uiSkinNextChangeAt: z.string().nullable(),
 });
 
 export const AdminUsersResponseSchema = z
