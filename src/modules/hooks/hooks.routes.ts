@@ -3,6 +3,7 @@ import { requireUser } from '../../middleware/auth.js';
 import { isValidTimeZone } from '../astro/astro.service.js';
 import { armAlarm, getShubhLabh, unlockWeek } from './shubh-labh.service.js';
 import { getDiya, lightDiya } from './diya.service.js';
+import { getRahasya, unlockScroll } from './rahasya.service.js';
 
 const ErrorSchema = z
   .object({
@@ -138,4 +139,53 @@ hooksRouter.openapi(
     responses: { ...std, 409: errorResponse('NOT_YET or WINDOW_PASSED') },
   }),
   async (c) => c.json((await lightDiya(c.get('user'), c.req.valid('query'))) as unknown as Record<string, unknown>, 200),
+);
+
+/* ---------------------------------------------------------------- Kundli Rahasya */
+
+const ScrollQuery = PlaceQuerySchema.extend({
+  n: z
+    .string()
+    .regex(/^\d{1,2}$/)
+    .transform(Number)
+    .optional()
+    .openapi({ param: { name: 'n', in: 'query' }, example: '1' }),
+});
+
+hooksRouter.openapi(
+  createRoute({
+    method: 'get',
+    path: '/hooks/rahasya',
+    tags: ['Hooks'],
+    summary: 'Kundli Rahasya: the 17 scrolls and which are open; with ?n=, that scroll in full when it is open',
+    security: [{ bearerAuth: [] }],
+    middleware: [requireUser] as const,
+    request: { query: ScrollQuery },
+    responses: { ...std, 422: errorResponse('The chart cannot be read yet') },
+  }),
+  async (c) => c.json((await getRahasya(c.get('user'), c.req.valid('query'))) as unknown as Record<string, unknown>, 200),
+);
+
+hooksRouter.openapi(
+  createRoute({
+    method: 'post',
+    path: '/hooks/rahasya/unlock',
+    tags: ['Hooks'],
+    summary: 'Open a locked scroll now (coins; free with Gold and Platinum)',
+    security: [{ bearerAuth: [] }],
+    middleware: [requireUser] as const,
+    request: {
+      query: PlaceQuerySchema,
+      body: {
+        required: true,
+        content: { 'application/json': { schema: z.object({ n: z.number().int().min(1).max(17) }).openapi('RahasyaUnlockBody') } },
+      },
+    },
+    responses: { ...std, 409: errorResponse('INSUFFICIENT_CREDITS') },
+  }),
+  async (c) =>
+    c.json(
+      (await unlockScroll(c.get('user'), { ...c.req.valid('query'), n: c.req.valid('json').n })) as unknown as Record<string, unknown>,
+      200,
+    ),
 );
