@@ -411,6 +411,10 @@ export const users = pgTable(
     uiSkinChangedAt: timestamp('ui_skin_changed_at', { withTimezone: true }),
     /** True once the user used their one free change of look. Migration 0095. */
     uiSkinFreeChangeUsed: boolean('ui_skin_free_change_used').notNull().default(false),
+    /** "Your first reply is free" token set when a Baba Ji memory follow-up goes out; spent by chargeQuestion. Migration 0099. */
+    babaFreeReplyUntil: timestamp('baba_free_reply_until', { withTimezone: true }),
+    /** The guide the reader chose for chat (lib/personas.ts); null = the look's default. Migration 0099. */
+    personaId: text('persona_id'),
     unlockedHouses: integer('unlocked_houses')
       .array()
       .notNull()
@@ -2114,6 +2118,19 @@ export const userFacts = pgTable(
     category: text('category'),
     /** Encrypted like `fact`. A natural, non-intrusive question worth asking again once this topic recurs (e.g. "Did the new job start yet?") — null when the fact needs no follow-up. */
     followUpQuestion: text('follow_up_question'),
+    /** ACTIVE (still live), DONE (it happened / answered) or DISMISSED. Migration 0099. */
+    status: text('status').$type<'ACTIVE' | 'DONE' | 'DISMISSED'>().notNull().default('ACTIVE'),
+    /** What kind of dated event this is (interview, exam, travel, ...); null for plain facts. */
+    eventKind: text('event_kind'),
+    /** The date the reader said the event happens (their own calendar day). */
+    eventDate: date('event_date'),
+    /** When the hourly job may send its one follow-up. */
+    followUpAt: timestamp('follow_up_at', { withTimezone: true }),
+    followedUpAt: timestamp('followed_up_at', { withTimezone: true }),
+    /** Encrypted like `fact`: the sky line shown with the follow-up. */
+    transitNote: text('transit_note'),
+    /** The reader confirmed a past event, so it can anchor a birth-time check. */
+    rectifyFlag: boolean('rectify_flag').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -3499,3 +3516,74 @@ export const chatGifts = pgTable(
 );
 
 export type ChatGiftRow = typeof chatGifts.$inferSelect;
+
+/* -------------------------------------------------------------------------- */
+/* Same Sky rooms — user-generated posts, reports and blocks (migration 0100)  */
+/* -------------------------------------------------------------------------- */
+
+export const skyPosts = pgTable(
+  'sky_posts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    /** The Moon sign this room is for, lowercase ('aries' ... 'pisces'). */
+    room: text('room').notNull(),
+    authorUserId: uuid('author_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    /** PENDING (waiting), APPROVED (visible), REJECTED (never shown), REMOVED (taken down later). */
+    status: text('status').$type<'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED'>().notNull().default('PENDING'),
+    checkReason: text('check_reason'),
+    reviewedBy: text('reviewed_by'),
+    reportCount: integer('report_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (table) => ({
+    roomIdx: index('sky_posts_room_idx').on(table.room, table.status, table.createdAt),
+    authorIdx: index('sky_posts_author_idx').on(table.authorUserId, table.createdAt),
+  }),
+);
+
+export const skyReports = pgTable(
+  'sky_reports',
+  {
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => skyPosts.id, { onDelete: 'cascade' }),
+    reporterUserId: uuid('reporter_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    reason: text('reason').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.postId, table.reporterUserId] }),
+  }),
+);
+
+export const skyBlocks = pgTable(
+  'sky_blocks',
+  {
+    blockerUserId: uuid('blocker_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    blockedUserId: uuid('blocked_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.blockerUserId, table.blockedUserId] }),
+  }),
+);
+
+export type SkyPostRow = typeof skyPosts.$inferSelect;

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
+  pushAll: false,
   getAllActiveTokens: vi.fn(),
   sendPushBatch: vi.fn(),
   getOrCreateBatchRun: vi.fn(),
@@ -18,6 +19,15 @@ vi.mock('../src/modules/horoscope/horoscope.repo.js', () => ({
   getOrCreateBatchRun: state.getOrCreateBatchRun,
   completeBatchRun: state.completeBatchRun,
   failBatchRun: state.failBatchRun,
+}));
+// The inbox rows are written through users.repo; unmocked, each language group waits on a real database.
+vi.mock('../src/modules/users/users.repo.js', () => ({
+  insertNotification: vi.fn(),
+  insertNotifications: vi.fn(),
+}));
+// lang.pushAll decides whether the eight added languages get their own copy.
+vi.mock('../src/modules/features/features.service.js', () => ({
+  isFeatureOnGlobally: async (key: string) => (key === 'lang.pushAll' ? state.pushAll : false),
 }));
 // No saved notification settings — every recipient stays eligible for the push.
 vi.mock('../src/modules/preferences/preferences.repo.js', () => ({
@@ -50,6 +60,7 @@ function freshRun(overrides: Partial<{ status: 'running' | 'completed' | 'failed
 describe('broadcastPeriodReading', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    state.pushAll = false;
     state.getOrCreateBatchRun.mockResolvedValue(freshRun());
     state.sendPushBatch.mockResolvedValue({ success: 1, failure: 0 });
   });
@@ -148,6 +159,24 @@ describe('broadcastPeriodReading', () => {
       'run-1',
       expect.objectContaining({ processed: 2, generated: 1, failed: 1 }),
     );
+  });
+
+  it('with lang.pushAll on, a French or Japanese reader gets their own language, in their own group', async () => {
+    state.pushAll = true;
+    state.getAllActiveTokens.mockResolvedValue([
+      { token: 'tok-en', locale: 'en' },
+      { token: 'tok-fr', locale: 'fr-FR' },
+      { token: 'tok-ja', locale: 'ja-JP' },
+    ]);
+
+    await broadcastPeriodReading('daily', { now: AN_ORDINARY_TUESDAY });
+
+    expect(state.sendPushBatch).toHaveBeenCalledTimes(3);
+    const bodies = state.sendPushBatch.mock.calls.map((c) => [c[0] as string[], c[2] as string]);
+    const frBody = bodies.find(([tokens]) => tokens.includes('tok-fr'))![1];
+    const jaBody = bodies.find(([tokens]) => tokens.includes('tok-ja'))![1];
+    expect(frBody).toMatch(/[éèêàç]|les |des |vous/i);
+    expect(jaBody).toMatch(/[぀-ヿ一-鿿]/);
   });
 
   it('marks the batch run failed and does not throw when token lookup fails', async () => {

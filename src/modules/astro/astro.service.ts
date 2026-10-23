@@ -47,6 +47,8 @@ import {
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { buildPurchaseFacts } from '../../lib/chat-purchase-facts.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
+import { factsToSave, todayFor } from '../memory/memory.service.js';
+import { isDefaultVoice, resolvePersona } from '../../lib/personas.js';
 import {
   classifyUserMessage,
   classifyAssistantOutput,
@@ -1852,6 +1854,14 @@ export async function* chatStream(
     yield { type: 'explore', area: structured.area, links: structured.links };
   }
 
+  // chat.personas: the guide the reader picked for their look. Yogi Baba (and the switch being off) add nothing,
+  // so today's prompt stays exactly as it is.
+  const persona =
+    userFeatures['chat.personas']?.enabled === true
+      ? resolvePersona(user?.personaId, user?.uiSkin)
+      : null;
+  const personaStyle = persona && !isDefaultVoice(persona) ? persona.style : null;
+
   const startStream = () =>
     scholarStream(
       state,
@@ -1868,6 +1878,7 @@ export async function* chatStream(
       profile?.displayName,
       windowSink,
       structured ? { keyFactors: structured.keyFactors } : undefined,
+      personaStyle,
     );
 
   // Output-side backstop for the death/self-harm policy: the input filter
@@ -1969,10 +1980,27 @@ export async function* chatStream(
   // first message can seed durable facts. Existing facts are passed in so
   // the model doesn't re-extract near-duplicates. A failure here must never
   // affect the reply already streamed above.
-  void extractTurnFacts(message, fullText, userFacts, userId, user?.relationshipStatus ?? null)
+  // With memory.babaMemory on, the extractor also notes dated events and the reader's own calendar day, so
+  // the one morning-after check-in can be planned (memory/memory-rules.ts). With it off nothing changes.
+  const memoryOn = userFeatures['memory.babaMemory']?.enabled === true;
+  void (memoryOn
+    ? extractTurnFacts(
+        message,
+        fullText,
+        userFacts,
+        userId,
+        user?.relationshipStatus ?? null,
+        todayFor(user?.currentTimezone),
+      )
+    : extractTurnFacts(message, fullText, userFacts, userId, user?.relationshipStatus ?? null)
+  )
     .then((newFacts) => {
       if (newFacts.length > 0) {
-        return saveUserFacts(userId, profile?.birthProfileId ?? null, newFacts);
+        return saveUserFacts(
+          userId,
+          profile?.birthProfileId ?? null,
+          factsToSave(newFacts, memoryOn, user?.currentTimezone, new Date()),
+        );
       }
     })
     .catch(() => {});

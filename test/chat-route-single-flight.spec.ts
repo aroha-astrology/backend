@@ -44,6 +44,11 @@ vi.mock('firebase-admin/auth', () => ({
 
 // No Aroha Pass and no Question Pack credits — every user today — so chat
 // falls through to the wallet exactly as before (see pass/question-billing.ts).
+// No check-in free reply open (memory.babaMemory is off for everyone): billing goes on to the next source.
+vi.mock('../src/modules/memory/memory.repo.js', () => ({
+  consumeBabaFreeReply: vi.fn().mockResolvedValue(false),
+  refundBabaFreeReply: vi.fn().mockResolvedValue(undefined),
+}));
 // No festival gift running: billing goes straight to the Pass / packs / wallet.
 vi.mock('../src/modules/pass/chat-gifts.repo.js', () => ({
   consumeChatGift: vi.fn().mockResolvedValue(false),

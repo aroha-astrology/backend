@@ -23,9 +23,12 @@ import {
   classifyUserMessage,
 } from '../content-policy.js';
 import { logger } from '../logger.js';
-import type { LangCode } from '../../modules/cron/broadcast-copy.js';
+import type { PushLang } from '../push-lang.js';
+import { isExtraPushLang } from '../push-lang.js';
+import { EXTRA_NUDGE_FALLBACK } from '../push-copy/extra-transit.js';
 
-export type { LangCode };
+/** The 15 app languages; the eight beyond the original seven are used when lang.pushAll is on. */
+export type LangCode = PushLang;
 
 // ---------------------------------------------------------------------------
 // Schedule gate
@@ -285,6 +288,14 @@ const LANG_NAMES: Record<LangCode, string> = {
   te: 'Telugu',
   ta: 'Tamil',
   gu: 'Gujarati',
+  kn: 'Kannada',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  pt: 'Portuguese',
+  it: 'Italian',
+  ru: 'Russian',
+  ja: 'Japanese',
 };
 
 const SCRIPT_RANGES: Record<LangCode, RegExp> = {
@@ -295,6 +306,14 @@ const SCRIPT_RANGES: Record<LangCode, RegExp> = {
   te: /[ఀ-౿]/,
   ta: /[஀-௿]/,
   gu: /[઀-૿]/,
+  kn: /[ಀ-೿]/,
+  es: /[A-Za-z]/,
+  fr: /[A-Za-z]/,
+  de: /[A-Za-z]/,
+  pt: /[A-Za-z]/,
+  it: /[A-Za-z]/,
+  ru: /[Ѐ-ӿ]/,
+  ja: /[぀-ヿ一-鿿]/,
 };
 
 const URL_PATTERN = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|in|io|co)\b)/i;
@@ -456,7 +475,7 @@ export async function generateFactNudgeCopy(
 // Fallback copy — used only when generation fails twice
 // ---------------------------------------------------------------------------
 
-const FALLBACK_COPY: Record<LangCode, Record<NudgeTier, FactNudgeCopy>> = {
+const FALLBACK_COPY: Partial<Record<LangCode, Record<NudgeTier, FactNudgeCopy>>> & Record<'en', Record<NudgeTier, FactNudgeCopy>> = {
   en: {
     window: {
       title: 'Your window is approaching',
@@ -530,5 +549,6 @@ const FALLBACK_COPY: Record<LangCode, Record<NudgeTier, FactNudgeCopy>> = {
 };
 
 export function getFactNudgeFallback(tier: NudgeTier, lang: LangCode): FactNudgeCopy {
-  return (FALLBACK_COPY[lang] ?? FALLBACK_COPY.en)[tier];
+  const table = isExtraPushLang(lang) ? EXTRA_NUDGE_FALLBACK[lang] : FALLBACK_COPY[lang];
+  return (table ?? FALLBACK_COPY.en)[tier];
 }

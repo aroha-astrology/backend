@@ -28,7 +28,8 @@ import {
   completeBatchRun,
   failBatchRun,
 } from '../horoscope/horoscope.repo.js';
-import { normalizeLang, type LangCode } from './broadcast-copy.js';
+import { normalizePushLang, type PushLang } from '../../lib/push-lang.js';
+import { isFeatureOnGlobally } from '../features/features.service.js';
 import { getFallbackCopy } from './transit-copy-fallback.js';
 import {
   insertCopyRows,
@@ -145,10 +146,11 @@ export interface DraftResult {
 /** Distinct (moonSign, lang) pairs that actually have a device waiting. */
 function neededCombos(
   recipients: TransitRecipient[],
-): { moonSign: string | null; lang: LangCode }[] {
-  const seen = new Map<string, { moonSign: string | null; lang: LangCode }>();
+  allLanguages: boolean,
+): { moonSign: string | null; lang: PushLang }[] {
+  const seen = new Map<string, { moonSign: string | null; lang: PushLang }>();
   for (const r of recipients) {
-    const lang = normalizeLang(r.locale);
+    const lang = normalizePushLang(r.locale, allLanguages);
     const key = `${r.moonSign ?? '-'}|${lang}`;
     if (!seen.has(key)) seen.set(key, { moonSign: r.moonSign, lang });
   }
@@ -172,7 +174,8 @@ export async function draftTransitCopy(
   }
 
   const recipients = await listTransitRecipients();
-  const combos = neededCombos(recipients);
+  const allLanguages = await isFeatureOnGlobally('lang.pushAll').catch(() => false);
+  const combos = neededCombos(recipients, allLanguages);
   logger.info(
     { events: events.length, combos: combos.length, recipients: recipients.length },
     'transit-alert:draft start',
@@ -327,6 +330,7 @@ async function sendDueEvents(
 ): Promise<SendResult> {
   let success = 0;
   let failure = 0;
+  const allLanguages = await isFeatureOnGlobally('lang.pushAll').catch(() => false);
   // Users who switched off planet alerts (or are in quiet hours) still get the
   // inbox row below — only their devices are left out of the push.
   const pushAllowed = await pushAllowedUserIds(
@@ -344,10 +348,10 @@ async function sendDueEvents(
     // Group devices by the copy variant they should receive.
     const groups = new Map<
       string,
-      { moonSign: string | null; lang: LangCode; tokens: string[]; userIds: Set<string> }
+      { moonSign: string | null; lang: PushLang; tokens: string[]; userIds: Set<string> }
     >();
     for (const r of recipients) {
-      const lang = normalizeLang(r.locale);
+      const lang = normalizePushLang(r.locale, allLanguages);
       const key = `${r.moonSign ?? '-'}|${lang}`;
       const group = groups.get(key);
       const tokens = pushAllowed.has(r.userId) ? [r.token] : [];

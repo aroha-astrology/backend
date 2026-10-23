@@ -6,13 +6,9 @@ import {
   completeBatchRun,
   failBatchRun,
 } from '../horoscope/horoscope.repo.js';
-import {
-  getDailyCopy,
-  getPeriodicCopy,
-  normalizeLang,
-  type BroadcastPeriod,
-  type LangCode,
-} from './broadcast-copy.js';
+import { getDailyCopy, getPeriodicCopy, type BroadcastPeriod } from './broadcast-copy.js';
+import { normalizePushLang, type PushLang } from '../../lib/push-lang.js';
+import { isFeatureOnGlobally } from '../features/features.service.js';
 
 /** App timezone — same as horoscope.service.ts */
 const APP_TZ = 'Asia/Kolkata';
@@ -156,9 +152,10 @@ export async function broadcastPeriodReading(
 
   // Group by normalized language so each group gets its own localized copy —
   // one notifyUsersBatch call (itself internally chunked at 500) per language present.
-  const byLang = new Map<LangCode, { userId: string; token: string }[]>();
+  const allLanguages = await isFeatureOnGlobally('lang.pushAll').catch(() => false);
+  const byLang = new Map<PushLang, { userId: string; token: string }[]>();
   for (const t of tokens) {
-    const lang = normalizeLang(t.locale);
+    const lang = normalizePushLang(t.locale, allLanguages);
     const recipient = { userId: t.userId, token: t.token };
     const list = byLang.get(lang);
     if (list) list.push(recipient);

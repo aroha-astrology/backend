@@ -23,6 +23,9 @@ Only the USER can establish a life circumstance. Never record a circumstance the
 
 Each fact is an object {"fact": string, "followUpQuestion": string | null}. Only set followUpQuestion when the fact is naturally incomplete AND there is one obvious, non-intrusive next detail worth knowing later — for example "planning to conceive after starting a new job" naturally invites "Did the new job start yet?", and "is married" naturally invites "When did they get married?". Leave followUpQuestion null for facts that are already complete on their own or where any follow-up would feel intrusive or speculative.`;
 
+/** Added to the instructions only when memory.babaMemory is on for the reader (the caller then passes today's date). */
+const EVENT_INSTRUCTIONS = `When the USER names a specific upcoming or past day for something in their life — an interview, an exam, a result day, a trip, a move, a launch, a wedding, a meeting — also set "eventDate" to that calendar day as YYYY-MM-DD (resolve words like "next Friday" from TODAY given below; if the day is not clear, leave it null) and "eventKind" to one of: interview, exam, result, travel, move, launch, wedding, meeting, other. Never set eventDate for health, legal, pregnancy or family matters, and never for a day only the assistant mentioned. For everything else both are null.`;
+
 /**
  * Extracts new durable facts from one chat exchange, given what's already
  * known about the user so the model doesn't re-extract near-duplicates
@@ -40,7 +43,12 @@ export async function extractTurnFacts(
   // user about a marriage they never mentioned. Optional: an unset status
   // (pre-onboarding-step accounts, prefer_not_to_say) just omits the line.
   relationshipStatus?: string | null,
+  // The reader's own calendar day (YYYY-MM-DD), so "next Friday" resolves to a real date. Optional: without
+  // it the model is told not to guess a date.
+  today?: string | null,
 ): Promise<NewUserFact[]> {
+  const todayBlock = today ? `TODAY (the user's own calendar day): ${today}\n\n` : '';
+  const eventBlock = today ? `\n\n${EVENT_INSTRUCTIONS}` : '';
   const statusBlock =
     relationshipStatus && relationshipStatus !== 'prefer_not_to_say'
       ? `The user's own profile states their relationship status is "${relationshipStatus}". Never extract a fact that contradicts it.
@@ -53,13 +61,13 @@ export async function extractTurnFacts(
       ? `Facts already known about this user — do not repeat these or extract a near-duplicate restating the same thing:\n${existingFacts.map((f) => `- ${f.fact}`).join('\n')}\n\n`
       : '';
 
-  const prompt = `${PROMPT_INSTRUCTIONS}
+  const prompt = `${PROMPT_INSTRUCTIONS}${eventBlock}
 
-${statusBlock}${knownFactsBlock}Exchange:
+${todayBlock}${statusBlock}${knownFactsBlock}Exchange:
 User: ${userMessage}
 Assistant: ${assistantReply}
 
-Respond with ONLY a JSON object of the exact shape {"facts": {"fact": string, "followUpQuestion": string | null}[]} — no markdown fences, no other text.`;
+Respond with ONLY a JSON object of the exact shape {"facts": {"fact": string, "followUpQuestion": string | null${today ? ', "eventDate": string | null, "eventKind": string | null' : ''}}[]} — no markdown fences, no other text.`;
 
   try {
     const raw = await generate({
@@ -86,11 +94,19 @@ function parseFacts(raw: string): NewUserFact[] {
 
 function parseFact(item: unknown): NewUserFact | null {
   if (typeof item !== 'object' || item === null) return null;
-  const { fact, followUpQuestion } = item as { fact?: unknown; followUpQuestion?: unknown };
+  const { fact, followUpQuestion, eventDate, eventKind } = item as {
+    fact?: unknown;
+    followUpQuestion?: unknown;
+    eventDate?: unknown;
+    eventKind?: unknown;
+  };
   if (typeof fact !== 'string') return null;
   return {
     fact,
     followUpQuestion: typeof followUpQuestion === 'string' ? followUpQuestion : null,
+    // Validated later (memory-rules planEvent); only strings travel this far.
+    ...(typeof eventDate === 'string' ? { eventDate } : {}),
+    ...(typeof eventKind === 'string' ? { eventKind } : {}),
   };
 }
 

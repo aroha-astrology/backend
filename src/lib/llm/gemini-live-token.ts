@@ -94,6 +94,8 @@ interface MintOptions {
    * conversation into its next paid minute. Absent for the first minute.
    */
   resumptionHandle?: string | undefined;
+  /** chat.personas: a Gemini Live prebuilt voice for the chosen guide; absent = the server's default voice. */
+  voiceName?: string | undefined;
 }
 
 interface AuthTokenResponse {
@@ -170,7 +172,7 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: env.GEMINI_LIVE_VOICE } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: opts.voiceName ?? env.GEMINI_LIVE_VOICE } },
           },
         },
         // Required for the client to resume across paid-minute boundaries

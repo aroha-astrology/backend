@@ -8,6 +8,9 @@
  * frontend repo: English + the 6 most-spoken Indian languages.
  */
 
+import { isExtraPushLang, type PushLang } from '../../lib/push-lang.js';
+import { EXTRA_DAILY, EXTRA_PERIODIC } from '../../lib/push-copy/extra-broadcast.js';
+
 export type LangCode = 'en' | 'hi' | 'bn' | 'mr' | 'te' | 'ta' | 'gu';
 export type BroadcastPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -344,15 +347,15 @@ export function normalizeLang(locale: string | null | undefined): LangCode {
 }
 
 /** `dayOfWeek`: 0 (Sunday) – 6 (Saturday), IST. */
-export function getDailyCopy(lang: LangCode, dayOfWeek: number): PushCopy {
-  const hooks = DAILY_COPY[lang] ?? DAILY_COPY.en;
+export function getDailyCopy(lang: PushLang, dayOfWeek: number): PushCopy {
+  const hooks = (isExtraPushLang(lang) ? EXTRA_DAILY[lang] : DAILY_COPY[lang]) ?? DAILY_COPY.en;
   return hooks[dayOfWeek] ?? hooks[0]!;
 }
 
 export function getPeriodicCopy(
   period: Exclude<BroadcastPeriod, 'daily'>,
-  lang: LangCode,
+  lang: PushLang,
 ): PushCopy {
   const byLang = PERIODIC_COPY[period];
-  return byLang[lang] ?? byLang.en;
+  return (isExtraPushLang(lang) ? EXTRA_PERIODIC[period][lang] : byLang[lang]) ?? byLang.en;
 }

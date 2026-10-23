@@ -5,8 +5,8 @@
 // every circle member has today's pulse (so the screen opens instantly), and, when `circles.pulse`
 // is on for them, sends ONE push for the member whose day stands out most (a bright day or a day to
 // go gently). A pulse is marked as pushed before the push goes out, so a retried run never repeats
-// it. Quiet hours and the notification settings are applied by notifyUser. Copy is English for now
-// (server push copy in 15 languages is Sprint 4).
+// it. Quiet hours and the notification settings are applied by notifyUser. The copy is in the owner's
+// language (15 languages with lang.pushAll on, the original 7 otherwise).
 // =============================================================================
 
 import { logger } from '../../lib/logger.js';
@@ -19,6 +19,8 @@ import { ensurePulses, getCircle } from '../circles/circles.service.js';
 import { anyNotified, listMembers, markPulseNotified, ownersWithMembers } from '../circles/circles.repo.js';
 import type { PulseTone } from '../circles/circles-rules.js';
 import { localClock } from '../widgets/live-now.js';
+import { normalizePushLang, type PushLang } from '../../lib/push-lang.js';
+import { circlePulsePush } from '../../lib/push-copy/sprint4-copy.js';
 
 export const CIRCLE_PULSE_NOTIFICATION_TYPE = 'circle_pulse';
 
@@ -42,11 +44,8 @@ export function notablePulse<T extends { score: number }>(pulses: T[]): T | null
   return worst.score < 38 ? worst : null;
 }
 
-export function pulseCopy(name: string, tone: PulseTone): { title: string; body: string } {
-  if (tone === 'glow') {
-    return { title: `${name}'s day looks bright`, body: `A good day to reach out to ${name}. Open your circle to see why.` };
-  }
-  return { title: `Go gently with ${name} today`, body: `Today's Moon sits a little tender between you two. Open your circle for the pulse.` };
+export function pulseCopy(name: string, tone: PulseTone, lang: PushLang = 'en'): { title: string; body: string } {
+  return circlePulsePush(lang, name, tone);
 }
 
 export async function runCirclePulse(
@@ -62,6 +61,7 @@ export async function runCirclePulse(
   if (!lock.ok) return { skipped: true, reason: 'already-running', ...empty };
 
   const result: CirclePulseResult = { skipped: false, ...empty };
+  const allLanguages = await isFeatureOnGlobally('lang.pushAll').catch(() => false);
   try {
     for (const ownerId of await ownersWithMembers(opts.limit ?? 500)) {
       try {
@@ -93,7 +93,7 @@ export async function runCirclePulse(
 
         const circle = await getCircle(owner, now);
         const name = circle.members.find((m) => m.id === pick.member.id)?.name ?? 'Someone dear';
-        const copy = pulseCopy(name, pick.tone);
+        const copy = pulseCopy(name, pick.tone, normalizePushLang(owner.locale, allLanguages));
         await notifyUser(owner.id, {
           title: copy.title,
           body: copy.body,

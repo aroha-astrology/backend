@@ -32,6 +32,9 @@ export function chatPricingFact(pricePaise: number, source: QuestionSource | nul
   const counted =
     'It is charged per question asked, never per minute the way most astrology apps charge — ' +
     'so they can take their time.';
+  if (source === 'memory') {
+    return `CHAT PRICING: this question is the free reply to a check-in the guide started, on the house; after it, each question costs ${price}. ${counted}`;
+  }
   if (source === 'gift') {
     return `CHAT PRICING: this question is a free gift question, on the house for a festival offer, and runs out soon; after the gift questions, each question costs ${price}. ${counted}`;
   }

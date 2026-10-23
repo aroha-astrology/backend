@@ -24,7 +24,10 @@ import {
 } from '../content-policy.js';
 import { logger } from '../logger.js';
 
-export type LangCode = 'en' | 'hi' | 'bn' | 'mr' | 'te' | 'ta' | 'gu';
+import type { PushLang } from '../push-lang.js';
+
+/** The 15 app languages; the eight beyond the original seven are used when lang.pushAll is on. */
+export type LangCode = PushLang;
 
 export interface TransitCopy {
   title: string;
@@ -54,6 +57,14 @@ const LANG_NAMES: Record<LangCode, string> = {
   te: 'Telugu',
   ta: 'Tamil',
   gu: 'Gujarati',
+  kn: 'Kannada',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  pt: 'Portuguese',
+  it: 'Italian',
+  ru: 'Russian',
+  ja: 'Japanese',
 };
 
 /**
@@ -72,6 +83,14 @@ const SCRIPT_RANGES: Record<LangCode, RegExp> = {
   te: /[ఀ-౿]/,
   ta: /[஀-௿]/,
   gu: /[઀-૿]/,
+  kn: /[ಀ-೿]/,
+  es: /[A-Za-z]/,
+  fr: /[A-Za-z]/,
+  de: /[A-Za-z]/,
+  pt: /[A-Za-z]/,
+  it: /[A-Za-z]/,
+  ru: /[Ѐ-ӿ]/,
+  ja: /[぀-ヿ一-鿿]/,
 };
 
 const URL_PATTERN = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|in|io|co)\b)/i;

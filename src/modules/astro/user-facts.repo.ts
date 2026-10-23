@@ -15,6 +15,10 @@ export interface UserFact {
 export interface NewUserFact {
   fact: string;
   followUpQuestion?: string | null;
+  /** A dated event the reader mentioned (memory.babaMemory): what kind, which day, and when the one check-in is due. */
+  eventKind?: string | null;
+  eventDate?: string | null;
+  followUpAt?: Date | null;
 }
 
 /** `birthProfileId === null` filters to the primary/self profile; a non-null id filters to that additional profile. */
@@ -46,6 +50,16 @@ export async function getUserFacts(
  * first — scoped per profile, so a chatty conversation on one saved profile
  * can't evict facts remembered for a sibling profile.
  */
+/** The dated-event columns, only for a fact that has an event: a plain fact is inserted exactly as it always was. */
+function eventColumns(f: NewUserFact | undefined) {
+  if (!f || (!f.eventDate && !f.eventKind && !f.followUpAt)) return {};
+  return {
+    eventKind: f.eventKind ?? null,
+    eventDate: f.eventDate ?? null,
+    followUpAt: f.followUpAt ?? null,
+  };
+}
+
 export async function saveUserFacts(
   userId: string,
   birthProfileId: string | null,
@@ -65,10 +79,12 @@ export async function saveUserFacts(
   // Set did), just also carrying each fact's followUpQuestion along so the
   // first occurrence's value survives the dedup.
   const byFact = new Map<string, string | null>();
+  const eventByFact = new Map<string, NewUserFact>();
   for (const f of facts) {
     const trimmed = f.fact.trim();
     if (!trimmed || byFact.has(trimmed)) continue;
     byFact.set(trimmed, f.followUpQuestion?.trim() || null);
+    eventByFact.set(trimmed, f);
   }
 
   const toInsert = [...byFact.keys()].filter((f) => !existingLower.has(f.toLowerCase()));
@@ -80,6 +96,7 @@ export async function saveUserFacts(
       birthProfileId,
       fact: encryptField(fact) as string,
       followUpQuestion: encryptField(byFact.get(fact) ?? null),
+      ...eventColumns(eventByFact.get(fact)),
     })),
   );
 

@@ -694,6 +694,20 @@
       "when": 1792840000000,
       "tag": "0098_cosmic_circles",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1792850000000,
+      "tag": "0099_baba_memory_personas",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1792860000000,
+      "tag": "0100_same_sky",
+      "breakpoints": true
     }
   ]
 }

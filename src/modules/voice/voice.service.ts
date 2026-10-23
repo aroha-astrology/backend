@@ -50,6 +50,8 @@ import { unusedSliceRefundPaise } from './voice-slices.js';
 import type { VoiceSessionRow } from '../../db/schema.js';
 import * as chatSessionsRepo from '../astro/chat-sessions.repo.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
+import { factsToSave, todayFor } from '../memory/memory.service.js';
+import { isDefaultVoice, resolvePersona } from '../../lib/personas.js';
 import { summarizeCall } from '../../lib/voice-call-recap.js';
 import type { ChatHistoryTurn } from '../astro/astro.schemas.js';
 
@@ -153,6 +155,23 @@ async function minutePricePaise(userId: string): Promise<number> {
  * token's constraints at mint time, and re-deriving it for each segment would
  * let the persona shift mid-conversation if the underlying data changed.
  */
+/** chat.personas: the guide this reader picked for their look, or null when the switch is off for them. */
+async function personaFor(
+  userId: string,
+  user: { personaId?: string | null; uiSkin?: string | null } | undefined,
+) {
+  if (!user) return null;
+  const features = await resolveFeaturesForUser(userId).catch(() => null);
+  return features?.['chat.personas']?.enabled === true ? resolvePersona(user.personaId, user.uiSkin) : null;
+}
+
+/** The Gemini Live voice for the reader's guide; undefined keeps the server's default voice. */
+async function voiceNameFor(userId: string): Promise<string | undefined> {
+  const user = await findActiveUserById(userId).catch(() => undefined);
+  const persona = await personaFor(userId, user);
+  return persona?.voiceName ?? undefined;
+}
+
 async function buildSessionInstruction(
   userId: string,
   profile: ProfileContext,
@@ -179,8 +198,10 @@ async function buildSessionInstruction(
 
   const chartFacts = await buildGroundingFacts(groundingSource).catch(() => []);
   const profileFacts = user ? buildProfileFacts(profile, user) : [];
+  const persona = await personaFor(userId, user);
 
   return buildVoiceSystemInstruction({
+    personaVoiceStyle: persona && !isDefaultVoice(persona) ? persona.voiceStyle : null,
     groundingFacts: [...chartFacts, ...profileFacts],
     // A profile that onboarded without an exact birth time will never have a
     // chart at all — distinct from one still generating, and the prompt picks
@@ -324,7 +345,11 @@ async function chargeAndMint(
   }
 
   try {
-    const minted = await mintLiveToken({ systemInstruction, resumptionHandle });
+    const minted = await mintLiveToken({
+      systemInstruction,
+      resumptionHandle,
+      voiceName: await voiceNameFor(userId),
+    });
     // Best-effort, matching gemini-client.ts's own usage-write discipline (never fail the
     // call over a telemetry write). This is the ONLY place voice usage can be captured at
     // all — the conversation itself streams client-to-Google and never touches this server
@@ -665,15 +690,22 @@ async function persistTranscript(
     getUserFacts(userId, birthProfileId).catch(() => []),
     findActiveUserById(userId).catch(() => undefined),
   ])
-    .then(([existingFacts, user]) =>
-      extractTurnFacts(
-        userText,
-        assistantText,
-        existingFacts,
-        userId,
-        user?.relationshipStatus ?? null,
-      ),
-    )
+    .then(async ([existingFacts, user]) => {
+      const features = await resolveFeaturesForUser(userId).catch(() => null);
+      const memoryOn = features?.['memory.babaMemory']?.enabled === true;
+      // The reader's own calendar day is only passed with memory on, so with it off the call is exactly as before.
+      const newFacts = memoryOn
+        ? await extractTurnFacts(
+            userText,
+            assistantText,
+            existingFacts,
+            userId,
+            user?.relationshipStatus ?? null,
+            todayFor(user?.currentTimezone),
+          )
+        : await extractTurnFacts(userText, assistantText, existingFacts, userId, user?.relationshipStatus ?? null);
+      return factsToSave(newFacts, memoryOn, user?.currentTimezone, new Date());
+    })
     .then((newFacts) => {
       if (newFacts.length > 0) return saveUserFacts(userId, birthProfileId, newFacts);
     })

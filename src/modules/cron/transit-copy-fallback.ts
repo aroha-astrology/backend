@@ -17,6 +17,12 @@
  */
 
 import type { LangCode } from './broadcast-copy.js';
+import { isExtraPushLang, type PushLang } from '../../lib/push-lang.js';
+import {
+  EXTRA_PLANET_NAMES,
+  EXTRA_SIGN_NAMES,
+  EXTRA_TRANSIT_TEMPLATES,
+} from '../../lib/push-copy/extra-transit.js';
 import type { TransitEventType } from '../../lib/astro-tools/transit-events.js';
 
 export interface PushCopy {
@@ -296,7 +302,7 @@ const FALLBACK: Record<TransitEventType, Record<LangCode, FallbackTemplate>> = {
 };
 
 /** Localized day-and-month, e.g. "26 July" / "২৬ জুলাই", from a YYYY-MM-DD IST date. */
-function formatEventDate(forDate: string, lang: LangCode): string {
+function formatEventDate(forDate: string, lang: PushLang): string {
   // Parse as UTC and format in UTC: forDate is already the IST calendar date,
   // so re-projecting it through a timezone would shift it back off by a day.
   return new Intl.DateTimeFormat(lang === 'en' ? 'en-IN' : lang, {
@@ -317,11 +323,12 @@ export function getFallbackCopy(
   planet: string,
   sign: string,
   forDate: string,
-  lang: LangCode,
+  lang: PushLang,
 ): PushCopy {
-  const template = FALLBACK[eventType][lang];
-  const planetName = PLANET_NAMES[lang][planet] ?? planet;
-  const signName = SIGN_NAMES[lang][sign] ?? sign;
+  const extra = isExtraPushLang(lang);
+  const template = extra ? EXTRA_TRANSIT_TEMPLATES[eventType][lang] : FALLBACK[eventType][lang];
+  const planetName = (extra ? EXTRA_PLANET_NAMES[lang] : PLANET_NAMES[lang])[planet] ?? planet;
+  const signName = (extra ? EXTRA_SIGN_NAMES[lang] : SIGN_NAMES[lang])[sign] ?? sign;
   const dateName = formatEventDate(forDate, lang);
 
   const fill = (s: string) =>

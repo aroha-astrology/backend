@@ -842,10 +842,15 @@ export function buildChatMessages(
   outputStyle: ChatOutputStyle = 'direct',
   /** The user's IANA zone, for today's date; IST when absent. */
   timeZone?: string | null,
+  /** chat.personas: the chosen guide's manner (lib/personas.ts). Absent for Yogi Baba, so today's prompt is unchanged. */
+  personaStyle?: string | null,
 ): Array<{ role: string; content: string }> {
   const messages: Array<{ role: string; content: string }> = [];
 
   messages.push({ role: 'system', content: systemPrompt(now, outputStyle, timeZone) });
+  if (personaStyle) {
+    messages.push({ role: 'system', content: `YOUR GUIDE IDENTITY (name and manner only): ${personaStyle}` });
+  }
 
   const noChartFallback = birthTimeUnknown
     ? `This user has told the app they don't know their exact birth time, so no chart, house, ascendant, or dasha data will ever be available for them. Do not invent chart facts. Answer using only traditional/general Vedic astrological knowledge (sun-sign-level guidance, general principles) when possible, and be upfront that chart-specific, personalized answers aren't possible without an exact birth time.`
@@ -1101,6 +1106,8 @@ export function buildVoiceSystemInstruction(opts: {
   displayName?: string | null;
   /** The user's IANA zone, for today's date; IST when absent. */
   timeZone?: string | null;
+  /** chat.personas: the chosen guide's manner for a call; absent for Yogi Baba. */
+  personaVoiceStyle?: string | null;
 }): string {
   const {
     groundingFacts,
@@ -1199,6 +1206,12 @@ export function buildVoiceSystemInstruction(opts: {
   // budget) to fall back on if the model runs long.
   sections.push(OUTPUT_STYLE_VOICE);
   sections.push(VOICE_DELIVERY);
+  // After the Yogi Baba delivery on purpose: for another guide this is the instruction that must win.
+  if (opts.personaVoiceStyle) {
+    sections.push(
+      `YOUR GUIDE IDENTITY FOR THIS CALL (name, greeting and manner; it replaces the delivery above where they differ): ${opts.personaVoiceStyle}`,
+    );
+  }
 
   return sections.join('\n\n');
 }
@@ -1539,6 +1552,8 @@ export async function* scholarStream(
   windowSink?: DomainWindowSink,
   /** Ask Aroha 2.0: answer in the card format, grounded on these pre-computed key factors. */
   structured?: { keyFactors: string[] },
+  /** chat.personas: the chosen guide's manner; absent for Yogi Baba. */
+  personaStyle?: string | null,
 ): AsyncGenerator<string, void, unknown> {
   logger.debug({ requestId: state.requestId }, 'scholar: starting stream');
 
@@ -1558,6 +1573,7 @@ export async function* scholarStream(
     displayName,
     structured ? 'structured' : 'direct',
     groundingSource.timeZone,
+    personaStyle,
   );
   if (structured && structured.keyFactors.length > 0) {
     // Just before the user's message, so it's the freshest context the model reads.

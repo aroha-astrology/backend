@@ -93,6 +93,14 @@ describe('validateTransitCopy', () => {
       te: 'శని ఈ వారం మీ ఇంటి విషయాలను నెమ్మది చేస్తోంది.',
       ta: 'சனி இந்த வாரம் உங்கள் வீட்டு விஷயங்களை மெதுவாக்குகிறது.',
       gu: 'શનિ આ અઠવાડિયે તમારા ઘરની બાબતોને ધીમી કરે છે.',
+      kn: 'ಈ ವಾರ ಶನಿ ನಿಮ್ಮ ಮನೆಯ ವಿಷಯಗಳನ್ನು ನಿಧಾನಗೊಳಿಸುತ್ತಿದ್ದಾನೆ.',
+      es: 'Saturno ralentiza tu vida en casa esta semana.',
+      fr: 'Saturne ralentit votre vie à la maison cette semaine.',
+      de: 'Saturn bremst dein Zuhause in dieser Woche aus.',
+      pt: 'Saturno desacelera sua vida em casa esta semana.',
+      it: 'Saturno rallenta la tua vita domestica questa settimana.',
+      ru: 'Сатурн замедляет домашние дела на этой неделе.',
+      ja: '今週は土星が家庭のことをゆっくりにします。',
     };
     for (const [lang, body] of Object.entries(samples)) {
       const result = validateTransitCopy(good(body, 'x'), lang as LangCode);

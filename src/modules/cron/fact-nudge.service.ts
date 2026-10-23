@@ -26,7 +26,8 @@ import {
   pickNudgeFact,
   type FactNudgeCopy,
 } from '../../lib/llm/fact-nudge.js';
-import { normalizeLang } from './broadcast-copy.js';
+import { normalizePushLang } from '../../lib/push-lang.js';
+import { isFeatureOnGlobally } from '../features/features.service.js';
 import {
   FACT_NUDGE_NOTIFICATION_TYPE,
   getCurrentPlanetSigns,
@@ -86,6 +87,7 @@ export async function runFactNudge(
     // Global, not per-user — every candidate is matched against the same
     // sky, only the natal Moon sign (per candidate) differs.
     const currentSigns = await getCurrentPlanetSigns(now);
+    const allLanguages = await isFeatureOnGlobally('lang.pushAll').catch(() => false);
     logger.info(
       { dateStr, candidates: candidates.length, dryRun: opts.dryRun ?? false },
       'fact-nudge: start',
@@ -111,7 +113,7 @@ export async function runFactNudge(
         continue;
       }
 
-      const lang = normalizeLang(candidate.locale);
+      const lang = normalizePushLang(candidate.locale, allLanguages);
       const ai = await generateFactNudgeCopy(pick, transit, lang);
       const copy: FactNudgeCopy = ai ?? getFactNudgeFallback(pick.tier, lang);
       if (!ai) fallbacks++;

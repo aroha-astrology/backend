@@ -11,12 +11,14 @@ import {
 } from './pass.repo.js';
 import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
 import { consumeChatGift, refundChatGift } from './chat-gifts.repo.js';
+import { consumeBabaFreeReply, refundBabaFreeReply } from '../memory/memory.repo.js';
+import { FREE_REPLY_HOURS } from '../memory/memory-rules.js';
 
 /**
  * Where a chat question was paid from. 'group' = an admin-group member's free
  * allowance; 'gift' = an occasion's free questions (config/chat-gifts.ts).
  */
-export type QuestionSource = 'free' | 'gift' | 'group' | 'pass' | 'credits' | 'wallet';
+export type QuestionSource = 'free' | 'memory' | 'gift' | 'group' | 'pass' | 'credits' | 'wallet';
 
 export const CHAT_REASON = 'chat_message';
 
@@ -38,6 +40,9 @@ export async function chargeQuestion(
   pricePaise: number,
 ): Promise<QuestionSource | null> {
   if (pricePaise <= 0) return 'free';
+  // The free first reply to a Baba Ji check-in (memory.babaMemory sets the token). It expires on its own and
+  // costs nothing, so it goes before anything the reader paid for. No token, no effect.
+  if (await consumeBabaFreeReply(userId).catch(() => false)) return 'memory';
   // Before the test-group branch too, so a group member's gift counts down
   // exactly like everyone else's.
   if (await consumeChatGift(userId)) return 'gift';
@@ -58,7 +63,9 @@ export async function refundQuestion(
   pricePaise: number,
 ): Promise<void> {
   try {
-    if (source === 'gift') await refundChatGift(userId);
+    if (source === 'memory')
+      await refundBabaFreeReply(userId, new Date(Date.now() + FREE_REPLY_HOURS * 3_600_000));
+    else if (source === 'gift') await refundChatGift(userId);
     else if (source === 'pass') await refundPassQuestion(userId);
     else if (source === 'group') await refundGroupQuestion(userId);
     else if (source === 'credits') await addQuestionCredits(userId, 1);

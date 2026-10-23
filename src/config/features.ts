@@ -38,6 +38,9 @@ export interface FeatureDef {
     | 'live'
     | 'ritual'
     | 'circles'
+    | 'memory'
+    | 'community'
+    | 'lang'
     | 'palm';
   defaultEnabled: boolean;
   /** Starting audience; 'all' when absent. An admin override on the board wins. */
@@ -1167,6 +1170,65 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     key: 'circles.pulse',
     label: 'Circle pulse push — one push a day (outside quiet hours) about the member whose day stands out; the pulse itself shows in the circle either way',
     group: 'circles',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  // =========================================================================
+  // memory / chat.personas / community / lang — Baba Ji memory, guides, Same Sky rooms, languages (Sprint 4 of the v7 build)
+  // =========================================================================
+  {
+    key: 'memory.babaMemory',
+    label: 'Baba Ji memory — remembers dated events the reader mentions (an interview, an exam, a trip) and, once, the morning after, checks in with a push outside quiet hours; the first reply to that check-in is free',
+    group: 'memory',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'memory.vault',
+    label: 'Memory Vault — the reader sees everything Baba Ji remembers and can delete one item or forget everything (Settings)',
+    group: 'memory',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'memory.rectifyChip',
+    label: 'Sharpen birth time chip — after the reader confirms a past event happened, offers the birth-time check (when the birth time is not marked exact)',
+    group: 'memory',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'chat.personas',
+    label: 'Guide personas — the reader picks who answers in chat: Yogi Baba, Pandit Vikram, Gauri, Kavitha Ji (Classic look) or Orion, Soren, Maya, Elena (Modern Cosmic look)',
+    group: 'chat',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'community.sameSky',
+    label: 'Same Sky rooms — short posts in a room for readers who share the same Moon sign. Every post is checked first, can be reported, an author can be blocked, and the admin queue (Admin → Same Sky) has the last word',
+    group: 'community',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'lang.localNames',
+    label: "Tithi and nakshatra names in the reader's own language, in all 15 languages (today they show in English outside the 7 hand-written languages)",
+    group: 'lang',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'lang.gitaScripts',
+    label: 'Bhagavad Gita transliteration — each verse can be read in Bengali, Gujarati, Telugu, Tamil or Kannada script, or in Latin letters (IAST); the Sanskrit stays as it is',
+    group: 'lang',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'lang.pushAll',
+    label: "Notifications in all 15 languages — the recurring pushes (daily and weekly readings, transit alerts, check-ins, circle pulse) use the reader's own language also for Kannada, Spanish, French, German, Portuguese, Italian, Russian and Japanese",
+    group: 'lang',
     defaultEnabled: false,
     tag: 'new',
   },

@@ -26,6 +26,7 @@ import {
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
 import { runFactNudge } from './fact-nudge.service.js';
 import { runCirclePulse } from './circle-pulse.service.js';
+import { runBabaMemory } from '../memory/memory.service.js';
 import { FactNudgeBodySchema, FactNudgeResultSchema } from './fact-nudge.schemas.js';
 import {
   detectSaturnPhaseTransitions,
@@ -504,6 +505,53 @@ const circlePulseRoute = createRoute({
 cronRouter.openapi(circlePulseRoute, async (c) => {
   const body = c.req.valid('json');
   return c.json(await runCirclePulse({ dryRun: body.dryRun ?? false }), 200);
+});
+
+const babaMemoryRoute = createRoute({
+  method: 'post',
+  path: '/cron/baba-memory',
+  tags: ['Cron'],
+  summary: 'Send the one morning-after check-in for dated events the reader told Baba Ji about',
+  description:
+    'Run hourly. Picks every remembered event whose check-in moment has passed, and for each reader sends ONE ' +
+    'check-in (a push with no private detail, a first chat line, and a free first reply) only inside their ' +
+    'polite hours and outside their quiet hours; anything held back is tried again the next hour. A no-op ' +
+    'while memory.babaMemory is off. Authenticated via X-Cron-Secret.',
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({ dryRun: z.boolean().optional() }).strict().openapi('BabaMemoryBody'),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Run completed (or deliberately skipped)',
+      content: {
+        'application/json': {
+          schema: z
+            .object({
+              skipped: z.boolean(),
+              reason: z.string().optional(),
+              due: z.number().int(),
+              sent: z.number().int(),
+              waiting: z.number().int(),
+              expired: z.number().int(),
+            })
+            .openapi('BabaMemoryResult'),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(babaMemoryRoute, async (c) => {
+  const body = c.req.valid('json');
+  return c.json(await runBabaMemory({ dryRun: body.dryRun ?? false }), 200);
 });
 
 // ---------------------------------------------------------------------------
