@@ -32,7 +32,11 @@ export interface ExperienceStatus {
  * After it the user has ONE free change, usable at any time. From then on a change is allowed
  * only 30 days after the last one.
  */
-export function experienceStatus(record: ExperienceRecord, now: Date): ExperienceStatus {
+export function experienceStatus(record: ExperienceRecord, now: Date, unlimited = false): ExperienceStatus {
+  // Test groups (switch experience.testSwitch): a picked look can always be changed, with no wait.
+  if (unlimited && record.skin !== null) {
+    return { skin: record.skin, picked: true, freeChangeLeft: false, nextAllowedAt: null, canChange: true };
+  }
   if (record.skin === null) {
     return { skin: null, picked: false, freeChangeLeft: true, nextAllowedAt: null, canChange: true };
   }
@@ -58,12 +62,15 @@ export type ExperienceDecision =
   | { kind: 'first_pick' }
   | { kind: 'free_change' }
   | { kind: 'change' }
+  | { kind: 'test_change' }
   | { kind: 'blocked'; nextAllowedAt: Date };
 
 /** What asking for `to` does to this record right now. */
-export function decideExperienceChange(record: ExperienceRecord, to: Skin, now: Date): ExperienceDecision {
+export function decideExperienceChange(record: ExperienceRecord, to: Skin, now: Date, unlimited = false): ExperienceDecision {
   if (record.skin === null) return { kind: 'first_pick' };
   if (record.skin === to) return { kind: 'unchanged' };
+  // A test-group change touches neither the wait nor the one free change, so it leaves no trace on the real rule.
+  if (unlimited) return { kind: 'test_change' };
   const status = experienceStatus(record, now);
   if (!status.canChange && status.nextAllowedAt) return { kind: 'blocked', nextAllowedAt: status.nextAllowedAt };
   return { kind: record.freeChangeUsed ? 'change' : 'free_change' };

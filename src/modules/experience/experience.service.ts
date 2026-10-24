@@ -22,8 +22,8 @@ function toDto(s: ExperienceStatus): ExperienceDto {
   };
 }
 
-export async function getExperience(userId: string, now: Date = new Date()): Promise<ExperienceDto> {
-  const status = await readExperience(userId, now);
+export async function getExperience(userId: string, now: Date = new Date(), unlimited = false): Promise<ExperienceDto> {
+  const status = await readExperience(userId, now, unlimited);
   if (!status) throw Errors.notFound('No such user');
   return toDto(status);
 }
@@ -33,8 +33,9 @@ export async function setExperience(
   userId: string,
   to: Skin,
   now: Date = new Date(),
+  unlimited = false,
 ): Promise<{ status: ExperienceDto; blocked: Date | null }> {
-  const outcome = await applyExperience(userId, to, now);
+  const outcome = await applyExperience(userId, to, now, unlimited);
   if (!outcome) throw Errors.notFound('No such user');
   // A changed look changes which audience-limited features the user sees, so forget the cached look.
   invalidateExperienceCache(userId);

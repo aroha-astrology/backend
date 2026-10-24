@@ -53,7 +53,8 @@ const getRoute = createRoute({
 experienceRouter.openapi(getRoute, async (c) => {
   const user = c.get('user');
   const enabled = await isFeatureOn(user.id, 'experience.picker');
-  const status = await getExperience(user.id);
+  // experience.testSwitch (switched on for a test group): the look can be changed at any time.
+  const status = await getExperience(user.id, new Date(), await isFeatureOn(user.id, 'experience.testSwitch'));
   return c.json({ enabled, ...status }, 200);
 });
 
@@ -83,7 +84,8 @@ experienceRouter.openapi(putRoute, async (c) => {
   const user = c.get('user');
   if (!(await isFeatureOn(user.id, 'experience.picker'))) throw Errors.forbidden('The experience picker is not available yet');
   const { skin } = c.req.valid('json');
-  const outcome = await setExperience(user.id, skin as (typeof SKINS)[number]);
+  const unlimited = await isFeatureOn(user.id, 'experience.testSwitch');
+  const outcome = await setExperience(user.id, skin as (typeof SKINS)[number], new Date(), unlimited);
   if (outcome.blocked) {
     throw new AppError('CONFLICT', 'You can switch your experience again later', {
       reason: 'EXPERIENCE_COOLDOWN',

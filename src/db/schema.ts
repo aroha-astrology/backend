@@ -3453,7 +3453,7 @@ export const uiSkinChanges = pgTable('ui_skin_changes', {
     .references(() => users.id, { onDelete: 'cascade' }),
   fromSkin: text('from_skin'),
   toSkin: text('to_skin').notNull(),
-  kind: text('kind').$type<'first_pick' | 'free_change' | 'change' | 'reset'>().notNull(),
+  kind: text('kind').$type<'first_pick' | 'free_change' | 'change' | 'reset' | 'test_change'>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),

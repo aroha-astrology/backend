@@ -1196,6 +1196,13 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+  {
+    key: 'experience.testSwitch',
+    label: 'Test switch — for a test group only: its members can change between the Indian and the international look at any time, with no waiting and without using up their real free change',
+    group: 'experience',
+    defaultEnabled: false,
+    tag: 'new',
+  },
   // =========================================================================
   // live / ritual / circles — Now Bar, Morning Ritual, Cosmic Circles (Sprint 3 of the v7 build)
   // =========================================================================

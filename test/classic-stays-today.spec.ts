@@ -34,6 +34,8 @@ import {
 /** Every v7 switch: new, off by default, and not an amount-only price key. */
 const V7_PREFIX = /^(money|experience|nav\.(pills|shortMenu|coachMarks)|live|ritual|circles|hooks|home\.timeMorph|memory|chat\.personas|community|lang)/;
 const V7_SWITCHES = FEATURE_REGISTRY.filter((f) => V7_PREFIX.test(f.key) && f.tag === 'new');
+/** Open to everyone on purpose: the look question, and the test-group tool that changes a look. */
+const OPEN_TO_ALL = ['experience.picker', 'experience.testSwitch'];
 
 const row = (key: string, audience: 'all' | 'classic' | 'cosmic' | null = null) => ({
   key,
@@ -62,9 +64,9 @@ describe('the registry', () => {
     expect(V7_SWITCHES.length).toBeGreaterThanOrEqual(44);
   });
 
-  it('every v7 switch is foreign-only by default, except the picker which is open to everyone', () => {
+  it('every v7 switch is foreign-only by default, except the picker and the test switch which are open to everyone', () => {
     for (const f of V7_SWITCHES) {
-      const expected = f.key === 'experience.picker' ? undefined : 'cosmic';
+      const expected = OPEN_TO_ALL.includes(f.key) ? undefined : 'cosmic';
       expect(f.defaultAudience, f.key).toBe(expected);
       expect(f.defaultEnabled, f.key).toBe(false);
     }
@@ -77,13 +79,13 @@ describe('an Indian-look user with every v7 switch turned on', () => {
     const features = await resolveFeaturesForUser('u1');
     const leaked = V7_SWITCHES.filter((f) => features[f.key]?.enabled).map((f) => f.key);
     // the picker itself is open to everyone, so a Classic user still has it
-    expect(leaked.filter((k) => k !== 'experience.picker')).toEqual([]);
+    expect(leaked.filter((k) => !OPEN_TO_ALL.includes(k))).toEqual([]);
   });
 
   it('is still offered the picker, so they can choose the new look if they want it', async () => {
     state.findUserSkin.mockResolvedValue(null);
     const features = await resolveFeaturesForUser('u1');
-    expect(V7_SWITCHES.filter((f) => features[f.key]?.enabled).map((f) => f.key)).toEqual(['experience.picker']);
+    expect(V7_SWITCHES.filter((f) => features[f.key]?.enabled).map((f) => f.key).sort()).toEqual(['experience.picker', 'experience.testSwitch']);
   });
 
   it('gets a feature once the owner opens it to the Indian look, and only that one', async () => {
@@ -92,7 +94,7 @@ describe('an Indian-look user with every v7 switch turned on', () => {
     );
     state.findUserSkin.mockResolvedValue('CLASSIC_VEDIC');
     const features = await resolveFeaturesForUser('u1');
-    expect(V7_SWITCHES.filter((f) => features[f.key]?.enabled).map((f) => f.key).sort()).toEqual(['experience.picker', 'ritual.morning']);
+    expect(V7_SWITCHES.filter((f) => features[f.key]?.enabled).map((f) => f.key).sort()).toEqual(['experience.picker', 'experience.testSwitch', 'ritual.morning']);
   });
 });
 
@@ -100,7 +102,7 @@ describe('a foreign user', () => {
   it('who has not picked yet is offered the picker and nothing else new', async () => {
     state.findUserSkin.mockResolvedValue(null);
     const features = await resolveFeaturesForUser('u1');
-    expect(V7_SWITCHES.filter((f) => features[f.key]?.enabled).map((f) => f.key)).toEqual(['experience.picker']);
+    expect(V7_SWITCHES.filter((f) => features[f.key]?.enabled).map((f) => f.key).sort()).toEqual(['experience.picker', 'experience.testSwitch']);
   });
 
   it('who picked Modern Cosmic sees every switch that is on', async () => {

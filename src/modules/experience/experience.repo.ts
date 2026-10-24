@@ -24,9 +24,9 @@ const columns = {
   uiSkinFreeChangeUsed: users.uiSkinFreeChangeUsed,
 };
 
-export async function readExperience(userId: string, now: Date): Promise<ExperienceStatus | null> {
+export async function readExperience(userId: string, now: Date, unlimited = false): Promise<ExperienceStatus | null> {
   const [row] = await db.select(columns).from(users).where(eq(users.id, userId)).limit(1);
-  return row ? experienceStatus(recordOf(row), now) : null;
+  return row ? experienceStatus(recordOf(row), now, unlimited) : null;
 }
 
 export interface ExperienceOutcome {
@@ -39,17 +39,27 @@ export interface ExperienceOutcome {
  * at once get exactly one change: the second sees the first's result and is judged on it.
  * Returns null when the user does not exist.
  */
-export async function applyExperience(userId: string, to: Skin, now: Date): Promise<ExperienceOutcome | null> {
+export async function applyExperience(
+  userId: string,
+  to: Skin,
+  now: Date,
+  unlimited = false,
+): Promise<ExperienceOutcome | null> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select(columns).from(users).where(eq(users.id, userId)).limit(1).for('update');
     if (!row) return null;
     const before = recordOf(row);
-    const decision = decideExperienceChange(before, to, now);
+    const decision = decideExperienceChange(before, to, now, unlimited);
 
     if (decision.kind === 'first_pick') {
       await tx.update(users).set({ uiSkin: to }).where(eq(users.id, userId));
       await tx.insert(uiSkinChanges).values({ userId, fromSkin: null, toSkin: to, kind: 'first_pick' });
       return { decision, status: experienceStatus({ ...before, skin: to }, now) };
+    }
+    if (decision.kind === 'test_change') {
+      await tx.update(users).set({ uiSkin: to }).where(eq(users.id, userId));
+      await tx.insert(uiSkinChanges).values({ userId, fromSkin: before.skin, toSkin: to, kind: 'test_change' });
+      return { decision, status: experienceStatus({ ...before, skin: to }, now, true) };
     }
     if (decision.kind === 'free_change' || decision.kind === 'change') {
       await tx
@@ -59,7 +69,7 @@ export async function applyExperience(userId: string, to: Skin, now: Date): Prom
       await tx.insert(uiSkinChanges).values({ userId, fromSkin: before.skin, toSkin: to, kind: decision.kind });
       return { decision, status: experienceStatus({ skin: to, changedAt: now, freeChangeUsed: true }, now) };
     }
-    return { decision, status: experienceStatus(before, now) };
+    return { decision, status: experienceStatus(before, now, unlimited) };
   });
 }
 

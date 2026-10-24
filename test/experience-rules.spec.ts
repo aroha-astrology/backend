@@ -78,3 +78,26 @@ describe('decideExperienceChange', () => {
     expect(decideExperienceChange(after, 'MODERN_COSMIC', later).kind).toBe('blocked');
   });
 });
+
+describe('the test switch (a test group can change look at any time)', () => {
+  it('a blocked user is open when the test switch is on, with no wait shown', () => {
+    const blocked = afterFreeChange(2);
+    expect(experienceStatus(blocked, NOW).canChange).toBe(false);
+    const s = experienceStatus(blocked, NOW, true);
+    expect(s).toEqual({ skin: 'MODERN_COSMIC', picked: true, freeChangeLeft: false, nextAllowedAt: null, canChange: true });
+  });
+
+  it('a change is a test change: it is not blocked, and it does not use the free change or start a wait', () => {
+    expect(decideExperienceChange(afterFreeChange(2), 'CLASSIC_VEDIC', NOW, true)).toEqual({ kind: 'test_change' });
+    expect(decideExperienceChange(justPicked, 'MODERN_COSMIC', NOW, true)).toEqual({ kind: 'test_change' });
+  });
+
+  it('asking for the look the user already has changes nothing, and a first pick is still a first pick', () => {
+    expect(decideExperienceChange(justPicked, 'CLASSIC_VEDIC', NOW, true)).toEqual({ kind: 'unchanged' });
+    expect(decideExperienceChange(unpicked, 'MODERN_COSMIC', NOW, true)).toEqual({ kind: 'first_pick' });
+  });
+
+  it('without the switch nothing changes', () => {
+    expect(decideExperienceChange(afterFreeChange(2), 'CLASSIC_VEDIC', NOW)).toMatchObject({ kind: 'blocked' });
+  });
+});
