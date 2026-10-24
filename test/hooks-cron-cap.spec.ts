@@ -67,9 +67,9 @@ describe('the switches', () => {
     expect(d.tag).toBe('new');
     expect(key.startsWith(`${d.group}.`)).toBe(true);
   });
-  it('four are built for the Indian look and four for the international look', () => {
+  it('all eight start as International only; the owner opens any of them to Indian users (owner, 2026-10-24)', () => {
     const aud = (k: string) => FEATURE_REGISTRY.find((f) => f.key === k)!.defaultAudience;
-    expect(['hooks.kundliRahasya', 'hooks.shubhLabh', 'hooks.gharKavach', 'hooks.sankalpDiya'].map(aud)).toEqual(['classic', 'classic', 'classic', 'classic']);
+    expect(['hooks.kundliRahasya', 'hooks.shubhLabh', 'hooks.gharKavach', 'hooks.sankalpDiya'].map(aud)).toEqual(['cosmic', 'cosmic', 'cosmic', 'cosmic']);
     expect(['hooks.cosmicReceipts', 'hooks.textTiming', 'hooks.sleepSync', 'hooks.mysteryDrop'].map(aud)).toEqual(['cosmic', 'cosmic', 'cosmic', 'cosmic']);
   });
   it('the amounts are the owner\'s prices', () => {

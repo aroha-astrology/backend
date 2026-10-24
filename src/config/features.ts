@@ -1042,6 +1042,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Aroha Coins — show 🪙 coins instead of ₹ everywhere in the app (₹ stays only on the payment sheet)',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1049,6 +1050,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Coin packs — the 4 packs (100 / 330 / 700 / 1,800 coins) replace the current top-up amounts',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1056,6 +1058,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Razorpay for coins and the Pass on the website in USD / EUR / GBP and more (needs Razorpay International Payments)',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1063,6 +1066,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Signup bonus in 3 stages (day 1, first check-in on a later day, first extra profile) instead of all at once',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   // The three stage amounts. Used only while money.signupDrip is on; an amount set to 0 or its
@@ -1075,6 +1079,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Extra profiles — the first 3 are free, then the price below (free with Aroha Pass)',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   { key: 'money.profileExtra', label: 'Extra profile after the free ones (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 9900 },
@@ -1083,6 +1088,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'House insights — house 1 and the current dasha house free, single houses and an all-12 bundle at the prices below',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   { key: 'money.houseSingle', label: 'One house, while the house offer is on (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 2500 },
@@ -1092,6 +1098,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Voice calls: pay in 15-second slices after the free minutes (an early hang-up gives the unused slices back), and a gentler silence rule (asks after 10 s, hangs up after 15 s)',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   { key: 'money.voiceSlice', label: 'Voice call, per 15 seconds, while slices are on (amount only)', group: 'money', defaultEnabled: true, defaultPricePaise: 500 },
@@ -1100,6 +1107,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Aroha Pass monthly coin gift — Gold 100, Platinum 200 each month',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1107,6 +1115,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'One refund per charge — chat, reports, palm, Vastu and yantra refunds carry the charge\'s key, so a failed job can never be refunded twice',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1114,6 +1123,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Platinum Pass — one report free every Pass month (a single report; a failed one gives the free report back)',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1121,6 +1131,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Aroha Pass on the website through Razorpay Subscriptions (renews monthly, cancel any time on the Pass page; needs the Razorpay plan ids on the server)',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1128,6 +1139,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'iPhone: Aroha Pass and coin packs through the App Store (needs the iOS app with in-app purchases and the App Store products set up)',
     group: 'money',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   // =========================================================================
@@ -1138,6 +1150,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: "Home card order set by the owner (Admin → Home Layout) — switched on for an admin user group only, that group sees the draft; switched on for everyone, everyone sees the published order",
     group: 'experience',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1145,6 +1158,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Travel pill — when the phone is in another time zone than home, offer to show Panchang and daily times for where the user is (they can keep home instead)',
     group: 'experience',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1152,6 +1166,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'NRI mode — a Settings switch for people living outside India: Panchang shows local times beside Delhi (IST)',
     group: 'experience',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1159,6 +1174,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Sub-tab pills — under each of the five tabs, a short row of the related pages (Today / Birth chart / Journal, Forecast / Calendar / Timeline, Ask / Chat history / Decisions, Reports / Matching / My reports, Panchang / Find a date / Daily practice)',
     group: 'nav',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1166,6 +1182,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Short menu — the side menu lists six places (Profile & Experience, Chat history, Transactions, Rewards, Help, Settings) and folds every other page under "More"',
     group: 'nav',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1173,6 +1190,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Coach marks — the first-visit Home walk-through is cut from eight steps to three (welcome, Ask, Kundli)',
     group: 'nav',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1180,6 +1198,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: "Why your sign can be different — a Kundli card with the reader's own Western and Vedic Sun and Moon side by side (says so when a sign does not change)",
     group: 'experience',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1187,6 +1206,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: '360° wheel chart — a third chart style beside North and South on the Kundli page (the default in the Modern Cosmic look)',
     group: 'experience',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1204,6 +1224,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Now Bar — a Home card with what is running right now where the reader is: the hora, the choghadiya, whether Rahu Kaal is on, and the next good window (refreshed every 15 minutes)',
     group: 'live',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1211,6 +1232,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Home-screen widget feed — the small /v1/widgets/live-now answer the Android widget reads (needs the 1.17 app build for the widget itself)',
     group: 'live',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1218,6 +1240,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Morning Ritual — a daily Prashna card, 11 japs or 3 breaths and a mood check; completing it counts as the daily check-in (one merged streak, with a shield for a missed day and a Cosmic Key every 3rd day)',
     group: 'ritual',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   { key: 'ritual.keyCoins', label: 'Cosmic Key, coins paid on every 3rd ritual day (amount only)', group: 'ritual', defaultEnabled: true, defaultPricePaise: 1000 },
@@ -1226,6 +1249,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Cosmic Circles — a circle of up to 12 people from the saved profiles, each with a daily pulse (compatibility plus the Moon of the day); adding the first person pays signup stage 3',
     group: 'circles',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1233,6 +1257,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Circle invite links — share /circle/invite/<code>; when a friend accepts, the two accounts are linked, the inviter gets signup stage 3 and no profile slot is used',
     group: 'circles',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1240,6 +1265,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Circle pulse push — one push a day (outside quiet hours) about the member whose day stands out; the pulse itself shows in the circle either way',
     group: 'circles',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   // =========================================================================
@@ -1252,7 +1278,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Kundli Rahasya — 17 scrolls about your own chart, one opens each day (the next one at 8 PM after the morning ritual; any scroll early for a few coins, free with Gold and Platinum)',
     group: 'hooks',
     defaultEnabled: false,
-    defaultAudience: 'classic',
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1260,7 +1286,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Shubh-Labh radar — a 24-hour green/amber/red strip of the best windows for money matters, from the hora, choghadiya, Rahu Kaal and your own Tara and Moon strength; today is free, a 7-day view and a 5-minutes-before alarm cost coins',
     group: 'hooks',
     defaultEnabled: false,
-    defaultAudience: 'classic',
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1268,7 +1294,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Ghar Ka Kavach — each morning picks the family member who could use the most care today, with 11 beads of one planet to chant for them; a streak fills the Kalash and a family week unlocks a free summary',
     group: 'hooks',
     defaultEnabled: false,
-    defaultAudience: 'classic',
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1276,7 +1302,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Sankalp Diya — light a diya in the day\'s best window (Abhijit; on Wednesdays Amrit or Shubh), a streak, a real count of diyas lit that day (hidden under 20) and a small coin gift on Ekadashi, Pradosh, Purnima and Amavasya',
     group: 'hooks',
     defaultEnabled: false,
-    defaultAudience: 'classic',
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1316,6 +1342,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Time-of-day Home — the Home hero follows the morning / midday / evening / night slots set in Admin -> Home Layout, and a hook card is brought to the front when its moment arrives',
     group: 'home',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   // Amounts for the hooks (coins; 100 paise = 1 coin). A price key only matters while its feature is on.
@@ -1333,6 +1360,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Baba Ji memory — remembers dated events the reader mentions (an interview, an exam, a trip) and, once, the morning after, checks in with a push outside quiet hours; the first reply to that check-in is free',
     group: 'memory',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1340,6 +1368,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Memory Vault — the reader sees everything Baba Ji remembers and can delete one item or forget everything (Settings)',
     group: 'memory',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1347,6 +1376,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Sharpen birth time chip — after the reader confirms a past event happened, offers the birth-time check (when the birth time is not marked exact)',
     group: 'memory',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1354,6 +1384,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Guide personas — the reader picks who answers in chat: Yogi Baba, Pandit Vikram, Gauri, Kavitha Ji (Classic look) or Orion, Soren, Maya, Elena (Modern Cosmic look)',
     group: 'chat',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1361,6 +1392,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Same Sky rooms — short posts in a room for readers who share the same Moon sign. Every post is checked first, can be reported, an author can be blocked, and the admin queue (Admin → Same Sky) has the last word',
     group: 'community',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1368,6 +1400,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: "Tithi and nakshatra names in the reader's own language, in all 15 languages (today they show in English outside the 7 hand-written languages)",
     group: 'lang',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1375,6 +1408,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Bhagavad Gita transliteration — each verse can be read in Bengali, Gujarati, Telugu, Tamil or Kannada script, or in Latin letters (IAST); the Sanskrit stays as it is',
     group: 'lang',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   {
@@ -1382,6 +1416,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: "Notifications in all 15 languages — the recurring pushes (daily and weekly readings, transit alerts, check-ins, circle pulse) use the reader's own language also for Kannada, Spanish, French, German, Portuguese, Italian, Russian and Japanese",
     group: 'lang',
     defaultEnabled: false,
+    defaultAudience: 'cosmic',
     tag: 'new',
   },
   // Google Play refunds (2026-10-24). Every refund is found and recorded either way

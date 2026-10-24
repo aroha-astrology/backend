@@ -1,6 +1,6 @@
 import { FEATURE_REGISTRY, offeredModel, type FeatureAudience } from '../../config/features.js';
 import { logger } from '../../lib/logger.js';
-import { findAllFeatureOverrides, findUserSkin } from './features.repo.js';
+import { findAllFeatureOverrides, findUserIsIndian, findUserSkin } from './features.repo.js';
 import {
   listGroupIdsForUser,
   listAllGroupFeatureOverrides,
@@ -337,9 +337,22 @@ async function experienceOf(userId: string): Promise<'classic' | 'cosmic'> {
   return audience;
 }
 
+const EXPERIENCE_PICKER_KEY = 'experience.picker';
+const indianCache = new Map<string, { indian: boolean; expiresAt: number }>();
+
+/** Whether the account looks Indian and has not picked a look (see findUserIsIndian). Cached like the look. */
+async function indianSignalOf(userId: string): Promise<boolean> {
+  const hit = indianCache.get(userId);
+  if (hit && hit.expiresAt > Date.now()) return hit.indian;
+  const indian = await findUserIsIndian(userId);
+  indianCache.set(userId, { indian, expiresAt: Date.now() + EXPERIENCE_TTL_MS });
+  return indian;
+}
+
 /** Forget a user's remembered look, so a change of experience shows at once. */
 export function invalidateExperienceCache(userId: string): void {
   experienceCache.delete(userId);
+  indianCache.delete(userId);
 }
 
 /**
@@ -356,7 +369,21 @@ export function invalidateExperienceCache(userId: string): void {
 export async function resolveFeaturesForUser(
   userId: string,
 ): Promise<Record<string, ResolvedFeature>> {
-  const { features, groupEnabled } = await resolveWithGroups(userId);
+  const resolved = await resolveWithGroups(userId);
+  const { groupEnabled } = resolved;
+  let features = resolved.features;
+
+  // The "choose your look" picker is for readers who are not Indian by their account (Indian phone
+  // sign-in or an Indian app language). They keep today's app and are never asked. A feature
+  // switched on for one of the user's admin groups skips this, so the owner can try it anywhere.
+  const picker = features[EXPERIENCE_PICKER_KEY];
+  if (picker?.enabled && !groupEnabled.has(EXPERIENCE_PICKER_KEY)) {
+    try {
+      if (await indianSignalOf(userId)) features = { ...features, [EXPERIENCE_PICKER_KEY]: { ...picker, enabled: false } };
+    } catch (err) {
+      logger.error({ err, userId }, 'resolveFeaturesForUser: Indian-account lookup failed, picker left as is');
+    }
+  }
 
   const narrowed = Object.entries(features).filter(
     ([key, f]) => f.enabled && (f.audience ?? 'all') !== 'all' && !groupEnabled.has(key),
