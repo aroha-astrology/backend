@@ -975,6 +975,17 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     tag: 'new',
   },
 
+  // The book's handwriting: the reader's name on the cover and the pull-quotes are set in a
+  // handwriting font (Kalam, Latin + Devanagari). A separate switch from the book itself, so it
+  // can be turned on or off alone; off, those accents are an italic serif. Ships dark.
+  {
+    key: 'nav.reportBookHandwriting',
+    label: 'Report book — handwriting style for the cover name and pull-quotes',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+
   // Palmistry V2 (2026-10). Each switch is one part of the new pipeline, so it can be tried on
   // an admin group and compared with the old behaviour on real scans before it reaches anyone.
   // The thresholds behind the first three are not yet calibrated on a review set of real palms.
