@@ -310,7 +310,8 @@ export async function expireLapsedPasses(now: Date): Promise<number> {
         // A Play Pass ends only when Google says so (reconcilePlayPasses asks): ending it here
         // on the date alone would cut off someone whose renewal notice is late or lost. Until
         // then an out-of-date row gives nothing anyway, since findActivePass checks periodEnd.
-        not(eq(userSubscriptions.source, 'google_play')),
+        // The same goes for a Razorpay or App Store Pass (their reconciles ask those stores).
+        not(inArray(userSubscriptions.source, ['google_play', 'razorpay', 'app_store'])),
       ),
     )
     .returning({ id: userSubscriptions.id });

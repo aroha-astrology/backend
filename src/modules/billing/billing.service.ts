@@ -9,8 +9,12 @@ import {
   setOrderGatewayOrderId,
   findStalePendingRazorpayOrders,
   confirmOrderAndGrantCredits,
+  findAppStoreOrder,
   refundOrder as refundOrderRepo,
 } from './billing.repo.js';
+import { isUniqueViolation } from '../../lib/db-errors.js';
+import { verifyAppleTransaction, type AppleJwsOptions } from './app-store-verify.js';
+import { requireStoreKit } from '../pass/pass-appstore.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { logger } from '../../lib/logger.js';
 import {
@@ -435,6 +439,64 @@ export async function confirmGooglePlayPurchase(
   if (pack) await notifyPackBought(userId, order.amountPaise, pack.questions);
   else await notifyTopUp(userId, order.amountPaise, result.walletBalancePaise);
 
+  return result;
+}
+
+/**
+ * A coin pack bought on an iPhone (money.storekit). The app buys the pack's product
+ * (`coins_100`...) with `appAccountToken` = our user id and posts StoreKit's signed transaction.
+ * Apple's signature, this app, this user and a consumable coin pack are all checked; then one
+ * order per transaction id (a unique index) is recorded and paid in the same step as the
+ * coins. A replay of the same transaction returns the balance without crediting again.
+ */
+export async function confirmAppStoreCoins(
+  userId: string,
+  signedTransaction: string,
+  opts: AppleJwsOptions = {},
+): Promise<{ order: OrderRow; walletBalancePaise: number }> {
+  await requireStoreKit(userId);
+  const tx = verifyAppleTransaction(signedTransaction, opts);
+  const pack = coinPackById(tx.productId);
+  if (!pack || tx.type !== 'Consumable') throw Errors.badRequest('NOT_A_COIN_PACK');
+  if (tx.appAccountToken?.toLowerCase() !== userId.toLowerCase())
+    throw Errors.forbidden('APP_STORE_OTHER_ACCOUNT');
+  if (tx.revocationDate != null) throw Errors.conflict('APP_STORE_REFUNDED');
+
+  let order = await findAppStoreOrder(tx.transactionId);
+  if (order && order.userId !== userId) throw Errors.forbidden('APP_STORE_OTHER_ACCOUNT');
+  if (!order) {
+    try {
+      order = await insertOrder({
+        userId,
+        packId: pack.id,
+        amountPaise: pack.prices.INR,
+        discountPaise: 0,
+        finalAmountPaise: pack.prices.INR,
+        // Apple's price is in milli-units of the buyer's currency; kept for the record only.
+        currency: tx.currency ?? 'INR',
+        chargedMinor: tx.price != null ? Math.round(tx.price / 10) : null,
+        couponId: null,
+        couponCode: null,
+        status: 'pending',
+        gatewayProvider: 'app_store',
+        gatewayOrderId: tx.transactionId,
+      });
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      order = await findAppStoreOrder(tx.transactionId);
+      if (!order || order.userId !== userId) throw Errors.forbidden('APP_STORE_OTHER_ACCOUNT');
+    }
+  }
+  if (order.status === 'paid') {
+    return { order, walletBalancePaise: await getUserWalletBalance(userId) };
+  }
+  const result = await confirmOrderAndGrantCredits(order.id, userId, tx.transactionId);
+  if (!result) {
+    const nowPaid = await findAppStoreOrder(tx.transactionId);
+    if (!nowPaid || nowPaid.status !== 'paid') throw Errors.internal('Failed to confirm order');
+    return { order: nowPaid, walletBalancePaise: await getUserWalletBalance(userId) };
+  }
+  await notifyTopUp(userId, order.amountPaise, result.walletBalancePaise);
   return result;
 }
 

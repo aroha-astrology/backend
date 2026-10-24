@@ -1,4 +1,6 @@
 import { handlePlaySubscriptionNotification } from '../pass/pass-play.service.js';
+import { handleRazorpayWebhook } from '../pass/pass-razorpay.service.js';
+import { handleAppStoreNotification } from '../pass/pass-appstore.service.js';
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireGooglePlayRtdnSecret } from '../../middleware/cron-auth.js';
@@ -27,6 +29,7 @@ import {
   checkout,
   confirmPayment,
   confirmGooglePlayPurchase,
+  confirmAppStoreCoins,
   reconcileGooglePlayNotification,
   startRazorpayCheckout,
   verifyRazorpayPayment,
@@ -355,6 +358,43 @@ billingRouter.openapi(confirmGooglePlayRoute, async (c) => {
   return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
 });
 
+const confirmAppStoreRoute = createRoute({
+  method: 'post',
+  path: '/billing/app-store/confirm',
+  tags: ['Billing'],
+  summary: "Confirm a coin pack bought on an iPhone (Apple's signed transaction, money.storekit)",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({ signedTransaction: z.string().min(1).max(20_000) }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Coins credited (or already credited for this transaction)',
+      content: { 'application/json': { schema: ConfirmOrderResponseSchema } },
+    },
+    400: errorResponse('APP_STORE_SIGNATURE_INVALID or NOT_A_COIN_PACK'),
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('FEATURE_DISABLED or APP_STORE_OTHER_ACCOUNT'),
+    409: errorResponse('APP_STORE_REFUNDED'),
+  },
+});
+
+billingRouter.openapi(confirmAppStoreRoute, async (c) => {
+  const user = c.get('user');
+  const { order, walletBalancePaise } = await confirmAppStoreCoins(
+    user.id,
+    c.req.valid('json').signedTransaction,
+  );
+  return c.json({ order: toOrderDto(order), walletBalancePaise }, 200);
+});
+
 /* -------------------------------------------------------------------------- */
 /* POST /billing/google-play-rtdn  (Google Play → Cloud Pub/Sub push webhook)  */
 /*                                                                              */
@@ -446,6 +486,47 @@ billingWebhooksRouter.openapi(googlePlayRtdnRoute, async (c) => {
   }
 
   return c.json({ ok: true }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Store webhooks for the Pass on the website (Razorpay) and on an iPhone       */
+/* (App Store). Both are signed by the store, so neither needs a secret in the  */
+/* URL; both are switched off with the store features (they record nothing      */
+/* until a store Pass exists).                                                  */
+/* -------------------------------------------------------------------------- */
+
+// Razorpay -> POST /internal/billing/razorpay-webhook (subscription.* events). The signature is
+// over the raw body, so the body is read as text before anything parses it.
+billingWebhooksRouter.post('/billing/razorpay-webhook', async (c) => {
+  const raw = await c.req.text();
+  try {
+    const outcome = await handleRazorpayWebhook(raw, c.req.header('x-razorpay-signature'));
+    if (outcome === 'bad_signature') return c.json({ ok: false }, 400);
+    return c.json({ ok: true }, 200);
+  } catch (err) {
+    logger.error({ err }, 'billing: Razorpay webhook could not be processed (Razorpay retries)');
+    return c.json({ ok: false }, 500);
+  }
+});
+
+// Apple -> POST /internal/billing/app-store-notifications (App Store Server Notifications V2).
+billingWebhooksRouter.post('/billing/app-store-notifications', async (c) => {
+  let signedPayload: unknown;
+  try {
+    signedPayload = ((await c.req.json()) as { signedPayload?: unknown }).signedPayload;
+  } catch {
+    return c.json({ ok: false }, 400);
+  }
+  if (typeof signedPayload !== 'string') return c.json({ ok: false }, 400);
+  try {
+    await handleAppStoreNotification(signedPayload);
+    return c.json({ ok: true }, 200);
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === 400) return c.json({ ok: false }, 400);
+    logger.error({ err }, 'billing: App Store notification could not be processed (Apple retries)');
+    return c.json({ ok: false }, 500);
+  }
 });
 
 type TopUpAmount = z.infer<typeof TopUpAmountsResponseSchema>['amounts'][number];

@@ -29,6 +29,7 @@ import {
   PASS_PLAY_PRODUCT_ID,
   PASS_REMINDER_DAYS,
   PASS_TIERS,
+  APP_STORE_PASS_PRODUCTS,
   QUESTION_PACKS,
   type PassEntitlement,
   type PassFeature,
@@ -48,10 +49,13 @@ import {
 } from './pass.repo.js';
 import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
 import { passFreeReportAvailable } from './pass-free-report.js';
+import { refreshLapsedPass } from './pass-refresh.js';
+import { razorpayPassConfigured, webPlanFor } from './pass-razorpay.service.js';
+import { resolveChargeCurrency } from '../billing/billing.service.js';
+import { reconcileRazorpayPasses, type RazorpayReconcileRun } from './pass-razorpay.service.js';
 import {
   PLAY_STATE,
   reconcilePlayPasses,
-  refreshLapsedPlayPass,
   type PlayReconcileRun,
 } from './pass-play.service.js';
 
@@ -78,6 +82,13 @@ export interface PassOffer extends TierBenefits {
   pricePaise: number;
   /** The Play subscription to buy (Android only). */
   play: { productId: string; basePlanId: string };
+  /**
+   * The website's Razorpay subscription (money.razorpayPass, and a plan set on the server).
+   * Absent otherwise. `amountMinor` is in the minor unit of `currency`.
+   */
+  web?: { currency: string; amountMinor: number };
+  /** The App Store subscription to buy on an iPhone (money.storekit). Absent otherwise. */
+  appStore?: { productId: string };
 }
 
 /**
@@ -124,13 +135,33 @@ const benefitsOf = (e: PassEntitlement): TierBenefits => ({
   features: e.features,
 });
 
-function offersFor(features: Features): PassOffer[] {
+/** Where the website charges this user for a tier, or undefined while the web Pass is off. */
+function webOffer(
+  features: Features,
+  tier: (typeof PASS_TIERS)[number],
+  currency: string | null,
+): PassOffer['web'] {
+  if (!currency || features['money.razorpayPass']?.enabled !== true) return undefined;
+  const plan = webPlanFor(tier.tier, currency);
+  if (!plan) return undefined;
+  const amountMinor =
+    plan.currency === 'INR'
+      ? (features[tier.key]?.pricePaise ?? tier.fallbackPaise)
+      : (plan.amountMinor ?? 0);
+  return amountMinor > 0 ? { currency: plan.currency, amountMinor } : undefined;
+}
+
+function offersFor(features: Features, webCurrency: string | null = null): PassOffer[] {
   if (features['nav.arohaPass']?.enabled !== true) return [];
   return PASS_TIERS.filter((t) => features[t.key]?.enabled === true).map((t) => ({
     tier: t.tier,
     variant: t.variant,
     pricePaise: features[t.key]?.pricePaise ?? t.fallbackPaise,
     play: { productId: PASS_PLAY_PRODUCT_ID, basePlanId: t.playBasePlan },
+    ...(webOffer(features, t, webCurrency) ? { web: webOffer(features, t, webCurrency) } : {}),
+    ...(features['money.storekit']?.enabled === true
+      ? { appStore: { productId: APP_STORE_PASS_PRODUCTS[t.tier] } }
+      : {}),
     questionsPerPeriod: t.questions,
     voiceFreeMinutes: t.voiceFreeMinutes,
     monthlyCoins: features['money.passCoins']?.enabled === true ? t.monthlyCoins : 0,
@@ -166,7 +197,7 @@ function passDto(row: UserSubscriptionRow): NonNullable<PassStatus['pass']> {
 export async function getPassStatus(user: UserRow): Promise<PassStatus> {
   const features = await resolveFeaturesForUser(user.id);
   let active = await findActivePass(user.id);
-  if (!active && (await refreshLapsedPlayPass(user.id))) active = await findActivePass(user.id);
+  if (!active && (await refreshLapsedPass(user.id))) active = await findActivePass(user.id);
   // On hold: no live Pass, and the newest Play one is held by Google for a failed payment.
   const held =
     active || !features['nav.arohaPass']?.enabled
@@ -191,6 +222,12 @@ export async function getPassStatus(user: UserRow): Promise<PassStatus> {
     };
   }
 
+  // The website's currency for this buyer, only while the web Pass is on and set up.
+  const webCurrency =
+    features['money.razorpayPass']?.enabled === true && razorpayPassConfigured()
+      ? await resolveChargeCurrency(user.id, user.currentCountry ?? user.geoCountry).catch(() => 'INR')
+      : null;
+
   // The Platinum free report, listed on the member's own Pass only while money.platinumReport is on.
   if (pass && features['money.platinumReport']?.enabled === true) {
     const ownTier = pass.tier;
@@ -204,7 +241,7 @@ export async function getPassStatus(user: UserRow): Promise<PassStatus> {
     enabled: features['nav.arohaPass']?.enabled === true || inGroup,
     paymentIssue: inGrace ? 'grace' : onHold ? 'hold' : null,
     heldTier: onHold ? entitlementForRow(onHold).tier : null,
-    offers: offersFor(features),
+    offers: offersFor(features, webCurrency),
     pass,
     questionCredits: user.questionCredits,
     packs: packsFor(features),
@@ -262,6 +299,8 @@ export interface RenewalRun {
   expired: number;
   /** Play Passes checked with Google (reconcilePlayPasses). */
   play: PlayReconcileRun;
+  /** Web Passes checked with Razorpay (reconcileRazorpayPasses, money.razorpayPass). */
+  razorpay?: RazorpayReconcileRun;
 }
 
 const day = (d: Date) =>
@@ -320,6 +359,12 @@ export async function runPassRenewals(
   }
 
   run.play = await reconcilePlayPasses(now, { dryRun: opts.dryRun });
+  run.razorpay = await reconcileRazorpayPasses(now, { dryRun: opts.dryRun }).catch(() => ({
+    checked: 0,
+    renewed: 0,
+    ended: 0,
+    failed: 1,
+  }));
   if (!opts.dryRun) run.expired = await expireLapsedPasses(now);
   return run;
 }

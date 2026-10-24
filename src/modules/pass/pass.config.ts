@@ -201,3 +201,22 @@ export function questionPackForProduct(productId: string) {
   return QUESTION_PACKS.find((p) => p.playProductId === productId);
 }
 export type QuestionPack = (typeof QUESTION_PACKS)[number]['pack'];
+
+/**
+ * The Pass on an iPhone (money.storekit): one auto-renewable subscription per tier, all in one
+ * App Store subscription group so a member can move between tiers. Created in App Store Connect
+ * by the owner with these exact ids.
+ */
+export const APP_STORE_PASS_PRODUCTS: Readonly<Record<PassTier, string>> = {
+  silver: 'aroha_pass_silver',
+  gold: 'aroha_pass_gold',
+  platinum: 'aroha_pass_platinum',
+};
+
+/** The tier an App Store product id buys, or null for any other product. */
+export function tierForAppStoreProduct(productId: string): PassTierDef | null {
+  const tier = (Object.keys(APP_STORE_PASS_PRODUCTS) as PassTier[]).find(
+    (t) => APP_STORE_PASS_PRODUCTS[t] === productId,
+  );
+  return tier ? (PASS_TIERS.find((t) => t.tier === tier) ?? null) : null;
+}

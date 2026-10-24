@@ -23,7 +23,7 @@ import {
   type PassFeature,
 } from '../modules/pass/pass.config.js';
 import { findActivePass } from '../modules/pass/pass.repo.js';
-import { refreshLapsedPlayPass } from '../modules/pass/pass-play.service.js';
+import { refreshLapsedPass } from '../modules/pass/pass-refresh.js';
 import { listGroupIdsForUser } from '../modules/user-groups/user-groups.repo.js';
 
 /** What the user's live Pass gives, or null without one. */
@@ -35,7 +35,7 @@ export async function passEntitlement(userId: string): Promise<PassEntitlement |
     // Fail open to standard pass check
   }
   let row = await findActivePass(userId);
-  if (!row && (await refreshLapsedPlayPass(userId))) row = await findActivePass(userId);
+  if (!row && (await refreshLapsedPass(userId))) row = await findActivePass(userId);
   return row ? entitlementForRow(row) : null;
 }
 

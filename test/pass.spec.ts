@@ -415,6 +415,8 @@ describe('runPassRenewals', () => {
       reminded: 1,
       expired: 2,
       play: { checked: 0, renewed: 0, ended: 0, failed: 0 },
+      // Razorpay is not set up in tests, so the web Pass reconcile checks nothing.
+      razorpay: { checked: 0, renewed: 0, ended: 0, failed: 0 },
     });
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
     expect(state.renewPass).not.toHaveBeenCalled();

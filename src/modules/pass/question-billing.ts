@@ -13,7 +13,7 @@ import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
 import { consumeChatGift, refundChatGift } from './chat-gifts.repo.js';
 import { consumeBabaFreeReply, refundBabaFreeReply } from '../memory/memory.repo.js';
 import { FREE_REPLY_HOURS } from '../memory/memory-rules.js';
-import { refreshLapsedPlayPass } from './pass-play.service.js';
+import { refreshLapsedPass } from './pass-refresh.js';
 import { keyed, refundOf } from '../billing/refund-keys.js';
 
 /**
@@ -59,7 +59,7 @@ export async function chargeQuestion(
   }
   if (await consumePassQuestion(userId)) return 'pass';
   // A Play Pass at its end whose renewal Google hasn't told us about yet: ask, then try again.
-  if ((await refreshLapsedPlayPass(userId)) && (await consumePassQuestion(userId))) return 'pass';
+  if ((await refreshLapsedPass(userId)) && (await consumePassQuestion(userId))) return 'pass';
   if (await consumeQuestionCredit(userId)) return 'credits';
   return (await deductWalletBalance(userId, pricePaise, CHAT_REASON, ...keyed(chargeKey)))
     ? 'wallet'

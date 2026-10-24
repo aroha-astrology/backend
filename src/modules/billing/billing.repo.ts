@@ -279,3 +279,13 @@ export async function refundOrder(
     return { order, walletBalancePaise: userRow.walletBalancePaise };
   });
 }
+
+/** The order for one App Store transaction (money.storekit), if one was recorded. */
+export async function findAppStoreOrder(transactionId: string): Promise<OrderRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.gatewayProvider, 'app_store'), eq(orders.gatewayOrderId, transactionId)))
+    .limit(1);
+  return row;
+}

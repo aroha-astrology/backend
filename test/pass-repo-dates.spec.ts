@@ -51,7 +51,7 @@ describe('pass repo date params', () => {
     expect(params.filter((p) => p instanceof Date)).toEqual([]);
     // A Play Pass is never ended on its date alone: only Google (the reconcile) ends it.
     expect(params).toContain('google_play');
-    expect(state.queries.join('\n')).toMatch(/not "user_subscriptions"\."source" = \$\d+/);
+    expect(state.queries.join('\n')).toMatch(/not "user_subscriptions"\."source" in \(\$\d+, \$\d+, \$\d+\)/);
   });
 
   it('the Play reconcile, on-demand and deletion queries send no bare Date to the driver', async () => {

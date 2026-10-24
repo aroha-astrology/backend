@@ -82,6 +82,22 @@ const EnvSchema = z
     // leaves the server; only the key id is handed to the browser.
     RAZORPAY_KEY_ID: z.string().min(1).optional(),
     RAZORPAY_KEY_SECRET: z.string().min(1).optional(),
+    // The Aroha Pass on the website (Razorpay Subscriptions, switch money.razorpayPass). The
+    // webhook secret is the one entered for the webhook in the Razorpay dashboard. The plans are
+    // created there too (monthly, one per tier and currency); their ids go here as JSON, e.g.
+    // {"silver":{"INR":"plan_A"},"gold":{"INR":"plan_B","USD":"plan_C"},"platinum":{"INR":"plan_D"}}.
+    // A currency without its own plan falls back to the tier's INR plan.
+    RAZORPAY_WEBHOOK_SECRET: z.string().min(1).optional(),
+    RAZORPAY_PASS_PLANS: z.string().min(1).optional(),
+
+    // --- Apple App Store (StoreKit 2, switch money.storekit) ------------------
+    // The iOS app's bundle id: a signed App Store transaction for any other app is refused.
+    APPLE_BUNDLE_ID: z.string().min(1).default('com.aroha.astrology'),
+    // 'true' accepts Sandbox transactions too (TestFlight and App Review buy in the sandbox).
+    APPLE_ALLOW_SANDBOX: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
 
     // --- Gemini (sole LLM provider) ----------------------------------------
     // Multi-key rotation pool (see lib/llm/gemini-key-pool.ts): comma-separated

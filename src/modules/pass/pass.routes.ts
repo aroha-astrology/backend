@@ -4,6 +4,12 @@ import { requireAnyFeature, requireFeature } from '../../middleware/feature.js';
 import { QUESTION_PACKS } from './pass.config.js';
 import { buyQuestionPack, getPassStatus, startQuestionPackCheckout } from './pass.service.js';
 import { confirmPlayPass } from './pass-play.service.js';
+import {
+  cancelRazorpayPass,
+  confirmRazorpayPass,
+  startRazorpayPass,
+} from './pass-razorpay.service.js';
+import { confirmAppStorePass } from './pass-appstore.service.js';
 import { passStats, listPassSubscribers } from './pass.repo.js';
 import { passLaunchReadiness, sendPassLaunch } from './pass-launch.service.js';
 import { logAdminAction } from '../admin/admin.repo.js';
@@ -84,6 +90,140 @@ const playConfirmRoute = createRoute({
 passRouter.openapi(playConfirmRoute, async (c) => {
   const user = c.get('user');
   await confirmPlayPass(user.id, c.req.valid('json'));
+  const status = await getPassStatus(user);
+  return c.json(status as unknown as Record<string, unknown>, 200);
+});
+
+// --- The Pass on the website: Razorpay Subscriptions (money.razorpayPass) ---------------------
+
+const webSubscribeRoute = createRoute({
+  method: 'post',
+  path: '/pass/razorpay/subscribe',
+  tags: ['Pass'],
+  summary: 'Start a Razorpay subscription for one Pass tier (the website only, money.razorpayPass)',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireFeature('nav.arohaPass')] as const,
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({
+            tier: z.enum(['silver', 'gold', 'platinum']),
+            currency: z.string().length(3).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: 'Subscription to open in Razorpay Checkout', content: { 'application/json': { schema: Json } } },
+    400: errorResponse('PASS_TIER_NOT_AVAILABLE'),
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('FEATURE_DISABLED'),
+    409: errorResponse('PASS_ALREADY_ACTIVE or PASS_WEB_NOT_CONFIGURED'),
+  },
+});
+
+passRouter.openapi(webSubscribeRoute, async (c) => {
+  const user = c.get('user');
+  const body = c.req.valid('json');
+  const checkout = await startRazorpayPass(user, body.tier, {
+    country: user.currentCountry ?? user.geoCountry,
+    currency: body.currency,
+  });
+  return c.json(checkout as unknown as Record<string, unknown>, 200);
+});
+
+const webVerifyRoute = createRoute({
+  method: 'post',
+  path: '/pass/razorpay/verify',
+  tags: ['Pass'],
+  summary: "Record a web Pass after Razorpay Checkout (checks Razorpay's signature, then asks Razorpay)",
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireFeature('nav.arohaPass')] as const,
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({
+            razorpayPaymentId: z.string().min(1).max(100),
+            razorpaySubscriptionId: z.string().min(1).max(100),
+            razorpaySignature: z.string().min(1).max(200),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: 'Status', content: { 'application/json': { schema: Json } } },
+    400: errorResponse('Payment could not be verified'),
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('FEATURE_DISABLED or another account'),
+    409: errorResponse('PASS_PAYMENT_PENDING'),
+  },
+});
+
+passRouter.openapi(webVerifyRoute, async (c) => {
+  const user = c.get('user');
+  await confirmRazorpayPass(user.id, c.req.valid('json'));
+  const status = await getPassStatus(user);
+  return c.json(status as unknown as Record<string, unknown>, 200);
+});
+
+const webCancelRoute = createRoute({
+  method: 'post',
+  path: '/pass/razorpay/cancel',
+  tags: ['Pass'],
+  summary: 'Stop a web Pass from renewing; it runs to the end of the paid month',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireFeature('nav.arohaPass')] as const,
+  responses: {
+    200: { description: 'Status', content: { 'application/json': { schema: Json } } },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('NO_WEB_PASS'),
+  },
+});
+
+passRouter.openapi(webCancelRoute, async (c) => {
+  const user = c.get('user');
+  await cancelRazorpayPass(user.id);
+  const status = await getPassStatus(user);
+  return c.json(status as unknown as Record<string, unknown>, 200);
+});
+
+// --- The Pass on an iPhone: StoreKit 2 (money.storekit) -----------------------------------------
+
+const appStoreConfirmRoute = createRoute({
+  method: 'post',
+  path: '/pass/app-store',
+  tags: ['Pass'],
+  summary: "Record an App Store Pass the iOS app bought or restored (Apple's signed transaction)",
+  security: [{ bearerAuth: [] }],
+  middleware: [requireUser, requireFeature('nav.arohaPass')] as const,
+  request: {
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: z.object({ signedTransaction: z.string().min(1).max(20_000) }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: 'Status', content: { 'application/json': { schema: Json } } },
+    400: errorResponse('APP_STORE_SIGNATURE_INVALID or NOT_A_PASS_PRODUCT'),
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('FEATURE_DISABLED or APP_STORE_OTHER_ACCOUNT'),
+    409: errorResponse('APP_STORE_SUBSCRIPTION_NOT_ACTIVE'),
+  },
+});
+
+passRouter.openapi(appStoreConfirmRoute, async (c) => {
+  const user = c.get('user');
+  await confirmAppStorePass(user.id, c.req.valid('json').signedTransaction);
   const status = await getPassStatus(user);
   return c.json(status as unknown as Record<string, unknown>, 200);
 });
