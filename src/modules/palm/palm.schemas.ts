@@ -50,9 +50,17 @@ export const PalmReadingResponseSchema = z
     observations: z.record(z.string(), z.unknown()).optional(),
     scores: z.record(z.string(), z.number()).optional(),
     synthesis: z.record(z.string(), z.unknown()).optional(),
-    /** Only on an 'observed', not-yet-unlocked reading: whether the reader's Aroha Pass covers
-     * the full reading, and how many they have left this Pass period. */
-    allowance: z.object({ passMember: z.boolean(), left: z.number() }).optional(),
+    /** Only on an 'observed', not-yet-unlocked reading: whether the reader has an Aroha Pass, how
+     * many free readings they have left this Pass period, and the price of a paid one. */
+    allowance: z
+      .object({
+        passMember: z.boolean(),
+        left: z.number(),
+        pricePaise: z.number(),
+        /** Admin user-group members: every reading is free and none is counted. */
+        unlimited: z.boolean().optional(),
+      })
+      .optional(),
     error: z.string().nullable().optional(),
   })
   .openapi('PalmReadingResponse');

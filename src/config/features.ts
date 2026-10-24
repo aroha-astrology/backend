@@ -267,15 +267,15 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   },
   // Defaults OFF — see home.palmReading above for why. Gate this one deliberately from
   // Admin -> Features once the live vision model and cost-per-reading have been validated.
-  // 2026-10-23 (owner): the full reading is an Aroha Pass benefit (every tier, one per Pass
-  // period), never a wallet charge. This key is now only the on/off switch for the unlock; its
-  // price is not charged.
+  // 2026-10-24 (owner): the full reading is open to everyone at the normal price (Rs 199, from the
+  // wallet); an Aroha Pass member gets one free per Pass period and pays the normal price for any
+  // more. Admin can hand a user's (or everyone's) free reading back from Admin -> Users.
   {
     key: 'paid.palmReading',
-    label: 'Palm Reading (full reading: Aroha Pass only, price not charged)',
+    label: 'Palm Reading (full reading: price for everyone; Aroha Pass gets one free per month)',
     group: 'paid',
     defaultEnabled: false,
-    defaultPricePaise: 9900,
+    defaultPricePaise: 19900,
   },
   // Realtime voice conversation (Gemini Live). Defaults OFF for the standing
   // "new features ship dark" reason, and for two more specific to this one:

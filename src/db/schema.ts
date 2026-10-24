@@ -341,6 +341,9 @@ export const users = pgTable(
     dailyHoroscopeSendHourLocal: time('daily_horoscope_send_hour_local'),
     interestAreas: text('interest_areas').array().$type<string[]>(),
     relationshipStatus: relationshipStatusEnum('relationship_status'),
+    // When admin last reset this user's free palm reading (see migration 0103); free readings
+    // unlocked before it no longer count against the Pass period's one. Null = never reset.
+    palmFreeResetAt: timestamp('palm_free_reset_at', { withTimezone: true }),
     // Self-reported income ranges, collected as a single tap in chat when a
     // money question needs a scale to be read against (see lib/chat-income.ts
     // for the fixed bracket table these codes come from). Plain text, not an

@@ -1,6 +1,11 @@
 import { and, desc, eq, gte, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
-import { palmReadings, type PalmMountReliefData, type PalmReadingRow } from '../../db/schema.js';
+import {
+  palmReadings,
+  users,
+  type PalmMountReliefData,
+  type PalmReadingRow,
+} from '../../db/schema.js';
 
 /** Consider a 'generating' row abandoned (crashed mid-run) after this long. Longer than the
  * 5 minutes other report locks use: a scan is two Omnirush vision runs (up to ~5 min with the
@@ -230,8 +235,9 @@ export async function markPalmReadingUnlocked(
 }
 
 /**
- * Full readings the user unlocked since `since`, leaving out `exceptId` (a retry of the same
- * reading is not a second one) and failed ones (the member can scan again instead).
+ * FREE (Aroha Pass) full readings the user unlocked since `since`, leaving out `exceptId` (a retry
+ * of the same reading is not a second one) and failed ones (the member can scan again instead).
+ * A reading paid for from the wallet carries its price and never uses up the member's free one.
  */
 export async function countPalmUnlocksSince(
   userId: string,
@@ -247,6 +253,7 @@ export async function countPalmUnlocksSince(
         gte(palmReadings.unlockedAt, since),
         ne(palmReadings.id, exceptId),
         ne(palmReadings.status, 'failed'),
+        sql`coalesce(${palmReadings.pricePaidPaise}, 0) = 0`,
       ),
     );
   return row?.n ?? 0;
@@ -274,4 +281,33 @@ export async function findStaleGeneratingPalmReadings(): Promise<PalmReadingRow[
         sql`${palmReadings.updatedAt} < now() - ${staleSeconds} * interval '1 second'`,
       ),
     );
+}
+
+/** A wallet reading that failed was refunded in full: it goes back to "scanned, not yet unlocked",
+ * so opening it again asks for payment (or the free reading) instead of a second free try. */
+export async function clearPalmUnlock(readingId: string): Promise<void> {
+  await db
+    .update(palmReadings)
+    .set({ unlocked: false, unlockedAt: null, pricePaidPaise: null, updatedAt: new Date() })
+    .where(eq(palmReadings.id, readingId));
+}
+
+/** Hands back a user's free palm reading (their count restarts from now). */
+export async function resetPalmFreeCount(userId: string): Promise<boolean> {
+  const rows = await db
+    .update(users)
+    .set({ palmFreeResetAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .returning({ id: users.id });
+  return rows.length > 0;
+}
+
+/** Hands back everyone's free palm reading; returns how many accounts were reset. */
+export async function resetPalmFreeCountForAll(): Promise<number> {
+  const rows = await db
+    .update(users)
+    .set({ palmFreeResetAt: new Date() })
+    .where(isNull(users.deletedAt))
+    .returning({ id: users.id });
+  return rows.length;
 }
