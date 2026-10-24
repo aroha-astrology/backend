@@ -50,6 +50,8 @@ import {
   resetReportGeneration,
   deleteReportGeneration,
   resetReportGenerationsBulk,
+  resetUserPalmCount,
+  resetAllPalmCounts,
   deleteReportGenerationsBulk,
   getReportRatings,
   getVoiceFeedback,
@@ -447,6 +449,62 @@ adminRouter.openapi(resetReportGenerationsBulkRoute, async (c) => {
   const { reportKey } = c.req.valid('json');
   const result = await resetReportGenerationsBulk(reportKey, adminPhoneOf(c));
   return c.json(result, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /admin/users/{id}/palm-reset, POST /admin/palm/reset-all              */
+/* -------------------------------------------------------------------------- */
+
+const resetUserPalmCountRoute = createRoute({
+  method: 'post',
+  path: '/admin/users/{id}/palm-reset',
+  tags: ['Admin'],
+  summary: "Reset one user's free palm reading count (their Aroha Pass reading comes back)",
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    params: z.object({
+      id: z
+        .string()
+        .uuid()
+        .openapi({ param: { name: 'id', in: 'path' } }),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Count reset',
+      content: { 'application/json': { schema: z.object({ userId: z.string() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+    404: errorResponse('User not found'),
+  },
+});
+
+adminRouter.openapi(resetUserPalmCountRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  return c.json(await resetUserPalmCount(id, adminPhoneOf(c)), 200);
+});
+
+const resetAllPalmCountsRoute = createRoute({
+  method: 'post',
+  path: '/admin/palm/reset-all',
+  tags: ['Admin'],
+  summary: "Reset every account's free palm reading count",
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: {
+      description: 'Counts reset',
+      content: { 'application/json': { schema: z.object({ count: z.number() }) } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(resetAllPalmCountsRoute, async (c) => {
+  return c.json(await resetAllPalmCounts(adminPhoneOf(c)), 200);
 });
 
 /* -------------------------------------------------------------------------- */

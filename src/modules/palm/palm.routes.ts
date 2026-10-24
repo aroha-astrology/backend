@@ -294,7 +294,7 @@ palmRouter.openapi(getOneRoute, async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
   const { language } = c.req.valid('query');
-  const dto = await getPalmReadingForUser(user.id, id, language || 'en');
+  const dto = await getPalmReadingForUser(user, id, language || 'en');
   return c.json(dto, 200);
 });
 

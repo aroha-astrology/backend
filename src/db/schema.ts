@@ -355,6 +355,9 @@ export const users = pgTable(
     dailyHoroscopeSendHourLocal: time('daily_horoscope_send_hour_local'),
     interestAreas: text('interest_areas').array().$type<string[]>(),
     relationshipStatus: relationshipStatusEnum('relationship_status'),
+    // When admin last reset this user's free palm reading (see migration 0103); free readings
+    // unlocked before it no longer count against the Pass period's one. Null = never reset.
+    palmFreeResetAt: timestamp('palm_free_reset_at', { withTimezone: true }),
     // Self-reported income ranges, collected as a single tap in chat when a
     // money question needs a scale to be read against (see lib/chat-income.ts
     // for the fixed bracket table these codes come from). Plain text, not an
@@ -1949,6 +1952,14 @@ export const reports = pgTable(
      * Null means "runnable immediately" — the normal case for a fresh purchase. Only
      * set when a failed attempt is requeued for retry (see requeueReportForRetry). */
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    /** Cross-worker claim for the free pre-v7 rebuild. */
+    refreshStartedAt: timestamp('refresh_started_at', { withTimezone: true }),
+    /** Attempts for the free rebuild (max 3, then old report is shown). */
+    refreshAttempts: integer('refresh_attempts').notNull().default(0),
+    /** When the report was successfully rebuilt. */
+    refreshedAt: timestamp('refreshed_at', { withTimezone: true }),
+    /** Last rebuild error (truncated to 500 chars). */
+    refreshError: text('refresh_error'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

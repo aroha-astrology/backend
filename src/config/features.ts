@@ -287,15 +287,15 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   },
   // Defaults OFF — see home.palmReading above for why. Gate this one deliberately from
   // Admin -> Features once the live vision model and cost-per-reading have been validated.
-  // 2026-10-23 (owner): the full reading is an Aroha Pass benefit (every tier, one per Pass
-  // period), never a wallet charge. This key is now only the on/off switch for the unlock; its
-  // price is not charged.
+  // 2026-10-24 (owner): the full reading is open to everyone at the normal price (Rs 199, from the
+  // wallet); an Aroha Pass member gets one free per Pass period and pays the normal price for any
+  // more. Admin can hand a user's (or everyone's) free reading back from Admin -> Users.
   {
     key: 'paid.palmReading',
-    label: 'Palm Reading (full reading: Aroha Pass only, price not charged)',
+    label: 'Palm Reading (full reading: price for everyone; Aroha Pass gets one free per month)',
     group: 'paid',
     defaultEnabled: false,
-    defaultPricePaise: 9900,
+    defaultPricePaise: 19900,
   },
   // Realtime voice conversation (Gemini Live). Defaults OFF for the standing
   // "new features ship dark" reason, and for two more specific to this one:
@@ -685,6 +685,22 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     // pre-selected the FIRST time an admin opens this key's dropdown, not a
     // silent behavior change; see modelForReportProfile() in gemini-client.ts.
     defaultModel: 'gemini-3.1-pro-preview',
+  },
+  // 2026-10-24 owner: every report written before CONTENT_VERSION 7 (engine 2026.10.2 + real transit dates) is rebuilt free the first time its owner opens it; the reader waits on an "updating" screen. Owner chose ON at deploy; switching it off shows old reports as they are.
+  {
+    key: 'reports.refreshOldOnOpen',
+    label: 'Rebuild old reports with the corrected chart when opened (free)',
+    group: 'reports',
+    defaultEnabled: true,
+  },
+  // owner picked Gemini 3.7 Flash on Oxion 2026-10-24; a Gemini id here (or the key switched off) skips Oxion.
+  {
+    key: 'ai.reportRefreshModel',
+    label: 'Old-report rebuild — model tried first (Oxion), then Gemini free, then Gemini paid',
+    group: 'ai',
+    defaultEnabled: true,
+    modelOptions: SELECTABLE_PALM_MODELS,
+    defaultModel: 'oxion:gemini-3.7-flash',
   },
 
   // ---------------------------------------------------------------------------

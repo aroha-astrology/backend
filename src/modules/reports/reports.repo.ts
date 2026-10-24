@@ -376,6 +376,121 @@ export async function overwriteReadyReportContent(
     .where(and(eq(reports.id, id), eq(reports.status, 'ready')));
 }
 
+/** Max attempts for the free pre-v7 report rebuild before falling back to the old content. */
+export const REPORT_REFRESH_MAX_ATTEMPTS = 3;
+
+/** How long a refresh claim is considered running before it is stale and can be re-claimed. */
+export const REPORT_REFRESH_STALE_MS = 10 * 60_000;
+
+/** Atomically claim a `ready` report for free rebuild. Returns true when the claim succeeded. */
+export async function claimReportRefresh(id: string): Promise<boolean> {
+  const cutoff = new Date(Date.now() - REPORT_REFRESH_STALE_MS);
+  const rows = await db
+    .update(reports)
+    .set({
+      refreshStartedAt: new Date(),
+      refreshAttempts: sql`${reports.refreshAttempts} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(reports.id, id),
+        eq(reports.status, 'ready'),
+        sql`${reports.refreshAttempts} < ${REPORT_REFRESH_MAX_ATTEMPTS}`,
+        sql`(${reports.refreshStartedAt} IS NULL OR ${reports.refreshStartedAt} < ${cutoff.toISOString()}::timestamptz)`,
+      ),
+    )
+    .returning({ id: reports.id });
+  return rows.length > 0;
+}
+
+/** Whether the report's refresh claim is still considered running (not stale). */
+export function isReportRefreshRunning(row: Pick<ReportRow, 'refreshStartedAt'>): boolean {
+  if (!row.refreshStartedAt) return false;
+  return row.refreshStartedAt.getTime() > Date.now() - REPORT_REFRESH_STALE_MS;
+}
+
+/** Mark a claimed report as successfully rebuilt. */
+export async function markReportRefreshed(
+  id: string,
+  patch: { content: Record<string, unknown>; model: string; chartSnapshot: Record<string, unknown>; calculationVersion: string | null; ephemerisVersion: string | null; ayanamsa: string | null; houseSystem: string | null; nodeType: string | null; promptVersion: string },
+): Promise<void> {
+  await db
+    .update(reports)
+    .set({
+      ...patch,
+      translations: {},
+      error: null,
+      refreshStartedAt: null,
+      refreshError: null,
+      refreshedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(reports.id, id), eq(reports.status, 'ready')));
+}
+
+/** Mark a claimed report's rebuild as failed, freeing the claim for retry. */
+export async function markReportRefreshFailed(id: string, error: string): Promise<void> {
+  await db
+    .update(reports)
+    .set({
+      refreshStartedAt: null,
+      refreshError: error.slice(0, 500),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(reports.id, id), eq(reports.status, 'ready')));
+}
+
+/** Counts for the Admin report-refresh dashboard. */
+export async function reportRefreshCounts(currentContentVersion: number): Promise<{ waiting: number; running: number; failed: number; rebuilt: number; byModel: Array<{ model: string; count: number }> }> {
+  const cutoff = new Date(Date.now() - REPORT_REFRESH_STALE_MS);
+  const [counts] = await db
+    .select({
+      waiting: sql<number>`count(*) filter (where coalesce((${reports.content}->>'contentVersion')::int, 0) < ${currentContentVersion} and ${reports.refreshAttempts} < ${REPORT_REFRESH_MAX_ATTEMPTS} and (${reports.refreshStartedAt} is null or ${reports.refreshStartedAt} < ${cutoff.toISOString()}::timestamptz))`,
+      running: sql<number>`count(*) filter (where coalesce((${reports.content}->>'contentVersion')::int, 0) < ${currentContentVersion} and ${reports.refreshStartedAt} is not null and ${reports.refreshStartedAt} > ${cutoff.toISOString()}::timestamptz)`,
+      failed: sql<number>`count(*) filter (where coalesce((${reports.content}->>'contentVersion')::int, 0) < ${currentContentVersion} and ${reports.refreshAttempts} >= ${REPORT_REFRESH_MAX_ATTEMPTS})`,
+      rebuilt: sql<number>`count(*) filter (where ${reports.refreshedAt} is not null)`,
+    })
+    .from(reports)
+    .where(eq(reports.status, 'ready'));
+  const byModelRows = await db
+    .select({
+      model: sql<string>`coalesce(${reports.model}, 'unknown')`.as('model'),
+      count: count(),
+    })
+    .from(reports)
+    .where(and(eq(reports.status, 'ready'), sql`${reports.refreshedAt} is not null`))
+    .groupBy(sql`coalesce(${reports.model}, 'unknown')`)
+    .orderBy(sql`count(*) desc`);
+  return {
+    waiting: Number(counts?.waiting ?? 0),
+    running: Number(counts?.running ?? 0),
+    failed: Number(counts?.failed ?? 0),
+    rebuilt: Number(counts?.rebuilt ?? 0),
+    byModel: byModelRows.map((r) => ({ model: r.model, count: Number(r.count) })),
+  };
+}
+
+/** Reset failed refresh attempts so old reports become eligible for rebuild again. */
+export async function resetFailedReportRefreshes(currentContentVersion: number): Promise<number> {
+  const rows = await db
+    .update(reports)
+    .set({
+      refreshAttempts: 0,
+      refreshError: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(reports.status, 'ready'),
+        sql`coalesce((${reports.content}->>'contentVersion')::int, 0) < ${currentContentVersion}`,
+        sql`${reports.refreshAttempts} >= ${REPORT_REFRESH_MAX_ATTEMPTS}`,
+      ),
+    )
+    .returning({ id: reports.id });
+  return rows.length;
+}
+
 /** Every currently-`ready` report row, across all users — the enumeration side of the bulk-admin
  * content refresh above (see `overwriteReadyReportContent`). */
 export async function findReadyReportRows(): Promise<ReportRow[]> {

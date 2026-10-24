@@ -41,6 +41,7 @@ export function makeUserRow(overrides: Partial<UserRow> = {}): UserRow {
     dailyHoroscopeSendHourLocal: null,
     interestAreas: null,
     relationshipStatus: null,
+    palmFreeResetAt: null,
     partnerSeekingIntent: null,
     notificationPrefs: null,
     quietHours: null,

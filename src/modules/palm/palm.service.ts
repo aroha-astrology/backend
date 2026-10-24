@@ -30,9 +30,10 @@ import {
   PALM_TRANSLATION_PROFILE,
   MODEL,
 } from '../../config/llm.js';
-import { addWalletBalance } from '../users/users.repo.js';
+import { addWalletBalance, deductWalletBalance } from '../users/users.repo.js';
 import { refundKeysOn, refundOf } from '../billing/refund-keys.js';
 import { passEntitlement, passPeriodStart, requirePass } from '../../lib/entitlements.js';
+import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
 import { PALM_READINGS_PER_PERIOD } from '../pass/pass.config.js';
 import { resolveFeaturesForUser, modelForUser } from '../features/features.service.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
@@ -48,6 +49,7 @@ import {
   markPalmReadingReady,
   markPalmReadingFailed,
   markPalmReadingUnlocked,
+  clearPalmUnlock,
   countPalmUnlocksSince,
   savePalmTranslation,
   findStaleGeneratingPalmReadings,
@@ -88,6 +90,8 @@ import type { UserRow, PalmReadingRow } from '../../db/schema.js';
 import type { PalmReadingDto } from './palm.schemas.js';
 
 export const PALM_FEATURE_KEY = 'paid.palmReading';
+/** The normal price of a full reading when the admin has not set one: Rs 199 (owner, 2026-10-24). */
+export const DEFAULT_PALM_PRICE_PAISE = 19_900;
 /** Admin -> Features model pickers (see config/features.ts's `ai` group). Both resolve to
  * the global MODEL until someone picks a model in the dashboard. */
 const PALM_VISION_MODEL_KEY = 'ai.palmVisionModel';
@@ -287,13 +291,37 @@ export async function analyzePalmReading(
 }
 
 /**
- * The "unlock the full report" half, an Aroha Pass benefit (owner, 2026-10-23): every tier,
- * PALM_READINGS_PER_PERIOD full readings per Pass period, never charged to the wallet. Requires
- * Stage A to have already completed ('observed'), then runs Stage B using the ALREADY-STORED
- * observations — no re-download, no re-running vision.
+ * Members of an admin user group are never limited or charged for palm readings (owner,
+ * 2026-10-24): they are the team and testers, so every reading is free and none is counted.
+ */
+async function inAdminGroup(userId: string): Promise<boolean> {
+  try {
+    return (await listGroupIdsForUser(userId)).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where this reader's free reading is counted from: the start of their Pass period, or the moment
+ * admin last reset their count, whichever is later.
+ */
+async function freeAllowanceStart(user: UserRow): Promise<Date> {
+  const periodStart = await passPeriodStart(user.id);
+  const reset = user.palmFreeResetAt;
+  return reset && reset > periodStart ? reset : periodStart;
+}
+
+/**
+ * The "unlock the full report" half, open to everyone (owner, 2026-10-24). A reader pays the normal
+ * price from the wallet; an Aroha Pass member (any tier) gets PALM_READINGS_PER_PERIOD reading free
+ * per Pass period (admin can reset that count) and pays the normal price for any further one.
+ * Requires Stage A to have already completed ('observed'), then runs Stage B using the
+ * ALREADY-STORED observations — no re-download, no re-running vision.
  *
- * Throws 403 PASS_REQUIRED without a Pass, 403 PALM_PERIOD_LIMIT once this period's reading is
- * used. Retrying a reading that failed after it was unlocked doesn't count again.
+ * Throws 409 INSUFFICIENT_CREDITS when the wallet is short. A reading that failed after a free
+ * unlock is retried free and does not count again; one that failed after a paid unlock was
+ * refunded in full and asks for payment again.
  */
 export async function unlockPalmReading(
   user: UserRow,
@@ -308,17 +336,33 @@ export async function unlockPalmReading(
 
   const features = await resolveFeaturesForUser(user.id);
   if (features[PALM_FEATURE_KEY]?.enabled === false) throw Errors.forbidden('FEATURE_DISABLED');
-  await requirePass(user.id, 'palm');
-  if (!row.unlocked) {
-    const used = await countPalmUnlocksSince(user.id, await passPeriodStart(user.id), readingId);
-    if (used >= PALM_READINGS_PER_PERIOD) throw Errors.forbidden('PALM_PERIOD_LIMIT');
+  const pricePaise = features[PALM_FEATURE_KEY]?.pricePaise ?? DEFAULT_PALM_PRICE_PAISE;
+
+  // How this unlock is paid for. A retry of an already-unlocked reading (failed after a free
+  // unlock) is not paid for again.
+  let chargePaise = 0;
+  let charged = false;
+  if (!row.unlocked && !(await inAdminGroup(user.id))) {
+    const pass = await passEntitlement(user.id);
+    const free =
+      pass?.features.includes('palm') === true &&
+      (await countPalmUnlocksSince(user.id, await freeAllowanceStart(user), readingId)) <
+        PALM_READINGS_PER_PERIOD;
+    if (!free) {
+      chargePaise = pricePaise;
+      charged = await deductWalletBalance(user.id, chargePaise, 'palm_unlock');
+      if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
+    }
   }
 
   const claimed = await claimPalmGeneration(readingId, ['observed', 'failed']);
-  if (!claimed) throw Errors.conflict('Reading is already being unlocked');
-  // Price 0 even on a retry: a wallet reading from before the Pass that failed was already
-  // refunded, and a stored price would refund it again if this run fails too.
-  await markPalmReadingUnlocked(readingId, 0);
+  if (!claimed) {
+    if (charged) await addWalletBalance(user.id, chargePaise, 'refund:palm_unlock');
+    throw Errors.conflict('Reading is already being unlocked');
+  }
+  // Price 0 for a free (Pass) reading and for a retry: a stored price would be refunded again if
+  // a retry that was already refunded fails once more.
+  await markPalmReadingUnlocked(readingId, chargePaise);
 
   void runPalmGeneration(user, claimed).catch((err) => {
     logger.error({ err, readingId }, 'palm unlock background failure escaped runPalmGeneration');
@@ -327,15 +371,23 @@ export async function unlockPalmReading(
   return { status: 'generating' };
 }
 
-/** Whether the reader's Pass covers a full reading now, so the page can say so before a tap. */
+/**
+ * What unlocking this reading would cost this reader right now, so the page can say so before a
+ * tap: whether it is free (a Pass member with this period's reading still unused), or the price.
+ */
 async function palmAllowance(
-  userId: string,
+  user: UserRow,
   readingId: string,
-): Promise<{ passMember: boolean; left: number }> {
-  const pass = await passEntitlement(userId);
-  if (!pass?.features.includes('palm')) return { passMember: false, left: 0 };
-  const used = await countPalmUnlocksSince(userId, await passPeriodStart(userId), readingId);
-  return { passMember: true, left: Math.max(0, PALM_READINGS_PER_PERIOD - used) };
+): Promise<{ passMember: boolean; left: number; pricePaise: number; unlimited?: boolean }> {
+  const features = await resolveFeaturesForUser(user.id);
+  const pricePaise = features[PALM_FEATURE_KEY]?.pricePaise ?? DEFAULT_PALM_PRICE_PAISE;
+  if (await inAdminGroup(user.id)) {
+    return { passMember: true, left: PALM_READINGS_PER_PERIOD, pricePaise, unlimited: true };
+  }
+  const pass = await passEntitlement(user.id);
+  if (!pass?.features.includes('palm')) return { passMember: false, left: 0, pricePaise };
+  const used = await countPalmUnlocksSince(user.id, await freeAllowanceStart(user), readingId);
+  return { passMember: true, left: Math.max(0, PALM_READINGS_PER_PERIOD - used), pricePaise };
 }
 
 /** What each captured angle is called on a contact sheet (panel A is always the front). */
@@ -592,6 +644,8 @@ async function runPalmGeneration(
         'refund:palm_unlock',
         ...(await palmRefundOf(user.id, readingId)),
       );
+      // Refunded in full, so opening it again asks for payment again (never a second free try).
+      await clearPalmUnlock(readingId);
     }
   }
 }
@@ -1047,14 +1101,15 @@ function withQuestionAnswer(dto: PalmReadingDto, answer: string | undefined): vo
 }
 
 export async function getPalmReadingForUser(
-  userId: string,
+  user: UserRow,
   readingId: string,
   language: string,
 ): Promise<PalmReadingDto> {
+  const userId = user.id;
   const row = await loadOwnedReading(userId, readingId);
   if (row.status === 'observed' && !row.unlocked) {
     const dto = toDto(row);
-    dto.allowance = await palmAllowance(userId, readingId);
+    dto.allowance = await palmAllowance(user, readingId);
     return dto;
   }
   if (row.status !== 'ready' || language === 'en') return toDto(row);

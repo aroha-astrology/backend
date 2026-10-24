@@ -22,6 +22,7 @@ import {
   type ContactTypeFilter,
 } from '../users/users.repo.js';
 import { requestAccountDeletion } from '../users/users.service.js';
+import { resetPalmFreeCount, resetPalmFreeCountForAll } from '../palm/palm.repo.js';
 import { costByAgent, type AgentCostRow } from './ai-usage.repo.js';
 import {
   listAllReportRows,
@@ -733,4 +734,19 @@ export async function deleteUserHard(userId: string, adminPhone: string): Promis
     phoneE164: user.phoneE164,
   });
   return { id: userId };
+}
+
+/** Hands one user's free (Aroha Pass) palm reading back: their count restarts from now. */
+export async function resetUserPalmCount(userId: string, adminPhone: string) {
+  const ok = await resetPalmFreeCount(userId);
+  if (!ok) throw Errors.notFound('User not found');
+  await logAdminAction(adminPhone, `POST /v1/admin/users/${userId}/palm-reset`, {});
+  return { userId };
+}
+
+/** Hands everyone's free palm reading back (a new free reading for every account). */
+export async function resetAllPalmCounts(adminPhone: string) {
+  const count = await resetPalmFreeCountForAll();
+  await logAdminAction(adminPhone, 'POST /v1/admin/palm/reset-all', { count });
+  return { count };
 }

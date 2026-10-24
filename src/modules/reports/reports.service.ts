@@ -20,7 +20,7 @@ import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
 import { unknownBirthTimeGuidance } from '../../lib/birth-time-window.js';
 import { Errors } from '../../lib/errors.js';
-import { runWithRequestContext } from '../../lib/request-context.js';
+import { getRequestContext, runWithRequestContext } from '../../lib/request-context.js';
 import { MODEL } from '../../config/llm.js';
 import { env } from '../../config/env.js';
 import {
@@ -32,7 +32,7 @@ import {
   type ReportKey,
 } from '../../config/reports.js';
 import { assignSectionIds } from '../../config/report-sections.js';
-import { resolveFeaturesForUser } from '../features/features.service.js';
+import { resolveFeatures, resolveFeaturesForUser } from '../features/features.service.js';
 import {
   deductWalletBalance,
   addWalletBalance,
@@ -49,6 +49,9 @@ import {
   type PlanetStrengthRow,
 } from '../../lib/chat-grounding.js';
 import { analyzeAllVakriPlanets } from '../../lib/astro-engine/index.js';
+import { CALCULATION_VERSION } from '../../lib/astro-engine/version.js';
+import { upcomingTransitFactsNow } from '../../lib/upcoming-transits.js';
+import { requestKundliGeneration } from '../kundli/kundli.service.js';
 import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
 import { verifyReportClaims } from '../../lib/llm/reports/verify-claims.js';
 import {
@@ -62,6 +65,7 @@ import {
 import type { BirthRecord } from '../../lib/swarm/state.js';
 import {
   claimQueuedReports,
+  claimReportRefresh,
   claimReportRow,
   countReadyReportsByKey,
   findActiveYearlyReportRow,
@@ -70,10 +74,16 @@ import {
   findReportRowByInputHash,
   findStaleGeneratingReports,
   hashReportInput,
+  isReportRefreshRunning,
   listReportsForUser,
   markReportFailed,
   markReportReady,
+  markReportRefreshFailed,
   overwriteReadyReportContent,
+  markReportRefreshed,
+  REPORT_REFRESH_MAX_ATTEMPTS,
+  reportRefreshCounts,
+  resetFailedReportRefreshes,
   requeueReportForRetry,
   saveReportProgress,
   saveReportScoresTranslation,
@@ -127,17 +137,20 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
  * facts added to the narrative of all 11 chart-based report types = version 3; the 5 flagship
  * reports' gemstone slot replaced with Lal Kitab remedies, and Marriage Timing hidden for
  * already-married users = version 4; Marriage Report's "Marriage Quality By Decade" section
- * dropped and its "At A Glance" section stopped stating the numeric marriage score = version 6).
+ * dropped and its "At A Glance" section stopped stating the numeric marriage score = version 6;
+ * version 7 = rebuilt on the corrected engine (2026.10.2) with real upcoming transit dates in the
+ * facts (owner 2026-10-24); old rows are rebuilt on open by refreshIfOld, not by
+ * triggerLazyRegenerationIfStale).
  * Stamped onto
  * `content.contentVersion` by both write paths (`runReportGeneration`, `regenerateReportContent`).
  * A `ready` row whose stamp doesn't match the current version was generated before this shape
  * existed — `getReportForUser` detects this on read and fires a background regeneration (see
- * `triggerLazyRegenerationIfStale`) so an already-purchased report catches up to the new structure
+ * `refreshIfOld`) so an already-purchased report catches up to the new structure
  * the next time its owner actually opens it, rather than a single expensive bulk sweep
  * regenerating reports nobody may ever look at again. No refund, no re-purchase — same
  * no-cost-to-the-user contract `regenerateReportContent` already documents.
  */
-const CONTENT_VERSION = 6;
+const CONTENT_VERSION = 7;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
@@ -150,41 +163,78 @@ const CONTENT_VERSION = 6;
  */
 const REPORT_PROMPT_VERSION = '2026.08.2';
 
-// ponytail: process-local dedup only, not a distributed/DB-backed claim — with pm2's cluster
-// workers, two near-simultaneous requests landing on DIFFERENT worker processes could each fire
-// their own regeneration of the same row (one extra Gemini call, not a correctness bug: the last
-// overwriteReadyReportContent call just wins). Upgrade to a DB claim (mirroring claimReportRow)
-// if that inefficiency ever matters at this feature's actual traffic.
-const regeneratingReportIds = new Set<string>();
+/** How long an old-report rebuild waits for a chart another request is rebuilding (30 x 2 s). */
+const KUNDLI_WAIT_TRIES = 30;
+const KUNDLI_WAIT_MS = 2_000;
+
+const REPORT_TRANSIT_RULE =
+  'TRANSIT DATES: when you say a planet changes sign or nakshatra, or turns retrograde or direct, the date comes ONLY from the UPCOMING TRANSITS lines above. Quote it as given (date and sign); never work a date out and never recall one from memory. If a line says BUT ONLY BRIEFLY, say the entry does not last and time the lasting effect from the date it settles. If an event is not listed, do not give it a date.';
 
 /**
- * Fires a background regeneration (see `regenerateReportContent`) for a `ready` row whose
- * persisted content predates `CONTENT_VERSION` — never awaited, never blocks the read it's
- * called from. Guarded against a second concurrent fire for the same row id (same process only,
- * see the doc comment above); once the regeneration lands, the row's `contentVersion` matches and
- * later reads stop triggering. No refund, no re-purchase, no user-visible action required — the
- * next time this report's owner opens it (possibly the read AFTER this one, if generation is
- * fast) they see the rebuilt structure.
+ * Why: same fault chat had on 2026-10-20; pushed onto planetCondition because it is the one fact
+ * channel every narrative call and verifyReportClaims already read; generation paths only, never
+ * the read path, so a page view never scans the sky.
  */
-function triggerLazyRegenerationIfStale(row: ReportRow): void {
-  const contentVersion = (row.content as { contentVersion?: number } | null)?.contentVersion;
-  if (contentVersion === CONTENT_VERSION) return;
-  if (regeneratingReportIds.has(row.id)) return;
-  // Shares the generation queue's budget without owning a queue row: a
-  // CONTENT_VERSION bump makes EVERY view of an old report trigger one of these,
-  // which would sail straight past the cap the paid queue respects. Skipping is
-  // free — the next view of this report triggers the check again.
-  if (reportQueueCapacity() === 0) return;
+async function withUpcomingTransits(
+  scores: ReportScores,
+  chart: Record<string, unknown> | null | undefined,
+): Promise<ReportScores> {
+  const asc = (chart as { ascendant?: { signIndex?: unknown } } | null | undefined)?.ascendant
+    ?.signIndex;
+  const ascIndex = typeof asc === 'number' ? asc : null;
+  const planets = (chart as { planets?: unknown } | null | undefined)?.planets as
+    | Array<{ planet?: string; signIndex?: unknown }>
+    | undefined;
+  const moon = planets?.find((p) => p.planet === 'Moon')?.signIndex;
+  const moonIndex = typeof moon === 'number' ? moon : null;
+  const lines = await upcomingTransitFactsNow(new Date(), ascIndex, moonIndex);
+  if (lines.length === 0) return scores;
+  const existing = (scores as { planetCondition?: string[] }).planetCondition ?? [];
+  return {
+    ...scores,
+    planetCondition: [
+      ...existing,
+      'UPCOMING TRANSITS (exact, from the ephemeris):',
+      ...lines,
+      REPORT_TRANSIT_RULE,
+    ],
+  };
+}
 
-  regeneratingReportIds.add(row.id);
-  void regenerateReportContent(row)
-    .catch((err: unknown) => {
-      logger.error(
-        { err, reportId: row.id, reportKey: row.reportKey },
-        'lazy report regeneration failed',
-      );
-    })
-    .finally(() => regeneratingReportIds.delete(row.id));
+async function refreshOldReport(row: ReportRow): Promise<void> {
+  try {
+    const result = await regenerateReportContent(row);
+    if (result === 'skipped') {
+      await markReportRefreshFailed(row.id, 'birth chart not ready on the current engine');
+    }
+  } catch (err: unknown) {
+    logger.error({ err, reportId: row.id, reportKey: row.reportKey }, 'old report rebuild failed');
+    const message = err instanceof Error ? err.message : String(err);
+    await markReportRefreshFailed(row.id, message);
+  }
+}
+
+/**
+ * Owner's rule (2026-10-24): every paid/preview report written before this deploy was written
+ * from an older chart (engine now CALCULATION_VERSION 2026.10.2) and, except KP, with no real
+ * transit dates, so the model could invent dates like "Saturn enters X on ...". Rebuild each such
+ * report FREE the first time its owner opens it; while it rebuilds the reader sees the normal
+ * "generating" waiting screen; never show the old text again unless the rebuild fails 3 times.
+ * Admin switch `reports.refreshOldOnOpen` (global) can turn it off.
+ */
+async function refreshIfOld(row: ReportRow): Promise<boolean> {
+  if ((row.content as { contentVersion?: number } | null)?.contentVersion === CONTENT_VERSION)
+    return false;
+  const features = await resolveFeatures();
+  if (features['reports.refreshOldOnOpen']?.enabled === false) return false;
+  if (isReportRefreshRunning(row)) return true;
+  if (row.refreshAttempts >= REPORT_REFRESH_MAX_ATTEMPTS) return false;
+  if (await claimReportRefresh(row.id)) {
+    void refreshOldReport(row);
+    return true;
+  }
+  if (row.refreshAttempts >= REPORT_REFRESH_MAX_ATTEMPTS) return false;
+  return true;
 }
 
 const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
@@ -786,11 +836,15 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     }
 
     const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
-    const scores = computeScoresWithCondition(
+    const baseScores = computeScoresWithCondition(
       generator,
       scoreContext,
       row.periodMonth,
       row.reportKey,
+    );
+    const scores = await withUpcomingTransits(
+      baseScores,
+      kundli.chartData as Record<string, unknown>,
     );
 
     // Resume hint for a reclaimed row (a previous attempt's checkpoint — see
@@ -1529,10 +1583,8 @@ export async function getReportForUser(
     if (debt) return { status: 'locked', owedPaise: debt.owedPaise };
   }
 
-  // row.status is 'ready' past this point (generating/failed both returned above). Fire-and-forget:
-  // this request still serves the CURRENT (possibly stale) content immediately below; the
-  // regenerated content lands in time for the owner's next view. See CONTENT_VERSION's doc comment.
-  triggerLazyRegenerationIfStale(row);
+  // reader waits on the usual screen; frontend shows "updating, free" when refreshing is true; the client already polls 'generating'
+  if (await refreshIfOld(row)) return { status: 'generating', refreshing: true };
 
   const recomputedScores = await recomputeScoresForRead(row);
   const content = (row.content ?? {}) as {
@@ -1749,7 +1801,20 @@ export async function getReportStats(): Promise<ReportStatsDto> {
  * the caller) — the old content is left untouched either way, since `overwriteReadyReportContent`
  * is only ever called after every step above has already succeeded.
  */
+export async function getReportRefreshStatus() {
+  const features = await resolveFeatures();
+  const switchOn = features['reports.refreshOldOnOpen']?.enabled !== false;
+  const model = (features['ai.reportRefreshModel'] as { model?: string } | undefined)?.model ?? null;
+  const counts = await reportRefreshCounts(CONTENT_VERSION);
+  return { switchOn, model, contentVersion: CONTENT_VERSION, ...counts };
+}
+
+export async function retryFailedReportRefreshes(): Promise<number> {
+  return resetFailedReportRefreshes(CONTENT_VERSION);
+}
+
 export async function regenerateReportContent(row: ReportRow): Promise<'regenerated' | 'skipped'> {
+  // Rebuilds of old reports (on open, and the bulk script) go Oxion -> Gemini free -> Gemini paid, owner 2026-10-24.
   // Unlike runReportGeneration (see pumpReportQueue), this had no
   // request-context wrapper — both of ITS callers (lazy on-view regen,
   // the bulk admin regenerate script) also call straight through with no
@@ -1759,8 +1824,9 @@ export async function regenerateReportContent(row: ReportRow): Promise<'regenera
   // a userId to look up group membership, so every regeneration would
   // resolve the ai.reportModel picker as if the user were in no group at
   // all, even for a group an admin explicitly pinned to a different model.
-  return runWithRequestContext({ userId: row.userId, feature: row.reportKey }, () =>
-    regenerateReportContentInner(row),
+  return runWithRequestContext(
+    { userId: row.userId, feature: row.reportKey, llmOrder: 'oxion-first' },
+    () => regenerateReportContentInner(row),
   );
 }
 
@@ -1768,8 +1834,19 @@ async function regenerateReportContentInner(row: ReportRow): Promise<'regenerate
   const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
   if (!generator) return 'skipped';
 
+  await requestKundliGeneration(row.userId, row.birthProfileId);
+  // Another request may own the chart rebuild (requestKundliGeneration then returns at once):
+  // wait for it rather than spend one of the report's three rebuild tries on a chart in flight.
+  for (let i = 0; i < KUNDLI_WAIT_TRIES; i++) {
+    const current = await findKundliByUserId(row.userId, row.birthProfileId);
+    if (current?.status !== 'generating') break;
+    await new Promise((resolve) => setTimeout(resolve, KUNDLI_WAIT_MS));
+  }
+
   const kundli = await findKundliByUserId(row.userId, row.birthProfileId);
   if (!kundli || kundli.status !== 'ready' || !kundli.chartData) return 'skipped';
+  // never rebuild a report from a chart that is still on the old engine
+  if (kundli.calculationVersion !== CALCULATION_VERSION) return 'skipped';
 
   let partnerChart: Record<string, unknown> | null = null;
   if (hasPartnerBirthInput(row.input)) {
@@ -1778,11 +1855,15 @@ async function regenerateReportContentInner(row: ReportRow): Promise<'regenerate
   }
 
   const scoreContext = await buildReportScoreContext(row, kundli, partnerChart);
-  const scores = computeScoresWithCondition(
+  const baseScores = computeScoresWithCondition(
     generator,
     scoreContext,
     row.periodMonth,
     row.reportKey,
+  );
+  const scores = await withUpcomingTransits(
+    baseScores,
+    kundli.chartData as Record<string, unknown>,
   );
   const generated = await generator.generateNarrative(scores, 'en');
   // Same fact-check second pass as the initial generation path above, so a
@@ -1794,14 +1875,26 @@ async function regenerateReportContentInner(row: ReportRow): Promise<'regenerate
   const windowSummaries = await computeWindowSummaries(scores);
   const verdict = await computeReportVerdict(scores, row.reportKey as ReportKey, row.periodMonth);
 
-  await overwriteReadyReportContent(row.id, {
+  await markReportRefreshed(row.id, {
     content: {
       sections,
       contentVersion: CONTENT_VERSION,
       ...(windowSummaries ? { windowSummaries } : {}),
       ...(verdict ? { verdict } : {}),
     },
-    model: MODEL,
+    model: getRequestContext()?.oxionModel ?? MODEL,
+    chartSnapshot: {
+      chartData: kundli.chartData,
+      dashaData: kundli.dashaData,
+      yogaData: kundli.yogaData,
+      doshaData: kundli.doshaData,
+    },
+    calculationVersion: kundli.calculationVersion,
+    ephemerisVersion: kundli.ephemerisVersion,
+    ayanamsa: kundli.ayanamsa,
+    houseSystem: kundli.houseSystem,
+    nodeType: kundli.nodeType,
+    promptVersion: REPORT_PROMPT_VERSION,
   });
   return 'regenerated';
 }

@@ -25,7 +25,8 @@ import {
 import { msUntilNextPacificMidnight } from './quota-window.js';
 import { recordPaidKeyUse } from './paid-usage.js';
 import { getRequestContext } from '../request-context.js';
-import { modelForUser } from '../../modules/features/features.service.js';
+import { modelForUser, modelOf } from '../../modules/features/features.service.js';
+import { oxionChat, oxionConfigured, isOxionModel } from './oxion-client.js';
 import { fallbackEligible, tryFallbackProviders } from './fallback-llm.js';
 
 export class GeminiError extends Error {
@@ -205,6 +206,64 @@ function usageAttribution(opts: LLMRequestOptions): { userId: string | null; age
 }
 
 /**
+ * Oxion-first for old-report rebuilds only. When `llmOrder === 'oxion-first'`,
+ * tries the model chosen by `ai.reportRefreshModel` on Oxion before any Gemini
+ * key. Returns null on any skip or failure so generate() falls through to Gemini.
+ */
+async function tryOxionFirst(opts: LLMRequestOptions): Promise<string | null> {
+  let pick = '';
+  try {
+    pick = await modelOf('ai.reportRefreshModel', '');
+    if (!isOxionModel(pick) || !oxionConfigured()) return null;
+    if (opts.messages.some((m) => typeof m.content !== 'string')) return null;
+    let messages = mergeSystemMessages(opts.messages);
+    if (opts.profile.jsonMode && opts.responseSchema) {
+      messages = [
+        ...messages,
+        {
+          role: 'system',
+          content: 'Reply with one JSON object only, matching this JSON schema exactly:\n' + JSON.stringify(opts.responseSchema),
+        },
+      ];
+    }
+    const { text } = await oxionChat({
+      model: pick,
+      messages,
+      temperature: opts.profile.temperature,
+      maxTokens: (opts.profile.maxTokens ?? 8192) + 4000,
+      json: Boolean(opts.profile.jsonMode),
+      agent: usageAttribution(opts).agent ?? opts.profile.name,
+      userId: getRequestContext()?.userId ?? null,
+      timeoutMs: 180_000,
+    });
+    // The rebuild records what really wrote the report (reports.service.ts markReportRefreshed).
+    const served = (): void => {
+      const ctx = getRequestContext();
+      if (ctx) ctx.oxionModel = pick;
+    };
+    if (opts.profile.jsonMode) {
+      let stripped = text.trim();
+      if (stripped.startsWith('```')) {
+        stripped = stripped.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
+      }
+      try {
+        JSON.parse(stripped);
+      } catch {
+        logger.warn({ model: pick }, 'oxion-first returned invalid JSON, falling back to gemini');
+        return null;
+      }
+      served();
+      return stripped;
+    }
+    served();
+    return text;
+  } catch (err) {
+    logger.warn({ err, model: pick }, 'oxion-first failed, falling back to gemini');
+    return null;
+  }
+}
+
+/**
  * Output tokens as GOOGLE BILLS THEM, which is not what `completion_tokens` says.
  *
  * Live-verified against the API on 2026-08-03: with `reasoning_effort: high` the
@@ -324,6 +383,14 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
   let sawFailure = false;
   // The free fallback providers (fallback-llm.ts) are asked at most once per call.
   let fallbackTried = false;
+  // Before the clock starts: a slow Oxion miss must not eat Gemini's time budget.
+  const ctx = getRequestContext();
+  if (ctx?.llmOrder === 'oxion-first') {
+    const text = await tryOxionFirst(opts);
+    if (text !== null) return text;
+    // Owner's order is Oxion -> Gemini free -> Gemini paid: skip the NVIDIA/OpenRouter tier.
+    fallbackTried = true;
+  }
   const startedAt = Date.now();
   const deadlineAt = Date.now() + (opts.totalBudgetMs ?? MAX_TOTAL_ELAPSED_MS);
   // Mirrors doRequest()'s own model resolution — duplicated rather than
