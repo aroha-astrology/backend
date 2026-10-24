@@ -30,8 +30,12 @@ import {
 } from './gemini-keys.repo.js';
 
 const TEST_TIMEOUT_MS = 20_000;
-/** A Gemini API key is letters, digits, '-' and '_' only. */
-const KEY_PATTERN = /^[A-Za-z0-9_-]+$/;
+/**
+ * Only catches text that is plainly not a key (spaces, a pasted sentence).
+ * The real check is the test call: Google changes the key format (AIza...,
+ * then AQ.Ab... from 2026, which has a dot), so the shape is not ours to judge.
+ */
+const KEY_PATTERN = /^[A-Za-z0-9._~+/=-]+$/;
 
 export interface GeminiKeyDto {
   id: string;
@@ -105,13 +109,16 @@ export async function listGeminiKeys(): Promise<GeminiKeyDto[]> {
     rows.map(async (row) => {
       const secret = secretOf(row, envByFingerprint);
       const tier = tierOf(row);
+      // Counts only the paid keys the pool can actually use, so #1 is always
+      // the key billed first right now; a switched-off key has no number.
+      const inUse = row.enabled && secret !== null;
       return {
         id: row.id,
         name: row.name,
         tier,
         source: row.source === 'admin' ? ('admin' as const) : ('env' as const),
         enabled: row.enabled,
-        paidPosition: tier === 'paid' ? ++paidPosition : null,
+        paidPosition: tier === 'paid' && inUse ? ++paidPosition : null,
         last4: secret ? secret.slice(-4) : '????',
         available: secret !== null,
         coolingDown: secret ? await isCoolingDown(row.fingerprint) : false,
@@ -138,7 +145,7 @@ export async function addGeminiKey(
   const key = input.key.trim();
   if (!KEY_PATTERN.test(key)) {
     throw Errors.badRequest(
-      'That does not look like a Gemini API key (letters, digits, - and _ only)',
+      'That does not look like a Gemini API key (it has spaces or other characters a key never has)',
     );
   }
   const { rows } = await loadRows();
@@ -165,7 +172,7 @@ export async function addGeminiKey(
   });
   if (!inserted) throw Errors.conflict('This key is already in the list');
 
-  invalidateGeminiKeys();
+  await invalidateGeminiKeys();
   await logAdminAction(adminPhone, 'POST /v1/admin/gemini-keys', {
     id: inserted.id,
     name: inserted.name,
@@ -218,7 +225,7 @@ export async function updateGeminiKey(
       Math.max(-1, ...rows.filter((r) => tierOf(r) === 'paid').map((r) => r.paidRank)) + 1;
   }
   await updateGeminiKeyRow(id, next, adminPhone);
-  invalidateGeminiKeys();
+  await invalidateGeminiKeys();
   await logAdminAction(adminPhone, 'PATCH /v1/admin/gemini-keys/:id', {
     id,
     name: row.name,
@@ -227,25 +234,55 @@ export async function updateGeminiKey(
   return dtoById(id);
 }
 
-/** Makes a paid key the first one tried; the rest keep their order behind it. */
-export async function useGeminiKeyFirst(id: string, adminPhone: string): Promise<GeminiKeyDto[]> {
+/** The paid row with this id plus every paid row in the order the pool tries them. */
+async function paidOrderFor(id: string): Promise<{ row: GeminiKeyRow; paid: GeminiKeyRow[] }> {
   const { rows } = await loadRows();
   const row = rows.find((r) => r.id === id);
   if (!row) throw Errors.notFound('Key not found');
   if (tierOf(row) !== 'paid')
     throw Errors.badRequest('Only a paid key has an order; free keys take turns');
+  // loadRows already sorts the paid keys by their rank.
+  return { row, paid: rows.filter((r) => tierOf(r) === 'paid') };
+}
 
-  const paid = rows.filter((r) => tierOf(r) === 'paid' && r.id !== id);
-  await updateGeminiKeyRow(id, { paidRank: 0 }, adminPhone);
-  for (const [i, other] of paid.entries()) {
-    if (other.paidRank !== i + 1)
-      await updateGeminiKeyRow(other.id, { paidRank: i + 1 }, adminPhone);
+/** Saves a paid order as ranks 0, 1, 2... touching only the rows whose rank changes. */
+async function savePaidOrder(ordered: GeminiKeyRow[], adminPhone: string): Promise<void> {
+  for (const [i, key] of ordered.entries()) {
+    if (key.paidRank !== i) await updateGeminiKeyRow(key.id, { paidRank: i }, adminPhone);
   }
-  invalidateGeminiKeys();
+  await invalidateGeminiKeys();
+}
+
+/** Makes a paid key the first one tried; the rest keep their order behind it. */
+export async function useGeminiKeyFirst(id: string, adminPhone: string): Promise<GeminiKeyDto[]> {
+  const { row, paid } = await paidOrderFor(id);
+  await savePaidOrder([row, ...paid.filter((r) => r.id !== id)], adminPhone);
   await logAdminAction(adminPhone, 'POST /v1/admin/gemini-keys/:id/use-first', {
     id,
     name: row.name,
   });
+  return listGeminiKeys();
+}
+
+/** Swaps a paid key with its neighbour above or below; at either end nothing changes. */
+export async function moveGeminiKey(
+  id: string,
+  direction: 'up' | 'down',
+  adminPhone: string,
+): Promise<GeminiKeyDto[]> {
+  const { row, paid } = await paidOrderFor(id);
+  const from = paid.findIndex((r) => r.id === id);
+  const to = direction === 'up' ? from - 1 : from + 1;
+  if (to >= 0 && to < paid.length) {
+    const ordered = [...paid];
+    [ordered[from], ordered[to]] = [ordered[to]!, ordered[from]!];
+    await savePaidOrder(ordered, adminPhone);
+    await logAdminAction(adminPhone, 'POST /v1/admin/gemini-keys/:id/move', {
+      id,
+      name: row.name,
+      direction,
+    });
+  }
   return listGeminiKeys();
 }
 
@@ -258,7 +295,7 @@ export async function deleteGeminiKey(id: string, adminPhone: string): Promise<v
   }
   assertSomeKeyLeft(rows, envByFingerprint, id, true);
   await deleteGeminiKeyRow(id);
-  invalidateGeminiKeys();
+  await invalidateGeminiKeys();
   await logAdminAction(adminPhone, 'DELETE /v1/admin/gemini-keys/:id', { id, name: row.name });
 }
 

@@ -44,6 +44,10 @@ export const UpdateGeminiKeyBodySchema = z
   })
   .openapi('UpdateGeminiKeyBody');
 
+export const MoveGeminiKeyBodySchema = z
+  .object({ direction: z.enum(['up', 'down']) })
+  .openapi('MoveGeminiKeyBody');
+
 export const GeminiKeyIdParamSchema = z.object({
   id: z
     .string()

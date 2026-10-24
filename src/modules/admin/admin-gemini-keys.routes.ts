@@ -6,6 +6,7 @@ import {
   GeminiKeyRowSchema,
   AddGeminiKeyBodySchema,
   UpdateGeminiKeyBodySchema,
+  MoveGeminiKeyBodySchema,
   GeminiKeyIdParamSchema,
   GeminiKeyTestResponseSchema,
   GeminiKeyDeletedResponseSchema,
@@ -16,6 +17,7 @@ import {
   addGeminiKey,
   updateGeminiKey,
   useGeminiKeyFirst,
+  moveGeminiKey,
   testGeminiKey,
   deleteGeminiKey,
 } from './gemini-keys.service.js';
@@ -168,6 +170,39 @@ const useFirstRoute = createRoute({
 adminGeminiKeysRouter.openapi(useFirstRoute, async (c) => {
   const { id } = c.req.valid('param');
   return c.json({ keys: await useGeminiKeyFirst(id, adminPhoneOf(c)) }, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /admin/gemini-keys/:id/move                                           */
+/* -------------------------------------------------------------------------- */
+
+const moveRoute = createRoute({
+  method: 'post',
+  path: '/admin/gemini-keys/{id}/move',
+  tags: ['Admin'],
+  summary: 'Move a paid key one place up (tried sooner) or down (tried later)',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    params: GeminiKeyIdParamSchema,
+    body: { required: true, content: { 'application/json': { schema: MoveGeminiKeyBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'The whole key list in its new order',
+      content: { 'application/json': { schema: GeminiKeysResponseSchema } },
+    },
+    400: errorResponse('Not a paid key'),
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+    404: errorResponse('Key not found'),
+  },
+});
+
+adminGeminiKeysRouter.openapi(moveRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const { direction } = c.req.valid('json');
+  return c.json({ keys: await moveGeminiKey(id, direction, adminPhoneOf(c)) }, 200);
 });
 
 /* -------------------------------------------------------------------------- */
