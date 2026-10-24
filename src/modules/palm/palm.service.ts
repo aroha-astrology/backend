@@ -34,12 +34,6 @@ import { addWalletBalance } from '../users/users.repo.js';
 import { passEntitlement, passPeriodStart, requirePass } from '../../lib/entitlements.js';
 import { PALM_READINGS_PER_PERIOD } from '../pass/pass.config.js';
 import { resolveFeaturesForUser, modelForUser } from '../features/features.service.js';
-import { findKundliByUserId } from '../kundli/kundli.repo.js';
-import { analyzePlanetStrengths } from '../../lib/astro-engine/gemstones.js';
-import {
-  getVimshottariDashaFromChart,
-  julianDayToDate,
-} from '../../lib/astro-engine/reports/chart-facts.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import {
   createPendingPalmReading,
@@ -70,26 +64,12 @@ import {
 } from '../../lib/llm/palm/observe-omnirush.js';
 import { palmText } from '../../lib/llm/palm/palm-llm.js';
 import {
-  PALM_EVENT_KINDS,
-  palmEventCandidates,
-  reconcilePalmEvents,
-  computeKundliMatch,
-  type KindWindows,
-  type KundliMatch,
+  datePalmEventsFromHand,
   type PalmEvent,
   type PalmEventKind,
-  type TimingTally,
 } from '../../lib/astro-engine/palm/palm-timing.js';
-import {
-  computeReportTimingWindows,
-  type Domain,
-} from '../../lib/astro-engine/reports/report-timing.js';
-import { buildDomainSignificators } from '../../lib/astro-engine/reports/report-life-context.js';
-import { progenyTimingSignificators } from '../../lib/astro-engine/reports/progeny.js';
-import type { StoredMahadasha } from '../../lib/astro-engine/dashas/dasha-range.js';
-import { buildChartContext } from '../../lib/intelligence/chart-context.js';
-import { laneBands, type TimelineArea } from '../insights/timeline.service.js';
-import { resolveProfileContext } from '../birth-profiles/profile-context.js';
+import { loadPalmPerson, personFactsBlock, type PalmPerson } from './palm-person.js';
+import { isOxionModel, oxionChat, oxionConfigured } from '../../lib/llm/oxion-client.js';
 import {
   computeFramesHash,
   ALL_SLOTS,
@@ -99,16 +79,11 @@ import {
 import { matchPalmRules } from '../../lib/astro-engine/palm/palm-rules.js';
 import { computePalmBiometrics } from '../../lib/astro-engine/palm/palm-biometrics.js';
 import type { PalmMountReliefData, PalmLandmarksData } from '../../db/schema.js';
-import {
-  chartDomainScores,
-  clampToChart,
-  crossCheckPalmAgainstChart,
-} from '../../lib/astro-engine/palm/palm-chart.js';
 import { buildInterpretPrompt, parseInterpretResponse } from '../../lib/llm/palm/interpret.js';
 import type { PalmHandObservations } from '../../lib/astro-engine/palm/palm-types.js';
 import type { PalmLineNote } from '../../lib/llm/palm/interpret.js';
 import type { ReportSection } from '../../modules/reports/report-generator.types.js';
-import type { UserRow, PalmReadingRow, KundliRow } from '../../db/schema.js';
+import type { UserRow, PalmReadingRow } from '../../db/schema.js';
 import type { PalmReadingDto } from './palm.schemas.js';
 
 export const PALM_FEATURE_KEY = 'paid.palmReading';
@@ -128,53 +103,6 @@ export function resolvePrimaryHand(
   if (gender === 'male') return 'right';
   if (chosen) return chosen;
   throw Errors.badRequest('HAND_REQUIRED');
-}
-
-/** Which mount corresponds to which Navagraha planet — used to correlate palm observations
- * against the user's own chart. Kept in sync conceptually with palm-rules.ts's MOUNT_LABELS. */
-const MOUNT_PLANETS = ['Jupiter', 'Saturn', 'Sun', 'Mercury', 'Venus', 'Moon', 'Mars'] as const;
-
-/** Lightweight chart summary for palm-mount cross-validation — same posture as
- * vastu.service.ts's buildChartContext (small, inline, not the full chat-grounding module,
- * which is sized for conversational Q&A, not a one-shot background report). */
-function buildPalmChartFacts(kundli: KundliRow | undefined): string {
-  if (!kundli || kundli.status !== 'ready') return '';
-  const chart = kundli.chartData;
-  if (!chart) return '';
-  const typed = chart as {
-    ascendant?: { sign?: string };
-    planets?: Array<{ planet: string; sign: string; house?: number }>;
-  };
-
-  const lines: string[] = [];
-  if (typed.ascendant?.sign) lines.push(`Ascendant: ${typed.ascendant.sign}`);
-
-  // Each planet's CLASSIFIED strength, not just its position. Sign+house alone gave the
-  // interpreting model nothing to corroborate a mount against without re-deriving dignity
-  // itself; this hands it the same verdict analyzePlanetStrengths gives every paid report.
-  const analyses =
-    Array.isArray(typed.planets) && typed.planets.length > 0 ? analyzePlanetStrengths(chart) : [];
-  for (const planet of typed.planets ?? []) {
-    if (!(MOUNT_PLANETS as readonly string[]).includes(planet.planet)) continue;
-    const strength = analyses.find((a) => a.planet === planet.planet)?.strength;
-    lines.push(
-      `${planet.planet} in ${planet.sign}${planet.house ? ` (house ${planet.house})` : ''}${
-        strength ? ` — ${strength}` : ''
-      }`,
-    );
-  }
-
-  // The running dasha decides WHEN the chart's promises land, so a palm timeline written
-  // without it can name a life stage the chart says is years away.
-  const dasha = getVimshottariDashaFromChart(chart);
-  if (dasha?.currentMahadasha?.planet) {
-    lines.push(
-      `Current Vimshottari period: ${dasha.currentMahadasha.planet} mahadasha` +
-        (dasha.currentAntardasha?.planet ? ` / ${dasha.currentAntardasha.planet} antardasha` : ''),
-    );
-  }
-
-  return lines.join('\n');
 }
 
 export async function createPalmReading(
@@ -490,6 +418,63 @@ async function observeHandGemini(
   return parsed;
 }
 
+/** One hand on an Oxion model: same contact sheet, prompt, schema and parser as Gemini. */
+async function observeHandOxion(
+  hand: 'left' | 'right',
+  slots: readonly string[],
+  buffers: Record<string, Buffer>,
+  userId: string,
+  model: string,
+  trace: boolean,
+): Promise<PalmHandObservations> {
+  const [front, ...others] = slots;
+  const sheet = await buildContactSheet(
+    { label: 'FRONT', bytes: buffers[front!]! },
+    others.map((slot) => ({ label: SLOT_LABEL[slot] ?? slot, bytes: buffers[slot]! })),
+  );
+  const prompt =
+    buildOmnirushObservePrompt({
+      hand,
+      otherPanels: others.map((slot) => SLOT_VIEW[slot] ?? slot),
+      trace,
+    }) +
+    `\n\nReturn ONLY one JSON object (no markdown, no prose) that matches this JSON schema exactly, with every listed field present:\n` +
+    JSON.stringify(PALM_OBSERVE_SCHEMA);
+  const { text } = await oxionChat({
+    model,
+    messages: [
+      { role: 'system', content: OMNIRUSH_OBSERVE_SYSTEM },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          {
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${sheet.jpeg.toString('base64')}` },
+          },
+        ],
+      },
+    ],
+    temperature: PALM_OBSERVE_PROFILE.temperature,
+    // Thinking models spend part of the ceiling reasoning before the JSON starts.
+    maxTokens: PALM_OBSERVE_PROFILE.maxTokens + 16_384,
+    json: true,
+    agent: PALM_OBSERVE_PROFILE.name,
+    userId,
+    timeoutMs: PALM_GEMINI_ATTEMPT_MS,
+  });
+  let answer: unknown;
+  try {
+    answer = JSON.parse(cleanJsonString(text));
+  } catch {
+    throw new Error(`Oxion observe returned unparseable output for ${hand} hand`);
+  }
+  if ((answer as { isPalm?: unknown } | null)?.isPalm === false) throw new NotAPalmError();
+  const parsed = parseOmnirushObservation(answer, sheet);
+  if (!parsed) throw new Error(`Oxion observe returned unusable output for ${hand} hand`);
+  return parsed;
+}
+
 async function observeHandOmnirush(
   hand: 'left' | 'right',
   slots: readonly string[],
@@ -535,6 +520,23 @@ async function observeHand(
   model: string,
   trace: boolean,
 ): Promise<{ obs: PalmHandObservations; model: string }> {
+  if (isOxionModel(model)) {
+    if (oxionConfigured()) {
+      try {
+        return {
+          obs: await observeHandOxion(hand, slots, buffers, userId, model, trace),
+          model,
+        };
+      } catch (err) {
+        if (err instanceof NotAPalmError) throw err;
+        logger.warn({ err, hand, model }, 'palm: Oxion observe failed, falling back to Gemini');
+      }
+    }
+    return {
+      obs: await observeHandGemini(hand, slots, buffers, userId, MODEL, trace),
+      model: MODEL,
+    };
+  }
   if (isOmnirushModel(model)) {
     if (omnirushConfigured()) {
       try {
@@ -586,106 +588,17 @@ async function runPalmGeneration(
   }
 }
 
-const MS_PER_YEAR = 365.25 * 86_400_000;
-const EVENT_DOMAIN: Record<PalmEventKind, Domain> = {
-  marriage: 'love',
-  child: 'children',
-  careerChange: 'career',
-  promotion: 'career',
-  wealth: 'wealth',
-  relocation: 'foreign',
-};
-const EVENT_AREA: Record<PalmEventKind, TimelineArea> = {
-  marriage: 'relationships',
-  child: 'family',
-  careerChange: 'career',
-  promotion: 'career',
-  wealth: 'money',
-  relocation: 'relocation',
-};
-
-/**
- * The chart's own windows for every palm event kind: ahead, the SAME significator recipes and
- * window search the Marriage / Progeny / Wealth reports and chat use; behind, the Life Timeline's
- * bands. Null when the chart isn't ready — the reading then carries no dated events.
- */
-async function chartWindowsForPalm(
-  user: UserRow,
-  birthProfileId: string | null,
-  kundli: KundliRow | undefined,
-  now: Date,
-): Promise<{ windows: Record<PalmEventKind, KindWindows>; currentAge: number } | null> {
-  if (!kundli || kundli.status !== 'ready' || !kundli.chartData) return null;
-  const chart = kundli.chartData;
-  const dashaData = kundli.dashaData ?? null;
-  const mahadashas =
-    (dashaData as { vimshottari?: { mahadashas?: StoredMahadasha[] } } | null)?.vimshottari
-      ?.mahadashas ?? [];
-  const profile = await resolveProfileContext(user, birthProfileId);
-  const jd = chart.julianDay;
-  const birth =
-    typeof jd === 'number'
-      ? julianDayToDate(jd)
-      : profile.dateOfBirth
-        ? new Date(`${profile.dateOfBirth}T00:00:00Z`)
-        : null;
-  if (!birth || Number.isNaN(birth.getTime())) return null;
-  const ageAt = (d: string | Date) => (new Date(d).getTime() - birth.getTime()) / MS_PER_YEAR;
-  const ctx = await buildChartContext(kundli, profile, now).catch((err: unknown) => {
-    logger.warn({ err }, 'palm: chart context failed, past events will not be dated');
-    return null;
-  });
-
-  const windows = {} as Record<PalmEventKind, KindWindows>;
-  for (const kind of PALM_EVENT_KINDS) {
-    const domain = EVENT_DOMAIN[kind];
-    const significators =
-      kind === 'child'
-        ? progenyTimingSignificators(chart)
-        : buildDomainSignificators(domain, chart);
-    const future = computeReportTimingWindows(
-      domain,
-      significators,
-      dashaData,
-      chart,
-      now,
-    ).windows.map((w) => ({
-      startAge: ageAt(w.startDate),
-      endAge: ageAt(w.endDate),
-      startDate: w.startDate,
-      endDate: w.endDate,
-    }));
-    const past =
-      ctx && mahadashas.length > 0
-        ? laneBands(ctx, mahadashas, EVENT_AREA[kind], birth, now).map((b) => ({
-            startAge: ageAt(b.start),
-            endAge: ageAt(b.end),
-            startDate: b.start,
-            endDate: b.end,
-          }))
-        : [];
-    windows[kind] = { future, past };
-  }
-  return { windows, currentAge: ageAt(now) };
-}
-
-/** Dated events for the primary hand, reconciled with the chart (see palm-timing.ts). */
-async function datePalmEvents(
-  user: UserRow,
+/** Dated events for the primary hand: the hand alone plus what the reader says about themselves.
+ * No chart window is consulted (owner, 2026-10-24). See palm-timing.ts's datePalmEventsFromHand. */
+function datePalmEvents(
   claimed: PalmReadingRow,
   primaryObs: PalmHandObservations,
-  kundli: KundliRow | undefined,
-): Promise<{ events: PalmEvent[]; tally: TimingTally | null }> {
-  const candidates = palmEventCandidates(primaryObs, claimed.primaryHand as 'left' | 'right');
-  if (candidates.length === 0) return { events: [], tally: null };
-  const chartWindows = await chartWindowsForPalm(user, claimed.birthProfileId, kundli, new Date());
-  if (!chartWindows) return { events: [], tally: null };
-  const { events, tally } = reconcilePalmEvents(
-    candidates,
-    chartWindows.windows,
-    chartWindows.currentAge,
-  );
-  return { events, tally };
+  person: PalmPerson,
+): PalmEvent[] {
+  return datePalmEventsFromHand(primaryObs, claimed.primaryHand as 'left' | 'right', {
+    age: person.age,
+    marital: person.marital,
+  });
 }
 
 /** FREE phase — Stage A (vision measurement) for both hands, the crease gate on the primary
@@ -790,16 +703,16 @@ async function runObservationPhase(
   });
   logger.info({ readingId, model: primary.model, ...gate }, 'palm: trace gate');
 
-  const kundli = await findKundliByUserId(user.id, claimed.birthProfileId);
-  const { events, tally } = await datePalmEvents(user, claimed, primaryObs, kundli).catch(
-    (err: unknown) => {
-      logger.warn(
-        { err, readingId },
-        'palm: dating life events failed, reading continues without them',
-      );
-      return { events: [] as PalmEvent[], tally: null };
-    },
-  );
+  const person = await loadPalmPerson(user, claimed.birthProfileId);
+  let events: PalmEvent[] = [];
+  try {
+    events = datePalmEvents(claimed, primaryObs, person);
+  } catch (err) {
+    logger.warn(
+      { err, readingId },
+      'palm: dating life events failed, reading continues without them',
+    );
+  }
 
   const questionAnswer = question
     ? await answerPalmQuestion(
@@ -808,7 +721,7 @@ async function runObservationPhase(
         frameBuffers.primaryFront!,
         primaryObs,
         primaryHand,
-        kundli,
+        person,
         events,
       ).catch((err: unknown) => {
         logger.warn({ err, readingId }, 'palm: question answer failed, scan continues without it');
@@ -822,7 +735,7 @@ async function runObservationPhase(
     observations: {
       primary: primaryObs,
       events,
-      eventTally: tally,
+      eventTally: null,
       ...(questionAnswer ? { question: questionAnswer } : {}),
     },
     confidenceScore,
@@ -843,7 +756,7 @@ const RAW_QUESTION = /^\s*subir\s+raw\s*[.!?]?\s*$/i;
  * Answers the question typed before the scan. When the question is "Subir Raw" the reply is raw:
  * the palm photo goes straight to the model with no kundli, report or dated-event grounding, and
  * comes back as the model gave it. Any other question is answered from the measured hand, the
- * chart facts and the chart-checked events, like the rest of the reading.
+ * reader's own facts and the hand-dated events, like the rest of the reading (no chart).
  */
 async function answerPalmQuestion(
   user: UserRow,
@@ -851,7 +764,7 @@ async function answerPalmQuestion(
   frontBytes: Buffer,
   primaryObs: PalmHandObservations,
   primaryHand: 'left' | 'right',
-  kundli: KundliRow | undefined,
+  person: PalmPerson,
   events: PalmEvent[],
 ): Promise<{ text: string; raw: boolean; answer: string }> {
   const raw = RAW_QUESTION.test(question);
@@ -859,6 +772,28 @@ async function answerPalmQuestion(
   const model = await modelForUser(user.id, PALM_INTERPRET_MODEL_KEY, MODEL);
   if (raw) {
     const prompt = 'Describe this palm photograph and what it shows, plainly and directly.';
+    if (isOxionModel(model) && oxionConfigured()) {
+      const front = await buildContactSheet({ label: 'FRONT', bytes: frontBytes }, []);
+      const out = await oxionChat({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: { url: `data:image/jpeg;base64,${front.jpeg.toString('base64')}` },
+              },
+            ],
+          },
+        ],
+        maxTokens: 4096,
+        agent: 'palm-raw',
+        userId: user.id,
+      });
+      return { text, raw: true, answer: out.text };
+    }
     if (omnirushConfigured()) {
       const front = await buildContactSheet({ label: 'FRONT', bytes: frontBytes }, []);
       const { answer } = await askOmnirush<string>({
@@ -896,17 +831,17 @@ async function answerPalmQuestion(
   const facts = matchPalmRules(primaryObs)
     .map((f) => `- ${f.evidence} => ${f.meaning}`)
     .join('\n');
-  const chartFacts = buildPalmChartFacts(kundli);
+  const personFacts = personFactsBlock(person);
   const data = [
     facts || '(no notable markings)',
-    chartFacts ? `Birth chart:\n${chartFacts}` : '',
+    personFacts ? `About the reader:\n${personFacts}` : '',
     events.length ? `Dated events:\n${events.map(describeEvent).join('\n')}` : '',
   ]
     .filter(Boolean)
     .join('\n\n');
   const prompt = [
     `You are a Hasta Samudrika palmist answering ONE question from a person whose ${primaryHand} hand was scanned.`,
-    'Use only the measured facts, chart facts and dated events between the <data> tags; never invent a feature. Where the hand and the chart agree, say so; where they differ, say so. Tendency language, no fatalism. Answer in 3-6 sentences.',
+    "Use only the measured facts, the reader's own facts and the dated events between the <data> tags; never invent a feature, and never say anything that contradicts the reader's own facts (someone who is not married has not married). Tendency language, no fatalism. Answer in 3-6 sentences.",
     `<data>\n${data}\n</data>`,
     `Question: ${text}`,
   ].join('\n\n');
@@ -925,17 +860,14 @@ function describeEvent(e: PalmEvent): string {
   };
   const ages = e.ages
     .map((a) => {
-      const years = `${a.window.startDate.slice(0, 4)}-${a.window.endDate.slice(0, 4)}`;
       const how =
-        a.agreement === 'match'
-          ? `the hand reads ${a.palmAge} and the chart's window (${years}) agrees`
-          : a.agreement === 'adjusted'
-            ? `the hand reads ${a.palmAge}; the chart's nearest window is ${years}, so age ${a.age} is used`
-            : `the hand shows it, the chart times it (${years})`;
+        a.agreement === 'later'
+          ? `the hand reads ${a.palmAge} on the usual scale, which is behind them, so the later scale is used`
+          : 'read from the hand';
       return `age ${a.age}${a.past ? ' (already passed)' : ''} — ${how}`;
     })
     .join('; ');
-  return `${label[e.kind]} (${e.source}${e.mark ? `, ${e.mark}` : ''}): ${ages}`;
+  return `${label[e.kind]} (${e.source}${e.mark ? `, ${e.mark}` : ''}): ${ages || 'shown on the hand, no age'}`;
 }
 
 /** PAID phase — Stage B (interpret) + Stage C (synthesize) on the admin-picked text model, with
@@ -950,7 +882,6 @@ async function runInterpretationPhase(
     primary: PalmHandObservations;
     secondary?: PalmHandObservations;
     events?: PalmEvent[];
-    eventTally?: TimingTally | null;
   };
   const primaryHand = claimed.primaryHand as 'left' | 'right';
   const primaryObs = stored.primary;
@@ -961,30 +892,27 @@ async function runInterpretationPhase(
 
   const primaryFacts = matchPalmRules(primaryObs, mountRelief?.primary);
 
-  const kundli = await findKundliByUserId(user.id, claimed.birthProfileId);
-  const chartFacts = buildPalmChartFacts(kundli);
-  const chart = kundli?.status === 'ready' ? kundli.chartData : null;
+  const person = await loadPalmPerson(user, claimed.birthProfileId);
 
-  // Events dated at scan time are reused so the unlocked report shows exactly what the teaser
-  // promised; a scan made before the chart was ready gets them now.
+  // The events dated at scan time are reused so the unlocked report shows exactly what the teaser
+  // promised; a scan made by an older build (or with none stored) is dated now, from the hand.
   let events = stored.events ?? [];
-  let tally = stored.eventTally ?? null;
-  if (events.length === 0 && chart) {
-    ({ events, tally } = await datePalmEvents(user, claimed, primaryObs, kundli).catch(() => ({
-      events: [] as PalmEvent[],
-      tally: null,
-    })));
+  if (events.length === 0) {
+    try {
+      events = datePalmEvents(claimed, primaryObs, person);
+    } catch (err) {
+      logger.warn(
+        { err, readingId },
+        'palm: dating life events failed, reading continues without them',
+      );
+    }
   }
-
-  const chartCrossChecks = chart ? crossCheckPalmAgainstChart(primaryObs, chart) : [];
-  const chartScores = chartDomainScores(chart);
 
   const interpretModel = await modelForUser(user.id, PALM_INTERPRET_MODEL_KEY, MODEL);
   const interpretPrompt = buildInterpretPrompt({
     primaryHand,
-    facts: [...primaryFacts, ...chartCrossChecks],
-    chartFacts,
-    chartScores,
+    facts: primaryFacts,
+    person,
     lifeEvents: events.map(describeEvent),
     language: 'en',
   });
@@ -998,17 +926,10 @@ async function runInterpretationPhase(
   const interpretation = parseInterpretResponse(interpretRaw.text);
   if (!interpretation) throw new Error('Stage B (interpret) returned unparseable output');
   const { sections, lineNotes } = interpretation;
-  const scores = clampToChart(interpretation.scores, chartScores);
-
-  const kundliMatch = computeKundliMatch({
-    tally,
-    palmScores: interpretation.scores,
-    chartScores,
-    chartFacts: chartCrossChecks,
-  });
+  const scores = interpretation.scores;
 
   await markPalmReadingReady(readingId, claimedAt, {
-    content: { sections, scores, lineNotes, chartScores, events, kundliMatch },
+    content: { sections, scores, lineNotes, events },
     model: interpretRaw.model,
   });
   await notifyPalmReadingReady(user.id, readingId);
@@ -1040,9 +961,7 @@ function toDto(
     scores?: Record<string, number>;
     synthesis?: unknown;
     lineNotes?: Record<string, PalmLineNote>;
-    chartScores?: Record<string, number>;
     events?: PalmEvent[];
-    kundliMatch?: KundliMatch | null;
   } | null;
   const observations = row.observations as {
     primary?: PalmHandObservations;
@@ -1091,11 +1010,9 @@ function toDto(
     // What the user sees when they tap a line or mount on their own photograph.
     const notes = lineNotes ?? content?.lineNotes;
     if (notes) dto.lineNotes = notes;
-    // The chart's own verdict on the same six areas — shown beside the palm scores so any
-    // remaining gap is visible rather than hidden (the palm score is already clamped to it).
-    if (content?.chartScores) dto.chartScores = content.chartScores;
+    // Palmistry stands alone (owner, 2026-10-24): readings made before that still carry a stored
+    // chartScores / kundliMatch, and neither is sent any more.
     if (content?.events) dto.events = content.events;
-    if (content?.kundliMatch) dto.kundliMatch = content.kundliMatch;
   }
   // Keep the raw provider error in the DB column for ops/debugging — never echo verbatim.
   if (row.status === 'failed') {

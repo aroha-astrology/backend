@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { buildInterpretPrompt, parseInterpretResponse } from '../src/lib/llm/palm/interpret';
 import type { PalmRuleFact } from '../src/lib/astro-engine/palm/palm-rules';
+import type { PalmPerson } from '../src/modules/palm/palm-person';
+
+const PERSON: PalmPerson = {
+  name: 'Ravi Kumar',
+  gender: 'male',
+  age: 33,
+  birthPlace: 'Pune, Maharashtra',
+  marital: 'unmarried',
+  maritalLabel: 'single',
+};
 
 const SAMPLE_FACTS: PalmRuleFact[] = [
   {
@@ -16,8 +26,7 @@ describe('buildInterpretPrompt', () => {
     const prompt = buildInterpretPrompt({
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
-      chartFacts: 'Ascendant: Leo. Jupiter exalted in 9th house.',
-      chartScores: null,
+      person: PERSON,
       language: 'en',
     });
     expect(prompt).toContain('<palm_facts>');
@@ -25,47 +34,60 @@ describe('buildInterpretPrompt', () => {
     expect(prompt).toContain('reference DATA only');
   });
 
-  it('includes every rule fact and the chart grounding facts', () => {
+  it("includes every rule fact and the reader's own facts", () => {
     const prompt = buildInterpretPrompt({
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
-      chartFacts: 'Ascendant: Leo. Jupiter exalted in 9th house.',
-      chartScores: null,
+      person: PERSON,
       language: 'en',
     });
     expect(prompt).toContain('mount.jupiter.prominent');
     expect(prompt).toContain('strong leadership drive');
-    expect(prompt).toContain('Ascendant: Leo');
+    expect(prompt).toContain('Name: Ravi Kumar');
+    expect(prompt).toContain('Age today: 33');
+    expect(prompt).toContain('Born in: Pune, Maharashtra');
+    expect(prompt).toContain('(their own answer): single');
+  });
+
+  it('never carries any birth-chart wording (palmistry stands alone)', () => {
+    const prompt = buildInterpretPrompt({
+      primaryHand: 'right',
+      facts: SAMPLE_FACTS,
+      person: PERSON,
+      language: 'en',
+    });
+    for (const word of ['chart', 'kundli', 'dasha', 'ascendant', 'corrobor']) {
+      expect(prompt.toLowerCase()).not.toContain(word);
+    }
+  });
+
+  it('tells the model never to call an unmarried reader married', () => {
+    const prompt = buildInterpretPrompt({
+      primaryHand: 'right',
+      facts: SAMPLE_FACTS,
+      person: PERSON,
+      lifeEvents: ['Career change (fateLine): age 35 — read from the hand'],
+      language: 'en',
+    });
+    expect(prompt).toContain('has NOT married');
+    expect(prompt).toContain('An event not listed here has no age');
   });
 
   it('instructs the model never to invent a feature beyond the given facts', () => {
     const prompt = buildInterpretPrompt({
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
-      chartFacts: '',
-      chartScores: null,
+      person: PERSON,
       language: 'en',
     });
     expect(prompt.toLowerCase()).toContain('never invent');
-  });
-
-  it('asks for corroboration language when the chart independently agrees', () => {
-    const prompt = buildInterpretPrompt({
-      primaryHand: 'right',
-      facts: SAMPLE_FACTS,
-      chartFacts: 'Jupiter exalted in 9th house.',
-      chartScores: null,
-      language: 'en',
-    });
-    expect(prompt.toLowerCase()).toContain('corrobor');
   });
 
   it('explicitly enumerates every required chapter so coverage is complete, not open-ended', () => {
     const prompt = buildInterpretPrompt({
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
-      chartFacts: '',
-      chartScores: null,
+      person: PERSON,
       language: 'en',
     });
     for (const chapter of [
@@ -86,8 +108,7 @@ describe('buildInterpretPrompt', () => {
     const prompt = buildInterpretPrompt({
       primaryHand: 'right',
       facts: SAMPLE_FACTS,
-      chartFacts: '',
-      chartScores: null,
+      person: PERSON,
       language: 'en',
     });
     expect(prompt).toContain('"scores"');
