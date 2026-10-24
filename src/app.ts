@@ -21,6 +21,7 @@ import { adminGeminiKeysRouter } from './modules/admin/admin-gemini-keys.routes.
 import { experienceRouter } from './modules/experience/experience.routes.js';
 import { homeLayoutRouter } from './modules/home-layout/home-layout.routes.js';
 import { skyContextRouter } from './modules/sky-context/sky-context.routes.js';
+import { adminPlayRefundsRouter } from './modules/admin/admin-play-refunds.routes.js';
 import { supportRouter } from './modules/support/support.routes.js';
 import { preferencesRouter } from './modules/preferences/preferences.routes.js';
 import { rewardsRouter } from './modules/rewards/rewards.routes.js';
@@ -159,6 +160,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', memoryRouter);
   app.route('/v1', personasRouter);
   app.route('/v1', skyRouter);
+  app.route('/v1', adminPlayRefundsRouter);
   app.route('/v1', preferencesRouter);
   app.route('/v1', rewardsRouter);
   app.route('/v1', feedbackRouter);

@@ -393,10 +393,17 @@ export const users = pgTable(
     geoResolvedAt: timestamp('geo_resolved_at', { withTimezone: true }),
     /** Safety-net default only — insertUser() sets the real opening balance from the admin
      * `rewards.signupBonus` key (see config/features.ts). Kept equal to that key's default. */
+    /** Goes below zero only when a Google Play refund takes back money already spent
+     * (billing/play-refunds.service.ts): every spend needs `balance >= price`, so a
+     * negative balance blocks spending until rewards or a recharge pay it off. */
     walletBalancePaise: integer('wallet_balance_paise').notNull().default(20100),
     /** Prepaid chat questions bought as Question Packs (roadmap step 10). Spent after the
-     * Aroha Pass quota and before the wallet — see modules/pass/question-billing.ts. */
+     * Aroha Pass quota and before the wallet — see modules/pass/question-billing.ts.
+     * Below zero after a refunded pack whose questions were already asked. */
     questionCredits: integer('question_credits').notNull().default(0),
+    /** Set after a second Google Play refund: checkout refuses new top-ups and packs until
+     * an admin unblocks the account (migration 0102). */
+    purchasesBlockedAt: timestamp('purchases_blocked_at', { withTimezone: true }),
     /** Chat questions an admin-group member asked in their current 30-day period. Group
      * members pay nothing, but their allowance counts down like a buyer's (migration 0090,
      * consumeGroupQuestion in modules/pass/pass.repo.ts). */
@@ -945,6 +952,60 @@ export const orders = pgTable(
 
 export type OrderRow = typeof orders.$inferSelect;
 export type NewOrderRow = typeof orders.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* play_refunds — Google Play refunds and what was taken back (migration 0102) */
+/* -------------------------------------------------------------------------- */
+
+export const playRefunds = pgTable(
+  'play_refunds',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    /** Google's order id (GPA....), or `token:<purchase token>` when Google sent none. */
+    refundKey: text('refund_key').notNull(),
+    purchaseToken: text('purchase_token').notNull(),
+    googleOrderId: text('google_order_id'),
+    /** 'top_up' | 'question_pack' | 'pass' | 'unknown'. */
+    kind: text('kind').notNull(),
+    productId: text('product_id'),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    orderId: uuid('order_id').references(() => orders.id, { onDelete: 'set null' }),
+    /** Wallet money the purchase gave: the price plus any recharge bonus. */
+    amountPaise: integer('amount_paise').notNull().default(0),
+    /** Chat questions a Question Pack gave. */
+    questionCredits: integer('question_credits').notNull().default(0),
+    /** 'recorded' | 'clawed_back' | 'skipped' | 'pass' | 'unmatched' — see migration 0102. */
+    status: text('status').notNull(),
+    clawedBackPaise: integer('clawed_back_paise').notNull().default(0),
+    clawedBackQuestions: integer('clawed_back_questions').notNull().default(0),
+    clawedBackAt: timestamp('clawed_back_at', { withTimezone: true }),
+    reportsLocked: integer('reports_locked').notNull().default(0),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    purchasedAt: timestamp('purchased_at', { withTimezone: true }),
+    /** Google's voidedSource: 0 user, 1 developer, 2 Google. */
+    voidedSource: integer('voided_source'),
+    /** Google's voidedReason: 0 other, 1 remorse, 2 not received, 3 defective,
+     * 4 accidental, 5 fraud, 6 friendly fraud, 7 chargeback. */
+    voidedReason: integer('voided_reason'),
+    /** 'voided_api' (the hourly check) | 'rtdn' (Google's push notice). */
+    detectedVia: text('detected_via').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    refundKeyIdx: uniqueIndex('play_refunds_refund_key_idx').on(table.refundKey),
+    userIdx: index('play_refunds_user_id_idx').on(table.userId),
+  }),
+);
+
+export type PlayRefundRow = typeof playRefunds.$inferSelect;
+export type NewPlayRefundRow = typeof playRefunds.$inferInsert;
 
 export type WalletTransactionRow = typeof walletTransactions.$inferSelect;
 export type NewWalletTransactionRow = typeof walletTransactions.$inferInsert;
@@ -1872,6 +1933,9 @@ export const reports = pgTable(
      * "pass_free_report:<iso>" for a Platinum Pass free report (failure gives the free report back
      * instead of money). Rewritten on every claim, so a re-bought failed row refunds again. */
     chargeKey: text('charge_key'),
+    /** Bought with money a Google Play refund took back: closed while the wallet is below
+     * zero, opened again on the first read after the debt is paid (migration 0102). */
+    refundLockedAt: timestamp('refund_locked_at', { withTimezone: true }),
     /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
     startedAt: timestamp('started_at', { withTimezone: true }),
     error: text('error'),

@@ -1334,6 +1334,18 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+  // Google Play refunds (2026-10-24). Every refund is found and recorded either way
+  // (Admin -> Play refunds, Telegram). Off: nothing is taken back. On: the refunded
+  // money or questions are taken back, even below zero, reports bought with it lock
+  // until paid, and a second refund blocks purchases. Not a price.
+  {
+    key: 'paid.refundClawback',
+    label:
+      'Take back Google Play refunds (wallet, question packs, reports; block repeat refunders)',
+    group: 'paid',
+    defaultEnabled: false,
+    tag: 'new',
+  },
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

@@ -37,6 +37,7 @@ import { SaturnPhaseRunBodySchema, SaturnPhaseRunResultSchema } from './saturn-p
 import { checkConcurrentActivity } from '../admin-alerts/admin-alerts.service.js';
 import { reapStaleReports } from '../reports/reports.service.js';
 import { reconcileStaleRazorpayOrders } from '../billing/billing.service.js';
+import { runPlayRefundCheck } from '../billing/play-refunds.service.js';
 import { reapStalePalmReadings } from '../palm/palm.service.js';
 import { reapStaleVastuPlans } from '../vastu/vastu.service.js';
 import { reapStaleProcessingPlans } from '../purchase-plan/purchase-plan.service.js';
@@ -867,6 +868,47 @@ const billingRazorpayReconcileRoute = createRoute({
 
 cronRouter.openapi(billingRazorpayReconcileRoute, async (c) => {
   const result = await reconcileStaleRazorpayOrders();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Google Play refunds — reads Google's voided purchases (last 30 days) and
+// records or takes back each refund (billing/play-refunds.service.ts). Hourly
+// via scripts/cron-play-refunds.sh.
+// ---------------------------------------------------------------------------
+
+const playRefundsRoute = createRoute({
+  method: 'post',
+  path: '/cron/play-refunds',
+  tags: ['Cron'],
+  summary: 'Find Google Play refunds and take back what they paid for (when switched on)',
+  description:
+    "Reads Google Play's voided-purchases list, records every new refund, and — for users " +
+    'with paid.refundClawback on — takes back the money or questions. Safe to repeat. ' +
+    'Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Check finished',
+      content: {
+        'application/json': {
+          schema: z.object({
+            checked: z.number(),
+            recorded: z.number(),
+            clawedBack: z.number(),
+            pass: z.number(),
+            unmatched: z.number(),
+            skipped: z.number(),
+            notCredited: z.number(),
+          }),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(playRefundsRoute, async (c) => {
+  const result = await runPlayRefundCheck();
   return c.json(result, 200);
 });
 

@@ -1,6 +1,8 @@
 import { handlePlaySubscriptionNotification } from '../pass/pass-play.service.js';
 import { handleRazorpayWebhook } from '../pass/pass-razorpay.service.js';
 import { handleAppStoreNotification } from '../pass/pass-appstore.service.js';
+import { handleVoidedPurchaseNotification } from './play-refunds.service.js';
+import { assertPurchasesAllowed } from './purchase-block.js';
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { requireUser } from '../../middleware/auth.js';
 import { requireGooglePlayRtdnSecret } from '../../middleware/cron-auth.js';
@@ -189,6 +191,7 @@ const checkoutRoute = createRoute({
       content: { 'application/json': { schema: OrderSchema } },
     },
     401: errorResponse('Unauthorized'),
+    403: errorResponse('Purchases blocked after repeated Google Play refunds'),
     400: errorResponse('Unknown pack or invalid coupon'),
   },
 });
@@ -196,6 +199,7 @@ const checkoutRoute = createRoute({
 billingRouter.openapi(checkoutRoute, async (c) => {
   const user = c.get('user');
   const { packId, couponCode } = c.req.valid('json');
+  assertPurchasesAllowed(user);
   const order = await checkout(user.id, packId, couponCode);
   return c.json(toOrderDto(order), 200);
 });
@@ -454,6 +458,7 @@ billingWebhooksRouter.openapi(googlePlayRtdnRoute, async (c) => {
   // send it again (with backoff, for up to 7 days) instead of losing it.
   let payload: {
     oneTimeProductNotification?: { notificationType: number; purchaseToken: string; sku: string };
+    voidedPurchaseNotification?: { purchaseToken: string; orderId?: string; productType?: number };
     subscriptionNotification?: {
       notificationType: number;
       purchaseToken: string;
@@ -473,6 +478,12 @@ billingWebhooksRouter.openapi(googlePlayRtdnRoute, async (c) => {
     }
   } catch (err) {
     logger.error({ err }, 'billing: Google Play RTDN one-time product handling failed');
+  }
+
+  // A refund or chargeback (play-refunds.service.ts). Acked either way: the hourly
+  // voided-purchases check picks up anything this could not handle.
+  if (payload.voidedPurchaseNotification) {
+    await handleVoidedPurchaseNotification(payload.voidedPurchaseNotification);
   }
 
   // Aroha Pass on Google Play (roadmap step 10) — see pass-play.service.ts.

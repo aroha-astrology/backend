@@ -22,6 +22,7 @@ import { Errors } from '../../lib/errors.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
 import { insertOrder } from '../billing/billing.repo.js';
+import { assertPurchasesAllowed } from '../billing/purchase-block.js';
 import {
   entitlementForRow,
   GROUP_ENTITLEMENT,
@@ -270,6 +271,7 @@ export async function startQuestionPackCheckout(
   pack: QuestionPack,
 ): Promise<{ productId: string; questions: number }> {
   const def = QUESTION_PACKS.find((p) => p.pack === pack)!;
+  assertPurchasesAllowed(user);
   const features = await resolveFeaturesForUser(user.id);
   if (features[def.key]?.enabled !== true) throw Errors.forbidden('QUESTION_PACK_NOT_AVAILABLE');
   const price = features[def.key]?.pricePaise ?? def.fallbackPaise;

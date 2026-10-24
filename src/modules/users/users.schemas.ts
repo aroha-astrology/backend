@@ -281,6 +281,9 @@ export const UserSchema = z
       .number()
       .int()
       .describe('Free extra-profile slots still open (counts only while the money.freeProfiles switch is on)'),
+    purchasesBlocked: z
+      .boolean()
+      .describe('True after repeated Google Play refunds: top-ups, packs and the Pass are refused'),
     chatGift: z
       .object({
         campaign: z.string(),

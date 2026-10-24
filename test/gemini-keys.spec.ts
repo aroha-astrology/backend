@@ -28,6 +28,20 @@ vi.mock('../src/config/env.js', () => ({
   isTest: true,
 }));
 
+// The shared "key list changed" counter every pm2 worker reads.
+const redis = vi.hoisted(() => ({ version: null as string | null, fails: false }));
+vi.mock('../src/config/redis.js', () => ({
+  getRedis: () => ({
+    get: () =>
+      redis.fails ? Promise.reject(new Error('redis down')) : Promise.resolve(redis.version),
+    incr: () => {
+      if (redis.fails) return Promise.reject(new Error('redis down'));
+      redis.version = String(Number(redis.version ?? 0) + 1);
+      return Promise.resolve(Number(redis.version));
+    },
+  }),
+}));
+
 vi.mock('../src/modules/admin/gemini-keys.repo.js', () => ({
   listGeminiKeyRows: vi.fn(() =>
     state.dbFails ? Promise.reject(new Error('db down')) : Promise.resolve(state.rows),
@@ -58,13 +72,15 @@ function row(overrides: Record<string, unknown>) {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   state.free = ['free-key-aaaaaaaaaaaaaaaa1', 'free-key-aaaaaaaaaaaaaaaa2'];
   state.paid = ['paid-key-1719-aaaaaaaaaaaa'];
   state.paid2 = 'paid-key-2-aaaaaaaaaaaaaaa';
   state.rows = [];
   state.dbFails = false;
-  keys.invalidateGeminiKeys();
+  redis.fails = false;
+  await keys.invalidateGeminiKeys();
+  redis.version = null;
 });
 
 describe('envGeminiKeys', () => {
@@ -142,7 +158,27 @@ describe('loadGeminiKeys', () => {
     await keys.loadGeminiKeys();
     state.rows = [row({ fingerprint: 'fp-new', secret: 'enc:new-key-ccccccccccccccccccc' })];
     expect(await keys.loadGeminiKeys()).toHaveLength(4);
-    keys.invalidateGeminiKeys();
+    await keys.invalidateGeminiKeys();
     expect(await keys.loadGeminiKeys()).toHaveLength(5);
+  });
+
+  it('sees a change saved on another worker at once, not after the cache runs out', async () => {
+    await keys.loadGeminiKeys();
+    state.rows = [row({ fingerprint: 'fp-new', secret: 'enc:new-key-ccccccccccccccccccc' })];
+    // The other worker saved the change and bumped the shared counter.
+    redis.version = '7';
+    expect(await keys.loadGeminiKeys()).toHaveLength(5);
+  });
+
+  it('bumps the shared counter when this worker saves a change', async () => {
+    await keys.invalidateGeminiKeys();
+    expect(redis.version).toBe('1');
+  });
+
+  it('still serves the cached list when Redis is down', async () => {
+    await keys.loadGeminiKeys();
+    redis.fails = true;
+    state.rows = [row({ fingerprint: 'fp-new', secret: 'enc:new-key-ccccccccccccccccccc' })];
+    expect(await keys.loadGeminiKeys()).toHaveLength(4);
   });
 });

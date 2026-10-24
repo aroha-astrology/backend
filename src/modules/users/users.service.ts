@@ -214,6 +214,7 @@ export function toUserDto(
     // Free extra-profile slots still open. Meaningful only while money.freeProfiles is on (the
     // app reads that switch from `features`); 0 otherwise-or-when-used-up is the same to the UI.
     freeProfilesLeft: Math.max(0, FREE_PROFILE_SLOTS - row.freeProfilesUsed),
+    purchasesBlocked: row.purchasesBlockedAt != null,
     chatGift,
     nextReportVote: row.nextReportVote,
     // When the free chat follow-up is next usable; null = usable now. See

@@ -108,6 +108,7 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
     signupDrip: false,
     uiSkin: null,
     groupQuestionsPeriodStart: null,
+    purchasesBlockedAt: null,
   };
 
   beforeEach(() => {

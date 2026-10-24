@@ -195,9 +195,11 @@ export async function findDueExpiredGrants(now: Date): Promise<DueExpiredGrant[]
  * The row lock is what makes the floor real: the balance is read and clamped
  * against inside the same transaction that writes it, so a concurrent spend
  * (or a second expiring grant swept a moment later) cannot take the wallet
- * below zero. A wallet balance must never go negative — it is the only thing
+ * below zero. An expiry must never push a wallet negative — it is the only thing
  * gating paid features, and a negative one would silently lock a paying user
- * out until they topped up past the hole.
+ * out until they topped up past the hole. (Only a Google Play refund may do
+ * that, on purpose: billing/play-refunds.service.ts. A wallet already below zero
+ * here deducts nothing.)
  */
 export async function applyExpiryClawback(
   grantId: string,

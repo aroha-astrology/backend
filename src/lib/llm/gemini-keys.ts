@@ -8,13 +8,16 @@
 // tiers, switches it off or changes its paid order; an 'admin' row is a key
 // pasted on the admin page, whose secret is stored encrypted.
 //
-// Read on every key pick, so it is cached per process for CACHE_TTL_MS: an
-// admin change is live at once on the worker that saved it and within that
-// window on the other pm2 workers. A DB failure falls back to the .env keys
-// alone, so a database hiccup can never leave the app without a key.
+// Read on every key pick, so it is cached per process for CACHE_TTL_MS. An
+// admin change bumps a shared Redis counter that every pm2 worker checks on
+// each read, so a key switched off stops being used on all workers at once,
+// not up to CACHE_TTL_MS later on the workers that did not save it. With Redis
+// down the cache simply runs out as before. A DB failure falls back to the
+// .env keys alone, so a database hiccup can never leave the app without a key.
 
 import { createHash } from 'node:crypto';
 import { GEMINI_KEY_POOL, GEMINI_PAID_KEY_POOL, GEMINI_PAID_KEY2 } from '../../config/env.js';
+import { getRedis } from '../../config/redis.js';
 import type { GeminiKeyRow } from '../../db/schema.js';
 import { listGeminiKeyRows } from '../../modules/admin/gemini-keys.repo.js';
 import { decryptField } from '../crypto/field-encryption.js';
@@ -108,20 +111,58 @@ export function mergeGeminiKeys(envKeys: GeminiKey[], rows: GeminiKeyRow[]): Gem
   return merged;
 }
 
-let cache: { keys: GeminiKey[]; expiresAt: number } | null = null;
+const VERSION_KEY = 'gemini:keys:version';
+const REDIS_CALL_TIMEOUT_MS = 250;
+
+let cache: { keys: GeminiKey[]; expiresAt: number; version: string | null } | null = null;
+
+function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Redis call exceeded ${REDIS_CALL_TIMEOUT_MS}ms`)),
+      REDIS_CALL_TIMEOUT_MS,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      },
+    );
+  });
+}
+
+/** The shared change counter, or undefined when Redis cannot be read (then the TTL decides). */
+async function sharedVersion(): Promise<string | null | undefined> {
+  try {
+    return await withTimeout(getRedis().get(VERSION_KEY));
+  } catch (err) {
+    logger.warn({ err }, 'gemini-keys: could not read the shared change counter');
+    return undefined;
+  }
+}
 
 /** Every key, switched-off ones included. Cached; never throws. */
 export async function loadGeminiKeys(): Promise<GeminiKey[]> {
-  const now = Date.now();
-  if (cache && cache.expiresAt > now) return cache.keys;
+  const version = await sharedVersion();
+  if (
+    cache &&
+    cache.expiresAt > Date.now() &&
+    (version === undefined || version === cache.version)
+  ) {
+    return cache.keys;
+  }
   try {
     const keys = mergeGeminiKeys(envGeminiKeys(), await listGeminiKeyRows());
-    cache = { keys, expiresAt: Date.now() + CACHE_TTL_MS };
+    cache = { keys, expiresAt: Date.now() + CACHE_TTL_MS, version: version ?? null };
     return keys;
   } catch (err) {
     logger.error({ err }, 'gemini-keys: could not read gemini_keys, using the .env keys only');
     const keys = envGeminiKeys();
-    cache = { keys, expiresAt: Date.now() + FAILURE_RETRY_MS };
+    cache = { keys, expiresAt: Date.now() + FAILURE_RETRY_MS, version: version ?? null };
     return keys;
   }
 }
@@ -131,7 +172,12 @@ export function cachedGeminiKeys(): GeminiKey[] {
   return cache?.keys ?? envGeminiKeys();
 }
 
-/** Called after an admin change, so this worker uses it on the very next pick. */
-export function invalidateGeminiKeys(): void {
+/** Called after an admin change, so every worker uses it on its very next pick. */
+export async function invalidateGeminiKeys(): Promise<void> {
   cache = null;
+  try {
+    await withTimeout(getRedis().incr(VERSION_KEY));
+  } catch (err) {
+    logger.warn({ err }, 'gemini-keys: could not tell the other workers about a key change');
+  }
 }

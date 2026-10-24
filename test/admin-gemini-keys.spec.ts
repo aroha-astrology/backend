@@ -30,6 +30,10 @@ vi.mock('../src/lib/crypto/field-encryption.js', () => ({
   decryptField: (value: string | null) => (value?.startsWith('enc:') ? value.slice(4) : value),
 }));
 
+vi.mock('../src/config/redis.js', () => ({
+  getRedis: () => ({ get: () => Promise.resolve(null), incr: () => Promise.resolve(1) }),
+}));
+
 vi.mock('../src/lib/llm/gemini-key-pool.js', () => ({
   isCoolingDown: (fingerprint: string) => Promise.resolve(state.coolingDown.has(fingerprint)),
 }));
@@ -149,6 +153,14 @@ describe('addGeminiKey', () => {
     ).rejects.toThrow(/already called/);
   });
 
+  it('accepts the new AQ. keys Google AI Studio now hands out', async () => {
+    const added = await svc.addGeminiKey(
+      { name: 'subir3', tier: 'paid', key: 'AQ.Ab8RN6LnewAuthKey_aaaaaaaaaaaa-9876' },
+      PHONE,
+    );
+    expect(added).toMatchObject({ name: 'subir3', last4: '9876' });
+  });
+
   it('refuses text that is not a key', async () => {
     await expect(
       svc.addGeminiKey({ name: 'x', tier: 'free', key: 'not a key at all, has spaces' }, PHONE),
@@ -194,6 +206,43 @@ describe('useGeminiKeyFirst', () => {
   it('refuses a free key', async () => {
     const free = await byName('free-1');
     await expect(svc.useGeminiKeyFirst(free.id, PHONE)).rejects.toThrow(/Only a paid key/);
+  });
+});
+
+describe('paid order numbers', () => {
+  it('numbers only the paid keys that are on, so #1 is the key used first right now', async () => {
+    const subir2 = await byName('subir2');
+    await svc.updateGeminiKey(subir2.id, { enabled: false }, PHONE);
+    const list = await svc.listGeminiKeys();
+    expect(list.filter((k) => k.tier === 'paid').map((k) => [k.name, k.paidPosition])).toEqual([
+      ['subir2', null],
+      ['subir1719', 1],
+    ]);
+  });
+});
+
+describe('moveGeminiKey', () => {
+  async function paidNames() {
+    return (await svc.listGeminiKeys()).filter((k) => k.tier === 'paid').map((k) => k.name);
+  }
+
+  it('moves a paid key one place up or down', async () => {
+    await svc.addGeminiKey({ name: 'subir3', tier: 'paid', key: NEW_KEY }, PHONE);
+    await svc.moveGeminiKey((await byName('subir3')).id, 'up', PHONE);
+    expect(await paidNames()).toEqual(['subir2', 'subir3', 'subir1719']);
+    await svc.moveGeminiKey((await byName('subir2')).id, 'down', PHONE);
+    expect(await paidNames()).toEqual(['subir3', 'subir2', 'subir1719']);
+  });
+
+  it('leaves the order alone at the top or bottom', async () => {
+    await svc.moveGeminiKey((await byName('subir2')).id, 'up', PHONE);
+    expect(await paidNames()).toEqual(['subir2', 'subir1719']);
+  });
+
+  it('refuses a free key', async () => {
+    await expect(svc.moveGeminiKey((await byName('free-1')).id, 'up', PHONE)).rejects.toThrow(
+      /Only a paid key/,
+    );
   });
 });
 
