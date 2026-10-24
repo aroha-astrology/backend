@@ -715,7 +715,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Why? — chart evidence behind readings',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
   // The Birth Time Confidence card (GET /v1/birth-time) and its birth-time check.
   // Aroha Pass only: without the Pass the card shows a subscribe lock. Replaces
@@ -725,7 +724,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Birth Time Confidence card (Aroha Pass only)',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 2 — Astro Weather (GET /v1/astro-weather; no AI cost).
@@ -734,7 +732,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Astro Weather card + /weather page',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
   // The Listen button: a 10-second summary read by on-device TTS (no server audio).
   {
@@ -742,7 +739,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Astro Weather — Listen (spoken summary)',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
   // Your Day: the day's good and caution windows. Moved from Home to the Panchang
   // page on 2026-09-25; the key (and so its group) keeps its old name so admin and group
@@ -752,7 +748,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Your Day timeline card on Panchang',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 3 — Aroha Calendar (GET /v1/calendar; no AI cost).
@@ -761,7 +756,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Aroha Calendar page + menu entry',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
   // The next important window from the calendar. Moved from Home to the Panchang
   // page on 2026-09-25; the key (and so its group) keeps its old name so admin and group
@@ -771,7 +765,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Next important window card on Panchang',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 4 — Life Timeline (GET /v1/timeline; no AI cost). Aroha Pass only:
@@ -781,7 +774,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Life Timeline page (Aroha Pass only)',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 5 — Ask Aroha 2.0 and Talk to Aroha (same chat price as today).
@@ -791,7 +783,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Ask Aroha 2.0 — card answers (factors, meaning, timeline, explore)',
     group: 'chat',
     defaultEnabled: false,
-    tag: 'new',
   },
   // Voice call trial (Durga Puja 2026, owner's decision): every user, Pass or not, gets
   // VOICE_TRIAL_MINUTES free once. Without a Pass the call stops there and shows the Pass lock.
@@ -808,7 +799,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Voice call — ask "how was your call?" when it ends',
     group: 'chat',
     defaultEnabled: false,
-    tag: 'new',
   },
   // Hands-free chat: dictation in, reply read aloud in the language it was written in. Uses the normal per-question price.
   {
@@ -816,7 +806,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Talk to Aroha — speak a question, hear the reply',
     group: 'chat',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 6 — Decision Astrology and Find My Date (both Aroha Pass only: without
@@ -827,7 +816,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Decision Astrology — when to act on a big choice (Aroha Pass only)',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
   // A /find-date page: category, place and range give the best dates with the best time of day, in that place's own timezone. Rule-based, no AI cost.
   {
@@ -835,7 +823,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Find My Date — best day and time for a beginning (Aroha Pass only)',
     group: 'panchang',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 7 — Aroha Bonds (Aroha Pass only: without the Pass the page and the
@@ -846,14 +833,12 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Aroha Bonds — compatibility and phase with each saved person (Aroha Pass only)',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
   {
     key: 'home.bondsCard',
     label: 'Aroha Bonds card on Home',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 8 — Astro Journal (free; notes and life events stored encrypted).
@@ -863,14 +848,12 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Astro Journal — daily check-in with patterns by dasha and star',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
   {
     key: 'home.journalPrompt',
     label: 'Astro Journal — "How was today?" card on Home',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Daily Stories (free; no AI cost, no new route).
@@ -880,7 +863,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Daily Stories — story ring on the Home avatar (Panchang, Hora, Deity, Gita)',
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 9 — Today's Practice (free).
@@ -890,7 +872,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: "Today's Practice — daily mantras and remedy with reasons",
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Step 10 — Question Packs and the Aroha Pass (all off; the Pass stays off until you decide).
@@ -901,7 +882,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 4900,
-    tag: 'new',
   },
   {
     key: 'paid.questionPackMedium',
@@ -909,7 +889,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 9900,
-    tag: 'new',
   },
   {
     key: 'paid.questionPackLarge',
@@ -917,7 +896,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 19900,
-    tag: 'new',
   },
   // A /pass page with the three Passes: Silver, Gold and Platinum. Each gives chat questions per 30 days, some of the Pass-only features and a discount on reports (what each tier gives is fixed in modules/pass/pass.config.ts). Google Play subscription only (Android, app 1.13+) — never paid from the wallet. Needs at least one tier (paid.arohaPassA/B/C) on too, and the aroha_pass_monthly subscription set up in Play Console. Users see every tier that is ON and pick one.
   {
@@ -925,7 +903,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Aroha Pass — monthly Google Play subscription',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
   // The "Aroha Pass is here" popup on Home, with a button to /pass. Shown once to each user who has no Pass, and only while nav.arohaPass is on with at least one tier. A new user does not get it on their first visit: it waits for the second.
   {
@@ -933,7 +910,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: "Aroha Pass launch popup on Home (once per user, from a new user's second visit)",
     group: 'home',
     defaultEnabled: false,
-    tag: 'new',
   },
   // Silver: 15 questions, Life Timeline, Bonds, 10% off reports. The price here is only what the app shows; Google Play charges the base plan's own price, set in Play Console (base plan pass-199) — keep them the same.
   {
@@ -942,7 +918,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 19900,
-    tag: 'new',
   },
   // Gold: 30 questions, everything in Silver plus Decisions, Find My Date and the birth-time check, 20% off reports. Play base plan pass-299.
   {
@@ -952,7 +927,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 29900,
-    tag: 'new',
   },
   // Platinum: 60 questions, everything in Gold plus Relocation, 30% off reports. Play base plan pass-399.
   {
@@ -961,7 +935,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 39900,
-    tag: 'new',
   },
 
   // Step 11 — Digital Yantras & Wallpapers.
@@ -971,7 +944,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Digital Yantra — a personal yantra from your chart',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
   {
     key: 'paid.digitalYantra',
@@ -979,7 +951,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 4900,
-    tag: 'new',
   },
   {
     key: 'paid.digitalWallpaper',
@@ -987,7 +958,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 2900,
-    tag: 'new',
   },
 
   // Step 12 — Aroha Relocation (Aroha Pass only: without the Pass the page shows a subscribe lock).
@@ -997,7 +967,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Aroha Relocation — compare cities for career, love, money and more (Aroha Pass only)',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Report book (2026-10-24): a finished report opens as a book you turn by hand, with a cover
@@ -1008,7 +977,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Report book — open a report as a page-turning book',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // The book's handwriting: the reader's name on the cover and the pull-quotes are set in a
@@ -1019,7 +987,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Report book — handwriting style for the cover name and pull-quotes',
     group: 'nav',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // Palmistry V2 (2026-10). Each switch is one part of the new pipeline, so it can be tried on
@@ -1030,21 +997,18 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     label: 'Palm — strict line gate (inner-palm outline from the hand points, tighter thresholds)',
     group: 'palm',
     defaultEnabled: false,
-    tag: 'new',
   },
   {
     key: 'palm.biometricOverride',
     label: 'Palm — measured finger/thumb/palm shape replaces the model’s guess',
     group: 'palm',
     defaultEnabled: false,
-    tag: 'new',
   },
   {
     key: 'palm.autoCapture',
     label: 'Palm — camera takes the photo by itself once the hand is steady and sharp',
     group: 'palm',
     defaultEnabled: false,
-    tag: 'new',
   },
 
   // =========================================================================
@@ -1445,7 +1409,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
       'Take back Google Play refunds (wallet, question packs, reports; block repeat refunders)',
     group: 'paid',
     defaultEnabled: false,
-    tag: 'new',
   },
 ] as const;
 

@@ -58,47 +58,13 @@ describe('roadmap features (tag "new")', () => {
     for (const f of NEW) expect(f.defaultEnabled, f.key).toBe(false);
   });
 
-  it('every roadmap key is tagged NEW so the admin board can pick it out', () => {
-    const roadmapKeys = [
-      'home.whyAroha',
-      'home.birthTimeConfidence',
-      'home.astroWeather',
-      'home.astroWeatherListen',
-      'home.yourDay',
-      'nav.calendar',
-      'home.nextWindow',
-      'nav.lifeTimeline',
-      'chat.structuredAnswers',
-      'chat.voiceMode',
-      'nav.decisions',
-      'panchang.findMyDate',
-      'nav.bonds',
-      'home.bondsCard',
-      'nav.journal',
-      'home.journalPrompt',
-      'nav.dailyPractice',
-      'paid.questionPackSmall',
-      'paid.questionPackMedium',
-      'paid.questionPackLarge',
-      'nav.arohaPass',
-      'paid.arohaPassA',
-      'paid.arohaPassB',
-      'paid.arohaPassC',
-      'nav.digitalYantra',
-      'paid.digitalYantra',
-      'paid.digitalWallpaper',
-      'nav.relocation',
-      'money.coins',
-      'money.coinPacks',
-      'money.razorpayIntl',
-      'money.signupDrip',
-      'money.freeProfiles',
-      'money.houseOffer',
-      'money.voiceSlices',
-      'money.passCoins',
-    ];
+  it('NEW marks only what shipped in the v7 launch (2026-10-25); earlier features lost the mark', () => {
     const tagged = new Set(NEW.map((f) => f.key));
-    for (const key of roadmapKeys) expect(tagged.has(key), key).toBe(true);
+    const v7 = ['money.coins', 'money.coinPacks', 'money.razorpayIntl', 'money.signupDrip', 'money.freeProfiles', 'money.houseOffer', 'money.voiceSlices', 'money.passCoins', 'money.refundKeys', 'money.platinumReport', 'money.razorpayPass', 'money.storekit', 'experience.picker', 'experience.homeLayout', 'experience.travelPill', 'experience.nriMode', 'experience.signShift', 'experience.wheelChart', 'nav.pills', 'nav.shortMenu', 'nav.coachMarks', 'live.nowBar', 'live.widget', 'ritual.morning', 'circles.circles', 'circles.invite', 'circles.pulse', 'hooks.kundliRahasya', 'hooks.shubhLabh', 'hooks.gharKavach', 'hooks.sankalpDiya', 'hooks.cosmicReceipts', 'hooks.textTiming', 'hooks.sleepSync', 'hooks.mysteryDrop', 'home.timeMorph', 'memory.babaMemory', 'memory.vault', 'memory.rectifyChip', 'chat.personas', 'community.sameSky', 'lang.localNames', 'lang.gitaScripts', 'lang.pushAll'];
+    for (const key of v7) expect(tagged.has(key), key).toBe(true);
+    expect(NEW.length).toBe(v7.length);
+    // the earlier roadmap features are no longer NEW
+    for (const key of ['home.whyAroha', 'nav.bonds', 'nav.arohaPass', 'paid.arohaPassA', 'nav.relocation', 'nav.reportBook', 'paid.refundClawback', 'palm.strictGate']) expect(tagged.has(key), key).toBe(false);
   });
 
   it('the Aroha Pass features have no one-off wallet price, and the Pass has no separate Play switch', () => {
