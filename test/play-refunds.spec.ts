@@ -21,6 +21,7 @@ const spies = vi.hoisted(() => ({
   resyncPass: vi.fn(),
   voidedList: vi.fn(),
   clawBackOrder: vi.fn(),
+  fetchPurchase: vi.fn(),
 }));
 
 vi.mock('../src/config/env.js', () => ({
@@ -34,6 +35,9 @@ vi.mock('../src/config/google-play.js', () => ({
   getAndroidPublisher: () => ({ purchases: { voidedpurchases: { list: spies.voidedList } } }),
 }));
 
+vi.mock('../src/modules/billing/google-play-verifier.js', () => ({
+  fetchGooglePlayPurchase: spies.fetchPurchase,
+}));
 vi.mock('../src/lib/notifications/notify-user.js', () => ({ notifyUser: spies.notifyUser }));
 vi.mock('../src/lib/notifications/telegram.js', () => ({
   notifyPlayRefund: spies.notifyPlayRefund,
@@ -81,7 +85,9 @@ vi.mock('../src/modules/billing/play-refunds.repo.js', () => ({
     Promise.resolve(db.refunds.filter((r) => r.status === 'recorded' && r.userId)),
   countPlayRefundsForUser: (userId: string) =>
     Promise.resolve(
-      db.refunds.filter((r) => r.userId === userId && r.status !== 'unmatched').length,
+      db.refunds.filter(
+        (r) => r.userId === userId && !['unmatched', 'not_credited'].includes(String(r.status)),
+      ).length,
     ),
   findOrderByPurchaseToken: (token: string) =>
     Promise.resolve(db.orders.find((o) => o.gatewayPaymentId === token)),
@@ -148,6 +154,8 @@ beforeEach(() => {
   for (const spy of Object.values(spies)) spy.mockReset();
   spies.notifyPlayRefund.mockResolvedValue(true);
   spies.resyncPass.mockResolvedValue(undefined);
+  // By default Google knows the token under no product id.
+  spies.fetchPurchase.mockRejectedValue(new Error('404'));
   // The take-back: guarded on the order still being paid, like the SQL transaction.
   spies.clawBackOrder.mockImplementation(
     (order: Record<string, any>, take: { walletPaise: number; questions: number }) => {
@@ -297,6 +305,48 @@ describe('other refunds', () => {
       expect.objectContaining({ purchaseToken: 'tok-pass', subscriptionId: 'aroha_pass_monthly' }),
     );
     expect(db.refunds[0]).toMatchObject({ kind: 'pass', status: 'pass', userId: USER });
+  });
+
+  it('a payment the app never confirmed is linked to its buyer and taken back from nobody', async () => {
+    db.clawbackOn.add(USER);
+    // Google answers only under the product that was really bought.
+    spies.fetchPurchase.mockImplementation(({ productId }: { productId: string }) =>
+      productId === '100_recharge'
+        ? Promise.resolve({ purchaseState: 1, obfuscatedExternalAccountId: USER })
+        : Promise.reject(new Error('404')),
+    );
+    expect(
+      await svc.recordVoidedPurchase({
+        ...voided('tok-adi', 'GPA.7'),
+        voidedSource: 2,
+        voidedReason: 8,
+      }),
+    ).toBe('not_credited');
+
+    expect(db.refunds[0]).toMatchObject({
+      kind: 'top_up',
+      productId: '100_recharge',
+      userId: USER,
+      amountPaise: 10000,
+      status: 'not_credited',
+    });
+    expect(spies.clawBackOrder).not.toHaveBeenCalled();
+    expect(spies.notifyUser).not.toHaveBeenCalled();
+    const sent = spies.notifyPlayRefund.mock.calls[0]![0];
+    expect(sent.reason).toBe('never confirmed by the app (refunded by Google)');
+    expect(sent.outcome).toContain('never credited');
+    // Not the buyer's doing: it never counts toward the block.
+    addOrder('order-50', 'tok-50', 'recharrge_50', 5000);
+    await svc.recordVoidedPurchase(voided('tok-50', 'GPA.4'));
+    expect(db.users.get(USER)!.purchasesBlockedAt).toBeNull();
+  });
+
+  it('an unmatched refund recorded earlier is linked once Google names the buyer', async () => {
+    await svc.recordVoidedPurchase(voided('tok-adi', 'GPA.7'));
+    expect(db.refunds[0]!.status).toBe('unmatched');
+    spies.fetchPurchase.mockResolvedValue({ purchaseState: 1, obfuscatedExternalAccountId: USER });
+    expect(await svc.recordVoidedPurchase(voided('tok-adi', 'GPA.7'))).toBe('not_credited');
+    expect(db.refunds[0]).toMatchObject({ status: 'not_credited', userId: USER });
   });
 
   it('a purchase we have no record of is kept as unmatched', async () => {

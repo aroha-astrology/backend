@@ -158,6 +158,7 @@ const checkRoute = createRoute({
             pass: z.number().int(),
             unmatched: z.number().int(),
             skipped: z.number().int(),
+            notCredited: z.number().int(),
           }),
         },
       },

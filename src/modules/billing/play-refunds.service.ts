@@ -35,10 +35,15 @@ import { logger } from '../../lib/logger.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import { notifyPlayRefund } from '../../lib/notifications/telegram.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
-import { PASS_PLAY_PRODUCT_ID, questionPackForProduct } from '../pass/pass.config.js';
+import {
+  PASS_PLAY_PRODUCT_ID,
+  QUESTION_PACKS,
+  questionPackForProduct,
+} from '../pass/pass.config.js';
 import { handlePlaySubscriptionNotification } from '../pass/pass-play.service.js';
 import { findPassByExternalId } from '../pass/pass.repo.js';
 import { findActiveUserById } from '../users/users.repo.js';
+import { fetchGooglePlayPurchase } from './google-play-verifier.js';
 import { formatPaise, playRefundNoticeCopy } from './play-refund-notices.js';
 import {
   bonusGrantedFor,
@@ -69,6 +74,9 @@ const VOIDED_REASONS = [
   'fraud',
   'friendly fraud',
   'bank chargeback',
+  // Google refunds a payment nobody acknowledged within 3 days: the app never
+  // confirmed it, so the buyer never got what they paid for.
+  'never confirmed by the app',
 ];
 const VOIDED_SOURCES = ['the buyer', 'us (Play Console)', 'Google'];
 
@@ -82,7 +90,52 @@ export interface VoidedPurchase {
   detectedVia: 'voided_api' | 'rtdn';
 }
 
-export type RefundOutcome = 'recorded' | 'clawed_back' | 'skipped' | 'pass' | 'unmatched' | 'seen';
+export type RefundOutcome =
+  | 'recorded'
+  | 'clawed_back'
+  | 'skipped'
+  | 'pass'
+  | 'not_credited'
+  | 'unmatched'
+  | 'seen';
+
+/** Every one-time product the app sells: wallet top-ups and Question Packs. */
+const ONE_TIME_PRODUCTS = [
+  ...TOP_UP_AMOUNTS.map((a) => ({
+    productId: a.id,
+    pricePaise: a.amountPaise,
+  })),
+  ...QUESTION_PACKS.map((p) => ({
+    productId: p.playProductId,
+    pricePaise: p.fallbackPaise,
+  })),
+];
+
+/**
+ * Who bought a purchase we hold no order for, and what. Google's refund list
+ * carries only the token, so this asks Google about it under each product id
+ * until one answers; the purchase names the buyer (obfuscatedAccountId). Null
+ * when no product matches or the purchase carries no buyer.
+ */
+async function identifyPurchase(
+  purchaseToken: string,
+): Promise<{ productId: string; pricePaise: number; userId: string } | null> {
+  for (const product of ONE_TIME_PRODUCTS) {
+    try {
+      const purchase = await fetchGooglePlayPurchase({
+        productId: product.productId,
+        purchaseToken,
+      });
+      const userId = purchase.obfuscatedExternalAccountId;
+      // A buyer whose account has since been deleted cannot be linked.
+      if (!userId || !(await findActiveUserById(userId).catch(() => undefined))) return null;
+      return { ...product, userId };
+    } catch {
+      // Not this product (Google answers 400/404); try the next one.
+    }
+  }
+  return null;
+}
 
 function reasonText(v: { voidedReason: number | null; voidedSource: number | null }): string {
   const reason = v.voidedReason !== null ? VOIDED_REASONS[v.voidedReason] : undefined;
@@ -91,11 +144,29 @@ function reasonText(v: { voidedReason: number | null; voidedSource: number | nul
   return reason ?? (source ? `refunded by ${source}` : 'not given');
 }
 
-function productLabel(order: OrderRow): string {
-  const pack = questionPackForProduct(order.packId);
+function productName(productId: string): string {
+  const pack = questionPackForProduct(productId);
   if (pack) return `Question Pack (${pack.questions} questions)`;
-  const amount = TOP_UP_AMOUNTS.find((a) => a.id === order.packId);
-  return amount ? `${amount.label} recharge` : order.packId;
+  const amount = TOP_UP_AMOUNTS.find((a) => a.id === productId);
+  return amount ? `${amount.label} recharge` : productId;
+}
+
+function productLabel(order: OrderRow): string {
+  return productName(order.packId);
+}
+
+const NOT_CREDITED_OUTCOME =
+  'nothing to take back: the app never confirmed this payment, so it was never credited (lost sale)';
+
+/** A refund of a payment the app never credited: who and what, for the admin; never counted against the buyer. */
+function notCreditedPatch(found: { productId: string; pricePaise: number; userId: string }) {
+  return {
+    kind: questionPackForProduct(found.productId) ? 'question_pack' : 'top_up',
+    productId: found.productId,
+    userId: found.userId,
+    amountPaise: found.pricePaise,
+    status: 'not_credited',
+  };
 }
 
 async function clawbackOnFor(userId: string): Promise<boolean> {
@@ -202,6 +273,19 @@ export async function recordVoidedPurchase(v: VoidedPurchase): Promise<RefundOut
   const refundKey = v.googleOrderId ?? `token:${v.purchaseToken}`;
   const existing = await findPlayRefundByKey(refundKey);
   if (existing) {
+    // Recorded before purchases we hold no order for were looked up with Google.
+    if (existing.status === 'unmatched') {
+      const found = await identifyPurchase(existing.purchaseToken);
+      if (!found) return 'seen';
+      await updatePlayRefund(existing.id, notCreditedPatch(found));
+      await alert(
+        { ...existing, userId: found.userId },
+        productName(found.productId),
+        found.pricePaise,
+        NOT_CREDITED_OUTCOME,
+      );
+      return 'not_credited';
+    }
     if (existing.status !== 'recorded' || !existing.userId || !existing.orderId) return 'seen';
     const order = await findOrderByPurchaseToken(existing.purchaseToken);
     if (!order || !(await clawbackOnFor(existing.userId))) return 'seen';
@@ -249,6 +333,15 @@ export async function recordVoidedPurchase(v: VoidedPurchase): Promise<RefundOut
       );
       return 'pass';
     }
+    // No order holds this token: the app never confirmed the payment, so nothing
+    // was credited (Google refunds such a payment by itself after 3 days).
+    const found = await identifyPurchase(v.purchaseToken);
+    if (found) {
+      const row = await insertPlayRefund({ ...base, ...notCreditedPatch(found) });
+      if (!row) return 'seen';
+      await alert(row, productName(found.productId), found.pricePaise, NOT_CREDITED_OUTCOME);
+      return 'not_credited';
+    }
     const row = await insertPlayRefund({ ...base, kind: 'unknown', status: 'unmatched' });
     if (!row) return 'seen';
     await alert(row, 'unknown purchase', 0, 'no order or Pass in our database has this purchase');
@@ -293,6 +386,8 @@ export interface PlayRefundCheckResult {
   pass: number;
   unmatched: number;
   skipped: number;
+  /** Payments the app never confirmed, which Google refunded by itself. */
+  notCredited: number;
 }
 
 /**
@@ -308,6 +403,7 @@ export async function runPlayRefundCheck(now: Date = new Date()): Promise<PlayRe
     pass: 0,
     unmatched: 0,
     skipped: 0,
+    notCredited: 0,
   };
   const count = (outcome: RefundOutcome) => {
     if (outcome === 'recorded') result.recorded++;
@@ -315,6 +411,7 @@ export async function runPlayRefundCheck(now: Date = new Date()): Promise<PlayRe
     else if (outcome === 'pass') result.pass++;
     else if (outcome === 'unmatched') result.unmatched++;
     else if (outcome === 'skipped') result.skipped++;
+    else if (outcome === 'not_credited') result.notCredited++;
   };
 
   const client = getAndroidPublisher();

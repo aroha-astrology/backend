@@ -761,6 +761,7 @@ const playRefundsRoute = createRoute({
             pass: z.number(),
             unmatched: z.number(),
             skipped: z.number(),
+            notCredited: z.number(),
           }),
         },
       },

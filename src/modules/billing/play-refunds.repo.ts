@@ -6,7 +6,7 @@
 // `paid`, so the hourly check and Google's push notice can both see the same
 // refund and only one of them takes anything back.
 
-import { and, desc, eq, gte, inArray, isNotNull, like, lt, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, like, lt, notInArray, sql } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   orders,
@@ -63,12 +63,20 @@ export async function listRecordedPlayRefunds(): Promise<PlayRefundRow[]> {
     .orderBy(playRefunds.createdAt);
 }
 
-/** How many of this user's purchases Google has refunded (Pass refunds included). */
+/**
+ * How many of this user's purchases Google has refunded (Pass refunds included).
+ * A payment the app never credited is not the buyer's doing, so it does not count.
+ */
 export async function countPlayRefundsForUser(userId: string): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(playRefunds)
-    .where(and(eq(playRefunds.userId, userId), ne(playRefunds.status, 'unmatched')));
+    .where(
+      and(
+        eq(playRefunds.userId, userId),
+        notInArray(playRefunds.status, ['unmatched', 'not_credited']),
+      ),
+    );
   return row?.n ?? 0;
 }
 
