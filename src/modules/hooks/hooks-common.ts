@@ -10,7 +10,7 @@ import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { passEntitlement } from '../../lib/entitlements.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
-import { dateInZone, userZone } from '../../lib/user-time-zone.js';
+import { dateInZone, INDIA_TZ, userZone } from '../../lib/user-time-zone.js';
 import { isValidTimeZone } from '../astro/astro.service.js';
 import { isFeatureOn, priceOf } from '../features/features.service.js';
 import { addWalletBalance, deductWalletBalance, refundKeyFor } from '../users/users.repo.js';
@@ -37,7 +37,7 @@ const DELHI = { lat: 28.61, lon: 77.21 };
 /**
  * The place a hook reads the sky at: what the app sent (its sky place), else the saved home city or
  * the device position per the reader's sky mode, else Delhi with `assumed` set. The zone comes from the
- * request when valid, else the place, else the account.
+ * request only when it came with coordinates; a saved place keeps its own zone, and Delhi keeps IST.
  */
 export function resolvePlace(user: UserRow, q: PlaceQuery = {}): Place {
   const validTz = q.tz && isValidTimeZone(q.tz) ? q.tz : undefined;
@@ -51,12 +51,14 @@ export function resolvePlace(user: UserRow, q: PlaceQuery = {}): Place {
     return {
       lat: pick.lat,
       lon: pick.lon,
-      tz: validTz ?? (placeTz && isValidTimeZone(placeTz) ? placeTz : userZone(user.currentTimezone)),
+      // the place's own zone: times for a home city must not be shifted onto the device's clock
+      tz: placeTz && isValidTimeZone(placeTz) ? placeTz : (validTz ?? userZone(user.currentTimezone)),
       name: pick.name ?? null,
       assumed: false,
     };
   }
-  return { ...DELHI, tz: validTz ?? userZone(user.currentTimezone), name: null, assumed: true };
+  // no place known at all: New Delhi on India's clock, so the times and the place agree
+  return { ...DELHI, tz: INDIA_TZ, name: null, assumed: true };
 }
 
 /** The reader's own local date at `now` on the zone. */
@@ -161,7 +163,7 @@ export async function sendHookPush(user: UserRow, push: HookPush, now: Date = ne
   try {
     if (!(await hookOn(user.id, push.hook))) return false;
     if (await hookPushOff(user.id, push.hook)) return false;
-    const localDate = dateInZone(now, userZone(user.currentTimezone));
+    const localDate = dateInZone(now, resolvePlace(user).tz);
     if (!underCap(await pushCountOn(user.id, localDate), await pushCap())) return false;
     await logPush(user.id, localDate, push.hook);
     await notifyUser(user.id, {

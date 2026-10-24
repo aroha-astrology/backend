@@ -13,7 +13,7 @@ import { logger } from '../../lib/logger.js';
 import { acquire, release } from '../../lib/cache/locks.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import { normalizePushLang } from '../../lib/push-lang.js';
-import { dateInZone, userZone } from '../../lib/user-time-zone.js';
+import { dateInZone } from '../../lib/user-time-zone.js';
 import { isFeatureOnGlobally } from '../features/features.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
 import { localClock } from '../widgets/live-now.js';
@@ -65,25 +65,25 @@ const BUILDERS: Partial<Record<HookName, Build>> = {
     const v = await getKavach(user, {}, now);
     if (!v.today || v.today.done) return null;
     const c = hookPushCopy(lang, 'kavach', { name: v.today.name, beads: v.today.beadsTarget, planet: v.today.planetHindi });
-    return { ...c, link: '/bonds' };
+    return { ...c, link: '/hooks/ghar-kavach' };
   },
   sankalpDiya: async (user, now, lang) => {
     const v = await getDiya(user, {}, now);
     const minute = localClock(now, v.place.tz).minutes;
     if (v.lit || v.state !== 'open' || minute >= v.window.startMin + WINDOW_MIN) return null;
-    return { ...hookPushCopy(lang, 'diya', { start: v.window.start, end: v.window.end, why: v.window.why }), link: '/practice' };
+    return { ...hookPushCopy(lang, 'diya', { start: v.window.start, end: v.window.end, why: v.window.why }), link: '/hooks/sankalp-diya' };
   },
   sleepSync: async (user, now, lang) => {
     const place = resolvePlace(user, {});
     const date = dateInZone(now, place.tz);
     const last = (await listSleep(user.id, 1))[0];
     if (last?.localDate === date) return null; // already logged this morning
-    return { ...hookPushCopy(lang, 'sleep'), link: '/journal' };
+    return { ...hookPushCopy(lang, 'sleep'), link: '/hooks/sleep-sync' };
   },
   mysteryDrop: async (user, now, lang) => {
     const v = await getMystery(user, {}, now);
     if (v.state !== 'ready' || v.cards.every((c) => c.scratched)) return null;
-    return { ...hookPushCopy(lang, 'mystery'), link: '/circles' };
+    return { ...hookPushCopy(lang, 'mystery'), link: '/hooks/mystery' };
   },
   kundliRahasya: async (user, now, lang) => {
     const v = await refreshRahasya(user, now);
@@ -92,12 +92,12 @@ const BUILDERS: Partial<Record<HookName, Build>> = {
     await mergeProgress(user.id, 'kundliRahasya', 'push', '-', { count: Math.max(known, v.openCount) });
     if (v.openCount <= known) return null;
     const n = Math.max(...v.slots.filter((s) => s.via === 'daily').map((s) => s.n));
-    return { ...hookPushCopy(lang, 'rahasya', { n, title: v.slots[n - 1]!.title }), link: '/kundli' };
+    return { ...hookPushCopy(lang, 'rahasya', { n, title: v.slots[n - 1]!.title }), link: '/hooks/rahasya' };
   },
   cosmicReceipts: async (user, now, lang) => {
     const v = await getReceipts(user, {}, now);
     if (v.cards.every((c) => c.verdict !== null || c.status === 'upcoming')) return null;
-    return { ...hookPushCopy(lang, 'receipts'), link: '/horoscope' };
+    return { ...hookPushCopy(lang, 'receipts'), link: '/hooks/cosmic-receipts' };
   },
 };
 
@@ -124,7 +124,7 @@ export async function runHooksCron(opts: { now?: Date; dryRun?: boolean } = {}):
         try {
           const user = await findActiveUserById(id);
           if (!user || !(await hookOn(user.id, hook))) continue;
-          const zone = userZone(user.currentTimezone);
+          const zone = resolvePlace(user, {}).tz; // the same clock the hook screens use
           const minute = localClock(now, zone).minutes;
           let target = PUSH_MINUTES[hook]!;
           if (target < 0) {

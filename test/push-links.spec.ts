@@ -22,6 +22,7 @@ const FRONTEND_ROUTES: RegExp[] = [
   /^\/gemstones$/,
   /^\/gita\/[^/]+$/,
   /^\/help$/,
+  /^\/hooks\/(rahasya|shubh-labh|ghar-kavach|sankalp-diya|cosmic-receipts|text-timing|sleep-sync|mystery)$/,
   /^\/horoscope$/,
   /^\/kundli$/,
   /^\/palm$/,

@@ -156,7 +156,7 @@ describe('the scheduled run', () => {
     seed('u1', 'kundliRahasya', '-');
     const r1 = await runHooksCron({ now: at(26, '20:05') });
     expect(r1.pushed).toBe(1);
-    expect(world.pushes[0]).toMatchObject({ type: 'hook_rahasya', link: '/kundli' });
+    expect(world.pushes[0]).toMatchObject({ type: 'hook_rahasya', link: '/hooks/rahasya' });
     expect(world.pushes[0]!.body).toContain('Scroll 3');
     const r2 = await runHooksCron({ now: at(26, '20:10') });
     expect(r2.pushed).toBe(0); // the same quarter hour again: the claim is taken

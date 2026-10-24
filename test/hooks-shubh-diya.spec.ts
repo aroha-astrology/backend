@@ -219,3 +219,19 @@ describe('Sankalp Diya', () => {
     spy.mockRestore();
   });
 });
+
+describe('the sky place', () => {
+  it('a saved home city keeps its own zone even when the device says another', async () => {
+    const { resolvePlace } = await import('../src/modules/hooks/hooks-common');
+    const p = resolvePlace(user, { tz: 'America/New_York' });
+    expect(p).toMatchObject({ name: 'New Delhi', tz: 'Asia/Kolkata', assumed: false });
+  });
+  it('coordinates from the app bring their own zone', async () => {
+    const { resolvePlace } = await import('../src/modules/hooks/hooks-common');
+    expect(resolvePlace(user, { lat: 40.7, lon: -74, tz: 'America/New_York' })).toMatchObject({ tz: 'America/New_York', assumed: false });
+  });
+  it('with no place at all it is Delhi on IST and says it was assumed', async () => {
+    const { resolvePlace } = await import('../src/modules/hooks/hooks-common');
+    expect(resolvePlace({ ...(user as object), homeLocation: null, currentLocation: null, currentTimezone: 'Europe/Paris' } as never, { tz: 'Europe/Paris' })).toMatchObject({ lat: 28.61, tz: 'Asia/Kolkata', assumed: true });
+  });
+});

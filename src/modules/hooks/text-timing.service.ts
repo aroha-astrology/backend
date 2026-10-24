@@ -169,7 +169,7 @@ export async function armPeakAlert(user: UserRow, q: PlaceQuery & { profileId: s
     name: view.person.name, start: best.start, end: best.end,
   });
   await insertAlarm({
-    userId: user.id, hook: HOOK, ref: `${q.profileId}:${view.date}`, fireAt, title: copy.title, body: copy.body, link: '/bonds',
+    userId: user.id, hook: HOOK, ref: `${q.profileId}:${view.date}`, fireAt, title: copy.title, body: copy.body, link: '/hooks/text-timing',
   });
   return { armed: true, at: fireAt.toISOString(), chargedPaise: res.chargedPaise };
 }

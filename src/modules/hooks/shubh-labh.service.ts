@@ -204,7 +204,7 @@ export async function armAlarm(
     fireAt,
     title: copy.title,
     body: copy.body,
-    link: '/panchang',
+    link: '/hooks/shubh-labh',
   });
   return { armed: true, at: fireAt.toISOString(), reason: created ? undefined : 'already set' };
 }
