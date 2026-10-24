@@ -9,6 +9,12 @@
 // =============================================================================
 
 import { passReportDiscountPct } from '../../lib/entitlements.js';
+import {
+  givePassFreeReportBack,
+  isPassFreeReportKey,
+  takePassFreeReport,
+} from '../pass/pass-free-report.js';
+import { keyed, newChargeKey, refundOf } from '../billing/refund-keys.js';
 import '../reports/generators/index.js';
 import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
@@ -904,13 +910,25 @@ async function failOrRequeueReport(
   }
 
   await markReportFailed(row.id, claimedAt, message);
+  await refundReportRow(row, 'report generation refund failed');
+}
+
+/**
+ * Gives back what a failed report row cost: its share of the purchase, under the purchase's key
+ * when it has one (money.refundKeys), so the failure path and the stale-row reaper can never both
+ * pay it; or, for a Platinum Pass free report, the free report itself.
+ */
+async function refundReportRow(row: ReportRow, failureLog: string): Promise<void> {
+  if (isPassFreeReportKey(row.chargeKey)) {
+    await givePassFreeReportBack(row.userId, row.chargeKey);
+    return;
+  }
   await addWalletBalance(
     row.userId,
     row.pricePaidPaise,
     `refund:${reasonForRow(row.reportKey, row.periodMonth)}`,
-  ).catch((refundErr: unknown) =>
-    logger.error({ err: refundErr, reportId: row.id }, 'report generation refund failed'),
-  );
+    ...refundOf(row.chargeKey),
+  ).catch((refundErr: unknown) => logger.error({ err: refundErr, reportId: row.id }, failureLog));
 }
 
 // -----------------------------------------------------------------------------
@@ -1094,7 +1112,31 @@ export async function purchaseReport(
   const purchaseReason = reasonForPurchase(def.key, months);
   const answers = body.answers && Object.keys(body.answers).length > 0 ? body.answers : null;
 
-  const charged = await deductWalletBalance(user.id, totalPricePaise, purchaseReason);
+  // The Platinum Pass free report (money.platinumReport): one report bought on its own costs
+  // nothing once a Pass period. Taken before the charge; given back below if the purchase
+  // turns out to be a repeat, and by refundReportRow if the report fails.
+  const freeReportKey =
+    periodMonths.length === 1 && totalPricePaise > 0 ? await takePassFreeReport(user.id) : null;
+  const chargedPrices = freeReportKey ? rowPrices.map(() => 0) : rowPrices;
+  // The purchase's wallet key (money.refundKeys); each row's share is refunded under its own
+  // "<key>:<n>", so a row can be refunded once per purchase.
+  const purchaseKey = freeReportKey ? undefined : await newChargeKey(user.id, 'report');
+  const rowKey = (i: number): string | null =>
+    freeReportKey ?? (purchaseKey ? `${purchaseKey}:${i}` : null);
+  /** Gives back row i's share when this purchase does not use the row it paid for. */
+  const refundShare = async (i: number, rowPrice: number, periodMonth: string | null) => {
+    if (freeReportKey) return givePassFreeReportBack(user.id, freeReportKey);
+    await addWalletBalance(
+      user.id,
+      rowPrice,
+      `refund:${reasonForRow(def.key, periodMonth)}`,
+      ...refundOf(rowKey(i)),
+    ).catch(() => {});
+  };
+
+  const charged = freeReportKey
+    ? true
+    : await deductWalletBalance(user.id, totalPricePaise, purchaseReason, ...keyed(purchaseKey));
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
   const summaries: PurchasedReportSummaryDto[] = [];
@@ -1103,7 +1145,7 @@ export async function purchaseReport(
   try {
     for (let i = 0; i < periodMonths.length; i++) {
       const periodMonth = periodMonths[i] ?? null;
-      const rowPrice = rowPrices[i] ?? 0;
+      const rowPrice = chargedPrices[i] ?? 0;
       const input = withAnswers(partnerInput, answers);
 
       // Yearly reports: the exact-periodMonth unique index below only blocks a same-DAY
@@ -1125,11 +1167,7 @@ export async function purchaseReport(
             periodMonth: active.periodMonth,
             status: publicStatus(active.status),
           });
-          await addWalletBalance(
-            user.id,
-            rowPrice,
-            `refund:${reasonForRow(def.key, periodMonth)}`,
-          ).catch(() => {});
+          await refundShare(i, rowPrice, periodMonth);
           processedCount = i + 1;
           continue;
         }
@@ -1143,6 +1181,7 @@ export async function purchaseReport(
         input,
         pricePaidPaise: rowPrice,
         isPreview: false,
+        chargeKey: rowKey(i),
       });
 
       if (claimed) {
@@ -1173,7 +1212,9 @@ export async function purchaseReport(
           // Flip it to a real purchase in place; its content/status are untouched (almost
           // always already 'ready' from the preview generation, so the buyer gets it
           // instantly — no new generation call needed here).
-          await upgradePreviewToPurchased(existing.id, rowPrice);
+          const key = rowKey(i);
+          if (key) await upgradePreviewToPurchased(existing.id, rowPrice, key);
+          else await upgradePreviewToPurchased(existing.id, rowPrice);
           summaries.push({
             id: existing.id,
             reportKey: def.key,
@@ -1191,11 +1232,7 @@ export async function purchaseReport(
               status: publicStatus(existing.status),
             });
           }
-          await addWalletBalance(
-            user.id,
-            rowPrice,
-            `refund:${reasonForRow(def.key, periodMonth)}`,
-          ).catch(() => {});
+          await refundShare(i, rowPrice, periodMonth);
         }
       }
       processedCount = i + 1;
@@ -1203,9 +1240,16 @@ export async function purchaseReport(
   } catch (err) {
     // A DB error inserting/claiming a row this purchase hadn't reached yet — refund exactly
     // the unprocessed rows' share (rows already claimed/refunded above keep their own outcome).
-    const unrefunded = rowPrices.slice(processedCount).reduce((a, b) => a + b, 0);
-    if (unrefunded > 0) {
-      await addWalletBalance(user.id, unrefunded, `refund:${purchaseReason}`).catch(() => {});
+    const unrefunded = chargedPrices.slice(processedCount).reduce((a, b) => a + b, 0);
+    if (freeReportKey && processedCount === 0) {
+      await givePassFreeReportBack(user.id, freeReportKey);
+    } else if (unrefunded > 0) {
+      await addWalletBalance(
+        user.id,
+        unrefunded,
+        `refund:${purchaseReason}`,
+        ...refundOf(purchaseKey ? `${purchaseKey}:rest` : null),
+      ).catch(() => {});
     }
     throw err;
   }
@@ -1630,13 +1674,7 @@ export async function reapStaleReports(): Promise<{ reaped: number; retried: num
         row.startedAt,
         `Generation timed out (stale) after ${MAX_REPORT_GENERATION_ATTEMPTS} retries`,
       );
-      await addWalletBalance(
-        row.userId,
-        row.pricePaidPaise,
-        `refund:${reasonForRow(row.reportKey, row.periodMonth)}`,
-      ).catch((refundErr: unknown) =>
-        logger.error({ err: refundErr, reportId: row.id }, 'stale report reap refund failed'),
-      );
+      await refundReportRow(row, 'stale report reap refund failed');
       reaped++;
     } catch (err) {
       logger.error({ err, reportId: row.id, reportKey: row.reportKey }, 'stale report reap failed');

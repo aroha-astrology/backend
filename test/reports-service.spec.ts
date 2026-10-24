@@ -43,6 +43,9 @@ const state = vi.hoisted(() => {
     summarizeTimingWindows: vi.fn(),
     generateReportVerdict: vi.fn(),
     passReportDiscountPct: vi.fn(),
+    isFeatureOn: vi.fn(),
+    takePassFreeReport: vi.fn(),
+    givePassFreeReportBack: vi.fn(),
     REPORT_GENERATORS,
   };
 });
@@ -79,11 +82,20 @@ vi.mock('../src/lib/entitlements.js', () => ({
 }));
 vi.mock('../src/modules/features/features.service.js', () => ({
   resolveFeaturesForUser: state.resolveFeaturesForUser,
+  isFeatureOn: state.isFeatureOn,
+}));
+
+// The Platinum Pass free report (money.platinumReport): none unless a test hands one out.
+vi.mock('../src/modules/pass/pass-free-report.js', () => ({
+  takePassFreeReport: state.takePassFreeReport,
+  givePassFreeReportBack: state.givePassFreeReportBack,
+  isPassFreeReportKey: (k: unknown) => typeof k === 'string' && k.startsWith('pass_free_report:'),
 }));
 
 vi.mock('../src/modules/users/users.repo.js', () => ({
   deductWalletBalance: state.deductWalletBalance,
   addWalletBalance: state.addWalletBalance,
+  refundKeyFor: (key: string) => `refund:${key}`,
   findActiveUserById: state.findActiveUserById,
   recordNextReportVote: state.recordNextReportVote,
 }));
@@ -211,6 +223,9 @@ async function pullQueuedFromClaims(limit: number): Promise<ReportRow[]> {
 beforeEach(() => {
   for (const key of Object.keys(state.REPORT_GENERATORS)) delete state.REPORT_GENERATORS[key];
   state.passReportDiscountPct.mockReset().mockResolvedValue(0);
+  state.isFeatureOn.mockReset().mockResolvedValue(false);
+  state.takePassFreeReport.mockReset().mockResolvedValue(null);
+  state.givePassFreeReportBack.mockReset().mockResolvedValue(undefined);
   state.claimReportRow.mockReset();
   state.claimQueuedReports.mockReset().mockImplementation(pullQueuedFromClaims);
   state.requeueReportForRetry
@@ -2307,5 +2322,129 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
       status: 'ready',
       basis: { safety_classification: 'relationship' },
     });
+  });
+});
+
+describe('purchaseReport — one refund per charge (money.refundKeys) and the Platinum free report', () => {
+  const onlyRefundKeys = (_userId: string, key: string) => Promise.resolve(key === 'money.refundKeys');
+
+  it('switch on: the charge carries a key and the row carries "<key>:0"', async () => {
+    state.isFeatureOn.mockImplementation(onlyRefundKeys);
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'k1', reportKey: 'past_life' }));
+
+    await purchaseReport(makeUser(), { reportKey: 'past_life' });
+
+    const [, , reason, opts] = state.deductWalletBalance.mock.calls[0]!;
+    expect(reason).toBe('report_unlock:past_life');
+    expect(opts.idempotencyKey).toMatch(/^report:[0-9a-f-]{36}$/);
+    expect(state.claimReportRow).toHaveBeenCalledWith(
+      expect.objectContaining({ chargeKey: `${opts.idempotencyKey}:0` }),
+    );
+  });
+
+  it('switch off: no key anywhere (the very same calls as before)', async () => {
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'k2', reportKey: 'past_life' }));
+    await purchaseReport(makeUser(), { reportKey: 'past_life' });
+    expect(state.deductWalletBalance.mock.calls[0]).toHaveLength(3);
+    expect(state.claimReportRow).toHaveBeenCalledWith(expect.objectContaining({ chargeKey: null }));
+  });
+
+  it('a duplicate purchase refunds its share under the row key, once', async () => {
+    state.isFeatureOn.mockImplementation(onlyRefundKeys);
+    state.claimReportRow.mockResolvedValue(undefined);
+    state.findReportRow.mockResolvedValue(makeReportRow({ id: 'dup', reportKey: 'past_life', status: 'ready' }));
+
+    await purchaseReport(makeUser(), { reportKey: 'past_life' });
+
+    const key = state.deductWalletBalance.mock.calls[0]![3].idempotencyKey as string;
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      2500,
+      'refund:report_unlock:past_life',
+      { idempotencyKey: `refund:${key}:0` },
+    );
+  });
+
+  it('a failed generation and the stale reaper refund under the same key', async () => {
+    const row = makeReportRow({
+      id: 'stale-1',
+      reportKey: 'marriage',
+      status: 'generating',
+      startedAt: new Date(Date.now() - 3_600_000),
+      generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
+      chargeKey: 'report:abc:0',
+    });
+    state.findStaleGeneratingReports.mockResolvedValue([row]);
+
+    await reapStaleReports();
+
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      'user-1',
+      9900,
+      'refund:report_unlock:marriage',
+      { idempotencyKey: 'refund:report:abc:0' },
+    );
+  });
+
+  it('Platinum free report: nothing is charged, the row costs 0 and carries the claim', async () => {
+    state.takePassFreeReport.mockResolvedValue('pass_free_report:2026-10-24T06:00:00.000Z');
+    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'f1', reportKey: 'past_life', pricePaidPaise: 0 }));
+
+    await purchaseReport(makeUser(), { reportKey: 'past_life' });
+
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.claimReportRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pricePaidPaise: 0,
+        chargeKey: 'pass_free_report:2026-10-24T06:00:00.000Z',
+      }),
+    );
+  });
+
+  it('Platinum free report is not used on a multi-month bundle', async () => {
+    state.takePassFreeReport.mockResolvedValue('pass_free_report:x');
+    state.claimReportRow.mockImplementation(async (claim: { periodMonth: string }) =>
+      makeReportRow({ id: `b-${claim.periodMonth}`, reportKey: 'career_monthly' }),
+    );
+    await purchaseReport(makeUser(), {
+      reportKey: 'career_monthly',
+      months: ['2026-11', '2026-12'],
+    } as never).catch(() => {});
+    expect(state.takePassFreeReport).not.toHaveBeenCalled();
+  });
+
+  it('Platinum free report on a repeat purchase is given back, not refunded as money', async () => {
+    state.takePassFreeReport.mockResolvedValue('pass_free_report:2026-10-24T06:00:00.000Z');
+    state.claimReportRow.mockResolvedValue(undefined);
+    state.findReportRow.mockResolvedValue(makeReportRow({ id: 'dup2', reportKey: 'past_life', status: 'ready' }));
+
+    await purchaseReport(makeUser(), { reportKey: 'past_life' });
+
+    expect(state.givePassFreeReportBack).toHaveBeenCalledWith(
+      'user-1',
+      'pass_free_report:2026-10-24T06:00:00.000Z',
+    );
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('a failed free report gives the free report back', async () => {
+    const row = makeReportRow({
+      id: 'stale-free',
+      reportKey: 'marriage',
+      status: 'generating',
+      startedAt: new Date(Date.now() - 3_600_000),
+      generationAttempts: MAX_REPORT_GENERATION_ATTEMPTS,
+      pricePaidPaise: 0,
+      chargeKey: 'pass_free_report:2026-10-24T06:00:00.000Z',
+    });
+    state.findStaleGeneratingReports.mockResolvedValue([row]);
+
+    await reapStaleReports();
+
+    expect(state.givePassFreeReportBack).toHaveBeenCalledWith(
+      'user-1',
+      'pass_free_report:2026-10-24T06:00:00.000Z',
+    );
+    expect(state.addWalletBalance).not.toHaveBeenCalled();
   });
 });

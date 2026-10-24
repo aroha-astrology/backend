@@ -1052,6 +1052,34 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: false,
     tag: 'new',
   },
+  {
+    key: 'money.refundKeys',
+    label: 'One refund per charge — chat, reports, palm, Vastu and yantra refunds carry the charge\'s key, so a failed job can never be refunded twice',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'money.platinumReport',
+    label: 'Platinum Pass — one report free every Pass month (a single report; a failed one gives the free report back)',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'money.razorpayPass',
+    label: 'Aroha Pass on the website through Razorpay Subscriptions (renews monthly, cancel any time on the Pass page; needs the Razorpay plan ids on the server)',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+  {
+    key: 'money.storekit',
+    label: 'iPhone: Aroha Pass and coin packs through the App Store (needs the iOS app with in-app purchases and the App Store products set up)',
+    group: 'money',
+    defaultEnabled: false,
+    tag: 'new',
+  },
   // =========================================================================
   // experience — the two looks and the Home order (Sprint 2 of the v7 build)
   // =========================================================================

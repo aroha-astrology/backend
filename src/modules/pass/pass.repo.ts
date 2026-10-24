@@ -33,7 +33,12 @@ import {
   QUESTION_PACKS,
 } from './pass.config.js';
 
-export type PassSource = 'wallet' | 'google_play';
+/**
+ * Where a Pass was bought: 'wallet' (from before the Pass went store-only), 'google_play', 'razorpay'
+ * (a Razorpay Subscription on the website, money.razorpayPass) or 'app_store' (StoreKit on an iPhone,
+ * money.storekit). The play_state / play_synced_at columns hold the store's own state for all three.
+ */
+export type PassSource = 'wallet' | 'google_play' | 'razorpay' | 'app_store';
 
 /** The seeded Aroha Pass plan's id (migration 0080), cached for the process. */
 let planIdCache: string | null = null;
@@ -636,4 +641,127 @@ export async function listPassSubscribers(
   }));
 
   return { subscribers, total: Number(countRow?.n ?? 0), offset, limit };
+}
+
+// -----------------------------------------------------------------------------
+// The Platinum Pass free report (money.platinumReport)
+// -----------------------------------------------------------------------------
+
+/**
+ * Takes this period's free report: one conditional UPDATE, so two purchases at the same moment
+ * cannot both get it. `at` is written as given (millisecond precision) so the exact value can be
+ * matched again by `releasePassFreeReport`. True when it was taken.
+ */
+export async function claimPassFreeReport(
+  userId: string,
+  periodStart: Date,
+  at: Date,
+): Promise<boolean> {
+  const [row] = await db
+    .update(users)
+    .set({ passFreeReportAt: at })
+    .where(
+      and(
+        eq(users.id, userId),
+        or(isNull(users.passFreeReportAt), lt(users.passFreeReportAt, periodStart)),
+      ),
+    )
+    .returning({ id: users.id });
+  return Boolean(row);
+}
+
+/** Gives the free report back (the report it paid for failed), only if it is still that claim. */
+export async function releasePassFreeReport(userId: string, at: Date): Promise<boolean> {
+  const [row] = await db
+    .update(users)
+    .set({ passFreeReportAt: null })
+    .where(and(eq(users.id, userId), eq(users.passFreeReportAt, at)))
+    .returning({ id: users.id });
+  return Boolean(row);
+}
+
+// -----------------------------------------------------------------------------
+// Store Passes other than Google Play: Razorpay (web) and the App Store (iPhone)
+// -----------------------------------------------------------------------------
+
+/** Store fields a Razorpay or App Store sync writes (status, period, renewal, the store's state). */
+export async function updateStorePass(
+  id: string,
+  values: Partial<
+    Pick<
+      UserSubscriptionRow,
+      | 'status'
+      | 'autoRenew'
+      | 'periodEnd'
+      | 'expiresAt'
+      | 'cancelledAt'
+      | 'playState'
+      | 'latestOrderId'
+      | 'playSyncedAt'
+      | 'priceVariant'
+      | 'pricePaise'
+    >
+  >,
+): Promise<void> {
+  await db
+    .update(userSubscriptions)
+    .set({ ...values, updatedAt: new Date() })
+    .where(eq(userSubscriptions.id, id));
+}
+
+/**
+ * The user's store Pass of `source` that has just reached its end and was not checked with the
+ * store since `checkedBefore` (the on-demand check when a renewal notice is late).
+ */
+export async function findLapsedStorePass(
+  userId: string,
+  source: 'razorpay' | 'app_store',
+  now: Date,
+  checkedBefore: Date,
+  watchDays: number,
+): Promise<UserSubscriptionRow | null> {
+  const [row] = await db
+    .select()
+    .from(userSubscriptions)
+    .where(
+      and(
+        eq(userSubscriptions.userId, userId),
+        eq(userSubscriptions.source, source),
+        eq(userSubscriptions.status, 'active'),
+        lte(userSubscriptions.periodEnd, now),
+        gt(userSubscriptions.periodEnd, new Date(now.getTime() - watchDays * 86_400_000)),
+        or(
+          isNull(userSubscriptions.playSyncedAt),
+          lt(userSubscriptions.playSyncedAt, checkedBefore),
+        ),
+      ),
+    )
+    .orderBy(desc(userSubscriptions.periodEnd))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Active store Passes of `source` ending before `endsBefore` (the hourly reconcile: anything
+ * about to renew, or past its end within the watch window).
+ */
+export async function listStorePassesToReconcile(
+  source: 'razorpay' | 'app_store',
+  endsBefore: Date,
+  endedAfter: Date,
+  limit = 200,
+): Promise<UserSubscriptionRow[]> {
+  return db
+    .select()
+    .from(userSubscriptions)
+    .where(
+      and(
+        eq(userSubscriptions.source, source),
+        eq(userSubscriptions.status, 'active'),
+        lte(userSubscriptions.periodEnd, endsBefore),
+        gt(userSubscriptions.periodEnd, endedAfter),
+      ),
+    )
+    .orderBy(userSubscriptions.periodEnd)
+    .limit(limit);
 }

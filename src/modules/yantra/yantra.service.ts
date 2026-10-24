@@ -24,6 +24,7 @@ import { resolveFeaturesForUser } from '../features/features.service.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { loadChartContext } from '../insights/insights.service.js';
 import { addWalletBalance, deductWalletBalance } from '../users/users.repo.js';
+import { keyed, newChargeKey, refundOf } from '../billing/refund-keys.js';
 import { insertDigitalProduct, listDigitalProducts, type DigitalKind } from './yantra.repo.js';
 
 export const DIGITAL_PRODUCTS: Record<
@@ -107,10 +108,12 @@ export async function buyDigitalProduct(user: UserRow, kind: DigitalKind): Promi
   const spec = (rows[0]?.spec as YantraSpec | undefined) ?? fresh;
 
   const price = features[product.key]?.pricePaise ?? product.fallbackPaise;
-  const charged = await deductWalletBalance(user.id, price, product.reason);
+  // money.refundKeys: the two refunds below can then never both be paid for this charge.
+  const chargeKey = await newChargeKey(user.id, product.reason);
+  const charged = await deductWalletBalance(user.id, price, product.reason, ...keyed(chargeKey));
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
   const refund = () =>
-    addWalletBalance(user.id, price, `refund:${product.reason}`).catch((err: unknown) =>
+    addWalletBalance(user.id, price, `refund:${product.reason}`, ...refundOf(chargeKey)).catch((err: unknown) =>
       logger.error({ err, userId: user.id, kind }, 'yantra: refund failed'),
     );
   try {

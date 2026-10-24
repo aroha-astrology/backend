@@ -47,6 +47,7 @@ import {
   markPassReminded,
 } from './pass.repo.js';
 import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
+import { passFreeReportAvailable } from './pass-free-report.js';
 import {
   PLAY_STATE,
   reconcilePlayPasses,
@@ -64,6 +65,8 @@ interface TierBenefits {
   voiceFreeMinutes: number;
   /** Coins gifted each period; 0 while money.passCoins is off or for a tier without a gift. */
   monthlyCoins?: number;
+  /** Reports free each period (Platinum 1); 0 while money.platinumReport is off. */
+  freeReportsPerPeriod?: number;
   reportDiscountPct: number;
   features: readonly PassFeature[];
 }
@@ -108,6 +111,8 @@ export interface PassStatus {
   questionCredits: number;
   packs: Array<{ pack: QuestionPack; questions: number; pricePaise: number }>;
   periodDays: number;
+  /** This period's Platinum free report is still there to take (money.platinumReport). */
+  freeReportAvailable: boolean;
 }
 
 type Features = Awaited<ReturnType<typeof resolveFeaturesForUser>>;
@@ -129,6 +134,8 @@ function offersFor(features: Features): PassOffer[] {
     questionsPerPeriod: t.questions,
     voiceFreeMinutes: t.voiceFreeMinutes,
     monthlyCoins: features['money.passCoins']?.enabled === true ? t.monthlyCoins : 0,
+    freeReportsPerPeriod:
+      features['money.platinumReport']?.enabled === true ? t.freeReportsPerPeriod : 0,
     reportDiscountPct: t.reportDiscountPct,
     features: t.features,
   }));
@@ -184,6 +191,15 @@ export async function getPassStatus(user: UserRow): Promise<PassStatus> {
     };
   }
 
+  // The Platinum free report, listed on the member's own Pass only while money.platinumReport is on.
+  if (pass && features['money.platinumReport']?.enabled === true) {
+    const ownTier = pass.tier;
+    pass = {
+      ...pass,
+      freeReportsPerPeriod: PASS_TIERS.find((t) => t.tier === ownTier)?.freeReportsPerPeriod ?? 0,
+    };
+  }
+
   return {
     enabled: features['nav.arohaPass']?.enabled === true || inGroup,
     paymentIssue: inGrace ? 'grace' : onHold ? 'hold' : null,
@@ -193,6 +209,7 @@ export async function getPassStatus(user: UserRow): Promise<PassStatus> {
     questionCredits: user.questionCredits,
     packs: packsFor(features),
     periodDays: PASS_PERIOD_DAYS,
+    freeReportAvailable: pass ? await passFreeReportAvailable(user) : false,
   };
 }
 

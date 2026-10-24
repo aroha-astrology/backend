@@ -253,6 +253,7 @@ describe('getPassStatus', () => {
         questionsPerPeriod: 15,
         voiceFreeMinutes: 10,
         monthlyCoins: 0,
+        freeReportsPerPeriod: 0,
         reportDiscountPct: 10,
         features: ['timeline', 'bonds', 'voiceCall', 'palm'],
       },
@@ -264,6 +265,7 @@ describe('getPassStatus', () => {
         questionsPerPeriod: 30,
         voiceFreeMinutes: 15,
         monthlyCoins: 0,
+        freeReportsPerPeriod: 0,
         reportDiscountPct: 20,
         features: [
           'timeline',
@@ -283,6 +285,7 @@ describe('getPassStatus', () => {
         questionsPerPeriod: 60,
         voiceFreeMinutes: 20,
         monthlyCoins: 0,
+        freeReportsPerPeriod: 0,
         reportDiscountPct: 30,
         features: [
           'timeline',

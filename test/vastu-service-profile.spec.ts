@@ -45,6 +45,12 @@ vi.mock('../src/modules/vastu/vastu.repo.js', () => ({
   findStaleProcessingPlans: vi.fn(),
 }));
 
+// money.refundKeys reads a switch; off here, so the refunds are the unkeyed calls asserted below.
+vi.mock('../src/modules/features/features.service.js', () => ({
+  priceOf: async (_userId: string, _key: string, fallback: number) => fallback,
+  isFeatureOn: async () => false,
+}));
+
 vi.mock('../src/lib/llm/vastu.js', () => ({
   generateVastuAnalysis: state.generateVastuAnalysis,
   generateVastuAnswer: state.generateVastuAnswer,

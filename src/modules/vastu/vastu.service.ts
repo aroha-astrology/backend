@@ -7,6 +7,8 @@ import {
 } from '../../lib/llm/vastu.js';
 import { deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { priceOf } from '../features/features.service.js';
+import { keyed, refundKeysOn, refundOf } from '../billing/refund-keys.js';
+import { randomUUID } from 'node:crypto';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { evaluateRoomPlacement, VASTU_RULE_SET } from './vastu.rules.js';
 import { SUPPORTED_LANGS } from '../cron/broadcast-copy.js';
@@ -114,9 +116,14 @@ export async function requestVastuAnalysis(
   // reprice mid-generation can never refund a different amount than was taken.
   const pricePaise = await priceOf(userId, 'paid.vastu', VASTU_FALLBACK_PAISE);
 
+  // The plan's id is chosen before the charge so the charge can carry it (money.refundKeys): every
+  // refund of this plan, from here, from processAnalysis or from the reaper, is then paid once.
+  const planId = randomUUID();
+  const chargeKey = (await refundKeysOn(userId)) ? vastuChargeKey(planId) : undefined;
+
   // Charge up-front; refunded below if we can't even queue the job, or later if
   // the async generation fails.
-  const charged = await deductWalletBalance(userId, pricePaise, 'vastu_report');
+  const charged = await deductWalletBalance(userId, pricePaise, 'vastu_report', ...keyed(chargeKey));
   if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
 
   try {
@@ -127,6 +134,7 @@ export async function requestVastuAnalysis(
     const roomDetails = { ...body.roomDetails, houseShape };
 
     const row = await insertPendingPlan({
+      id: planId,
       userId,
       birthProfileId,
       homeId: body.homeId ?? null,
@@ -158,9 +166,21 @@ export async function requestVastuAnalysis(
 
     return { planId: row.id };
   } catch (err) {
-    await addWalletBalance(userId, pricePaise, 'refund:vastu_report').catch(() => {});
+    await addWalletBalance(userId, pricePaise, 'refund:vastu_report', ...refundOf(chargeKey)).catch(
+      () => {},
+    );
     throw err;
   }
+}
+
+/** The wallet key of a Vastu report's charge: the plan id, so any refund path can rebuild it. */
+export function vastuChargeKey(planId: string): string {
+  return `vastu_report:${planId}`;
+}
+
+/** The refund-key argument for a plan, while money.refundKeys is on for its owner. */
+async function vastuRefundOf(userId: string, planId: string) {
+  return (await refundKeysOn(userId)) ? refundOf(vastuChargeKey(planId)) : [];
 }
 
 async function processAnalysis(
@@ -190,7 +210,12 @@ async function processAnalysis(
     logger.error({ err, planId }, 'vastu LLM analysis failed');
     await markError(planId, err instanceof Error ? err.message : 'Unknown error');
     // Don't charge for a report we couldn't produce.
-    await addWalletBalance(userId, input.pricePaise, 'refund:vastu_report').catch(() => {});
+    await addWalletBalance(
+      userId,
+      input.pricePaise,
+      'refund:vastu_report',
+      ...(await vastuRefundOf(userId, planId)),
+    ).catch(() => {});
   }
 }
 
@@ -209,7 +234,12 @@ export async function reapStaleVastuPlans(): Promise<{ reaped: number }> {
     // won't be double-refunded by the next sweep.
     await markError(row.id, 'Generation timed out');
     if (row.pricePaidPaise) {
-      await addWalletBalance(row.userId, row.pricePaidPaise, 'refund:vastu_report').catch(
+      await addWalletBalance(
+        row.userId,
+        row.pricePaidPaise,
+        'refund:vastu_report',
+        ...(await vastuRefundOf(row.userId, row.id)),
+      ).catch(
         (err: unknown) => {
           logger.error({ err, planId: row.id }, 'vastu reap: refund failed');
         },

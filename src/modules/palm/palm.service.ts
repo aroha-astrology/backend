@@ -31,6 +31,7 @@ import {
   MODEL,
 } from '../../config/llm.js';
 import { addWalletBalance } from '../users/users.repo.js';
+import { refundKeysOn, refundOf } from '../billing/refund-keys.js';
 import { passEntitlement, passPeriodStart, requirePass } from '../../lib/entitlements.js';
 import { PALM_READINGS_PER_PERIOD } from '../pass/pass.config.js';
 import { resolveFeaturesForUser, modelForUser } from '../features/features.service.js';
@@ -581,9 +582,23 @@ async function runPalmGeneration(
     // the free observation phase, so this is a no-op refund there rather than a real one.
     const row = await findPalmReadingById(readingId);
     if (row?.pricePaidPaise) {
-      await addWalletBalance(user.id, row.pricePaidPaise, 'refund:palm_unlock');
+      await addWalletBalance(
+        user.id,
+        row.pricePaidPaise,
+        'refund:palm_unlock',
+        ...(await palmRefundOf(user.id, readingId)),
+      );
     }
   }
+}
+
+/**
+ * The refund key of a reading's wallet unlock (money.refundKeys). Only readings bought from the
+ * wallet before the Pass carry a price, each was charged once, so one refund per reading is right:
+ * the failure path and the stale-row reaper can no longer both pay it.
+ */
+async function palmRefundOf(userId: string, readingId: string) {
+  return (await refundKeysOn(userId)) ? refundOf(`palm_unlock:${readingId}`) : [];
 }
 
 const MS_PER_YEAR = 365.25 * 86_400_000;
@@ -1226,7 +1241,12 @@ export async function reapStalePalmReadings(): Promise<{ reaped: number }> {
     try {
       await markPalmReadingFailed(row.id, row.startedAt, 'Generation timed out (stale)');
       if (row.pricePaidPaise) {
-        await addWalletBalance(row.userId, row.pricePaidPaise, 'refund:palm_unlock').catch(
+        await addWalletBalance(
+          row.userId,
+          row.pricePaidPaise,
+          'refund:palm_unlock',
+          ...(await palmRefundOf(row.userId, row.id)),
+        ).catch(
           (refundErr: unknown) =>
             logger.error(
               { err: refundErr, readingId: row.id },

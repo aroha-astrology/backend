@@ -48,6 +48,9 @@ export const PALM_READINGS_PER_PERIOD = 1;
  * `monthlyCoins`: coins gifted at the start of each Pass period while the `money.passCoins`
  * switch is on (v7 spec: Gold 100, Platinum 200).
  *
+ * `freeReportsPerPeriod`: reports free in each Pass period while the `money.platinumReport` switch
+ * is on (v7 spec: Platinum 1). See pass-free-report.ts.
+ *
  * `voiceFreeMinutes`: voice-call minutes free in each Pass period, across all
  * calls; after these each minute is charged to the wallet at the
  * `paid.voiceChat` price (see modules/voice/voice.service.ts). Every tier got 3
@@ -63,6 +66,7 @@ export const PASS_TIERS = [
     questions: 15,
     voiceFreeMinutes: 10,
     monthlyCoins: 0,
+    freeReportsPerPeriod: 0,
     reportDiscountPct: 10,
     features: ['timeline', 'bonds', 'voiceCall', 'palm'],
   },
@@ -75,6 +79,7 @@ export const PASS_TIERS = [
     questions: 30,
     voiceFreeMinutes: 15,
     monthlyCoins: 100,
+    freeReportsPerPeriod: 0,
     reportDiscountPct: 20,
     features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall', 'palm'],
   },
@@ -87,6 +92,7 @@ export const PASS_TIERS = [
     questions: 60,
     voiceFreeMinutes: 20,
     monthlyCoins: 200,
+    freeReportsPerPeriod: 1,
     reportDiscountPct: 30,
     features: PASS_FEATURES,
   },
@@ -99,6 +105,7 @@ export const PASS_TIERS = [
   questions: number;
   voiceFreeMinutes: number;
   monthlyCoins: number;
+  freeReportsPerPeriod: number;
   reportDiscountPct: number;
   features: readonly PassFeature[];
 }>;
@@ -116,6 +123,8 @@ export interface PassEntitlement {
   voiceFreeMinutes: number;
   /** Percent off every report. */
   reportDiscountPct: number;
+  /** Reports free each period (Platinum 1), only while money.platinumReport is on. */
+  freeReportsPerPeriod: number;
   features: readonly PassFeature[];
 }
 
@@ -124,6 +133,7 @@ const entitlementOf = (t: PassTierDef): PassEntitlement => ({
   questions: t.questions,
   voiceFreeMinutes: t.voiceFreeMinutes,
   reportDiscountPct: t.reportDiscountPct,
+  freeReportsPerPeriod: t.freeReportsPerPeriod,
   features: t.features,
 });
 
@@ -136,6 +146,7 @@ const LEGACY_ENTITLEMENT: PassEntitlement = {
   questions: 30,
   voiceFreeMinutes: 15,
   reportDiscountPct: 20,
+  freeReportsPerPeriod: 0,
   features: PASS_FEATURES,
 };
 

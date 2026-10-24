@@ -201,6 +201,9 @@ export interface ClaimReportInput {
    * setWhere can't reclaim it) — is handled by purchaseReport calling upgradePreviewToPurchased
    * directly instead of going through this function again. */
   isPreview: boolean;
+  /** The purchase's wallet key for this row (money.refundKeys) or a Platinum free-report claim;
+   * null for a preview or while the switch is off. Rewritten on every claim. */
+  chargeKey?: string | null;
 }
 
 /**
@@ -251,6 +254,7 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
     inputHash,
     pricePaidPaise: claim.pricePaidPaise,
     isPreview: claim.isPreview,
+    chargeKey: claim.chargeKey ?? null,
     // Enqueued, not started: claimReportRow's job is to establish the row's identity
     // and win the race for it, NOT to begin work. claimQueuedReports is the only
     // thing that moves a row to 'generating', which is what bounds concurrency.
@@ -283,6 +287,7 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
         error: null,
         pricePaidPaise: claim.pricePaidPaise,
         isPreview: claim.isPreview,
+        chargeKey: claim.chargeKey ?? null,
         updatedAt: now,
       },
       setWhere,
@@ -388,10 +393,14 @@ export async function findReadyReportRows(): Promise<ReportRow[]> {
  * confirmed via findReportRow that this row is `isPreview === true` before
  * calling this.
  */
-export async function upgradePreviewToPurchased(id: string, pricePaidPaise: number): Promise<void> {
+export async function upgradePreviewToPurchased(
+  id: string,
+  pricePaidPaise: number,
+  chargeKey: string | null = null,
+): Promise<void> {
   await db
     .update(reports)
-    .set({ isPreview: false, pricePaidPaise, updatedAt: new Date() })
+    .set({ isPreview: false, pricePaidPaise, chargeKey, updatedAt: new Date() })
     .where(eq(reports.id, id));
 }
 

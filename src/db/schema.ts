@@ -407,6 +407,8 @@ export const users = pgTable(
     freeProfilesUsed: smallint('free_profiles_used').notNull().default(0),
     /** True for an account created while the 3-stage signup bonus (money.signupDrip) was on; only these get stages 2 and 3. Migration 0094. */
     signupDrip: boolean('signup_drip').notNull().default(false),
+    /** When this user last took the Platinum Pass free report (money.platinumReport, migration 0102). One per Pass period: free again once the period starts after this. */
+    passFreeReportAt: timestamp('pass_free_report_at', { withTimezone: true }),
     /** The experience the user picked: 'CLASSIC_VEDIC' or 'MODERN_COSMIC'; null = not picked yet (counts as classic). Migration 0094. */
     uiSkin: text('ui_skin').$type<'CLASSIC_VEDIC' | 'MODERN_COSMIC'>(),
     /** When the look was last CHANGED (not first picked); the 30-day wait counts from here. Migration 0095. */
@@ -934,6 +936,10 @@ export const orders = pgTable(
   (table) => ({
     userIdx: index('orders_user_id_idx').on(table.userId),
     referenceIdx: uniqueIndex('orders_reference_idx').on(table.reference),
+    /** One order per App Store transaction (migration 0102): a replayed or shared receipt never credits twice. */
+    appStoreTxnUnique: uniqueIndex('orders_app_store_txn_unique')
+      .on(table.gatewayOrderId)
+      .where(sql`${table.gatewayProvider} = 'app_store'`),
   }),
 );
 
@@ -1861,6 +1867,11 @@ export const reports = pgTable(
      * pays (claimReportRow always writes isPreview on every claim, purchase claims
      * always pass false — see upgradePreviewToPurchased for the ready-row case). */
     isPreview: boolean('is_preview').notNull().default(false),
+    /** The wallet key of the purchase that paid for this row (migration 0102, money.refundKeys), so
+     * a failed generation is refunded once per purchase: "report:<purchase>:<n>", or
+     * "pass_free_report:<iso>" for a Platinum Pass free report (failure gives the free report back
+     * instead of money). Rewritten on every claim, so a re-bought failed row refunds again. */
+    chargeKey: text('charge_key'),
     /** Claim token, same fencing pattern as gemstone_recommendations.startedAt. */
     startedAt: timestamp('started_at', { withTimezone: true }),
     error: text('error'),

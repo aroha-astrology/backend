@@ -14,6 +14,7 @@ import { consumeChatGift, refundChatGift } from './chat-gifts.repo.js';
 import { consumeBabaFreeReply, refundBabaFreeReply } from '../memory/memory.repo.js';
 import { FREE_REPLY_HOURS } from '../memory/memory-rules.js';
 import { refreshLapsedPlayPass } from './pass-play.service.js';
+import { keyed, refundOf } from '../billing/refund-keys.js';
 
 /**
  * Where a chat question was paid from. 'group' = an admin-group member's free
@@ -35,10 +36,14 @@ export const CHAT_REASON = 'chat_message';
  * Users in test groups are never charged, but their questions still count down:
  * from their own Pass if they hold one, else from the group allowance
  * (consumeGroupQuestion). Once that is used up the question is simply free.
+ *
+ * `chargeKey` (money.refundKeys, see billing/refund-keys.ts) goes on a wallet debit only, so the
+ * refund of that debit can be paid once.
  */
 export async function chargeQuestion(
   userId: string,
   pricePaise: number,
+  chargeKey?: string,
 ): Promise<QuestionSource | null> {
   if (pricePaise <= 0) return 'free';
   // The free first reply to a Baba Ji check-in (memory.babaMemory sets the token). It expires on its own and
@@ -56,7 +61,9 @@ export async function chargeQuestion(
   // A Play Pass at its end whose renewal Google hasn't told us about yet: ask, then try again.
   if ((await refreshLapsedPlayPass(userId)) && (await consumePassQuestion(userId))) return 'pass';
   if (await consumeQuestionCredit(userId)) return 'credits';
-  return (await deductWalletBalance(userId, pricePaise, CHAT_REASON)) ? 'wallet' : null;
+  return (await deductWalletBalance(userId, pricePaise, CHAT_REASON, ...keyed(chargeKey)))
+    ? 'wallet'
+    : null;
 }
 
 /** Gives a question back to wherever it was paid from (the turn produced no answer). */
@@ -64,6 +71,7 @@ export async function refundQuestion(
   userId: string,
   source: QuestionSource,
   pricePaise: number,
+  chargeKey?: string,
 ): Promise<void> {
   try {
     if (source === 'memory')
@@ -73,7 +81,7 @@ export async function refundQuestion(
     else if (source === 'group') await refundGroupQuestion(userId);
     else if (source === 'credits') await addQuestionCredits(userId, 1);
     else if (source === 'wallet')
-      await addWalletBalance(userId, pricePaise, `refund:${CHAT_REASON}`);
+      await addWalletBalance(userId, pricePaise, `refund:${CHAT_REASON}`, ...refundOf(chargeKey));
   } catch (err) {
     logger.error({ err, userId, source }, 'chat: question refund failed');
   }

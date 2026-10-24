@@ -28,7 +28,13 @@ import {
   requestRemedyInsightGeneration,
 } from './remedy-insight.service.js';
 import { isFreeFollowUp, FREE_FOLLOW_UP_COOLDOWN_MS } from '../../lib/chat-follow-up.js';
-import { chargeQuestion, refundQuestion, type QuestionSource } from '../pass/question-billing.js';
+import {
+  CHAT_REASON,
+  chargeQuestion,
+  refundQuestion,
+  type QuestionSource,
+} from '../pass/question-billing.js';
+import { newChargeKey } from '../billing/refund-keys.js';
 
 /** Fallback cost per chat question if the `paid.chat` feature has no resolved
  * price (registry/DB lookup failure) — matches FEATURE_REGISTRY's
@@ -621,13 +627,16 @@ astroRouter.openapi(chatRoute, async (c) => {
   // Where this question was paid from — the Aroha Pass quota, a Question Pack
   // credit or the wallet (question-billing.ts). Set by the charge below.
   let chargeSource: QuestionSource | null = null;
+  // This turn's wallet key (money.refundKeys): its refund can then be paid once only.
+  const chatChargeKey =
+    amountToChargePaise > 0 ? await newChargeKey(user.id, CHAT_REASON) : undefined;
 
   /** Undoes this turn's cost when it produced no answer: back to wherever it
    * was paid from, or for a free tap, the claimed free follow-up so the user
    * can use it again. */
   const refundTurn = async (): Promise<void> => {
     if (amountToChargePaise > 0 && chargeSource) {
-      await refundQuestion(user.id, chargeSource, amountToChargePaise);
+      await refundQuestion(user.id, chargeSource, amountToChargePaise, chatChargeKey);
     } else if (isFollowUpTap) {
       await releaseFreeFollowUp(user.id).catch(() => {});
     }
@@ -657,7 +666,7 @@ astroRouter.openapi(chatRoute, async (c) => {
     charged = true;
   } else {
     try {
-      chargeSource = await chargeQuestion(user.id, amountToChargePaise);
+      chargeSource = await chargeQuestion(user.id, amountToChargePaise, chatChargeKey);
       charged = chargeSource !== null;
     } catch (err) {
       // The lock is held at this point and streamSSE's `finally` (the only other
