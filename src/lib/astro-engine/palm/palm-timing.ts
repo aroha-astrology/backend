@@ -26,6 +26,11 @@
 //    as one percentage (computeKundliMatch).
 //
 // Pure: no I/O. The service computes the chart windows and passes them in.
+//
+// 2026-10-24 (owner): palmistry no longer touches the birth chart. The live service now calls
+// datePalmEventsFromHand (bottom of this file): the hand alone dates every event, and the only
+// other input is what the reader told us about themselves (their age and whether they are
+// married). The chart-window functions above stay for their tests and a possible later opt-in.
 // =============================================================================
 
 import type {
@@ -331,7 +336,9 @@ export interface KindWindows {
   past: AgeWindow[];
 }
 
-export type EventAgreement = 'match' | 'adjusted' | 'chart';
+/** 'hand' = the hand alone dated it (no chart involved); 'later' = the hand's usual marriage-line
+ * scale put it in the past for someone unmarried, so the later classical scale was used. */
+export type EventAgreement = 'match' | 'adjusted' | 'chart' | 'hand' | 'later';
 
 export interface PalmEventAge {
   /** The age shown on the photo. */
@@ -339,7 +346,8 @@ export interface PalmEventAge {
   /** What the hand alone said, or null (children lines carry no timing). */
   palmAge: number | null;
   agreement: EventAgreement;
-  window: AgeWindow;
+  /** The chart window the age was checked against; absent when the hand alone dated the event. */
+  window?: AgeWindow;
   past: boolean;
 }
 
@@ -527,4 +535,158 @@ export function computeKundliMatch(input: {
     (parts.reduce((s, [k, p]) => s + WEIGHTS[k] * (p.agree / p.total), 0) / weight) * 100,
   );
   return { percent, timing, scores, mounts };
+}
+
+/* ----------------------------------------------------------- hand only (live) */
+
+/** What the reader told us: their age today and their marital state. Nothing from the chart. */
+export type MaritalState = 'unmarried' | 'married' | 'previously_married' | 'unknown';
+
+export interface PalmPersonTiming {
+  /** Years, or null when the date of birth is not on file. */
+  age: number | null;
+  marital: MaritalState;
+}
+
+/**
+ * The later classical marriage-line scale. Schools differ on where the middle of the Mercury
+ * mount falls: marriageAgeFromPosition puts it at 28, other schools at 35-40 (numerologist.com,
+ * "Marriage Lines in Palm Reading"; Jyotisha Journal 8(2): lines away from the heart line
+ * indicate a late marriage). It is used only when the main scale gives an age that has already
+ * passed for someone who says they are unmarried: lines are potentials, and the hand does not
+ * say which school's yardstick fits it, so the second yardstick is the honest next reading.
+ */
+export function lateMarriageAgeFromPosition(position: number): number {
+  const p = Math.max(0, Math.min(1, position));
+  return p <= 0.5 ? 20 + (p / 0.5) * 16 : 36 + ((p - 0.5) / 0.5) * 14;
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+interface MarriageSighting {
+  source: 'marriageLine' | 'fateLine';
+  age: number;
+  lateAge: number;
+  strength: number;
+}
+
+/**
+ * The one marriage event the photo may name, chosen for what the reader says about themselves:
+ *  - married or married before: no date at all (the hand is not used to put a number on a
+ *    marriage that already happened, and a second one is not predicted);
+ *  - unmarried: the strongest line whose age is still ahead. When every line reads as already
+ *    passed on the main scale, the later scale is tried; when that is passed too, no age is shown;
+ *  - status unknown: the strongest line's age, marked as passed when it is behind them.
+ * Never returns an age the reader's own facts contradict.
+ */
+function marriageEventFromHand(
+  sightings: MarriageSighting[],
+  person: PalmPersonTiming,
+): PalmEvent | null {
+  if (sightings.length === 0) return null;
+  if (person.marital === 'married' || person.marital === 'previously_married') return null;
+  const ranked = [...sightings].sort((a, b) => b.strength - a.strength);
+  const ahead = (age: number) => person.age === null || age >= person.age - 0.5;
+  const make = (
+    s: MarriageSighting,
+    age: number,
+    agreement: EventAgreement,
+    past: boolean,
+  ): PalmEvent => ({
+    kind: 'marriage',
+    source: s.source,
+    anchor: null,
+    ages: [{ age: Math.round(age), palmAge: round1(s.age), agreement, past }],
+  });
+
+  const next = ranked.find((s) => ahead(s.age));
+  if (next) return make(next, next.age, 'hand', false);
+  if (person.marital === 'unmarried') {
+    const later = ranked.find((s) => ahead(s.lateAge));
+    return later ? make(later, later.lateAge, 'later', false) : null;
+  }
+  return make(ranked[0]!, ranked[0]!.age, 'hand', true);
+}
+
+/**
+ * Every life event the hand shows, dated from the hand alone and the reader's own facts.
+ * Same marks and scales as palmEventCandidates; there is no chart window to move an age onto,
+ * so an age is exactly what the hand reads (to about a year either side).
+ */
+export function datePalmEventsFromHand(
+  obs: PalmHandObservations,
+  hand: 'left' | 'right',
+  person: PalmPersonTiming,
+): PalmEvent[] {
+  const candidates = palmEventCandidates(obs, hand);
+  const events: PalmEvent[] = [];
+  const isPast = (age: number) => person.age !== null && age < person.age - 1;
+
+  const sightings: MarriageSighting[] = [];
+  const DEPTH_RANK = { faint: 0, medium: 1, deep: 2 } as const;
+  const LENGTH_RANK = { short: 0, medium: 1, long: 2 } as const;
+  for (const l of obs.marriageLines ?? []) {
+    sightings.push({
+      source: 'marriageLine',
+      age: marriageAgeFromPosition(l.position),
+      lateAge: lateMarriageAgeFromPosition(l.position),
+      strength: DEPTH_RANK[l.depth] + LENGTH_RANK[l.length],
+    });
+  }
+  for (const c of candidates) {
+    if (c.kind === 'marriage' && c.source !== 'marriageLine' && c.palmAge !== null) {
+      sightings.push({
+        source: 'fateLine',
+        age: c.palmAge,
+        lateAge: c.palmAge,
+        strength: c.confidence * 4,
+      });
+    }
+  }
+  const marriage = marriageEventFromHand(sightings, person);
+
+  for (const kind of PALM_EVENT_KINDS) {
+    if (kind === 'marriage') {
+      if (marriage) events.push(marriage);
+      continue;
+    }
+    const ofKind = candidates
+      .filter((c) => c.kind === kind)
+      .sort((a, b) => b.confidence - a.confidence);
+    if (ofKind.length === 0) continue;
+
+    if (kind === 'child') {
+      // The hand shows THAT it indicates children, never when: no age is invented for it.
+      events.push({ kind, source: ofKind[0]!.source, anchor: null, ages: [] });
+      continue;
+    }
+
+    const picked: PalmEventCandidate[] = [];
+    for (const c of ofKind) {
+      const limit = kind === 'careerChange' ? MAX_CAREER_CHANGES : 1;
+      if (picked.length >= limit) break;
+      if (c.palmAge === null) continue;
+      if (picked.some((p) => Math.abs(p.palmAge! - c.palmAge!) < 1.5)) continue;
+      picked.push(c);
+    }
+    if (picked.length === 0) continue;
+    const ages: PalmEventAge[] = picked
+      .map((c) => ({
+        age: Math.round(c.palmAge!),
+        palmAge: c.palmAge,
+        agreement: 'hand' as const,
+        past: isPast(c.palmAge!),
+      }))
+      .filter((a, i, all) => all.findIndex((b) => b.age === a.age) === i)
+      .sort((a, b) => a.age - b.age);
+    const lead = picked[0]!;
+    events.push({
+      kind,
+      source: lead.source,
+      ...(lead.mark ? { mark: lead.mark } : {}),
+      anchor: picked.find((c) => c.anchor)?.anchor ?? null,
+      ages,
+    });
+  }
+  return events;
 }

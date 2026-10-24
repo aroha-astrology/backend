@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   palmEventCandidates,
   reconcilePalmEvents,
+  datePalmEventsFromHand,
   type PalmEventCandidate,
   type KindWindows,
 } from '../src/lib/astro-engine/palm/palm-timing.js';
@@ -185,5 +186,68 @@ describe('reconcilePalmEvents', () => {
 
     const res = reconcilePalmEvents([candidate], chartWindows, 25);
     expect(res.events).toHaveLength(0);
+  });
+});
+
+describe('datePalmEventsFromHand (hand alone, no chart)', () => {
+  const withLines = (marriageLines: PalmHandObservations['marriageLines']) => ({
+    ...baseObservations(),
+    marriageLines,
+    timingMarks: [],
+  });
+  const marriageOf = (
+    lines: PalmHandObservations['marriageLines'],
+    person: {
+      age: number | null;
+      marital: 'unmarried' | 'married' | 'previously_married' | 'unknown';
+    },
+  ) => datePalmEventsFromHand(withLines(lines), 'right', person).find((e) => e.kind === 'marriage');
+  const MID = [
+    { position: 0.5, length: 'long', depth: 'deep' },
+  ] as PalmHandObservations['marriageLines'];
+
+  it('shows the hand age when it is still ahead of an unmarried reader', () => {
+    const e = marriageOf(MID, { age: 25, marital: 'unmarried' });
+    expect(e?.ages[0]).toMatchObject({ age: 28, agreement: 'hand', past: false });
+  });
+
+  it('never calls a 33-year-old unmarried reader married at 28: moves to the later scale', () => {
+    const e = marriageOf(MID, { age: 33, marital: 'unmarried' });
+    expect(e?.ages[0]).toMatchObject({ age: 36, palmAge: 28, agreement: 'later', past: false });
+  });
+
+  it('prefers the next marriage line that is still ahead over the strongest one that has passed', () => {
+    const lines = [
+      { position: 0.5, length: 'long', depth: 'deep' },
+      { position: 0.8, length: 'short', depth: 'faint' },
+    ] as PalmHandObservations['marriageLines'];
+    const e = marriageOf(lines, { age: 33, marital: 'unmarried' });
+    expect(e?.ages[0]).toMatchObject({ age: 38, agreement: 'hand', past: false });
+  });
+
+  it('shows no marriage age when both scales are behind an unmarried reader', () => {
+    expect(marriageOf(MID, { age: 41, marital: 'unmarried' })).toBeUndefined();
+  });
+
+  it('puts no marriage date on someone married or married before', () => {
+    expect(marriageOf(MID, { age: 33, marital: 'married' })).toBeUndefined();
+    expect(marriageOf(MID, { age: 33, marital: 'previously_married' })).toBeUndefined();
+  });
+
+  it('with no stated status, shows the hand age and marks it passed', () => {
+    const e = marriageOf(MID, { age: 33, marital: 'unknown' });
+    expect(e?.ages[0]).toMatchObject({ age: 28, past: true });
+  });
+
+  it('dates other events without any chart window, and leaves children undated', () => {
+    const events = datePalmEventsFromHand(
+      { ...baseObservations(), timingMarks: baseObservations().timingMarks },
+      'right',
+      { age: 30, marital: 'unmarried' },
+    );
+    for (const ev of events) {
+      for (const a of ev.ages) expect(a.window).toBeUndefined();
+    }
+    expect(events.find((e) => e.kind === 'child')?.ages).toEqual([]);
   });
 });

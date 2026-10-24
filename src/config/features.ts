@@ -9,7 +9,7 @@
  * else needs to know about it until it's actually wired to a toggle point.
  */
 
-import { SELECTABLE_OMNIRUSH_MODELS } from './omnirush-models.js';
+import { SELECTABLE_OXION_MODELS } from './oxion-models.js';
 
 /**
  * Which section of the app a feature is for. 'classic' = users on the Indian look (Classic Vedic),
@@ -108,8 +108,14 @@ export const SELECTABLE_GEMINI_MODELS = [
   'gemini-2.5-flash-lite',
 ] as const;
 
-/** Palm reading's model pickers: Gemini only (owner, 2026-10-23: Omnirush is not used for palm). */
-export const SELECTABLE_PALM_MODELS: readonly string[] = [...SELECTABLE_GEMINI_MODELS];
+/**
+ * Palm reading's model pickers: Gemini (Google keys) and Oxion ("oxion:<model>", on the Oxion key,
+ * see lib/llm/oxion-client.ts). Owner, 2026-10-23: Omnirush is not used for palm; 2026-10-24: Oxion added.
+ */
+export const SELECTABLE_PALM_MODELS: readonly string[] = [
+  ...SELECTABLE_GEMINI_MODELS,
+  ...SELECTABLE_OXION_MODELS,
+];
 
 export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // nav
@@ -613,7 +619,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: true,
     modelOptions: SELECTABLE_PALM_MODELS,
-    defaultModel: 'gemini-3.8-flash',
+    defaultModel: 'oxion:gemini-3.7-flash',
   },
   {
     key: 'ai.palmInterpretModel',
@@ -621,7 +627,29 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: true,
     modelOptions: SELECTABLE_PALM_MODELS,
-    defaultModel: 'gemini-3.1-flash-lite',
+    defaultModel: 'oxion:claude-opus-5',
+  },
+  // 2026-10-24 (owner): a model per purpose, all on Oxion (not Gemini). Picked by Claude, not yet
+  // compared on real readings: scan = Gemini 3.7 Flash via Oxion (same family as the 3.8 Flash that
+  // read real palms right, and the family that emits 0-1000 spatial points); paid report = the
+  // strongest model (Pass-only, once a period, so the cost is small); typed answer = Claude Sonnet
+  // (short, fast); translation = Gemini 3.7 Flash. When the Oxion key is missing or a call fails,
+  // palm falls back to the Gemini default. A row already saved in Admin -> Features beats these.
+  {
+    key: 'ai.palmQuestionModel',
+    label: "Palm — answer to the reader's typed question",
+    group: 'ai',
+    defaultEnabled: true,
+    modelOptions: SELECTABLE_PALM_MODELS,
+    defaultModel: 'oxion:claude-sonnet-5',
+  },
+  {
+    key: 'ai.palmTranslateModel',
+    label: "Palm — translation of the report into the reader's language",
+    group: 'ai',
+    defaultEnabled: true,
+    modelOptions: SELECTABLE_PALM_MODELS,
+    defaultModel: 'oxion:gemini-3.7-flash',
   },
   // 2026-08-28: the three highest-traffic/most-reasoning-heavy surfaces
   // (personalized horoscope, AI chat, paid reports) previously had NO model
@@ -951,6 +979,28 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   {
     key: 'nav.relocation',
     label: 'Aroha Relocation — compare cities for career, love, money and more (Aroha Pass only)',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+
+  // Report book (2026-10-24): a finished report opens as a book you turn by hand, with a cover
+  // carrying the reader's name, chapter art and graphs. Client-only (no API to gate), so this just
+  // shows or hides the "Read as a book" button. Ships dark per the standing rule.
+  {
+    key: 'nav.reportBook',
+    label: 'Report book — open a report as a page-turning book',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+
+  // The book's handwriting: the reader's name on the cover and the pull-quotes are set in a
+  // handwriting font (Kalam, Latin + Devanagari). A separate switch from the book itself, so it
+  // can be turned on or off alone; off, those accents are an italic serif. Ships dark.
+  {
+    key: 'nav.reportBookHandwriting',
+    label: 'Report book — handwriting style for the cover name and pull-quotes',
     group: 'nav',
     defaultEnabled: false,
     tag: 'new',
