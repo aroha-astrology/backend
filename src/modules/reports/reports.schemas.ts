@@ -178,6 +178,15 @@ export const ReportFailedSchema = z
   .object({ status: z.literal('failed'), error: z.string().nullable() })
   .openapi('ReportFailed');
 
+/** Bought with money a Google Play refund took back; opens again once the wallet is at zero or above. */
+export const ReportLockedSchema = z
+  .object({
+    status: z.literal('locked'),
+    /** How far below zero the wallet is, i.e. what still has to be paid back. */
+    owedPaise: z.number().int(),
+  })
+  .openapi('ReportLocked');
+
 export const ReportReadySchema = z
   .object({
     status: z.literal('ready'),
@@ -214,7 +223,7 @@ export const ReportReadySchema = z
   .openapi('ReportReady');
 
 export const ReportDtoSchema = z
-  .union([ReportGeneratingSchema, ReportFailedSchema, ReportReadySchema])
+  .union([ReportGeneratingSchema, ReportFailedSchema, ReportLockedSchema, ReportReadySchema])
   .openapi('ReportDto');
 
 export type ReportDto = z.infer<typeof ReportDtoSchema>;

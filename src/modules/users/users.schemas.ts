@@ -276,6 +276,9 @@ export const UserSchema = z
       .number()
       .int()
       .describe('Prepaid chat questions from Question Packs (spent before the wallet)'),
+    purchasesBlocked: z
+      .boolean()
+      .describe('True after repeated Google Play refunds: top-ups, packs and the Pass are refused'),
     chatGift: z
       .object({
         campaign: z.string(),

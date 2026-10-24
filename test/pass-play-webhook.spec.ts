@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   handlePlaySubscriptionNotification: vi.fn(),
   reconcileGooglePlayNotification: vi.fn(),
+  handleVoidedPurchaseNotification: vi.fn(),
   verifyIdToken: vi.fn(),
 }));
 
@@ -29,6 +30,9 @@ vi.mock('googleapis', () => ({
 }));
 vi.mock('../src/modules/pass/pass-play.service.js', () => ({
   handlePlaySubscriptionNotification: state.handlePlaySubscriptionNotification,
+}));
+vi.mock('../src/modules/billing/play-refunds.service.js', () => ({
+  handleVoidedPurchaseNotification: state.handleVoidedPurchaseNotification,
 }));
 vi.mock('../src/modules/billing/billing.service.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -109,6 +113,19 @@ describe('RTDN webhook: retry instead of losing a Pass notice', () => {
       }),
     );
     expect(topUp.status).toBe(200);
+  });
+
+  it('hands a refund or chargeback notice to the refund check', async () => {
+    const res = await post(
+      '/internal/billing/google-play-rtdn?secret=s3cret',
+      push({
+        voidedPurchaseNotification: { purchaseToken: 'tok-v', orderId: 'GPA.9', productType: 2 },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(state.handleVoidedPurchaseNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ purchaseToken: 'tok-v', orderId: 'GPA.9' }),
+    );
   });
 });
 

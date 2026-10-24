@@ -105,6 +105,7 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
     questionCredits: 0,
     groupQuestionsUsed: 0,
     groupQuestionsPeriodStart: null,
+    purchasesBlockedAt: null,
   };
 
   beforeEach(() => {

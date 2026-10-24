@@ -49,8 +49,9 @@ export async function notifyNewSignup(fields: {
 }
 
 function formatRupees(paise: number): string {
-  const rupees = paise / 100;
-  return `₹${Number.isInteger(rupees) ? rupees : rupees.toFixed(2)}`;
+  // A wallet can be below zero after a Google Play refund: "−₹94.10", not "₹-94.1".
+  const rupees = Math.abs(paise) / 100;
+  return `${paise < 0 ? '−' : ''}₹${Number.isInteger(rupees) ? rupees : rupees.toFixed(2)}`;
 }
 
 export async function notifyWalletTopUp(fields: {
@@ -81,6 +82,34 @@ export async function notifyQuestionPackBought(fields: {
     (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
     `Paid: ${escapeMarkdown(formatRupees(fields.amountPaise))} on Google Play\n` +
     `Questions added: ${fields.questions}`;
+  return sendMessage(text);
+}
+
+/**
+ * Google refunded a Play purchase (billing/play-refunds.service.ts). `outcome` says what
+ * the app did about it, in plain words, e.g. "₹100 taken back, wallet now −₹94.10".
+ */
+export async function notifyPlayRefund(fields: {
+  userId: string | null;
+  name?: string | null;
+  contact?: string | null;
+  product: string;
+  amountPaise: number;
+  googleOrderId: string | null;
+  reason: string;
+  outcome: string;
+}): Promise<boolean> {
+  const text =
+    `↩️ *Google Play Refund*\n\n` +
+    (fields.userId ? `User: \`${escapeMarkdown(fields.userId)}\`\n` : 'User: not found\n') +
+    (fields.name ? `Name: ${escapeMarkdown(fields.name)}\n` : '') +
+    (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
+    `Bought: ${escapeMarkdown(fields.product)}` +
+    (fields.amountPaise > 0 ? ` \\(${escapeMarkdown(formatRupees(fields.amountPaise))}\\)` : '') +
+    `\n` +
+    (fields.googleOrderId ? `Order: ${escapeMarkdown(fields.googleOrderId)}\n` : '') +
+    `Why: ${escapeMarkdown(fields.reason)}\n` +
+    `Done: ${escapeMarkdown(fields.outcome)}`;
   return sendMessage(text);
 }
 

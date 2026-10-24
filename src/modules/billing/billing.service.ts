@@ -419,7 +419,8 @@ type TransactionKind =
   | 'question_pack'
   | 'aroha_pass'
   | 'digital_yantra'
-  | 'relocation';
+  | 'relocation'
+  | 'play_refund';
 
 const REPORT_UNLOCK_RE = /^report_unlock:([a-z_]+)(?::(\d{4}-\d{2}))?(?::bundle:(\d+))?$/;
 
@@ -467,6 +468,8 @@ export function parseReason(reason: string): {
     return { kind: 'digital_yantra', isRefund };
   }
   if (base === 'relocation') return { kind: 'relocation', isRefund };
+  // Money a Google Play refund took back (play-refunds.service.ts) — a debit, not a refund to the user.
+  if (base.startsWith('play_refund:')) return { kind: 'play_refund', isRefund: false };
   if (base === 'gemstone_unlock' || base.startsWith('gemstone_unlock:profile:')) {
     return { kind: 'gemstone_unlock', isRefund };
   }

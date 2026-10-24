@@ -210,6 +210,7 @@ export function toUserDto(
     platform: row.platform,
     walletBalancePaise: row.walletBalancePaise,
     questionCredits: row.questionCredits,
+    purchasesBlocked: row.purchasesBlockedAt != null,
     chatGift,
     nextReportVote: row.nextReportVote,
     // When the free chat follow-up is next usable; null = usable now. See

@@ -113,6 +113,7 @@ import type {
 } from './reports.schemas.js';
 import { notifyUser } from '../../lib/notifications/notify-user.js';
 import { reportBasis } from '../../lib/astro-engine/rules/report-basis.js';
+import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
 
 /**
  * Bumped whenever the persisted `content` shape changes meaningfully (new section-skeleton /
@@ -1476,6 +1477,13 @@ export async function getReportForUser(
       status: 'failed',
       error: 'Report generation failed. Any amount charged has been automatically refunded.',
     };
+
+  // Bought with money a Google Play refund took back (billing/play-refunds.service.ts):
+  // closed while the wallet is below zero, opened again on the first read after that.
+  if (row.refundLockedAt) {
+    const debt = await refundDebtOrRelease(userId);
+    if (debt) return { status: 'locked', owedPaise: debt.owedPaise };
+  }
 
   // row.status is 'ready' past this point (generating/failed both returned above). Fire-and-forget:
   // this request still serves the CURRENT (possibly stale) content immediately below; the

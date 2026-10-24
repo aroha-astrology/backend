@@ -9,6 +9,7 @@ import {
   PurchaseReportResponseSchema,
   ReportCatalogueResponseSchema,
   ReportFailedSchema,
+  ReportLockedSchema,
   ReportGeneratingSchema,
   ReportHistoryResponseSchema,
   ReportIdParamSchema,
@@ -245,8 +246,14 @@ const getOneRoute = createRoute({
   request: { params: ReportIdParamSchema, query: LanguageQuerySchema },
   responses: {
     200: {
-      description: 'Ready (with sections + scores) or failed (with error)',
-      content: { 'application/json': { schema: z.union([ReportReadySchema, ReportFailedSchema]) } },
+      description:
+        'Ready (with sections + scores), failed (with error), or locked (bought with money a ' +
+        'Google Play refund took back; opens once the wallet is at zero or above)',
+      content: {
+        'application/json': {
+          schema: z.union([ReportReadySchema, ReportFailedSchema, ReportLockedSchema]),
+        },
+      },
     },
     202: {
       description: 'Still generating — poll again',
