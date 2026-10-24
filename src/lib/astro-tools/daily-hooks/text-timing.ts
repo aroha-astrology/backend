@@ -82,7 +82,7 @@ export function buildTextTiming(track: MoonSample[], ownMoonSign: number, other:
     const a = run[0]!.atMin;
     const b = run[run.length - 1]!.atMin + stepMin;
     runs.push({
-      startMin: a, endMin: b, start: clock(a), end: clock(b), color: run[0]!.color,
+      startMin: a, endMin: b, start: clock(a), end: b >= 1440 ? '24:00' : clock(b), color: run[0]!.color,
       score: Math.round(run.reduce((s, c) => s + c.score, 0) / run.length),
     });
     run = [];
