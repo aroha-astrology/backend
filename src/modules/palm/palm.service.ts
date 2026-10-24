@@ -91,6 +91,8 @@ export const PALM_FEATURE_KEY = 'paid.palmReading';
  * the global MODEL until someone picks a model in the dashboard. */
 const PALM_VISION_MODEL_KEY = 'ai.palmVisionModel';
 const PALM_INTERPRET_MODEL_KEY = 'ai.palmInterpretModel';
+const PALM_QUESTION_MODEL_KEY = 'ai.palmQuestionModel';
+const PALM_TRANSLATE_MODEL_KEY = 'ai.palmTranslateModel';
 
 /** Male -> right hand, female -> left hand (classical Indian rule). The tradition has no rule
  * for anyone else, so for 'other' or no gender on file the reader picks the hand themselves;
@@ -769,7 +771,7 @@ async function answerPalmQuestion(
 ): Promise<{ text: string; raw: boolean; answer: string }> {
   const raw = RAW_QUESTION.test(question);
   const text = question.slice(0, 500);
-  const model = await modelForUser(user.id, PALM_INTERPRET_MODEL_KEY, MODEL);
+  const model = await modelForUser(user.id, PALM_QUESTION_MODEL_KEY, MODEL);
   if (raw) {
     const prompt = 'Describe this palm photograph and what it shows, plainly and directly.';
     if (isOxionModel(model) && oxionConfigured()) {
@@ -1091,9 +1093,11 @@ export async function getPalmReadingForUser(
       (payloadToTranslate.questionAnswer ? `, "questionAnswer": string` : '') +
       ` }. Do not add or remove keys, sections, paragraphs or lineNotes entries, and keep every lineNotes key EXACTLY as given (they are ids, not text). Numbers stay numbers.\n\n` +
       JSON.stringify(payloadToTranslate);
-    const raw = await generate({
+    const translateModel = await modelForUser(userId, PALM_TRANSLATE_MODEL_KEY, MODEL);
+    const { text: raw } = await palmText({
+      model: translateModel,
       profile: PALM_TRANSLATION_PROFILE,
-      messages: [{ role: 'user', content: prompt }],
+      prompt,
       userId,
     });
     const translated = JSON.parse(cleanJsonString(raw)) as {
