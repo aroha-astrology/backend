@@ -964,6 +964,17 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     tag: 'new',
   },
 
+  // Report book (2026-10-24): a finished report opens as a book you turn by hand, with a cover
+  // carrying the reader's name, chapter art and graphs. Client-only (no API to gate), so this just
+  // shows or hides the "Read as a book" button. Ships dark per the standing rule.
+  {
+    key: 'nav.reportBook',
+    label: 'Report book — open a report as a page-turning book',
+    group: 'nav',
+    defaultEnabled: false,
+    tag: 'new',
+  },
+
   // Palmistry V2 (2026-10). Each switch is one part of the new pipeline, so it can be tried on
   // an admin group and compared with the old behaviour on real scans before it reaches anyone.
   // The thresholds behind the first three are not yet calibrated on a review set of real palms.
