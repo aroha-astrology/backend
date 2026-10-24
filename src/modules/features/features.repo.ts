@@ -13,25 +13,6 @@ export async function findUserSkin(userId: string): Promise<'CLASSIC_VEDIC' | 'M
   return row?.uiSkin ?? null;
 }
 
-/** Content languages spoken mostly in India. A reader on one of these is not asked to choose a look. */
-const INDIAN_LANGUAGES = new Set(['hi', 'bn', 'mr', 'te', 'ta', 'gu', 'kn']);
-
-/**
- * True for a reader who looks Indian from the account itself: they signed in with an Indian phone
- * number (the phone sign-in is offered in India only) or use the app in an Indian language, and
- * have not picked a look. Such a reader keeps today's app: no picker, no Settings switch row.
- */
-export async function findUserIsIndian(userId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ uiSkin: users.uiSkin, phoneHash: users.phoneE164Hash, language: users.contentLanguage })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!row || row.uiSkin) return false;
-  const language = (row.language ?? '').split('-')[0]!.toLowerCase();
-  return row.phoneHash != null || INDIAN_LANGUAGES.has(language);
-}
-
 /** Upsert the override for one feature key. Used by the (future) admin PUT endpoint. */
 export async function upsertFeatureOverride(
   key: string,
