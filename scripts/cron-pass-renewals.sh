@@ -2,14 +2,17 @@
 #
 # Aroha Pass renewals: ends wallet Passes from before the Pass went
 # Google-Play-only (they never renew from the wallet), sends their "ends in 3 days"
-# reminders, and expires lapsed Passes. Play Store Passes are kept in step by
-# the RTDN webhook instead; this only expires them if Google went quiet.
+# reminders, and expires lapsed wallet Passes. Play Store Passes are kept in step
+# by the RTDN webhook; this also asks Google about every Play Pass at or past its
+# end, in a grace period or on hold (Google sends nothing while it extends a grace
+# period, and a notice can be lost), so it must run HOURLY. Every step is safe to
+# repeat.
 #
 # Usage: ./cron-pass-renewals.sh [--dry-run]
 #
-# Only needed once the Aroha Pass is switched on (nav.arohaPass). Suggested
-# crontab (box runs UTC):
-#   30 0 * * *    cron-pass-renewals.sh   # 06:00 IST
+# Only needed once the Aroha Pass is switched on (nav.arohaPass). Crontab
+# (box runs UTC; was daily at 30 0 * * * before the Play reconcile):
+#   30 * * * *    cron-pass-renewals.sh   # every hour at :30
 #
 # Reads CRON_SECRET from the app's .env (never hard-coded in the crontab).
 set -euo pipefail

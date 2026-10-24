@@ -4,7 +4,7 @@ import { requireAnyFeature, requireFeature } from '../../middleware/feature.js';
 import { QUESTION_PACKS } from './pass.config.js';
 import { buyQuestionPack, getPassStatus, startQuestionPackCheckout } from './pass.service.js';
 import { confirmPlayPass } from './pass-play.service.js';
-import { passStats } from './pass.repo.js';
+import { passStats, listPassSubscribers } from './pass.repo.js';
 import { passLaunchReadiness, sendPassLaunch } from './pass-launch.service.js';
 import { logAdminAction } from '../admin/admin.repo.js';
 
@@ -158,6 +158,32 @@ const adminStatsRoute = createRoute({
 passRouter.openapi(adminStatsRoute, async (c) => {
   const stats = await passStats();
   return c.json(stats as unknown as Record<string, unknown>, 200);
+});
+
+const adminSubscribersRoute = createRoute({
+  method: 'get',
+  path: '/admin/pass-subscribers',
+  tags: ['Admin'],
+  summary: 'Paginated list of users with an active Aroha Pass',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  request: {
+    query: z.object({
+      offset: z.coerce.number().int().min(0).default(0),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+    }),
+  },
+  responses: {
+    200: { description: 'Subscriber list', content: { 'application/json': { schema: Json } } },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Not an admin'),
+  },
+});
+
+passRouter.openapi(adminSubscribersRoute, async (c) => {
+  const { offset, limit } = c.req.valid('query');
+  const page = await listPassSubscribers(limit, offset);
+  return c.json(page as unknown as Record<string, unknown>, 200);
 });
 
 /* -------------------------------------------------------------------------- */

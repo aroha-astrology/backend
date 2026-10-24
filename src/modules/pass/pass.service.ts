@@ -40,12 +40,19 @@ import {
   expireLapsedPasses,
   expirePass,
   findActivePass,
+  findLatestPlayPass,
   groupQuestionsLeft,
   listWalletRemindersDue,
   listWalletRenewalsDue,
   markPassReminded,
 } from './pass.repo.js';
 import { listGroupIdsForUser } from '../user-groups/user-groups.repo.js';
+import {
+  PLAY_STATE,
+  reconcilePlayPasses,
+  refreshLapsedPlayPass,
+  type PlayReconcileRun,
+} from './pass-play.service.js';
 
 const MS_PER_DAY = 86_400_000;
 export const PASS_NOTIFICATION_TYPE = 'aroha_pass';
@@ -70,9 +77,19 @@ export interface PassOffer extends TierBenefits {
   play: { productId: string; basePlanId: string };
 }
 
+/**
+ * A Google Play renewal payment that failed: 'grace' = the Pass still works while Google
+ * retries, 'hold' = it has stopped until the payment method is fixed in Google Play.
+ */
+export type PassPaymentIssue = 'grace' | 'hold';
+
 export interface PassStatus {
   /** The Pass page is on for this user (nav.arohaPass). */
   enabled: boolean;
+  /** Set when the user's Play Pass renewal payment failed (see PassPaymentIssue). */
+  paymentIssue: PassPaymentIssue | null;
+  /** The tier of the Pass on hold, to name it in the "fix payment" banner. */
+  heldTier: PassTier | null;
   /** Every tier that is switched on, cheapest first. Empty while the Pass is off. */
   offers: PassOffer[];
   pass:
@@ -141,7 +158,15 @@ function passDto(row: UserSubscriptionRow): NonNullable<PassStatus['pass']> {
 
 export async function getPassStatus(user: UserRow): Promise<PassStatus> {
   const features = await resolveFeaturesForUser(user.id);
-  const active = await findActivePass(user.id);
+  let active = await findActivePass(user.id);
+  if (!active && (await refreshLapsedPlayPass(user.id))) active = await findActivePass(user.id);
+  // On hold: no live Pass, and the newest Play one is held by Google for a failed payment.
+  const held =
+    active || !features['nav.arohaPass']?.enabled
+      ? null
+      : await findLatestPlayPass(user.id).catch(() => null);
+  const onHold = held?.playState === PLAY_STATE.hold ? held : null;
+  const inGrace = active?.source === 'google_play' && active.playState === PLAY_STATE.grace;
   const inGroup = (await listGroupIdsForUser(user.id).catch(() => [])).length > 0;
 
   let pass = active ? passDto(active) : null;
@@ -161,6 +186,8 @@ export async function getPassStatus(user: UserRow): Promise<PassStatus> {
 
   return {
     enabled: features['nav.arohaPass']?.enabled === true || inGroup,
+    paymentIssue: inGrace ? 'grace' : onHold ? 'hold' : null,
+    heldTier: onHold ? entitlementForRow(onHold).tier : null,
     offers: offersFor(features),
     pass,
     questionCredits: user.questionCredits,
@@ -216,6 +243,8 @@ export interface RenewalRun {
   lapsed: number;
   reminded: number;
   expired: number;
+  /** Play Passes checked with Google (reconcilePlayPasses). */
+  play: PlayReconcileRun;
 }
 
 const day = (d: Date) =>
@@ -226,17 +255,25 @@ const day = (d: Date) =>
   }).format(d);
 
 /**
- * The daily Pass job. The wallet never pays for the Pass: a wallet Pass from
- * before that rule ends at its period end (even with auto-renew on), with a
- * reminder 3 days before, both pointing at the Google Play subscription.
- * Then everything else that's over is expired (Play Passes only if Google
- * went quiet — the RTDN webhook normally ends them).
+ * The hourly Pass job (scripts/cron-pass-renewals.sh). The wallet never pays
+ * for the Pass: a wallet Pass from before that rule ends at its period end
+ * (even with auto-renew on), with a reminder 3 days before, both pointing at
+ * the Google Play subscription. Then every Play Pass at or past its end, in a
+ * grace period or on hold is checked with Google (the RTDN webhook normally
+ * keeps them in step, but Google sends nothing while it extends a grace
+ * period and a notice can be lost), and the remaining wallet rows that are
+ * over are expired. Every step is safe to repeat.
  */
 export async function runPassRenewals(
   now: Date = new Date(),
   opts: { dryRun?: boolean } = {},
 ): Promise<RenewalRun> {
-  const run: RenewalRun = { lapsed: 0, reminded: 0, expired: 0 };
+  const run: RenewalRun = {
+    lapsed: 0,
+    reminded: 0,
+    expired: 0,
+    play: { checked: 0, renewed: 0, ended: 0, failed: 0 },
+  };
 
   for (const row of await listWalletRenewalsDue(now)) {
     if (opts.dryRun) continue;
@@ -265,6 +302,7 @@ export async function runPassRenewals(
     run.reminded += 1;
   }
 
+  run.play = await reconcilePlayPasses(now, { dryRun: opts.dryRun });
   if (!opts.dryRun) run.expired = await expireLapsedPasses(now);
   return run;
 }

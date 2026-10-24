@@ -43,6 +43,7 @@ import { db } from '../../config/db.js';
 import { notifications, devicePushTokens } from '../../db/schema.js';
 import { sendPushBatch } from '../../lib/notifications/fcm.js';
 import { notifyAccountDeletionRequest } from '../../lib/notifications/telegram.js';
+import { cancelPlayPassesForDeletedUser } from '../pass/pass-play.service.js';
 import { eq, isNull, and } from 'drizzle-orm';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -722,6 +723,8 @@ export async function deleteMe(userId: string): Promise<void> {
   // revoked (it reuses their revoked-token uniqueness exemption).
   await softDeleteBirthProfilesByOwner(userId);
   await revokeDeviceTokensByUser(userId);
+  // Google Play keeps charging a subscription until it is cancelled, account or not.
+  await cancelPlayPassesForDeletedUser(userId);
   await anonymizeUserById(userId);
 }
 

@@ -715,6 +715,13 @@ export const userSubscriptions = pgTable(
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     /** When the "ends in 3 days" reminder went out for the current period. */
     remindedAt: timestamp('reminded_at', { withTimezone: true }),
+    // --- Google Play lifecycle (migration 0099) -------------------------------
+    /** Google's subscriptionState for a google_play Pass (grace, on hold, paused...). */
+    playState: text('play_state'),
+    /** The latest successful Play order: a new one is what makes a renewal. */
+    latestOrderId: text('latest_order_id'),
+    /** When the row was last checked against Google. */
+    playSyncedAt: timestamp('play_synced_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

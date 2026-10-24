@@ -32,6 +32,7 @@ import {
 } from '../reports/reports.repo.js';
 import { listAllReportRatings } from '../reports/report-ratings.repo.js';
 import { listVoiceFeedback } from '../voice/voice.repo.js';
+import { cancelPlayPassesForDeletedUser } from '../pass/pass-play.service.js';
 import {
   sumPaidOrdersBetween,
   revenueTimeSeries,
@@ -725,6 +726,8 @@ export async function rejectDeletionRequest(
 export async function deleteUserHard(userId: string, adminPhone: string): Promise<{ id: string }> {
   const user = await findActiveUserById(userId);
   if (!user) throw Errors.notFound('User not found');
+  // Before the rows go: Google Play keeps charging a Pass until it is cancelled.
+  await cancelPlayPassesForDeletedUser(userId);
   await hardDeleteUserById(userId);
   await logAdminAction(adminPhone, `DELETE /v1/admin/deletion-requests/${userId}`, {
     phoneE164: user.phoneE164,

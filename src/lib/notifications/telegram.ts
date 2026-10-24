@@ -84,6 +84,39 @@ export async function notifyQuestionPackBought(fields: {
   return sendMessage(text);
 }
 
+/** Aroha Pass purchased or renewed via Google Play — sent to the alert chat immediately. */
+export async function notifyPassPurchase(fields: {
+  userId: string;
+  contact?: string | null;
+  tier: string | null;
+  amountPaise: number;
+  periodEnd: Date | null;
+  isRenewal?: boolean;
+}): Promise<boolean> {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_ALERT_CHAT_ID) return false;
+  const tierLabel = fields.tier
+    ? fields.tier.charAt(0).toUpperCase() + fields.tier.slice(1)
+    : 'Unknown';
+  const until = fields.periodEnd
+    ? fields.periodEnd.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '—';
+  const emoji = fields.isRenewal ? '🔄' : '🌟';
+  const headingText = fields.isRenewal ? 'Pass Renewed' : 'Pass Purchased';
+  const text =
+    `${emoji} *${escapeMarkdown(headingText)}*\n\n` +
+    `User: \`${escapeMarkdown(fields.userId)}\`\n` +
+    (fields.contact ? `Contact: ${escapeMarkdown(fields.contact)}\n` : '') +
+    `Tier: ${escapeMarkdown(tierLabel)}\n` +
+    `Paid: ${escapeMarkdown(formatRupees(fields.amountPaise))} on Google Play\n` +
+    `Valid until: ${escapeMarkdown(until)}`;
+  return sendMessage(text);
+}
+
 export async function notifyError(context: string, error: unknown): Promise<boolean> {
   const msg = error instanceof Error ? error.message : String(error);
   return sendAlert(`Error: ${context}`, msg);

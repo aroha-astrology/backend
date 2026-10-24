@@ -108,11 +108,8 @@ export const SELECTABLE_GEMINI_MODELS = [
   'gemini-2.5-flash-lite',
 ] as const;
 
-/** Palm reading's model pickers: the OpenAI models (through Omnirush) first, then Gemini. */
-export const SELECTABLE_PALM_MODELS: readonly string[] = [
-  ...SELECTABLE_OMNIRUSH_MODELS,
-  ...SELECTABLE_GEMINI_MODELS,
-];
+/** Palm reading's model pickers: Gemini only (owner, 2026-10-23: Omnirush is not used for palm). */
+export const SELECTABLE_PALM_MODELS: readonly string[] = [...SELECTABLE_GEMINI_MODELS];
 
 export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // nav
@@ -979,13 +976,6 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   {
     key: 'palm.autoCapture',
     label: 'Palm — camera takes the photo by itself once the hand is steady and sharp',
-    group: 'palm',
-    defaultEnabled: false,
-    tag: 'new',
-  },
-  {
-    key: 'palm.mountsToggle',
-    label: 'Palm — Lines / Mounts switch on the free scan',
     group: 'palm',
     defaultEnabled: false,
     tag: 'new',

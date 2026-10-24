@@ -66,9 +66,11 @@ function labelSvg(text: string, width: number): Buffer {
 }
 
 /**
- * Builds the sheet: `front` as panel A on the left at full size, `others` stacked in a column on
- * the right (half panel A's width), every panel labelled with its letter and view. With no
- * `others` the sheet is just the labelled, enhanced front photo.
+ * Builds the sheet: `front` as panel A on the left at full size, `others` on the right in cells
+ * half panel A's width, every panel labelled with its letter and view. Up to three `others` stack
+ * in one column; four or more go two columns wide (row by row, B C / D E), so the fingertip and
+ * thumb close-ups keep enough pixels for their prints. With no `others` the sheet is just the
+ * labelled, enhanced front photo.
  */
 export async function buildContactSheet(
   front: SheetPanel,
@@ -78,8 +80,10 @@ export async function buildContactSheet(
   const meta = await sharp(frontJpeg).metadata();
   const frontWidth = meta.width ?? FRONT_LONG_EDGE;
   const height = meta.height ?? FRONT_LONG_EDGE;
+  const cols = others.length > 3 ? 2 : 1;
+  const rows = Math.ceil(others.length / cols);
   const colWidth = others.length > 0 ? Math.round(frontWidth / 2) : 0;
-  const cellHeight = others.length > 0 ? Math.floor(height / others.length) : 0;
+  const cellHeight = others.length > 0 ? Math.floor(height / rows) : 0;
 
   const layers: OverlayOptions[] = [
     { input: frontJpeg, left: 0, top: 0 },
@@ -92,17 +96,18 @@ export async function buildContactSheet(
       .normalise()
       .jpeg({ quality: 88 })
       .toBuffer();
-    const top = i * cellHeight;
-    const letter = String.fromCharCode(66 + i); // B, C, D
-    layers.push({ input: cell, left: frontWidth, top });
+    const top = Math.floor(i / cols) * cellHeight;
+    const left = frontWidth + (i % cols) * colWidth;
+    const letter = String.fromCharCode(66 + i); // B, C, D, E
+    layers.push({ input: cell, left, top });
     layers.push({
       input: labelSvg(`${letter}  ${panel.label}`, colWidth),
-      left: frontWidth,
+      left,
       top: top + cellHeight - LABEL_HEIGHT,
     });
   }
 
-  const width = frontWidth + colWidth;
+  const width = frontWidth + cols * colWidth;
   const jpeg = await sharp({ create: { width, height, channels: 3, background: '#202020' } })
     .composite(layers)
     .jpeg({ quality: 90 })

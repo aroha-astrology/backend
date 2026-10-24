@@ -396,34 +396,53 @@ const googlePlayRtdnRoute = createRoute({
       content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
     },
     403: errorResponse('Invalid or missing secret'),
+    500: {
+      description: 'A Pass notice could not be processed yet — Pub/Sub delivers it again',
+      content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
+    },
   },
 });
 
 billingWebhooksRouter.openapi(googlePlayRtdnRoute, async (c) => {
   const { message } = c.req.valid('json');
 
-  // Ack (200) even on a parse/processing failure — the only thing worth ever
-  // rejecting is a bad secret (handled by the middleware above). Anything else
-  // is already logged for follow-up inside reconcileGooglePlayNotification;
-  // making Pub/Sub retry-storm us over the same payload wouldn't fix it.
-  try {
-    const payload = JSON.parse(Buffer.from(message.data, 'base64').toString('utf8')) as {
-      oneTimeProductNotification?: { notificationType: number; purchaseToken: string; sku: string };
-      subscriptionNotification?: {
-        notificationType: number;
-        purchaseToken: string;
-        subscriptionId: string;
-      };
+  // Ack (200) on a parse failure or a one-time-product failure — those are
+  // already logged for follow-up inside reconcileGooglePlayNotification, and
+  // making Pub/Sub retry-storm us over the same payload wouldn't fix them.
+  // A subscription (Aroha Pass) notice is different: its handler throws only
+  // when Google or the database was unreachable, and then a 500 makes Pub/Sub
+  // send it again (with backoff, for up to 7 days) instead of losing it.
+  let payload: {
+    oneTimeProductNotification?: { notificationType: number; purchaseToken: string; sku: string };
+    subscriptionNotification?: {
+      notificationType: number;
+      purchaseToken: string;
+      subscriptionId: string;
     };
+  };
+  try {
+    payload = JSON.parse(Buffer.from(message.data, 'base64').toString('utf8')) as typeof payload;
+  } catch (err) {
+    logger.error({ err }, 'billing: failed to parse Google Play RTDN push body');
+    return c.json({ ok: true }, 200);
+  }
+
+  try {
     if (payload.oneTimeProductNotification) {
       await reconcileGooglePlayNotification(payload.oneTimeProductNotification);
     }
-    // Aroha Pass on Google Play (roadmap step 10) — see pass-play.service.ts.
-    if (payload.subscriptionNotification) {
-      await handlePlaySubscriptionNotification(payload.subscriptionNotification);
-    }
   } catch (err) {
-    logger.error({ err }, 'billing: failed to parse Google Play RTDN push body');
+    logger.error({ err }, 'billing: Google Play RTDN one-time product handling failed');
+  }
+
+  // Aroha Pass on Google Play (roadmap step 10) — see pass-play.service.ts.
+  if (payload.subscriptionNotification) {
+    try {
+      await handlePlaySubscriptionNotification(payload.subscriptionNotification);
+    } catch {
+      // Already logged by the handler; ask Pub/Sub to deliver it again.
+      return c.json({ ok: false }, 500);
+    }
   }
 
   return c.json({ ok: true }, 200);

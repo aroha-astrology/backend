@@ -153,6 +153,7 @@ function doRequest(
     max_tokens: opts.profile.maxTokens,
     stream,
   };
+  if (opts.profile.reasoningEffort) body.reasoning_effort = opts.profile.reasoningEffort;
 
   if (stream) {
     // Without this, a streamed response carries no usage block at all, which is
@@ -324,7 +325,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
   // The free fallback providers (fallback-llm.ts) are asked at most once per call.
   let fallbackTried = false;
   const startedAt = Date.now();
-  const deadlineAt = Date.now() + MAX_TOTAL_ELAPSED_MS;
+  const deadlineAt = Date.now() + (opts.totalBudgetMs ?? MAX_TOTAL_ELAPSED_MS);
   // Mirrors doRequest()'s own model resolution — duplicated rather than
   // returned from doRequest() to avoid changing its signature for every
   // caller, just for this one telemetry field. `resolveGroupAwareModel` sits

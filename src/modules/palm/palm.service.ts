@@ -92,8 +92,8 @@ import { laneBands, type TimelineArea } from '../insights/timeline.service.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
 import {
   computeFramesHash,
-  PRIMARY_SLOTS,
   ALL_SLOTS,
+  REQUIRED_SLOTS,
   type PalmCaptureSlot,
 } from '../../lib/palm/storage-paths.js';
 import { matchPalmRules } from '../../lib/astro-engine/palm/palm-rules.js';
@@ -319,11 +319,11 @@ export async function saveHandMountRelief(
 }
 
 function missingSlots(frames: Record<string, unknown>): string[] {
-  return ALL_SLOTS.filter((slot) => !frames[slot]);
+  return REQUIRED_SLOTS.filter((slot) => !frames[slot]);
 }
 
 /**
- * FREE — triggers Stage A only, once all 3 frames are uploaded. No wallet charge: this is the
+ * FREE — triggers Stage A only, once the 3 required frames are uploaded (5 are captured). No wallet charge: this is the
  * "scan is free" half of the plan's monetization design. Produces the teaser (hand element,
  * confidence score, annotated line/mount overlay); the interpretation text stays locked until
  * unlockPalmReading is called.
@@ -410,11 +410,15 @@ async function palmAllowance(
 /** What each captured angle is called on a contact sheet (panel A is always the front). */
 const SLOT_VIEW: Record<string, string> = {
   primaryPercussion: 'side edge (little-finger side)',
-  primaryFingertips: 'fingertips',
+  primaryFingertips: 'four fingertips (pad side, close up)',
+  primaryThumb: 'thumb tip (pad side, close up)',
+  primaryMounts: 'low-angle view across the palm from the wrist, showing how raised each mount is',
 };
 const SLOT_LABEL: Record<string, string> = {
   primaryPercussion: 'SIDE',
   primaryFingertips: 'FINGERTIPS',
+  primaryThumb: 'THUMB',
+  primaryMounts: 'MOUNTS',
 };
 
 /** Thrown when the photo isn't a palm at all — fails the scan with a retake message, no fallback. */
@@ -469,7 +473,10 @@ async function observeHandGemini(
     ],
     model,
     userId,
-    timeoutMs: 90_000,
+    // A background job (the reaper waits 15 min): a five-photo sheet with hidden line tracing
+    // took over 90 s on gemini-3.8-flash on 2026-10-23, which the default 90 s budget failed.
+    timeoutMs: PALM_GEMINI_ATTEMPT_MS,
+    totalBudgetMs: PALM_GEMINI_BUDGET_MS,
   });
   let answer: unknown;
   try {
@@ -514,6 +521,10 @@ async function observeHandOmnirush(
   if (!parsed) throw new Error(`Omnirush observe returned unusable output for ${hand} hand`);
   return parsed;
 }
+
+/** One Gemini scan attempt may run this long, and all attempts together this long. */
+const PALM_GEMINI_ATTEMPT_MS = 240_000;
+const PALM_GEMINI_BUDGET_MS = 300_000;
 
 /** One hand on the admin-picked vision model, falling back to Gemini if Omnirush can't serve it. */
 async function observeHand(
@@ -688,7 +699,10 @@ async function runObservationPhase(
   const readingId = claimed.id;
   const frames = claimed.frames as Record<string, { path: string }>;
   const frameBuffers: Record<string, Buffer> = {};
-  for (const slot of ALL_SLOTS) {
+  // Every captured photo, in capture order; a reading started on an older app has only the
+  // required three.
+  const presentSlots = ALL_SLOTS.filter((slot) => frames[slot]);
+  for (const slot of presentSlots) {
     frameBuffers[slot] = await downloadFrame(frames[slot]!.path);
   }
   const framesHash = computeFramesHash(frameBuffers);
@@ -710,7 +724,7 @@ async function runObservationPhase(
   const visionModel = await modelForUser(user.id, PALM_VISION_MODEL_KEY, MODEL);
   const primary = await observeHand(
     primaryHand,
-    PRIMARY_SLOTS,
+    presentSlots,
     frameBuffers,
     user.id,
     visionModel,
