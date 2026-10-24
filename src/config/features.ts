@@ -599,7 +599,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: true,
     modelOptions: SELECTABLE_PALM_MODELS,
-    defaultModel: 'gemini-3.8-flash',
+    defaultModel: 'oxion:gemini-3.7-flash',
   },
   {
     key: 'ai.palmInterpretModel',
@@ -607,7 +607,29 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'ai',
     defaultEnabled: true,
     modelOptions: SELECTABLE_PALM_MODELS,
-    defaultModel: 'gemini-3.1-flash-lite',
+    defaultModel: 'oxion:claude-opus-5',
+  },
+  // 2026-10-24 (owner): a model per purpose, all on Oxion (not Gemini). Picked by Claude, not yet
+  // compared on real readings: scan = Gemini 3.7 Flash via Oxion (same family as the 3.8 Flash that
+  // read real palms right, and the family that emits 0-1000 spatial points); paid report = the
+  // strongest model (Pass-only, once a period, so the cost is small); typed answer = Claude Sonnet
+  // (short, fast); translation = Gemini 3.7 Flash. When the Oxion key is missing or a call fails,
+  // palm falls back to the Gemini default. A row already saved in Admin -> Features beats these.
+  {
+    key: 'ai.palmQuestionModel',
+    label: "Palm — answer to the reader's typed question",
+    group: 'ai',
+    defaultEnabled: true,
+    modelOptions: SELECTABLE_PALM_MODELS,
+    defaultModel: 'oxion:claude-sonnet-5',
+  },
+  {
+    key: 'ai.palmTranslateModel',
+    label: "Palm — translation of the report into the reader's language",
+    group: 'ai',
+    defaultEnabled: true,
+    modelOptions: SELECTABLE_PALM_MODELS,
+    defaultModel: 'oxion:gemini-3.7-flash',
   },
   // 2026-08-28: the three highest-traffic/most-reasoning-heavy surfaces
   // (personalized horoscope, AI chat, paid reports) previously had NO model
