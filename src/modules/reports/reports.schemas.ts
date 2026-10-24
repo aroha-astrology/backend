@@ -171,7 +171,11 @@ export const ReportSectionSchema = z
   .openapi('ReportSection');
 
 export const ReportGeneratingSchema = z
-  .object({ status: z.literal('generating') })
+  .object({
+    status: z.literal('generating'),
+    /** true while an old report is being rebuilt free with the corrected chart */
+    refreshing: z.boolean().optional(),
+  })
   .openapi('ReportGenerating');
 
 export const ReportFailedSchema = z

@@ -666,6 +666,22 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     // silent behavior change; see modelForReportProfile() in gemini-client.ts.
     defaultModel: 'gemini-3.1-pro-preview',
   },
+  // 2026-10-24 owner: every report written before CONTENT_VERSION 7 (engine 2026.10.2 + real transit dates) is rebuilt free the first time its owner opens it; the reader waits on an "updating" screen. Owner chose ON at deploy; switching it off shows old reports as they are.
+  {
+    key: 'reports.refreshOldOnOpen',
+    label: 'Rebuild old reports with the corrected chart when opened (free)',
+    group: 'reports',
+    defaultEnabled: true,
+  },
+  // owner picked Gemini 3.7 Flash on Oxion 2026-10-24; a Gemini id here (or the key switched off) skips Oxion.
+  {
+    key: 'ai.reportRefreshModel',
+    label: 'Old-report rebuild — model tried first (Oxion), then Gemini free, then Gemini paid',
+    group: 'ai',
+    defaultEnabled: true,
+    modelOptions: SELECTABLE_PALM_MODELS,
+    defaultModel: 'oxion:gemini-3.7-flash',
+  },
 
   // ---------------------------------------------------------------------------
   // 2026-09 roadmap. Every key ships OFF and carries tag 'new' (NEW badge +

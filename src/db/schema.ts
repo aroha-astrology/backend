@@ -1902,6 +1902,14 @@ export const reports = pgTable(
      * Null means "runnable immediately" — the normal case for a fresh purchase. Only
      * set when a failed attempt is requeued for retry (see requeueReportForRetry). */
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    /** Cross-worker claim for the free pre-v7 rebuild. */
+    refreshStartedAt: timestamp('refresh_started_at', { withTimezone: true }),
+    /** Attempts for the free rebuild (max 3, then old report is shown). */
+    refreshAttempts: integer('refresh_attempts').notNull().default(0),
+    /** When the report was successfully rebuilt. */
+    refreshedAt: timestamp('refreshed_at', { withTimezone: true }),
+    /** Last rebuild error (truncated to 500 chars). */
+    refreshError: text('refresh_error'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

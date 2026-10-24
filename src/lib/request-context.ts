@@ -15,7 +15,8 @@
 // for authorization or data access — an authorization decision must take its
 // subject explicitly, so it is impossible to accidentally inherit the wrong
 // caller's identity from an ambient store. Background jobs simply have no
-// context, and correctly record `null`.
+// context, and correctly record `null`. llmOrder is the one non-telemetry field
+// and only chooses a provider order, never identity.
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 
@@ -28,6 +29,13 @@ export type RequestContext = {
    * single indistinguishable ai_usage row and per-report cost is unknowable.
    */
   feature?: string;
+  /**
+   * Set only by the old-report rebuild (reports.service.ts regenerateReportContent);
+   * gemini-client.ts generate() then asks Oxion before any Gemini key.
+   */
+  llmOrder?: 'oxion-first';
+  /** set by gemini-client tryOxionFirst when Oxion served a call; the rebuild records it as the report's model */
+  oxionModel?: string;
 };
 
 const storage = new AsyncLocalStorage<RequestContext>();
