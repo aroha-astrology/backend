@@ -47,6 +47,7 @@ import { cronRouter } from './modules/cron/cron.routes.js';
 import { widgetsRouter } from './modules/widgets/widgets.routes.js';
 import { ritualRouter } from './modules/ritual/ritual.routes.js';
 import { hooksRouter } from './modules/hooks/hooks.routes.js';
+import { hooksMoreRouter } from './modules/hooks/hooks-more.routes.js';
 import { circlesPublicRouter, circlesRouter } from './modules/circles/circles.routes.js';
 import { memoryRouter } from './modules/memory/memory.routes.js';
 import { personasRouter } from './modules/personas/personas.routes.js';
@@ -153,6 +154,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', skyContextRouter);
   app.route('/v1', ritualRouter);
   app.route('/v1', hooksRouter);
+  app.route('/v1', hooksMoreRouter);
   app.route('/v1', circlesRouter);
   app.route('/v1', memoryRouter);
   app.route('/v1', personasRouter);

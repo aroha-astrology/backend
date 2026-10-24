@@ -224,3 +224,23 @@ export async function writeSettings(value: Record<string, unknown>, updatedBy: s
     .values({ key: SETTINGS_KEY, value, updatedAt: now, updatedBy })
     .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: now, updatedBy } });
 }
+
+/** Readers who have used a hook at least once (the only ones a scheduled push goes to). */
+export async function usersWithHook(hook: string, limit = 2000): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ userId: hookProgress.userId })
+    .from(hookProgress)
+    .where(eq(hookProgress.hook, hook))
+    .limit(limit);
+  return rows.map((r) => r.userId);
+}
+
+/** Readers with at least one sleep score in the last `days` days. */
+export async function usersWithRecentSleep(sinceDate: string, limit = 2000): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ userId: sleepLogs.userId })
+    .from(sleepLogs)
+    .where(gte(sleepLogs.localDate, sinceDate))
+    .limit(limit);
+  return rows.map((r) => r.userId);
+}

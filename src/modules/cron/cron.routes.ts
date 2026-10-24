@@ -26,6 +26,7 @@ import {
 import { TransitAlertBodySchema, TransitAlertResultSchema } from './transit-alert.schemas.js';
 import { runFactNudge } from './fact-nudge.service.js';
 import { runCirclePulse } from './circle-pulse.service.js';
+import { runHooksCron } from '../hooks/hooks-cron.service.js';
 import { runBabaMemory } from '../memory/memory.service.js';
 import { FactNudgeBodySchema, FactNudgeResultSchema } from './fact-nudge.schemas.js';
 import {
@@ -552,6 +553,48 @@ const babaMemoryRoute = createRoute({
 cronRouter.openapi(babaMemoryRoute, async (c) => {
   const body = c.req.valid('json');
   return c.json(await runBabaMemory({ dryRun: body.dryRun ?? false }), 200);
+});
+
+
+const hooksCronRoute = createRoute({
+  method: 'post',
+  path: '/cron/hooks',
+  tags: ['Cron'],
+  summary: 'Send the scheduled daily-return hook pushes and the alarms that are due',
+  description:
+    'Run every 15 minutes. Each hook pushes at its own local time to readers who have used it, under the ' +
+    'daily cap and quiet hours; paid alarms go out when due. A no-op while every hooks.* switch is off. ' +
+    'Authenticated via X-Cron-Secret.',
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: z.object({ dryRun: z.boolean().optional() }).strict().openapi('HooksCronBody') } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Run completed (or deliberately skipped)',
+      content: {
+        'application/json': {
+          schema: z
+            .object({
+              skipped: z.boolean(),
+              reason: z.string().optional(),
+              considered: z.number().int(),
+              pushed: z.number().int(),
+              alarms: z.number().int(),
+            })
+            .openapi('HooksCronResult'),
+        },
+      },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(hooksCronRoute, async (c) => {
+  const body = c.req.valid('json');
+  return c.json(await runHooksCron({ dryRun: body.dryRun ?? false }), 200);
 });
 
 // ---------------------------------------------------------------------------

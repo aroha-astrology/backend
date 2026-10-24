@@ -184,6 +184,11 @@ export async function getRahasya(user: UserRow, q: PlaceQuery & { n?: number }, 
   return viewFor(user, q, q.n ?? null, now, true);
 }
 
+/** Settles the schedule without counting as a visit (the evening push job uses it). */
+export async function refreshRahasya(user: UserRow, now: Date = new Date()): Promise<RahasyaView> {
+  return viewFor(user, {}, null, now, false);
+}
+
 /** Opens one locked scroll now. Gold and Platinum pay nothing; the charge and the unlock are one-shot per scroll. */
 export async function unlockScroll(user: UserRow, q: PlaceQuery & { n: number }, now: Date = new Date()): Promise<RahasyaView & { chargedPaise: number }> {
   if (!Number.isInteger(q.n) || q.n < 1 || q.n > SCROLL_COUNT) throw Errors.badRequest('n must be 1 to 17');

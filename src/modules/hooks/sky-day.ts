@@ -66,6 +66,25 @@ export async function moonTrack(place: Place, localDate: string, sunriseHHMM: st
   return out;
 }
 
+/** The Moon's sidereal longitude every `stepMin` minutes across a whole local day (minutes after midnight). */
+export async function moonLongitudes(tz: string, localDate: string, stepMin = 30): Promise<{ atMin: number; longitude: number }[]> {
+  const out: { atMin: number; longitude: number }[] = [];
+  for (let m = 0; m < 1440; m += stepMin) {
+    const sky = await calculatePlanetPositions(jdFromDate(zonedInstant(localDate, tz, m)), 'lahiri');
+    const moon = sky.find((p) => p.planet === 'Moon');
+    if (moon) out.push({ atMin: m, longitude: moon.longitude });
+  }
+  return out;
+}
+
+/** The grahas' sidereal longitudes in the reader's chart, for aspects. Null when no chart can be read. */
+export async function loadNatalPoints(user: UserRow, now: Date): Promise<{ planet: string; longitude: number }[] | null> {
+  const profile = await resolveActiveProfileContext(user);
+  const chart = await loadBondChart(user, profile, now).catch(() => null);
+  const planets = (chart?.chartData as { planets?: { planet: string; longitude: number }[] } | undefined)?.planets;
+  return planets ? planets.map((p) => ({ planet: p.planet, longitude: p.longitude })) : null;
+}
+
 export interface NatalLoad {
   profile: ProfileContext;
   natalMoon: NatalMoon | null;
