@@ -34,6 +34,8 @@ const {
 const SESSION = '11111111-1111-4111-8111-111111111111';
 const USER = '22222222-2222-4222-8222-222222222222';
 const SINCE = new Date('2026-10-01T00:00:00Z');
+// A row from `.returning()` reaches drizzle as positional values; nulls decode to null for every column.
+const ROW = new Array(60).fill(null);
 
 beforeEach(() => {
   state.calls = [];
@@ -142,7 +144,7 @@ describe('releaseVoiceMinute', () => {
 
 describe('endVoiceSessionWithRefund', () => {
   it('gives a trial minute back to the trial when every minute so far was a trial one', async () => {
-    state.rows = [[{ id: SESSION }]];
+    state.rows = [[ROW]];
 
     const refund = await endVoiceSessionWithRefund(SESSION, USER, 15_000);
 
@@ -154,7 +156,7 @@ describe('endVoiceSessionWithRefund', () => {
   });
 
   it('treats the minute as free only when every minute of the call so far was free', async () => {
-    state.rows = [[], [{ id: SESSION }]];
+    state.rows = [[], [ROW]];
 
     const refund = await endVoiceSessionWithRefund(SESSION, USER, 15_000);
 
@@ -166,7 +168,7 @@ describe('endVoiceSessionWithRefund', () => {
   });
 
   it('falls through to a wallet refund when the latest minute was paid for', async () => {
-    state.rows = [[], [], [{ id: SESSION }]];
+    state.rows = [[], [], [ROW]];
 
     const refund = await endVoiceSessionWithRefund(SESSION, USER, 15_000);
 

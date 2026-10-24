@@ -22,6 +22,7 @@ interface FakeSelectChain {
   from: (table: unknown) => FakeSelectChain;
   where: (cond: unknown) => FakeSelectChain;
   groupBy: (expr: unknown) => FakeSelectChain;
+  orderBy: (expr: unknown) => FakeSelectChain;
   then: (resolve: (value: unknown) => void) => void;
 }
 
@@ -40,6 +41,7 @@ function makeSelectChain(result: unknown[]) {
       calls.groupBy = expr;
       return chain;
     }),
+    orderBy: vi.fn(() => chain),
     then: (resolve: (value: unknown) => void) => resolve(result),
   };
   return { chain, calls };
@@ -84,12 +86,19 @@ describe('userDemographics', () => {
       { label: 'not_asked', count: 7 },
     ]);
     const familyChain = makeSelectChain([{ label: 'not_asked', count: 11 }]);
+    const languageRows = [
+      { label: 'en', count: 14 },
+      { label: 'hi', count: 8 },
+      { label: 'unknown', count: 1 },
+    ];
+    const languageChain = makeSelectChain(languageRows);
     state.select
       .mockReturnValueOnce(genderChain.chain)
       .mockReturnValueOnce(statusChain.chain)
       .mockReturnValueOnce(dobChain.chain)
       .mockReturnValueOnce(incomeChain.chain)
-      .mockReturnValueOnce(familyChain.chain);
+      .mockReturnValueOnce(familyChain.chain)
+      .mockReturnValueOnce(languageChain.chain);
 
     const result = await userDemographics();
 
@@ -101,6 +110,8 @@ describe('userDemographics', () => {
     expect(compile(dobChain.calls.where).sql).toMatch(/deleted_at/);
 
     expect(result.gender).toEqual(genderRows);
+    expect(compile(languageChain.calls.where).sql).toMatch(/deleted_at/);
+    expect(result.languages).toEqual(languageRows);
     expect(result.relationshipStatus).toEqual(statusRows);
     expect(result.ageBrackets).toEqual([
       { label: '<18', count: 1 },
