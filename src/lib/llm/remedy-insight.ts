@@ -91,15 +91,28 @@ function buildFacts(facts: RemedyInsightFacts): string {
   return lines.join('\n');
 }
 
-const NARRATIVE_SCHEMA = {
-  type: 'object',
-  properties: {
-    intro: { type: 'string' },
-    planets: { type: 'object' },
-    debts: { type: 'object' },
-  },
-  required: ['intro', 'planets'],
-} as const;
+/**
+ * Gemini enforces this schema strictly, so an object declared without
+ * properties can only come back as `{}` — which is how every remedy insight
+ * failed in production until 2026-10-25. The planet and debt keys are named
+ * per reader instead.
+ */
+function narrativeSchema(planetKeys: string[], debtKeys: string[]) {
+  const stringsFor = (keys: string[]) => ({
+    type: 'object',
+    properties: Object.fromEntries(keys.map((k) => [k, { type: 'string' }])),
+    required: keys,
+  });
+  return {
+    type: 'object',
+    properties: {
+      intro: { type: 'string' },
+      planets: stringsFor(planetKeys),
+      debts: stringsFor(debtKeys),
+    },
+    required: ['intro', 'planets', 'debts'],
+  };
+}
 
 function asStringMap(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object') return {};
@@ -130,7 +143,10 @@ export async function generateRemedyInsight(
 ): Promise<{ narrative: RemedyInsightNarrative; model: string }> {
   const raw = await generate({
     profile: REPORT_PROFILE,
-    responseSchema: NARRATIVE_SCHEMA,
+    responseSchema: narrativeSchema(
+      facts.planets.map((p) => p.planet),
+      facts.debts.map((d) => d.type),
+    ),
     messages: [
       { role: 'system', content: systemPrompt() },
       { role: 'user', content: buildFacts(facts) },
@@ -153,7 +169,7 @@ export async function translateRemedyInsight(
 ): Promise<RemedyInsightNarrative> {
   const raw = await generate({
     profile: REPORT_TRANSLATION_PROFILE,
-    responseSchema: NARRATIVE_SCHEMA,
+    responseSchema: narrativeSchema(Object.keys(narrative.planets), Object.keys(narrative.debts)),
     messages: [
       {
         role: 'user',

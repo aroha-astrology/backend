@@ -133,7 +133,10 @@ export const CHAT_SUMMARY_PROFILE: GenerationProfile = {
   temperature: 0.2,
   jsonMode: false,
   stream: false,
-  maxTokens: 220,
+  // 2026-10-25: 220 cut summaries off mid-sentence in production. The prompt asks
+  // for up to 150 words, which is well over 220 tokens in Hindi and other
+  // non-Latin scripts. A ceiling, not a target, so the extra room costs nothing.
+  maxTokens: 600,
 };
 
 /**

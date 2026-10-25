@@ -105,3 +105,33 @@ describe('translateRemedyInsight', () => {
     ).rejects.toThrow(/target=hi/);
   });
 });
+
+describe('the JSON schema sent to the model', () => {
+  // Gemini enforces the schema strictly: an object declared with no properties can
+  // only come back as {}. That is how every remedy insight in production failed.
+  type Schema = { properties: Record<string, { properties?: object; required?: string[] }> };
+  const schemaOf = (call: number) =>
+    state.generate.mock.calls[call]?.[0].responseSchema as Schema;
+
+  it('names each given planet and debt, so the model is allowed to fill them in', async () => {
+    state.generate.mockResolvedValue(GOOD);
+    await generateRemedyInsight(FACTS);
+
+    const { planets, debts } = schemaOf(0).properties;
+    expect(Object.keys(planets!.properties ?? {})).toEqual(['Mars', 'Saturn']);
+    expect(planets!.required).toEqual(['Mars', 'Saturn']);
+    expect(Object.keys(debts!.properties ?? {})).toEqual(['Pitra Rin']);
+  });
+
+  it('names the narrative keys when translating', async () => {
+    state.generate.mockResolvedValue(GOOD);
+    await translateRemedyInsight(
+      { intro: 'x', planets: { Mars: 'y', Saturn: 'w' }, debts: { 'Pitra Rin': 'z' } },
+      'hi',
+    );
+
+    const { planets, debts } = schemaOf(0).properties;
+    expect(Object.keys(planets!.properties ?? {})).toEqual(['Mars', 'Saturn']);
+    expect(Object.keys(debts!.properties ?? {})).toEqual(['Pitra Rin']);
+  });
+});

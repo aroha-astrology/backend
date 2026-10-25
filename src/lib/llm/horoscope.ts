@@ -675,7 +675,37 @@ export function cleanJsonString(raw: string): string {
   if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
   else if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
   if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
-  return cleaned.trim();
+  cleaned = cleaned.trim();
+  // The model sometimes adds a note, a closing fence or a second copy after the
+  // JSON, which JSON.parse rejects outright ("Unexpected non-whitespace character
+  // after JSON"). Cut at the end of the first complete value. Cut-off JSON has no
+  // such end and is returned whole for the callers' own repair steps.
+  const end = endOfFirstJsonValue(cleaned);
+  return end === -1 ? cleaned : cleaned.slice(0, end).trimEnd();
+}
+
+/** Index just past the `{...}` / `[...]` that `text` starts with, or -1 if it never closes. */
+function endOfFirstJsonValue(text: string): number {
+  if (text[0] !== '{' && text[0] !== '[') return -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return -1;
 }
 
 /**
