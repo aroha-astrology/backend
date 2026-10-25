@@ -750,6 +750,13 @@
       "when": 1792880000000,
       "tag": "0103_pay_stores_refund_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1792890000000,
+      "tag": "0105_skin_test_change",
+      "breakpoints": true
     }
   ]
 }
