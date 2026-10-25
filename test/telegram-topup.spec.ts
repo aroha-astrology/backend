@@ -9,10 +9,6 @@ const fakeEnv = {
   TELEGRAM_SIGNUP_EXTRA_CHAT_IDS: ['456'],
 };
 vi.mock('../src/config/env.js', () => ({ env: fakeEnv, isProduction: false, isTest: true }));
-vi.mock('../src/lib/notifications/support-email.js', () => ({
-  emailSupportTicket: vi.fn(),
-  emailDeletionRequest: vi.fn(),
-}));
 
 const { notifyWalletTopUp, notifyNewSignup } = await import('../src/lib/notifications/telegram.js');
 

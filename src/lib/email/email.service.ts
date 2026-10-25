@@ -14,8 +14,8 @@ export interface SendMailOptions {
 let transporterInstance: Transporter | null = null;
 
 export function getResolvedEmailCredentials(): { user?: string; pass?: string } {
-  const user = env.SMTP_USER || env.SUPPORT_EMAIL_USER;
-  const pass = env.SMTP_PASS || env.SUPPORT_EMAIL_APP_PASSWORD;
+  const user = env.SMTP_USER;
+  const pass = env.SMTP_PASS;
   return { user, pass };
 }
 

@@ -355,34 +355,6 @@ const EnvSchema = z
       ),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
 
-    // Support mailbox — the SAME Gmail account is used in both directions:
-    // outbound (new tickets / deletion requests are mailed to it) and inbound
-    // (POST /cron/support-mail-poll reads replies back out of it and writes
-    // them onto the ticket). One credential covers both because Gmail's SMTP
-    // and IMAP endpoints take the same login.
-    //
-    // SUPPORT_EMAIL_APP_PASSWORD must be a Google *App Password*, NOT the
-    // account password: Gmail stopped accepting account passwords for
-    // SMTP/IMAP in 2022, so a real password here fails to authenticate. Generate
-    // one at myaccount.google.com -> App passwords (requires 2-Step Verification
-    // to be on). Spaces in the 16-char code are stripped below — Google displays
-    // it as "abcd efgh ijkl mnop" and it gets pasted that way constantly.
-    //
-    // Both unset = the whole email path is off; the Telegram alerts and the
-    // admin panel keep working exactly as before.
-    SUPPORT_EMAIL_USER: z.string().email().optional(),
-    SUPPORT_EMAIL_APP_PASSWORD: z
-      .string()
-      .min(1)
-      .optional()
-      .transform((value) => value?.replace(/\s+/g, '')),
-    // Where ticket mail is delivered. Defaults to SUPPORT_EMAIL_USER (the
-    // mailbox mails itself, and replies land back in the same inbox for the
-    // poller to find). Only set this to send somewhere else — note the poller
-    // still reads SUPPORT_EMAIL_USER's inbox, so a reply is only picked up if
-    // it ends up there.
-    SUPPORT_EMAIL_TO: z.string().email().optional(),
-
     // Phone allowlist (E.164) gating the HTTP admin API (/v1/admin/*) — see
     // requireAdmin in middleware/auth.ts. Checked against the Firebase ID
     // token's own `phone_number` claim, NOT a DB column (a DB column would

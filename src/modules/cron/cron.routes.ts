@@ -48,7 +48,6 @@ import {
   DELETION_REMINDER_AFTER_DAYS,
   runDeletionRequestReminder,
 } from './deletion-reminder.service.js';
-import { runSupportMailPoll } from '../support/support-mail.service.js';
 import { runDailyUserReport } from './daily-user-report.service.js';
 import { runPassRenewals } from '../pass/pass.service.js';
 import { sendFestivalAlert } from './festival-alert.service.js';
@@ -1009,44 +1008,6 @@ const deletionRemindersRoute = createRoute({
 
 cronRouter.openapi(deletionRemindersRoute, async (c) => {
   const result = await runDeletionRequestReminder();
-  return c.json(result, 200);
-});
-
-// ---------------------------------------------------------------------------
-
-const supportMailPollRoute = createRoute({
-  method: 'post',
-  path: '/cron/support-mail-poll',
-  tags: ['Cron'],
-  summary: 'Read support-mailbox replies and apply them to tickets / deletion requests',
-  description:
-    'Machine-to-machine endpoint, meant to run every few minutes via the OS crontab. Drains ' +
-    'unread mail from the support Gmail inbox: a reply to a ticket mail is appended to that ' +
-    "ticket's note (visible to the user in the app, and pushed to them), and a reply carrying " +
-    'APPROVE/REJECT plus its signing token decides a pending account-deletion request. Mail ' +
-    'that matches neither is left unread and untouched. No-ops when SUPPORT_EMAIL_USER / ' +
-    'SUPPORT_EMAIL_APP_PASSWORD are unset. Authenticated via the X-Cron-Secret header.',
-  responses: {
-    200: {
-      description: 'Poll completed',
-      content: {
-        'application/json': {
-          schema: z.object({
-            scanned: z.number(),
-            replies: z.number(),
-            decisions: z.number(),
-            skipped: z.number(),
-          }),
-        },
-      },
-    },
-    403: errorResponse('Invalid or missing cron secret'),
-    500: errorResponse('The support mailbox could not be reached or refused the login'),
-  },
-});
-
-cronRouter.openapi(supportMailPollRoute, async (c) => {
-  const result = await runSupportMailPoll();
   return c.json(result, 200);
 });
 
