@@ -1041,6 +1041,7 @@ const supportMailPollRoute = createRoute({
       },
     },
     403: errorResponse('Invalid or missing cron secret'),
+    500: errorResponse('The support mailbox could not be reached or refused the login'),
   },
 });
 

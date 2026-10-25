@@ -28,25 +28,51 @@ if [ -z "$SECRET" ]; then
   exit 1
 fi
 
-CURL_EXIT=0
-# --max-time is generous: one poll opens an IMAP connection and parses every
-# unread message, which is slower than the other cron endpoints' pure DB work.
-RESPONSE="$(curl -fsS --max-time 120 -X POST \
-  -H "X-Cron-Secret: $SECRET" \
-  -H 'Content-Type: application/json' \
-  -d '{}' \
-  "http://127.0.0.1:${PORT}/internal/cron/support-mail-poll")" || CURL_EXIT=$?
-
-if [ "$CURL_EXIT" -ne 0 ]; then
-  echo "$(date -u +%FT%TZ) ERROR: cron-support-mail-poll.sh failed (curl exit $CURL_EXIT)" >&2
+telegram() {
   if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_ALERT_CHAT_ID" ]; then
     curl -fsS --max-time 10 -X POST \
       -H 'Content-Type: application/json' \
-      -d "{\"chat_id\":\"${TELEGRAM_ALERT_CHAT_ID}\",\"text\":\"cron-support-mail-poll.sh failed (curl exit ${CURL_EXIT})\"}" \
+      -d "{\"chat_id\":\"${TELEGRAM_ALERT_CHAT_ID}\",\"text\":\"$1\"}" \
       "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
       >/dev/null 2>&1 || echo "$(date -u +%FT%TZ) WARN: Telegram alert POST failed" >&2
   fi
+}
+
+poll() {
+  # --max-time is generous: one poll opens an IMAP connection and parses every
+  # unread message, which is slower than the other cron endpoints' pure DB work.
+  curl -fsS --max-time 120 -X POST \
+    -H "X-Cron-Secret: $SECRET" \
+    -H 'Content-Type: application/json' \
+    -d '{}' \
+    "http://127.0.0.1:${PORT}/internal/cron/support-mail-poll"
+}
+
+# Present while the poll is failing, so Telegram hears once when it breaks and
+# once when it recovers, not every 5 minutes.
+FAILING_MARK="$HOME/.cron-support-mail-poll.failing"
+
+CURL_EXIT=0
+RESPONSE="$(poll)" || CURL_EXIT=$?
+# 7 (refused) / 52 (empty reply) are the API reloading during a deploy: try once more.
+if [ "$CURL_EXIT" -eq 7 ] || [ "$CURL_EXIT" -eq 52 ]; then
+  sleep 15
+  CURL_EXIT=0
+  RESPONSE="$(poll)" || CURL_EXIT=$?
+fi
+
+if [ "$CURL_EXIT" -ne 0 ]; then
+  echo "$(date -u +%FT%TZ) ERROR: cron-support-mail-poll.sh failed (curl exit $CURL_EXIT)" >&2
+  if [ ! -e "$FAILING_MARK" ]; then
+    telegram "cron-support-mail-poll.sh failed (curl exit ${CURL_EXIT}); support mail is not being read. Check the aroha-api log for support-mail. No more alerts until it recovers."
+    touch "$FAILING_MARK"
+  fi
   exit "$CURL_EXIT"
+fi
+
+if [ -e "$FAILING_MARK" ]; then
+  rm -f "$FAILING_MARK"
+  telegram "cron-support-mail-poll.sh recovered; support mail is being read again."
 fi
 
 # Only logged when something actually happened, so the every-5-minutes log

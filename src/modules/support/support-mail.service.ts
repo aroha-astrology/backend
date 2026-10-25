@@ -31,6 +31,7 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { env } from '../../config/env.js';
+import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import {
   emailActionResult,
@@ -215,12 +216,19 @@ export async function runSupportMailPoll(): Promise<SupportMailPollResult> {
     // bury the app's own logs on every poll.
     logger: false,
   });
+  // A socket that dies after a failed login emits 'error' later; with no listener
+  // that surfaces as an uncaughtException in the API process.
+  client.on('error', (err) => logger.warn({ err }, 'support-mail: IMAP socket error'));
 
   try {
     await client.connect();
   } catch (err) {
     logger.error({ err }, 'support-mail: IMAP connect failed');
-    return empty;
+    client.close();
+    // Thrown, not swallowed: an empty 200 hid a rejected Gmail login for weeks, so the
+    // cron's Telegram alert never fired.
+    const detail = (err as { responseText?: string }).responseText ?? (err as Error).message;
+    throw Errors.internal(`support mailbox connect failed: ${detail}`);
   }
 
   const pending: PendingAction[] = [];
