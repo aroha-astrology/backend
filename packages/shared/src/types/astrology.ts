@@ -216,6 +216,39 @@ export interface SadeSati {
   saturnSign: ZodiacSign;
   moonSign: ZodiacSign;
   description: string;
+  /** Saturn's unbroken stays in the 12th/1st/2nd; more than one when a retrograde break splits the window. */
+  stays?: SaturnStay[];
+  /** Set while Saturn is out of the triad on a retrograde break: when it comes back. */
+  resumesOn?: Date | null;
+  /** When no Sade Sati is running: the next one. */
+  next?: { startDate: Date; endDate: Date } | null;
+}
+
+export interface SaturnStay {
+  startDate: Date;
+  endDate: Date;
+}
+
+/**
+ * Shani Dhaiya: Saturn transiting the 4th (Kantaka Shani / Ardhashtama /
+ * small panoti) or 8th (Ashtama Shani) sign from the natal Moon.
+ */
+export interface Dhaiya {
+  active: boolean;
+  phase: '4th' | '8th' | 'none';
+  /** "Kantaka Shani" (4th) or "Ashtama Shani" (8th); empty when none. */
+  name: string;
+  severity: 'none' | 'mild' | 'moderate' | 'severe';
+  saturnSign: ZodiacSign;
+  moonSign: ZodiacSign;
+  /** The whole Dhaiya, first entry to final exit, when one is running or on a break. */
+  startDate: Date | null;
+  endDate: Date | null;
+  stays: SaturnStay[];
+  resumesOn: Date | null;
+  /** When no Dhaiya is running: the next one. */
+  next: { phase: '4th' | '8th'; startDate: Date; endDate: Date } | null;
+  description: string;
 }
 
 export interface PitraDosha {
@@ -250,6 +283,8 @@ export interface DoshaAnalysis {
   mangal: MangalDosha;
   kaalSarp: KaalSarpDosha;
   sadeSati: SadeSati;
+  /** Live, like sadeSati; absent on kundlis saved before it was added. */
+  dhaiya?: Dhaiya;
   pitra: PitraDosha;
   kemDruma: KemDrumaDosha;
   grahan: GrahanDosha;

@@ -307,8 +307,107 @@ const HOUSE_LABELS: Record<number, string> = {
   12: 'health/losses',
 };
 
-/** Present/absent facts for all 7 traditional doshas, mirroring each dosha's own computed shape. */
-function doshaFacts(doshas: Record<string, unknown> | null): string[] {
+/** "29 Mar 2025" on the user's clock, from a Date or its JSON string; null when unreadable. */
+function factDate(value: unknown, zone: string): string | null {
+  const d = value instanceof Date ? value : typeof value === 'string' ? new Date(value) : null;
+  if (!d || Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: zone,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(d);
+}
+
+/** "29 Mar 2025 to 23 Feb 2028", or '' when either end is missing. */
+function factRange(start: unknown, end: unknown, zone: string): string {
+  const a = factDate(start, zone);
+  const b = factDate(end, zone);
+  return a && b ? `${a} to ${b}` : '';
+}
+
+/** "; it pauses while Saturn steps out on a retrograde from A to B" for each gap between real stays. */
+function factBreaks(stays: unknown, zone: string): string {
+  if (!Array.isArray(stays) || stays.length < 2) return '';
+  const gaps: string[] = [];
+  for (let i = 1; i < stays.length; i++) {
+    const gap = factRange(
+      (stays[i - 1] as Record<string, unknown>).endDate,
+      (stays[i] as Record<string, unknown>).startDate,
+      zone,
+    );
+    if (gap) gaps.push(gap);
+  }
+  return gaps.length
+    ? `; it pauses while Saturn steps out on a retrograde from ${gaps.join(' and from ')}`
+    : '';
+}
+
+/** Sade Sati as a fact line: phase, real dates, retrograde breaks, or the next one. */
+function sadeSatiFact(sadeSati: Record<string, unknown>, zone: string): string {
+  const range = factRange(sadeSati.startDate, sadeSati.endDate, zone);
+  if (sadeSati.active) {
+    return `Sade Sati: ${String(sadeSati.phase)} phase (Saturn's 7.5-year transit over the 12th, 1st and 2nd signs from the Moon; Saturn now in ${String(
+      sadeSati.saturnSign,
+    )}), ${String(sadeSati.severity)} severity${range ? `, runs ${range}` : ''}${factBreaks(
+      sadeSati.stays,
+      zone,
+    )} — traditionally a period calling for extra care and resilience`;
+  }
+  const resumes = factDate(sadeSati.resumesOn, zone);
+  if (resumes) {
+    return `Sade Sati: on a retrograde break, not active today (Saturn has stepped back into ${String(
+      sadeSati.saturnSign,
+    )}); it resumes on ${resumes}${range ? `, and the whole Sade Sati runs ${range}` : ''}`;
+  }
+  const next = sadeSati.next as Record<string, unknown> | null | undefined;
+  const nextRange = next ? factRange(next.startDate, next.endDate, zone) : '';
+  return `Sade Sati: not currently active${nextRange ? `; the next Sade Sati runs ${nextRange}` : ''}`;
+}
+
+const DHAIYA_NAME: Record<string, string> = {
+  '4th': 'Kantaka Shani, small panoti',
+  '8th': 'Ashtama Shani',
+};
+
+/**
+ * Shani Dhaiya as a fact line. Without it chat had to work Dhaiya out alone
+ * from the gochar line, which counted houses from the Lagna only, so a reader
+ * with Saturn in the 8th from the Lagna could be told they were in Dhaiya.
+ */
+function dhaiyaFact(dhaiya: Record<string, unknown>, zone: string): string {
+  const rule =
+    'Shani Dhaiya is Saturn in the 4th or 8th sign counted from the natal MOON sign, never from the Lagna';
+  const range = factRange(dhaiya.startDate, dhaiya.endDate, zone);
+  if (dhaiya.active) {
+    const phase = String(dhaiya.phase);
+    return `Shani Dhaiya: ACTIVE — ${phase} from the Moon (${DHAIYA_NAME[phase] ?? 'Dhaiya'}; Saturn in ${String(
+      dhaiya.saturnSign,
+    )}, Moon sign ${String(dhaiya.moonSign)}), ${String(dhaiya.severity)} severity${
+      range ? `, runs ${range}` : ''
+    }${factBreaks(dhaiya.stays, zone)}. ${rule}`;
+  }
+  const resumes = factDate(dhaiya.resumesOn, zone);
+  if (resumes) {
+    return `Shani Dhaiya: on a retrograde break, not active today (Saturn is in ${String(
+      dhaiya.saturnSign,
+    )} for now); it resumes on ${resumes}${range ? `, and the whole Dhaiya runs ${range}` : ''}. ${rule}`;
+  }
+  const next = dhaiya.next as Record<string, unknown> | null | undefined;
+  const nextRange = next ? factRange(next.startDate, next.endDate, zone) : '';
+  const nextText =
+    next && nextRange
+      ? `; the next one is the ${String(next.phase)} from the Moon (${
+          DHAIYA_NAME[String(next.phase)] ?? 'Dhaiya'
+        }), ${nextRange}`
+      : '';
+  return `Shani Dhaiya: not currently active (Saturn is in ${String(dhaiya.saturnSign)}, Moon sign ${String(
+    dhaiya.moonSign,
+  )})${nextText}. ${rule}`;
+}
+
+/** Present/absent facts for the 7 traditional doshas plus Shani Dhaiya, mirroring each one's own computed shape. */
+export function doshaFacts(doshas: Record<string, unknown> | null, zone: string): string[] {
   if (!doshas) return [];
   const facts: string[] = [];
 
@@ -333,15 +432,10 @@ function doshaFacts(doshas: Record<string, unknown> | null): string[] {
   }
 
   const sadeSati = doshas.sadeSati as Record<string, unknown> | undefined;
-  if (sadeSati) {
-    facts.push(
-      sadeSati.active
-        ? `Sade Sati: ${String(sadeSati.phase)} phase (Saturn's 7.5-year transit over the Moon sign), ${String(
-            sadeSati.severity,
-          )} severity — traditionally a period calling for extra care and resilience`
-        : 'Sade Sati: not currently active',
-    );
-  }
+  if (sadeSati) facts.push(sadeSatiFact(sadeSati, zone));
+
+  const dhaiya = doshas.dhaiya as Record<string, unknown> | undefined;
+  if (dhaiya) facts.push(dhaiyaFact(dhaiya, zone));
 
   const pitra = doshas.pitra as Record<string, unknown> | undefined;
   if (pitra) {
@@ -726,13 +820,19 @@ const CLASSICAL_NINE = new Set(GOCHAR_PLANETS);
 
 /**
  * Full Gochar (live transit) snapshot — every planet's current sign and house
- * from the Ascendant, not just the Saturn/Jupiter sign-index checks and Moon
- * detail already computed above for scoring/daily-signal purposes. A
- * "what's the sky doing right now" question about any planet (not just the
- * three already surfaced) previously had no grounded answer.
+ * from the Ascendant AND from the natal Moon, not just the Saturn/Jupiter
+ * sign-index checks and Moon detail already computed above for
+ * scoring/daily-signal purposes. A "what's the sky doing right now" question
+ * about any planet (not just the three already surfaced) previously had no
+ * grounded answer. Classical gochar (Sade Sati, Dhaiya, Jupiter's transit) is
+ * read from the Moon, and this line used to give the Lagna count only.
  */
-async function fullGocharFacts(ascSignIndex: number | null, asOfDate?: string): Promise<string[]> {
-  if (ascSignIndex == null) return [];
+async function fullGocharFacts(
+  ascSignIndex: number | null,
+  moonSignIndex: number | null,
+  asOfDate?: string,
+): Promise<string[]> {
+  if (ascSignIndex == null && moonSignIndex == null) return [];
   try {
     const dt = asOfDate ? parseDateMidday(asOfDate) : new Date();
     const jd = await dateToJulianDay(
@@ -751,8 +851,12 @@ async function fullGocharFacts(ascSignIndex: number | null, asOfDate?: string): 
       const p = positions.find((x) => x.planet === name);
       if (!p) return null;
       const signIdx = Number(p.signIndex);
-      const houseFromAsc = ((signIdx - ascSignIndex + 12) % 12) + 1;
-      return `${name}-${SIGNS[signIdx]}(house${houseFromAsc})`;
+      const houses: string[] = [];
+      if (ascSignIndex != null)
+        houses.push(`house${((signIdx - ascSignIndex + 12) % 12) + 1} from Lagna`);
+      if (moonSignIndex != null)
+        houses.push(`house${((signIdx - moonSignIndex + 12) % 12) + 1} from Moon`);
+      return `${name}-${SIGNS[signIdx]}(${houses.join(', ')})`;
     }).filter(Boolean);
     if (parts.length === 0) return [];
     return [`Full Gochar (live transit snapshot, ${label}): ${parts.join(' ')}`];
@@ -1666,7 +1770,7 @@ export async function buildGroundingFacts(
   facts.push(...chartConditionFacts(src.chart));
 
   // --- All 7 traditional doshas ---------------------------------------------
-  facts.push(...doshaFacts(src.doshas));
+  facts.push(...doshaFacts(src.doshas, zone));
 
   // --- Ashtakavarga summary ---------------------------------------------------
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
@@ -1693,7 +1797,7 @@ export async function buildGroundingFacts(
   }
 
   // --- Full Gochar (all-planet live transit snapshot) -------------------------
-  facts.push(...(await fullGocharFacts(ascSignIndex, asOfDate)));
+  facts.push(...(await fullGocharFacts(ascSignIndex, moon?.signIndex ?? null, asOfDate)));
 
   return facts;
 }

@@ -1,7 +1,8 @@
 // @ts-nocheck
-import type { SadeSati, ZodiacSign } from '@aroha-astrology/shared';
+import type { SadeSati, SaturnStay, ZodiacSign } from '@aroha-astrology/shared';
 import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import { dateToJulianDay, calculatePlanetPositions } from '../calculations/planetPositions';
+import { istDateString } from '../../astro-tools/transit-events.js';
 import { detectRealSadeSati } from './saturnPhaseTimeline';
 
 /**
@@ -37,7 +38,7 @@ export function detectSadeSati(
   moonSign: ZodiacSign,
   saturnLongitude: number,
   /** The real window from Saturn's sign changes, when the caller has it (see detectCurrentSadeSati). */
-  realWindow?: { start: Date; end: Date },
+  realWindow?: { start: Date; end: Date; stays?: SaturnStay[] },
 ): SadeSati {
   const moonSignIndex = getSignIndex(moonSign);
   const saturnSignIndex = getSignIndexFromLongitude(saturnLongitude);
@@ -116,11 +117,12 @@ export function detectSadeSati(
       peak: 'peak (second) phase',
       setting: 'setting (third) phase',
     };
+    // India's calendar date: a UTC date put the 3 Jun 2027 06:17 IST ingress on 2 Jun.
     const range =
       startDate && endDate
-        ? ` ${realWindow ? 'It runs' : 'Estimated to run'} from ${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)}.`
+        ? ` ${realWindow ? 'It runs' : 'Estimated to run'} from ${istDateString(startDate)} to ${istDateString(endDate)}.`
         : '';
-    description = `Saturn is transiting ${saturnSign}, marking the ${phaseLabel[phase as 'rising' | 'peak' | 'setting']} of Sade Sati for your Moon in ${moonSign}.${range}`;
+    description = `Saturn is transiting ${saturnSign}, marking the ${phaseLabel[phase as 'rising' | 'peak' | 'setting']} of Sade Sati for your Moon in ${moonSign}.${range}${breaksSentence(realWindow?.stays ?? [], 'the Sade Sati')}`;
   }
 
   return {
@@ -154,24 +156,66 @@ export async function getCurrentSaturnLongitude(asOf: Date = new Date()): Promis
   return saturn?.longitude ?? 0;
 }
 
-/** Sade Sati detection using Saturn's live transiting position (see `getCurrentSaturnLongitude`). */
+/**
+ * " Saturn steps out from A to B on a retrograde, so <what> pauses then." for
+ * every break between real stays, or '' for one unbroken stay.
+ */
+export function breaksSentence(stays: SaturnStay[], what: string): string {
+  if (stays.length < 2) return '';
+  const breaks = stays
+    .slice(1)
+    .map((s, i) => `${istDateString(stays[i]!.endDate)} to ${istDateString(s.startDate)}`);
+  return ` Saturn steps out on a retrograde from ${breaks.join(' and from ')}, so ${what} pauses then.`;
+}
+
+/**
+ * Sade Sati detection using Saturn's live transiting position (see
+ * `getCurrentSaturnLongitude`), with its dates, retrograde breaks and the
+ * next Sade Sati from Saturn's real sign changes.
+ */
 export async function detectCurrentSadeSati(moonSign: ZodiacSign, asOf?: Date): Promise<SadeSati> {
   const saturnLongitude = await getCurrentSaturnLongitude(asOf);
   const estimate = detectSadeSati(moonSign, saturnLongitude);
-  if (!estimate.active) return estimate;
 
   // Scan from the start of the UTC day so every reader on the same day shares
-  // the same ephemeris cache entries. Nine years back covers the longest window.
+  // the same ephemeris cache entries. Nine years back covers the longest
+  // window; 33 ahead reaches the whole next Sade Sati for every Moon sign (it
+  // starts at most nine signs of Saturn, about 22.5 years, after one ends, and
+  // lasts up to about 8.5).
   const at = asOf ?? new Date();
   const day = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
   try {
-    const real = await detectRealSadeSati(getSignIndex(moonSign), day, 9, 9);
-    if (real.windowStart && real.windowEnd) {
-      return detectSadeSati(moonSign, saturnLongitude, {
-        start: real.windowStart,
-        end: real.windowEnd,
-      });
+    const real = await detectRealSadeSati(getSignIndex(moonSign), day, 9, 33);
+    if (estimate.active && real.window) {
+      return {
+        ...detectSadeSati(moonSign, saturnLongitude, {
+          start: real.window.startDate,
+          end: real.window.endDate,
+          stays: real.window.stays,
+        }),
+        stays: real.window.stays,
+        resumesOn: null,
+        next: null,
+      };
     }
+    if (!estimate.active && real.window && real.resumesOn) {
+      // On a retrograde break: not active, but the reader is still inside it.
+      return {
+        ...estimate,
+        startDate: real.window.startDate,
+        endDate: real.window.endDate,
+        stays: real.window.stays,
+        resumesOn: real.resumesOn,
+        next: null,
+        description: `Sade Sati is on a break: Saturn has stepped back into ${estimate.saturnSign}, outside the three signs around your Moon in ${moonSign}, and returns on ${istDateString(real.resumesOn)}. The whole Sade Sati runs from ${istDateString(real.window.startDate)} to ${istDateString(real.window.endDate)}.`,
+      };
+    }
+    return {
+      ...estimate,
+      stays: [],
+      resumesOn: null,
+      next: real.next ? { startDate: real.next.startDate, endDate: real.next.endDate } : null,
+    };
   } catch {
     // An ephemeris failure leaves the estimate in place rather than no answer.
   }

@@ -10,6 +10,7 @@ import {
   calculateAllDivisionalChartsWithLagna,
   getCurrentSaturnLongitude,
   detectCurrentSadeSati,
+  detectCurrentDhaiya,
 } from '../../lib/astro-engine/index.js';
 import { computeReducedAshtakavarga } from '../../lib/astro-engine/calculations/ashtakavarga-shodhana.js';
 import { dayContextAt, getAstroDay, type DayContext } from '../../lib/astro-engine/rules/day.js';
@@ -571,28 +572,35 @@ export async function getKundliForUser(
 }
 
 /**
- * Sade Sati is the one dosha whose correctness depends on TODAY, not the
- * birth-chart snapshot taken at kundli-generation time — Saturn keeps
- * transiting after that, so a value cached at generation goes stale and
- * (unlike every other, natal dosha here) never self-corrects. Recompute it
- * live on every read; leave the rest of doshaData (natal, unchanging) as-is.
+ * Sade Sati and Shani Dhaiya are the doshas whose correctness depends on
+ * TODAY, not the birth-chart snapshot taken at kundli-generation time —
+ * Saturn keeps transiting after that, so a value cached at generation goes
+ * stale and (unlike every natal dosha here) never self-corrects. Recompute
+ * both live on every read; leave the rest of doshaData (natal, unchanging)
+ * as-is. Dhaiya is added here even for kundlis saved before it existed.
  * Same self-healing-at-read pattern as the 2026-07-17 gemstone fix.
  */
-export async function withLiveSadeSati(
+export async function withLiveSaturnTransits(
   doshaData: Record<string, unknown> | null,
   asOf?: Date,
 ): Promise<Record<string, unknown> | null> {
   if (!doshaData) return doshaData;
   const cached = doshaData.sadeSati as { moonSign?: ZodiacSign } | undefined;
   if (!cached?.moonSign) return doshaData;
-  try {
-    const sadeSati = await detectCurrentSadeSati(cached.moonSign, asOf);
-    return { ...doshaData, sadeSati };
-  } catch (err) {
-    logger.warn({ err }, 'live Sade Sati recompute failed at read time (serving cached value)');
-    return doshaData;
-  }
+  const [sadeSati, dhaiya] = await Promise.allSettled([
+    detectCurrentSadeSati(cached.moonSign, asOf),
+    detectCurrentDhaiya(cached.moonSign, asOf),
+  ]);
+  const live: Record<string, unknown> = { ...doshaData };
+  if (sadeSati.status === 'fulfilled') live.sadeSati = sadeSati.value;
+  else logger.warn({ err: sadeSati.reason }, 'live Sade Sati recompute failed at read time (serving cached value)');
+  if (dhaiya.status === 'fulfilled') live.dhaiya = dhaiya.value;
+  else logger.warn({ err: dhaiya.reason }, 'live Dhaiya recompute failed at read time (left out)');
+  return live;
 }
+
+/** The transit doshas recomputed on every read; a translation cached for them must match today's English. */
+const LIVE_DOSHA_KEYS = ['sadeSati', 'dhaiya'] as const;
 
 export async function toKundliDto(row: KundliRow): Promise<KundliDto> {
   return {
@@ -604,7 +612,7 @@ export async function toKundliDto(row: KundliRow): Promise<KundliDto> {
     chart: row.chartData,
     dasha: row.dashaData,
     yogas: row.yogaData,
-    doshas: await withLiveSadeSati(row.doshaData),
+    doshas: await withLiveSaturnTransits(row.doshaData),
     generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
   };
 }
@@ -616,28 +624,44 @@ function hashString(s: string): string {
 /**
  * Language-aware DTO for yoga/dosha name+description — same translate-on-read
  * + cache-forever shape as `toHouseInsightDtoForLanguage`, with one addition:
- * `withLiveSadeSati` (inside `toKundliDto`) recomputes Sade Sati's
- * phase/description LIVE on every read (Saturn's transit keeps moving), so a
- * translation cached once could silently go stale with no other trigger to
- * invalidate it. Guard against that by hashing the current English Sade Sati
- * description alongside the cache lookup — a mismatch forces a fresh
- * translation instead of serving a stale cached phase.
+ * `withLiveSaturnTransits` (inside `toKundliDto`) recomputes Sade Sati's and
+ * Dhaiya's phase/description LIVE on every read (Saturn's transit keeps
+ * moving), so a translation cached once could silently go stale with no other
+ * trigger to invalidate it. Guard against that by hashing the current English
+ * descriptions alongside the cache lookup — a mismatch forces a fresh
+ * translation instead of serving a stale cached phase. A cache hit still takes
+ * every other live field (active, dates, breaks) from today's values.
  */
 export async function toKundliDtoForLanguage(row: KundliRow, language: string): Promise<KundliDto> {
   const dto = await toKundliDto(row);
   if (language === 'en' || !dto.yogas || !dto.doshas) return dto;
 
   const doshas = dto.doshas as Record<string, Record<string, unknown> | undefined>;
-  const liveSadeSatiHash = hashString(JSON.stringify(doshas.sadeSati?.description ?? ''));
+  // Sade Sati's text alone when there is no Dhaiya text, so translations
+  // cached before Dhaiya existed stay valid for readers it does not touch.
+  const dhaiyaText = String(doshas.dhaiya?.description ?? '');
+  const liveSadeSatiHash = hashString(
+    JSON.stringify(doshas.sadeSati?.description ?? '') + (dhaiyaText ? `|${dhaiyaText}` : ''),
+  );
 
   const cached = row.translations?.[language] as
     | { yogas?: unknown; doshas?: unknown; _sadeSatiHash?: string }
     | undefined;
   if (cached && cached._sadeSatiHash === liveSadeSatiHash) {
+    const cachedDoshas = cached.doshas as
+      | Record<string, Record<string, unknown> | undefined>
+      | undefined;
+    const merged: Record<string, unknown> = { ...(cachedDoshas ?? doshas) };
+    for (const key of LIVE_DOSHA_KEYS) {
+      const live = doshas[key];
+      if (!live) continue;
+      const text = cachedDoshas?.[key]?.description;
+      merged[key] = { ...live, ...(typeof text === 'string' ? { description: text } : {}) };
+    }
     return {
       ...dto,
       yogas: (cached.yogas as Record<string, unknown> | undefined) ?? dto.yogas,
-      doshas: (cached.doshas as Record<string, unknown> | undefined) ?? dto.doshas,
+      doshas: merged,
     };
   }
 

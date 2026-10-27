@@ -112,6 +112,8 @@ vi.mock('../src/modules/pass/pass-free-report.js', () => ({
 
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   requestKundliGeneration: state.requestKundliGeneration,
+  // Passthrough: these tests are about report flow, not live Saturn transits.
+  withLiveSaturnTransits: (doshaData: unknown) => Promise.resolve(doshaData),
 }));
 
 vi.mock('../src/lib/upcoming-transits.js', () => ({
@@ -1750,7 +1752,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
       }),
     );
 
@@ -1795,7 +1797,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         id: 'current-report',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
       }),
     );
 
@@ -1827,7 +1829,7 @@ describe('getReportForUser', () => {
         status: 'ready',
         content: {
           sections: [{ heading: 'H', paragraphs: ['p'] }],
-          contentVersion: 7,
+          contentVersion: 8,
           windowSummaries: { field: 'windows', summaries: ['A window worth watching.'] },
         },
       }),
@@ -1861,7 +1863,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         reportKey: 'true_love',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
       }),
     );
 
@@ -1885,7 +1887,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         status: 'ready',
         isPreview: true,
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
       }),
     );
 
@@ -1905,7 +1907,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         status: 'ready',
         isPreview: false,
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
       }),
     );
 
@@ -1926,7 +1928,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: englishSections, contentVersion: 7 },
+        content: { sections: englishSections, contentVersion: 8 },
         translations: {
           hi: {
             sections: {
@@ -1961,7 +1963,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }], contentVersion: 8 },
         translations: {
           hi: {
             sections: {
@@ -1996,7 +1998,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: englishSections, contentVersion: 7 },
+        content: { sections: englishSections, contentVersion: 8 },
       }),
     );
 
@@ -2023,7 +2025,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
       }),
     );
 
@@ -2204,7 +2206,7 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
     expect(state.markReportRefreshed).toHaveBeenCalledWith('r1', expect.objectContaining({
       content: expect.objectContaining({
         sections: [{ heading: 'H', paragraphs: ['p'] }],
-        contentVersion: 7,
+        contentVersion: 8,
         verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
       }),
       model: expect.any(String),
@@ -2371,7 +2373,7 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
     expect(state.markReportRefreshed).not.toHaveBeenCalled();
   });
 
-  it('current row (contentVersion 7) -> ready, no claim', async () => {
+  it('current row (contentVersion 8) -> ready, no claim', async () => {
     state.REPORT_GENERATORS.marriage = {
       key: 'marriage',
       computeScores: vi.fn().mockReturnValue({}),
@@ -2379,7 +2381,7 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
       translateNarrative: vi.fn(),
     };
     state.findKundliByUserId.mockResolvedValue({ chartData: {} });
-    state.findReportById.mockResolvedValue(makeReportRow({ status: 'ready', content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 } }));
+    state.findReportById.mockResolvedValue(makeReportRow({ status: 'ready', content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 } }));
     const dto = await getReportForUser('report-1', 'user-1', 'en');
     expect(dto).toMatchObject({ status: 'ready' });
     expect(state.claimReportRefresh).not.toHaveBeenCalled();
@@ -2400,6 +2402,43 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
     await regenerateReportContent(row);
     expect(generateNarrative).toHaveBeenCalledWith(expect.objectContaining({ planetCondition: expect.arrayContaining([transitLine, expect.stringMatching(/^TRANSIT DATES:/)]) }), 'en');
   });
+
+  it('rebuild gives every report the same dated Sade Sati and Shani Dhaiya lines chat gets', async () => {
+    state.upcomingTransitFactsNow.mockResolvedValue([]);
+    const generateNarrative = vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]);
+    state.REPORT_GENERATORS.wealth = {
+      key: 'wealth',
+      computeScores: vi.fn().mockReturnValue({}),
+      generateNarrative,
+      translateNarrative: vi.fn(),
+    };
+    const doshaData = {
+      sadeSati: { active: false, phase: 'none', saturnSign: 'Pisces', moonSign: 'Leo', next: null },
+      dhaiya: {
+        active: true,
+        phase: '8th',
+        name: 'Ashtama Shani',
+        severity: 'moderate',
+        saturnSign: 'Pisces',
+        moonSign: 'Leo',
+        startDate: '2025-03-29T17:29:00.000Z',
+        endDate: '2028-02-23T14:22:00.000Z',
+        stays: [],
+      },
+    };
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [], ascendant: { signIndex: 0 } }, calculationVersion: CALCULATION_VERSION, dashaData: null, yogaData: null, doshaData, ephemerisVersion: null, ayanamsa: null, houseSystem: null, nodeType: null });
+    await regenerateReportContent(makeReportRow({ id: 'r-saturn', reportKey: 'wealth', status: 'ready' }));
+    expect(generateNarrative).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planetCondition: expect.arrayContaining([
+          expect.stringMatching(/^Shani Dhaiya: ACTIVE .*29 Mar 2025 to 23 Feb 2028/),
+          'Sade Sati: not currently active',
+          expect.stringMatching(/^SADE SATI \/ SHANI DHAIYA:/),
+        ]),
+      }),
+      'en',
+    );
+  });
 });
 
 describe('getReportForUser carries the basis block (audit release R4)', () => {
@@ -2414,7 +2453,7 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
       }),
     );
 
@@ -2441,7 +2480,7 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 7 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
       }),
     );
 

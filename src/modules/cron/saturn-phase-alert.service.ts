@@ -45,6 +45,16 @@ export interface ResolvedSaturnPhase {
   phase: SaturnPhase;
   windowStart: Date | null;
   windowEnd: Date | null;
+  /** Set on a retrograde break inside a Sade Sati or Dhaiya: when Saturn comes back. */
+  resumesOn?: Date | null;
+  /** True when Saturn is back for a later stay of the same Sade Sati or Dhaiya. */
+  isReturn?: boolean;
+}
+
+/** True when `asOf` is in a stay after the window's first (Saturn came back after a break). */
+function inLaterStay(stays: { startDate: Date; endDate: Date }[], asOf: Date): boolean {
+  const index = stays.findIndex((s) => asOf >= s.startDate && asOf < s.endDate);
+  return index > 0;
 }
 
 /**
@@ -56,16 +66,33 @@ export interface ResolvedSaturnPhase {
 export function resolveCurrentSaturnPhase(
   sadeSati: RealSadeSatiResult,
   dhaiya: RealDhaiyaResult,
+  asOf: Date = new Date(),
 ): ResolvedSaturnPhase {
   if (sadeSati.active) {
     return {
       phase: sadeSati.phase,
       windowStart: sadeSati.windowStart,
       windowEnd: sadeSati.windowEnd,
+      isReturn: inLaterStay(sadeSati.window?.stays ?? [], asOf),
     };
   }
   if (dhaiya.active) {
-    return { phase: dhaiya.phase, windowStart: dhaiya.startDate, windowEnd: dhaiya.endDate };
+    return {
+      phase: dhaiya.phase,
+      windowStart: dhaiya.startDate,
+      windowEnd: dhaiya.endDate,
+      isReturn: inLaterStay(dhaiya.window?.stays ?? [], asOf),
+    };
+  }
+  // A retrograde break: no phase today, but the window is not over.
+  const paused = sadeSati.resumesOn ? sadeSati.window : dhaiya.resumesOn ? dhaiya.window : null;
+  if (paused) {
+    return {
+      phase: 'none',
+      windowStart: paused.startDate,
+      windowEnd: paused.endDate,
+      resumesOn: sadeSati.resumesOn ?? dhaiya.resumesOn,
+    };
   }
   return { phase: 'none', windowStart: null, windowEnd: null };
 }
@@ -80,7 +107,7 @@ export async function computeSaturnPhaseByMoonSign(
       detectRealSadeSati(signIndex, asOf),
       detectRealDhaiya(signIndex, asOf),
     ]);
-    bySign[signIndex] = resolveCurrentSaturnPhase(sadeSati, dhaiya);
+    bySign[signIndex] = resolveCurrentSaturnPhase(sadeSati, dhaiya, asOf);
   }
   return bySign;
 }
@@ -92,6 +119,8 @@ export interface SaturnPhaseTransition {
   newPhase: SaturnPhase;
   windowStart: Date | null;
   windowEnd: Date | null;
+  resumesOn?: Date | null;
+  isReturn?: boolean;
   existingRowId?: string;
 }
 
@@ -121,6 +150,8 @@ export function resolveTransitions(
       newPhase: resolved.phase,
       windowStart: resolved.windowStart,
       windowEnd: resolved.windowEnd,
+      resumesOn: resolved.resumesOn ?? null,
+      isReturn: resolved.isReturn ?? false,
       ...(existing ? { existingRowId: existing.id } : {}),
     });
   }
@@ -201,13 +232,55 @@ const SADE_SATI_PHASES: ReadonlySet<SaturnPhase> = new Set([
   'sade-sati-setting',
 ]);
 
-/** Builds the push copy for a transition, or null when this transition isn't worth a push (e.g. 4th->8th Dhaiya has no natural "began" framing). */
+/** Order of the three Sade Sati phases, to tell a retrograde step back from moving on. */
+const SADE_SATI_ORDER: Partial<Record<SaturnPhase, number>> = {
+  'sade-sati-rising': 0,
+  'sade-sati-peak': 1,
+  'sade-sati-setting': 2,
+};
+
+const DHAIYA_HOUSE: Partial<Record<SaturnPhase, string>> = {
+  'dhaiya-4th': '4th',
+  'dhaiya-8th': '8th',
+};
+
+/** "20 Oct 2027", India's calendar date, as almanacs list Saturn's sign changes. */
+function alertDate(d: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(d);
+}
+
+/**
+ * Builds the push copy for a transition, or null when this transition isn't
+ * worth a push. A retrograde can take Saturn out of a Sade Sati or Dhaiya and
+ * back (Leo's Dhaiya: out on 3 Jun 2027, back on 20 Oct 2027), so a step out
+ * with `resumesOn` is a pause, not an end, and the step back in is a return,
+ * not a fresh 2.5 years.
+ */
 export function buildSaturnPhaseAlertCopy(
   previousPhase: SaturnPhase | null,
   newPhase: SaturnPhase,
+  detail: { resumesOn?: Date | null; isReturn?: boolean; windowEnd?: Date | null } = {},
 ): { title: string; body: string } | null {
+  const until = detail.windowEnd ? ` until ${alertDate(detail.windowEnd)}` : '';
   if (newPhase === 'none' && previousPhase && previousPhase !== 'none') {
-    if (SADE_SATI_PHASES.has(previousPhase)) {
+    const sadeSati = SADE_SATI_PHASES.has(previousPhase);
+    if (detail.resumesOn) {
+      return sadeSati
+        ? {
+            title: 'Your Sade Sati pauses for a while',
+            body: `Saturn has stepped out of the three signs around your Moon on a retrograde. It comes back on ${alertDate(detail.resumesOn)} for the rest of this Sade Sati${until}.`,
+          }
+        : {
+            title: 'Your Saturn Dhaiya pauses for a while',
+            body: `Saturn has moved on for now, but it comes back on ${alertDate(detail.resumesOn)} for the last stretch of this Dhaiya${until}.`,
+          };
+    }
+    if (sadeSati) {
       return {
         title: 'Your Sade Sati has ended',
         body: 'Saturn has moved on from the three signs around your Moon — this cycle is complete.',
@@ -217,6 +290,32 @@ export function buildSaturnPhaseAlertCopy(
       title: 'Your Saturn Dhaiya has ended',
       body: 'Saturn has moved out of the house it was transiting — this ~2.5 year period is complete.',
     };
+  }
+
+  const before = previousPhase ? SADE_SATI_ORDER[previousPhase] : undefined;
+  const after = SADE_SATI_ORDER[newPhase];
+  if (before !== undefined && after !== undefined && after < before) {
+    return {
+      title: 'Sade Sati: Saturn steps back',
+      body: `Saturn is retrograde and has stepped back into the ${
+        after === 0 ? 'sign before your Moon' : 'Moon sign'
+      } for a while. This is part of the same Sade Sati${until}, not a new one.`,
+    };
+  }
+  if (detail.isReturn && (previousPhase === 'none' || previousPhase === null)) {
+    if (after !== undefined) {
+      return {
+        title: 'Your Sade Sati resumes',
+        body: `Saturn is back in the signs around your Moon after a retrograde break — the rest of this Sade Sati runs${until || ' on for a while'}.`,
+      };
+    }
+    const house = DHAIYA_HOUSE[newPhase];
+    if (house) {
+      return {
+        title: 'Your Saturn Dhaiya resumes',
+        body: `Saturn is back in your ${house} house from the Moon after a retrograde break — the last stretch of this Dhaiya${until}.`,
+      };
+    }
   }
   return PHASE_BEGIN_COPY[newPhase] ?? null;
 }
@@ -229,7 +328,11 @@ export async function sendSaturnPhaseAlerts(transitions: SaturnPhaseTransition[]
   let sent = 0;
 
   for (const t of personal) {
-    const copy = buildSaturnPhaseAlertCopy(t.previousPhase, t.newPhase);
+    const copy = buildSaturnPhaseAlertCopy(t.previousPhase, t.newPhase, {
+      resumesOn: t.resumesOn,
+      isReturn: t.isReturn,
+      windowEnd: t.windowEnd,
+    });
     if (!copy) continue;
 
     try {

@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   findActiveUserById: vi.fn(),
   getKundliForUser: vi.fn(),
-  withLiveSadeSati: vi.fn(),
+  withLiveSaturnTransits: vi.fn(),
   getUserFacts: vi.fn(),
   saveUserFacts: vi.fn(),
   getBirthProfile: vi.fn(),
@@ -53,7 +53,7 @@ vi.mock('../src/lib/entitlements.js', () => ({
 
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   getKundliForUser: state.getKundliForUser,
-  withLiveSadeSati: state.withLiveSadeSati,
+  withLiveSaturnTransits: state.withLiveSaturnTransits,
 }));
 
 vi.mock('../src/modules/astro/user-facts.repo.js', () => ({
@@ -128,7 +128,7 @@ async function drain<T>(gen: AsyncGenerator<T>): Promise<T[]> {
 beforeEach(() => {
   state.findActiveUserById.mockReset();
   state.getKundliForUser.mockReset().mockResolvedValue(undefined);
-  state.withLiveSadeSati.mockReset().mockImplementation((d: unknown) => Promise.resolve(d));
+  state.withLiveSaturnTransits.mockReset().mockImplementation((d: unknown) => Promise.resolve(d));
   state.getUserFacts.mockReset().mockResolvedValue([]);
   state.saveUserFacts.mockReset().mockResolvedValue(undefined);
   state.getBirthProfile.mockReset();

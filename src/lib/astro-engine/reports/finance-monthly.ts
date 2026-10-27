@@ -65,7 +65,7 @@ export function computeFinanceMonthlyScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['kemDruma', 'pitra'],
+    ['kemDruma', 'pitra', 'sadeSati', 'dhaiya'],
     ['dhana', 'lunar'],
   );
 

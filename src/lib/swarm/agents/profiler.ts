@@ -7,6 +7,12 @@ import { calculateAshtakavarga, detectAllYogas } from '../../astro-engine/index.
 import { analyzeAllDoshasAt } from '../../astro-engine/doshas/index.js';
 import type { SwarmState, Finding } from '../state.js';
 
+/** Names for the doshas whose key does not read as "<Key> Dosha". */
+const TRANSIT_DOSHA_LABELS: Record<string, string> = {
+  sadeSati: 'Sade Sati',
+  dhaiya: 'Shani Dhaiya',
+};
+
 /**
  * Profiler pipeline node: runs Ashtakavarga, yoga detection, and dosha
  * analysis on the computed chart, producing profile findings.
@@ -102,26 +108,39 @@ export async function profilerNode(state: SwarmState): Promise<Partial<SwarmStat
 
     // ── Dosha Analysis ────────────────────────────────────────────────────
     try {
-      // Sade Sati is a transit condition: it is read from where Saturn is
-      // today, never from the birth chart's Saturn (which this used before).
+      // Sade Sati and Shani Dhaiya are transit conditions: they are read from
+      // where Saturn is today, never from the birth chart's Saturn (which this
+      // used before).
       const doshas = await analyzeAllDoshasAt(chartData);
 
       // Process each dosha type
       const doshaEntries = Object.entries(doshas) as Array<
         [
           string,
-          { present: boolean; severity?: string; description?: string; [k: string]: unknown },
+          {
+            present?: boolean;
+            active?: boolean;
+            severity?: string;
+            description?: string;
+            [k: string]: unknown;
+          },
         ]
       >;
 
       for (const [doshaName, doshaResult] of doshaEntries) {
-        if (doshaResult.present) {
+        // The transit two say `active`, the natal ones `present`; reading only
+        // `present` dropped a running Sade Sati from every chat.
+        if (doshaResult.present || doshaResult.active) {
+          const label =
+            TRANSIT_DOSHA_LABELS[doshaName] ??
+            `${doshaName.charAt(0).toUpperCase() + doshaName.slice(1)} Dosha`;
           findings.push({
             id: `dosha-${doshaName}`,
             kind: 'dosha',
             claim:
-              `${doshaName.charAt(0).toUpperCase() + doshaName.slice(1)} Dosha detected` +
-              (doshaResult.severity ? ` (severity: ${doshaResult.severity})` : ''),
+              `${label} detected` +
+              (doshaResult.severity ? ` (severity: ${doshaResult.severity})` : '') +
+              (doshaResult.active && doshaResult.description ? `: ${doshaResult.description}` : ''),
             evidence: { ...doshaResult },
           });
         }

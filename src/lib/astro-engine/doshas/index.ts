@@ -4,6 +4,7 @@ import type { ChartData, DoshaAnalysis, ZodiacSign } from '@aroha-astrology/shar
 export { detectMangalDosha } from './mangalDosha';
 export { detectKaalSarpDosha } from './kaalSarp';
 export { detectSadeSati, detectCurrentSadeSati, getCurrentSaturnLongitude } from './sadeSati';
+export { detectCurrentDhaiya } from './dhaiya';
 export { detectPitraDosha } from './pitraDosha';
 export { detectKemDrumaDosha } from './kemDrumaDosha';
 export { detectGrahanDosha } from './grahanDosha';
@@ -12,6 +13,7 @@ export { detectGuruChandalDosha } from './guruChandal';
 import { detectMangalDosha } from './mangalDosha';
 import { detectKaalSarpDosha } from './kaalSarp';
 import { detectCurrentSadeSati, detectSadeSati } from './sadeSati';
+import { detectCurrentDhaiya } from './dhaiya';
 import { detectPitraDosha } from './pitraDosha';
 import { detectKemDrumaDosha } from './kemDrumaDosha';
 import { detectGrahanDosha } from './grahanDosha';
@@ -41,10 +43,11 @@ export function analyzeAllDoshas(chartData: ChartData, saturnLongitude: number):
 }
 
 /**
- * `analyzeAllDoshas` for a moment in time (now by default). Sade Sati is a
- * TRANSIT condition: it is read from where Saturn is at `asOf`, never from
- * the birth chart's Saturn, and its dates come from Saturn's real sign changes
- * (`detectCurrentSadeSati`), not the 912-days-a-sign estimate.
+ * `analyzeAllDoshas` for a moment in time (now by default). Sade Sati and
+ * Shani Dhaiya are TRANSIT conditions: they are read from where Saturn is at
+ * `asOf`, never from the birth chart's Saturn, and their dates come from
+ * Saturn's real sign changes (`detectCurrentSadeSati`, `detectCurrentDhaiya`),
+ * not the 912-days-a-sign estimate.
  */
 export async function analyzeAllDoshasAt(
   chartData: ChartData,
@@ -55,5 +58,9 @@ export async function analyzeAllDoshasAt(
   // Saturn's place is not needed for the six natal doshas; 0 is a placeholder
   // for the Sade Sati slot, which is replaced on the next line.
   const natal = analyzeAllDoshas(chartData, 0);
-  return { ...natal, sadeSati: await detectCurrentSadeSati(moonSign, asOf) };
+  const [sadeSati, dhaiya] = await Promise.all([
+    detectCurrentSadeSati(moonSign, asOf),
+    detectCurrentDhaiya(moonSign, asOf),
+  ]);
+  return { ...natal, sadeSati, dhaiya };
 }

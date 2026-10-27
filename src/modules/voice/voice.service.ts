@@ -36,7 +36,7 @@ import { mintLiveToken } from '../../lib/llm/gemini-live-token.js';
 import { buildVoiceSystemInstruction } from '../../lib/swarm/agents/scholar.js';
 import { buildGroundingFacts, buildProfileFacts } from '../../lib/chat-grounding.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
-import { getKundliForUser, withLiveSadeSati } from '../kundli/kundli.service.js';
+import { getKundliForUser, withLiveSaturnTransits } from '../kundli/kundli.service.js';
 import { getUserFacts, saveUserFacts } from '../astro/user-facts.repo.js';
 import { findActiveUserById, deductWalletBalance, addWalletBalance } from '../users/users.repo.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
@@ -191,7 +191,7 @@ async function buildSessionInstruction(
     yogas: ready ? (kundli.yogaData ?? null) : null,
     // Sade Sati is transit-dependent — recompute it live, same as chat (astro.service.ts), so a
     // voice call never states a possibly months-stale cached phase.
-    doshas: ready ? await withLiveSadeSati(kundli.doshaData ?? null) : null,
+    doshas: ready ? await withLiveSaturnTransits(kundli.doshaData ?? null) : null,
     ashtakavarga: ready ? (kundli.ashtakavargaData ?? null) : null,
     timeZone: user?.currentTimezone ?? null,
   };

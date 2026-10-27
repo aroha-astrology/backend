@@ -38,6 +38,7 @@ interface TranslatableDoshas {
   mangal?: { description: string; cancellations?: string[] };
   kaalSarp?: { name: string; description: string };
   sadeSati?: { description: string };
+  dhaiya?: { description: string };
   pitra?: { description: string; indicators?: string[] };
   kemDruma?: { description: string; cancellations?: string[] };
   grahan?: { description: string };
@@ -76,6 +77,11 @@ function extractTranslatable(content: KundliContent): TranslatablePayload {
   const sadeSati = d.sadeSati;
   if (sadeSati && typeof sadeSati.description === 'string') {
     doshas.sadeSati = { description: sadeSati.description };
+  }
+  // Only a running (or paused) Dhaiya has text; an empty one is not sent.
+  const dhaiya = d.dhaiya;
+  if (dhaiya && typeof dhaiya.description === 'string' && dhaiya.description) {
+    doshas.dhaiya = { description: dhaiya.description };
   }
   const pitra = d.pitra;
   if (pitra && typeof pitra.description === 'string') {
@@ -136,6 +142,12 @@ function spliceTranslated(content: KundliContent, translated: TranslatablePayloa
       description: td.sadeSati.description || d.sadeSati.description,
     };
   }
+  if (td.dhaiya && d.dhaiya) {
+    doshas.dhaiya = {
+      ...d.dhaiya,
+      description: td.dhaiya.description || d.dhaiya.description,
+    };
+  }
   if (td.pitra && d.pitra) {
     doshas.pitra = {
       ...d.pitra,
@@ -165,7 +177,7 @@ function spliceTranslated(content: KundliContent, translated: TranslatablePayloa
 
 function buildTranslationPrompt(payload: TranslatablePayload, targetLanguage: string): string {
   return `Translate the following Vedic astrology yoga/dosha names and descriptions into the language "${targetLanguage}".
-Keep the exact same JSON structure and keys. ONLY translate the string values (name/description/cancellations/indicators entries), never the "index" numbers or the dosha keys (mangal/kaalSarp/sadeSati/pitra/kemDruma/grahan/guruChandal).
+Keep the exact same JSON structure and keys. ONLY translate the string values (name/description/cancellations/indicators entries), never the "index" numbers or the dosha keys (mangal/kaalSarp/sadeSati/dhaiya/pitra/kemDruma/grahan/guruChandal).
 
 Original Content:
 ${JSON.stringify(payload, null, 2)}`;
@@ -246,6 +258,7 @@ export async function translateYogaDoshaContent(
               properties: { name: { type: 'string' }, description: { type: 'string' } },
             },
             sadeSati: { type: 'object', properties: { description: { type: 'string' } } },
+            dhaiya: { type: 'object', properties: { description: { type: 'string' } } },
             pitra: {
               type: 'object',
               properties: {

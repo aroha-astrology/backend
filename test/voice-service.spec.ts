@@ -27,7 +27,7 @@ const state = vi.hoisted(() => ({
   resolveFeaturesForUser: vi.fn(),
   mintLiveToken: vi.fn(),
   getKundliForUser: vi.fn(),
-  withLiveSadeSati: vi.fn(),
+  withLiveSaturnTransits: vi.fn(),
   getUserFacts: vi.fn(),
   saveUserFacts: vi.fn(),
   buildGroundingFacts: vi.fn(),
@@ -96,7 +96,7 @@ vi.mock('../src/lib/llm/gemini-live-token.js', () => ({
 
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   getKundliForUser: state.getKundliForUser,
-  withLiveSadeSati: state.withLiveSadeSati,
+  withLiveSaturnTransits: state.withLiveSaturnTransits,
 }));
 
 vi.mock('../src/modules/astro/user-facts.repo.js', () => ({
@@ -205,7 +205,7 @@ beforeEach(() => {
     .mockResolvedValue({ token: 'tok-abc', expiresAt: 1_800_000, model: 'live-model' });
 
   state.getKundliForUser.mockReset().mockResolvedValue({ status: 'ready', chartData: {} });
-  state.withLiveSadeSati.mockReset().mockImplementation((doshaData) => Promise.resolve(doshaData));
+  state.withLiveSaturnTransits.mockReset().mockImplementation((doshaData) => Promise.resolve(doshaData));
   state.getUserFacts.mockReset().mockResolvedValue([]);
   state.buildGroundingFacts.mockReset().mockResolvedValue(['Ascendant: Leo']);
   state.buildProfileFacts.mockReset().mockReturnValue([]);

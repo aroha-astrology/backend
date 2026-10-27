@@ -265,7 +265,7 @@ export function computeWealthScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['kemDruma', 'guruChandal', 'kaalSarp', 'pitra'],
+    ['kemDruma', 'guruChandal', 'kaalSarp', 'pitra', 'sadeSati', 'dhaiya'],
     ['dhana', 'raja', 'mahapurusha', 'lunar'],
   );
 

@@ -57,7 +57,7 @@ import {
 } from '../../lib/content-policy.js';
 import {
   getKundliForUser,
-  withLiveSadeSati,
+  withLiveSaturnTransits,
   tzOffsetHours as tzOffsetHoursForProfile,
 } from '../kundli/kundli.service.js';
 import { findActiveUserById } from '../users/users.repo.js';
@@ -1679,7 +1679,7 @@ export async function* chatStream(
     yogas: kundli?.status === 'ready' ? (kundli.yogaData ?? null) : null,
     // Sade Sati is transit-dependent — recompute it live so chat never tells
     // a user their (possibly months/years-stale) cached phase.
-    doshas: kundli?.status === 'ready' ? await withLiveSadeSati(kundli.doshaData ?? null) : null,
+    doshas: kundli?.status === 'ready' ? await withLiveSaturnTransits(kundli.doshaData ?? null) : null,
     ashtakavarga: kundli?.status === 'ready' ? (kundli.ashtakavargaData ?? null) : null,
     timeZone: user?.currentTimezone ?? null,
   };

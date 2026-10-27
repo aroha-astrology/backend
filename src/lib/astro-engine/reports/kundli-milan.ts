@@ -168,7 +168,7 @@ export function computeKundliMilanScores(
   const primaryDoshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['kaalSarp', 'sadeSati', 'mangal', 'guruChandal'],
+    ['kaalSarp', 'sadeSati', 'dhaiya', 'mangal', 'guruChandal'],
     ['raja', 'mahapurusha', 'benefic'],
   );
 

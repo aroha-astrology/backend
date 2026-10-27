@@ -332,7 +332,7 @@ export function computeMarriageScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['mangal', 'kaalSarp', 'sadeSati', 'guruChandal'],
+    ['mangal', 'kaalSarp', 'sadeSati', 'dhaiya', 'guruChandal'],
     ['raja', 'dhana', 'mahapurusha'],
   );
 

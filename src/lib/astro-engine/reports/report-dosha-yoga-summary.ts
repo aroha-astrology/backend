@@ -10,7 +10,7 @@
 //
 // Field shapes verified directly against chat-grounding.ts's `doshaFacts`
 // function and `GroundingSource.doshas`/`GroundingSource.yogas` doc comments:
-//   - doshaData: { mangal, kaalSarp, sadeSati, pitra, kemDruma, grahan, guruChandal }
+//   - doshaData: { mangal, kaalSarp, sadeSati, dhaiya, pitra, kemDruma, grahan, guruChandal }
 //     Every dosha except sadeSati signals presence via `.present`; sadeSati
 //     uniquely uses `.active` (Sade Sati is a currently-transiting condition,
 //     not a fixed natal placement) — see DOSHA_HANDLERS below, which encodes
@@ -63,6 +63,15 @@ const DOSHA_HANDLERS: Record<string, DoshaHandler> = {
     detail: (d) =>
       `${String(d.phase ?? 'unspecified')} phase, ${String(d.severity ?? 'unspecified')} severity`,
   },
+  // Shani Dhaiya: Saturn in the 4th or 8th sign from the Moon, live like sadeSati.
+  dhaiya: {
+    label: 'Shani Dhaiya',
+    isPresent: (d) => Boolean(d.active),
+    detail: (d) =>
+      `${String(d.name || 'Dhaiya')}, Saturn in the ${String(d.phase ?? '?')} sign from the Moon, ${String(
+        d.severity ?? 'unspecified',
+      )} severity`,
+  },
   pitra: {
     label: 'Pitra Dosha',
     isPresent: (d) => Boolean(d.present),
@@ -95,7 +104,7 @@ const DOSHA_HANDLERS: Record<string, DoshaHandler> = {
  * @param yogaData            `kundli.yogaData` as-is (`ReportScoreContext.yogaData`), or null.
  * @param relevantDoshaKeys   Which of `DOSHA_HANDLERS`' keys matter for this report, e.g.
  *                            `['mangal', 'kaalSarp', 'sadeSati']` for a marriage report. An
- *                            unrecognized key (not one of mangal/kaalSarp/sadeSati/pitra/
+ *                            unrecognized key (not one of mangal/kaalSarp/sadeSati/dhaiya/pitra/
  *                            kemDruma/grahan/guruChandal) is silently ignored, not an error.
  * @param relevantYogaTypes   Which `yoga.type` values matter for this report, e.g.
  *                            `['raja', 'dhana']`. Matches yogaData.yogas[].type exactly (the

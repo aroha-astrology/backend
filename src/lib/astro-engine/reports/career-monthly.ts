@@ -136,7 +136,7 @@ export function computeCareerMonthlyScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['sadeSati', 'kaalSarp'],
+    ['sadeSati', 'dhaiya', 'kaalSarp'],
     ['raja', 'mahapurusha'],
   );
 

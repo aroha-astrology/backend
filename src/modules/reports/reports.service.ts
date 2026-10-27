@@ -46,12 +46,14 @@ import { computeMetrology } from '../../lib/swarm/agents/ephemeris.js';
 import {
   chartConditionFacts,
   chartPlanetStrength,
+  doshaFacts,
   type PlanetStrengthRow,
 } from '../../lib/chat-grounding.js';
 import { analyzeAllVakriPlanets } from '../../lib/astro-engine/index.js';
 import { CALCULATION_VERSION } from '../../lib/astro-engine/version.js';
 import { upcomingTransitFactsNow } from '../../lib/upcoming-transits.js';
-import { requestKundliGeneration } from '../kundli/kundli.service.js';
+import { INDIA_TZ } from '../../lib/user-time-zone.js';
+import { requestKundliGeneration, withLiveSaturnTransits } from '../kundli/kundli.service.js';
 import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
 import { verifyReportClaims } from '../../lib/llm/reports/verify-claims.js';
 import {
@@ -150,7 +152,9 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
  * regenerating reports nobody may ever look at again. No refund, no re-purchase — same
  * no-cost-to-the-user contract `regenerateReportContent` already documents.
  */
-const CONTENT_VERSION = 7;
+// 8 (2026-10-27): Sade Sati / Shani Dhaiya facts with real dates and retrograde breaks in every
+// report, and live (not generation-day) Sade Sati in the dosha panels.
+const CONTENT_VERSION = 8;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
@@ -167,6 +171,9 @@ const REPORT_PROMPT_VERSION = '2026.08.2';
 const KUNDLI_WAIT_TRIES = 30;
 const KUNDLI_WAIT_MS = 2_000;
 
+const REPORT_SATURN_RULE =
+  'SADE SATI / SHANI DHAIYA: say one is running ONLY when its line above says ACTIVE or names a phase, and use only the dates on that line (including any retrograde break). Both are counted from the Moon sign, never from the Lagna. When a line says not active, do not describe the reader as being in it; you may give the next one\'s dates from the line.';
+
 const REPORT_TRANSIT_RULE =
   'TRANSIT DATES: when you say a planet changes sign or nakshatra, or turns retrograde or direct, the date comes ONLY from the UPCOMING TRANSITS lines above. Quote it as given (date and sign); never work a date out and never recall one from memory. If a line says BUT ONLY BRIEFLY, say the entry does not last and time the lasting effect from the date it settles. If an event is not listed, do not give it a date.';
 
@@ -178,6 +185,8 @@ const REPORT_TRANSIT_RULE =
 async function withUpcomingTransits(
   scores: ReportScores,
   chart: Record<string, unknown> | null | undefined,
+  /** Live doshas (withLiveSaturnTransits) for the Sade Sati / Dhaiya lines; null skips them. */
+  doshaData: Record<string, unknown> | null = null,
 ): Promise<ReportScores> {
   const asc = (chart as { ascendant?: { signIndex?: unknown } } | null | undefined)?.ascendant
     ?.signIndex;
@@ -188,15 +197,21 @@ async function withUpcomingTransits(
   const moon = planets?.find((p) => p.planet === 'Moon')?.signIndex;
   const moonIndex = typeof moon === 'number' ? moon : null;
   const lines = await upcomingTransitFactsNow(new Date(), ascIndex, moonIndex);
-  if (lines.length === 0) return scores;
+  // The same Sade Sati and Dhaiya lines chat gets, so a report and chat never disagree about
+  // whether Saturn's 7.5-year or 2.5-year transit is running, or when.
+  const saturn = doshaFacts(doshaData, INDIA_TZ).filter(
+    (f) => f.startsWith('Sade Sati:') || f.startsWith('Shani Dhaiya:'),
+  );
+  if (lines.length === 0 && saturn.length === 0) return scores;
   const existing = (scores as { planetCondition?: string[] }).planetCondition ?? [];
   return {
     ...scores,
     planetCondition: [
       ...existing,
-      'UPCOMING TRANSITS (exact, from the ephemeris):',
-      ...lines,
-      REPORT_TRANSIT_RULE,
+      ...(saturn.length ? ['SATURN TRANSIT FROM THE MOON (today):', ...saturn, REPORT_SATURN_RULE] : []),
+      ...(lines.length
+        ? ['UPCOMING TRANSITS (exact, from the ephemeris):', ...lines, REPORT_TRANSIT_RULE]
+        : []),
     ],
   };
 }
@@ -690,7 +705,9 @@ export async function buildReportScoreContext(
     partnerTimeOfBirth: typeof row.input?.timeOfBirth === 'string' ? row.input.timeOfBirth : null,
     partnerBirthTimeAccuracy:
       typeof row.input?.timeAccuracy === 'string' ? row.input.timeAccuracy : null,
-    doshaData: kundli?.doshaData ?? null,
+    // Sade Sati and Dhaiya as of today: the saved copy is from the day the
+    // kundli was made, so a report could name a Sade Sati that had ended.
+    doshaData: await withLiveSaturnTransits(kundli?.doshaData ?? null),
     yogaData: kundli?.yogaData ?? null,
     ashtakavargaData: kundli?.ashtakavargaData ?? null,
     dashaData: kundli?.dashaData ?? null,
@@ -845,6 +862,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     const scores = await withUpcomingTransits(
       baseScores,
       kundli.chartData as Record<string, unknown>,
+      scoreContext.doshaData ?? null,
     );
 
     // Resume hint for a reclaimed row (a previous attempt's checkpoint — see
@@ -1864,6 +1882,7 @@ async function regenerateReportContentInner(row: ReportRow): Promise<'regenerate
   const scores = await withUpcomingTransits(
     baseScores,
     kundli.chartData as Record<string, unknown>,
+    scoreContext.doshaData ?? null,
   );
   const generated = await generator.generateNarrative(scores, 'en');
   // Same fact-check second pass as the initial generation path above, so a

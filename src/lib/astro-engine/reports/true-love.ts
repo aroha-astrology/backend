@@ -212,7 +212,7 @@ export function computeTrueLoveScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['mangal', 'kaalSarp'],
+    ['mangal', 'kaalSarp', 'sadeSati', 'dhaiya'],
     ['benefic', 'mahapurusha'],
   );
 

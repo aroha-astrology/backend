@@ -423,6 +423,9 @@ export async function markReportRefreshed(
       error: null,
       refreshStartedAt: null,
       refreshError: null,
+      // The 3-try cap is for failed rebuilds; a success starts the count again, or a report
+      // rebuilt for three content versions would never be rebuilt again.
+      refreshAttempts: 0,
       refreshedAt: new Date(),
       updatedAt: new Date(),
     })

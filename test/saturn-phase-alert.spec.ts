@@ -13,10 +13,26 @@ import type {
 import type { SaturnPhaseRow } from '../src/db/schema.js';
 
 function inactive(): RealSadeSatiResult {
-  return { active: false, phase: 'none', windowStart: null, windowEnd: null };
+  return {
+    active: false,
+    phase: 'none',
+    windowStart: null,
+    windowEnd: null,
+    window: null,
+    resumesOn: null,
+    next: null,
+  };
 }
 function inactiveDhaiya(): RealDhaiyaResult {
-  return { active: false, phase: 'none', startDate: null, endDate: null };
+  return {
+    active: false,
+    phase: 'none',
+    startDate: null,
+    endDate: null,
+    window: null,
+    resumesOn: null,
+    next: null,
+  };
 }
 
 describe('resolveCurrentSaturnPhase', () => {
@@ -24,14 +40,21 @@ describe('resolveCurrentSaturnPhase', () => {
 
   it('prefers Sade Sati over Dhaiya when both are somehow active (defensive ordering)', () => {
     const result = resolveCurrentSaturnPhase(
-      { active: true, phase: 'sade-sati-peak', ...win },
-      { active: true, phase: 'dhaiya-4th', startDate: win.windowStart, endDate: win.windowEnd },
+      { ...inactive(), active: true, phase: 'sade-sati-peak', ...win },
+      {
+        ...inactiveDhaiya(),
+        active: true,
+        phase: 'dhaiya-4th',
+        startDate: win.windowStart,
+        endDate: win.windowEnd,
+      },
     );
     expect(result.phase).toBe('sade-sati-peak');
   });
 
   it('returns the Dhaiya phase when Sade Sati is inactive', () => {
     const result = resolveCurrentSaturnPhase(inactive(), {
+      ...inactiveDhaiya(),
       active: true,
       phase: 'dhaiya-8th',
       startDate: win.windowStart,

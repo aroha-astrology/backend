@@ -320,7 +320,7 @@ export function computeProgenyScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['mangal', 'kaalSarp', 'pitra'],
+    ['mangal', 'kaalSarp', 'pitra', 'sadeSati', 'dhaiya'],
     ['raja', 'dhana'],
   );
 

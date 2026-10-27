@@ -72,7 +72,7 @@ export function computeHealthMonthlyScores(
   const doshaYoga = computeDoshaYogaSummary(
     ctx.doshaData ?? null,
     ctx.yogaData ?? null,
-    ['kemDruma', 'sadeSati', 'grahan'],
+    ['kemDruma', 'sadeSati', 'dhaiya', 'grahan'],
     ['benefic', 'mahapurusha'],
   );
 
