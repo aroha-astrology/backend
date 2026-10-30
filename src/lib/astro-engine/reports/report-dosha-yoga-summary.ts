@@ -43,7 +43,8 @@ interface DoshaHandler {
 const DOSHA_HANDLERS: Record<string, DoshaHandler> = {
   mangal: {
     label: 'Mangal Dosha',
-    isPresent: (d) => Boolean(d.present),
+    // A cancelled Mangal Dosha is not Manglik, so it is no caution (audit H2).
+    isPresent: (d) => Boolean(d.present) && d.type !== 'cancelled',
     detail: (d) =>
       `${String(d.severity ?? 'unspecified')} severity, ${String(d.type ?? 'unspecified')} type`,
   },

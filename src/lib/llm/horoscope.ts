@@ -199,6 +199,23 @@ Keep each of health/career/marriage/finance/education/overall's top-level "hook"
 and "description" under 100 words, covering that area's arc across the year (yearly uses the
 same richness budget as monthly). ${STYLE_RULE}`;
 
+/**
+ * The chart data carries a "Sade Sati:" and a "Shani Dhaiya:" line (doshaFacts), live as of the
+ * period's first day. In production on 2026-10-28, 0 of 356 horoscopes mentioned either, even
+ * yearly ones for readers in peak Sade Sati, because no rule asked for it (audit H1).
+ */
+const SATURN_PERIOD_RULE = `SADE SATI / SHANI DHAIYA: the chart data has a "Sade Sati:" line and a "Shani Dhaiya:" line, both counted from the Moon sign. When either line says it is running (ACTIVE or a named phase), or that one starts, pauses or resumes inside this period, name it once in the reading, where it fits best (usually "overall" or "career"): call it Sade Sati or Shani Dhaiya, explain it in plain words (a long, slow Saturn stretch that asks for patience and steady effort), and give the real dates from that line. Never describe the reader as in one when its line says it is not active, never invent dates, never write the word "Dosha", and do not frighten: say what the stretch asks of the reader.`;
+
+const SATURN_DAILY_RULE = `SADE SATI / SHANI DHAIYA: leave Sade Sati and Shani Dhaiya, long Saturn stretches, out of a one-day reading. Mention one only when its line shows it starts, pauses, resumes or ends on that very day.`;
+
+/** The system prompt for one horoscope period, with its Saturn rule. */
+export function horoscopeSystemPrompt(period: HoroscopePeriod): string {
+  if (period === 'yearly') return `${HOROSCOPE_SYSTEM_YEARLY}\n${SATURN_PERIOD_RULE}`;
+  const saturnRule =
+    period === 'daily' || period === 'tomorrow' ? SATURN_DAILY_RULE : SATURN_PERIOD_RULE;
+  return `${HOROSCOPE_SYSTEM[period]}\n${saturnRule}`;
+}
+
 const blockSchema = {
   type: 'object',
   properties: {
@@ -584,7 +601,7 @@ CATEGORY GUIDELINES:
       profile: HOROSCOPE_YEARLY_PROFILE,
       responseSchema: HOROSCOPE_YEARLY_RESPONSE_SCHEMA,
       messages: [
-        { role: 'system', content: HOROSCOPE_SYSTEM_YEARLY },
+        { role: 'system', content: horoscopeSystemPrompt('yearly') },
         contextMessage,
         { role: 'user', content: `Write ${describePeriod('yearly', ctx.forDate)}.` },
       ],
@@ -608,7 +625,7 @@ CATEGORY GUIDELINES:
     profile: HOROSCOPE_PROFILE,
     responseSchema: HOROSCOPE_RESPONSE_SCHEMA,
     messages: [
-      { role: 'system', content: HOROSCOPE_SYSTEM[ctx.period] },
+      { role: 'system', content: horoscopeSystemPrompt(ctx.period) },
       contextMessage,
       { role: 'user', content: `Write ${describePeriod(ctx.period, ctx.forDate)}.` },
     ],

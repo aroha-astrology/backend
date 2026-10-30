@@ -170,12 +170,15 @@ function buildFactsCall1(scores: MarriageScoresWithStrength): string {
     `Route to marriage this chart leans toward (GIVEN, do not contradict): ${scores.loveOrArrange ?? 'mixed'} (love = self-chosen, arrange = family-introduced, mixed = a blend).`,
   );
   lines.push(`Band: ${scores.band}.`);
+  // A cancelled Mangal Dosha is not Manglik; "present, cancelled: yes" read as "you have it" (audit H2).
   lines.push(
-    `Manglik (Mangal Dosha): ${scores.manglik.isManglik ? 'present' : 'not present'}` +
-      (scores.manglik.isManglik
-        ? `, traditionally cancelled: ${scores.manglik.cancelled ? 'yes' : 'no'}`
-        : '') +
-      '.',
+    `Manglik (Mangal Dosha): ${
+      !scores.manglik.isManglik
+        ? 'not present'
+        : scores.manglik.cancelled
+          ? 'cancelled (not Manglik) by a traditional exception'
+          : 'present, not cancelled'
+    }.`,
   );
   lines.push(
     `Marriage timing windows (7th-house-lord/7th-house-occupants/Venus dasha overlap — the SAME method the app's AI chat feature uses for this exact chart): ${formatWindows(scores.windows)}`,

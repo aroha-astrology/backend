@@ -28,7 +28,7 @@ const state = vi.hoisted(() => {
     overwriteReadyReportContent: vi.fn(),
     markReportRefreshed: vi.fn(),
     markReportRefreshFailed: vi.fn(),
-    claimReportRefresh: vi.fn(async () => true),
+    claimReportRefresh: vi.fn(() => Promise.resolve(true)),
     isReportRefreshRunning: vi.fn(() => false),
     reportRefreshCounts: vi.fn(),
     resetFailedReportRefreshes: vi.fn(),
@@ -37,7 +37,7 @@ const state = vi.hoisted(() => {
     saveReportTranslation: vi.fn(),
     upgradePreviewToPurchased: vi.fn(),
     countReadyReportsByKey: vi.fn(),
-    resolveFeatures: vi.fn(async () => ({})),
+    resolveFeatures: vi.fn(() => Promise.resolve({})),
     resolveFeaturesForUser: vi.fn(),
     deductWalletBalance: vi.fn(),
     addWalletBalance: vi.fn(),
@@ -54,8 +54,8 @@ const state = vi.hoisted(() => {
     isFeatureOn: vi.fn(),
     takePassFreeReport: vi.fn(),
     givePassFreeReportBack: vi.fn(),
-    requestKundliGeneration: vi.fn(async () => undefined),
-    upcomingTransitFactsNow: vi.fn(async () => []),
+    requestKundliGeneration: vi.fn(() => Promise.resolve(undefined)),
+    upcomingTransitFactsNow: vi.fn(() => Promise.resolve([])),
     REPORT_GENERATORS,
   };
 });
@@ -288,7 +288,9 @@ beforeEach(() => {
   state.markReportRefreshFailed.mockReset().mockResolvedValue(undefined);
   state.claimReportRefresh.mockReset().mockResolvedValue(true);
   state.isReportRefreshRunning.mockReset().mockReturnValue(false);
-  state.reportRefreshCounts.mockReset().mockResolvedValue({ waiting: 0, running: 0, failed: 0, rebuilt: 0, byModel: [] });
+  state.reportRefreshCounts
+    .mockReset()
+    .mockResolvedValue({ waiting: 0, running: 0, failed: 0, rebuilt: 0, byModel: [] });
   state.resetFailedReportRefreshes.mockReset().mockResolvedValue(0);
   state.requestKundliGeneration.mockReset().mockResolvedValue(undefined);
   state.upcomingTransitFactsNow.mockReset().mockResolvedValue([]);
@@ -1512,7 +1514,11 @@ describe('buildReportScoreContext — nothing assumed about the person', () => {
   it('keeps them for the account owner', async () => {
     state.findActiveUserById.mockResolvedValue(makeUser(owner as Partial<UserRow>));
     state.resolveProfileContext.mockResolvedValue({ birthProfileId: null, gender: 'male' });
-    const ctx = await buildReportScoreContext({ userId: 'user-1', birthProfileId: null, input: null }, null, null);
+    const ctx = await buildReportScoreContext(
+      { userId: 'user-1', birthProfileId: null, input: null },
+      null,
+      null,
+    );
     expect(ctx.personRelationshipStatus).toBe('single');
     expect(ctx.personPhone).toBe('+919800000000');
   });
@@ -1525,7 +1531,11 @@ describe('buildReportScoreContext — nothing assumed about the person', () => {
       null,
     );
     expect(answered.personGender).toBe('female');
-    const skipped = await buildReportScoreContext({ userId: 'user-1', birthProfileId: null, input: null }, null, null);
+    const skipped = await buildReportScoreContext(
+      { userId: 'user-1', birthProfileId: null, input: null },
+      null,
+      null,
+    );
     expect(skipped.personGender).toBeNull();
   });
 
@@ -1541,7 +1551,11 @@ describe('buildReportScoreContext — nothing assumed about the person', () => {
 
   it("reads the partner's gender from the purchase", async () => {
     const ctx = await buildReportScoreContext(
-      { userId: 'user-1', birthProfileId: null, input: { dateOfBirth: '1990-01-01', gender: 'male' } },
+      {
+        userId: 'user-1',
+        birthProfileId: null,
+        input: { dateOfBirth: '1990-01-01', gender: 'male' },
+      },
       null,
       null,
     );
@@ -1752,7 +1766,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
       }),
     );
 
@@ -1771,7 +1785,11 @@ describe('getReportForUser', () => {
       generateNarrative: vi.fn().mockResolvedValue([{ heading: 'New', paragraphs: ['p2'] }]),
       translateNarrative: vi.fn(),
     };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] }, calculationVersion: CALCULATION_VERSION });
+    state.findKundliByUserId.mockResolvedValue({
+      status: 'ready',
+      chartData: { planets: [] },
+      calculationVersion: CALCULATION_VERSION,
+    });
     state.findReportById.mockResolvedValue(
       makeReportRow({
         id: 'stale-report',
@@ -1797,7 +1815,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         id: 'current-report',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
       }),
     );
 
@@ -1829,7 +1847,7 @@ describe('getReportForUser', () => {
         status: 'ready',
         content: {
           sections: [{ heading: 'H', paragraphs: ['p'] }],
-          contentVersion: 8,
+          contentVersion: 9,
           windowSummaries: { field: 'windows', summaries: ['A window worth watching.'] },
         },
       }),
@@ -1863,7 +1881,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         reportKey: 'true_love',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
       }),
     );
 
@@ -1887,7 +1905,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         status: 'ready',
         isPreview: true,
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
       }),
     );
 
@@ -1907,7 +1925,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         status: 'ready',
         isPreview: false,
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
       }),
     );
 
@@ -1928,7 +1946,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: englishSections, contentVersion: 8 },
+        content: { sections: englishSections, contentVersion: 9 },
         translations: {
           hi: {
             sections: {
@@ -1963,7 +1981,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }], contentVersion: 9 },
         translations: {
           hi: {
             sections: {
@@ -1998,7 +2016,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: englishSections, contentVersion: 8 },
+        content: { sections: englishSections, contentVersion: 9 },
       }),
     );
 
@@ -2025,7 +2043,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
       }),
     );
 
@@ -2196,23 +2214,37 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
       generateNarrative,
       translateNarrative: vi.fn(),
     };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] }, calculationVersion: CALCULATION_VERSION, dashaData: null, yogaData: null, doshaData: null, ephemerisVersion: null, ayanamsa: null, houseSystem: null, nodeType: null });
+    state.findKundliByUserId.mockResolvedValue({
+      status: 'ready',
+      chartData: { planets: [] },
+      calculationVersion: CALCULATION_VERSION,
+      dashaData: null,
+      yogaData: null,
+      doshaData: null,
+      ephemerisVersion: null,
+      ayanamsa: null,
+      houseSystem: null,
+      nodeType: null,
+    });
     const row = makeReportRow({ id: 'r1', reportKey: 'marriage', status: 'ready' });
 
     const result = await regenerateReportContent(row);
 
     expect(result).toBe('regenerated');
     expect(generateNarrative).toHaveBeenCalledWith(expect.objectContaining({ score: 1 }), 'en');
-    expect(state.markReportRefreshed).toHaveBeenCalledWith('r1', expect.objectContaining({
-      content: expect.objectContaining({
-        sections: [{ heading: 'H', paragraphs: ['p'] }],
-        contentVersion: 8,
-        verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
+    expect(state.markReportRefreshed).toHaveBeenCalledWith(
+      'r1',
+      expect.objectContaining({
+        content: expect.objectContaining({
+          sections: [{ heading: 'H', paragraphs: ['p'] }],
+          contentVersion: 9,
+          verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
+        }),
+        model: expect.any(String),
+        chartSnapshot: expect.any(Object),
+        calculationVersion: CALCULATION_VERSION,
       }),
-      model: expect.any(String),
-      chartSnapshot: expect.any(Object),
-      calculationVersion: CALCULATION_VERSION,
-    }));
+    );
     expect(state.markReportReady).not.toHaveBeenCalled();
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
     expect(state.addWalletBalance).not.toHaveBeenCalled();
@@ -2233,7 +2265,18 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
       generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
       translateNarrative: vi.fn(),
     };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] }, calculationVersion: CALCULATION_VERSION, dashaData: null, yogaData: null, doshaData: null, ephemerisVersion: null, ayanamsa: null, houseSystem: null, nodeType: null });
+    state.findKundliByUserId.mockResolvedValue({
+      status: 'ready',
+      chartData: { planets: [] },
+      calculationVersion: CALCULATION_VERSION,
+      dashaData: null,
+      yogaData: null,
+      doshaData: null,
+      ephemerisVersion: null,
+      ayanamsa: null,
+      houseSystem: null,
+      nodeType: null,
+    });
     state.summarizeTimingWindows.mockResolvedValue(['A window worth watching.']);
     const row = makeReportRow({ id: 'tl1', reportKey: 'true_love', status: 'ready' });
 
@@ -2276,7 +2319,11 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
       generateNarrative: vi.fn().mockRejectedValue(new Error('LLM exploded')),
       translateNarrative: vi.fn(),
     };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] }, calculationVersion: CALCULATION_VERSION });
+    state.findKundliByUserId.mockResolvedValue({
+      status: 'ready',
+      chartData: { planets: [] },
+      calculationVersion: CALCULATION_VERSION,
+    });
     const row = makeReportRow({ id: 'r4', reportKey: 'marriage', status: 'ready' });
 
     await expect(regenerateReportContent(row)).rejects.toThrow('LLM exploded');
@@ -2317,8 +2364,25 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
       generateNarrative,
       translateNarrative: vi.fn(),
     };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] }, calculationVersion: CALCULATION_VERSION, dashaData: null, yogaData: null, doshaData: null, ephemerisVersion: null, ayanamsa: null, houseSystem: null, nodeType: null });
-    state.findReportById.mockResolvedValue(makeReportRow({ id: 'old-1', status: 'ready', content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] } }));
+    state.findKundliByUserId.mockResolvedValue({
+      status: 'ready',
+      chartData: { planets: [] },
+      calculationVersion: CALCULATION_VERSION,
+      dashaData: null,
+      yogaData: null,
+      doshaData: null,
+      ephemerisVersion: null,
+      ayanamsa: null,
+      houseSystem: null,
+      nodeType: null,
+    });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        id: 'old-1',
+        status: 'ready',
+        content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] },
+      }),
+    );
     state.resolveFeatures.mockResolvedValue({});
     const dto = await getReportForUser('old-1', 'user-1', 'en');
     expect(dto).toEqual({ status: 'generating', refreshing: true });
@@ -2337,24 +2401,46 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
     };
     state.findKundliByUserId.mockResolvedValue({ chartData: {} });
     state.resolveFeatures.mockResolvedValue({ 'reports.refreshOldOnOpen': { enabled: false } });
-    state.findReportById.mockResolvedValue(makeReportRow({ status: 'ready', content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] } }));
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] },
+      }),
+    );
     const dto = await getReportForUser('report-1', 'user-1', 'en');
-    expect(dto).toMatchObject({ status: 'ready', sections: [{ heading: 'Old', paragraphs: ['p'] }] });
+    expect(dto).toMatchObject({
+      status: 'ready',
+      sections: [{ heading: 'Old', paragraphs: ['p'] }],
+    });
     expect(state.claimReportRefresh).not.toHaveBeenCalled();
   });
 
   it('running claim -> generating refreshing, no claim', async () => {
     state.isReportRefreshRunning.mockReturnValue(true);
-    state.findReportById.mockResolvedValue(makeReportRow({ status: 'ready', content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] } }));
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] },
+      }),
+    );
     const dto = await getReportForUser('report-1', 'user-1', 'en');
     expect(dto).toEqual({ status: 'generating', refreshing: true });
     expect(state.claimReportRefresh).not.toHaveBeenCalled();
   });
 
   it('refreshAttempts 3 and not running -> ready old sections, no claim', async () => {
-    state.findReportById.mockResolvedValue(makeReportRow({ status: 'ready', refreshAttempts: 3, content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] } }));
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        refreshAttempts: 3,
+        content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] },
+      }),
+    );
     const dto = await getReportForUser('report-1', 'user-1', 'en');
-    expect(dto).toMatchObject({ status: 'ready', sections: [{ heading: 'Old', paragraphs: ['p'] }] });
+    expect(dto).toMatchObject({
+      status: 'ready',
+      sections: [{ heading: 'Old', paragraphs: ['p'] }],
+    });
     expect(state.claimReportRefresh).not.toHaveBeenCalled();
   });
 
@@ -2365,15 +2451,25 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
       generateNarrative: vi.fn().mockResolvedValue([{ heading: 'H', paragraphs: ['p'] }]),
       translateNarrative: vi.fn(),
     };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [] }, calculationVersion: 'old-version' });
-    state.findReportById.mockResolvedValue(makeReportRow({ id: 'old-2', status: 'ready', content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] } }));
+    state.findKundliByUserId.mockResolvedValue({
+      status: 'ready',
+      chartData: { planets: [] },
+      calculationVersion: 'old-version',
+    });
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        id: 'old-2',
+        status: 'ready',
+        content: { sections: [{ heading: 'Old', paragraphs: ['p'] }] },
+      }),
+    );
     const dto = await getReportForUser('old-2', 'user-1', 'en');
     expect(dto).toEqual({ status: 'generating', refreshing: true });
     await vi.waitFor(() => expect(state.markReportRefreshFailed).toHaveBeenCalled());
     expect(state.markReportRefreshed).not.toHaveBeenCalled();
   });
 
-  it('current row (contentVersion 8) -> ready, no claim', async () => {
+  it('current row (contentVersion 9) -> ready, no claim', async () => {
     state.REPORT_GENERATORS.marriage = {
       key: 'marriage',
       computeScores: vi.fn().mockReturnValue({}),
@@ -2381,7 +2477,12 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
       translateNarrative: vi.fn(),
     };
     state.findKundliByUserId.mockResolvedValue({ chartData: {} });
-    state.findReportById.mockResolvedValue(makeReportRow({ status: 'ready', content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 } }));
+    state.findReportById.mockResolvedValue(
+      makeReportRow({
+        status: 'ready',
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
+      }),
+    );
     const dto = await getReportForUser('report-1', 'user-1', 'en');
     expect(dto).toMatchObject({ status: 'ready' });
     expect(state.claimReportRefresh).not.toHaveBeenCalled();
@@ -2397,10 +2498,29 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
       generateNarrative,
       translateNarrative: vi.fn(),
     };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [], ascendant: { signIndex: 0 } }, calculationVersion: CALCULATION_VERSION, dashaData: null, yogaData: null, doshaData: null, ephemerisVersion: null, ayanamsa: null, houseSystem: null, nodeType: null });
+    state.findKundliByUserId.mockResolvedValue({
+      status: 'ready',
+      chartData: { planets: [], ascendant: { signIndex: 0 } },
+      calculationVersion: CALCULATION_VERSION,
+      dashaData: null,
+      yogaData: null,
+      doshaData: null,
+      ephemerisVersion: null,
+      ayanamsa: null,
+      houseSystem: null,
+      nodeType: null,
+    });
     const row = makeReportRow({ id: 'r-transit', reportKey: 'marriage', status: 'ready' });
     await regenerateReportContent(row);
-    expect(generateNarrative).toHaveBeenCalledWith(expect.objectContaining({ planetCondition: expect.arrayContaining([transitLine, expect.stringMatching(/^TRANSIT DATES:/)]) }), 'en');
+    expect(generateNarrative).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planetCondition: expect.arrayContaining([
+          transitLine,
+          expect.stringMatching(/^TRANSIT DATES:/),
+        ]),
+      }),
+      'en',
+    );
   });
 
   it('rebuild gives every report the same dated Sade Sati and Shani Dhaiya lines chat gets', async () => {
@@ -2426,8 +2546,21 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
         stays: [],
       },
     };
-    state.findKundliByUserId.mockResolvedValue({ status: 'ready', chartData: { planets: [], ascendant: { signIndex: 0 } }, calculationVersion: CALCULATION_VERSION, dashaData: null, yogaData: null, doshaData, ephemerisVersion: null, ayanamsa: null, houseSystem: null, nodeType: null });
-    await regenerateReportContent(makeReportRow({ id: 'r-saturn', reportKey: 'wealth', status: 'ready' }));
+    state.findKundliByUserId.mockResolvedValue({
+      status: 'ready',
+      chartData: { planets: [], ascendant: { signIndex: 0 } },
+      calculationVersion: CALCULATION_VERSION,
+      dashaData: null,
+      yogaData: null,
+      doshaData,
+      ephemerisVersion: null,
+      ayanamsa: null,
+      houseSystem: null,
+      nodeType: null,
+    });
+    await regenerateReportContent(
+      makeReportRow({ id: 'r-saturn', reportKey: 'wealth', status: 'ready' }),
+    );
     expect(generateNarrative).toHaveBeenCalledWith(
       expect.objectContaining({
         planetCondition: expect.arrayContaining([
@@ -2453,7 +2586,7 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
       }),
     );
 
@@ -2480,7 +2613,7 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 8 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 9 },
       }),
     );
 
@@ -2493,7 +2626,8 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
 });
 
 describe('purchaseReport — one refund per charge (money.refundKeys) and the Platinum free report', () => {
-  const onlyRefundKeys = (_userId: string, key: string) => Promise.resolve(key === 'money.refundKeys');
+  const onlyRefundKeys = (_userId: string, key: string) =>
+    Promise.resolve(key === 'money.refundKeys');
 
   it('switch on: the charge carries a key and the row carries "<key>:0"', async () => {
     state.isFeatureOn.mockImplementation(onlyRefundKeys);
@@ -2519,7 +2653,9 @@ describe('purchaseReport — one refund per charge (money.refundKeys) and the Pl
   it('a duplicate purchase refunds its share under the row key, once', async () => {
     state.isFeatureOn.mockImplementation(onlyRefundKeys);
     state.claimReportRow.mockResolvedValue(undefined);
-    state.findReportRow.mockResolvedValue(makeReportRow({ id: 'dup', reportKey: 'past_life', status: 'ready' }));
+    state.findReportRow.mockResolvedValue(
+      makeReportRow({ id: 'dup', reportKey: 'past_life', status: 'ready' }),
+    );
 
     await purchaseReport(makeUser(), { reportKey: 'past_life' });
 
@@ -2555,7 +2691,9 @@ describe('purchaseReport — one refund per charge (money.refundKeys) and the Pl
 
   it('Platinum free report: nothing is charged, the row costs 0 and carries the claim', async () => {
     state.takePassFreeReport.mockResolvedValue('pass_free_report:2026-10-24T06:00:00.000Z');
-    state.claimReportRow.mockResolvedValue(makeReportRow({ id: 'f1', reportKey: 'past_life', pricePaidPaise: 0 }));
+    state.claimReportRow.mockResolvedValue(
+      makeReportRow({ id: 'f1', reportKey: 'past_life', pricePaidPaise: 0 }),
+    );
 
     await purchaseReport(makeUser(), { reportKey: 'past_life' });
 
@@ -2570,20 +2708,22 @@ describe('purchaseReport — one refund per charge (money.refundKeys) and the Pl
 
   it('Platinum free report is not used on a multi-month bundle', async () => {
     state.takePassFreeReport.mockResolvedValue('pass_free_report:x');
-    state.claimReportRow.mockImplementation(async (claim: { periodMonth: string }) =>
-      makeReportRow({ id: `b-${claim.periodMonth}`, reportKey: 'career_monthly' }),
+    state.claimReportRow.mockImplementation((claim: { periodMonth: string }) =>
+      Promise.resolve(makeReportRow({ id: `b-${claim.periodMonth}`, reportKey: 'career_monthly' })),
     );
     await purchaseReport(makeUser(), {
       reportKey: 'career_monthly',
       months: ['2026-11', '2026-12'],
-    } as never).catch(() => {});
+    }).catch(() => {});
     expect(state.takePassFreeReport).not.toHaveBeenCalled();
   });
 
   it('Platinum free report on a repeat purchase is given back, not refunded as money', async () => {
     state.takePassFreeReport.mockResolvedValue('pass_free_report:2026-10-24T06:00:00.000Z');
     state.claimReportRow.mockResolvedValue(undefined);
-    state.findReportRow.mockResolvedValue(makeReportRow({ id: 'dup2', reportKey: 'past_life', status: 'ready' }));
+    state.findReportRow.mockResolvedValue(
+      makeReportRow({ id: 'dup2', reportKey: 'past_life', status: 'ready' }),
+    );
 
     await purchaseReport(makeUser(), { reportKey: 'past_life' });
 

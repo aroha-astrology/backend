@@ -5,10 +5,10 @@ import {
   calculateYoginiDasha,
   detectAllYogas,
   analyzeAllDoshas,
+  analyzeAllDoshasAt,
   calculateAshtakavarga,
   calculateShadbala,
   calculateAllDivisionalChartsWithLagna,
-  getCurrentSaturnLongitude,
   detectCurrentSadeSati,
   detectCurrentDhaiya,
 } from '../../lib/astro-engine/index.js';
@@ -20,7 +20,7 @@ import {
   HASH_BASELINE_CALCULATION_VERSION,
   HASH_BASELINE_EPHEMERIS_VERSION,
 } from '../../lib/astro-engine/version.js';
-import type { ZodiacSign, Yoga } from '@aroha-astrology/shared';
+import type { DoshaAnalysis, ZodiacSign, Yoga } from '@aroha-astrology/shared';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -348,6 +348,29 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
   };
 }
 
+/**
+ * The doshas saved with a new chart. Sade Sati and Dhaiya come from Saturn's
+ * real sign changes as of `asOf` (now), with Dhaiya, instead of the old
+ * 912-days-a-sign estimate (audit H1). Every reader recomputes both live
+ * anyway (withLiveSaturnTransits); this keeps the saved copy right too.
+ * If the ephemeris lookup fails, the natal doshas are still saved, with Sade
+ * Sati marked not active, and the read path fills in the live values.
+ */
+export async function computeSavedDoshas(
+  chart: Awaited<ReturnType<typeof calculateChart>>,
+  asOf?: Date,
+): Promise<DoshaAnalysis | null> {
+  try {
+    return await analyzeAllDoshasAt(chart, asOf);
+  } catch (err) {
+    logger.warn(
+      { err },
+      'live Saturn transit lookup failed (Sade Sati and Dhaiya left for the read path)',
+    );
+    return tryCompute('doshas', () => analyzeAllDoshas(chart, 0));
+  }
+}
+
 function tryCompute<T>(label: string, fn: () => T): T | null {
   try {
     return fn();
@@ -388,22 +411,10 @@ async function runGeneration(
     const dasha = calculateVimshottariDasha(moon?.longitude ?? 0, birthDate);
     const yogini = calculateYoginiDasha(moon?.longitude ?? 0, birthDate);
 
-    // Sade Sati is a TRANSIT dosha — it needs Saturn's CURRENT sky position,
-    // not the natal chart's Saturn (which is where Saturn was at birth, a
-    // wholly different value). A failed live lookup falls back to 0 (=
-    // Aries), the same safe "no data" default the rest of this best-effort
-    // block uses; it just means Sade Sati won't be flagged, never a wrong one.
-    let currentSaturnLongitude = 0;
-    try {
-      currentSaturnLongitude = await getCurrentSaturnLongitude();
-    } catch (err) {
-      logger.warn({ err }, 'live Saturn transit lookup failed (Sade Sati skipped)');
-    }
-
     // Best-effort enrichment: a failure in any single (unvetted) calc must NOT
     // fail the whole kundli — the chart + dasha are the required payload.
     const yogas = tryCompute('yogas', () => detectAllYogas(chart));
-    const doshas = tryCompute('doshas', () => analyzeAllDoshas(chart, currentSaturnLongitude));
+    const doshas = await computeSavedDoshas(chart);
     const ashtakavarga = tryCompute('ashtakavarga', () => calculateAshtakavarga(chart));
     // Trikona + Ekadhipatya Shodhana reductions, stored alongside (never
     // instead of) the raw bhinna/sarva tables above — see
@@ -593,7 +604,11 @@ export async function withLiveSaturnTransits(
   ]);
   const live: Record<string, unknown> = { ...doshaData };
   if (sadeSati.status === 'fulfilled') live.sadeSati = sadeSati.value;
-  else logger.warn({ err: sadeSati.reason }, 'live Sade Sati recompute failed at read time (serving cached value)');
+  else
+    logger.warn(
+      { err: sadeSati.reason },
+      'live Sade Sati recompute failed at read time (serving cached value)',
+    );
   if (dhaiya.status === 'fulfilled') live.dhaiya = dhaiya.value;
   else logger.warn({ err: dhaiya.reason }, 'live Dhaiya recompute failed at read time (left out)');
   return live;
@@ -639,7 +654,8 @@ export async function toKundliDtoForLanguage(row: KundliRow, language: string): 
   const doshas = dto.doshas as Record<string, Record<string, unknown> | undefined>;
   // Sade Sati's text alone when there is no Dhaiya text, so translations
   // cached before Dhaiya existed stay valid for readers it does not touch.
-  const dhaiyaText = String(doshas.dhaiya?.description ?? '');
+  const dhaiyaDescription = doshas.dhaiya?.description;
+  const dhaiyaText = typeof dhaiyaDescription === 'string' ? dhaiyaDescription : '';
   const liveSadeSatiHash = hashString(
     JSON.stringify(doshas.sadeSati?.description ?? '') + (dhaiyaText ? `|${dhaiyaText}` : ''),
   );

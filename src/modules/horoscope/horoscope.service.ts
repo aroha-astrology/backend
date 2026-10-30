@@ -10,6 +10,7 @@ import type {
   UserRow,
 } from '../../db/schema.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
+import { withLiveSaturnTransits } from '../kundli/kundli.service.js';
 import {
   resolveActiveProfileContext,
   resolveProfileContext,
@@ -115,13 +116,20 @@ export function currentPeriodStart(
 }
 
 /** Assemble everything we know about the user for the LLM to personalize from. */
-function buildHoroscopeContext(
+export async function buildHoroscopeContext(
   user: UserRow,
   profile: ProfileContext,
   kundli: KundliRow | undefined,
   forDate: string,
   period: HoroscopePeriod,
-): HoroscopeContext {
+): Promise<HoroscopeContext> {
+  const ready = kundli && kundli.status === 'ready';
+  // Sade Sati and Dhaiya as of the period's first day (midday UTC, the same
+  // anchor the synthesis uses), not the copy saved when the chart was built:
+  // that one was an estimate, frozen at the build date, and had no Dhaiya.
+  const doshas = ready
+    ? await withLiveSaturnTransits(kundli.doshaData ?? null, new Date(`${forDate}T12:00:00.000Z`))
+    : null;
   return {
     userId: user.id,
     birthProfileId: profile.birthProfileId,
@@ -149,16 +157,15 @@ function buildHoroscopeContext(
       preferredDashaSystem: user.preferredDashaSystem,
     },
     // Attach the natal kundli when it's ready; never SKIP a user for lacking one.
-    kundli:
-      kundli && kundli.status === 'ready'
-        ? {
-            chart: kundli.chartData,
-            dasha: kundli.dashaData,
-            yogas: kundli.yogaData,
-            doshas: kundli.doshaData,
-            ashtakavarga: kundli.ashtakavargaData,
-          }
-        : null,
+    kundli: ready
+      ? {
+          chart: kundli.chartData,
+          dasha: kundli.dashaData,
+          yogas: kundli.yogaData,
+          doshas,
+          ashtakavarga: kundli.ashtakavargaData,
+        }
+      : null,
   };
 }
 
@@ -182,7 +189,7 @@ async function runHoroscopeGeneration(
     attempt++;
     try {
       const kundli = await findKundliByUserId(user.id, profile.birthProfileId);
-      const context = buildHoroscopeContext(user, profile, kundli, forDate, period);
+      const context = await buildHoroscopeContext(user, profile, kundli, forDate, period);
       const { summary, model, monthlyBreakdown, structured } =
         await generateHoroscopeSummary(context);
       await markHoroscopeReady(user.id, profile.birthProfileId, period, periodKey, claimedAt, {

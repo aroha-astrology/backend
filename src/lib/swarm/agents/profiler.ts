@@ -129,8 +129,10 @@ export async function profilerNode(state: SwarmState): Promise<Partial<SwarmStat
 
       for (const [doshaName, doshaResult] of doshaEntries) {
         // The transit two say `active`, the natal ones `present`; reading only
-        // `present` dropped a running Sade Sati from every chat.
-        if (doshaResult.present || doshaResult.active) {
+        // `present` dropped a running Sade Sati from every chat. A cancelled
+        // Mangal Dosha is `present` but means not Manglik (audit H2).
+        const cancelled = doshaResult.type === 'cancelled';
+        if ((doshaResult.present && !cancelled) || doshaResult.active) {
           const label =
             TRANSIT_DOSHA_LABELS[doshaName] ??
             `${doshaName.charAt(0).toUpperCase() + doshaName.slice(1)} Dosha`;

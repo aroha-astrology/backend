@@ -184,9 +184,24 @@ function currentDasha(dasha: Record<string, unknown> | null, asOf: Date): Curren
     mahadasha: md?.planet ? String(md.planet) : undefined,
     antardasha: ad?.planet ? String(ad.planet) : undefined,
     pratyantardasha: pd?.planet ? String(pd.planet) : undefined,
-    mahaStart: md?.startDate ? String(md.startDate).slice(0, 10) : undefined,
-    mahaEnd: md?.endDate ? String(md.endDate).slice(0, 10) : undefined,
+    mahaStart: isoDay(md?.startDate),
+    mahaEnd: isoDay(md?.endDate),
   };
+}
+
+/** YYYY-MM-DD from a saved ISO string or a live Date (String(date) would give "Wed Oct 28 2026…"). */
+function isoDay(d: unknown): string | undefined {
+  if (!d) return undefined;
+  if (d instanceof Date)
+    return Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
+  return String(d).slice(0, 10);
+}
+
+const ORDINAL_SUFFIX: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd' };
+/** 1 -> "1st", 2 -> "2nd", 12 -> "12th" (the facts used to say "2th house"). */
+function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (ORDINAL_SUFFIX[n % 10] ?? 'th');
+  return `${n}${suffix}`;
 }
 
 function currentYoginiFact(dasha: Record<string, unknown> | null): string | null {
@@ -219,12 +234,17 @@ const MAX_YOGA_FACTS = 8;
  * single comprehensive astrologer needs the full picture, not a persona slice). */
 function relevantYogas(yogas: Record<string, unknown> | null): string[] {
   const list = (yogas?.yogas ?? []) as Array<Record<string, unknown>>;
-  return list
-    .filter((y) => y.present && RELEVANT_YOGA_TYPES.includes(String(y.type)))
-    .sort((a, b) => Number(b.strength ?? 0) - Number(a.strength ?? 0))
-    .slice(0, MAX_YOGA_FACTS)
-    .map((y) => String(y.description ?? y.name ?? ''))
-    .filter(Boolean);
+  return (
+    list
+      .filter((y) => y.present && RELEVANT_YOGA_TYPES.includes(String(y.type)))
+      // A cancelled Kemadruma is the absence of a dosha, not a blessing; the Kemdruma line in
+      // doshaFacts already says it is cancelled and why (audit L2).
+      .filter((y) => y.name !== 'Kemadruma Cancellation')
+      .sort((a, b) => Number(b.strength ?? 0) - Number(a.strength ?? 0))
+      .slice(0, MAX_YOGA_FACTS)
+      .map((y) => String(y.description ?? y.name ?? ''))
+      .filter(Boolean)
+  );
 }
 
 async function currentTransitSignIndex(planet: string, asOfDate?: string): Promise<number | null> {
@@ -411,12 +431,20 @@ export function doshaFacts(doshas: Record<string, unknown> | null, zone: string)
   if (!doshas) return [];
   const facts: string[] = [];
 
+  // A cancelled Mangal Dosha means not Manglik. It used to read "present (none severity,
+  // cancelled type)", and the live model opened 3 of 3 answers with "you do have a Manglik
+  // influence" (audit H2).
   const mangal = doshas.mangal as Record<string, unknown> | undefined;
   if (mangal) {
+    const cancellations = Array.isArray(mangal.cancellations)
+      ? (mangal.cancellations as string[]).map((c) => c.replace(/ - cancellation applies$/, ''))
+      : [];
     facts.push(
-      mangal.present
-        ? `Mangal Dosha: present (${String(mangal.severity)} severity, ${String(mangal.type)} type)`
-        : 'Mangal Dosha: not present',
+      mangal.present && mangal.type === 'cancelled'
+        ? `Mangal Dosha: cancelled (not Manglik)${cancellations.length ? `: ${cancellations.join('; ')}` : ''}`
+        : mangal.present
+          ? `Mangal Dosha: present (${String(mangal.severity)} severity, ${String(mangal.type)} type)`
+          : 'Mangal Dosha: not present',
     );
   }
 
@@ -1022,7 +1050,7 @@ export function periodEventFacts(
       natalMoonSignIdx != null && signIndex >= 0
         ? ((signIndex - natalMoonSignIdx + 12) % 12) + 1
         : null;
-    const houseNote = houseFromMoon ? ` (your ${houseFromMoon}th house from the Moon)` : '';
+    const houseNote = houseFromMoon ? ` (your ${ordinal(houseFromMoon)} house from the Moon)` : '';
 
     if (e.eventType === 'ingress') {
       return `${e.planet} moves from ${e.fromSign} into ${e.toSign} on ${e.forDate}${houseNote} — a shift in that life area's focus partway through the period.`;
@@ -1533,14 +1561,16 @@ export async function buildGroundingFacts(
   for (const houseNum of [2, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
     const h = houseLord(houses, houseNum);
     if (!h) continue;
-    facts.push(`${houseNum}th house (${HOUSE_LABELS[houseNum]}) sign: ${h.sign}, lord: ${h.lord}`);
+    facts.push(
+      `${ordinal(houseNum)} house (${HOUSE_LABELS[houseNum]}) sign: ${h.sign}, lord: ${h.lord}`,
+    );
 
     if (houseNum === 7 || houseNum === 10) {
       const placement = planetPlacement(planets, h.lord);
       if (placement) {
         const dignity = dashaLordTransitQuality(h.lord, placement.signIndex);
         facts.push(
-          `${h.lord} (${houseNum}th lord) is natally placed in house ${placement.house} (${placement.sign}) — ${dignity.dignity} dignity`,
+          `${h.lord} (${ordinal(houseNum)} lord) is natally placed in house ${placement.house} (${placement.sign}) — ${dignity.dignity} dignity`,
         );
       }
     }
@@ -1647,7 +1677,7 @@ export async function buildGroundingFacts(
       facts.push(
         `Moon is ${transitLabel} transiting ${SIGNS[moonTransit.signIndex]} in ${
           NAKSHATRAS[moonTransit.nakshatraIndex] ?? 'an unknown'
-        } lunar mansion, your ${moonHouseFromAsc}th house from the Rising Sign — this is the fastest-moving daily signal (changes sign every ~2.25 days, lunar mansion roughly daily) and should anchor what's distinctive about THIS specific date versus other days`,
+        } lunar mansion, your ${ordinal(moonHouseFromAsc)} house from the Rising Sign — this is the fastest-moving daily signal (changes sign every ~2.25 days, lunar mansion roughly daily) and should anchor what's distinctive about THIS specific date versus other days`,
       );
     }
   }

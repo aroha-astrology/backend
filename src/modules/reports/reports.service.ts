@@ -154,7 +154,9 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
  */
 // 8 (2026-10-27): Sade Sati / Shani Dhaiya facts with real dates and retrograde breaks in every
 // report, and live (not generation-day) Sade Sati in the dosha panels.
-const CONTENT_VERSION = 8;
+// 9 (2026-10-30, audit Sprint 1): a cancelled Mangal Dosha is "not Manglik": out of the
+// "hold carefully" panels, and the Marriage Report no longer calls it present.
+const CONTENT_VERSION = 9;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
@@ -172,7 +174,7 @@ const KUNDLI_WAIT_TRIES = 30;
 const KUNDLI_WAIT_MS = 2_000;
 
 const REPORT_SATURN_RULE =
-  'SADE SATI / SHANI DHAIYA: say one is running ONLY when its line above says ACTIVE or names a phase, and use only the dates on that line (including any retrograde break). Both are counted from the Moon sign, never from the Lagna. When a line says not active, do not describe the reader as being in it; you may give the next one\'s dates from the line.';
+  "SADE SATI / SHANI DHAIYA: say one is running ONLY when its line above says ACTIVE or names a phase, and use only the dates on that line (including any retrograde break). Both are counted from the Moon sign, never from the Lagna. When a line says not active, do not describe the reader as being in it; you may give the next one's dates from the line.";
 
 const REPORT_TRANSIT_RULE =
   'TRANSIT DATES: when you say a planet changes sign or nakshatra, or turns retrograde or direct, the date comes ONLY from the UPCOMING TRANSITS lines above. Quote it as given (date and sign); never work a date out and never recall one from memory. If a line says BUT ONLY BRIEFLY, say the entry does not last and time the lasting effect from the date it settles. If an event is not listed, do not give it a date.';
@@ -208,7 +210,9 @@ async function withUpcomingTransits(
     ...scores,
     planetCondition: [
       ...existing,
-      ...(saturn.length ? ['SATURN TRANSIT FROM THE MOON (today):', ...saturn, REPORT_SATURN_RULE] : []),
+      ...(saturn.length
+        ? ['SATURN TRANSIT FROM THE MOON (today):', ...saturn, REPORT_SATURN_RULE]
+        : []),
       ...(lines.length
         ? ['UPCOMING TRANSITS (exact, from the ephemeris):', ...lines, REPORT_TRANSIT_RULE]
         : []),
@@ -861,7 +865,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     );
     const scores = await withUpcomingTransits(
       baseScores,
-      kundli.chartData as Record<string, unknown>,
+      kundli.chartData,
       scoreContext.doshaData ?? null,
     );
 
@@ -1822,7 +1826,8 @@ export async function getReportStats(): Promise<ReportStatsDto> {
 export async function getReportRefreshStatus() {
   const features = await resolveFeatures();
   const switchOn = features['reports.refreshOldOnOpen']?.enabled !== false;
-  const model = (features['ai.reportRefreshModel'] as { model?: string } | undefined)?.model ?? null;
+  const model =
+    (features['ai.reportRefreshModel'] as { model?: string } | undefined)?.model ?? null;
   const counts = await reportRefreshCounts(CONTENT_VERSION);
   return { switchOn, model, contentVersion: CONTENT_VERSION, ...counts };
 }
@@ -1881,7 +1886,7 @@ async function regenerateReportContentInner(row: ReportRow): Promise<'regenerate
   );
   const scores = await withUpcomingTransits(
     baseScores,
-    kundli.chartData as Record<string, unknown>,
+    kundli.chartData,
     scoreContext.doshaData ?? null,
   );
   const generated = await generator.generateNarrative(scores, 'en');

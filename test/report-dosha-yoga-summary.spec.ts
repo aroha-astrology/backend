@@ -44,7 +44,7 @@ describe('computeDoshaYogaSummary — cautions (doshas)', () => {
 
   it('only surfaces doshas listed in relevantDoshaKeys, ignoring others present in doshaData', () => {
     const doshaData = {
-      mangal: { present: true, severity: 'low', type: 'cancelled' },
+      mangal: { present: true, severity: 'mild', type: 'partial' },
       pitra: { present: true, severity: 'high' },
     };
     const result = computeDoshaYogaSummary(doshaData, null, ['mangal'], []);
@@ -53,7 +53,7 @@ describe('computeDoshaYogaSummary — cautions (doshas)', () => {
   });
 
   it('ignores an unrecognized dosha key rather than throwing', () => {
-    const doshaData = { mangal: { present: true, severity: 'low', type: 'cancelled' } };
+    const doshaData = { mangal: { present: true, severity: 'mild', type: 'partial' } };
     expect(() =>
       computeDoshaYogaSummary(doshaData, null, ['notARealDosha', 'mangal'], []),
     ).not.toThrow();
