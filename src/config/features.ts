@@ -868,7 +868,7 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // Birth-time question (audit 2026-10-28, M7; free, no AI cost).
   // A one-time sheet for a reader who typed a birth time but never said how sure it is (accuracy not set): from a record, a family memory, or not sure. The answer is saved with the normal profile update; chat, voice and reports then hedge the time correctly. A rated profile is never asked again; "Not now" waits two weeks.
   {
-    key: 'profile.birthTimeAsk',
+    key: 'home.birthTimeAsk',
     label: 'Birth-time question — asks once where the birth time comes from',
     group: 'home',
     defaultEnabled: false,
