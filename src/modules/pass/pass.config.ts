@@ -54,7 +54,7 @@ export const PALM_READINGS_PER_PERIOD = 1;
  * `voiceFreeMinutes`: voice-call minutes free in each Pass period, across all
  * calls; after these each minute is charged to the wallet at the
  * `paid.voiceChat` price (see modules/voice/voice.service.ts). Every tier got 3
- * until 2026-10-17, when the owner set 10 / 15 / 20.
+ * until 2026-10-17, when the owner set 10 / 15 / 20, and doubled them to 20 / 30 / 40 on 2026-10-30.
  */
 export const PASS_TIERS = [
   {
@@ -63,11 +63,11 @@ export const PASS_TIERS = [
     key: 'paid.arohaPassA',
     fallbackPaise: 19900,
     playBasePlan: 'pass-199',
-    questions: 15,
-    voiceFreeMinutes: 10,
+    questions: 30,
+    voiceFreeMinutes: 20,
     monthlyCoins: 0,
     freeReportsPerPeriod: 0,
-    reportDiscountPct: 10,
+    reportDiscountPct: 20,
     features: ['timeline', 'bonds', 'voiceCall', 'palm'],
   },
   {
@@ -76,11 +76,11 @@ export const PASS_TIERS = [
     key: 'paid.arohaPassB',
     fallbackPaise: 29900,
     playBasePlan: 'pass-299',
-    questions: 30,
-    voiceFreeMinutes: 15,
+    questions: 60,
+    voiceFreeMinutes: 30,
     monthlyCoins: 100,
     freeReportsPerPeriod: 0,
-    reportDiscountPct: 20,
+    reportDiscountPct: 30,
     features: ['timeline', 'bonds', 'decisions', 'findMyDate', 'birthTime', 'voiceCall', 'palm'],
   },
   {
@@ -89,11 +89,11 @@ export const PASS_TIERS = [
     key: 'paid.arohaPassC',
     fallbackPaise: 39900,
     playBasePlan: 'pass-399',
-    questions: 60,
-    voiceFreeMinutes: 20,
+    questions: 120,
+    voiceFreeMinutes: 40,
     monthlyCoins: 200,
     freeReportsPerPeriod: 1,
-    reportDiscountPct: 30,
+    reportDiscountPct: 40,
     features: PASS_FEATURES,
   },
 ] as const satisfies ReadonlyArray<{
@@ -138,14 +138,14 @@ const entitlementOf = (t: PassTierDef): PassEntitlement => ({
 });
 
 /**
- * A Pass from before the tiers keeps what it was sold with: every feature, 30
- * questions, 20% off, and the middle tier's voice minutes.
+ * A Pass from before the tiers keeps what it was sold with: every feature, 60
+ * questions, 30% off, and the middle tier's voice minutes (the middle tier doubled on 2026-10-30).
  */
 const LEGACY_ENTITLEMENT: PassEntitlement = {
   tier: null,
-  questions: 30,
-  voiceFreeMinutes: 15,
-  reportDiscountPct: 20,
+  questions: 60,
+  voiceFreeMinutes: 30,
+  reportDiscountPct: 30,
   freeReportsPerPeriod: 0,
   features: PASS_FEATURES,
 };
@@ -176,21 +176,21 @@ export const QUESTION_PACKS = [
   {
     pack: 'small',
     key: 'paid.questionPackSmall',
-    questions: 5,
+    questions: 10,
     fallbackPaise: 4900,
     playProductId: 'question_pack_5',
   },
   {
     pack: 'medium',
     key: 'paid.questionPackMedium',
-    questions: 12,
+    questions: 24,
     fallbackPaise: 9900,
     playProductId: 'question_pack_12',
   },
   {
     pack: 'large',
     key: 'paid.questionPackLarge',
-    questions: 30,
+    questions: 60,
     fallbackPaise: 19900,
     playProductId: 'question_pack_30',
   },

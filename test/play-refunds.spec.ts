@@ -268,9 +268,9 @@ describe('a refunded Question Pack', () => {
     addOrder('order-pack', 'tok-pack', 'question_pack_12', 9900);
     expect(await svc.recordVoidedPurchase(voided('tok-pack', 'GPA.3'))).toBe('clawed_back');
 
-    expect(spies.clawBackOrder.mock.calls[0]![1]).toEqual({ walletPaise: 0, questions: 12 });
-    expect(db.users.get(USER)!).toMatchObject({ walletBalancePaise: 590, questionCredits: -9 });
-    expect(spies.notifyUser.mock.calls[0]![1].body).toContain('12 questions were taken back');
+    expect(spies.clawBackOrder.mock.calls[0]![1]).toEqual({ walletPaise: 0, questions: 24 });
+    expect(db.users.get(USER)!).toMatchObject({ walletBalancePaise: 590, questionCredits: -21 });
+    expect(spies.notifyUser.mock.calls[0]![1].body).toContain('24 questions were taken back');
   });
 });
 

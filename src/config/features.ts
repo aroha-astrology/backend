@@ -878,21 +878,21 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   // Prepaid chat questions bought from the wallet. Chat spends Pass questions first, then pack questions, then the wallet.
   {
     key: 'paid.questionPackSmall',
-    label: 'Question Pack — 5 chat questions',
+    label: 'Question Pack — 10 chat questions',
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 4900,
   },
   {
     key: 'paid.questionPackMedium',
-    label: 'Question Pack — 12 chat questions',
+    label: 'Question Pack — 24 chat questions',
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 9900,
   },
   {
     key: 'paid.questionPackLarge',
-    label: 'Question Pack — 30 chat questions',
+    label: 'Question Pack — 60 chat questions',
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 19900,
@@ -911,27 +911,27 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'home',
     defaultEnabled: false,
   },
-  // Silver: 15 questions, Life Timeline, Bonds, 10% off reports. The price here is only what the app shows; Google Play charges the base plan's own price, set in Play Console (base plan pass-199) — keep them the same.
+  // Silver: 30 questions, Life Timeline, Bonds, 20% off reports. The price here is only what the app shows; Google Play charges the base plan's own price, set in Play Console (base plan pass-199) — keep them the same.
   {
     key: 'paid.arohaPassA',
-    label: 'Aroha Pass Silver — 15 questions, Life Timeline, Bonds, 10% off reports',
+    label: 'Aroha Pass Silver — 30 questions, Life Timeline, Bonds, 20% off reports',
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 19900,
   },
-  // Gold: 30 questions, everything in Silver plus Decisions, Find My Date and the birth-time check, 20% off reports. Play base plan pass-299.
+  // Gold: 60 questions, everything in Silver plus Decisions, Find My Date and the birth-time check, 30% off reports. Play base plan pass-299.
   {
     key: 'paid.arohaPassB',
     label:
-      'Aroha Pass Gold — 30 questions, adds Decisions, Find My Date, birth-time check, 20% off reports',
+      'Aroha Pass Gold — 60 questions, adds Decisions, Find My Date, birth-time check, 30% off reports',
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 29900,
   },
-  // Platinum: 60 questions, everything in Gold plus Relocation, 30% off reports. Play base plan pass-399.
+  // Platinum: 120 questions, everything in Gold plus Relocation, 40% off reports. Play base plan pass-399.
   {
     key: 'paid.arohaPassC',
-    label: 'Aroha Pass Platinum — 60 questions, adds Relocation, 30% off reports',
+    label: 'Aroha Pass Platinum — 120 questions, adds Relocation, 40% off reports',
     group: 'paid',
     defaultEnabled: false,
     defaultPricePaise: 39900,

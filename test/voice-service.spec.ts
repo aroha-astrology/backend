@@ -140,8 +140,8 @@ const {
 
 const { PASS_TIERS, VOICE_TRIAL_MINUTES } = await import('../src/modules/pass/pass.config.js');
 
-/** The member in these tests holds a Silver Pass: 10 free minutes a period. */
-const PASS_VOICE_FREE_MINUTES = 10;
+/** The member in these tests holds a Silver Pass: 20 free minutes a period. */
+const PASS_VOICE_FREE_MINUTES = 20;
 
 const PRICE = 2000;
 const USER = 'user-1';
@@ -382,19 +382,19 @@ describe('voice call is a Pass benefit', () => {
     for (const tier of PASS_TIERS) expect(tier.features, tier.tier).toContain('voiceCall');
   });
 
-  // Owner, 2026-10-17: 3 free minutes for every tier became 10 / 15 / 20.
-  it('gives Silver 10, Gold 15 and Platinum 20 free minutes a period', () => {
+  // Owner, 2026-10-17: 3 free minutes for every tier became 10 / 15 / 20, doubled to 20 / 30 / 40 on 2026-10-30.
+  it('gives Silver 20, Gold 30 and Platinum 40 free minutes a period', () => {
     expect(PASS_TIERS.map((t) => [t.tier, t.voiceFreeMinutes])).toEqual([
-      ['silver', 10],
-      ['gold', 15],
-      ['platinum', 20],
+      ['silver', 20],
+      ['gold', 30],
+      ['platinum', 40],
     ]);
   });
 
   it("counts the member's own tier allowance, not a fixed number", async () => {
     state.passEntitlement.mockResolvedValue({
       tier: 'platinum',
-      voiceFreeMinutes: 20,
+      voiceFreeMinutes: 40,
       features: ['voiceCall'],
     });
     withFreeMinutes(1);
@@ -406,9 +406,9 @@ describe('voice call is a Pass benefit', () => {
       USER,
       VOICE_MAX_MINUTES,
       PERIOD_START,
-      20,
+      40,
     );
-    expect(grant.freeMinutesLeft).toBe(19);
+    expect(grant.freeMinutesLeft).toBe(39);
   });
 });
 

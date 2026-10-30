@@ -180,25 +180,25 @@ describe('Pass tiers', () => {
     await expect(requirePass('user-1', 'timeline')).rejects.toThrow('PASS_REQUIRED');
   });
 
-  it('the report discount steps up with the tier: 10%, 20%, 30%, and nothing without a Pass', async () => {
+  it('the report discount steps up with the tier: 20%, 30%, 40%, and nothing without a Pass', async () => {
     held.active = play('A');
-    expect(await passReportDiscountPct('user-1')).toBe(10);
-    held.active = play('B');
     expect(await passReportDiscountPct('user-1')).toBe(20);
-    held.active = play('C');
+    held.active = play('B');
     expect(await passReportDiscountPct('user-1')).toBe(30);
+    held.active = play('C');
+    expect(await passReportDiscountPct('user-1')).toBe(40);
     held.active = null;
     expect(await passReportDiscountPct('user-1')).toBe(0);
   });
 
-  it('a Pass from before the tiers keeps what it was sold with: every feature, 30 questions, 20% off', async () => {
+  it('a Pass from before the tiers keeps what it was sold with: every feature, 60 questions, 30% off', async () => {
     // A wallet Pass, whatever price variant it was on, and a Play Pass on an unknown base plan.
     for (const row of [passRow({ source: 'wallet', priceVariant: 'A' }), play(null)]) {
       held.active = row;
       await expect(requirePass('user-1', 'relocation')).resolves.toBeUndefined();
-      expect(await passReportDiscountPct('user-1')).toBe(20);
+      expect(await passReportDiscountPct('user-1')).toBe(30);
       const s = await getPassStatus(makeUserRow({ id: 'user-1' }));
-      expect(s.pass).toMatchObject({ tier: null, questionsPerPeriod: 30, questionsLeft: 26 });
+      expect(s.pass).toMatchObject({ tier: null, questionsPerPeriod: 60, questionsLeft: 56 });
     }
   });
 });
@@ -233,7 +233,7 @@ describe('getPassStatus', () => {
     expect(s.enabled).toBe(false);
     expect(s.offers).toEqual([]);
     expect(s.questionCredits).toBe(3);
-    expect(s.packs).toEqual([{ pack: 'small', questions: 5, pricePaise: 4900 }]);
+    expect(s.packs).toEqual([{ pack: 'small', questions: 10, pricePaise: 4900 }]);
   });
 
   it('offers every tier that is on, cheapest first, each with its own price, base plan and benefits', async () => {
@@ -250,11 +250,11 @@ describe('getPassStatus', () => {
         variant: 'A',
         pricePaise: 14900,
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-199' },
-        questionsPerPeriod: 15,
-        voiceFreeMinutes: 10,
+        questionsPerPeriod: 30,
+        voiceFreeMinutes: 20,
         monthlyCoins: 0,
         freeReportsPerPeriod: 0,
-        reportDiscountPct: 10,
+        reportDiscountPct: 20,
         features: ['timeline', 'bonds', 'voiceCall', 'palm'],
       },
       {
@@ -262,11 +262,11 @@ describe('getPassStatus', () => {
         variant: 'B',
         pricePaise: 29900,
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-299' },
-        questionsPerPeriod: 30,
-        voiceFreeMinutes: 15,
+        questionsPerPeriod: 60,
+        voiceFreeMinutes: 30,
         monthlyCoins: 0,
         freeReportsPerPeriod: 0,
-        reportDiscountPct: 20,
+        reportDiscountPct: 30,
         features: [
           'timeline',
           'bonds',
@@ -282,11 +282,11 @@ describe('getPassStatus', () => {
         variant: 'C',
         pricePaise: 39900,
         play: { productId: 'aroha_pass_monthly', basePlanId: 'pass-399' },
-        questionsPerPeriod: 60,
-        voiceFreeMinutes: 20,
+        questionsPerPeriod: 120,
+        voiceFreeMinutes: 40,
         monthlyCoins: 0,
         freeReportsPerPeriod: 0,
-        reportDiscountPct: 30,
+        reportDiscountPct: 40,
         features: [
           'timeline',
           'bonds',
@@ -315,17 +315,17 @@ describe('getPassStatus', () => {
       tier: 'silver',
       source: 'google_play',
       autoRenew: true,
-      questionsPerPeriod: 15,
-      questionsLeft: 11,
-      reportDiscountPct: 10,
+      questionsPerPeriod: 30,
+      questionsLeft: 26,
+      reportDiscountPct: 20,
       features: ['timeline', 'bonds', 'voiceCall', 'palm'],
     });
 
-    held.active = passRow({ source: 'google_play', priceVariant: 'C', questionsUsed: 70 });
+    held.active = passRow({ source: 'google_play', priceVariant: 'C', questionsUsed: 130 });
     const platinum = await getPassStatus(makeUserRow({ id: 'user-1' }));
     expect(platinum.pass).toMatchObject({
       tier: 'platinum',
-      questionsPerPeriod: 60,
+      questionsPerPeriod: 120,
       questionsLeft: 0,
     });
     expect(platinum.paymentIssue).toBeNull();
@@ -385,7 +385,7 @@ describe('Question Packs (Google Play only since 2026-10-23)', () => {
 
     held.features = { 'paid.questionPackMedium': on(9900) };
     const r = await startQuestionPackCheckout(user, 'medium');
-    expect(r).toEqual({ productId: 'question_pack_12', questions: 12 });
+    expect(r).toEqual({ productId: 'question_pack_12', questions: 24 });
     expect(state.insertOrder).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'user-1',

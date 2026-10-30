@@ -146,7 +146,7 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
     const status = await getPassStatus(mockUser);
     expect(status.enabled).toBe(true);
     expect(status.offers).toEqual([]);
-    expect(status.pass).toMatchObject({ tier: 'platinum', source: 'group', questionsLeft: 60 });
+    expect(status.pass).toMatchObject({ tier: 'platinum', source: 'group', questionsLeft: 120 });
     expect(status.pass?.questionsLeft).toBeGreaterThan(0);
   });
 
@@ -170,22 +170,22 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
         groupQuestionsUsed: 2,
         groupQuestionsPeriodStart: new Date(Date.now() - 3 * DAY),
       });
-      expect(status.pass).toMatchObject({ source: 'group', questionsLeft: 58 });
+      expect(status.pass).toMatchObject({ source: 'group', questionsLeft: 118 });
     });
 
     it('a lapsed 30-day period shows the full allowance again', async () => {
       const status = await getPassStatus({
         ...mockUser,
-        groupQuestionsUsed: 60,
+        groupQuestionsUsed: 120,
         groupQuestionsPeriodStart: new Date(Date.now() - 31 * DAY),
       });
-      expect(status.pass?.questionsLeft).toBe(60);
+      expect(status.pass?.questionsLeft).toBe(120);
     });
 
     it('groupQuestionsLeft never goes below 0', () => {
       expect(
         passRepo.groupQuestionsLeft(
-          { groupQuestionsUsed: 75, groupQuestionsPeriodStart: new Date(NOW.getTime() - DAY) },
+          { groupQuestionsUsed: 130, groupQuestionsPeriodStart: new Date(NOW.getTime() - DAY) },
           NOW,
         ),
       ).toBe(0);
@@ -194,7 +194,7 @@ describe('Test Group Subscription & Zero-Charge Entitlements', () => {
           { groupQuestionsUsed: 0, groupQuestionsPeriodStart: null },
           NOW,
         ),
-      ).toBe(60);
+      ).toBe(120);
     });
 
     it('chargeQuestion spends a group question and never touches the wallet', async () => {

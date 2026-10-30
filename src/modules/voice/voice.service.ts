@@ -16,7 +16,7 @@
 // charged to the wallet — or refused.
 //
 // Voice call is an Aroha Pass benefit (every tier). A member gets their tier's
-// `voiceFreeMinutes` free in each Pass period (10 / 15 / 20), across all their
+// `voiceFreeMinutes` free in each Pass period (20 / 30 / 40), across all their
 // calls; after those, each minute costs the `paid.voiceChat` price from the
 // wallet, for as long as the wallet can pay.
 //
