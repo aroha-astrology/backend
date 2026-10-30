@@ -82,6 +82,10 @@ export interface ReportScoreContext {
   /** Same two fields for the partner on a kundli_milan/match_report/marriage purchase. */
   partnerTimeOfBirth?: string | null;
   partnerBirthTimeAccuracy?: string | null;
+  /** The Moon-doubt and dasha-margin lines (lib/birth-time-doubt.ts) for a profile with an 'unknown'
+   *  birth time, worked out once in buildReportScoreContext because they need the ephemeris. */
+  personBirthTimeDoubt?: string[];
+  partnerBirthTimeDoubt?: string[];
   /**
    * The account-level `users.relationship_status` enum value (single/in_relationship/engaged/
    * married/divorced/widowed) — has no per-profile equivalent (not on `ProfileContext`), same

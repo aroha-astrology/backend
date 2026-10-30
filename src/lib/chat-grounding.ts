@@ -13,6 +13,7 @@
 
 import { dashaLordTransitQuality, detectDoubleTransit, SIGNS } from './astro-tools/index.js';
 import { unknownBirthTimeGuidance } from './birth-time-window.js';
+import { birthTimeDoubtFacts } from './birth-time-doubt.js';
 import { findPeriodAsOf, type RawDashaPeriod } from './astro-tools/dasha-reading.js';
 import {
   dateToJulianDay,
@@ -61,6 +62,13 @@ export interface GroundingSource {
   ashtakavarga: Record<string, unknown> | null;
   /** The user's IANA zone (users.current_timezone) for "today" and transit times; IST when absent. */
   timeZone?: string | null;
+  /**
+   * The reader's birth-time accuracy and the stored clock time. When accuracy is 'unknown' the
+   * facts carry the Moon doubt and dasha margin, and leave out what hangs on the exact minute
+   * (divisional charts, Lagna-built points, pratyantardasha, day-level dasha dates). Omitted =
+   * read as exact.
+   */
+  birthTime?: { accuracy?: string | null; timeOfBirth?: string | null } | null;
 }
 
 interface HouseFact {
@@ -1532,14 +1540,27 @@ export async function buildGroundingFacts(
   facts.push(...synthesisFacts(synthesis));
 
   // --- Active dasha -----------------------------------------------------
+  // An unknown birth time moves every dasha date by up to a couple of years, so the dates go out as
+  // years and the pratyantardasha (a few weeks long) is left out; the margin is stated just below.
+  const timeUnknown = src.birthTime?.accuracy === 'unknown';
+  const dashaDay = (d: string): string => (timeUnknown ? `about ${d.slice(0, 4)}` : d);
   if (dasha.mahadasha) {
     const range =
       dasha.mahaStart && dasha.mahaEnd
-        ? ` (started ${dasha.mahaStart}, ends ${dasha.mahaEnd})`
+        ? ` (started ${dashaDay(dasha.mahaStart)}, ends ${dashaDay(dasha.mahaEnd)})`
         : '';
     const antar = dasha.antardasha ? ` / ${dasha.antardasha} minor period` : '';
-    const pratyantar = dasha.pratyantardasha ? ` / ${dasha.pratyantardasha} sub-minor period` : '';
+    const pratyantar =
+      dasha.pratyantardasha && !timeUnknown ? ` / ${dasha.pratyantardasha} sub-minor period` : '';
     facts.push(`Active Major Planetary Period: ${dasha.mahadasha}${antar}${pratyantar}${range}`);
+  }
+
+  // --- Unknown birth time: is the Moon itself in doubt? -----------------------
+  // Right after the dasha so clip() (which cuts from the tail) never drops it.
+  if (timeUnknown) {
+    facts.push(
+      ...(await birthTimeDoubtFacts(src.chart, src.birthTime?.timeOfBirth, { asOf: dashaAsOf })),
+    );
   }
 
   const yoginiFact = currentYoginiFact(src.dasha);
@@ -1781,8 +1802,8 @@ export async function buildGroundingFacts(
           tag = 'THEN';
         }
         const dates = isRunning
-          ? `ACTIVE NOW, open since ${w.startDate} and running to ${w.endDate}`
-          : `approx ${w.startDate} to ${w.endDate}`;
+          ? `ACTIVE NOW, open since ${dashaDay(w.startDate)} and running to ${dashaDay(w.endDate)}`
+          : `approx ${dashaDay(w.startDate)} to ${dashaDay(w.endDate)}`;
         return `${tag} ${w.level} (${w.reasoning.join(' ')}) ${dates}`;
       })
       .join(' | ');
@@ -1817,13 +1838,17 @@ export async function buildGroundingFacts(
     facts.push(...bhinnashtakavargaFacts(src.ashtakavarga, planets));
 
     // --- All 24 divisional (varga) charts ------------------------------------
-    facts.push(...divisionalChartFacts(src.chart));
+    // Not for an unknown birth time: every varga Lagna (and most placements) swings with the exact
+    // minute, the guidance already tells the model not to cite them, and they are about 4,500
+    // characters of the 36,000 the chat block is cut at (audit L5, measured 4,512).
+    if (!timeUnknown) facts.push(...divisionalChartFacts(src.chart));
 
     // --- Chandra/Surya Kundali (Moon/Sun as 1st house) -----------------------
     facts.push(...chandraSuryaKundaliFacts(planets));
 
     // --- Jaimini special points (Arudha Lagna, Upapada Lagna, Karakamsha) ----
-    facts.push(...jaiminiPointFacts(src.chart, ascSignIndex));
+    // All three are counted from the Lagna or the Navamsa, so they go with the vargas.
+    if (!timeUnknown) facts.push(...jaiminiPointFacts(src.chart, ascSignIndex));
   }
 
   // --- Full Gochar (all-planet live transit snapshot) -------------------------

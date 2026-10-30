@@ -142,7 +142,9 @@ export async function onboard(
       ? (response.findings as Array<{ claim: string }>).map((f) => f.claim)
       : [],
     timeAccuracy: body.birth.timeAccuracy,
-    ...(body.birth.timeAccuracy === 'exact' ? {} : { caveat: birthTimeCaveat(body.birth.timeAccuracy) }),
+    ...(body.birth.timeAccuracy === 'exact'
+      ? {}
+      : { caveat: birthTimeCaveat(body.birth.timeAccuracy) }),
   };
 }
 
@@ -509,7 +511,9 @@ export async function getPanchang(
   // offset is taken at local noon of that date, so DST is right for the day.
   const timezoneOffset =
     opts.timezoneOffsetHours ??
-    (opts.timeZone ? tzOffsetHoursForProfile(opts.timeZone, new Date(Date.UTC(year, month - 1, day, 12))) : 5.5);
+    (opts.timeZone
+      ? tzOffsetHoursForProfile(opts.timeZone, new Date(Date.UTC(year, month - 1, day, 12)))
+      : 5.5);
 
   // IST rows keep the plain key, so the warmed Indian cache is shared exactly as before. Any other
   // offset gets its own key: the same coordinates read on another clock give other times.
@@ -1413,9 +1417,8 @@ export async function buildSecondChartFacts(
     const mine = moonOf(userMoon);
     const theirs = moonOf(moon);
     if (mine && theirs) {
-      const { calculateAshtakootaForPair } = await import(
-        '../../lib/astro-engine/matching/ashtakoota.js'
-      );
+      const { calculateAshtakootaForPair } =
+        await import('../../lib/astro-engine/matching/ashtakoota.js');
       // Same pair rule as Aroha Bonds (bonds.service.ts pairAshtakoota), so chat
       // and the Bonds page give one Guna score for the same couple.
       const result = calculateAshtakootaForPair(mine, theirs, selfGender, profile.gender);
@@ -1679,9 +1682,13 @@ export async function* chatStream(
     yogas: kundli?.status === 'ready' ? (kundli.yogaData ?? null) : null,
     // Sade Sati is transit-dependent — recompute it live so chat never tells
     // a user their (possibly months/years-stale) cached phase.
-    doshas: kundli?.status === 'ready' ? await withLiveSaturnTransits(kundli.doshaData ?? null) : null,
+    doshas:
+      kundli?.status === 'ready' ? await withLiveSaturnTransits(kundli.doshaData ?? null) : null,
     ashtakavarga: kundli?.status === 'ready' ? (kundli.ashtakavargaData ?? null) : null,
     timeZone: user?.currentTimezone ?? null,
+    birthTime: profile
+      ? { accuracy: profile.birthTimeAccuracy, timeOfBirth: profile.timeOfBirth }
+      : null,
   };
   // A profile that onboarded with an unknown birth time will NEVER get a
   // ready kundli (see kundli.service.ts#missingKundliParams) — distinct from
@@ -1983,16 +1990,17 @@ export async function* chatStream(
   // With memory.babaMemory on, the extractor also notes dated events and the reader's own calendar day, so
   // the one morning-after check-in can be planned (memory/memory-rules.ts). With it off nothing changes.
   const memoryOn = userFeatures['memory.babaMemory']?.enabled === true;
-  void (memoryOn
-    ? extractTurnFacts(
-        message,
-        fullText,
-        userFacts,
-        userId,
-        user?.relationshipStatus ?? null,
-        todayFor(user?.currentTimezone),
-      )
-    : extractTurnFacts(message, fullText, userFacts, userId, user?.relationshipStatus ?? null)
+  void (
+    memoryOn
+      ? extractTurnFacts(
+          message,
+          fullText,
+          userFacts,
+          userId,
+          user?.relationshipStatus ?? null,
+          todayFor(user?.currentTimezone),
+        )
+      : extractTurnFacts(message, fullText, userFacts, userId, user?.relationshipStatus ?? null)
   )
     .then((newFacts) => {
       if (newFacts.length > 0) {

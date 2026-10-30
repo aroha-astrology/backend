@@ -19,6 +19,7 @@ import '../reports/generators/index.js';
 import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
 import { unknownBirthTimeGuidance } from '../../lib/birth-time-window.js';
+import { birthTimeDoubtFacts } from '../../lib/birth-time-doubt.js';
 import { Errors } from '../../lib/errors.js';
 import { getRequestContext, runWithRequestContext } from '../../lib/request-context.js';
 import { MODEL } from '../../config/llm.js';
@@ -156,7 +157,9 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
 // report, and live (not generation-day) Sade Sati in the dosha panels.
 // 9 (2026-10-30, audit Sprint 1): a cancelled Mangal Dosha is "not Manglik": out of the
 // "hold carefully" panels, and the Marriage Report no longer calls it present.
-const CONTENT_VERSION = 9;
+// 10 (2026-10-30, audit Sprint 3): readers with an unknown birth time get the Moon doubt (sign or
+// star may differ inside their window) and the dasha margin in every report.
+const CONTENT_VERSION = 10;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
@@ -611,7 +614,7 @@ function clampWindowsToYear(scores: ReportScores, window: YearWindow | null): Re
   return out;
 }
 
-function computeScoresWithCondition(
+export function computeScoresWithCondition(
   generator: {
     computeScores: (ctx: ReportScoreContext, periodMonth: string | null) => ReportScores;
   },
@@ -666,11 +669,24 @@ function computeScoresWithCondition(
       : null;
   if (partnerCaveat) planetCondition = [...planetCondition, partnerCaveat];
 
+  // The Moon may sit on the other side of a sign or star boundary somewhere in the reader's window,
+  // and every dasha date has a stated margin: the same lines chat, voice and the horoscope get.
+  const birthTimeDoubt =
+    ctx.personBirthTimeAccuracy === 'unknown' ? (ctx.personBirthTimeDoubt ?? []) : [];
+  if (birthTimeDoubt.length > 0) planetCondition = [...planetCondition, ...birthTimeDoubt];
+  const partnerDoubt =
+    ctx.partnerBirthTimeAccuracy === 'unknown'
+      ? (ctx.partnerBirthTimeDoubt ?? []).map((l) => `PARTNER — ${l}`)
+      : [];
+  if (partnerDoubt.length > 0) planetCondition = [...planetCondition, ...partnerDoubt];
+
   return clampWindowsToYear(
     {
       ...scores,
       ...(birthTimeCaveat ? { birthTimeCaveat } : {}),
       ...(partnerCaveat ? { partnerBirthTimeCaveat: partnerCaveat } : {}),
+      ...(birthTimeDoubt.length > 0 ? { birthTimeDoubt } : {}),
+      ...(partnerDoubt.length > 0 ? { partnerBirthTimeDoubt: partnerDoubt } : {}),
       ...(planetCondition.length > 0 ? { planetCondition } : {}),
       ...(planetStrength.length > 0 ? { planetStrength } : {}),
       ...(vakriFacts.length > 0 ? { vakriFacts } : {}),
@@ -718,6 +734,13 @@ export async function buildReportScoreContext(
     ...personContext,
     userAnswers,
   };
+  // An unknown birth time: is the Moon in doubt, and how far can the dasha dates move?
+  if (ctx.personBirthTimeAccuracy === 'unknown') {
+    ctx.personBirthTimeDoubt = await birthTimeDoubtFacts(ctx.chart, ctx.personTimeOfBirth);
+  }
+  if (ctx.partnerBirthTimeAccuracy === 'unknown') {
+    ctx.partnerBirthTimeDoubt = await birthTimeDoubtFacts(partnerChart, ctx.partnerTimeOfBirth);
+  }
   // A generator that needs extra ephemeris work before its pure computeScores (kp_annual's
   // KP-ayanamsa Placidus chart) does it here, so all four call sites — generation, every
   // read, regeneration and chat grounding — see the same facts without each remembering to.

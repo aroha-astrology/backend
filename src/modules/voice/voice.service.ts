@@ -162,7 +162,9 @@ async function personaFor(
 ) {
   if (!user) return null;
   const features = await resolveFeaturesForUser(userId).catch(() => null);
-  return features?.['chat.personas']?.enabled === true ? resolvePersona(user.personaId, user.uiSkin) : null;
+  return features?.['chat.personas']?.enabled === true
+    ? resolvePersona(user.personaId, user.uiSkin)
+    : null;
 }
 
 /** The Gemini Live voice for the reader's guide; undefined keeps the server's default voice. */
@@ -194,6 +196,7 @@ async function buildSessionInstruction(
     doshas: ready ? await withLiveSaturnTransits(kundli.doshaData ?? null) : null,
     ashtakavarga: ready ? (kundli.ashtakavargaData ?? null) : null,
     timeZone: user?.currentTimezone ?? null,
+    birthTime: { accuracy: profile.birthTimeAccuracy, timeOfBirth: profile.timeOfBirth },
   };
 
   const chartFacts = await buildGroundingFacts(groundingSource).catch(() => []);
@@ -244,10 +247,7 @@ async function trialMinutesLeft(userId: string): Promise<number> {
  * PASS_PERIOD_DAYS days.
  */
 export async function voiceMembership(userId: string): Promise<VoiceAccess> {
-  const [pass, trialLeft] = await Promise.all([
-    passEntitlement(userId),
-    trialMinutesLeft(userId),
-  ]);
+  const [pass, trialLeft] = await Promise.all([passEntitlement(userId), trialMinutesLeft(userId)]);
   if (!pass || !pass.features.includes('voiceCall')) {
     if (trialLeft > 0) return { passMember: false, freeSince: null, passFreeMinutes: 0, trialLeft };
     throw Errors.forbidden('PASS_REQUIRED');
@@ -523,7 +523,9 @@ export async function endVoiceSessionForUser(
   // With money.voiceSlices on, read the session BEFORE it is ended: its last-updated time is when the
   // last minute was granted, which is what the unused slices are measured from.
   const slicing =
-    connected === false ? null : await sliceSettlementInputs(userId, voiceSessionId).catch(() => null);
+    connected === false
+      ? null
+      : await sliceSettlementInputs(userId, voiceSessionId).catch(() => null);
 
   if (connected === false) {
     try {
@@ -570,9 +572,11 @@ export async function endVoiceSessionForUser(
   }
 
   if (row && transcript && transcript.length > 0) {
-    await persistTranscript(userId, row.birthProfileId, transcript, row.id).catch((err: unknown) => {
-      logger.warn({ err, userId, voiceSessionId }, 'voice: failed to persist call transcript');
-    });
+    await persistTranscript(userId, row.birthProfileId, transcript, row.id).catch(
+      (err: unknown) => {
+        logger.warn({ err, userId, voiceSessionId }, 'voice: failed to persist call transcript');
+      },
+    );
   }
 }
 
@@ -703,7 +707,13 @@ async function persistTranscript(
             user?.relationshipStatus ?? null,
             todayFor(user?.currentTimezone),
           )
-        : await extractTurnFacts(userText, assistantText, existingFacts, userId, user?.relationshipStatus ?? null);
+        : await extractTurnFacts(
+            userText,
+            assistantText,
+            existingFacts,
+            userId,
+            user?.relationshipStatus ?? null,
+          );
       return factsToSave(newFacts, memoryOn, user?.currentTimezone, new Date());
     })
     .then((newFacts) => {

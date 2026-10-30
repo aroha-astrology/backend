@@ -436,6 +436,10 @@ export async function generateHoroscopeSummary(ctx: HoroscopeContext): Promise<H
     yogas: (ctx.kundli?.yogas as Record<string, unknown> | undefined) ?? null,
     doshas: (ctx.kundli?.doshas as Record<string, unknown> | undefined) ?? null,
     ashtakavarga: (ctx.kundli?.ashtakavarga as Record<string, unknown> | undefined) ?? null,
+    birthTime: {
+      accuracy: ctx.profile.birthTimeAccuracy as string | null | undefined,
+      timeOfBirth: ctx.profile.timeOfBirth as string | null | undefined,
+    },
   };
 
   // The deterministic synthesis engine (Kakshya/Vedha/Tara Bala/Dasha-transit
