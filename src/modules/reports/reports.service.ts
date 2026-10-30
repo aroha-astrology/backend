@@ -19,7 +19,7 @@ import '../reports/generators/index.js';
 import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
 import { unknownBirthTimeGuidance } from '../../lib/birth-time-window.js';
-import { birthTimeDoubtFacts } from '../../lib/birth-time-doubt.js';
+import { birthTimeDoubtFacts, markBirthTimeUnknown } from '../../lib/birth-time-doubt.js';
 import { Errors } from '../../lib/errors.js';
 import { getRequestContext, runWithRequestContext } from '../../lib/request-context.js';
 import { MODEL } from '../../config/llm.js';
@@ -734,11 +734,14 @@ export async function buildReportScoreContext(
     ...personContext,
     userAnswers,
   };
-  // An unknown birth time: is the Moon in doubt, and how far can the dasha dates move?
+  // An unknown birth time: no divisional charts (their Lagna swings with the minute), and is the Moon
+  // in doubt, and how far can the dasha dates move?
   if (ctx.personBirthTimeAccuracy === 'unknown') {
+    ctx.chart = markBirthTimeUnknown(ctx.chart);
     ctx.personBirthTimeDoubt = await birthTimeDoubtFacts(ctx.chart, ctx.personTimeOfBirth);
   }
   if (ctx.partnerBirthTimeAccuracy === 'unknown') {
+    ctx.partnerChart = markBirthTimeUnknown(ctx.partnerChart ?? null);
     ctx.partnerBirthTimeDoubt = await birthTimeDoubtFacts(partnerChart, ctx.partnerTimeOfBirth);
   }
   // A generator that needs extra ephemeris work before its pure computeScores (kp_annual's

@@ -44,6 +44,9 @@ export function computeReportVargas(
   chart: Record<string, unknown> | null,
   keys: DivisionalChart[],
 ): ReportVarga[] {
+  // A chart cast from a part-of-day window (markBirthTimeUnknown) has no reliable varga Lagna.
+  if (chart?.birthTimeUnknown === true) return [];
+
   const rawPlanets = (chart?.planets ?? []) as Array<Record<string, unknown>>;
   const asc = chart?.ascendant as Record<string, unknown> | undefined;
   const ascSignIndex = asc?.signIndex != null ? Number(asc.signIndex) : null;

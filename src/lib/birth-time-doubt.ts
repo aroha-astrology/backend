@@ -132,6 +132,15 @@ export function birthTimeDoubt(
 }
 
 /** The year of a date the engine hands back as a Date, or as an ISO string once saved. */
+/**
+ * A copy of a chart tagged as cast from a part-of-day window, not a clock time. Report code that would
+ * read a divisional chart (computeReportVargas) gives none for a tagged chart: every varga Lagna swings
+ * with the exact minute. The original chart is left as it is.
+ */
+export function markBirthTimeUnknown<T extends Record<string, unknown> | null>(chart: T): T {
+  return chart ? { ...chart, birthTimeUnknown: true } : chart;
+}
+
 function year(d: unknown): string {
   if (d instanceof Date) return Number.isNaN(d.getTime()) ? '' : String(d.getUTCFullYear());
   return d ? String(d).slice(0, 4) : '';
