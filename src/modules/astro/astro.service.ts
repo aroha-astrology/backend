@@ -1683,7 +1683,12 @@ export async function* chatStream(
     // Sade Sati is transit-dependent — recompute it live so chat never tells
     // a user their (possibly months/years-stale) cached phase.
     doshas:
-      kundli?.status === 'ready' ? await withLiveSaturnTransits(kundli.doshaData ?? null) : null,
+      kundli?.status === 'ready'
+        ? await withLiveSaturnTransits(kundli.doshaData ?? null, undefined, {
+            chart: kundli.chartData,
+            ashtakavarga: kundli.ashtakavargaData,
+          })
+        : null,
     ashtakavarga: kundli?.status === 'ready' ? (kundli.ashtakavargaData ?? null) : null,
     timeZone: user?.currentTimezone ?? null,
     birthTime: profile
@@ -1836,18 +1841,15 @@ export async function* chatStream(
   // never blocks a reply.
   const duePredictionFacts = await buildDuePredictionFacts(userId).catch(() => []);
 
-  const extraFacts = [
-    ...profileFacts,
-    ...savedProfilesFacts,
-    ...panchangFacts,
-    ...eclipseFacts,
-    ...varshphalFacts,
-    ...duePredictionFacts,
-    ...secondChartFacts,
-    ...matchReportFacts,
-    ...relocationFacts,
-    ...purchaseFacts,
-  ];
+  // Grouped by how often they change, so the fixed parts lead the block (a prompt cache can reuse
+  // them) and nothing here is ever cut: assembleChatFacts gives up varga lines instead. Relocation,
+  // purchases and the profile used to sit at the tail of a flat list and were cut silently once a
+  // second chart or match report pushed it past 36,000 characters (audit M1).
+  const extraFacts = {
+    account: [...profileFacts, ...purchaseFacts, ...savedProfilesFacts],
+    daily: [...panchangFacts, ...eclipseFacts, ...varshphalFacts, ...duePredictionFacts],
+    perMessage: [...secondChartFacts, ...matchReportFacts, ...relocationFacts],
+  };
 
   // Collects the dated windows this reply is grounded on so they can be recorded
   // as falsifiable claims once the stream completes (below).

@@ -4,6 +4,7 @@ import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import { dateToJulianDay, calculatePlanetPositions } from '../calculations/planetPositions';
 import { istDateString } from '../../astro-tools/transit-events.js';
 import { detectRealSadeSati } from './saturnPhaseTimeline';
+import { saturnStrengthFor, sadeSatiCycle, type SaturnNatal } from './saturnStrength.js';
 
 /**
  * Sade Sati Detection
@@ -153,7 +154,13 @@ export async function getCurrentSaturnLongitude(asOf: Date = new Date()): Promis
   );
   const positions = await calculatePlanetPositions(jd);
   const saturn = positions.find((p) => p.planet === 'Saturn');
-  return saturn?.longitude ?? 0;
+  // It used to fall back to 0 degrees, a Saturn in Aries that was never there (audit L4).
+  if (!saturn || !Number.isFinite(saturn.longitude)) {
+    throw new Error(
+      `getCurrentSaturnLongitude: the ephemeris returned no Saturn for ${asOf.toISOString()}`,
+    );
+  }
+  return saturn.longitude;
 }
 
 /**
@@ -172,8 +179,53 @@ export function breaksSentence(stays: SaturnStay[], what: string): string {
  * Sade Sati detection using Saturn's live transiting position (see
  * `getCurrentSaturnLongitude`), with its dates, retrograde breaks and the
  * next Sade Sati from Saturn's real sign changes.
+ *
+ * With the birth chart (`natal`), it also says what softens or sharpens it in
+ * each of its three signs (`strength`) and which Sade Sati of life it is
+ * (`cycle`, and `next.cycle`); see saturnStrength.ts.
  */
-export async function detectCurrentSadeSati(moonSign: ZodiacSign, asOf?: Date): Promise<SadeSati> {
+export async function detectCurrentSadeSati(
+  moonSign: ZodiacSign,
+  asOf?: Date,
+  natal?: SaturnNatal | null,
+): Promise<SadeSati> {
+  const result = await sadeSatiAt(moonSign, asOf);
+  if (!natal?.chart) return result;
+  const moonIndex = getSignIndex(moonSign);
+  const strength = saturnStrengthFor(
+    natal,
+    [(moonIndex + 11) % 12, moonIndex, (moonIndex + 1) % 12],
+    getSignIndex(result.saturnSign),
+  );
+  const [cycle, nextCycle] = await Promise.all([
+    result.startDate && result.endDate
+      ? sadeSatiCycle(
+          natal,
+          moonIndex,
+          new Date(result.startDate),
+          new Date(result.endDate),
+          getCurrentSaturnLongitude,
+        )
+      : null,
+    result.next
+      ? sadeSatiCycle(
+          natal,
+          moonIndex,
+          new Date(result.next.startDate),
+          new Date(result.next.endDate),
+          getCurrentSaturnLongitude,
+        )
+      : null,
+  ]);
+  return {
+    ...result,
+    ...(strength ? { strength } : {}),
+    cycle: result.active || result.resumesOn ? cycle : null,
+    ...(result.next ? { next: { ...result.next, cycle: nextCycle } } : {}),
+  };
+}
+
+async function sadeSatiAt(moonSign: ZodiacSign, asOf?: Date): Promise<SadeSati> {
   const saturnLongitude = await getCurrentSaturnLongitude(asOf);
   const estimate = detectSadeSati(moonSign, saturnLongitude);
 

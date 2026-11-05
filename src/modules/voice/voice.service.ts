@@ -34,7 +34,11 @@ import { Errors } from '../../lib/errors.js';
 import { env } from '../../config/env.js';
 import { mintLiveToken } from '../../lib/llm/gemini-live-token.js';
 import { buildVoiceSystemInstruction } from '../../lib/swarm/agents/scholar.js';
-import { buildGroundingFacts, buildProfileFacts } from '../../lib/chat-grounding.js';
+import {
+  assembleChatFacts,
+  buildGroundingSections,
+  buildProfileFacts,
+} from '../../lib/chat-grounding.js';
 import type { GroundingSource } from '../../lib/chat-grounding.js';
 import { getKundliForUser, withLiveSaturnTransits } from '../kundli/kundli.service.js';
 import { getUserFacts, saveUserFacts } from '../astro/user-facts.repo.js';
@@ -193,19 +197,27 @@ async function buildSessionInstruction(
     yogas: ready ? (kundli.yogaData ?? null) : null,
     // Sade Sati is transit-dependent — recompute it live, same as chat (astro.service.ts), so a
     // voice call never states a possibly months-stale cached phase.
-    doshas: ready ? await withLiveSaturnTransits(kundli.doshaData ?? null) : null,
+    doshas: ready
+      ? await withLiveSaturnTransits(kundli.doshaData ?? null, undefined, {
+          chart: kundli.chartData,
+          ashtakavarga: kundli.ashtakavargaData,
+        })
+      : null,
     ashtakavarga: ready ? (kundli.ashtakavargaData ?? null) : null,
     timeZone: user?.currentTimezone ?? null,
     birthTime: { accuracy: profile.birthTimeAccuracy, timeOfBirth: profile.timeOfBirth },
   };
 
-  const chartFacts = await buildGroundingFacts(groundingSource).catch(() => []);
+  const chartSections = await buildGroundingSections(groundingSource).catch(() => null);
   const profileFacts = user ? buildProfileFacts(profile, user) : [];
   const persona = await personaFor(userId, user);
 
   return buildVoiceSystemInstruction({
     personaVoiceStyle: persona && !isDefaultVoice(persona) ? persona.voiceStyle : null,
-    groundingFacts: [...chartFacts, ...profileFacts],
+    // Same order and budget as chat (audit M1): profile facts before the vargas, nothing cut.
+    groundingFacts: chartSections
+      ? assembleChatFacts({ ...chartSections, account: profileFacts })
+      : profileFacts,
     // A profile that onboarded without an exact birth time will never have a
     // chart at all — distinct from one still generating, and the prompt picks
     // different copy for each.

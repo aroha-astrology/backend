@@ -3,6 +3,7 @@ import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import { istDateString } from '../../astro-tools/transit-events.js';
 import { getCurrentSaturnLongitude, breaksSentence } from './sadeSati.js';
 import { detectRealDhaiya, type DhaiyaWindow } from './saturnPhaseTimeline.js';
+import { saturnStrengthFor, type SaturnNatal } from './saturnStrength.js';
 
 /**
  * Shani Dhaiya (Shani ki Dhaiya, small panoti)
@@ -24,7 +25,8 @@ const NAMES: Record<'4th' | '8th', string> = {
   '8th': 'Ashtama Shani',
 };
 
-const AREAS: Record<'4th' | '8th', string> = {
+/** What each Dhaiya traditionally presses on; chat and reports quote the same words (audit M5). */
+export const DHAIYA_AREAS: Record<'4th' | '8th', string> = {
   '4th': 'home, mother, property and peace of mind',
   '8th': 'health, sudden obstacles and long-held plans',
 };
@@ -37,8 +39,16 @@ function signFromMoon(moonSignIndex: number, house: '4th' | '8th'): ZodiacSign {
   return ZODIAC_SIGNS[(moonSignIndex + (house === '4th' ? 3 : 7)) % 12]!;
 }
 
-/** Dhaiya as of `asOf` (now by default) for a natal Moon sign. */
-export async function detectCurrentDhaiya(moonSign: ZodiacSign, asOf?: Date): Promise<Dhaiya> {
+/**
+ * Dhaiya as of `asOf` (now by default) for a natal Moon sign. With the birth
+ * chart (`natal`) it also says what softens or sharpens it in its sign (the
+ * running or paused Dhaiya's, else the next one's); see saturnStrength.ts.
+ */
+export async function detectCurrentDhaiya(
+  moonSign: ZodiacSign,
+  asOf?: Date,
+  natal?: SaturnNatal | null,
+): Promise<Dhaiya> {
   const moonSignIndex = ZODIAC_SIGNS.indexOf(moonSign);
   const saturnSign = ZODIAC_SIGNS[Math.floor((await getCurrentSaturnLongitude(asOf)) / 30) % 12]!;
 
@@ -56,12 +66,27 @@ export async function detectCurrentDhaiya(moonSign: ZodiacSign, asOf?: Date): Pr
   const liveHouse = ((ZODIAC_SIGNS.indexOf(saturnSign) - moonSignIndex + 12) % 12) + 1;
   const live = liveHouse === 4 ? '4th' : liveHouse === 8 ? '8th' : null;
   let window = real.window;
-  if (live && (!window || houseOf(window.phase) !== live) && real.next && houseOf(real.next.phase) === live) {
+  if (
+    live &&
+    (!window || houseOf(window.phase) !== live) &&
+    real.next &&
+    houseOf(real.next.phase) === live
+  ) {
     window = real.next; // entered later today
   }
   const active = window !== null && live === houseOf(window.phase);
   if (window && !active && !real.resumesOn) window = null; // left earlier today
   const house = window ? houseOf(window.phase) : null;
+
+  const strengthHouse = house ?? (real.next ? houseOf(real.next.phase) : null);
+  const strength =
+    natal?.chart && strengthHouse
+      ? saturnStrengthFor(
+          natal,
+          [ZODIAC_SIGNS.indexOf(signFromMoon(moonSignIndex, strengthHouse))],
+          ZODIAC_SIGNS.indexOf(saturnSign),
+        )
+      : null;
 
   const base = {
     saturnSign,
@@ -70,6 +95,7 @@ export async function detectCurrentDhaiya(moonSign: ZodiacSign, asOf?: Date): Pr
     endDate: window?.endDate ?? null,
     stays: window?.stays ?? [],
     resumesOn: active ? null : real.resumesOn,
+    ...(strength ? { strength } : {}),
   };
 
   if (window && house && active) {
@@ -82,7 +108,7 @@ export async function detectCurrentDhaiya(moonSign: ZodiacSign, asOf?: Date): Pr
       next: null,
       description:
         `Saturn is transiting ${saturnSign}, the ${house} sign from your Moon in ${moonSign}: ` +
-        `Shani's Dhaiya (${NAMES[house]}), traditionally a time of pressure around ${AREAS[house]}. ` +
+        `Shani's Dhaiya (${NAMES[house]}), traditionally a time of pressure around ${DHAIYA_AREAS[house]}. ` +
         `It runs from ${istDateString(window.startDate)} to ${istDateString(window.endDate)}.` +
         breaksSentence(window.stays, 'the Dhaiya'),
     };

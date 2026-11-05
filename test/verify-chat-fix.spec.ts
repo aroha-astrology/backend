@@ -6,7 +6,13 @@ import {
   calculateAshtakavarga,
 } from '../src/lib/astro-engine/index.js';
 import { analyzeAllDoshas } from '../src/lib/astro-engine/doshas/index.js';
-import { buildGroundingFacts, type GroundingSource } from '../src/lib/chat-grounding.js';
+import {
+  buildGroundingFacts,
+  buildGroundingSections,
+  assembleChatFacts,
+  CHAT_CONTEXT_MAX_CHARS,
+  type GroundingSource,
+} from '../src/lib/chat-grounding.js';
 import { buildChatMessages } from '../src/lib/swarm/agents/scholar.js';
 import { newState } from '../src/lib/swarm/state.js';
 
@@ -164,5 +170,112 @@ describe('verify: childbirth chat-fix end-to-end', () => {
     );
 
     console.log('=== TEMPORAL_ANCHOR (tail of prompt) ===\n', systemPromptContent.slice(-900));
+  });
+
+  // Audit M1: with a second chart and a match report attached, the flat block went past the
+  // 36,000-character cut and the reader's relocation and purchase facts at its tail were silently
+  // dropped. The full composite block must keep every account and per-message fact, put the fixed
+  // parts first (so a prompt cache can reuse them) and give up the least-used varga lines instead.
+  it('keeps the whole composite block: second chart + match report + relocation + purchases', async () => {
+    const chart = await calculateChart(1985, 3, 12, 4, 32, 5.5, 19.076, 72.8777);
+    const moon = chart.planets.find((p) => p.planet === 'Moon')!;
+    const saturn = chart.planets.find((p) => p.planet === 'Saturn')!;
+    const vimshottari = calculateVimshottariDasha(
+      moon.longitude,
+      new Date(Date.UTC(1985, 2, 11, 23, 2)),
+    );
+    const src: GroundingSource = {
+      chart: chart as unknown as Record<string, unknown>,
+      dasha: { vimshottari },
+      yogas: { yogas: detectAllYogas(chart) },
+      doshas: analyzeAllDoshas(chart, saturn.longitude) as unknown as Record<string, unknown>,
+      ashtakavarga: calculateAshtakavarga(chart) as unknown as Record<string, unknown>,
+    };
+    const now = new Date();
+    const sections = await buildGroundingSections(src, undefined, now);
+
+    const lines = (tag: string, n: number) =>
+      Array.from({ length: n }, (_, i) => `${tag} ${i + 1}: ${'detail '.repeat(28)}`);
+    const PROFILE = 'User profile: gender female, relationship status married';
+    const PURCHASE = 'The user ALREADY PURCHASED the Career Report (read it on 2 Oct 2026)';
+    const PANCHANG = "Today's Panchang: Tithi Panchami";
+    const RELOCATION = 'Relocation scan: Bengaluru strengthens the 10th house';
+    // Real worst case: the synastry line plus the Bonds lines (capped at 4 + 2) is about 2,000
+    // characters; a match report (score, risk lines, one 240-character opening per section) about
+    // 4,000. On main this pushed the flat block past 36,000 and cut the purchases at its tail.
+    const secondChart = lines('SECOND CHART fact', 9);
+    const matchReport = lines('MATCH REPORT fact', 19);
+
+    const assembled = assembleChatFacts({
+      ...sections,
+      account: [PROFILE, PURCHASE],
+      daily: [PANCHANG],
+      perMessage: [...secondChart, ...matchReport, RELOCATION],
+    });
+    const messages = buildChatMessages(
+      newState({ requestId: 'm1' }),
+      'Should I move?',
+      assembled,
+      false,
+      'en',
+      [],
+      now,
+    );
+    const ctx = messages.find((m) => m.content.includes('<astro_context>'))!.content;
+
+    // The same inputs as main assembled them (chart facts, then a flat list of extras) are cut,
+    // and the purchase line at the tail is lost: the bug this fixes.
+    const flat = [
+      ...sections.core,
+      ...sections.reference,
+      ...sections.live,
+      PROFILE,
+      PANCHANG,
+      ...secondChart,
+      ...matchReport,
+      RELOCATION,
+      PURCHASE,
+    ];
+    const flatCtx = buildChatMessages(
+      newState({ requestId: 'm1-old' }),
+      'Should I move?',
+      flat,
+      false,
+      'en',
+      [],
+      now,
+    ).find((m) => m.content.includes('<astro_context>'))!.content;
+    expect(flatCtx).toContain('[truncated]');
+    expect(flatCtx).not.toContain(PURCHASE);
+
+    // Nothing is cut, and every account and per-message fact is there.
+    expect(ctx).not.toContain('[truncated]');
+    for (const f of [PROFILE, PURCHASE, PANCHANG, RELOCATION, ...secondChart, ...matchReport]) {
+      expect(ctx, f.slice(0, 30)).toContain(f);
+    }
+    // Every core chart fact survives; only reference lines (vargas etc.) may give way.
+    for (const f of sections.core) expect(ctx).toContain(f);
+    expect(assembled.join('\n').length).toBeLessThanOrEqual(CHAT_CONTEXT_MAX_CHARS);
+
+    // Fixed parts first: profile and purchases before the vargas; per-message facts last.
+    const at = (s: string) => assembled.indexOf(s);
+    const firstVarga = assembled.findIndex((f) => /^D\d+ \(/.test(f));
+    expect(at(PURCHASE)).toBeLessThan(firstVarga);
+    expect(at(PROFILE)).toBeLessThan(firstVarga);
+    expect(at(secondChart[0]!)).toBeGreaterThan(at(PANCHANG));
+    expect(at(RELOCATION)).toBe(assembled.length - 1);
+
+    // The least-used vargas went first; the marriage and career charts stayed.
+    expect(assembled.some((f) => f.startsWith('D108 ('))).toBe(false);
+    expect(assembled.some((f) => f.startsWith('D9 ('))).toBe(true);
+    expect(assembled.some((f) => f.startsWith('D10 ('))).toBe(true);
+    console.log(
+      '=== M1 composite block (chars) ===',
+      assembled.map((f) => `- ${f}`).join('\n').length,
+      'reference lines kept',
+      sections.reference.filter((f) => assembled.includes(f)).length,
+      'of',
+      sections.reference.length,
+    );
   });
 });

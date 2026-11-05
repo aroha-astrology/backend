@@ -106,6 +106,16 @@ vi.mock('../src/modules/astro/user-facts.repo.js', () => ({
 
 vi.mock('../src/lib/chat-grounding.js', () => ({
   buildGroundingFacts: state.buildGroundingFacts,
+  // Voice reads the facts in sections and assembles them like chat (audit M1).
+  buildGroundingSections: async (...args: unknown[]) => ({
+    core: await state.buildGroundingFacts(...args),
+    reference: [],
+    live: [],
+  }),
+  assembleChatFacts: (p: { core: string[]; account?: string[] }) => [
+    ...p.core,
+    ...(p.account ?? []),
+  ],
   buildProfileFacts: state.buildProfileFacts,
 }));
 
@@ -165,13 +175,11 @@ beforeEach(() => {
 
   // A Silver member whose free minutes for this period are already spent, so a
   // minute is a wallet minute unless a test says otherwise (`withFreeMinutes`).
-  state.passEntitlement
-    .mockReset()
-    .mockResolvedValue({
-      tier: 'silver',
-      voiceFreeMinutes: PASS_VOICE_FREE_MINUTES,
-      features: ['timeline', 'bonds', 'voiceCall'],
-    });
+  state.passEntitlement.mockReset().mockResolvedValue({
+    tier: 'silver',
+    voiceFreeMinutes: PASS_VOICE_FREE_MINUTES,
+    features: ['timeline', 'bonds', 'voiceCall'],
+  });
   state.findActivePass.mockReset().mockResolvedValue({ periodStart: PERIOD_START });
   state.claimFreeVoiceMinute.mockReset().mockResolvedValue(null);
   state.countFreeVoiceMinutesUsed.mockReset().mockResolvedValue(PASS_VOICE_FREE_MINUTES);
@@ -205,7 +213,9 @@ beforeEach(() => {
     .mockResolvedValue({ token: 'tok-abc', expiresAt: 1_800_000, model: 'live-model' });
 
   state.getKundliForUser.mockReset().mockResolvedValue({ status: 'ready', chartData: {} });
-  state.withLiveSaturnTransits.mockReset().mockImplementation((doshaData) => Promise.resolve(doshaData));
+  state.withLiveSaturnTransits
+    .mockReset()
+    .mockImplementation((doshaData) => Promise.resolve(doshaData));
   state.getUserFacts.mockReset().mockResolvedValue([]);
   state.buildGroundingFacts.mockReset().mockResolvedValue(['Ascendant: Leo']);
   state.buildProfileFacts.mockReset().mockReturnValue([]);
@@ -591,7 +601,9 @@ describe('the voice trial: 3 free minutes once for every user', () => {
       passUsed += 1;
       return Promise.resolve(claimed(VOICE_TRIAL_MINUTES + passUsed));
     });
-    state.claimVoiceMinute.mockResolvedValue(claimed(VOICE_TRIAL_MINUTES + PASS_VOICE_FREE_MINUTES + 1));
+    state.claimVoiceMinute.mockResolvedValue(
+      claimed(VOICE_TRIAL_MINUTES + PASS_VOICE_FREE_MINUTES + 1),
+    );
 
     const grants = [await startVoiceSession(USER, profile, 'en')];
     for (let i = 0; i < VOICE_TRIAL_MINUTES + PASS_VOICE_FREE_MINUTES; i++) {
@@ -1086,7 +1098,12 @@ describe('voice calls in 15-second slices (money.voiceSlices)', () => {
   it('hanging up within the first slice gets 15 coins back', async () => {
     sliced({ secondsAgo: 4 });
     await endVoiceSessionForUser(USER, SESSION);
-    expect(state.addWalletBalance).toHaveBeenCalledWith(USER, 1500, 'refund:voice_slice', expect.anything());
+    expect(state.addWalletBalance).toHaveBeenCalledWith(
+      USER,
+      1500,
+      'refund:voice_slice',
+      expect.anything(),
+    );
   });
 
   it('a minute used to the end gives nothing back', async () => {

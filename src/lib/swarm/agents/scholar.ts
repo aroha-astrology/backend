@@ -7,7 +7,9 @@ import { CHAT_PROFILE, ROUTING_PROFILE, MODEL } from '../../../config/llm.js';
 import { modelForUser } from '../../../modules/features/features.service.js';
 import { logger } from '../../logger.js';
 import {
-  buildGroundingFacts,
+  buildGroundingSections,
+  assembleChatFacts,
+  CHAT_CONTEXT_MAX_CHARS,
   type GroundingSource,
   type DomainWindowSink,
 } from '../../chat-grounding.js';
@@ -169,6 +171,14 @@ const VOICE_DELIVERY = `Delivery matters as much as the words. Speak the way an 
  * a user's correction something to check rather than argue with or give in to.
  */
 const TRANSIT_DATES = `When a planet changes sign, changes nakshatra, or turns retrograde or direct, the date and time come ONLY from the UPCOMING TRANSITS lines in the chart data. Quote them exactly (date, time with the zone written next to it, sign, nakshatra, and the house it means for this user), never work a date out and never recall one from memory. A transit date is a computed fact, not a prediction, so DATE_SPECIFICITY's "window, not a day" rule does not apply to it. Build any timing reading on these real dates. When the line you quote says "BUT ONLY BRIEFLY", the entry does not last: you MUST say so in the same sentence as the date, and time the lasting effect from the date it settles — a reading built on the first entry alone is wrong. Shape it like this, filled in only from the chart data: "<Planet> enters <sign> on <date> at <time> <zone>, but only briefly — it slips back into <previous sign> on <date> and settles in <sign> for good from <date>, so the lasting shift for your <area> starts then." Do this every time that line is the answer, including when you are confirming a date the user gave you. If the user names a different date, check it against those lines and say plainly which is right, with the date and time. If the event lies beyond the dates listed, say it is further out than you can time precisely rather than guessing.`;
+
+/**
+ * Audit M2/M3/M4: asked "how tough will this Saturn period be?", the live model gave 0 of 3 answers
+ * that named anything softening it for an Aquarius rising reader, for whom Saturn is the Lagna lord.
+ * With the "Saturn transit strength" line in the facts it still answered in general themes, so this
+ * says when to use it.
+ */
+const SATURN_WEIGHT = `When the user asks how hard, how long or how bad a Sade Sati, a Shani Dhaiya or the current Saturn period is for them, the answer rests on two chart lines: the Sade Sati or Shani Dhaiya line (which phase, what it presses on, its dates) and the "Saturn transit strength" line (what softens or sharpens it for THIS reader). Name, in plain words, the one or two factors from the strength line that matter most and which way they tip it — for example "Saturn rules your rising sign, so it tends to discipline rather than punish you" or "Saturn gets little support from your chart in that sign, so expect the pressure to be felt". Never call it uniformly "severe": how hard it is depends on those factors. Count the house from the Moon, as the "How to read Saturn" line says. Give a number (bindus) only if the user asks for the detail.`;
 
 const HEDGE_LANGUAGE = `Never state outcomes as guaranteed certainties — use "this favors," "this is a strong window for," rather than "you will."`;
 
@@ -646,6 +656,7 @@ const SHARED_PROMPT_RULES = [
   HEDGE_LANGUAGE,
   DATE_SPECIFICITY,
   TRANSIT_DATES,
+  SATURN_WEIGHT,
   PAST_IS_FOR_VERIFICATION_ONLY,
   RANKED_WINDOWS,
   HOPEFUL_TIMING,
@@ -727,7 +738,9 @@ const USER_FACTS_PREAMBLE =
   `now stand by. Only if the user themselves raises the earlier date do you need to address it directly ` +
   `— otherwise don't volunteer that an earlier date existed at all.`;
 
-const MAX_CONTEXT_CHARS = 36000;
+// The last-resort cut. assembleChatFacts (chat-grounding.ts) keeps <astro_context> under it by
+// dropping the least-used varga lines first, so on chat it should never fire (audit M1).
+const MAX_CONTEXT_CHARS = CHAT_CONTEXT_MAX_CHARS;
 function clip(s: string, max = MAX_CONTEXT_CHARS): string {
   return s.length > max ? `${s.slice(0, max)}…[truncated]` : s;
 }
@@ -849,7 +862,10 @@ export function buildChatMessages(
 
   messages.push({ role: 'system', content: systemPrompt(now, outputStyle, timeZone) });
   if (personaStyle) {
-    messages.push({ role: 'system', content: `YOUR GUIDE IDENTITY (name and manner only): ${personaStyle}` });
+    messages.push({
+      role: 'system',
+      content: `YOUR GUIDE IDENTITY (name and manner only): ${personaStyle}`,
+    });
   }
 
   const noChartFallback = birthTimeUnknown
@@ -1532,6 +1548,13 @@ export async function* streamDirectModeParagraph(
   }
 }
 
+/** Chat facts beyond the chart, by how often they change; see scholarStream. */
+export interface ChatExtraFacts {
+  account?: string[];
+  daily?: string[];
+  perMessage?: string[];
+}
+
 /**
  * Async generator that streams scholar chat tokens, grounded in the user's
  * comprehensive chart facts (see lib/chat-grounding.ts).
@@ -1544,7 +1567,12 @@ export async function* scholarStream(
   signal?: AbortSignal,
   locale: string = 'en',
   userFacts: UserFact[] = [],
-  extraFacts: string[] = [],
+  /**
+   * Facts beyond the chart, grouped so assembleChatFacts can order them static-first and keep them
+   * all: account (profile, purchases, saved profiles), daily (panchang, eclipses, varshphal, due
+   * predictions), perMessage (second chart, match report, relocation). A plain list counts as account.
+   */
+  extraFacts: string[] | ChatExtraFacts = [],
   displayName?: string | null,
   /** Collects the dated windows this reply is grounded on, so the caller can
    * record them as falsifiable predictions. Optional — omitting it is the old
@@ -1558,10 +1586,11 @@ export async function* scholarStream(
   logger.debug({ requestId: state.requestId }, 'scholar: starting stream');
 
   const now = new Date();
-  const groundingFacts = [
-    ...(await buildGroundingFacts(groundingSource, undefined, now, null, windowSink)),
-    ...extraFacts,
-  ];
+  const extras: ChatExtraFacts = Array.isArray(extraFacts) ? { account: extraFacts } : extraFacts;
+  const groundingFacts = assembleChatFacts({
+    ...(await buildGroundingSections(groundingSource, undefined, now, null, windowSink)),
+    ...extras,
+  });
   const messages = buildChatMessages(
     state,
     userMessage,

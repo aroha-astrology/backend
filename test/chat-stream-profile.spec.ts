@@ -181,7 +181,9 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     expect(state.getUserFacts).toHaveBeenCalledWith('user-1', null);
 
     const call = state.scholarStream.mock.calls[0] as any[];
-    const [, , , birthTimeUnknown, , , userFacts, extraFacts] = call;
+    const [, , , birthTimeUnknown, , , userFacts, extras] = call;
+    // Grouped since audit M1 (account / daily / perMessage); profile facts are account facts.
+    const extraFacts = (extras as { account: string[] }).account;
     expect(birthTimeUnknown).toBe(false);
     expect(userFacts).toEqual([{ fact: 'likes hiking', followUpQuestion: null }]);
     expect(extraFacts).toContain("User's gender: male");
@@ -235,14 +237,16 @@ describe('chatStream — grounds on the profile passed in by the caller (no inte
     });
 
     const call = state.scholarStream.mock.calls[0] as any[];
-    const [, , , birthTimeUnknown, , , userFacts, extraFacts] = call;
+    const [, , , birthTimeUnknown, , , userFacts, extras] = call;
+    // Grouped since audit M1 (account / daily / perMessage); profile facts are account facts.
+    const extraFacts = (extras as { account: string[] }).account;
     expect(birthTimeUnknown).toBe(true); // from the profile, not the account's 'exact'
     expect(userFacts).toEqual([{ fact: 'loves painting', followUpQuestion: null }]);
     expect(extraFacts).toContain("User's gender: female");
     expect(extraFacts).not.toContain("User's gender: male");
     // relationshipStatus is the ACCOUNT OWNER's (no per-profile copy), so a reading about
     // another profile must not be told it — it used to describe that person as married.
-    expect((extraFacts as string[]).some((f) => f.includes('married'))).toBe(false);
+    expect(extraFacts.some((f) => f.includes('married'))).toBe(false);
   });
 
   it('falls back to primary-profile scoping when no profile is passed in at all (e.g. a caller that never resolved one)', async () => {
@@ -328,7 +332,7 @@ describe('chatStream — tells the astrologer what the question cost', () => {
     );
   };
   const pricingFacts = () =>
-    ((state.scholarStream.mock.calls[0] as any[])[7] as string[]).filter((f) =>
+    ((state.scholarStream.mock.calls[0] as any[])[7] as { account: string[] }).account.filter((f) =>
       f.startsWith('CHAT PRICING'),
     );
 

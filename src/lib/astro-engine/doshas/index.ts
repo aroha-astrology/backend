@@ -20,6 +20,16 @@ import { detectGrahanDosha } from './grahanDosha';
 import { detectGuruChandalDosha } from './guruChandal';
 
 /**
+ * The natal Moon sign. A chart without a Moon is broken: it used to be read as
+ * an Aries Moon, which gave a Sade Sati and Dhaiya that were never real (audit L4).
+ */
+function natalMoonSign(chartData: ChartData): ZodiacSign {
+  const moon = chartData.planets?.find((p) => p.planet === 'Moon');
+  if (!moon?.sign) throw new Error('analyzeAllDoshas: the chart has no Moon');
+  return moon.sign;
+}
+
+/**
  * Analyze all doshas for a given chart.
  *
  * @param chartData - The natal chart data
@@ -28,8 +38,7 @@ import { detectGuruChandalDosha } from './guruChandal';
  * @returns Complete dosha analysis
  */
 export function analyzeAllDoshas(chartData: ChartData, saturnLongitude: number): DoshaAnalysis {
-  const moon = chartData.planets.find((p) => p.planet === 'Moon');
-  const moonSign: ZodiacSign = moon ? moon.sign : 'Aries';
+  const moonSign = natalMoonSign(chartData);
 
   return {
     mangal: detectMangalDosha(chartData),
@@ -53,14 +62,15 @@ export async function analyzeAllDoshasAt(
   chartData: ChartData,
   asOf?: Date,
 ): Promise<DoshaAnalysis> {
-  const moon = chartData.planets.find((p) => p.planet === 'Moon');
-  const moonSign: ZodiacSign = moon ? moon.sign : 'Aries';
+  const moonSign = natalMoonSign(chartData);
   // Saturn's place is not needed for the six natal doshas; 0 is a placeholder
   // for the Sade Sati slot, which is replaced on the next line.
   const natal = analyzeAllDoshas(chartData, 0);
+  // With the chart, both also carry what softens or sharpens them and the
+  // Sade Sati cycle number (saturnStrength.ts).
   const [sadeSati, dhaiya] = await Promise.all([
-    detectCurrentSadeSati(moonSign, asOf),
-    detectCurrentDhaiya(moonSign, asOf),
+    detectCurrentSadeSati(moonSign, asOf, { chart: chartData }),
+    detectCurrentDhaiya(moonSign, asOf, { chart: chartData }),
   ]);
   return { ...natal, sadeSati, dhaiya };
 }

@@ -240,8 +240,33 @@ export interface SadeSati {
   stays?: SaturnStay[];
   /** Set while Saturn is out of the triad on a retrograde break: when it comes back. */
   resumesOn?: Date | null;
-  /** When no Sade Sati is running: the next one. */
-  next?: { startDate: Date; endDate: Date } | null;
+  /** When no Sade Sati is running: the next one, with which Sade Sati of life it is when known. */
+  next?: { startDate: Date; endDate: Date; cycle?: number | null } | null;
+  /**
+   * Which Sade Sati of the reader's life the running (or paused) one is: 1, 2, 3... A Sade Sati
+   * already running at birth counts as the 1st. Null without a birth chart.
+   */
+  cycle?: number | null;
+  /** What softens or sharpens it, for the three signs of the Sade Sati. Absent without a birth chart. */
+  strength?: SaturnTransitStrength;
+}
+
+/** Saturn's natal support in one sign it transits (Phaladeepika 23.11, 23.20, 26.31). */
+export interface SaturnSignStrength {
+  sign: ZodiacSign;
+  /** Saturn's own Bhinnashtakavarga bindus in this sign, 0-8. */
+  saturnBindus: number;
+  /** Sarvashtakavarga total in this sign (28 is the classical benchmark). */
+  sarvaBindus: number;
+  dignity: 'exalted' | 'own' | 'friend' | 'neutral' | 'enemy' | 'debilitated';
+  /** Saturn is in this sign right now. */
+  now: boolean;
+}
+
+export interface SaturnTransitStrength {
+  /** Saturn's role for this Lagna: Lagna lord (Capricorn, Aquarius) or yogakaraka (Taurus, Libra). */
+  lagnaRole: 'lagna-lord' | 'yogakaraka' | null;
+  signs: SaturnSignStrength[];
 }
 
 export interface SaturnStay {
@@ -269,6 +294,8 @@ export interface Dhaiya {
   /** When no Dhaiya is running: the next one. */
   next: { phase: '4th' | '8th'; startDate: Date; endDate: Date } | null;
   description: string;
+  /** What softens or sharpens it, for the Dhaiya's sign (running, paused or next). Absent without a birth chart. */
+  strength?: SaturnTransitStrength;
 }
 
 export interface PitraDosha {

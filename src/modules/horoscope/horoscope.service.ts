@@ -128,7 +128,10 @@ export async function buildHoroscopeContext(
   // anchor the synthesis uses), not the copy saved when the chart was built:
   // that one was an estimate, frozen at the build date, and had no Dhaiya.
   const doshas = ready
-    ? await withLiveSaturnTransits(kundli.doshaData ?? null, new Date(`${forDate}T12:00:00.000Z`))
+    ? await withLiveSaturnTransits(kundli.doshaData ?? null, new Date(`${forDate}T12:00:00.000Z`), {
+        chart: kundli.chartData,
+        ashtakavarga: kundli.ashtakavargaData,
+      })
     : null;
   return {
     userId: user.id,

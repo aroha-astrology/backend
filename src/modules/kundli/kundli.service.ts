@@ -20,7 +20,14 @@ import {
   HASH_BASELINE_CALCULATION_VERSION,
   HASH_BASELINE_EPHEMERIS_VERSION,
 } from '../../lib/astro-engine/version.js';
-import type { DoshaAnalysis, ZodiacSign, Yoga } from '@aroha-astrology/shared';
+import type {
+  AshtakavargaData,
+  ChartData,
+  DoshaAnalysis,
+  ZodiacSign,
+  Yoga,
+} from '@aroha-astrology/shared';
+import type { SaturnNatal } from '../../lib/astro-engine/doshas/saturnStrength.js';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -594,13 +601,25 @@ export async function getKundliForUser(
 export async function withLiveSaturnTransits(
   doshaData: Record<string, unknown> | null,
   asOf?: Date,
+  /**
+   * The saved chart (and its Ashtakavarga): with it, Sade Sati and Dhaiya also carry what softens
+   * or sharpens them and the Sade Sati cycle number (audit M2/M3, spec review G6).
+   */
+  natal?: { chart: unknown; ashtakavarga?: unknown } | null,
 ): Promise<Record<string, unknown> | null> {
   if (!doshaData) return doshaData;
   const cached = doshaData.sadeSati as { moonSign?: ZodiacSign } | undefined;
   if (!cached?.moonSign) return doshaData;
+  const saturnNatal: SaturnNatal | null =
+    natal?.chart && Array.isArray((natal.chart as ChartData).planets)
+      ? {
+          chart: natal.chart as ChartData,
+          ashtakavarga: (natal.ashtakavarga as AshtakavargaData | null | undefined) ?? null,
+        }
+      : null;
   const [sadeSati, dhaiya] = await Promise.allSettled([
-    detectCurrentSadeSati(cached.moonSign, asOf),
-    detectCurrentDhaiya(cached.moonSign, asOf),
+    detectCurrentSadeSati(cached.moonSign, asOf, saturnNatal),
+    detectCurrentDhaiya(cached.moonSign, asOf, saturnNatal),
   ]);
   const live: Record<string, unknown> = { ...doshaData };
   if (sadeSati.status === 'fulfilled') live.sadeSati = sadeSati.value;
@@ -627,7 +646,10 @@ export async function toKundliDto(row: KundliRow): Promise<KundliDto> {
     chart: row.chartData,
     dasha: row.dashaData,
     yogas: row.yogaData,
-    doshas: await withLiveSaturnTransits(row.doshaData),
+    doshas: await withLiveSaturnTransits(row.doshaData, undefined, {
+      chart: row.chartData,
+      ashtakavarga: row.ashtakavargaData,
+    }),
     generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
   };
 }

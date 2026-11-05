@@ -15,6 +15,8 @@ import { dashaLordTransitQuality, detectDoubleTransit, SIGNS } from './astro-too
 import { unknownBirthTimeGuidance } from './birth-time-window.js';
 import { birthTimeDoubtFacts } from './birth-time-doubt.js';
 import { findPeriodAsOf, type RawDashaPeriod } from './astro-tools/dasha-reading.js';
+import { yoginiSubPeriodsOf } from './astro-engine/dashas/yogini.js';
+import { DHAIYA_AREAS } from './astro-engine/doshas/dhaiya.js';
 import {
   dateToJulianDay,
   calculatePlanetPositions,
@@ -212,13 +214,31 @@ function ordinal(n: number): string {
   return `${n}${suffix}`;
 }
 
-function currentYoginiFact(dasha: Record<string, unknown> | null): string | null {
+/**
+ * The Yogini period covering `asOf`, worked out from the saved dates, as
+ * currentDasha does for Vimshottari. The saved `currentYogini` and `isActive`
+ * flags are frozen at the day the chart was built (audit M10); they are used
+ * only when the saved list of periods is missing.
+ */
+function currentYoginiFact(dasha: Record<string, unknown> | null, asOf: Date): string | null {
   const y = (dasha?.yogini ?? {}) as Record<string, unknown>;
-  const cy = y.currentYogini as Record<string, unknown> | undefined;
+  const periods = y.yoginis as RawDashaPeriod[] | undefined;
+  const cy = ((periods && findPeriodAsOf(periods, asOf)) ?? y.currentYogini) as
+    | Record<string, unknown>
+    | undefined;
   if (!cy || !cy.planet || !cy.deity) return null;
 
-  const antardashas = (cy.subPeriods ?? []) as Array<Record<string, unknown>>;
-  const activeAntar = antardashas.find((sp) => sp.isActive);
+  const saved = (cy.subPeriods ?? []) as RawDashaPeriod[];
+  const antardashas = (
+    saved.length > 0
+      ? saved
+      : yoginiSubPeriodsOf(cy as Parameters<typeof yoginiSubPeriodsOf>[0], asOf)
+  ) as RawDashaPeriod[];
+  const activeAntar = (
+    periods
+      ? findPeriodAsOf(antardashas, asOf)
+      : (antardashas as Array<Record<string, unknown>>).find((sp) => sp.isActive)
+  ) as Record<string, unknown> | undefined;
 
   let fact = `Concurrent Yogini Dasha (micro-cycle confirmation): ${String(cy.deity)} (${String(cy.planet)})`;
   if (activeAntar && activeAntar.deity) {
@@ -318,12 +338,14 @@ function parseDateMidday(dateStr: string): Date {
 }
 
 /**
- * Human labels for the houses covered in the comprehensive house-lord pass.
- * House 1 (self) is covered via the Ascendant fact; house 3 (siblings/
- * courage) isn't part of the requested domain set and is omitted.
+ * Human labels for the house-lord pass, all 12 houses. The 1st and 3rd used to
+ * be left out, so the model was never told the Lagna lord, the first thing an
+ * astrologer looks at (audit M4).
  */
 const HOUSE_LABELS: Record<number, string> = {
+  1: 'self, body, overall direction',
   2: 'wealth',
+  3: 'siblings, courage, effort, short travel',
   4: 'home/property/vehicles',
   5: 'education/creativity',
   6: 'health',
@@ -371,26 +393,42 @@ function factBreaks(stays: unknown, zone: string): string {
     : '';
 }
 
-/** Sade Sati as a fact line: phase, real dates, retrograde breaks, or the next one. */
+/** " (the 2nd Sade Sati of this life)" when the engine worked out the cycle, else ''. */
+function cycleText(cycle: unknown): string {
+  return typeof cycle === 'number' && cycle > 0
+    ? ` (the ${ordinal(cycle)} Sade Sati of this life)`
+    : '';
+}
+
+/**
+ * Sade Sati as a fact line: phase, real dates, retrograde breaks, or the next one.
+ * The engine's fixed severity ("severe" for every peak) is no longer printed: how hard it is
+ * depends on the "Saturn transit strength" line below it (audit M2).
+ */
 function sadeSatiFact(sadeSati: Record<string, unknown>, zone: string): string {
   const range = factRange(sadeSati.startDate, sadeSati.endDate, zone);
   if (sadeSati.active) {
-    return `Sade Sati: ${String(sadeSati.phase)} phase (Saturn's 7.5-year transit over the 12th, 1st and 2nd signs from the Moon; Saturn now in ${String(
+    const phase = String(sadeSati.phase);
+    return `Sade Sati: ${phase} phase${
+      phase === 'peak' ? ' (traditionally the hardest phase)' : ''
+    }${cycleText(sadeSati.cycle)} (Saturn's 7.5-year transit over the 12th, 1st and 2nd signs from the Moon; Saturn now in ${String(
       sadeSati.saturnSign,
-    )}), ${String(sadeSati.severity)} severity${range ? `, runs ${range}` : ''}${factBreaks(
+    )})${range ? `, runs ${range}` : ''}${factBreaks(
       sadeSati.stays,
       zone,
     )} — traditionally a period calling for extra care and resilience`;
   }
   const resumes = factDate(sadeSati.resumesOn, zone);
   if (resumes) {
-    return `Sade Sati: on a retrograde break, not active today (Saturn has stepped back into ${String(
+    return `Sade Sati: on a retrograde break, not active today${cycleText(sadeSati.cycle)} (Saturn has stepped back into ${String(
       sadeSati.saturnSign,
     )}); it resumes on ${resumes}${range ? `, and the whole Sade Sati runs ${range}` : ''}`;
   }
   const next = sadeSati.next as Record<string, unknown> | null | undefined;
   const nextRange = next ? factRange(next.startDate, next.endDate, zone) : '';
-  return `Sade Sati: not currently active${nextRange ? `; the next Sade Sati runs ${nextRange}` : ''}`;
+  return `Sade Sati: not currently active${
+    nextRange ? `; the next Sade Sati${cycleText(next?.cycle)} runs ${nextRange}` : ''
+  }`;
 }
 
 const DHAIYA_NAME: Record<string, string> = {
@@ -409,11 +447,17 @@ function dhaiyaFact(dhaiya: Record<string, unknown>, zone: string): string {
   const range = factRange(dhaiya.startDate, dhaiya.endDate, zone);
   if (dhaiya.active) {
     const phase = String(dhaiya.phase);
+    // The themes, so the model never reads an 8th-house Dhaiya with 4th-house themes (audit M5).
+    const areas = DHAIYA_AREAS[phase as '4th' | '8th'];
+    const weight =
+      phase === '8th'
+        ? 'traditionally the harder of the two'
+        : 'traditionally the milder of the two';
     return `Shani Dhaiya: ACTIVE — ${phase} from the Moon (${DHAIYA_NAME[phase] ?? 'Dhaiya'}; Saturn in ${String(
       dhaiya.saturnSign,
-    )}, Moon sign ${String(dhaiya.moonSign)}), ${String(dhaiya.severity)} severity${
-      range ? `, runs ${range}` : ''
-    }${factBreaks(dhaiya.stays, zone)}. ${rule}`;
+    )}, Moon sign ${String(dhaiya.moonSign)}), ${weight}${
+      areas ? `, pressing on ${areas} (the ${phase} from the Moon's themes)` : ''
+    }${range ? `, runs ${range}` : ''}${factBreaks(dhaiya.stays, zone)}. ${rule}`;
   }
   const resumes = factDate(dhaiya.resumesOn, zone);
   if (resumes) {
@@ -434,8 +478,88 @@ function dhaiyaFact(dhaiya: Record<string, unknown>, zone: string): string {
   )})${nextText}. ${rule}`;
 }
 
-/** Present/absent facts for the 7 traditional doshas plus Shani Dhaiya, mirroring each one's own computed shape. */
-export function doshaFacts(doshas: Record<string, unknown> | null, zone: string): string[] {
+const SATURN_DIGNITY_TEXT: Record<string, string> = {
+  exalted: 'Saturn is exalted here',
+  own: "Saturn's own sign",
+  friend: 'friendly sign for Saturn',
+  neutral: 'neutral sign for Saturn',
+  enemy: 'enemy sign for Saturn',
+  debilitated: 'Saturn is debilitated here',
+};
+
+/** Phaladeepika 23.11, 23.20 and 26.31, checked on wisdomlib (Sastri's translation) 2026-11-04. */
+const SATURN_STRENGTH_RULE =
+  "Classical reading (Phaladeepika 23.11, 23.20, 26.31): 5 or more of 8 of Saturn's own bindus in a sign help, 4 or fewer bring strain (0 or 1 the hardest); a Sarva above 28 helps, below 28 adds strain; a transit in Saturn's own sign or exaltation does no harm. Weigh these with the phase: they change how hard it is, they do not switch it off.";
+
+/**
+ * What softens or sharpens the running (or paused) Sade Sati or Dhaiya, read from the engine's
+ * `strength` (doshas/saturnStrength.ts), so chat, reports and the Kundli card quote the same
+ * numbers (audit M2/M3, spec review G6). Null when neither is running or paused.
+ */
+function saturnStrengthFact(
+  doshas: Record<string, unknown>,
+  ascSign: string | null,
+): string | null {
+  const running = [doshas.sadeSati, doshas.dhaiya].find((d) => {
+    const x = d as Record<string, unknown> | undefined;
+    return x && (x.active || x.resumesOn) && x.strength;
+  }) as Record<string, unknown> | undefined;
+  const strength = running?.strength as
+    | { lagnaRole?: string | null; signs?: Array<Record<string, unknown>> }
+    | undefined;
+  if (!strength?.signs?.length) return null;
+
+  const signs = strength.signs
+    .map(
+      (s) =>
+        `${String(s.sign)}${s.now ? ' (where Saturn is now)' : ''}: Saturn's own bindus ${String(
+          s.saturnBindus,
+        )} of 8, Sarva ${String(s.sarvaBindus)}, ${SATURN_DIGNITY_TEXT[String(s.dignity)] ?? String(s.dignity)}`,
+    )
+    .join('; ');
+  const rising = ascSign ? ` for ${ascSign} rising` : '';
+  const role =
+    strength.lagnaRole === 'lagna-lord'
+      ? `Saturn is the Lagna lord${rising}, which in common practice softens its hard transits for this reader.`
+      : strength.lagnaRole === 'yogakaraka'
+        ? `Saturn is the yogakaraka${rising} (it rules both a kendra and a trikona), which in common practice softens its hard transits for this reader.`
+        : `Saturn has no special role${rising}.`;
+  return `Saturn transit strength: ${signs}. ${role} ${SATURN_STRENGTH_RULE}`;
+}
+
+/**
+ * One line saying which count to use. The live model read the same Saturn as "your 2nd house"
+ * (from the Lagna) in two answers and "your 8th house" (from the Moon) in the third (audit M5).
+ */
+function saturnFrameFact(
+  doshas: Record<string, unknown>,
+  ascSignIndex: number | null,
+): string | null {
+  const ref = (doshas.dhaiya ?? doshas.sadeSati) as Record<string, unknown> | undefined;
+  const saturn = SIGNS.indexOf(String(ref?.saturnSign ?? ''));
+  const moon = SIGNS.indexOf(String(ref?.moonSign ?? ''));
+  if (saturn < 0 || moon < 0) return null;
+  const fromMoon = ordinal(((saturn - moon + 12) % 12) + 1);
+  const lagna =
+    ascSignIndex != null
+      ? ` and the ${ordinal(((saturn - ascSignIndex + 12) % 12) + 1)} from the Lagna`
+      : '';
+  return `How to read Saturn: Saturn is now in ${SIGNS[saturn]}, the ${fromMoon} from the natal Moon${lagna}. Sade Sati, Dhaiya and Saturn's general transit results are read from the natal Moon (here the ${fromMoon} from the natal Moon)${
+    ascSignIndex != null
+      ? `; use the count from the Lagna (the ${ordinal(((saturn - ascSignIndex + 12) % 12) + 1)} from the Lagna) only for a question about that house`
+      : ''
+  }. Use one count per answer and say which one.`;
+}
+
+/**
+ * Present/absent facts for the 7 traditional doshas plus Shani Dhaiya, mirroring each one's own
+ * computed shape. With the Lagna sign index, the Saturn lines also say which house count to use.
+ */
+export function doshaFacts(
+  doshas: Record<string, unknown> | null,
+  zone: string,
+  ascSignIndex: number | null = null,
+): string[] {
   if (!doshas) return [];
   const facts: string[] = [];
 
@@ -472,6 +596,16 @@ export function doshaFacts(doshas: Record<string, unknown> | null, zone: string)
 
   const dhaiya = doshas.dhaiya as Record<string, unknown> | undefined;
   if (dhaiya) facts.push(dhaiyaFact(dhaiya, zone));
+
+  if (sadeSati || dhaiya) {
+    const strength = saturnStrengthFact(
+      doshas,
+      ascSignIndex != null ? (SIGNS[ascSignIndex] ?? null) : null,
+    );
+    if (strength) facts.push(strength);
+    const frame = saturnFrameFact(doshas, ascSignIndex);
+    if (frame) facts.push(frame);
+  }
 
   const pitra = doshas.pitra as Record<string, unknown> | undefined;
   if (pitra) {
@@ -1486,7 +1620,7 @@ export interface DomainWindowSink {
  */
 const HOROSCOPE_DOMAINS: readonly Domain[] = ['health', 'career', 'love', 'wealth', 'education'];
 
-export async function buildGroundingFacts(
+export async function buildGroundingSections(
   src: GroundingSource,
   asOfDate?: string,
   now: Date = new Date(),
@@ -1514,7 +1648,7 @@ export async function buildGroundingFacts(
    * are completely unaffected.
    */
   scope: 'full' | 'periodic' = 'full',
-): Promise<string[]> {
+): Promise<GroundingSections> {
   const houses = getHouses(src.chart);
   const planets = getPlanets(src.chart);
   // The reading is FOR asOfDate when the caller supplies one (horoscope's
@@ -1563,7 +1697,7 @@ export async function buildGroundingFacts(
     );
   }
 
-  const yoginiFact = currentYoginiFact(src.dasha);
+  const yoginiFact = currentYoginiFact(src.dasha, dashaAsOf);
   if (yoginiFact) facts.push(yoginiFact);
 
   // --- Ascendant ----------------------------------------------------------
@@ -1574,24 +1708,25 @@ export async function buildGroundingFacts(
   // --- Key yogas (all domains, strongest first) ---------------------------
   for (const y of relevantYogas(src.yogas)) facts.push(`Significant Planetary Combination: ${y}`);
 
-  // --- House-lord + sign for the domain-relevant houses --------------------
-  // 7th and 10th additionally get their lord's natal-placement dignity, as
-  // those were already computed for the (former) love/career personas.
-  const tenthLord = houseLord(houses, 10)?.lord;
-  const seventhLord = houseLord(houses, 7)?.lord;
-  for (const houseNum of [2, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+  // --- House lord + sign for all 12 houses --------------------------------
+  // The 1st (named as the Lagna lord), 7th and 10th also get their lord's
+  // natal placement and dignity.
+  for (const houseNum of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
     const h = houseLord(houses, houseNum);
     if (!h) continue;
     facts.push(
-      `${ordinal(houseNum)} house (${HOUSE_LABELS[houseNum]}) sign: ${h.sign}, lord: ${h.lord}`,
+      `${ordinal(houseNum)} house (${HOUSE_LABELS[houseNum]}) sign: ${h.sign}, lord: ${h.lord}${
+        houseNum === 1 ? ' (the Lagna lord)' : ''
+      }`,
     );
 
-    if (houseNum === 7 || houseNum === 10) {
+    if (houseNum === 1 || houseNum === 7 || houseNum === 10) {
       const placement = planetPlacement(planets, h.lord);
       if (placement) {
         const dignity = dashaLordTransitQuality(h.lord, placement.signIndex);
+        const role = houseNum === 1 ? 'Lagna lord' : `${ordinal(houseNum)} lord`;
         facts.push(
-          `${h.lord} (${ordinal(houseNum)} lord) is natally placed in house ${placement.house} (${placement.sign}) — ${dignity.dignity} dignity`,
+          `${h.lord} (${role}) is natally placed in house ${placement.house} (${placement.sign}) — ${dignity.dignity} dignity`,
         );
       }
     }
@@ -1651,6 +1786,11 @@ export async function buildGroundingFacts(
   const jupiterNatal = planetPlacement(planets, 'Jupiter');
   if (jupiterNatal)
     facts.push(`Jupiter is natally in house ${jupiterNatal.house} (${jupiterNatal.sign})`);
+  // The other three of the nine, so every planet's plain placement is stated (audit M4).
+  for (const name of ['Mercury', 'Rahu', 'Ketu']) {
+    const p = planetPlacement(planets, name);
+    if (p) facts.push(`${name} is natally in house ${p.house} (${p.sign})`);
+  }
 
   // --- Transits as of the target date (timing signals, not persona-gated) --
   const transitLabel = asOfDate ? `as of ${asOfDate}` : 'currently';
@@ -1821,7 +1961,7 @@ export async function buildGroundingFacts(
   facts.push(...chartConditionFacts(src.chart));
 
   // --- All 7 traditional doshas ---------------------------------------------
-  facts.push(...doshaFacts(src.doshas, zone));
+  facts.push(...doshaFacts(src.doshas, zone, ascSignIndex));
 
   // --- Ashtakavarga summary ---------------------------------------------------
   facts.push(...ashtakavargaFacts(src.ashtakavarga, ascSignIndex));
@@ -1834,25 +1974,141 @@ export async function buildGroundingFacts(
   // doc comment above) — skipped under 'periodic' scope, kept for 'full'
   // (chat/voice/reports, which must be able to answer a direct question about
   // any of them).
+  // Reference lines: fixed for life, and the first to give way when chat is over budget
+  // (assembleChatFacts).
+  const reference: string[] = [];
   if (scope === 'full') {
-    facts.push(...bhinnashtakavargaFacts(src.ashtakavarga, planets));
+    reference.push(...bhinnashtakavargaFacts(src.ashtakavarga, planets));
 
     // --- All 24 divisional (varga) charts ------------------------------------
     // Not for an unknown birth time: every varga Lagna (and most placements) swings with the exact
     // minute, the guidance already tells the model not to cite them, and they are about 4,500
     // characters of the 36,000 the chat block is cut at (audit L5, measured 4,512).
-    if (!timeUnknown) facts.push(...divisionalChartFacts(src.chart));
+    if (!timeUnknown) reference.push(...divisionalChartFacts(src.chart));
 
     // --- Chandra/Surya Kundali (Moon/Sun as 1st house) -----------------------
-    facts.push(...chandraSuryaKundaliFacts(planets));
+    reference.push(...chandraSuryaKundaliFacts(planets));
 
     // --- Jaimini special points (Arudha Lagna, Upapada Lagna, Karakamsha) ----
     // All three are counted from the Lagna or the Navamsa, so they go with the vargas.
-    if (!timeUnknown) facts.push(...jaiminiPointFacts(src.chart, ascSignIndex));
+    if (!timeUnknown) reference.push(...jaiminiPointFacts(src.chart, ascSignIndex));
   }
 
   // --- Full Gochar (all-planet live transit snapshot) -------------------------
-  facts.push(...(await fullGocharFacts(ascSignIndex, moon?.signIndex ?? null, asOfDate)));
+  const live = await fullGocharFacts(ascSignIndex, moon?.signIndex ?? null, asOfDate);
 
-  return facts;
+  return { core: facts, reference, live };
+}
+
+/**
+ * The chart facts as one list, in the order every surface has always read them: core facts, then
+ * the reference lines (vargas etc.), then the live Gochar snapshot. Horoscope, reports and the
+ * other readers use this; chat and voice use buildGroundingSections + assembleChatFacts so the
+ * reference lines can give way when the block is over budget.
+ */
+export async function buildGroundingFacts(
+  ...args: Parameters<typeof buildGroundingSections>
+): Promise<string[]> {
+  const s = await buildGroundingSections(...args);
+  return [...s.core, ...s.reference, ...s.live];
+}
+
+/** The chart facts in three parts; see buildGroundingFacts and assembleChatFacts. */
+export interface GroundingSections {
+  /** Every fact that must reach the model, in order. */
+  core: string[];
+  /** Fixed-for-life detail (Bhinnashtakavarga per planet, 24 vargas, Chandra/Surya, Jaimini). */
+  reference: string[];
+  /** The live Gochar snapshot. */
+  live: string[];
+}
+
+/**
+ * The cut scholar.ts applies to the <astro_context> block (it used to live there as
+ * MAX_CONTEXT_CHARS). assembleChatFacts keeps the block under it so the cut never fires.
+ */
+export const CHAT_CONTEXT_MAX_CHARS = 36000;
+
+/**
+ * Reference lines that give way first when chat is over budget, least used first: the vargas no
+ * reading leans on, then the rest, with the marriage (D9), career (D10) and birth (D1) charts last.
+ */
+const REFERENCE_DROP_ORDER = [
+  'D108',
+  'D81',
+  'D21',
+  'D14',
+  'D45',
+  'D40',
+  'D11',
+  'D27',
+  'D8',
+  'D6',
+  'D5',
+  'D3',
+  'D20',
+  'D16',
+  'D60',
+  'D30',
+  'D12',
+  'D24',
+  'D4',
+  'D2',
+  'Bhinna',
+  'Chandra',
+  'Surya',
+  'Arudha',
+  'Upapada',
+  'Atmakaraka',
+  'D7',
+  'D10',
+  'D9',
+  'D1',
+];
+
+function referenceRank(line: string): number {
+  const key =
+    /^(D\d+) \(/.exec(line)?.[1] ??
+    (/raw Bhinnashtakavarga bindus/.test(line) ? 'Bhinna' : (line.split(/[\s(]/)[0] ?? ''));
+  const i = REFERENCE_DROP_ORDER.indexOf(key);
+  return i < 0 ? REFERENCE_DROP_ORDER.length : i;
+}
+
+/**
+ * The chat/voice <astro_context> fact list, in an order a prompt cache can reuse and within
+ * CHAT_CONTEXT_MAX_CHARS (audit M1).
+ *
+ * Order: the fixed parts first (core chart facts, the account's profile, purchases and saved
+ * profiles, the reference lines), then what changes by the day (the Gochar snapshot, panchang,
+ * eclipses, varshphal, due predictions), and last what depends on this one message (a second
+ * chart, a match report, a relocation scan).
+ *
+ * Budget: when the whole list is over the cut, reference lines are dropped, least used first,
+ * until it fits. Core, account, daily and per-message facts are never dropped here; scholar.ts's
+ * clip() stays as the last-resort guard.
+ */
+export function assembleChatFacts(
+  parts: GroundingSections & { account?: string[]; daily?: string[]; perMessage?: string[] },
+  maxChars: number = CHAT_CONTEXT_MAX_CHARS,
+): string[] {
+  const { core, reference, live, account = [], daily = [], perMessage = [] } = parts;
+  // The "CHART DATA:" header plus "- " and a newline per line, as buildChatMessages writes it.
+  const size = (lines: string[]) =>
+    'CHART DATA:'.length + lines.reduce((n, l) => n + l.length + 3, 0);
+  const room = maxChars - size([...core, ...account, ...live, ...daily, ...perMessage]);
+  const dropped = new Set<string>();
+  let total = reference.reduce((n, l) => n + l.length + 3, 0);
+  for (const line of [...reference].sort((a, b) => referenceRank(a) - referenceRank(b))) {
+    if (total <= room) break;
+    dropped.add(line);
+    total -= line.length + 3;
+  }
+  return [
+    ...core,
+    ...account,
+    ...reference.filter((l) => !dropped.has(l)),
+    ...live,
+    ...daily,
+    ...perMessage,
+  ];
 }

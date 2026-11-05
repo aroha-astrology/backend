@@ -159,7 +159,10 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
 // "hold carefully" panels, and the Marriage Report no longer calls it present.
 // 10 (2026-10-30, audit Sprint 3): readers with an unknown birth time get the Moon doubt (sign or
 // star may differ inside their window) and the dasha margin in every report.
-const CONTENT_VERSION = 10;
+// 11 (2026-11-05, audit Sprint 4): the Sade Sati / Dhaiya lines carry what softens or sharpens them
+// (Saturn's bindus and Sarva in its signs, dignity, Lagna role), the Sade Sati cycle number, the
+// Dhaiya themes, and which house count to use; no flat "severe".
+const CONTENT_VERSION = 11;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
@@ -204,8 +207,14 @@ async function withUpcomingTransits(
   const lines = await upcomingTransitFactsNow(new Date(), ascIndex, moonIndex);
   // The same Sade Sati and Dhaiya lines chat gets, so a report and chat never disagree about
   // whether Saturn's 7.5-year or 2.5-year transit is running, or when.
-  const saturn = doshaFacts(doshaData, INDIA_TZ).filter(
-    (f) => f.startsWith('Sade Sati:') || f.startsWith('Shani Dhaiya:'),
+  // Also what softens or sharpens it and which house count to use, the same lines chat reads
+  // (audit M2/M3/M5).
+  const saturn = doshaFacts(doshaData, INDIA_TZ, ascIndex).filter(
+    (f) =>
+      f.startsWith('Sade Sati:') ||
+      f.startsWith('Shani Dhaiya:') ||
+      f.startsWith('Saturn transit strength:') ||
+      f.startsWith('How to read Saturn:'),
   );
   if (lines.length === 0 && saturn.length === 0) return scores;
   const existing = (scores as { planetCondition?: string[] }).planetCondition ?? [];
@@ -727,7 +736,10 @@ export async function buildReportScoreContext(
       typeof row.input?.timeAccuracy === 'string' ? row.input.timeAccuracy : null,
     // Sade Sati and Dhaiya as of today: the saved copy is from the day the
     // kundli was made, so a report could name a Sade Sati that had ended.
-    doshaData: await withLiveSaturnTransits(kundli?.doshaData ?? null),
+    doshaData: await withLiveSaturnTransits(kundli?.doshaData ?? null, undefined, {
+      chart: kundli?.chartData ?? null,
+      ashtakavarga: kundli?.ashtakavargaData ?? null,
+    }),
     yogaData: kundli?.yogaData ?? null,
     ashtakavargaData: kundli?.ashtakavargaData ?? null,
     dashaData: kundli?.dashaData ?? null,

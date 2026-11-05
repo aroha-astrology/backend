@@ -107,6 +107,28 @@ export function buildYoginiAntardashas(
   return periods;
 }
 
+/**
+ * The antardashas of a SAVED Yogini mahadasha, rebuilt for `asOf`. Only the
+ * mahadasha running on the day the chart was built has its sub-periods saved,
+ * so once it ends the saved data has none for the one running now (audit M10).
+ * The birth period is rebuilt from its full start, as calculateYoginiDasha does.
+ */
+export function yoginiSubPeriodsOf(
+  period: { deity?: unknown; startDate: unknown; endDate: unknown; fullStartDate?: unknown },
+  asOf: Date,
+): DashaPeriod[] {
+  const idx = YOGINI_NAMES.indexOf(String(period.deity));
+  const start = new Date(String(period.startDate));
+  const end = new Date(String(period.endDate));
+  if (idx < 0 || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+  const fullStart = period.fullStartDate ? new Date(String(period.fullStartDate)) : null;
+  return fullStart && !Number.isNaN(fullStart.getTime())
+    ? buildYoginiAntardashas(idx, fullStart, YOGINI_YEARS[idx], asOf).filter(
+        (p) => p.endDate.getTime() > start.getTime(),
+      )
+    : buildYoginiAntardashas(idx, start, (end.getTime() - start.getTime()) / MS_PER_YEAR, asOf);
+}
+
 // ============================================================
 // Main entry point
 // ============================================================

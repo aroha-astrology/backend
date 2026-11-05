@@ -269,6 +269,16 @@ Read in the translation (E-BPHS-ENG, vol 2, chapter 46). Confidence 80.
 - **Against the engine:** it called a pair Maha only when both houses were kendras or trikonas, so the pairs with the 2nd or 11th (14 of the 28) were reported as "Kahala" benefic; it called an exchange between two of the 6th, 8th, 12th a "special" Dainya that gains through adversity (not in this text); and it skipped an exchange whenever the same two planets had already been checked for another house pair (so a Mars-Jupiter exchange between the 1st and 12th was missed once the 1st-9th pair had been tried). **Fixed (YG6):** the three classes of the text; the planet-pair skip is removed. Khala is typed 'benefic' only because the type list has no "mixed"; its description says mixed.
 - **Supports:** YGA-PAR, confidence 78.
 
+### PD-23.11, 23.20, 26.31 — what softens or sharpens a Saturn transit (audit Sprint 4, 2026-11-05)
+
+- **Edition read:** E-PHALA's translator (V. Subrahmanya Sastri), read on wisdomlib (ch. 23 doc1621595, ch. 26 doc1621598), 2026-11-04.
+- **23.11:** a sign with no benefic dot in a planet's own Ashtakavarga means loss of life when that planet transits it; 1 to 8 dots give, in order, destruction or loss, expenditure, fear, fear, the desired object, a damsel, wealth or property, a kingdom or high position.
+- **23.20:** in the Sarvashtakavarga, a sign with more than 28 dots gives good transits; fewer gives danger or sorrow in proportion.
+- **26.31:** "A planet in an untoward Bhava, if he is in exaltation or Swakshetra, will not do any harm."
+- **Says:** Saturn's own bindus and the Sarva in a sign, and its dignity there, decide how a Saturn transit through that sign turns out.
+- **Does not say:** that Saturn as Lagna lord (Capricorn, Aquarius) or yogakaraka (Taurus, Libra) softens Sade Sati or Dhaiya. The engine reports that role and chat calls it common practice. No cycle-number rule either: the cycle number (`sadeSatiCycle`) is a count of dates, not a reading.
+- **Supports:** `doshas/saturnStrength.ts` (`strength` on Sade Sati and Dhaiya) and the "Saturn transit strength" chat/report line: 5 or more of 8 help, 4 or fewer strain, Sarva above or below 28, own sign or exaltation does no harm. The external review's "2 or fewer sharpens" is not what 23.11 says (3 and 4 are fear too).
+
 ### Not found in the texts opened (label only)
 
 - **Budhaditya, Chandra-Mangala, Lakshmi:** the names do not occur in the BPHS translation or in the Phaladeepika text searched. The rules stay as they are; the provenance entries say so (YG6, label only).
