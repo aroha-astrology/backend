@@ -86,6 +86,7 @@ describe('costByAgent returns cached tokens and voice seconds', () => {
         paidCachedTokensIn: 0,
         cacheReportedCalls: 0,
         audioSeconds: '180',
+        paidAudioSeconds: '120',
       },
     ]);
     const [chat, voice] = await costByAgent(range);
@@ -95,7 +96,7 @@ describe('costByAgent returns cached tokens and voice seconds', () => {
       cacheReportedCalls: 3,
       audioSeconds: 0,
     });
-    expect(voice).toMatchObject({ audioSeconds: 180 });
+    expect(voice).toMatchObject({ audioSeconds: 180, paidAudioSeconds: 120 });
   });
 
   it('missing columns become 0, never NaN', async () => {
@@ -106,6 +107,7 @@ describe('costByAgent returns cached tokens and voice seconds', () => {
       paidCachedTokensIn: 0,
       cacheReportedCalls: 0,
       audioSeconds: 0,
+      paidAudioSeconds: 0,
     });
   });
 });

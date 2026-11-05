@@ -47,6 +47,8 @@ import {
 import { compactHistory, type ChatTurn } from '../../lib/chat-compaction.js';
 import { buildPurchaseFacts } from '../../lib/chat-purchase-facts.js';
 import { extractTurnFacts } from '../../lib/chat-fact-extraction.js';
+import { shouldExtractFacts } from '../../lib/chat-fact-gate.js';
+import { chatFocusFor } from '../../lib/chat-focus.js';
 import { factsToSave, todayFor } from '../memory/memory.service.js';
 import { isDefaultVoice, resolvePersona } from '../../lib/personas.js';
 import {
@@ -1871,6 +1873,10 @@ export async function* chatStream(
       : null;
   const personaStyle = persona && !isDefaultVoice(persona) ? persona.style : null;
 
+  // chat.focusedFacts (ships off): only the window lines and divisional charts this question's topic
+  // needs. chatFocusFor returns null (everything) for an unclear, chart-naming or many-topic message.
+  const focus = userFeatures['chat.focusedFacts']?.enabled === true ? chatFocusFor(message) : null;
+
   const startStream = () =>
     scholarStream(
       state,
@@ -1888,6 +1894,7 @@ export async function* chatStream(
       windowSink,
       structured ? { keyFactors: structured.keyFactors } : undefined,
       personaStyle,
+      focus,
     );
 
   // Output-side backstop for the death/self-harm policy: the input filter
@@ -1992,17 +1999,27 @@ export async function* chatStream(
   // With memory.babaMemory on, the extractor also notes dated events and the reader's own calendar day, so
   // the one morning-after check-in can be planned (memory/memory-rules.ts). With it off nothing changes.
   const memoryOn = userFeatures['memory.babaMemory']?.enabled === true;
+  // chat.factGate (ships off): skip the call when neither the message nor the reply holds anything
+  // to remember. With memory.babaMemory on the extractor also reads dates in the message, so the gate
+  // is not applied then.
+  const skipExtraction =
+    userFeatures['chat.factGate']?.enabled === true &&
+    !memoryOn &&
+    !shouldExtractFacts(message, fullText, locale);
+  if (skipExtraction) logger.debug({ userId }, 'fact extraction skipped: nothing to remember');
   void (
-    memoryOn
-      ? extractTurnFacts(
-          message,
-          fullText,
-          userFacts,
-          userId,
-          user?.relationshipStatus ?? null,
-          todayFor(user?.currentTimezone),
-        )
-      : extractTurnFacts(message, fullText, userFacts, userId, user?.relationshipStatus ?? null)
+    skipExtraction
+      ? Promise.resolve([])
+      : memoryOn
+        ? extractTurnFacts(
+            message,
+            fullText,
+            userFacts,
+            userId,
+            user?.relationshipStatus ?? null,
+            todayFor(user?.currentTimezone),
+          )
+        : extractTurnFacts(message, fullText, userFacts, userId, user?.relationshipStatus ?? null)
   )
     .then((newFacts) => {
       if (newFacts.length > 0) {

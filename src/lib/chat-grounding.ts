@@ -48,6 +48,7 @@ import {
   calculateKarakamshaSignIndex,
 } from './astro-engine/charts/jaiminiPoints.js';
 import { FAMILY_BRACKET_LABELS, INCOME_BRACKET_LABELS } from './chat-income.js';
+import { FOCUS_NOTE, keepVargaLine, type ChatFocus } from './chat-focus.js';
 import { upcomingTransitFactsNow } from './upcoming-transits.js';
 import { dateInZone, userZone, zoneLabel } from './user-time-zone.js';
 
@@ -1646,6 +1647,11 @@ export async function buildGroundingSections(
    * are completely unaffected.
    */
   scope: 'full' | 'periodic' = 'full',
+  /**
+   * Chat only, behind chat.focusedFacts (audit S6, O2): keep just the window lines and divisional
+   * charts the question needs. Absent/null = the full set, exactly as before. See lib/chat-focus.ts.
+   */
+  focus?: ChatFocus | null,
 ): Promise<GroundingSections> {
   const houses = getHouses(src.chart);
   const planets = getPlanets(src.chart);
@@ -1869,6 +1875,9 @@ export async function buildGroundingSections(
   const domainsToScore =
     scope === 'periodic' ? HOROSCOPE_DOMAINS : (Object.keys(DOMAIN_CONFIG) as Domain[]);
   for (const domain of domainsToScore) {
+    // Skipped here, not trimmed afterwards: the sink below records every window shown as a
+    // falsifiable claim, and a window the model never saw must not be recorded as one it made.
+    if (focus && scope === 'full' && !focus.domains.has(domain)) continue;
     const config = DOMAIN_CONFIG[domain];
     const houseLords = config.natalHouses.map((h) => houseLordsMap[h]).filter(Boolean) as string[];
     const houseOccupants = config.natalHouses.flatMap((h) => houseOccupantsMap[h] ?? []);
@@ -1952,6 +1961,8 @@ export async function buildGroundingSections(
     facts.push(`${config.label} (cross-read with ${config.varga}): ${rankedText}`);
   }
 
+  if (focus && scope === 'full') facts.push(FOCUS_NOTE);
+
   // --- Planetary condition: strength, retrograde, combust, Bhava Chalit -----
   // Placed BEFORE the doshas/yogas detail so the model reads how strong each
   // planet is before it reads what each planet promises. Same function the
@@ -1982,7 +1993,9 @@ export async function buildGroundingSections(
     // Not for an unknown birth time: every varga Lagna (and most placements) swings with the exact
     // minute, the guidance already tells the model not to cite them, and they are about 4,500
     // characters of the 36,000 the chat block is cut at (audit L5, measured 4,512).
-    if (!timeUnknown) reference.push(...divisionalChartFacts(src.chart));
+    if (!timeUnknown) {
+      reference.push(...divisionalChartFacts(src.chart).filter((l) => keepVargaLine(l, focus)));
+    }
 
     // --- Chandra/Surya Kundali (Moon/Sun as 1st house) -----------------------
     reference.push(...chandraSuryaKundaliFacts(planets));

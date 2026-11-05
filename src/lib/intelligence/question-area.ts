@@ -46,3 +46,12 @@ export function classifyQuestionArea(text: string): LifeArea | null {
   for (const [area, re] of AREA_PATTERNS) if (re.test(text)) return area;
   return null;
 }
+
+/**
+ * Every area the text touches, in pattern order. classifyQuestionArea stops at the first match, which
+ * is right for picking one card but wrong for deciding what a chat reply may leave out: "a job abroad"
+ * is both career and relocation (audit S6, O2).
+ */
+export function classifyQuestionAreas(text: string): LifeArea[] {
+  return AREA_PATTERNS.filter(([, re]) => re.test(text)).map(([area]) => area);
+}

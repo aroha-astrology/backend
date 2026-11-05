@@ -15,6 +15,7 @@ import {
 } from '../../chat-grounding.js';
 import { POLICY_SYSTEM_DIRECTIVE } from '../../content-policy.js';
 import { normalizeFollowUp } from '../../chat-follow-up.js';
+import type { ChatFocus } from '../../chat-focus.js';
 import {
   expandIncomeMarkers,
   FAMILY_INCOME_MARKER,
@@ -1582,13 +1583,23 @@ export async function* scholarStream(
   structured?: { keyFactors: string[] },
   /** chat.personas: the chosen guide's manner; absent for Yogi Baba. */
   personaStyle?: string | null,
+  /** chat.focusedFacts (audit S6, O2): only the window lines and divisional charts this question needs. Absent = all. */
+  focus?: ChatFocus | null,
 ): AsyncGenerator<string, void, unknown> {
   logger.debug({ requestId: state.requestId }, 'scholar: starting stream');
 
   const now = new Date();
   const extras: ChatExtraFacts = Array.isArray(extraFacts) ? { account: extraFacts } : extraFacts;
   const groundingFacts = assembleChatFacts({
-    ...(await buildGroundingSections(groundingSource, undefined, now, null, windowSink)),
+    ...(await buildGroundingSections(
+      groundingSource,
+      undefined,
+      now,
+      null,
+      windowSink,
+      'full',
+      focus,
+    )),
     ...extras,
   });
   const messages = buildChatMessages(

@@ -784,6 +784,26 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'chat',
     defaultEnabled: false,
   },
+  // Audit S6 (cost), both ship OFF: try them on one user group, compare the cache and fact-extraction
+  // numbers in Admin -> AI cost, then widen. Neither changes a price or a screen.
+  // chat.focusedFacts: a chat turn carries only the timing windows and divisional charts the question's
+  // topic needs (a job question drops ~13,000 of ~89,000 characters). Falls back to everything when the
+  // message names no topic, names a chart, or spans many topics. See lib/chat-focus.ts.
+  {
+    key: 'chat.focusedFacts',
+    label: 'Chat — send only the chart facts the question needs (cheaper)',
+    group: 'chat',
+    defaultEnabled: false,
+  },
+  // chat.factGate: the "remember this about the reader" call after a chat turn runs only when the exchange
+  // holds something worth remembering (a personal detail, or a dated timing the reply gave). See
+  // lib/chat-fact-gate.ts.
+  {
+    key: 'chat.factGate',
+    label: 'Chat — skip the memory note when nothing personal was said (fewer calls)',
+    group: 'chat',
+    defaultEnabled: false,
+  },
   // Voice call trial (Durga Puja 2026, owner's decision): every user, Pass or not, gets
   // VOICE_TRIAL_MINUTES free once. Without a Pass the call stops there and shows the Pass lock.
   // ON by default; switching it off makes voice Pass-only again. See modules/voice/voice.service.ts.

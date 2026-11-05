@@ -51,6 +51,8 @@ export interface AgentCostRow {
   tokensInOfCacheReportedCalls: number;
   /** Voice: seconds of audio minted (60 per minute); 0 for every other agent. */
   audioSeconds: number;
+  /** The paid-key share of audioSeconds: the minutes that cost real money. */
+  paidAudioSeconds: number;
 }
 
 /**
@@ -80,6 +82,7 @@ export async function costByAgent(
       cacheReportedCalls: sql<number>`count(${aiUsage.cachedTokens})`,
       tokensInOfCacheReportedCalls: sql<number>`coalesce(sum(${aiUsage.tokensIn}) filter (where ${aiUsage.cachedTokens} is not null), 0)`,
       audioSeconds: sql<number>`coalesce(sum(${aiUsage.audioSeconds}), 0)`,
+      paidAudioSeconds: sql<number>`coalesce(sum(${aiUsage.audioSeconds}) filter (where ${paid}), 0)`,
     })
     .from(aiUsage)
     .where(
@@ -106,5 +109,6 @@ export async function costByAgent(
     cacheReportedCalls: Number(row.cacheReportedCalls ?? 0),
     tokensInOfCacheReportedCalls: Number(row.tokensInOfCacheReportedCalls ?? 0),
     audioSeconds: Number(row.audioSeconds ?? 0),
+    paidAudioSeconds: Number(row.paidAudioSeconds ?? 0),
   }));
 }
