@@ -29,6 +29,8 @@ import type {
 } from '@aroha-astrology/shared';
 import type { SaturnNatal } from '../../lib/astro-engine/doshas/saturnStrength.js';
 import { detectMangalDosha } from '../../lib/astro-engine/doshas/mangalDosha.js';
+import { detectPitraDosha } from '../../lib/astro-engine/doshas/pitraDosha.js';
+import { detectGrahanDosha } from '../../lib/astro-engine/doshas/grahanDosha.js';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -649,6 +651,16 @@ export async function withLiveSaturnTransits(
     } catch (err) {
       logger.warn({ err }, 'live Mangal recompute failed at read time (serving cached value)');
     }
+    // Pitra and Grahan changed in audit Sprint 8 (SB9, SB3); same read-time route, same reason.
+    try {
+      live.pitra = detectPitraDosha(saturnNatal.chart);
+      live.grahan = detectGrahanDosha(saturnNatal.chart);
+    } catch (err) {
+      logger.warn(
+        { err },
+        'live Pitra/Grahan recompute failed at read time (serving cached value)',
+      );
+    }
   }
   const cached = doshaData.sadeSati as { moonSign?: ZodiacSign } | undefined;
   if (!cached?.moonSign) return live;
@@ -668,7 +680,7 @@ export async function withLiveSaturnTransits(
 }
 
 /** The transit doshas recomputed on every read; a translation cached for them must match today's English. */
-const LIVE_DOSHA_KEYS = ['sadeSati', 'dhaiya', 'mangal'] as const;
+const LIVE_DOSHA_KEYS = ['sadeSati', 'dhaiya', 'mangal', 'pitra', 'grahan'] as const;
 
 export async function toKundliDto(row: KundliRow): Promise<KundliDto> {
   return {
@@ -720,10 +732,21 @@ export async function toKundliDtoForLanguage(row: KundliRow, language: string): 
   )?.mangal?.description;
   const liveMangal = doshas.mangal?.description;
   const mangalText = typeof liveMangal === 'string' && liveMangal !== savedMangal ? liveMangal : '';
+  // Pitra and Grahan likewise: their text joins the hash only where the new rules changed it.
+  const savedDoshas = row.doshaData as Record<string, { description?: unknown } | undefined> | null;
+  const changedText = (['pitra', 'grahan'] as const)
+    .map((k) => {
+      const live = doshas[k]?.description;
+      return typeof live === 'string' && live !== savedDoshas?.[k]?.description
+        ? `|${k}:${live}`
+        : '';
+    })
+    .join('');
   const liveSadeSatiHash = hashString(
     JSON.stringify(doshas.sadeSati?.description ?? '') +
       (dhaiyaText ? `|${dhaiyaText}` : '') +
-      (mangalText ? `|mangal:${mangalText}` : ''),
+      (mangalText ? `|mangal:${mangalText}` : '') +
+      changedText,
   );
 
   const cached = row.translations?.[language] as
@@ -740,10 +763,12 @@ export async function toKundliDtoForLanguage(row: KundliRow, language: string): 
       const text = cachedDoshas?.[key]?.description;
       // Mangal's reasons are translated too; the hash above guarantees they match today's English.
       const reasons = key === 'mangal' ? cachedDoshas?.[key]?.cancellations : undefined;
+      const indicators = key === 'pitra' ? cachedDoshas?.[key]?.indicators : undefined;
       merged[key] = {
         ...live,
         ...(typeof text === 'string' ? { description: text } : {}),
         ...(Array.isArray(reasons) ? { cancellations: reasons } : {}),
+        ...(Array.isArray(indicators) ? { indicators } : {}),
       };
     }
     return {

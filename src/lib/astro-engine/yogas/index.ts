@@ -14,6 +14,7 @@ import { isDayChart } from '../rules/day.js';
 import { beneficsOf, natureOf } from '../rules/nature.js';
 import { assessKemadruma } from '../doshas/kemDrumaDosha.js';
 import { detectGuruChandalDosha } from '../doshas/guruChandal.js';
+import { detectGrahanDosha } from '../doshas/grahanDosha.js';
 import { getActiveProfile } from '../rules/profile.js';
 import { signDignity } from '../rules/dignity.js';
 
@@ -2178,8 +2179,10 @@ function detectGrahan(chartData: ChartData): Yoga {
   const moonConjRahu = arePlanetsConjunct('Moon', 'Rahu', chartData);
   const moonConjKetu = arePlanetsConjunct('Moon', 'Ketu', chartData);
 
-  const solarGrahan = sunConjRahu || sunConjKetu;
-  const lunarGrahan = moonConjRahu || moonConjKetu;
+  // ONE rule: the dosha detector decides (audit SB3); the conjunctions above only name the node.
+  const grahanType = detectGrahanDosha(chartData).type;
+  const solarGrahan = grahanType === 'surya_grahan' || grahanType === 'both';
+  const lunarGrahan = grahanType === 'chandra_grahan' || grahanType === 'both';
   const present = solarGrahan || lunarGrahan;
 
   const planets: Planet[] = [];

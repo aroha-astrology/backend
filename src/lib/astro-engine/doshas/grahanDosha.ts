@@ -4,7 +4,7 @@ import type { ChartData, GrahanDosha, Planet } from '@aroha-astrology/shared';
 /**
  * Grahan Dosha Detection
  *
- * - Surya Grahan (Solar Eclipse Dosha): Sun conjunct Rahu in the same house
+ * - Surya Grahan (Solar Eclipse Dosha): Sun conjunct Rahu or Ketu in the same house
  * - Chandra Grahan (Lunar Eclipse Dosha): Moon conjunct Rahu or Ketu in the same house
  *
  * Conjunction is defined as occupying the same house.
@@ -23,8 +23,12 @@ export function detectGrahanDosha(chartData: ChartData): GrahanDosha {
   let hasSuryaGrahan = false;
   let hasChandraGrahan = false;
 
-  // Surya Grahan: Sun + Rahu in same house
+  // Surya Grahan: Sun + Rahu or Sun + Ketu in the same house, the same rule as the Moon's
+  // (audit SB3: the Grahan yoga already counted Sun + Ketu, the dosha did not).
   if (sun && rahu && sun.house === rahu.house) {
+    hasSuryaGrahan = true;
+  }
+  if (sun && ketu && sun.house === ketu.house) {
     hasSuryaGrahan = true;
   }
 
@@ -56,10 +60,10 @@ export function detectGrahanDosha(chartData: ChartData): GrahanDosha {
 
   const DESCRIPTIONS: Record<Exclude<GrahanDosha['type'], 'none'>, string> = {
     surya_grahan:
-      'Sun and Rahu occupy the same house (Surya Grahan / solar-eclipse affliction), which can dim vitality, confidence, and paternal relationships.',
+      'The Sun and a shadow planet (Rahu or Ketu) occupy the same house (Surya Grahan / solar-eclipse affliction), which can dim vitality, confidence, and paternal relationships.',
     chandra_grahan:
       'Moon and a shadow planet (Rahu or Ketu) occupy the same house (Chandra Grahan / lunar-eclipse affliction), which can create emotional turbulence or fluctuating mental clarity.',
-    both: 'Both Surya Grahan (Sun-Rahu) and Chandra Grahan (Moon with Rahu/Ketu) afflictions are present — a rarer double-eclipse affliction affecting both vitality and emotional stability.',
+    both: 'Both Surya Grahan (Sun with Rahu/Ketu) and Chandra Grahan (Moon with Rahu/Ketu) afflictions are present — a rarer double-eclipse affliction affecting both vitality and emotional stability.',
   };
 
   return {

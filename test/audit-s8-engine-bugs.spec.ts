@@ -90,3 +90,101 @@ describe('SB11: the shadbala header does not say Yuddha Bala is missing', () => 
     expect(src).not.toMatch(/NOT implemented[^]{0,80}Yuddha/);
   });
 });
+
+// ---- SB9 + SB3 (Grahan): rules the owner approved on 2026-11-05 ----
+import { detectPitraDosha } from '../src/lib/astro-engine/doshas/pitraDosha.js';
+import { detectGrahanDosha } from '../src/lib/astro-engine/doshas/grahanDosha.js';
+import { detectAllYogas } from '../src/lib/astro-engine/index.js';
+import { withLiveSaturnTransits } from '../src/modules/kundli/kundli.service.js';
+import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
+import type { ChartData, Planet, PlanetPosition, ZodiacSign } from '@aroha-astrology/shared';
+
+function pl(p: Planet, signIndex: number, house: number): PlanetPosition {
+  return {
+    planet: p,
+    longitude: signIndex * 30 + 15,
+    latitude: 0,
+    speed: 1,
+    sign: ZODIAC_SIGNS[signIndex] as ZodiacSign,
+    signIndex,
+    signDegree: 15,
+    nakshatra: 'Ashwini',
+    nakshatraIndex: 0,
+    nakshatraPada: 1,
+    nakshatraLord: 'Ketu',
+    isRetrograde: false,
+    house,
+  };
+}
+function ch(planets: PlanetPosition[]): ChartData {
+  return {
+    planets,
+    houses: [],
+    ascendant: { sign: 'Aries', signIndex: 0, degree: 0, nakshatra: 'Ashwini', nakshatraPada: 1 },
+    ayanamsa: 'lahiri',
+    ayanamsaValue: 24,
+    julianDay: 2448000,
+  } as unknown as ChartData;
+}
+
+describe('SB9: the Sun alone in the 9th does not make Pitra Dosha', () => {
+  it('Sun alone in the 9th: not present', () => {
+    // Aries Lagna, 9th house = Sagittarius (index 8). Jupiter (9th lord) is in its own sign.
+    expect(detectPitraDosha(ch([pl('Sun', 8, 9), pl('Jupiter', 8, 9)])).present).toBe(false);
+  });
+  it('Saturn in the 9th still counts', () => {
+    const r = detectPitraDosha(ch([pl('Saturn', 8, 9), pl('Jupiter', 8, 9)]));
+    expect(r.present).toBe(true);
+  });
+  it('Sun with Rahu in the 9th still counts (rule a), and Mars in the 9th with the Sun names only Mars', () => {
+    expect(
+      detectPitraDosha(ch([pl('Sun', 8, 9), pl('Rahu', 8, 9), pl('Jupiter', 8, 9)])).present,
+    ).toBe(true);
+    const r = detectPitraDosha(ch([pl('Sun', 8, 9), pl('Mars', 8, 9), pl('Jupiter', 8, 9)]));
+    expect(r.indicators.join(' ')).toMatch(/Mars/);
+    expect(r.indicators.join(' ')).not.toMatch(/Sun/);
+  });
+});
+
+describe('SB3: one Grahan rule, the Sun counts with either node like the Moon', () => {
+  const sunKetu = ch([pl('Sun', 3, 4), pl('Ketu', 3, 4)]);
+  it('the dosha detector sees Sun with Ketu as Surya Grahan', () => {
+    const r = detectGrahanDosha(sunKetu);
+    expect(r.present).toBe(true);
+    expect(r.type).toBe('surya_grahan');
+    expect(r.description).toMatch(/Ketu/);
+  });
+  it('the Grahan yoga and the Grahan dosha agree on this chart', () => {
+    const y = detectAllYogas(sunKetu).find((x) => x.name === 'Grahan Yoga');
+    expect(y?.present).toBe(detectGrahanDosha(sunKetu).present);
+  });
+  it('nothing without a node', () => {
+    expect(detectGrahanDosha(ch([pl('Sun', 3, 4), pl('Moon', 3, 4)])).present).toBe(false);
+  });
+});
+
+describe('read time: old saved Pitra and Grahan are recomputed from the saved chart', () => {
+  it('a saved Pitra from the Sun alone, and a missing Sun-Ketu Grahan, come out right', async () => {
+    const chart = ch([pl('Sun', 8, 9), pl('Jupiter', 8, 9)]);
+    const chart2 = ch([pl('Sun', 3, 4), pl('Ketu', 3, 4)]);
+    const saved = {
+      pitra: {
+        present: true,
+        indicators: ['9th house afflicted by malefic(s): Sun'],
+        severity: 'mild',
+        description: 'old',
+      },
+      grahan: { present: false, type: 'none', severity: 'none', description: '' },
+    };
+    const a = (await withLiveSaturnTransits(saved, undefined, { chart })) as Record<
+      string,
+      { present: boolean }
+    >;
+    expect(a.pitra?.present).toBe(false);
+    const b = (await withLiveSaturnTransits(saved, undefined, { chart: chart2 })) as Record<
+      string,
+      { present: boolean }
+    >;
+    expect(b.grahan?.present).toBe(true);
+  });
+});

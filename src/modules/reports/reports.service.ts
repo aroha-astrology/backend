@@ -173,7 +173,9 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
 // pair as a mismatch (SB1/SB2).
 // 13 (2026-11-05, audit Sprint 7): Mangal Dosha follows BPHS 80.47 and Raman's Muhurtha, judged
 // per point (M12), so a report written on the old rules may name the wrong Manglik status.
-const CONTENT_VERSION = 13;
+// 14 (2026-11-05, audit Sprint 8): Pitra no longer counts the Sun alone in the 9th (SB9) and Grahan
+// counts the Sun with Ketu as well as Rahu (SB3), so older reports may name the wrong dosha.
+const CONTENT_VERSION = 14;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes

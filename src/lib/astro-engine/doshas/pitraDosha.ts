@@ -38,11 +38,15 @@ export function detectPitraDosha(chartData: ChartData): PitraDosha {
     indicators.push('Sun conjunct Rahu in the same house - ancestral affliction');
   }
 
-  // Condition 2: 9th house afflicted by malefics
+  // Condition 2: 9th house afflicted by malefics. The Sun is the father's karaka, not an
+  // affliction of its own: the Sun alone in the 9th does not count (audit SB9). Sun with Rahu
+  // is condition 1.
   const ninthHouseSignIndex = (lagnaSignIndex + 8) % 12;
   const maleficsInNinth = chartData.planets.filter(
     (p) =>
-      NATURAL_MALEFICS.includes(p.planet) && getHouseFromLagna(p.signIndex, lagnaSignIndex) === 9,
+      p.planet !== 'Sun' &&
+      NATURAL_MALEFICS.includes(p.planet) &&
+      getHouseFromLagna(p.signIndex, lagnaSignIndex) === 9,
   );
   if (maleficsInNinth.length > 0) {
     const names = maleficsInNinth.map((p) => p.planet).join(', ');
