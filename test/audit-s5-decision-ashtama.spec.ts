@@ -57,6 +57,11 @@ describe('M9: Ashtama Shani counts against a new start like Sade Sati does', () 
     expect(saturnFactor(careerScore(0))?.effect).toBe(-1);
   });
 
+  it('keeps Kantaka Shani (Saturn 4th from the Moon) out of an unrelated decision (owner, 2026-11-05)', () => {
+    // Sagittarius Moon (index 8): Saturn in Pisces is the 4th. Career houses are 10, 6, 11.
+    expect(saturnFactor(careerScore(8))).toBeUndefined();
+  });
+
   it('leaves a Saturn that is neither Sade Sati nor Ashtama alone', () => {
     // Taurus Moon (index 1): Saturn is the 11th (favourable). Virgo Moon (5): the 7th, which is
     // not Sade Sati, not Ashtama and not a career house.
