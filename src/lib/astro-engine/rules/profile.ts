@@ -23,8 +23,7 @@ export interface AstrologyRuleProfile {
   defaultHouseSystem: 'whole-sign';
   /** Default lunar node. */
   defaultNode: 'mean' | 'true';
-  /** Days in a dasha year. 365.25 is the engine's convention; 360 (savana) is the known alternative. */
-  dashaYearDays: 365.25 | 360;
+  /* The dasha year is 365.25 days in every dasha module; it is not a profile field (audit SB6). */
   /** Chara-karaka scheme: seven planets, or eight with Rahu. */
   karakaScheme: 'seven' | 'eight';
   /**
@@ -104,7 +103,6 @@ export const DEFAULT_PROFILE: AstrologyRuleProfile = {
   defaultAyanamsa: 'lahiri',
   defaultHouseSystem: 'whole-sign',
   defaultNode: 'mean',
-  dashaYearDays: 365.25,
   karakaScheme: 'seven',
   saptavargajaPoints: 'bphs',
   moolatrikonaInVargas: 'sign',

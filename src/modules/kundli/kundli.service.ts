@@ -203,10 +203,15 @@ function resolveHouseSystem(pref: string | null): EngineHouseSystem {
 
 /**
  * UTC offset in hours for a tz that may be numeric ("5.5"), ±HH:MM, or IANA.
- * IANA zones use current DST rules applied to the birth date (best-effort;
- * exact for zones without historical DST changes, e.g. Asia/Kolkata).
+ *
+ * `wallClock` is the birth's LOCAL date and time written as if it were UTC
+ * (every caller builds it with Date.UTC(y, m-1, d, hh, mm)). For an IANA zone the
+ * offset is looked up at the real moment that wall time names, with the historical
+ * rules of that zone (1942-45 war time in India, summer time elsewhere), and not at
+ * the wall time read as UTC, which is up to a day off around a change (audit SB5).
+ * A zone name the system does not know throws: there is no silent +5:30 fallback.
  */
-export function tzOffsetHours(tz: string, refDate: Date): number {
+export function tzOffsetHours(tz: string, wallClock: Date): number {
   const trimmed = tz.trim();
 
   // Signed offsets FIRST — otherwise "+0530" parses as the number 530.
@@ -219,19 +224,19 @@ export function tzOffsetHours(tz: string, refDate: Date): number {
   const numeric = Number(trimmed);
   if (trimmed !== '' && !Number.isNaN(numeric)) return numeric;
 
-  try {
-    const dtf = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      hour12: false,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: trimmed, // throws RangeError for a zone name it does not know
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const offsetAt = (instant: Date): number => {
     const p: Record<string, string> = Object.fromEntries(
-      dtf.formatToParts(refDate).map((x) => [x.type, x.value]),
+      dtf.formatToParts(instant).map((x) => [x.type, x.value]),
     );
     const hour = p.hour === '24' ? 0 : Number(p.hour ?? '0');
     const asUtc = Date.UTC(
@@ -242,10 +247,18 @@ export function tzOffsetHours(tz: string, refDate: Date): number {
       Number(p.minute ?? '0'),
       Number(p.second ?? '0'),
     );
-    return (asUtc - refDate.getTime()) / 3_600_000;
-  } catch {
-    return 5.5; // IST fallback
-  }
+    return (asUtc - instant.getTime()) / 3_600_000;
+  };
+
+  // Two passes: guess the offset at the wall time read as UTC, move to the instant that
+  // guess implies, read the offset there. In the hour that does not exist (spring
+  // forward) or exists twice (autumn) the later pass settles on one real instant.
+  const first = offsetAt(wallClock);
+  const guess = new Date(wallClock.getTime() - first * 3_600_000);
+  const second = offsetAt(guess);
+  if (second === first) return first;
+  const guess2 = new Date(wallClock.getTime() - second * 3_600_000);
+  return offsetAt(guess2) === second ? second : first;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -290,7 +303,13 @@ export function birthInputsForProfile(profile: ProfileContext, user: UserRow): B
   const minute = mm ?? 0;
 
   const refDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  const tzOffset = tzOffsetHours(place.tz, refDate);
+  let tzOffset: number;
+  try {
+    tzOffset = tzOffsetHours(place.tz, refDate);
+  } catch {
+    // A time zone the system does not know: no chart, never a guessed +5:30 (audit SB5).
+    return null;
+  }
   const ayanamsa = resolveAyanamsa(user.preferredAyanamsa);
   const houseSystem = resolveHouseSystem(user.preferredHouseSystem);
   const lunarNode = resolveLunarNode(user.preferredLunarNode);

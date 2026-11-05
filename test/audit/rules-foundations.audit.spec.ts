@@ -94,7 +94,6 @@ describe('rules/profile and provenance', () => {
   it('the default profile is the pre-audit behaviour', () => {
     expect(DEFAULT_PROFILE.id).toBe('aroha-parashari-v2');
     expect(DEFAULT_PROFILE.defaultHouseSystem).toBe('whole-sign');
-    expect(DEFAULT_PROFILE.dashaYearDays).toBe(365.25);
     expect(RULESET_VERSION).toBe(0);
   });
 

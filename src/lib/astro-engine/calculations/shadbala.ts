@@ -14,8 +14,8 @@
 //   Naisargika natural: a fixed share of 60 for each planet
 //   Drik    aspect:     a quarter of the aspects received, benefic minus malefic
 //
-// NOT implemented, and left out of the totals: Yuddha Bala (planetary war) and
-// the Bhava Bala of the twelve houses. Where the Sanskrit and the translator's
+// Yuddha Bala (planetary war, BPHS 27.20) IS implemented and is added to the totals.
+// NOT implemented, and left out of the totals: the Bhava Bala of the twelve houses. Where the Sanskrit and the translator's
 // notes differ, or the text does not decide, the choice is a field of the rule
 // profile (rules/profile.ts).
 // =============================================================================

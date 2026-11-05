@@ -13,6 +13,7 @@ import { aspectsHouse, houseFrom, isKendraFrom } from '../rules/houses.js';
 import { isDayChart } from '../rules/day.js';
 import { beneficsOf, natureOf } from '../rules/nature.js';
 import { assessKemadruma } from '../doshas/kemDrumaDosha.js';
+import { detectGuruChandalDosha } from '../doshas/guruChandal.js';
 import { getActiveProfile } from '../rules/profile.js';
 import { signDignity } from '../rules/dignity.js';
 
@@ -2143,10 +2144,10 @@ function detectAngarak(chartData: ChartData): Yoga {
 }
 
 function detectGuruChandal(chartData: ChartData): Yoga {
-  // Guru Chandal Yoga: Jupiter conjunct Rahu or Ketu
+  // Guru Chandal: ONE rule, the dosha detector's (Jupiter in the same house as Rahu or Ketu).
+  // This used to be a second copy of the same test (audit SB3).
   const conjRahu = arePlanetsConjunct('Jupiter', 'Rahu', chartData);
-  const conjKetu = arePlanetsConjunct('Jupiter', 'Ketu', chartData);
-  const present = conjRahu || conjKetu;
+  const present = detectGuruChandalDosha(chartData).present;
   const jupHouse = getPlanetHouse('Jupiter', chartData);
   const shadowPlanet: Planet = conjRahu ? 'Rahu' : 'Ketu';
 

@@ -19,6 +19,7 @@
 import { NAKSHATRAS } from '@aroha-astrology/shared';
 import { calculateKarana } from '../astro-engine/panchang/karana.js';
 import { calculatePanchangYoga } from '../astro-engine/panchang/yoga.js';
+import { isCombust } from '../astro-engine/calculations/planet-state.js';
 import type { WhyFactor } from '../intelligence/types.js';
 import { houseFrom } from '../intelligence/chart-context.js';
 import { isFavourableTransit } from '../intelligence/why.js';
@@ -151,8 +152,8 @@ const CHANDRASHTAMA = 8;
  * 4th (Kantaka Shani) is not here: it counts only when the 4th belongs to the area asked about.
  */
 const SATURN_HARD = new Set([12, 1, 2, 8]);
-/** Degrees from the Sun inside which a planet is combust (asta). */
-const COMBUST_ORB: Record<string, number> = { Jupiter: 11, Venus: 10 };
+/** Only Jupiter and Venus going combust (asta) rules a day out; the orb itself comes from planet-state (audit SB8). */
+const COMBUST_PLANETS = new Set(['Jupiter', 'Venus']);
 const SAGITTARIUS = 8;
 const PISCES = 11;
 const CAPS: Record<AvoidFlag, number> = {
@@ -163,11 +164,6 @@ const CAPS: Record<AvoidFlag, number> = {
 };
 const MERCURY_RETRO_PENALTY = 12;
 const MAX_WHY = 6;
-
-function angularDistance(a: number, b: number): number {
-  const d = Math.abs(a - b) % 360;
-  return d > 180 ? 360 - d : d;
-}
 
 function toneOf(score: number): DayTone {
   if (score >= GOOD_SCORE) return 'good';
@@ -194,8 +190,8 @@ export function avoidFlags(day: DaySky, spec: CategorySpec): AvoidFlag[] {
   if (spec.avoid.includes('combust') && sun) {
     const combust = day.planets.some(
       (p) =>
-        COMBUST_ORB[p.planet] !== undefined &&
-        angularDistance(p.longitude, sun.longitude) < COMBUST_ORB[p.planet]!,
+        COMBUST_PLANETS.has(p.planet) &&
+        isCombust(p.planet, p.longitude, sun.longitude, p.isRetrograde),
     );
     if (combust) out.push('combust');
   }
@@ -219,8 +215,8 @@ function avoidFactor(flag: AvoidFlag, day: DaySky): WhyFactor {
       const planet =
         day.planets.find(
           (p) =>
-            COMBUST_ORB[p.planet] !== undefined &&
-            angularDistance(p.longitude, sun.longitude) < COMBUST_ORB[p.planet]!,
+            COMBUST_PLANETS.has(p.planet) &&
+            isCombust(p.planet, p.longitude, sun.longitude, p.isRetrograde),
         )?.planet ?? 'Venus';
       return {
         kind: 'transit',

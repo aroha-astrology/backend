@@ -126,6 +126,8 @@ export interface VakriPlanetAnalysis {
   dispositor: VakriDispositorInfo | null;
   aspectsReceived: VakriAspectInfo[];
   houseGroup: HouseGroup;
+  /** All groups of the house (7 = kendra + maraka). */
+  houseGroups: HouseGroup[];
   previousHouseInfluence?: {
     enabled: boolean;
     previousHouse: number;
@@ -408,6 +410,18 @@ export function calculateVakriDignity(
 // Helper: House Group Classifier
 // =============================================================================
 
+/** Every group a house belongs to: the 7th is a kendra AND a maraka, the 10th a kendra AND an upachaya (audit SB7). */
+export function getHouseGroups(house: number): HouseGroup[] {
+  const out: HouseGroup[] = [];
+  if ([1, 4, 7, 10].includes(house)) out.push('kendra');
+  if ([5, 9].includes(house)) out.push('trikona');
+  if ([6, 8, 12].includes(house)) out.push('dusthana');
+  if ([3, 6, 10, 11].includes(house)) out.push('upachaya');
+  if ([2, 7].includes(house)) out.push('maraka');
+  return out.length > 0 ? out : ['other'];
+}
+
+/** The first (primary) group; use getHouseGroups when the 7th must also read as maraka. */
 export function getHouseGroup(house: number): HouseGroup {
   if ([1, 4, 7, 10].includes(house)) return 'kendra';
   if ([5, 9].includes(house)) return 'trikona';
@@ -794,6 +808,7 @@ export function analyzeVakriPlanet(
     dispositor,
     aspectsReceived,
     houseGroup,
+    houseGroups: getHouseGroups(house),
     ...(previousHouseInfluenceData ? { previousHouseInfluence: previousHouseInfluenceData } : {}),
     interpretation,
     confidence,
