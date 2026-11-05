@@ -49,7 +49,7 @@ The engine is in production and working. The purpose of this verdict is to label
 | §7 Vimshottari       | Year length                   | 🔵 AMBIGUOUS   | —         | 365.25 days; Surya Siddhanta differs             |
 | §7 Chara Dasha       | Antardasha, karakas           | ⚠️ INCORRECT   | Y3        | Both missing                                     |
 | §7 Yogini            | Start formula                 | ⚠️ INCORRECT   | Y4        | (nakshatra+3)%8 unverified                       |
-| §8 Doshas            | Mangal cancellations          | ⚠️ INCORRECT   | D1        | 10-rule list not in known primary texts          |
+| §8 Doshas            | Mangal cancellations          | ✅ FIXED       | D1        | BPHS 80.47 + Raman, per point (Sprint 7)         |
 | §8 Doshas            | Kaal Sarp 12 names            | 🕐 LATER       | D2        | Modern framework; label MODERN_ASTROLOGICAL      |
 | §8 Doshas            | Kemadruma cancellations       | ⚠️ INCORRECT   | D3        | Conditions differ from code                      |
 | §9 Yogas             | Shakata                       | ⚠️ INCORRECT   | Y1        | Requires Jupiter 7th from Moon; false positives  |

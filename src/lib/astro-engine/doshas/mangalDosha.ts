@@ -1,29 +1,40 @@
 // @ts-nocheck
 import type { ChartData, MangalDosha, Planet, ZodiacSign } from '@aroha-astrology/shared';
-import {
-  ZODIAC_SIGNS,
-  NATURAL_BENEFICS,
-  PLANET_EXALTATION,
-  PLANET_OWN_SIGNS,
-  SIGN_LORDS,
-} from '@aroha-astrology/shared';
+import { PLANET_EXALTATION, PLANET_OWN_SIGNS } from '@aroha-astrology/shared';
 
 /**
  * Mangal (Mars) Dosha Detection
  *
- * Mars in houses 1, 2, 4, 7, 8, or 12 from Lagna, Moon, or Venus
- * creates Mangal Dosha (Kuja Dosha). Severity is based on how many
- * reference points (Lagna, Moon, Venus) are afflicted.
+ * Sources (opened 2026-11-05, audit M12; register entries BPHS-80.47, BPHS-3.11, RAMAN-MUH in
+ * docs/engine-audit/D-source-register.md):
+ * - BPHS 80.47-49 (primary): Mars in the 1st, 4th, 7th, 8th or 12th, "subha-drg-yoga-hine",
+ *   with no benefic aspect or conjunction. 80.49: two such charts married cancel it (matching).
+ * - BPHS 3.11 (primary): benefics are Jupiter, Venus, the waxing Moon, and Mercury unless it is
+ *   joined by a malefic.
+ * - B.V. Raman, Muhurtha (Electional Astrology) pp. 98-100 (20th-century book): houses counted
+ *   from the Lagna, the Moon and Venus; the house+sign exceptions; Mars in Leo or Aquarius forms
+ *   no dosha; Mars with Jupiter or with the Moon counteracts it.
  *
- * Cancellation: classically, any ONE qualifying rule below (own sign,
- * exaltation, a benefic conjunction/aspect, or a documented house+sign
- * exception at any of the 3 reference points) is independently sufficient
- * to cancel the dosha — stacking multiple reasons doesn't make a dosha
- * "more cancelled." This intentionally does NOT gate cancellation behind a
- * minimum count of matched rules.
+ * Formation: Mars in houses 1, 2, 4, 7, 8 or 12 from the Lagna, the Moon or Venus (the 2nd is
+ * Raman's, the 1st is BPHS's). Venus in Mars's own sign is not counted as a point: Mars would be
+ * "1st from Venus" and then cleared at once by the Venus conjunction, and neither source counts it.
+ *
+ * Two kinds of exemption:
+ * - About Mars itself, so they clear every point: a benefic joining or aspecting Mars (BPHS),
+ *   Mars in Leo or Aquarius (Raman), and Mars in its own or exaltation sign. The last one is
+ *   Aroha's convention: Raman lists own sign only for the 4th and exaltation only for the 7th.
+ * - Raman's house+sign exceptions. Each clears only the point it is true from; another point can
+ *   still carry the dosha (the old code let one exception clear every point).
+ *
+ * Severity = the points still afflicted after the exemptions (1 mild, 2 moderate, 3 severe).
+ * No source words any rule as "lower one level", so none does here.
  */
 
 const MANGAL_DOSHA_HOUSES = [1, 2, 4, 7, 8, 12];
+const MALEFICS: Planet[] = ['Sun', 'Mars', 'Saturn', 'Rahu', 'Ketu'];
+const SUFFIX = ' - cancellation applies';
+
+type Point = 'Lagna' | 'Moon' | 'Venus';
 
 /** Compute house number of a planet relative to a reference sign index (0-based). */
 function getHouseFromSign(planetSignIndex: number, referenceSignIndex: number): number {
@@ -34,122 +45,91 @@ function getPlanetPosition(chartData: ChartData, planet: Planet) {
   return chartData.planets.find((p) => p.planet === planet);
 }
 
-function getPlanetsInHouseFromSign(
-  chartData: ChartData,
-  referenceSignIndex: number,
-  house: number,
-): Planet[] {
-  return chartData.planets
-    .filter((p) => getHouseFromSign(p.signIndex, referenceSignIndex) === house)
-    .map((p) => p.planet);
+/** Whole-sign aspect: every planet aspects the 7th from itself; Jupiter also the 5th and 9th. */
+function aspectsSign(planet: Planet, fromSignIndex: number, targetSignIndex: number): boolean {
+  const offsets = planet === 'Jupiter' ? [5, 7, 9] : [7];
+  return offsets.some((o) => (fromSignIndex + o - 1) % 12 === targetSignIndex);
 }
 
-function isAspectedBy(
-  chartData: ChartData,
-  targetSignIndex: number,
-  aspectingPlanet: Planet,
-): boolean {
-  const aspector = getPlanetPosition(chartData, aspectingPlanet);
-  if (!aspector) return false;
+/** The Moon is waxing when it is less than 180 degrees ahead of the Sun. Unknown -> null. */
+function moonWaxing(chartData: ChartData): boolean | null {
+  const sun = getPlanetPosition(chartData, 'Sun');
+  const moon = getPlanetPosition(chartData, 'Moon');
+  if (typeof sun?.longitude !== 'number' || typeof moon?.longitude !== 'number') return null;
+  return (((moon.longitude - sun.longitude) % 360) + 360) % 360 < 180;
+}
 
-  // Standard Vedic aspects: all planets aspect 7th house from themselves
-  // Jupiter additionally aspects 5th and 9th
-  const aspectedHouses: number[] = [7];
-  if (aspectingPlanet === 'Jupiter') {
-    aspectedHouses.push(5, 9);
-  }
-  if (aspectingPlanet === 'Mars') {
-    aspectedHouses.push(4, 8);
-  }
-  if (aspectingPlanet === 'Saturn') {
-    aspectedHouses.push(3, 10);
-  }
-
-  for (const offset of aspectedHouses) {
-    const aspectedSignIndex = (aspector.signIndex + offset - 1) % 12;
-    if (aspectedSignIndex === targetSignIndex) return true;
-  }
-  return false;
+/** BPHS 3.11: Mercury is a benefic unless a malefic (or a waning Moon) shares its sign. */
+function mercuryIsBenefic(chartData: ChartData, waxing: boolean | null): boolean {
+  const mercury = getPlanetPosition(chartData, 'Mercury');
+  if (!mercury) return false;
+  return !chartData.planets.some(
+    (p) =>
+      p.signIndex === mercury.signIndex &&
+      (MALEFICS.includes(p.planet) || (p.planet === 'Moon' && waxing === false)),
+  );
 }
 
 /**
- * Documented classical house+sign exceptions: Mars in this house (from a
- * given reference point) in one of these signs is a specific cancellation,
- * independent of the general dignity/conjunction/aspect rules below.
+ * Raman, Muhurtha pp. 99-100: Mars in this house from a point, in one of these signs, forms no
+ * dosha for that point.
  */
 const HOUSE_SIGN_EXCEPTIONS: Record<number, ZodiacSign[]> = {
   2: ['Gemini', 'Virgo'],
+  4: ['Aries', 'Scorpio'],
   7: ['Cancer', 'Capricorn'],
   8: ['Sagittarius', 'Pisces'],
   12: ['Taurus', 'Libra'],
 };
 
-function checkCancellations(chartData: ChartData): string[] {
-  const cancellations: string[] = [];
-  const mars = getPlanetPosition(chartData, 'Mars');
-  if (!mars) return cancellations;
+/** Exemptions about Mars itself, in a fixed order (the first one names the reason). */
+function marsExemptions(chartData: ChartData, mars): string[] {
+  const out: string[] = [];
+  const m = mars.signIndex;
+  const waxing = moonWaxing(chartData);
 
-  const marsSign = mars.sign;
-  const marsSignIndex = mars.signIndex;
-
-  // 1. Mars in own sign (Aries or Scorpio) — dignity is reference-point
-  // independent: Mars's actual zodiacal sign doesn't change with Lagna/
-  // Moon/Venus, so this alone is a complete, unconditional cancellation.
-  if (PLANET_OWN_SIGNS.Mars.includes(marsSign)) {
-    cancellations.push(`Mars in own sign ${marsSign} - cancellation applies`);
+  // Aroha's convention (Raman: own sign in the 4th, exaltation in the 7th only).
+  if (PLANET_OWN_SIGNS.Mars.includes(mars.sign)) out.push(`Mars in own sign ${mars.sign}${SUFFIX}`);
+  if (PLANET_EXALTATION.Mars && mars.sign === PLANET_EXALTATION.Mars.sign) {
+    out.push(`Mars exalted in Capricorn${SUFFIX}`);
   }
 
-  // 2. Mars exalted (Capricorn)
-  if (PLANET_EXALTATION.Mars && marsSign === PLANET_EXALTATION.Mars.sign) {
-    cancellations.push('Mars exalted in Capricorn - cancellation applies');
+  // BPHS 80.47: a benefic joining Mars. Jupiter and Venus are always benefics; the Moon joining
+  // Mars counts in any phase (Raman). Mercury joining Mars never does: it joins a malefic.
+  const joined = chartData.planets.filter((p) => p.signIndex === m && p.planet !== 'Mars');
+  const benefics = joined.filter((p) => p.planet === 'Jupiter' || p.planet === 'Venus');
+  if (benefics.length > 0) {
+    out.push(`Mars conjunct benefic (${benefics.map((p) => p.planet).join(', ')})${SUFFIX}`);
   }
 
-  // 3. Mars conjunct (same house/sign) a benefic (Jupiter or Venus)
-  const planetsInMarsSign = chartData.planets.filter(
-    (p) => p.signIndex === marsSignIndex && p.planet !== 'Mars',
-  );
-  const beneficConjunctions = planetsInMarsSign.filter(
-    (p) => p.planet === 'Jupiter' || p.planet === 'Venus',
-  );
-  if (beneficConjunctions.length > 0) {
-    const names = beneficConjunctions.map((p) => p.planet).join(', ');
-    cancellations.push(`Mars conjunct benefic (${names}) - cancellation applies`);
+  // BPHS 80.47: a benefic aspecting Mars.
+  const jupiter = getPlanetPosition(chartData, 'Jupiter');
+  if (jupiter && aspectsSign('Jupiter', jupiter.signIndex, m)) {
+    out.push(`Mars aspected by Jupiter${SUFFIX}`);
   }
+  if (joined.some((p) => p.planet === 'Moon')) out.push(`Mars conjunct Moon${SUFFIX}`);
 
-  // 4. Mars aspected by Jupiter
-  if (isAspectedBy(chartData, marsSignIndex, 'Jupiter')) {
-    cancellations.push('Mars aspected by Jupiter - cancellation applies');
-  }
-
-  // 5. Mars conjunct Moon (same sign)
-  const moonConjunct = planetsInMarsSign.some((p) => p.planet === 'Moon');
-  if (moonConjunct) {
-    cancellations.push('Mars conjunct Moon - cancellation applies');
-  }
-
-  // 6. Spouse chart also has Mangal Dosha - cannot be checked from single
-  // chart; handled at the two-chart matchmaking layer, not here.
-
-  // 7. Documented house+sign exceptions (2nd/7th/8th/12th), checked from
-  // EACH of the 3 reference points (Lagna, Moon, Venus) — not just Lagna.
-  const moon = getPlanetPosition(chartData, 'Moon');
   const venus = getPlanetPosition(chartData, 'Venus');
-  const referencePoints: { label: string; signIndex: number }[] = [
-    { label: 'Lagna', signIndex: chartData.ascendant.signIndex },
-    ...(moon ? [{ label: 'Moon', signIndex: moon.signIndex }] : []),
-    ...(venus ? [{ label: 'Venus', signIndex: venus.signIndex }] : []),
-  ];
-  for (const ref of referencePoints) {
-    const house = getHouseFromSign(marsSignIndex, ref.signIndex);
-    const exceptedSigns = HOUSE_SIGN_EXCEPTIONS[house];
-    if (exceptedSigns && exceptedSigns.includes(marsSign)) {
-      cancellations.push(
-        `Mars in house ${house} from ${ref.label} in ${marsSign} - cancellation applies`,
-      );
-    }
+  if (venus && aspectsSign('Venus', venus.signIndex, m))
+    out.push(`Mars aspected by Venus${SUFFIX}`);
+  const moon = getPlanetPosition(chartData, 'Moon');
+  if (moon && waxing === true && aspectsSign('Moon', moon.signIndex, m)) {
+    out.push(`Mars aspected by a waxing Moon${SUFFIX}`);
+  }
+  const mercury = getPlanetPosition(chartData, 'Mercury');
+  if (
+    mercury &&
+    mercuryIsBenefic(chartData, waxing) &&
+    aspectsSign('Mercury', mercury.signIndex, m)
+  ) {
+    out.push(`Mars aspected by Mercury${SUFFIX}`);
   }
 
-  return cancellations;
+  // Raman, Muhurtha p.100: "In Aquarius and Leo, Mars produces no dosha whatsoever."
+  if (mars.sign === 'Leo' || mars.sign === 'Aquarius') {
+    out.push(`Mars in ${mars.sign}, a sign where it forms no Mangal Dosha${SUFFIX}`);
+  }
+  return out;
 }
 
 function computeAge(birthDate: string, asOf: Date = new Date()): number {
@@ -166,27 +146,25 @@ function buildDescription(
   present: boolean,
   type: MangalDosha['type'],
   marsHouseFromLagna: number,
-  fromLagna: boolean,
-  fromMoon: boolean,
-  fromVenus: boolean,
+  afflicted: Point[],
+  remaining: Point[],
   cancellations: string[],
+  clearedPoints: { point: Point; reason: string }[],
 ): string {
   if (!present) return '';
-
-  const refs = [fromLagna && 'Lagna', fromMoon && 'Moon', fromVenus && 'Venus'].filter(
-    Boolean,
-  ) as string[];
-  const refText = refs.join(', ');
 
   if (type === 'cancelled') {
     const reason =
       cancellations[0]?.replace(/ - cancellation applies$/, '') ?? 'a traditional exception';
-    return `Mars sits in house ${marsHouseFromLagna} from your ${refText}, which would normally form Mangal Dosha, but ${reason} — a traditional cancellation that substantially neutralizes its effect.`;
+    return `Mars sits in house ${marsHouseFromLagna} from your ${afflicted.join(', ')}, which would normally form Mangal Dosha, but ${reason} — a traditional cancellation that substantially neutralizes its effect.`;
   }
+  const cleared = clearedPoints.length
+    ? ` From your ${clearedPoints.map((c) => c.point).join(', ')} it is cleared: ${clearedPoints.map((c) => c.reason).join('; ')}.`
+    : '';
   if (type === 'full') {
     return `Mars afflicts all three reference points (Lagna, Moon, and Venus) from house ${marsHouseFromLagna}, forming a full Mangal Dosha with no cancellation — traditionally significant for marriage timing and marital harmony.`;
   }
-  return `Mars in house ${marsHouseFromLagna} afflicts your ${refText}, forming a partial Mangal Dosha (${refs.length} of 3 reference points affected).`;
+  return `Mars in house ${marsHouseFromLagna} afflicts your ${remaining.join(', ')}, forming a partial Mangal Dosha (${remaining.length} of 3 reference points affected).${cleared}`;
 }
 
 export function detectMangalDosha(chartData: ChartData, birthDate?: string): MangalDosha {
@@ -209,59 +187,68 @@ export function detectMangalDosha(chartData: ChartData, birthDate?: string): Man
     };
   }
 
-  const lagnaSignIndex = chartData.ascendant.signIndex;
   const moon = getPlanetPosition(chartData, 'Moon');
   const venus = getPlanetPosition(chartData, 'Venus');
-
   const marsSignIndex = mars.signIndex;
 
-  const marsHouseFromLagna = getHouseFromSign(marsSignIndex, lagnaSignIndex);
+  const marsHouseFromLagna = getHouseFromSign(marsSignIndex, chartData.ascendant.signIndex);
   const marsHouseFromMoon = moon ? getHouseFromSign(marsSignIndex, moon.signIndex) : 0;
   const marsHouseFromVenus = venus ? getHouseFromSign(marsSignIndex, venus.signIndex) : 0;
 
   const fromLagna = MANGAL_DOSHA_HOUSES.includes(marsHouseFromLagna);
   const fromMoon = moon ? MANGAL_DOSHA_HOUSES.includes(marsHouseFromMoon) : false;
-  const fromVenus = venus ? MANGAL_DOSHA_HOUSES.includes(marsHouseFromVenus) : false;
+  // Venus with Mars is not a point (see the module comment).
+  const fromVenus =
+    venus && venus.signIndex !== marsSignIndex
+      ? MANGAL_DOSHA_HOUSES.includes(marsHouseFromVenus)
+      : false;
 
-  const afflictedCount = [fromLagna, fromMoon, fromVenus].filter(Boolean).length;
-  const present = afflictedCount > 0;
+  const houseOf: Record<Point, number> = {
+    Lagna: marsHouseFromLagna,
+    Moon: marsHouseFromMoon,
+    Venus: marsHouseFromVenus,
+  };
+  const afflicted = (['Lagna', 'Moon', 'Venus'] as Point[]).filter(
+    (_, i) => [fromLagna, fromMoon, fromVenus][i],
+  );
+  const present = afflicted.length > 0;
+  const percentage = Math.round((afflicted.length / 3) * 100);
 
-  // Percentage: each reference point contributes ~33.33%
-  const percentage = Math.round((afflictedCount / 3) * 100);
+  const global = present ? marsExemptions(chartData, mars) : [];
+  const perPoint = afflicted
+    .filter((pt) => (HOUSE_SIGN_EXCEPTIONS[houseOf[pt]] ?? []).includes(mars.sign))
+    .map((pt) => ({
+      point: pt,
+      reason: `Mars in house ${houseOf[pt]} from ${pt} in ${mars.sign}`,
+    }));
+  const remaining =
+    global.length > 0 ? [] : afflicted.filter((pt) => !perPoint.some((c) => c.point === pt));
 
-  const cancellations = present ? checkCancellations(chartData) : [];
-
-  // Any ONE matched classical cancellation rule is sufficient to cancel the
-  // dosha — this is not gated behind a minimum count of stacked reasons (see
-  // the module doc comment for why).
-  const isCancelled = cancellations.length > 0;
+  const isCancelled = present && remaining.length === 0;
+  const cancellations = isCancelled
+    ? [...global, ...perPoint.map((c) => `${c.reason}${SUFFIX}`)]
+    : [];
+  const clearedPoints = isCancelled ? [] : perPoint;
 
   let severity: MangalDosha['severity'] = 'none';
   if (present && !isCancelled) {
-    if (afflictedCount === 3) severity = 'severe';
-    else if (afflictedCount === 2) severity = 'moderate';
-    else severity = 'mild';
+    severity = remaining.length === 3 ? 'severe' : remaining.length === 2 ? 'moderate' : 'mild';
   }
 
   let type: MangalDosha['type'] = 'none';
-  if (!present) {
-    type = 'none';
-  } else if (isCancelled) {
-    type = 'cancelled';
-  } else if (afflictedCount === 3) {
-    type = 'full';
-  } else {
-    type = 'partial';
-  }
+  if (!present) type = 'none';
+  else if (isCancelled) type = 'cancelled';
+  else if (remaining.length === 3) type = 'full';
+  else type = 'partial';
 
   let description = buildDescription(
     present,
     type,
     marsHouseFromLagna,
-    fromLagna,
-    fromMoon,
-    fromVenus,
+    afflicted,
+    remaining,
     cancellations,
+    clearedPoints,
   );
 
   // Non-authoritative folk belief: never gates type/severity, only ever adds
@@ -282,6 +269,7 @@ export function detectMangalDosha(chartData: ChartData, birthDate?: string): Man
     marsHouseFromMoon,
     marsHouseFromVenus,
     cancellations,
+    ...(clearedPoints.length ? { clearedPoints } : {}),
     type,
     description,
   };

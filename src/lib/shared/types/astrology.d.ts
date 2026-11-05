@@ -82,6 +82,10 @@ export interface MangalDosha {
     marsHouseFromMoon: number;
     marsHouseFromVenus: number;
     cancellations: string[];
+    clearedPoints?: {
+        point: 'Lagna' | 'Moon' | 'Venus';
+        reason: string;
+    }[];
     type: 'partial' | 'full' | 'cancelled' | 'none';
     description: string;
 }

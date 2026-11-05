@@ -572,11 +572,27 @@ export function doshaFacts(
     const cancellations = Array.isArray(mangal.cancellations)
       ? (mangal.cancellations as string[]).map((c) => c.replace(/ - cancellation applies$/, ''))
       : [];
+    // A point cleared by a house+sign exception while another stays afflicted (audit Sprint 7):
+    // say which point still counts, so an answer does not read the cleared one as the dosha.
+    const cleared = Array.isArray(mangal.clearedPoints)
+      ? (mangal.clearedPoints as { point: string; reason: string }[])
+      : [];
+    const the = (p: string) => (p === 'Venus' ? 'Venus' : `the ${p}`);
+    const counted = (['Lagna', 'Moon', 'Venus'] as const).filter(
+      (p, i) =>
+        [mangal.fromLagna, mangal.fromMoon, mangal.fromVenus][i] === true &&
+        !cleared.some((c) => c.point === p),
+    );
+    const clearedText = cleared.length
+      ? `, counted from ${counted.map(the).join(' and ')}; not counted from ${cleared
+          .map((c) => `${the(c.point)}: ${c.reason}`)
+          .join('; ')}`
+      : '';
     facts.push(
       mangal.present && mangal.type === 'cancelled'
         ? `Mangal Dosha: cancelled (not Manglik)${cancellations.length ? `: ${cancellations.join('; ')}` : ''}`
         : mangal.present
-          ? `Mangal Dosha: present (${String(mangal.severity)} severity, ${String(mangal.type)} type)`
+          ? `Mangal Dosha: present (${String(mangal.severity)} severity, ${String(mangal.type)} type)${clearedText}`
           : 'Mangal Dosha: not present',
     );
   }

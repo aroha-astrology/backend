@@ -184,6 +184,25 @@ describe('H2: a cancelled Mangal Dosha is "not Manglik" everywhere', () => {
     expect(line).toBe('Mangal Dosha: present (mild severity, partial type)');
   });
 
+  it('a partly cleared Mangal names the point that is cleared and why (audit Sprint 7)', () => {
+    const line = doshaFacts(
+      {
+        mangal: {
+          ...CANCELLED_MANGAL,
+          severity: 'mild',
+          type: 'partial',
+          fromMoon: true,
+          cancellations: [],
+          clearedPoints: [{ point: 'Lagna', reason: 'Mars in house 7 from Lagna in Cancer' }],
+        },
+      },
+      'Asia/Kolkata',
+    )[0]!;
+    expect(line).toBe(
+      'Mangal Dosha: present (mild severity, partial type), counted from the Moon; not counted from the Lagna: Mars in house 7 from Lagna in Cancer',
+    );
+  });
+
   it('reports leave a cancelled Mangal out of "what to hold carefully"', () => {
     const { cautions } = computeDoshaYogaSummary(
       { mangal: CANCELLED_MANGAL },

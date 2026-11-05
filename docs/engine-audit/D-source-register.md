@@ -484,6 +484,45 @@ Read in E-TN-SKT chapter 1 (Sanskrit and the Hindi commentary). Confidence 80: t
 
 ---
 
+## Mangal Dosha (audit Sprint 7, opened 2026-11-05)
+
+Editions opened for these rows, besides E-BPHS-ENG, E-BPHS-SKT and E-PHALA above:
+
+| Edition id  | Work                                                                               | What was opened                                                                                       | Fetched    |
+| ----------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------- |
+| E-JP-ENG    | Vaidyanatha Dikshita, Jataka Parijata, tr. V. Subrahmanya Sastri, vols 1-2         | Internet Archive items `JatakaParijataVolIOfIIByVSubrahmanyaSastri`, `...VolIIOfII...`, OCR full text | 2026-11-05 |
+| E-MC-HIN    | Rama Daivajna, Muhurta Chintamani, Hindi commentary of Mahidhara Sharma            | Internet Archive item `muhurta-chintamani-of-daivagya-ramacharya-mahidhar-sharma`, OCR (imperfect)    | 2026-11-05 |
+| E-RAMAN-MUH | B. V. Raman, Muhurtha or Electional Astrology (20th century; not a classical text) | Internet Archive item `in.ernet.dli.2015.128092`, OCR full text, pp. 97-100                           | 2026-11-05 |
+| E-JC-ENG    | Venkatesha, Jataka Chandrika, tr. B. Suryanarain Rao (1900)                        | Internet Archive scan; the OCR is unreadable, so nothing in it was checked                            | 2026-11-05 |
+
+### BPHS-80.47-49 — the Mars yoga for the spouse
+
+- **Sanskrit (E-BPHS-SKT 80.47):** lagne vyaye sukhe vāpi saptame cā'ṣṭame kuje / śubha-dṛg-yoga-hīne ca patiṃ hanti na saṃśayaḥ. **80.48:** the same yoga in a man's chart. **80.49:** strīhantrā pariṇītā cet patihantrī kumārikā / tadā vaidhavya-yogasya bhaṅgo bhavati niścayāt.
+- **Translation (E-BPHS-ENG 80.47-49):** Mars in the 1st, 12th, 4th, 7th or 8th, "unaspected by or associated with any benefic"; when two such people marry, the yoga has no effect. The translator's note gives the name Mangalik.
+- **Against the engine:** five houses, counted from the Lagna. The 2nd house and the Moon and Venus points are Raman's (RAMAN-MUH). A benefic joining or aspecting Mars clears it for every point (Jupiter, Venus, the waxing Moon, Mercury under BPHS-3.11). 80.49 is matching only (Dosha Samya, a text line in `astro.service.ts`).
+- **Supports:** DOH-MNG formation and the benefic rule. Confidence 90 (Sanskrit and translation agree).
+
+### BPHS-3.11 — which planets are benefics
+
+- **Translation (E-BPHS-ENG 3.11):** "the Sun, Saturn, Mars, decreasing Moon, Rahu and Ketu are malefics while the rest are benefics. Mercury, however, is a malefic if he joins a malefic." The translator's note: waxing Moon benefic, waning Moon malefic.
+- **Against the engine:** Mercury joining Mars is never a benefic conjunction (it joins a malefic). Mercury's aspect counts only when no malefic or waning Moon shares its sign. The Moon's aspect counts only when it is waxing (under 180° ahead of the Sun).
+
+### RAMAN-MUH-98-100 — Kuja Dosha in Raman's Muhurtha
+
+- **Text (E-RAMAN-MUH pp. 98-100):** "it is only in the kerala sastra that mention is made of Kuja Dosha": dhane vyaye cha pathale jamitre chashtame kuje (2nd, 12th, 4th, 7th, 8th). Reckoned from the Lagna, the Moon and Venus, "weak when it exists from Lagna, a little stronger from Moon and still more powerful from Venus". Both charts having it cancels it. Exceptions: 2nd in Gemini/Virgo, 12th in Taurus/Libra, 4th in Aries/Scorpio, 7th in Capricorn/Cancer, 8th in Sagittarius/Pisces; "In Aquarius and Leo, Mars produces no dosha whatsoever"; "counteracted by the conjunction of Mars and Jupiter or Mars and the Moon".
+- **Against the engine:** the three points, the house+sign list (each clears its own point only), Leo/Aquarius and the Moon conjunction in any phase come from here. Raman's weighting by point is not used (severity = points left). Own sign and exaltation in any house are Aroha's convention, wider than Raman's 4th and 7th.
+- **Class:** a 20th-century book, not a classical text. Confidence 85 (OCR read).
+
+### Not found, and not used
+
+- **Phaladeepika (E-PHALA 11.3, 10.4, 10.15):** only 7th-house rules (Mars in or ruling the 7th: widowhood). No Kuja Dosha list, no exceptions.
+- **Jataka Parijata (E-JP-ENG, Adhyaya 16):** 16.10, 16.23, 16.30 are 7th-house rules. The verse "sthāna pañcaka … guruṇā athavā budhena …" that web pages credit to it is not in the translation of either volume.
+- **Muhurta Chintamani (E-MC-HIN, ch. 6):** Mars appears in the question chart (6.4) and the wedding-moment chart (6.102), not as a birth-chart dosha. The verse "catuḥ saptamako bhaumo …" credited to it was not found (OCR imperfect: not found, not proven absent).
+- **Jataka Chandrika (E-JC-ENG):** unreadable; the movable-sign rule credited to it stays unverified and is not used.
+- **Web pages (onlinejyotish.com, jagannathhora.com, astrology.proxaai.com):** debilitated Mars in the 4th/7th, movable signs, Mercury in any state, Cancer/Leo Lagna, Mars in a friend's sign. None gives a chapter or verse; none is used. The owner's spec MB_08-MB_11 and MB_14-MB_15 are not used either.
+
+---
+
 ## Reading list (what to open, not what has been read)
 
 | Text                              | Edition target                                                                   | Where to find it                   |

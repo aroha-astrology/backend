@@ -100,29 +100,29 @@
 
 ## Batch 2 — Judgement rules
 
-| Feature id | Feature name                  | Classification      | Accuracy % | Ancient Support % | Confidence % | Status     | Fault ids | Notes          |
-| ---------- | ----------------------------- | ------------------- | ---------: | ----------------: | -----------: | ---------- | --------- | -------------- |
-| DOH-MNG    | Mangal Dosha                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | D1        |                |
-| DOH-KAL    | Kaal Sarp                     | MODERN_ASTROLOGICAL |        n/a |                 0 |          n/a | LABEL-ONLY | D2        |                |
-| DOH-PIT    | Pitra Dosha                   | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| DOH-GCH    | Guru Chandal                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| DOH-GRH    | Grahan Dosha                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| DOH-KEM    | Kemadruma Dosha               | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | D3        |                |
-| DOH-SAD    | Sade Sati                     | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| DOH-DHA    | Dhaiya                        | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-PMP    | Pancha Mahapurusha            | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-RAJ    | Raja Yoga                     | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-DKA    | Dharma-Karmadhipati           | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-VIP    | Viparita Raja Yoga            | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-NEE    | Neechabhanga                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-DHA    | Dhana Yogas                   | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-LAK    | Lakshmi Yoga                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-GJK    | Gajakesari / Shakata          | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | Y1        | False positive |
-| YGA-SHA    | Sunapha/Anapha/Durudhara/Adhi | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| YGA-BUD    | Budhaditya Yoga               | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| MT-ASH     | Ashtakoota                    | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| MT-DSH     | Dashakoota                    | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                |
-| MT-RIS     | Match risk scoring            | AROHA_PROPRIETARY   |        n/a |                 0 |          n/a | LABEL-ONLY | M1, MT5   |                |
+| Feature id | Feature name                  | Classification      | Accuracy % | Ancient Support % | Confidence % | Status     | Fault ids | Notes                   |
+| ---------- | ----------------------------- | ------------------- | ---------: | ----------------: | -----------: | ---------- | --------- | ----------------------- |
+| DOH-MNG    | Mangal Dosha                  | MODERN_ASTROLOGICAL |        n/a |               n/a |           85 | CLOSED     | D1        | BPHS 80.47 core + Raman |
+| DOH-KAL    | Kaal Sarp                     | MODERN_ASTROLOGICAL |        n/a |                 0 |          n/a | LABEL-ONLY | D2        |                         |
+| DOH-PIT    | Pitra Dosha                   | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| DOH-GCH    | Guru Chandal                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| DOH-GRH    | Grahan Dosha                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| DOH-KEM    | Kemadruma Dosha               | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | D3        |                         |
+| DOH-SAD    | Sade Sati                     | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| DOH-DHA    | Dhaiya                        | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-PMP    | Pancha Mahapurusha            | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-RAJ    | Raja Yoga                     | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-DKA    | Dharma-Karmadhipati           | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-VIP    | Viparita Raja Yoga            | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-NEE    | Neechabhanga                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-DHA    | Dhana Yogas                   | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-LAK    | Lakshmi Yoga                  | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-GJK    | Gajakesari / Shakata          | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | Y1        | False positive          |
+| YGA-SHA    | Sunapha/Anapha/Durudhara/Adhi | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| YGA-BUD    | Budhaditya Yoga               | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| MT-ASH     | Ashtakoota                    | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| MT-DSH     | Dashakoota                    | UNVERIFIED          |        n/a |               n/a |          n/a | OPEN       | —         |                         |
+| MT-RIS     | Match risk scoring            | AROHA_PROPRIETARY   |        n/a |                 0 |          n/a | LABEL-ONLY | M1, MT5   |                         |
 
 ---
 

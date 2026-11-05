@@ -28,6 +28,7 @@ import type {
   Yoga,
 } from '@aroha-astrology/shared';
 import type { SaturnNatal } from '../../lib/astro-engine/doshas/saturnStrength.js';
+import { detectMangalDosha } from '../../lib/astro-engine/doshas/mangalDosha.js';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -612,8 +613,6 @@ export async function withLiveSaturnTransits(
   natal?: { chart: unknown; ashtakavarga?: unknown } | null,
 ): Promise<Record<string, unknown> | null> {
   if (!doshaData) return doshaData;
-  const cached = doshaData.sadeSati as { moonSign?: ZodiacSign } | undefined;
-  if (!cached?.moonSign) return doshaData;
   const saturnNatal: SaturnNatal | null =
     natal?.chart && Array.isArray((natal.chart as ChartData).planets)
       ? {
@@ -621,11 +620,23 @@ export async function withLiveSaturnTransits(
           ashtakavarga: (natal.ashtakavarga as AshtakavargaData | null | undefined) ?? null,
         }
       : null;
+  const live: Record<string, unknown> = { ...doshaData };
+  // Mangal Dosha is natal, but its rules changed in audit Sprint 7 (M12). Reading it again from
+  // the saved chart brings every old kundli onto the new rules without a CALCULATION_VERSION
+  // bump, which would rebuild every chart and wipe its horoscopes.
+  if (saturnNatal) {
+    try {
+      live.mangal = detectMangalDosha(saturnNatal.chart);
+    } catch (err) {
+      logger.warn({ err }, 'live Mangal recompute failed at read time (serving cached value)');
+    }
+  }
+  const cached = doshaData.sadeSati as { moonSign?: ZodiacSign } | undefined;
+  if (!cached?.moonSign) return live;
   const [sadeSati, dhaiya] = await Promise.allSettled([
     detectCurrentSadeSati(cached.moonSign, asOf, saturnNatal),
     detectCurrentDhaiya(cached.moonSign, asOf, saturnNatal),
   ]);
-  const live: Record<string, unknown> = { ...doshaData };
   if (sadeSati.status === 'fulfilled') live.sadeSati = sadeSati.value;
   else
     logger.warn(
@@ -638,7 +649,7 @@ export async function withLiveSaturnTransits(
 }
 
 /** The transit doshas recomputed on every read; a translation cached for them must match today's English. */
-const LIVE_DOSHA_KEYS = ['sadeSati', 'dhaiya'] as const;
+const LIVE_DOSHA_KEYS = ['sadeSati', 'dhaiya', 'mangal'] as const;
 
 export async function toKundliDto(row: KundliRow): Promise<KundliDto> {
   return {
@@ -682,8 +693,18 @@ export async function toKundliDtoForLanguage(row: KundliRow, language: string): 
   // cached before Dhaiya existed stay valid for readers it does not touch.
   const dhaiyaDescription = doshas.dhaiya?.description;
   const dhaiyaText = typeof dhaiyaDescription === 'string' ? dhaiyaDescription : '';
+  // Mangal is recomputed at read time too (audit Sprint 7). Its text joins the hash only when it
+  // differs from the saved English, so translations stay valid for charts the new rules did not
+  // change and are redone once for the ones they did.
+  const savedMangal = (
+    row.doshaData as Record<string, { description?: unknown } | undefined> | null
+  )?.mangal?.description;
+  const liveMangal = doshas.mangal?.description;
+  const mangalText = typeof liveMangal === 'string' && liveMangal !== savedMangal ? liveMangal : '';
   const liveSadeSatiHash = hashString(
-    JSON.stringify(doshas.sadeSati?.description ?? '') + (dhaiyaText ? `|${dhaiyaText}` : ''),
+    JSON.stringify(doshas.sadeSati?.description ?? '') +
+      (dhaiyaText ? `|${dhaiyaText}` : '') +
+      (mangalText ? `|mangal:${mangalText}` : ''),
   );
 
   const cached = row.translations?.[language] as
@@ -698,7 +719,13 @@ export async function toKundliDtoForLanguage(row: KundliRow, language: string): 
       const live = doshas[key];
       if (!live) continue;
       const text = cachedDoshas?.[key]?.description;
-      merged[key] = { ...live, ...(typeof text === 'string' ? { description: text } : {}) };
+      // Mangal's reasons are translated too; the hash above guarantees they match today's English.
+      const reasons = key === 'mangal' ? cachedDoshas?.[key]?.cancellations : undefined;
+      merged[key] = {
+        ...live,
+        ...(typeof text === 'string' ? { description: text } : {}),
+        ...(Array.isArray(reasons) ? { cancellations: reasons } : {}),
+      };
     }
     return {
       ...dto,

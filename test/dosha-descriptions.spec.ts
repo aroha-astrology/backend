@@ -166,12 +166,13 @@ describe('Mangal Dosha — house+sign classical exceptions beyond Lagna-only cov
 });
 
 describe('Mangal Dosha — unverified rules removed', () => {
-  it('does NOT cancel from Mars in Leo alone (no classical source for this rule)', () => {
+  it('cancels from Mars in Leo (Raman, Muhurtha p.100; owner chose it in audit Sprint 7)', () => {
     // Lagna signIndex 9, Mars signIndex 4 (Leo) -> house 8 from Lagna, no
-    // other planets present to trigger any other rule.
+    // other planets present to trigger any other rule. Not in a classical text,
+    // but it is in the same Raman list the house+sign exceptions come from.
     const result = detectMangalDosha(chart([planet('Mars', 4, 8)], 9));
     expect(result.present).toBe(true);
-    expect(result.type).not.toBe('cancelled');
+    expect(result.type).toBe('cancelled');
   });
 
   it('does NOT cancel from Mars being in a Kendra from Jupiter alone (no classical source for this rule)', () => {

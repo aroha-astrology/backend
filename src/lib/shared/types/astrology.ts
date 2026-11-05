@@ -212,6 +212,11 @@ export interface MangalDosha {
   marsHouseFromMoon: number;
   marsHouseFromVenus: number;
   cancellations: string[];
+  /**
+   * Points where Mars sits in a dosha house but a house+sign exception clears that point only,
+   * while another point stays afflicted (type 'partial' or 'full'). Absent when there is none.
+   */
+  clearedPoints?: { point: 'Lagna' | 'Moon' | 'Venus'; reason: string }[];
   type: 'partial' | 'full' | 'cancelled' | 'none';
   description: string;
 }
