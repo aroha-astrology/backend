@@ -235,6 +235,10 @@ export interface KaalSarpDosha {
   rahuHouse: number;
   ketuHouse: number;
   isPartial: boolean;
+  /** Which half of the zodiac holds the planets: Rahu -> Ketu = kaal_sarp, Ketu -> Rahu = kaal_amrit (audit G3). */
+  direction?: 'none' | 'kaal_sarp' | 'kaal_amrit';
+  /** For a partial one, the planet(s) outside the Rahu-Ketu arc. */
+  outsidePlanets?: Planet[];
   description: string;
 }
 
@@ -313,6 +317,8 @@ export interface PitraDosha {
   present: boolean;
   indicators: string[];
   severity: 'none' | 'mild' | 'moderate' | 'severe';
+  /** True angular distance Sun to Rahu when they share a house (data only, audit G2). */
+  sunRahuSeparationDeg?: number | null;
   description: string;
 }
 
@@ -327,6 +333,9 @@ export interface GrahanDosha {
   present: boolean;
   type: 'surya_grahan' | 'chandra_grahan' | 'both' | 'none';
   severity: 'none' | 'mild' | 'moderate' | 'severe';
+  /** True angular distance to the node it shares a house with (data only, audit G2). */
+  suryaSeparationDeg?: number | null;
+  chandraSeparationDeg?: number | null;
   description: string;
 }
 
@@ -334,6 +343,8 @@ export interface GuruChandalDosha {
   present: boolean;
   house: number;
   severity: 'none' | 'mild' | 'moderate' | 'severe';
+  /** True angular distance Jupiter to Rahu (data only, audit G2). */
+  separationDeg?: number | null;
   description: string;
 }
 
@@ -364,6 +375,8 @@ export interface Yoga {
   planets: Planet[];
   houses: number[];
   activationPeriod?: string | undefined;
+  /** Angarak only: true angular distance Mars to Rahu (data only, audit G2). */
+  separationDeg?: number | undefined;
 }
 
 // ============================================================

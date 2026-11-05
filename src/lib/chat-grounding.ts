@@ -605,6 +605,12 @@ export function doshaFacts(
       kaalSarp.present
         ? `Kaal Sarp Dosha: present (${String(kaalSarp.name || kaalSarp.type)}, ${String(kaalSarp.severity)}${
             kaalSarp.isPartial ? ', partial' : ', full'
+          }${
+            kaalSarp.direction === 'kaal_amrit'
+              ? ', Kaal Amrit direction'
+              : kaalSarp.direction === 'kaal_sarp'
+                ? ', Kaal Sarp direction'
+                : ''
           })`
         : 'Kaal Sarp Dosha: not present',
     );
@@ -667,7 +673,11 @@ export function doshaFacts(
       guruChandal.present
         ? `Guru Chandal Dosha: present (house ${String(guruChandal.house)}, ${String(
             guruChandal.severity,
-          )} severity)`
+          )} severity${
+            typeof guruChandal.separationDeg === 'number'
+              ? `, ${guruChandal.separationDeg} deg apart`
+              : ''
+          })`
         : 'Guru Chandal Dosha: not present',
     );
   }

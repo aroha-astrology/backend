@@ -15,6 +15,7 @@ import { beneficsOf, natureOf } from '../rules/nature.js';
 import { assessKemadruma } from '../doshas/kemDrumaDosha.js';
 import { detectGuruChandalDosha } from '../doshas/guruChandal.js';
 import { detectGrahanDosha } from '../doshas/grahanDosha.js';
+import { separationDeg } from '../doshas/separation.js';
 import { getActiveProfile } from '../rules/profile.js';
 import { signDignity } from '../rules/dignity.js';
 
@@ -2119,6 +2120,10 @@ function detectShadashtak(chartData: ChartData): Yoga {
   };
 }
 
+function getPlanetLongitude(planet: Planet, chartData: ChartData): number {
+  return chartData.planets.find((p) => p.planet === planet)?.longitude ?? 0;
+}
+
 function detectAngarak(chartData: ChartData): Yoga {
   // Angarak Yoga: Mars conjunct Rahu
   const conjunct = arePlanetsConjunct('Mars', 'Rahu', chartData);
@@ -2136,6 +2141,9 @@ function detectAngarak(chartData: ChartData): Yoga {
     type: 'dosha',
     present: conjunct,
     strength,
+    separationDeg: conjunct
+      ? separationDeg(getPlanetLongitude('Mars', chartData), getPlanetLongitude('Rahu', chartData))
+      : undefined,
     description:
       'Mars conjunct Rahu. Indicates aggression, accidents, conflicts, and legal troubles. Can also give technical/surgical skills if well-placed.',
     planets: ['Mars', 'Rahu'],
@@ -2145,12 +2153,11 @@ function detectAngarak(chartData: ChartData): Yoga {
 }
 
 function detectGuruChandal(chartData: ChartData): Yoga {
-  // Guru Chandal: ONE rule, the dosha detector's (Jupiter in the same house as Rahu or Ketu).
+  // Guru Chandal: ONE rule, the dosha detector's (Jupiter in the same house as Rahu; Jupiter with Ketu does not count, audit G11).
   // This used to be a second copy of the same test (audit SB3).
-  const conjRahu = arePlanetsConjunct('Jupiter', 'Rahu', chartData);
   const present = detectGuruChandalDosha(chartData).present;
   const jupHouse = getPlanetHouse('Jupiter', chartData);
-  const shadowPlanet: Planet = conjRahu ? 'Rahu' : 'Ketu';
+  const shadowPlanet: Planet = 'Rahu';
 
   let strength = 0;
   if (present) {
@@ -2165,7 +2172,7 @@ function detectGuruChandal(chartData: ChartData): Yoga {
     present,
     strength,
     description:
-      "Jupiter conjunct Rahu or Ketu. Corrupts Jupiter's wisdom, causing unorthodox beliefs, broken promises, and challenges with gurus/teachers. Can give unconventional success.",
+      "Jupiter conjunct Rahu. Corrupts Jupiter's wisdom, causing unorthodox beliefs, broken promises, and challenges with gurus/teachers. Can give unconventional success.",
     planets: ['Jupiter', shadowPlanet],
     houses: present ? [jupHouse] : [],
     activationPeriod: `Jupiter or ${shadowPlanet} Mahadasha/Antardasha` ?? undefined,

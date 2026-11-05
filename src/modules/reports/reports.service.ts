@@ -175,7 +175,9 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
 // per point (M12), so a report written on the old rules may name the wrong Manglik status.
 // 14 (2026-11-05, audit Sprint 8): Pitra no longer counts the Sun alone in the 9th (SB9) and Grahan
 // counts the Sun with Ketu as well as Rahu (SB3), so older reports may name the wrong dosha.
-const CONTENT_VERSION = 14;
+// 15 (2026-11-05, audit Sprint 9): Kaal Sarp is read on the longitude arc with a direction (G3, SB4)
+// and Jupiter with Ketu is no longer Guru Chandal (G11), so older reports may name the wrong dosha.
+const CONTENT_VERSION = 15;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes

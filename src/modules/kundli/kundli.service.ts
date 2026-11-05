@@ -31,6 +31,8 @@ import type { SaturnNatal } from '../../lib/astro-engine/doshas/saturnStrength.j
 import { detectMangalDosha } from '../../lib/astro-engine/doshas/mangalDosha.js';
 import { detectPitraDosha } from '../../lib/astro-engine/doshas/pitraDosha.js';
 import { detectGrahanDosha } from '../../lib/astro-engine/doshas/grahanDosha.js';
+import { detectKaalSarpDosha } from '../../lib/astro-engine/doshas/kaalSarp.js';
+import { detectGuruChandalDosha } from '../../lib/astro-engine/doshas/guruChandal.js';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -655,6 +657,9 @@ export async function withLiveSaturnTransits(
     try {
       live.pitra = detectPitraDosha(saturnNatal.chart);
       live.grahan = detectGrahanDosha(saturnNatal.chart);
+      // Kaal Sarp and Guru Chandal changed in audit Sprint 9 (G3, SB4, G11); same route.
+      live.kaalSarp = detectKaalSarpDosha(saturnNatal.chart);
+      live.guruChandal = detectGuruChandalDosha(saturnNatal.chart);
     } catch (err) {
       logger.warn(
         { err },

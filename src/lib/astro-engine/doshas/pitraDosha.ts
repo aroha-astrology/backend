@@ -1,5 +1,6 @@
 // @ts-nocheck
 import type { ChartData, PitraDosha, Planet, ZodiacSign } from '@aroha-astrology/shared';
+import { separationDeg } from './separation';
 import {
   NATURAL_MALEFICS,
   PLANET_DEBILITATION,
@@ -33,9 +34,12 @@ export function detectPitraDosha(chartData: ChartData): PitraDosha {
   // Condition 1: Sun + Rahu conjunction (same house)
   const sun = getPlanetPosition(chartData, 'Sun');
   const rahu = getPlanetPosition(chartData, 'Rahu');
+  // True distance of the Sun from Rahu, shown as data only (audit G2).
+  let sunRahuSeparationDeg: number | null = null;
 
   if (sun && rahu && sun.house === rahu.house) {
     indicators.push('Sun conjunct Rahu in the same house - ancestral affliction');
+    sunRahuSeparationDeg = separationDeg(sun.longitude, rahu.longitude);
   }
 
   // Condition 2: 9th house afflicted by malefics. The Sun is the father's karaka, not an
@@ -84,6 +88,7 @@ export function detectPitraDosha(chartData: ChartData): PitraDosha {
     present,
     indicators,
     severity,
+    sunRahuSeparationDeg,
     description,
   };
 }

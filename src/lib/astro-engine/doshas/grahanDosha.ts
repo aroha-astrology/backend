@@ -10,6 +10,8 @@ import type { ChartData, GrahanDosha, Planet } from '@aroha-astrology/shared';
  * Conjunction is defined as occupying the same house.
  */
 
+import { separationDeg } from './separation';
+
 function getPlanetPosition(chartData: ChartData, planet: Planet) {
   return chartData.planets.find((p) => p.planet === planet);
 }
@@ -39,6 +41,17 @@ export function detectGrahanDosha(chartData: ChartData): GrahanDosha {
   if (moon && ketu && moon.house === ketu.house) {
     hasChandraGrahan = true;
   }
+
+  // True distance to the nearer node THAT SHARES the house (audit G2). Data only.
+  const nearest = (body: typeof sun) => {
+    if (!body) return null;
+    const ds = [rahu, ketu]
+      .filter((n) => n && n.house === body.house)
+      .map((n) => separationDeg(body.longitude, n!.longitude));
+    return ds.length ? Math.min(...ds) : null;
+  };
+  const suryaSeparationDeg = hasSuryaGrahan ? nearest(sun) : null;
+  const chandraSeparationDeg = hasChandraGrahan ? nearest(moon) : null;
 
   const present = hasSuryaGrahan || hasChandraGrahan;
 
@@ -70,6 +83,8 @@ export function detectGrahanDosha(chartData: ChartData): GrahanDosha {
     present,
     type,
     severity,
+    suryaSeparationDeg,
+    chandraSeparationDeg,
     description: type === 'none' ? '' : DESCRIPTIONS[type],
   };
 }

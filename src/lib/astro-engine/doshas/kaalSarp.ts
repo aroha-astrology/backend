@@ -3,55 +3,25 @@ import type { ChartData, KaalSarpDosha, Planet } from '@aroha-astrology/shared';
 import { KAAL_SARP_TYPES } from '@aroha-astrology/shared';
 
 /**
- * Kaal Sarp Dosha Detection
+ * Kaal Sarp Dosha Detection (audit Sprint 9, G3 + SB4)
  *
- * All 7 planets (Sun through Saturn) must be hemmed between the
- * Rahu-Ketu axis. If exactly 1 planet falls outside, it is
- * classified as partial Kaal Sarp Dosha.
+ * Read on the LONGITUDE arc, not on houses. Ketu is Rahu + 180, so the zodiac splits into two
+ * halves: Rahu -> Ketu (going forward from Rahu) and Ketu -> Rahu. All 7 planets (Sun to Saturn)
+ * in one half = full Kaal Sarp; exactly 1 outside = partial. A planet that shares a node's sign
+ * but has not reached the node (or is past it) is outside, which the old house test counted as
+ * inside (SB4).
  *
- * 12 named types based on Rahu's and Ketu's house positions.
+ * Direction, one convention for Aroha: the planets between Rahu and Ketu = Kaal Sarp; between
+ * Ketu and Rahu = Kaal Amrit (the common modern naming). Kaal Sarp itself is a later tradition,
+ * not a rule of the old Parashari texts, and the direction naming is the same, so both are shown
+ * as such. The 12 named types still come from Rahu's and Ketu's houses.
  */
 
 const SEVEN_PLANETS: Planet[] = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
 
-/**
- * Check if a house number is "between" Rahu and Ketu going forward
- * from Rahu to Ketu (exclusive of Rahu/Ketu houses themselves).
- *
- * "Between" means traversing houses from rahuHouse toward ketuHouse
- * in ascending (clockwise) order through the 12-house wheel.
- */
-function isBetweenRahuKetu(house: number, rahuHouse: number, ketuHouse: number): boolean {
-  if (house === rahuHouse || house === ketuHouse) return true; // on the axis itself counts as "in"
-
-  // Traverse from Rahu toward Ketu in forward direction
-  let current = rahuHouse;
-  const visited: number[] = [];
-  while (current !== ketuHouse) {
-    current = (current % 12) + 1;
-    if (current === ketuHouse) break;
-    visited.push(current);
-  }
-
-  return visited.includes(house);
-}
-
-/**
- * Check if all planets are between Ketu and Rahu (the reverse half).
- * This is the "reverse" Kaal Sarp — planets hemmed on the other side.
- */
-function isBetweenKetuRahu(house: number, rahuHouse: number, ketuHouse: number): boolean {
-  if (house === rahuHouse || house === ketuHouse) return true;
-
-  let current = ketuHouse;
-  const visited: number[] = [];
-  while (current !== rahuHouse) {
-    current = (current % 12) + 1;
-    if (current === rahuHouse) break;
-    visited.push(current);
-  }
-
-  return visited.includes(house);
+/** Degrees travelled forward from `from` to `to`, 0 up to (not including) 360. */
+function forwardArc(from: number, to: number): number {
+  return (((to - from) % 360) + 360) % 360;
 }
 
 export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
@@ -67,6 +37,8 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
       rahuHouse: 0,
       ketuHouse: 0,
       isPartial: false,
+      direction: 'none',
+      outsidePlanets: [],
       description: '',
     };
   }
@@ -74,40 +46,29 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
   const rahuHouse = rahu.house;
   const ketuHouse = ketu.house;
 
-  const planetHouses = SEVEN_PLANETS.map((planet) => {
+  // Rahu -> Ketu is the forward half from Rahu's longitude; the rest is Ketu -> Rahu.
+  const onRahuSide: Planet[] = [];
+  const onKetuSide: Planet[] = [];
+  for (const planet of SEVEN_PLANETS) {
     const pos = chartData.planets.find((p) => p.planet === planet);
-    return { planet, house: pos ? pos.house : 0 };
-  });
-
-  // Check forward direction: all planets between Rahu -> Ketu
-  let outsideForward = 0;
-  for (const { house } of planetHouses) {
-    if (!isBetweenRahuKetu(house, rahuHouse, ketuHouse)) {
-      outsideForward++;
-    }
+    if (!pos) continue;
+    if (forwardArc(rahu.longitude, pos.longitude) < 180) onRahuSide.push(planet);
+    else onKetuSide.push(planet);
   }
 
-  // Check reverse direction: all planets between Ketu -> Rahu
-  let outsideReverse = 0;
-  for (const { house } of planetHouses) {
-    if (!isBetweenKetuRahu(house, rahuHouse, ketuHouse)) {
-      outsideReverse++;
-    }
-  }
-
-  // Determine which direction yields Kaal Sarp (or partial)
   let isPresent = false;
   let isPartial = false;
-  let outsideCount = 0;
+  let direction: KaalSarpDosha['direction'] = 'none';
+  let outsidePlanets: Planet[] = [];
 
-  if (outsideForward === 0 || outsideReverse === 0) {
+  if (onKetuSide.length === 0 || onRahuSide.length === 0) {
     isPresent = true;
-    isPartial = false;
-    outsideCount = 0;
-  } else if (outsideForward === 1 || outsideReverse === 1) {
+    direction = onKetuSide.length === 0 ? 'kaal_sarp' : 'kaal_amrit';
+  } else if (onKetuSide.length === 1 || onRahuSide.length === 1) {
     isPresent = true;
     isPartial = true;
-    outsideCount = Math.min(outsideForward, outsideReverse);
+    direction = onKetuSide.length === 1 ? 'kaal_sarp' : 'kaal_amrit';
+    outsidePlanets = direction === 'kaal_sarp' ? onKetuSide : onRahuSide;
   }
 
   if (!isPresent) {
@@ -119,6 +80,8 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
       rahuHouse,
       ketuHouse,
       isPartial: false,
+      direction: 'none',
+      outsidePlanets: [],
       description: '',
     };
   }
@@ -135,9 +98,13 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
     severity = 'severe';
   }
 
+  const directionName =
+    direction === 'kaal_amrit'
+      ? 'Kaal Amrit (planets between Ketu and Rahu)'
+      : 'Kaal Sarp (planets between Rahu and Ketu)';
   const description = isPartial
-    ? `A partial ${name} — nearly all planets are hemmed between Rahu (house ${rahuHouse}) and Ketu (house ${ketuHouse}), with one planet escaping the axis, which softens the dosha's intensity.`
-    : `${name} — every planet is hemmed between Rahu (house ${rahuHouse}) and Ketu (house ${ketuHouse}), the full form of Kaal Sarp Dosha, a later tradition rather than a rule of the old Parashari texts.`;
+    ? `A partial ${name}, read as ${directionName}: nearly all planets are hemmed on one side of the Rahu-Ketu axis (Rahu house ${rahuHouse}, Ketu house ${ketuHouse}), with ${outsidePlanets.join(', ')} outside the arc, which softens the dosha's intensity.`
+    : `${name}, read as ${directionName}: every planet lies on one side of the Rahu-Ketu axis (Rahu house ${rahuHouse}, Ketu house ${ketuHouse}), the full form of Kaal Sarp Dosha, a later tradition rather than a rule of the old Parashari texts.`;
 
   return {
     present: true,
@@ -147,6 +114,8 @@ export function detectKaalSarpDosha(chartData: ChartData): KaalSarpDosha {
     rahuHouse,
     ketuHouse,
     isPartial,
+    direction,
+    outsidePlanets,
     description,
   };
 }

@@ -224,6 +224,7 @@ describe('Kaal Sarp Dosha description', () => {
     const saturn = partialPlanets.planets.find((p) => p.planet === 'Saturn')!;
     saturn.house = 8;
     saturn.signIndex = 7;
+    saturn.longitude = 7 * 30 + 15; // past Ketu (sign 6), outside the Rahu -> Ketu arc
     const partial = detectKaalSarpDosha(partialPlanets);
     expect(partial.isPartial).toBe(true);
     expect(partial.description).not.toEqual(full.description);
@@ -288,13 +289,13 @@ describe('Grahan Dosha description', () => {
 });
 
 describe('Guru Chandal Dosha description', () => {
-  it('names the specific house and which shadow planet is conjunct Jupiter', () => {
+  it('names the specific house and Rahu; Jupiter with Ketu is not Guru Chandal (audit G11)', () => {
     const withRahu = detectGuruChandalDosha(chart([planet('Jupiter', 0, 9), planet('Rahu', 0, 9)]));
     const withKetu = detectGuruChandalDosha(chart([planet('Jupiter', 0, 9), planet('Ketu', 0, 9)]));
     expect(withRahu.present).toBe(true);
     expect(withRahu.description).toContain('9');
     expect(withRahu.description).toContain('Rahu');
-    expect(withKetu.description).toContain('Ketu');
-    expect(withRahu.description).not.toEqual(withKetu.description);
+    expect(withKetu.present).toBe(false);
+    expect(withKetu.description).toBe('');
   });
 });
