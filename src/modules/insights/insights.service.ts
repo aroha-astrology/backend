@@ -126,11 +126,62 @@ export interface RectificationDto {
   appliedAt: string | null;
   createdAt: string;
   pricePaidPaise: number;
+  /** When the answer is (or was) due; null = it was shown at once. */
+  revealAt: string | null;
+  /**
+   * True while the answer is held back. The suggested time, matches and
+   * confidence are blanked out for as long as this is true, so a client can't
+   * show them early by reading the response.
+   */
+  pending: boolean;
 }
 
-export function toRectificationDto(row: Rectification): RectificationDto {
+/**
+ * A check on an UNKNOWN birth time is held back for a while before the user
+ * sees it: the engine runs at once, but the answer is shown 40 to 89 minutes
+ * later (always under 90) and the user is pushed when it is ready. It tells the
+ * user, truthfully, that the matching takes time, and it keeps a guess about a
+ * time nobody remembers from reading like an instant lookup.
+ */
+export const REVEAL_DELAY_MIN_MINUTES = 40;
+export const REVEAL_DELAY_MAX_MINUTES = 89;
+
+/** A whole number of minutes, uniform over 40..89 inclusive. */
+export function pickRevealDelayMinutes(random: () => number = Math.random): number {
+  const span = REVEAL_DELAY_MAX_MINUTES - REVEAL_DELAY_MIN_MINUTES + 1;
+  return REVEAL_DELAY_MIN_MINUTES + Math.min(span - 1, Math.floor(random() * span));
+}
+
+export function isRevealPending(row: Pick<Rectification, 'revealAt'>, now: Date): boolean {
+  return row.revealAt !== null && row.revealAt.getTime() > now.getTime();
+}
+
+export function toRectificationDto(row: Rectification, now: Date = new Date()): RectificationDto {
+  const pending = isRevealPending(row, now);
+  const base = {
+    revealAt: row.revealAt ? row.revealAt.toISOString() : null,
+    pending,
+  };
+  if (pending) {
+    return {
+      ...base,
+      id: row.id,
+      statedTime: row.statedTime,
+      suggestedTime: '',
+      offsetMinutes: 0,
+      confidence: 'low',
+      confidencePct: 0,
+      eventMatches: [],
+      counts: { strong: 0, weak: 0, none: 0 },
+      canApply: false,
+      appliedAt: null,
+      createdAt: row.createdAt.toISOString(),
+      pricePaidPaise: row.pricePaidPaise,
+    };
+  }
   const matches = row.detail.eventMatches;
   return {
+    ...base,
     id: row.id,
     statedTime: row.statedTime,
     suggestedTime: row.suggestedTime,
@@ -195,6 +246,10 @@ export async function runBirthTimeCheck(
 ): Promise<RectificationDto> {
   await requirePass(user.id, 'birthTime');
   const profile = await resolveActiveProfileContext(user);
+  // One held-back answer at a time: a second check while the first is still
+  // being "worked on" would only stack up pushes and hand out a fresh guess.
+  const earlier = await findLatestRectification(user.id, profile.birthProfileId);
+  if (earlier && isRevealPending(earlier, new Date())) throw Errors.conflict('CHECK_PENDING');
   const place = profile.placeOfBirth;
   if (!profile.dateOfBirth || !profile.timeOfBirth || place?.lat == null || place?.lon == null) {
     throw Errors.unprocessable('MISSING_BIRTH_DATA');
@@ -217,6 +272,12 @@ export async function runBirthTimeCheck(
   });
   if (!result) throw Errors.unprocessable('NOT_ENOUGH_EVIDENCE');
 
+  const now = new Date();
+  const revealAt =
+    profile.birthTimeAccuracy === 'unknown'
+      ? new Date(now.getTime() + pickRevealDelayMinutes() * 60_000)
+      : null;
+
   const row = await insertRectification({
     userId: user.id,
     birthProfileId: profile.birthProfileId,
@@ -231,8 +292,9 @@ export async function runBirthTimeCheck(
     confidence: result.confidence,
     confidencePct: result.confidencePct,
     pricePaidPaise: 0,
+    revealAt,
   });
-  return toRectificationDto(row);
+  return toRectificationDto(row, now);
 }
 
 /**
@@ -248,6 +310,7 @@ export async function applyBirthTimeCheck(
   const row = await findRectificationForUser(rectificationId, user.id);
   if (!row) throw Errors.notFound('Birth-time check not found');
   const dto = toRectificationDto(row);
+  if (dto.pending) throw Errors.conflict('NOT_READY');
   if (row.appliedAt) throw Errors.conflict('ALREADY_APPLIED');
   if (!dto.canApply) throw Errors.conflict('NOT_CONFIDENT_ENOUGH');
 

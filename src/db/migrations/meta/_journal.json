@@ -757,6 +757,13 @@
       "when": 1792890000000,
       "tag": "0105_skin_test_change",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1792900000000,
+      "tag": "0106_birth_time_reveal",
+      "breakpoints": true
     }
   ]
 }

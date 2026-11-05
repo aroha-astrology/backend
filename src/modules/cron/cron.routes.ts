@@ -42,6 +42,7 @@ import { reapStalePalmReadings } from '../palm/palm.service.js';
 import { reapStaleVastuPlans } from '../vastu/vastu.service.js';
 import { reapStaleProcessingPlans } from '../purchase-plan/purchase-plan.service.js';
 import { runLowBalanceAlert } from './low-balance-alert.service.js';
+import { runBirthTimeReady } from './birth-time-ready.service.js';
 import { purgeOldDeletedChatSessions } from '../astro/chat-sessions.repo.js';
 import { sweepDueCampaigns, sweepExpiredGrants } from './gift-campaign-sweep.service.js';
 import {
@@ -942,6 +943,36 @@ const lowBalanceAlertRoute = createRoute({
 
 cronRouter.openapi(lowBalanceAlertRoute, async (c) => {
   const result = await runLowBalanceAlert();
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Birth-time-ready push — a check on an unknown birth time is held back 40-89
+// minutes (see birth-time-ready.service.ts). Wired to run every 5 minutes (see
+// scripts/cron-birth-time-ready.sh). The answer itself shows on time without
+// this job; the job only sends the push.
+// ---------------------------------------------------------------------------
+
+const birthTimeReadyRoute = createRoute({
+  method: 'post',
+  path: '/cron/birth-time-ready',
+  tags: ['Cron'],
+  summary: 'Push users whose held-back birth-time check is now ready',
+  description:
+    'Machine-to-machine endpoint, meant to run every 5 minutes via the OS crontab. Sends a ' +
+    '"your birth time is ready" push (+ Bell inbox row) once per birth-time check whose ' +
+    'reveal time has passed. Authenticated via the X-Cron-Secret header.',
+  responses: {
+    200: {
+      description: 'Sweep completed',
+      content: { 'application/json': { schema: z.object({ notified: z.number() }) } },
+    },
+    403: errorResponse('Invalid or missing cron secret'),
+  },
+});
+
+cronRouter.openapi(birthTimeReadyRoute, async (c) => {
+  const result = await runBirthTimeReady();
   return c.json(result, 200);
 });
 

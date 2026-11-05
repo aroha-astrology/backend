@@ -3180,6 +3180,10 @@ export const birthTimeRectifications = pgTable(
     confidencePct: integer('confidence_pct').notNull(),
     pricePaidPaise: integer('price_paid_paise').notNull().default(0),
     appliedAt: timestamp('applied_at', { withTimezone: true }),
+    /** NULL = shown at once. Otherwise the answer is held back until this moment. */
+    revealAt: timestamp('reveal_at', { withTimezone: true }),
+    /** When the "your birth time is ready" push went out; NULL until then. */
+    notifiedAt: timestamp('notified_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),

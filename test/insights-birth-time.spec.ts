@@ -49,6 +49,7 @@ vi.mock('../src/lib/logger.js', () => ({
 import {
   applyBirthTimeCheck,
   getBirthTimeStatus,
+  pickRevealDelayMinutes,
   runBirthTimeCheck,
   searchWindowMinutes,
 } from '../src/modules/insights/insights.service.js';
@@ -85,6 +86,8 @@ function rowFrom(overrides: Record<string, unknown> = {}) {
     confidencePct: 78,
     pricePaidPaise: 0,
     appliedAt: null,
+    revealAt: null,
+    notifiedAt: null,
     createdAt: new Date('2026-09-24T10:00:00Z'),
     ...overrides,
   };
@@ -124,6 +127,61 @@ describe('runBirthTimeCheck', () => {
       confidencePct: 78,
       counts: { strong: 2, weak: 1, none: 0 },
       canApply: true,
+      pending: false,
+      revealAt: null,
+    });
+    // A time the user gave as approximate is answered at once.
+    expect(state.insertRectification.mock.calls[0]![0].revealAt).toBeNull();
+  });
+
+  describe('when the birth time is unknown', () => {
+    beforeEach(() => {
+      state.resolveActiveProfileContext.mockResolvedValue(
+        makeProfileContext({
+          dateOfBirth: '1990-05-15',
+          timeOfBirth: '12:00',
+          birthTimeAccuracy: 'unknown',
+          placeOfBirth: { name: 'Kolkata', lat: 22.57, lon: 88.36, tz: 'Asia/Kolkata' },
+        }),
+      );
+      state.rectifyBirthTime.mockResolvedValue(RESULT);
+    });
+
+    it('holds the answer back 40 to 89 minutes and shows nothing yet', async () => {
+      const before = Date.now();
+      const dto = await runBirthTimeCheck(user, EVENTS);
+      const after = Date.now();
+
+      const stored = state.insertRectification.mock.calls[0]![0].revealAt as Date;
+      expect(stored.getTime() - before).toBeGreaterThanOrEqual(40 * 60_000);
+      expect(stored.getTime() - after).toBeLessThan(90 * 60_000);
+
+      expect(dto.pending).toBe(true);
+      expect(dto.revealAt).toBe(stored.toISOString());
+      // None of the answer leaks through while it is held back.
+      expect(dto).toMatchObject({
+        suggestedTime: '',
+        offsetMinutes: 0,
+        confidencePct: 0,
+        eventMatches: [],
+        counts: { strong: 0, weak: 0, none: 0 },
+        canApply: false,
+      });
+    });
+
+    it('does not start a second check while one is still being worked on', async () => {
+      state.findLatestRectification.mockResolvedValue(
+        rowFrom({ revealAt: new Date(Date.now() + 30 * 60_000) }),
+      );
+      await expect(runBirthTimeCheck(user, EVENTS)).rejects.toMatchObject({ status: 409 });
+      expect(state.rectifyBirthTime).not.toHaveBeenCalled();
+    });
+
+    it('allows a new check once the earlier answer has been revealed', async () => {
+      state.findLatestRectification.mockResolvedValue(
+        rowFrom({ revealAt: new Date(Date.now() - 60_000) }),
+      );
+      await expect(runBirthTimeCheck(user, EVENTS)).resolves.toMatchObject({ pending: true });
     });
   });
 
@@ -137,6 +195,24 @@ describe('runBirthTimeCheck', () => {
     state.findActivePass.mockResolvedValue(null);
     await expect(runBirthTimeCheck(user, EVENTS)).rejects.toThrow('PASS_REQUIRED');
     expect(state.rectifyBirthTime).not.toHaveBeenCalled();
+  });
+});
+
+describe('pickRevealDelayMinutes', () => {
+  it('is a whole number of minutes from 40 up to 89, never 90', () => {
+    expect(pickRevealDelayMinutes(() => 0)).toBe(40);
+    expect(pickRevealDelayMinutes(() => 0.999999999)).toBe(89);
+    expect(pickRevealDelayMinutes(() => 1)).toBe(89);
+    const seen = new Set<number>();
+    for (let i = 0; i < 5000; i++) {
+      const m = pickRevealDelayMinutes();
+      expect(Number.isInteger(m)).toBe(true);
+      expect(m).toBeGreaterThanOrEqual(40);
+      expect(m).toBeLessThan(90);
+      seen.add(m);
+    }
+    // Not stuck on one value.
+    expect(seen.size).toBeGreaterThan(30);
   });
 });
 
@@ -193,6 +269,14 @@ describe('applyBirthTimeCheck', () => {
     expect(state.findRectificationForUser).not.toHaveBeenCalled();
   });
 
+  it('refuses a check that is still being held back', async () => {
+    state.findRectificationForUser.mockResolvedValue(
+      rowFrom({ revealAt: new Date(Date.now() + 20 * 60_000) }),
+    );
+    await expect(applyBirthTimeCheck(user, 'rect-1')).rejects.toMatchObject({ status: 409 });
+    expect(state.updateUserById).not.toHaveBeenCalled();
+  });
+
   it('refuses low-confidence checks and checks already applied', async () => {
     state.findRectificationForUser.mockResolvedValue(
       rowFrom({ confidence: 'low', confidencePct: 30 }),
@@ -221,6 +305,22 @@ describe('getBirthTimeStatus', () => {
 
     expect(status.confidence).toEqual({ pct: 78, level: 'high', basis: 'rectified' });
     expect(status.latest?.canApply).toBe(false);
+  });
+
+  it('shows the real answer once the reveal time has passed', async () => {
+    state.findLatestRectification.mockResolvedValue(
+      rowFrom({ revealAt: new Date(Date.now() - 1000) }),
+    );
+    const status = await getBirthTimeStatus(user);
+    expect(status.latest).toMatchObject({ pending: false, suggestedTime: '08:18', canApply: true });
+  });
+
+  it('hides the answer while it is held back', async () => {
+    state.findLatestRectification.mockResolvedValue(
+      rowFrom({ revealAt: new Date(Date.now() + 25 * 60_000) }),
+    );
+    const status = await getBirthTimeStatus(user);
+    expect(status.latest).toMatchObject({ pending: true, suggestedTime: '', canApply: false });
   });
 
   it('is Aroha Pass only', async () => {

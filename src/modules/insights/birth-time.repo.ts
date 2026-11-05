@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { db } from '../../config/db.js';
 import {
   birthTimeRectifications,
@@ -59,6 +59,8 @@ export async function insertRectification(values: {
   confidence: NewBirthTimeRectificationRow['confidence'];
   confidencePct: number;
   pricePaidPaise: number;
+  /** When the answer may be shown. Omit to show it at once. */
+  revealAt?: Date | null;
 }): Promise<Rectification> {
   const [row] = await db
     .insert(birthTimeRectifications)
@@ -117,6 +119,38 @@ export async function findRectificationForUser(
     .where(and(eq(birthTimeRectifications.id, id), eq(birthTimeRectifications.userId, userId)))
     .limit(1);
   return row ? decrypt(row) : undefined;
+}
+
+/**
+ * Claims the held-back checks whose time has come, so each one gets its push
+ * exactly once even if two sweeps overlap: the UPDATE only matches rows still
+ * un-notified, and hands back only the rows this call flipped.
+ */
+export async function claimDueRectifications(
+  now: Date,
+  limit: number,
+): Promise<{ id: string; userId: string }[]> {
+  const due = db
+    .select({ id: birthTimeRectifications.id })
+    .from(birthTimeRectifications)
+    .where(
+      and(
+        isNotNull(birthTimeRectifications.revealAt),
+        lte(birthTimeRectifications.revealAt, now),
+        isNull(birthTimeRectifications.notifiedAt),
+      ),
+    )
+    .limit(limit);
+  return db
+    .update(birthTimeRectifications)
+    .set({ notifiedAt: now })
+    .where(
+      and(
+        inArray(birthTimeRectifications.id, due),
+        isNull(birthTimeRectifications.notifiedAt),
+      ),
+    )
+    .returning({ id: birthTimeRectifications.id, userId: birthTimeRectifications.userId });
 }
 
 /** Marks a check applied. Returns false if it was already applied (single-use). */
