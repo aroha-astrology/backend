@@ -523,6 +523,16 @@ Editions opened for these rows, besides E-BPHS-ENG, E-BPHS-SKT and E-PHALA above
 
 ---
 
+## Bhava Chalit and Sripati bhavas (audit Sprint 11, opened 2026-11-05)
+
+- **Method (checked against the ephemeris, not a text):** Sripati bhavas are the Porphyry cusps taken as the bhava middle, with each bhava running from the midpoint to the previous middle to the midpoint to the next. swisseph system `S` returns those boundaries; on Delhi 1990-05-15 every `S` cusp equals the midpoint of two neighbouring Porphyry (`O`) cusps. The code stores the `S` cusps (sidereal) as `chart.sripatiCusps`, new charts only.
+- **Label:** MODERN convention. No verse was opened for "read events from the chalit chart" or for the bhava-madhya / bhava-sandhi reading (BPHS ch. 7 is on the reading list, not read). The chat line says what it is (bhava vs sign house) and keeps the sign reading for dignity and aspects.
+- **Polar fallback:** at or above 66 degrees latitude, or when any bhava is under 12 or over 48 degrees wide, the Sripati set is rejected and the equal bhava (Lagna degree centred) is used. Measured: 69.6N gives bhavas of 5 and 55 degrees.
+- **Mangal:** the chalit-shift rule (spec MB_10) is NOT a status rule. No primary text found (see the Mangal section above). When Mars is in a Mangal house by bhava but not by sign, or the reverse, the chat line adds a note; cancelled / in force / severity are unchanged.
+- **Detectors:** none reads the chalit house (owner decision 2026-11-05: text plus the Mangal note only).
+
+---
+
 ## Reading list (what to open, not what has been read)
 
 | Text                              | Edition target                                                                   | Where to find it                   |

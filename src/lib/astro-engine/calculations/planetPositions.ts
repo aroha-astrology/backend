@@ -24,6 +24,7 @@ import {
   calculateHouses as calculateHousesCore,
   calculateAscendant as calculateAscendantCore,
   calculateMidheaven,
+  calculateSripatiCusps,
   assignPlanetsToHouses,
 } from './planetPositions.core.js';
 import { EphemerisCache } from './ephemeris-cache.js';
@@ -125,11 +126,12 @@ export async function calculateChart(
   node?: LunarNodeType,
 ): Promise<ChartData> {
   const jd = await dateToJulianDay(year, month, day, hour, min, timezone);
-  const [planets, houses, ascendant, midheaven] = await Promise.all([
+  const [planets, houses, ascendant, midheaven, sripatiCusps] = await Promise.all([
     calculatePlanetPositions(jd, ayanamsa, node),
     calculateHouses(jd, lat, lng, houseSystem, ayanamsa),
     calculateAscendant(jd, lat, lng, ayanamsa),
     calculateMidheaven(jd, lat, lng, ayanamsa),
+    calculateSripatiCusps(jd, lat, lng, ayanamsa),
   ]);
 
   assignPlanetsToHouses(planets, houses);
@@ -155,5 +157,7 @@ export async function calculateChart(
     ayanamsaValue,
     julianDay: jd,
     midheaven,
+    // Omitted (not null) when unusable, so stored charts stay free of the key.
+    ...(sripatiCusps ? { sripatiCusps } : {}),
   };
 }

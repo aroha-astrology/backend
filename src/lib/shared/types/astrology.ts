@@ -157,6 +157,12 @@ export interface ChartData {
    * stored before it was added; Dig Bala then estimates it from the Ascendant.
    */
   midheaven?: number;
+  /**
+   * Sidereal start longitudes of the 12 Sripati bhavas (cusps[i] starts bhava
+   * i + 1). Absent on charts stored before it was added, and at polar latitudes
+   * where the bhavas collapse; readers then use the equal bhava.
+   */
+  sripatiCusps?: number[];
 }
 
 // ============================================================

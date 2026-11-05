@@ -24,6 +24,8 @@ import {
   NAKSHATRA_SPAN,
 } from '@aroha-astrology/shared';
 
+import { sripatiCuspsUsable } from '../charts/sripatiBhava.js';
+
 // =============================================================================
 // SwissEph WASM Singleton
 // =============================================================================
@@ -389,6 +391,31 @@ export async function calculateMidheaven(
   swe.set_sid_mode(AYANAMSA_MAP[ayanamsa], 0, 0);
   const result = swe.houses_ex(jd, SEFLG_SIDEREAL, lat, lng, 'W');
   return normalizeDegree(result.ascmc[1]);
+}
+
+/**
+ * Sidereal start longitudes of the 12 Sripati bhavas (swisseph system 'S'), or
+ * null when they cannot be trusted: no result, non-finite values, or a latitude
+ * where the Ascendant-Midheaven arcs collapse (above the polar circle) and the
+ * bhavas come out a few degrees wide. Callers then keep the equal bhava.
+ */
+export async function calculateSripatiCusps(
+  jd: number,
+  lat: number,
+  lng: number,
+  ayanamsa: Ayanamsa = 'lahiri',
+): Promise<number[] | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) >= 66) return null;
+  try {
+    const swe = await getSwe();
+    swe.set_sid_mode(AYANAMSA_MAP[ayanamsa], 0, 0);
+    const result = swe.houses_ex(jd, SEFLG_SIDEREAL, lat, lng, 'S');
+    const cusps: number[] = [];
+    for (let i = 1; i <= 12; i++) cusps.push(normalizeDegree(result.cusps[i]));
+    return sripatiCuspsUsable(cusps) ? cusps : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

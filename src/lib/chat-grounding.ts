@@ -24,6 +24,8 @@ import {
   calculateShadbala,
   computePlanetStates,
   computeBhavaChalit,
+  mangalChalitShift,
+  sripatiCuspsUsable,
   analyzeAllVakriPlanets,
 } from './astro-engine/index.js';
 import { NAKSHATRAS } from '@aroha-astrology/shared';
@@ -1492,7 +1494,8 @@ export function bhavaChalitFacts(
   if (!Number.isFinite(ascSignIndex) || !Number.isFinite(ascDegree)) return [];
 
   const ascendantLongitude = ascSignIndex * 30 + ascDegree;
-  const placements = computeBhavaChalit(planets, ascendantLongitude, ascSignIndex);
+  const cusps = Array.isArray(chart?.sripatiCusps) ? (chart.sripatiCusps as number[]) : null;
+  const placements = computeBhavaChalit(planets, ascendantLongitude, ascSignIndex, cusps);
   const moved = placements.filter((p) => p.moved);
   if (moved.length === 0) return [];
 
@@ -1503,8 +1506,16 @@ export function bhavaChalitFacts(
     .join('; ')
     .concat('.');
 
+  const system = sripatiCuspsUsable(cusps) ? 'Sripati bhavas' : 'equal bhavas';
+  // Only the Sripati reckoning feeds the Mangal note: the equal one is a rougher stand-in.
+  const shift = sripatiCuspsUsable(cusps) ? mangalChalitShift(placements) : null;
+  const mangalNote = shift
+    ? `Mars's bhava house ${shift.effect === 'enters' ? 'is' : 'is not'} a Mangal Dosha house; the status above stands (read by sign), but call it borderline if asked.`
+    : null;
+
   return [
-    `Bhava Chalit (house chart — the Ascendant is at ${ascDegree.toFixed(1)}° of its sign, so the house boundaries do not line up with the sign boundaries): ${detail}`,
+    `Bhava Chalit (house chart, ${system} — the Ascendant is at ${ascDegree.toFixed(1)}° of its sign, so the house boundaries do not line up with the sign boundaries): ${detail}`,
+    ...(mangalNote ? [mangalNote] : []),
     'CHALIT RULE: read character, dignity and aspects from the sign placements above, but when the question is about an EVENT in a specific area of life (career, marriage, children, property, money), weight the bhava house for the planets just listed. Where the two disagree, say the theme is split or transitional rather than picking one and stating it flatly. Never mention "Bhava Chalit" or house numbers as jargon to the user.',
   ];
 }

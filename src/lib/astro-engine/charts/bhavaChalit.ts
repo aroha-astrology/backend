@@ -20,11 +20,13 @@
 // plumbing, no house-system change and no migration — the ascendant degree is
 // already on every stored chart.
 //
-// ponytail: equal 30° bhavas centred on the Lagna degree. Sripati/Placidus
-// bhavas are unequal and need the real cusps preserved through
-// `calculateHouses`; add that only if the equal version is ever shown to
-// misplace planets that matter.
+// The equal bhava stays as the fallback. When the chart carries Sripati cusps
+// (sripatiBhava.ts: unequal bhavas from swisseph system 'S', new charts only)
+// `computeBhavaChalit` uses them instead; older charts and polar latitudes keep
+// the equal reckoning.
 // =============================================================================
+
+import { sripatiCuspsUsable, sripatiHouseFor } from './sripatiBhava.js';
 
 /** Normalize any angle into [0, 360). */
 function norm360(deg: number): number {
@@ -66,8 +68,11 @@ export function computeBhavaChalit(
   planets: Array<{ planet: string; longitude?: number; signIndex?: number; house?: number }>,
   ascendantLongitude: number,
   ascendantSignIndex: number,
+  /** Sripati bhava starts (12 sidereal longitudes). Equal bhava when absent or unusable. */
+  sripatiCusps?: readonly number[] | null,
 ): ChalitPlacement[] {
   if (!Number.isFinite(ascendantLongitude) || !Number.isFinite(ascendantSignIndex)) return [];
+  const useSripati = sripatiCuspsUsable(sripatiCusps);
 
   const placements: ChalitPlacement[] = [];
 
@@ -82,7 +87,9 @@ export function computeBhavaChalit(
       ? Number(p.house)
       : rasiHouseFor(signIndex, ascendantSignIndex);
 
-    const chalitHouse = chalitHouseFor(longitude, ascendantLongitude);
+    const chalitHouse = useSripati
+      ? sripatiHouseFor(longitude, sripatiCusps as readonly number[])
+      : chalitHouseFor(longitude, ascendantLongitude);
 
     placements.push({
       planet: p.planet,
@@ -93,4 +100,34 @@ export function computeBhavaChalit(
   }
 
   return placements;
+}
+
+/** The houses from which Mars forms Mangal Dosha (same list as doshas/mangalDosha.ts). */
+const MANGAL_HOUSES = [1, 2, 4, 7, 8, 12];
+
+export interface MangalChalitShift {
+  rasiHouse: number;
+  chalitHouse: number;
+  /** 'enters': Mars is in a Mangal house by bhava but not by sign. 'leaves': the reverse. */
+  effect: 'enters' | 'leaves';
+}
+
+/**
+ * Whether the bhava reckoning changes Mars's Mangal-house status. A NOTE only:
+ * no primary text was found that tells the reader to move the Mangal test onto
+ * the chalit chart (BPHS 80.47-49 names houses, not a chart style; see
+ * docs/engine-audit), so this never changes cancelled / in force / severity.
+ * Null when the status is the same either way, or Mars is not in the list.
+ */
+export function mangalChalitShift(placements: ChalitPlacement[]): MangalChalitShift | null {
+  const mars = placements.find((p) => p.planet === 'Mars');
+  if (!mars) return null;
+  const bySign = MANGAL_HOUSES.includes(mars.rasiHouse);
+  const byBhava = MANGAL_HOUSES.includes(mars.chalitHouse);
+  if (bySign === byBhava) return null;
+  return {
+    rasiHouse: mars.rasiHouse,
+    chalitHouse: mars.chalitHouse,
+    effect: byBhava ? 'enters' : 'leaves',
+  };
 }

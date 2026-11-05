@@ -59,6 +59,7 @@ export * from './calculations/avastha';
 
 // Bhava Chalit (house chart, as opposed to the sign chart)
 export * from './charts/bhavaChalit';
+export * from './charts/sripatiBhava';
 
 // Yoga Detection
 export { detectAllYogas } from './yogas/index';
