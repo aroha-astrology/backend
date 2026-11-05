@@ -136,3 +136,44 @@ describe('buildGroundingSections with a focus', () => {
     expect(size(full) - size(cut)).toBeGreaterThan(10_000);
   });
 });
+
+describe("focus and the reader's stored facts", () => {
+  const FACTS = [
+    { fact: 'PREVIOUSLY TOLD THEM: their marriage window is March 2027', followUpQuestion: null },
+    { fact: 'works as a teacher', followUpQuestion: null },
+  ];
+  async function messages(question: string, useFocus: boolean) {
+    const { buildChatMessages } = await import('../src/lib/swarm/agents/scholar.js');
+    const { newState } = await import('../src/lib/swarm/state.js');
+    const src = await leoSource();
+    const focus = useFocus ? chatFocusFor(question) : null;
+    const facts = assembleChatFacts(
+      await buildGroundingSections(src, undefined, NOW, null, undefined, 'full', focus),
+    );
+    return buildChatMessages(
+      newState({ requestId: 't' }),
+      question,
+      facts,
+      false,
+      'en',
+      FACTS,
+      NOW,
+    );
+  }
+  const factsBlock = (m: Array<{ content: unknown }>) =>
+    m.map((x) => String(x.content)).find((c) => c.includes('<user_facts>'));
+
+  it('the <user_facts> block is identical with and without a focus', async () => {
+    const q = 'When will I get married?';
+    const full = factsBlock(await messages(q, false));
+    const cut = factsBlock(await messages(q, true));
+    expect(full).toBeDefined();
+    expect(cut).toBe(full);
+    expect(cut).toContain('PREVIOUSLY TOLD THEM: their marriage window is March 2027');
+  });
+
+  it('a marriage question keeps the relationship window the earlier promise is compared against', async () => {
+    const m = await messages('When will I get married?', true);
+    expect(m.map((x) => String(x.content)).join('\n')).toContain('Relationship Window Confidence');
+  });
+});

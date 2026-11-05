@@ -15,6 +15,8 @@
 // The switch is chat.factGate (ships off).
 // =============================================================================
 
+import { classifyQuestionAreas } from './intelligence/question-area.js';
+
 const LONG_MESSAGE_CHARS = 220;
 /** Share of letters outside Latin script at which we stop trying to judge the text. */
 const NON_LATIN_SHARE = 0.3;
@@ -76,5 +78,8 @@ export function shouldExtractFacts(
   if (message.length > LONG_MESSAGE_CHARS) return true;
   if (mostlyNotLatin(message)) return true;
   if (DISCLOSURE.test(message)) return true;
+  // A question about a life area can carry a goal or a concern the reader never states outright
+  // ("will my health improve?"), and that is exactly what this call exists to remember.
+  if (classifyQuestionAreas(message).length > 0) return true;
   return carriesDatedTiming(assistantReply);
 }

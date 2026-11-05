@@ -69,3 +69,36 @@ describe('shouldExtractFacts: skips only what carries nothing to remember', () =
     expect(shouldExtractFacts('   ', GENERIC, 'en')).toBe(false);
   });
 });
+
+// The extractor also saves goals and concerns, and people voice those as questions, not statements.
+// A question about a life area is worth the call even when the reply names no date.
+describe('shouldExtractFacts: a question about a life area can carry a goal or a concern', () => {
+  const NO_DATE =
+    'Stay patient and keep to a steady routine; the chart supports slow, careful progress.';
+
+  it('extracts for questions about health, work, family, money, marriage and study', () => {
+    for (const q of [
+      'Will my health improve?',
+      'Should I leave my job?',
+      'Will I have a baby soon?',
+      'Is it a good time to invest in stocks?',
+      'Is my marriage going to work out?',
+      'How will my exams go?',
+      'Is moving abroad a good idea for me?',
+    ]) {
+      expect(shouldExtractFacts(q, NO_DATE, 'en'), q).toBe(true);
+    }
+  });
+
+  it('still skips a pure chart or practice question', () => {
+    for (const q of [
+      'What does my Moon in Leo mean?',
+      'How is Saturn affecting me right now?',
+      'which mantra is good for Mondays',
+      'What is a nakshatra?',
+      'Explain Rahu and Ketu simply',
+    ]) {
+      expect(shouldExtractFacts(q, NO_DATE, 'en'), q).toBe(false);
+    }
+  });
+});
