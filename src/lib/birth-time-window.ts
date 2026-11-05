@@ -75,6 +75,16 @@ export function birthTimeWindowFor(time: string | null | undefined): BirthTimeWi
  *
  * Defined here, beside the window table, so chat and reports cannot drift.
  */
+/**
+ * What to tell the model for a reader who gave an APPROXIMATE (remembered) birth time. Chat, voice
+ * and every report use this one wording (audit M6: reports used to hedge only an unknown time).
+ * Milder than the unknown case: sign placements, dashas and yogas hold, so only the claims that
+ * turn on the exact minute are hedged.
+ */
+export function approximateBirthTimeGuidance(): string {
+  return 'BIRTH TIME CONFIDENCE: approximate (remembered, not from a record). Sign placements, dashas and yogas stay reliable, but the Ascendant, the house numbers, the divisional charts and exact dasha dates all depend on the precise minute. When the answer turns on any of THOSE, add a brief natural caveat once (e.g. "if your birth time is accurate to the minute") and prefer month/season-level timing over exact dates. Do not caveat every sentence, and never say the chart is unreliable.';
+}
+
 export function unknownBirthTimeGuidance(timeOfBirth: string | null | undefined): string {
   const w = birthTimeWindowFor(timeOfBirth);
   const window = w ? `the ${w.label} (${w.range})` : 'a broad part of the day';

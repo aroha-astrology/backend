@@ -21,6 +21,7 @@ import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.
 import { cleanJsonString } from '../horoscope.js';
 import { GROUNDING_RULE as HOUSE_GROUNDING_RULE, PLAIN_LANGUAGE_RULE } from '../house-insight.js';
 import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
+import { describeManglik } from '../../astro-engine/reports/manglik-status.js';
 import type { MarriageScores } from '../../astro-engine/reports/marriage.js';
 import type { RankedWindow } from '../../astro-engine/reports/report-timing.js';
 import type { AgeBand } from '../../astro-engine/reports/report-age-bands.js';
@@ -191,7 +192,7 @@ function buildFactsCall1(scores: MarriageScoresWithStrength): string {
   );
   if (scores.spouseSynastry) {
     lines.push(
-      `SPOUSE DATA PROVIDED — this reader is married and supplied their real spouse's birth details. Guna Milan compatibility: ${scores.spouseSynastry.gunaMilanScore}/${scores.spouseSynastry.gunaMaxScore} (${scores.spouseSynastry.compatibilityBand}). Spouse's own Manglik status: ${scores.spouseSynastry.manglikStatus.spouse ? 'present' : 'not present'}${scores.spouseSynastry.manglikStatus.spouse ? `, traditionally cancelled: ${scores.spouseSynastry.manglikStatus.cancelled ? 'yes' : 'no'}` : ''}.${scores.spouseName ? ` Spouse's name: ${scores.spouseName}.` : ''}`,
+      `SPOUSE DATA PROVIDED — this reader is married and supplied their real spouse's birth details. Guna Milan compatibility: ${scores.spouseSynastry.gunaMilanScore}/${scores.spouseSynastry.gunaMaxScore} (${scores.spouseSynastry.compatibilityBand}). Spouse's own Manglik status: ${describeManglik({ inForce: scores.spouseSynastry.manglikStatus.spouse, cancelled: scores.spouseSynastry.manglikStatus.cancelledSpouse, reasons: scores.spouseSynastry.manglikStatus.reasonsSpouse })}.${scores.spouseName ? ` Spouse's name: ${scores.spouseName}.` : ''}`,
     );
   }
   if (scores.planetStrength && scores.planetStrength.length > 0) {

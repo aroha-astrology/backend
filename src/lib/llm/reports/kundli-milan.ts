@@ -14,6 +14,7 @@ import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE, MODEL } from '../../../config/llm.js';
 import { cleanJsonString } from '../horoscope.js';
 import type { KundliMilanScores } from '../../astro-engine/reports/kundli-milan.js';
+import { describeManglikPair } from '../../astro-engine/reports/manglik-status.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import { reportFactsMessage } from './report-facts-message.js';
@@ -108,13 +109,12 @@ function buildFacts(scores: KundliMilanScores): string {
     lines.push(`- ${k.name}: ${k.score}/${k.maxScore} — ${k.description}`);
   }
   lines.push(
-    `Manglik status — person1: ${scores.manglikStatus.person1 ? 'present' : 'not present'}; ` +
-      `person2: ${scores.manglikStatus.person2 ? 'present' : 'not present'}; ` +
-      `traditionally cancelled: ${scores.manglikStatus.cancelled ? 'yes' : 'no'}.`,
+    // Each person's own effective status: a cancelled dosha is NOT Manglik (audit Sprint 5, SB2).
+    `Manglik status — ${describeManglikPair(scores.manglikStatus)}.`,
   );
 
   lines.push(
-    'Additional dosha/yoga facts for PERSON1 ONLY (the app does not compute this analysis for person2/the partner):',
+    "Additional dosha/yoga facts for PERSON1 ONLY (the app does not compute this panel for person2/the partner; the partner's own Sade Sati and Shani Dhaiya are the lines starting PARTNER in the chart conditions):",
   );
   if (scores.primaryDoshaYoga.cautions.length > 0) {
     for (const c of scores.primaryDoshaYoga.cautions)

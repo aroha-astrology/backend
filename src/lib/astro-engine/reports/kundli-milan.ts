@@ -12,7 +12,7 @@
 import type { ZodiacSign } from '@aroha-astrology/shared';
 import { calculateAshtakootaForPair } from '../matching/ashtakoota.js';
 import { calculateDashakootaForPair } from '../matching/dashakoota.js';
-import { detectMangalDosha } from '../doshas/mangalDosha.js';
+import { manglikPairStatus, type ManglikPairStatus } from './manglik-status.js';
 import { computeMatchRiskFactors, type MatchRiskFactor } from '../matching/match-risks.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
 import { analyzePlanetStrengths } from '../gemstones.js';
@@ -86,26 +86,22 @@ export interface KundliMilanScores extends Record<string, unknown>, ReportShared
    * this field; making it required would force updates there, out of scope for this change.
    */
   dashakootaCompatibility?: ReturnType<typeof calculateDashakootaForPair>['overallCompatibility'];
-  manglikStatus: {
-    person1: boolean;
-    person2: boolean;
-    /** True when EITHER person's Mangal Dosha is classically cancelled (own sign,
-     * exaltation, benefic conjunction/aspect, or a documented house+sign exception —
-     * see detectMangalDosha's `type` field, reused verbatim here, not re-derived). */
-    cancelled: boolean;
-  };
+  /**
+   * `person1`/`person2` are EACH person's EFFECTIVE status: Manglik only when the dosha is found
+   * and not cancelled (audit Sprint 5, SB1/SB2; it used to be raw presence, so a cancelled dosha
+   * read "present"). `cancelled` stays the either-person flag for older readers; `cancelled1/2`
+   * and `reasons1/2` give each person their own cancellation and its reasons
+   * (see detectMangalDosha's `cancellations`, reused verbatim, not re-derived).
+   */
+  manglikStatus: ManglikPairStatus;
   compatibilityBand: CompatibilityBand;
   /**
-   * Dosha/yoga summary for the PRIMARY person (`ctx.chart`) ONLY — deliberately, not a bug.
-   * `ctx.partnerChart` has no accompanying `doshaData`/`yogaData` computed for it anywhere in
-   * this codebase: the partner chart is computed fresh via `computeMetrology` at purchase time
-   * (see reports.service.ts), never run through `analyzeAllDoshas`/`detectAllYogas` the way the
-   * primary user's own stored `kundli` row already has been. Inventing that computation here
-   * (a second full dosha/yoga analysis pass over a chart shape this module doesn't own) is out
-   * of scope for this task. Scoping `primaryDoshaYoga` to the primary person only is the
-   * deliberate, correct choice — do NOT "fix" this into attempting
-   * `computeDoshaYogaSummary(partnerDoshaData, ...)` later; there is no `partnerDoshaData` to
-   * pass, and fabricating one would be worse than omitting the partner's panel entirely.
+   * Dosha/yoga summary for the PRIMARY person (`ctx.chart`) ONLY. The partner chart is computed
+   * fresh via `computeMetrology` at purchase time (see reports.service.ts) and has no saved
+   * `doshaData`/`yogaData`, so this panel stays primary-only. The partner's own Sade Sati and
+   * Shani Dhaiya are NOT missing: `withUpcomingTransits` (reports.service.ts) reads them from the
+   * partner chart with `analyzeAllDoshasAt` and adds them to the facts as `PARTNER —` lines
+   * (audit Sprint 5, M8). The partner's Mangal Dosha is in `manglikStatus` above.
    */
   primaryDoshaYoga: DoshaYogaSummary;
   /** 8 life-area synastry read (wealth/health/children/harmony/career/timing/intimacy/inlaws) —
@@ -147,21 +143,8 @@ export function computeKundliMilanScores(
   const ashtakoota = calculateAshtakootaForPair(moon1, moon2, ctx.personGender, ctx.partnerGender);
   const dashakoota = calculateDashakootaForPair(moon1, moon2, ctx.personGender, ctx.partnerGender);
 
-  // detectMangalDosha's declared parameter is `ChartData` (a much stricter shape than the
-  // `Record<string, unknown> | null` this module receives from ReportScoreContext); ashtakoota.ts/
-  // dashakoota.ts/mangalDosha.ts are all `@ts-nocheck` internally, so TypeScript still infers exact
-  // types for calculateAshtakoota/calculateDashakoota's PARAMETERS (matched above with no cast
-  // needed) but detectMangalDosha's ChartData param genuinely needs one here — the true shape at
-  // runtime is only as good as the caller's chart, which is why this is defensively narrowed with
-  // `?? undefined`-style null checks around the call, not trusted structurally at compile time.
-  const mangal1 = chart1
-    ? detectMangalDosha(chart1 as unknown as Parameters<typeof detectMangalDosha>[0])
-    : null;
-  const mangal2 = chart2
-    ? detectMangalDosha(chart2 as unknown as Parameters<typeof detectMangalDosha>[0])
-    : null;
-
-  const cancelled = mangal1?.type === 'cancelled' || mangal2?.type === 'cancelled';
+  // Each person's own effective Manglik status and cancellation reasons (manglik-status.ts).
+  const manglikStatus = manglikPairStatus(chart1, chart2);
 
   // Primary-person-only, by design — see `primaryDoshaYoga`'s doc comment on
   // `KundliMilanScores` above for why the partner side is never attempted here.
@@ -192,11 +175,7 @@ export function computeKundliMilanScores(
       description: s.description,
     })),
     dashakootaCompatibility: dashakoota.overallCompatibility,
-    manglikStatus: {
-      person1: mangal1?.present ?? false,
-      person2: mangal2?.present ?? false,
-      cancelled,
-    },
+    manglikStatus,
     compatibilityBand: compatibilityBandFromGunaScore(ashtakoota.totalScore),
     primaryDoshaYoga,
   };

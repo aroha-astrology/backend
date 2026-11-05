@@ -145,8 +145,12 @@ const BAD_TARAS = new Set([3, 5, 7]);
 /** Chandra bala: the Moon in the 4th or 12th from the natal Moon strains; the 8th (Chandrashtama) most. */
 const CHANDRA_BAD = new Set([4, 12]);
 const CHANDRASHTAMA = 8;
-/** Sade Sati houses — Saturn here always counts against a new start. */
-const SADE_SATI = new Set([12, 1, 2]);
+/**
+ * Saturn houses from the natal Moon that always count against a new start: Sade Sati (12, 1, 2) and
+ * Ashtama Shani (8, the harder Dhaiya, which chat calls "the harder of the two"; audit M9). The
+ * 4th (Kantaka Shani) is not here: it counts only when the 4th belongs to the area asked about.
+ */
+const SATURN_HARD = new Set([12, 1, 2, 8]);
 /** Degrees from the Sun inside which a planet is combust (asta). */
 const COMBUST_ORB: Record<string, number> = { Jupiter: 11, Venus: 10 };
 const SAGITTARIUS = 8;
@@ -301,7 +305,7 @@ export function scoreDay(
           delta += w.saturn / 2;
           effect = 1;
         } else if (
-          SADE_SATI.has(fromMoon) ||
+          SATURN_HARD.has(fromMoon) ||
           areaHouses.includes(fromMoon) ||
           areaHouses.includes(fromLagna)
         ) {

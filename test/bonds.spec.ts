@@ -3,13 +3,34 @@ import type { BirthProfileRow } from '../src/db/schema.js';
 import { makeUserRow } from './helpers/mocks.js';
 
 const state = vi.hoisted(
-  (): { profiles: unknown[]; pass: boolean; bondsOn: boolean; owner: unknown } => ({
+  (): {
+    profiles: unknown[];
+    pass: boolean;
+    bondsOn: boolean;
+    owner: unknown;
+    /** What the sky lookup answers for the next two people: the seeker, then the saved person. */
+    doshas: Array<Record<string, unknown>>;
+  } => ({
     profiles: [],
     pass: true,
     bondsOn: true,
     owner: null,
+    doshas: [],
   }),
 );
+
+// Saturn's Sade Sati and Dhaiya come from the real sky; the tests hand them out so they do not
+// depend on today's date. With nothing handed out, neither person is in either.
+vi.mock('../src/lib/astro-engine/doshas/index.js', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  analyzeAllDoshasAt: () =>
+    Promise.resolve(
+      state.doshas.shift() ?? {
+        sadeSati: { active: false, moonSign: 'Aries', next: null },
+        dhaiya: { active: false, moonSign: 'Aries', next: null },
+      },
+    ),
+}));
 
 vi.mock('../src/modules/features/features.service.js', async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -106,6 +127,7 @@ beforeEach(() => {
   state.pass = true;
   state.bondsOn = true;
   state.owner = OWNER;
+  state.doshas = [];
 });
 
 describe('bondSpec', () => {
@@ -522,6 +544,48 @@ describe('bondFactsForChat', () => {
     for (const m of page.detail!.relate) expect(fact).toContain(`${m.key} ${m.score}`);
     expect(fact).toContain(`a ${page.phaseDetail!.lords[0]} sub-period`);
     expect(fact).toContain(`Priya is in a ${page.phaseDetail!.lords[1]} sub-period`);
+  }, 60_000);
+
+  // Audit Sprint 5, L8: the Bonds reading never named either person's Sade Sati or Dhaiya, so a
+  // chat answer about a bond could ignore the heaviest transit either of them is in.
+  it('names each person’s running Sade Sati or Dhaiya, from their own Moon', async () => {
+    state.profiles = [profile({})];
+    state.doshas = [
+      {
+        sadeSati: {
+          active: true,
+          phase: 'peak',
+          moonSign: 'Pisces',
+          saturnSign: 'Pisces',
+          startDate: '2025-03-29T00:00:00.000Z',
+          endDate: '2032-06-01T00:00:00.000Z',
+        },
+        dhaiya: { active: false, moonSign: 'Pisces', next: null },
+      },
+      {
+        sadeSati: { active: false, moonSign: 'Leo', next: null },
+        dhaiya: {
+          active: true,
+          phase: '8th',
+          moonSign: 'Leo',
+          saturnSign: 'Pisces',
+          startDate: '2025-03-29T00:00:00.000Z',
+          endDate: '2027-06-03T00:00:00.000Z',
+        },
+      },
+    ];
+    const [fact, ...rest] = await bondFactsForChat(OWNER.id, PRIYA);
+    expect(rest).toHaveLength(0);
+    expect(fact).toMatch(/Saturn for the seeker[^.]*: Sade Sati: peak phase/);
+    expect(fact).toMatch(/Saturn for Priya[^.]*: Shani Dhaiya: ACTIVE — 8th from the Moon/);
+    // Not repeated for the one who has none.
+    expect(fact?.match(/Sade Sati:/g)).toHaveLength(1);
+  }, 60_000);
+
+  it('adds no Saturn sentence when neither person is in Sade Sati or Dhaiya', async () => {
+    state.profiles = [profile({})];
+    const [fact] = await bondFactsForChat(OWNER.id, PRIYA);
+    expect(fact).not.toMatch(/Saturn for/);
   }, 60_000);
 
   it('says nothing without a Pass, with Bonds switched off, or for a person with no chart', async () => {

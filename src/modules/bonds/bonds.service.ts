@@ -30,6 +30,9 @@ import {
   type StoredMahadasha,
 } from '../../lib/astro-engine/dashas/dasha-range.js';
 import { detectMangalDosha } from '../../lib/astro-engine/doshas/mangalDosha.js';
+import { analyzeAllDoshasAt } from '../../lib/astro-engine/doshas/index.js';
+import { doshaFacts } from '../../lib/chat-grounding.js';
+import { INDIA_TZ } from '../../lib/user-time-zone.js';
 import { calculateAshtakootaForPair } from '../../lib/astro-engine/matching/ashtakoota.js';
 import {
   buildChartContext,
@@ -1065,6 +1068,25 @@ const TONE_WORDS: Record<PhaseTone, string> = {
 };
 
 /**
+ * One person's running (or paused) Sade Sati and Shani Dhaiya, in the words chat uses for them
+ * (`doshaFacts`), counted from their own Moon. Empty when neither is running, so a bond with no
+ * Saturn in it says nothing about Saturn.
+ */
+async function runningSaturnLines(chartData: unknown): Promise<string[]> {
+  try {
+    const doshas = await analyzeAllDoshasAt(chartData as ChartData);
+    return doshaFacts(doshas as unknown as Record<string, unknown>, INDIA_TZ).filter(
+      (f) =>
+        (f.startsWith('Sade Sati:') && !f.startsWith('Sade Sati: not currently active')) ||
+        (f.startsWith('Shani Dhaiya:') && !f.startsWith('Shani Dhaiya: not currently active')),
+    );
+  } catch {
+    // Best-effort like the rest of the chat facts: a failed sky lookup leaves Saturn out.
+    return [];
+  }
+}
+
+/**
  * The Bonds reading for one saved person as plain facts for Ask Aroha, so a
  * chat answer about them matches what the Bonds page shows. Empty unless the
  * user's Pass includes Bonds and Bonds is switched on for them, and whenever
@@ -1105,6 +1127,19 @@ export async function bondFactsForChat(userId: string, profileId: string): Promi
   const shared = detail.shared
     .slice(0, 2)
     .map((w) => `${w.tone === 'good' ? 'supportive' : 'go carefully'} ${w.start} to ${w.end}`);
+  // Each person's own Sade Sati or Dhaiya when one is running (audit L8), from their own Moon.
+  const [seekerSaturn, theirSaturn] = await Promise.all([
+    runningSaturnLines(owner.chart.chartData),
+    runningSaturnLines(them.chartData),
+  ]);
+  const saturn = [
+    seekerSaturn.length > 0
+      ? `Saturn for the seeker (counted from the seeker's own Moon): ${seekerSaturn.join(' ')}`
+      : '',
+    theirSaturn.length > 0
+      ? `Saturn for ${name} (counted from ${name}'s own Moon): ${theirSaturn.join(' ')}`
+      : '',
+  ].filter(Boolean);
 
   return [
     `Aroha Bonds reading for saved profile "${name}" (${kind}; a ${summary.category} bond), worked ` +
@@ -1120,8 +1155,9 @@ export async function bondFactsForChat(userId: string, profileId: string): Promi
       (windows.length > 0
         ? `Periods ahead for this bond in the next three years: ${windows.join('; ')}. `
         : 'No stand-out periods for this bond in the next three years. ') +
-      (shared.length > 0 ? `Both at once: ${shared.join('; ')}.` : ''),
-  ];
+      (shared.length > 0 ? `Both at once: ${shared.join('; ')}. ` : '') +
+      saturn.join(' '),
+  ].map((s) => s.trim());
 }
 
 /** Everything on a bond's own page below the score and the phase. */

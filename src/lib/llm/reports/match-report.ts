@@ -24,6 +24,7 @@ import {
   type RiskSeverity,
 } from '../../astro-engine/matching/match-risks.js';
 import type { MatchReportScores } from '../../astro-engine/reports/match-report.js';
+import { describeManglikPair } from '../../astro-engine/reports/manglik-status.js';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 import { formatReportVarga } from '../../astro-engine/reports/report-vargas.js';
 import { reportFactsMessage } from './report-facts-message.js';
@@ -170,14 +171,20 @@ function formatOverallCompatibility(scores: MatchReportScores): string {
  * Manglik doshas cancel out, or is there a real risk?" bullet went unanswered in exactly those
  * cases. This unconditionally surfaces the real status every time. */
 function formatManglikStatus(scores: MatchReportScores): string {
-  const { person1, person2, cancelled } = scores.manglikStatus;
+  // person1/person2 are each person's EFFECTIVE status (found and not cancelled); a cancelled
+  // dosha is NOT Manglik (audit Sprint 5, SB2). Each person's own reasons follow the verdict.
+  const status = scores.manglikStatus;
+  const { person1, person2 } = status;
+  const people = describeManglikPair(status);
   if (!person1 && !person2) {
-    return 'Manglik Dosha: not present for either person.';
+    return status.cancelled
+      ? `Manglik Dosha: neither person is Manglik, so there is no Manglik caution for this pair (${people}).`
+      : 'Manglik Dosha: not present for either person.';
   }
   if (person1 && person2) {
-    return `Manglik Dosha: present for BOTH people (${cancelled ? 'traditionally cancelled' : 'NOT traditionally cancelled — a real traditional caution'}).`;
+    return `Manglik Dosha: BOTH people are Manglik, so the status is matched (${people}).`;
   }
-  return `Manglik Dosha: present for only one person (${cancelled ? 'traditionally cancelled' : 'NOT cancelled — a real traditional caution'}).`;
+  return `Manglik Dosha: only one person is Manglik, a real traditional caution (${people}).`;
 }
 
 /** Both people's Navamsa (D9) — computed by computeKundliMilanScores (via

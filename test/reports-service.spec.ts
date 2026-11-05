@@ -55,7 +55,9 @@ const state = vi.hoisted(() => {
     takePassFreeReport: vi.fn(),
     givePassFreeReportBack: vi.fn(),
     requestKundliGeneration: vi.fn(() => Promise.resolve(undefined)),
-    upcomingTransitFactsNow: vi.fn(() => Promise.resolve([])),
+    upcomingTransitFactsNow: vi.fn((..._args: unknown[]) => Promise.resolve([] as string[])),
+    withLiveSaturnTransits: vi.fn((d: unknown, ..._rest: unknown[]) => Promise.resolve(d)),
+    analyzeAllDoshasAt: vi.fn(),
     REPORT_GENERATORS,
   };
 });
@@ -112,8 +114,15 @@ vi.mock('../src/modules/pass/pass-free-report.js', () => ({
 
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   requestKundliGeneration: state.requestKundliGeneration,
-  // Passthrough: these tests are about report flow, not live Saturn transits.
-  withLiveSaturnTransits: (doshaData: unknown) => Promise.resolve(doshaData),
+  // Passthrough: these tests are about report flow, not live Saturn transits (a spy, so the
+  // period-start tests can read the date it was asked for).
+  withLiveSaturnTransits: state.withLiveSaturnTransits,
+}));
+
+// The partner's Sade Sati / Dhaiya come from the real ephemeris; a stub keeps these tests offline.
+vi.mock('../src/lib/astro-engine/doshas/index.js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
+  analyzeAllDoshasAt: state.analyzeAllDoshasAt,
 }));
 
 vi.mock('../src/lib/upcoming-transits.js', () => ({
@@ -175,6 +184,8 @@ const {
   purchaseReport,
   purchaseReportShapeCheck,
   buildReportScoreContext,
+  withUpcomingTransits,
+  reportAsOf,
   previewReport,
   getReportCatalogueForUser,
   getReportForUser,
@@ -1563,6 +1574,140 @@ describe('buildReportScoreContext — nothing assumed about the person', () => {
   });
 });
 
+// Audit Sprint 5, M11: a monthly report is about ONE month, so its Saturn lines are read at that
+// month's start, not on the day it was bought (a January report bought in November used to say
+// where Saturn stands in November). A yearly report starts on its purchase day by design
+// (periodMonth = the purchase day), and a one-time report has no period: both keep reading today.
+describe('M11: reports read Saturn as of the report’s own period', () => {
+  const kundli = {
+    chartData: { planets: [] },
+    doshaData: { sadeSati: { moonSign: 'Taurus' } },
+    ashtakavargaData: null,
+  };
+  const sadeSati = {
+    active: true,
+    phase: 'rising',
+    saturnSign: 'Aries',
+    moonSign: 'Taurus',
+    startDate: '2028-03-01T00:00:00.000Z',
+    endDate: '2035-06-01T00:00:00.000Z',
+  };
+
+  beforeEach(() => {
+    state.withLiveSaturnTransits.mockClear();
+    state.upcomingTransitFactsNow.mockClear();
+  });
+
+  it('reportAsOf: a monthly report reads its month (noon UTC on the 1st); the rest read today', () => {
+    expect(reportAsOf('career_monthly', '2028-03-01')?.toISOString()).toBe(
+      '2028-03-01T12:00:00.000Z',
+    );
+    expect(reportAsOf('marriage', '2026-11-05')).toBeUndefined(); // yearly: starts on purchase day
+    expect(reportAsOf('kundli_milan', null)).toBeUndefined(); // one-time
+    expect(reportAsOf('career_monthly', null)).toBeUndefined(); // no period recorded
+    expect(reportAsOf(undefined, '2028-03-01')).toBeUndefined();
+  });
+
+  it.each(['health_monthly', 'career_monthly', 'finance_monthly', 'relationship_monthly'])(
+    '%s: the live Sade Sati / Dhaiya are asked for at the month, not today',
+    async (reportKey) => {
+      await buildReportScoreContext(
+        { userId: 'u1', birthProfileId: null, input: null, reportKey, periodMonth: '2028-03-01' },
+        kundli as never,
+        null,
+      );
+      const asOf = state.withLiveSaturnTransits.mock.calls.at(-1)?.[1];
+      expect(asOf).toEqual(new Date('2028-03-01T12:00:00.000Z'));
+    },
+  );
+
+  it('a yearly report and a one-time report still read today', async () => {
+    await buildReportScoreContext(
+      {
+        userId: 'u1',
+        birthProfileId: null,
+        input: null,
+        reportKey: 'marriage',
+        periodMonth: '2026-11-05',
+      },
+      kundli as never,
+      null,
+    );
+    expect(state.withLiveSaturnTransits.mock.calls.at(-1)?.[1]).toBeUndefined();
+  });
+
+  it('labels the Saturn lines with the date and scans transits from the month’s start', async () => {
+    const asOf = new Date('2028-03-01T12:00:00.000Z');
+    const out = (await withUpcomingTransits({}, null, { sadeSati }, { asOf })) as {
+      planetCondition?: string[];
+    };
+    const lines = out.planetCondition ?? [];
+    expect(lines.some((l) => l.includes('Sade Sati: rising phase'))).toBe(true);
+    expect(lines.find((l) => l.startsWith('SATURN TRANSIT FROM THE MOON'))).toContain(
+      'as of 2028-03-01',
+    );
+    expect(state.upcomingTransitFactsNow.mock.calls.at(-1)?.[0]).toEqual(asOf);
+  });
+
+  it('never scans transits from a date in the past', async () => {
+    const asOf = new Date('2020-01-01T12:00:00.000Z');
+    await withUpcomingTransits({}, null, { sadeSati }, { asOf });
+    const from = state.upcomingTransitFactsNow.mock.calls.at(-1)?.[0] as Date;
+    expect(from.getTime()).toBeGreaterThan(new Date('2026-01-01').getTime());
+  });
+});
+
+// Audit Sprint 5, M8: Kundli Milan / Match Report (and any report with a partner chart) read
+// only the PARTNER's Mangal Dosha; the partner's Sade Sati and Dhaiya never reached the facts.
+describe('M8: a report with a partner chart carries the partner’s Saturn lines', () => {
+  const partnerChart = {
+    planets: [{ planet: 'Moon', sign: 'Pisces', signIndex: 11 }],
+    ascendant: { signIndex: 2 },
+  };
+  const partnerDoshas = {
+    sadeSati: {
+      active: true,
+      phase: 'peak',
+      saturnSign: 'Pisces',
+      moonSign: 'Pisces',
+      startDate: '2025-03-29T00:00:00.000Z',
+      endDate: '2032-06-01T00:00:00.000Z',
+    },
+    dhaiya: { active: false, moonSign: 'Pisces', next: null },
+  };
+
+  beforeEach(() => {
+    state.analyzeAllDoshasAt.mockReset();
+  });
+
+  it('adds PARTNER Sade Sati and Dhaiya lines read from the partner’s own chart', async () => {
+    state.analyzeAllDoshasAt.mockResolvedValue(partnerDoshas);
+    const out = (await withUpcomingTransits({}, null, null, { partnerChart })) as {
+      planetCondition?: string[];
+    };
+    const lines = out.planetCondition ?? [];
+    expect(state.analyzeAllDoshasAt).toHaveBeenCalledWith(partnerChart, undefined);
+    expect(lines.some((l) => l.startsWith('PARTNER — Sade Sati: peak phase'))).toBe(true);
+    expect(lines.some((l) => l.startsWith('PARTNER — Shani Dhaiya:'))).toBe(true);
+  });
+
+  it('adds none when there is no partner chart', async () => {
+    const out = (await withUpcomingTransits({}, null, null, {})) as {
+      planetCondition?: string[];
+    };
+    expect(state.analyzeAllDoshasAt).not.toHaveBeenCalled();
+    expect(JSON.stringify(out.planetCondition ?? [])).not.toMatch(/PARTNER/);
+  });
+
+  it('leaves the partner lines out, without failing the report, when the sky lookup fails', async () => {
+    state.analyzeAllDoshasAt.mockRejectedValue(new Error('ephemeris down'));
+    const out = (await withUpcomingTransits({}, null, null, { partnerChart })) as {
+      planetCondition?: string[];
+    };
+    expect(JSON.stringify(out.planetCondition ?? [])).not.toMatch(/PARTNER/);
+  });
+});
+
 describe('getReportCatalogueForUser', () => {
   it("merges the catalogue with resolved feature pricing and the user's own purchases", async () => {
     state.resolveFeaturesForUser.mockResolvedValue({
@@ -1766,7 +1911,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
 
@@ -1815,7 +1960,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         id: 'current-report',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
 
@@ -1847,7 +1992,7 @@ describe('getReportForUser', () => {
         status: 'ready',
         content: {
           sections: [{ heading: 'H', paragraphs: ['p'] }],
-          contentVersion: 11,
+          contentVersion: 12,
           windowSummaries: { field: 'windows', summaries: ['A window worth watching.'] },
         },
       }),
@@ -1881,7 +2026,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         reportKey: 'true_love',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
 
@@ -1905,7 +2050,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         status: 'ready',
         isPreview: true,
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
 
@@ -1925,7 +2070,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         status: 'ready',
         isPreview: false,
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
 
@@ -1946,7 +2091,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: englishSections, contentVersion: 11 },
+        content: { sections: englishSections, contentVersion: 12 },
         translations: {
           hi: {
             sections: {
@@ -1981,7 +2126,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }], contentVersion: 12 },
         translations: {
           hi: {
             sections: {
@@ -2016,7 +2161,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: englishSections, contentVersion: 11 },
+        content: { sections: englishSections, contentVersion: 12 },
       }),
     );
 
@@ -2043,7 +2188,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
 
@@ -2237,7 +2382,7 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
       expect.objectContaining({
         content: expect.objectContaining({
           sections: [{ heading: 'H', paragraphs: ['p'] }],
-          contentVersion: 11,
+          contentVersion: 12,
           verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
         }),
         model: expect.any(String),
@@ -2480,7 +2625,7 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
     const dto = await getReportForUser('report-1', 'user-1', 'en');
@@ -2586,7 +2731,7 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
 
@@ -2613,7 +2758,7 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 11 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
       }),
     );
 

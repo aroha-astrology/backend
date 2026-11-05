@@ -130,18 +130,18 @@ describe('generateMatchReportNarrative', () => {
     }
   });
 
-  it('states the real Manglik cancellation status when both people have Manglik Dosha, rather than staying silent (previously only the mismatched-and-uncancelled case was ever mentioned)', async () => {
+  it('states the real Manglik status when both people are Manglik in force, rather than staying silent (previously only the mismatched-and-uncancelled case was ever mentioned)', async () => {
     state.generate.mockResolvedValueOnce(eightCardsResponse).mockResolvedValueOnce(closingResponse);
 
     await generateMatchReportNarrative(
-      makeScores({ manglikStatus: { person1: true, person2: true, cancelled: true } }),
+      makeScores({ manglikStatus: { person1: true, person2: true, cancelled: false } }),
     );
 
     const content = state.generate.mock.calls[0]?.[0].messages
       .map((m: { content: string }) => m.content)
       .join('\n');
-    expect(content).toContain('BOTH people');
-    expect(content).toContain('traditionally cancelled');
+    expect(content).toContain('BOTH people are Manglik');
+    expect(content).toContain('matched');
   });
 
   it('states plainly that Manglik Dosha is absent for both when neither chart has it (previously zero Manglik information reached the model in this case)', async () => {

@@ -81,13 +81,14 @@ describe('computeKundliMilanScores', () => {
     else expect(scores.compatibilityBand).toBe('excellent');
   });
 
-  it('reports manglikStatus.person1/person2 from detectMangalDosha.present for each chart', () => {
-    // Mars in house 1 from Lagna (ascendant signIndex 0, Mars signIndex 0) => Manglik present.
+  it('reports manglikStatus.person1/person2 as Manglik in force (found and not cancelled) for each chart', () => {
+    // Mars in Cancer, 4th from Lagna and Moon (signIndex 0): Mangal Dosha found, no cancellation
+    // rule applies => Manglik in force. (Mars in Aries would be found, then cancelled by own sign.)
     const manglikChart = makeChart({
       moonNakshatraIndex: 3,
       moonSign: 'Taurus',
       ascendantSignIndex: 0,
-      mars: { signIndex: 0, sign: 'Aries' },
+      mars: { signIndex: 3, sign: 'Cancer' },
     });
     const cleanChart = makeChart({
       moonNakshatraIndex: 20,
@@ -126,15 +127,18 @@ describe('computeKundliMilanScores', () => {
       { chart: cancelledManglikChart, partnerChart: cleanChart },
       null,
     );
-    expect(scores.manglikStatus.person1).toBe(true);
+    // A cancelled dosha is NOT Manglik (audit Sprint 5, SB2): person1 is not in force, and the
+    // either-person flag plus the person's own flag say it was found and cancelled.
+    expect(scores.manglikStatus.person1).toBe(false);
     expect(scores.manglikStatus.cancelled).toBe(true);
+    expect(scores.manglikStatus.cancelled1).toBe(true);
   });
 
   it('refuses to score without the partner chart instead of inventing their Moon', () => {
     const chart1 = makeChart({ moonNakshatraIndex: 3, moonSign: 'Taurus' });
-    expect(() =>
-      computeKundliMilanScores({ chart: chart1, partnerChart: null }, null),
-    ).toThrow('Moon position is missing');
+    expect(() => computeKundliMilanScores({ chart: chart1, partnerChart: null }, null)).toThrow(
+      'Moon position is missing',
+    );
   });
 
   it('puts the man first when the buyer is a woman and the partner a man', () => {
@@ -144,7 +148,9 @@ describe('computeKundliMilanScores', () => {
       { chart: her, partnerChart: him, personGender: 'female', partnerGender: 'male' },
       null,
     );
-    expect(scores.gunaMilanScore).toBe(calculateAshtakoota(20, 3, 'Capricorn', 'Taurus').totalScore);
+    expect(scores.gunaMilanScore).toBe(
+      calculateAshtakoota(20, 3, 'Capricorn', 'Taurus').totalScore,
+    );
   });
 
   it('uses the lower of the two orders when neither gender is known', () => {

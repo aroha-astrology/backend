@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { dashaLordTransitQuality, detectDoubleTransit, SIGNS } from './astro-tools/index.js';
-import { unknownBirthTimeGuidance } from './birth-time-window.js';
+import { approximateBirthTimeGuidance, unknownBirthTimeGuidance } from './birth-time-window.js';
 import { birthTimeDoubtFacts } from './birth-time-doubt.js';
 import { findPeriodAsOf, type RawDashaPeriod } from './astro-tools/dasha-reading.js';
 import { yoginiSubPeriodsOf } from './astro-engine/dashas/yogini.js';
@@ -773,9 +773,7 @@ export function buildProfileFacts(
   // first Mahadasha by months, so the model is told to hedge exactly the
   // time-sensitive claims and nothing else.
   if (profile.birthTimeAccuracy === 'approximate') {
-    facts.push(
-      'BIRTH TIME CONFIDENCE: approximate (remembered, not from a record). Sign placements, dashas and yogas stay reliable, but the Ascendant, the house numbers, the divisional charts and exact dasha dates all depend on the precise minute. When the answer turns on any of THOSE, add a brief natural caveat once (e.g. "if your birth time is accurate to the minute") and prefer month/season-level timing over exact dates. Do not caveat every sentence, and never say the chart is unreliable.',
-    );
+    facts.push(approximateBirthTimeGuidance());
   }
 
   // 'unknown' is a different situation from 'approximate', and a much weaker

@@ -11,7 +11,7 @@
 
 import { calculateAshtakootaForPair } from '../matching/ashtakoota.js';
 import { calculateDashakootaForPair } from '../matching/dashakoota.js';
-import { detectMangalDosha } from '../doshas/mangalDosha.js';
+import { manglikPairStatus } from './manglik-status.js';
 import { computeMatchRiskFactors, type MatchRiskFactor } from '../matching/match-risks.js';
 import { computeReportVargas, type ReportVarga } from './report-vargas.js';
 import {
@@ -30,7 +30,17 @@ export interface SpouseSynastry {
   dashakootaScore: number;
   dashakootaMaxScore: number;
   dashakootaCompatibility: ReturnType<typeof calculateDashakootaForPair>['overallCompatibility'];
-  manglikStatus: { self: boolean; spouse: boolean; cancelled: boolean };
+  /** `self`/`spouse` are EFFECTIVE status (Mangal Dosha found and not cancelled); `cancelled` is
+   * the either-person flag, and the per-person fields say whose dosha cancelled and why. */
+  manglikStatus: {
+    self: boolean;
+    spouse: boolean;
+    cancelled: boolean;
+    cancelledSelf?: boolean;
+    cancelledSpouse?: boolean;
+    reasonsSelf?: string[];
+    reasonsSpouse?: string[];
+  };
   /** Same 8 life-area synastry read (wealth/health/children/harmony/career/timing/intimacy/
    * inlaws) kundli_milan/match_report already use — see match-risks.ts. */
   riskFactors: MatchRiskFactor[];
@@ -61,15 +71,9 @@ export function computeSpouseSynastry(
   const ashtakoota = calculateAshtakootaForPair(moonSelf, moonSpouse, selfGender, spouseGender);
   const dashakoota = calculateDashakootaForPair(moonSelf, moonSpouse, selfGender, spouseGender);
 
-  // detectMangalDosha's declared parameter is the stricter `ChartData` shape — same defensive
-  // cast kundli-milan.ts's computeKundliMilanScores uses around this same call.
-  const mangalSelf = detectMangalDosha(
-    selfChart as unknown as Parameters<typeof detectMangalDosha>[0],
-  );
-  const mangalSpouse = detectMangalDosha(
-    spouseChart as unknown as Parameters<typeof detectMangalDosha>[0],
-  );
-  const cancelled = mangalSelf.type === 'cancelled' || mangalSpouse.type === 'cancelled';
+  // Each person's own effective status (found and not cancelled) and cancellation reasons: the same
+  // helper Kundli Milan uses (audit Sprint 5, SB1/SB2).
+  const manglik = manglikPairStatus(selfChart, spouseChart);
 
   const gunaBreakdown: KootaBreakdownEntry[] = ashtakoota.scores.map((s) => ({
     name: s.koota,
@@ -87,7 +91,7 @@ export function computeSpouseSynastry(
     gunaMilanScore: ashtakoota.totalScore,
     gunaMaxScore: ashtakoota.maxTotal,
     gunaBreakdown,
-    manglikStatus: { person1: mangalSelf.present, person2: mangalSpouse.present, cancelled },
+    manglikStatus: manglik,
     compatibilityBand,
   } as unknown as KundliMilanScores;
 
@@ -101,7 +105,15 @@ export function computeSpouseSynastry(
     dashakootaScore: dashakoota.totalScore,
     dashakootaMaxScore: dashakoota.maxTotal,
     dashakootaCompatibility: dashakoota.overallCompatibility,
-    manglikStatus: { self: mangalSelf.present, spouse: mangalSpouse.present, cancelled },
+    manglikStatus: {
+      self: manglik.person1,
+      spouse: manglik.person2,
+      cancelled: manglik.cancelled,
+      cancelledSelf: manglik.cancelled1,
+      cancelledSpouse: manglik.cancelled2,
+      reasonsSelf: manglik.reasons1,
+      reasonsSpouse: manglik.reasons2,
+    },
     riskFactors,
     spouseNavamsa: computeReportVargas(spouseChart, ['D9']),
   };

@@ -170,9 +170,10 @@ function computeHarmonyFactor(
   const nadi = kundliMilan.gunaBreakdown.find((k) => k.name === 'Nadi');
   const bhakoot = kundliMilan.gunaBreakdown.find((k) => k.name === 'Bhakoot');
   const gana = kundliMilan.gunaBreakdown.find((k) => k.name === 'Gana');
-  const manglikMismatch =
-    kundliMilan.manglikStatus.person1 !== kundliMilan.manglikStatus.person2 &&
-    !kundliMilan.manglikStatus.cancelled;
+  // person1/person2 are each person's EFFECTIVE status (found and not cancelled), so a cancelled
+  // dosha counts as "not Manglik" and an active-versus-cancelled pair is a real mismatch
+  // (audit Sprint 5, SB1; the raw presence plus an either-person flag hid it).
+  const manglikMismatch = kundliMilan.manglikStatus.person1 !== kundliMilan.manglikStatus.person2;
 
   const score = Math.round((kundliMilan.gunaMilanScore / kundliMilan.gunaMaxScore) * 100);
   const hardFlag = nadi?.score === 0 || bhakoot?.score === 0 || manglikMismatch;
@@ -185,7 +186,7 @@ function computeHarmonyFactor(
   if (gana) evidence.push(`Gana koota: ${gana.score}/${gana.maxScore}.`);
   if (manglikMismatch)
     evidence.push(
-      'Mangal Dosha status is mismatched between the two charts (present in only one, uncancelled).',
+      'Mangal Dosha status is mismatched between the two charts (Manglik in force for only one person).',
     );
 
   return {

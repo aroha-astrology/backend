@@ -18,7 +18,10 @@ import { keyed, newChargeKey, refundOf } from '../billing/refund-keys.js';
 import '../reports/generators/index.js';
 import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
-import { unknownBirthTimeGuidance } from '../../lib/birth-time-window.js';
+import {
+  approximateBirthTimeGuidance,
+  unknownBirthTimeGuidance,
+} from '../../lib/birth-time-window.js';
 import { birthTimeDoubtFacts, markBirthTimeUnknown } from '../../lib/birth-time-doubt.js';
 import { Errors } from '../../lib/errors.js';
 import { getRequestContext, runWithRequestContext } from '../../lib/request-context.js';
@@ -51,6 +54,7 @@ import {
   type PlanetStrengthRow,
 } from '../../lib/chat-grounding.js';
 import { analyzeAllVakriPlanets } from '../../lib/astro-engine/index.js';
+import { analyzeAllDoshasAt } from '../../lib/astro-engine/doshas/index.js';
 import { CALCULATION_VERSION } from '../../lib/astro-engine/version.js';
 import { upcomingTransitFactsNow } from '../../lib/upcoming-transits.js';
 import { INDIA_TZ } from '../../lib/user-time-zone.js';
@@ -162,7 +166,12 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
 // 11 (2026-11-05, audit Sprint 4): the Sade Sati / Dhaiya lines carry what softens or sharpens them
 // (Saturn's bindus and Sarva in its signs, dignity, Lagna role), the Sade Sati cycle number, the
 // Dhaiya themes, and which house count to use; no flat "severe".
-const CONTENT_VERSION = 11;
+// 12 (2026-11-05, audit Sprint 5): an approximate birth time is hedged in every report (M6); a
+// compatibility report carries the partner's own Sade Sati / Dhaiya (M8); a monthly report reads
+// Saturn as of its month (M11); Kundli Milan, Match Report and the spouse part of the Marriage
+// Report say who is Manglik in force, who is cancelled and why, and flag an active-versus-cancelled
+// pair as a mismatch (SB1/SB2).
+const CONTENT_VERSION = 12;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
@@ -182,6 +191,41 @@ const KUNDLI_WAIT_MS = 2_000;
 const REPORT_SATURN_RULE =
   "SADE SATI / SHANI DHAIYA: say one is running ONLY when its line above says ACTIVE or names a phase, and use only the dates on that line (including any retrograde break). Both are counted from the Moon sign, never from the Lagna. When a line says not active, do not describe the reader as being in it; you may give the next one's dates from the line.";
 
+const REPORT_PARTNER_SATURN_RULE =
+  "PARTNER'S SATURN: the lines that start PARTNER are the partner's own Sade Sati and Shani Dhaiya, counted from the partner's Moon sign. Say they apply to the partner only when their line says ACTIVE or names a phase, with only those dates; never give them to the reader, and never read the reader's lines as the partner's.";
+
+/**
+ * The date a report's Saturn lines are read at (audit M11). A monthly report is about ONE month, so
+ * it reads Saturn at that month's start (noon UTC on the 1st, as the horoscope does), not on the day
+ * it was bought. A yearly report starts on its purchase day by design (its `periodMonth` is the
+ * purchase day) and a one-time report has no period, so both read today (`undefined`).
+ */
+export function reportAsOf(
+  reportKey: string | undefined,
+  periodMonth: string | null | undefined,
+): Date | undefined {
+  if (!periodMonth || !reportKey || !getReportDef(reportKey)?.isMonthly) return undefined;
+  const at = new Date(`${periodMonth.slice(0, 10)}T12:00:00.000Z`);
+  return Number.isNaN(at.getTime()) ? undefined : at;
+}
+
+/** The Saturn transit facts a report quotes: Sade Sati, Dhaiya, what shapes them, how to read them. */
+function saturnFactsOf(doshas: Record<string, unknown> | null, ascIndex: number | null): string[] {
+  return doshaFacts(doshas, INDIA_TZ, ascIndex).filter(
+    (f) =>
+      f.startsWith('Sade Sati:') ||
+      f.startsWith('Shani Dhaiya:') ||
+      f.startsWith('Saturn transit strength:') ||
+      f.startsWith('How to read Saturn:'),
+  );
+}
+
+function signIndexOfAscendant(chart: Record<string, unknown> | null | undefined): number | null {
+  const asc = (chart as { ascendant?: { signIndex?: unknown } } | null | undefined)?.ascendant
+    ?.signIndex;
+  return typeof asc === 'number' ? asc : null;
+}
+
 const REPORT_TRANSIT_RULE =
   'TRANSIT DATES: when you say a planet changes sign or nakshatra, or turns retrograde or direct, the date comes ONLY from the UPCOMING TRANSITS lines above. Quote it as given (date and sign); never work a date out and never recall one from memory. If a line says BUT ONLY BRIEFLY, say the entry does not last and time the lasting effect from the date it settles. If an event is not listed, do not give it a date.';
 
@@ -190,40 +234,70 @@ const REPORT_TRANSIT_RULE =
  * channel every narrative call and verifyReportClaims already read; generation paths only, never
  * the read path, so a page view never scans the sky.
  */
-async function withUpcomingTransits(
+export async function withUpcomingTransits(
   scores: ReportScores,
   chart: Record<string, unknown> | null | undefined,
   /** Live doshas (withLiveSaturnTransits) for the Sade Sati / Dhaiya lines; null skips them. */
   doshaData: Record<string, unknown> | null = null,
+  opts: {
+    /** The date the Saturn lines were read at (reportAsOf); undefined = today. */
+    asOf?: Date;
+    /** The partner's chart on a compatibility purchase: adds the partner's own Saturn lines (M8). */
+    partnerChart?: Record<string, unknown> | null;
+  } = {},
 ): Promise<ReportScores> {
-  const asc = (chart as { ascendant?: { signIndex?: unknown } } | null | undefined)?.ascendant
-    ?.signIndex;
-  const ascIndex = typeof asc === 'number' ? asc : null;
+  const ascIndex = signIndexOfAscendant(chart);
   const planets = (chart as { planets?: unknown } | null | undefined)?.planets as
     | Array<{ planet?: string; signIndex?: unknown }>
     | undefined;
   const moon = planets?.find((p) => p.planet === 'Moon')?.signIndex;
   const moonIndex = typeof moon === 'number' ? moon : null;
-  const lines = await upcomingTransitFactsNow(new Date(), ascIndex, moonIndex);
+  const { asOf, partnerChart } = opts;
+  // Upcoming transits are scanned forward from the later of the period start and today: a monthly
+  // report for a coming month lists what happens from that month on, never a date already past.
+  const now = new Date();
+  const scanFrom = asOf && asOf.getTime() > now.getTime() ? asOf : now;
+  const lines = await upcomingTransitFactsNow(scanFrom, ascIndex, moonIndex);
   // The same Sade Sati and Dhaiya lines chat gets, so a report and chat never disagree about
   // whether Saturn's 7.5-year or 2.5-year transit is running, or when.
   // Also what softens or sharpens it and which house count to use, the same lines chat reads
   // (audit M2/M3/M5).
-  const saturn = doshaFacts(doshaData, INDIA_TZ, ascIndex).filter(
-    (f) =>
-      f.startsWith('Sade Sati:') ||
-      f.startsWith('Shani Dhaiya:') ||
-      f.startsWith('Saturn transit strength:') ||
-      f.startsWith('How to read Saturn:'),
-  );
-  if (lines.length === 0 && saturn.length === 0) return scores;
+  const saturn = saturnFactsOf(doshaData, ascIndex);
+  // The partner's own Sade Sati and Dhaiya, read from the partner's Moon (audit M8). Generation
+  // paths only, like the rest of this function; a failed sky lookup leaves them out.
+  let partnerSaturn: string[] = [];
+  if (partnerChart) {
+    try {
+      const partnerDoshas = await analyzeAllDoshasAt(
+        partnerChart as unknown as Parameters<typeof analyzeAllDoshasAt>[0],
+        asOf,
+      );
+      partnerSaturn = saturnFactsOf(
+        partnerDoshas as unknown as Record<string, unknown>,
+        signIndexOfAscendant(partnerChart),
+      ).map((f) => `PARTNER — ${f}`);
+    } catch (err) {
+      logger.warn({ err }, 'partner Saturn lines failed for report; continuing without them');
+    }
+  }
+  if (lines.length === 0 && saturn.length === 0 && partnerSaturn.length === 0) return scores;
+  const when = asOf
+    ? `as of ${asOf.toISOString().slice(0, 10)}, the start of this report's period`
+    : 'today';
   const existing = (scores as { planetCondition?: string[] }).planetCondition ?? [];
   return {
     ...scores,
     planetCondition: [
       ...existing,
       ...(saturn.length
-        ? ['SATURN TRANSIT FROM THE MOON (today):', ...saturn, REPORT_SATURN_RULE]
+        ? [`SATURN TRANSIT FROM THE MOON (${when}):`, ...saturn, REPORT_SATURN_RULE]
+        : []),
+      ...(partnerSaturn.length
+        ? [
+            `PARTNER'S SATURN TRANSIT FROM THEIR MOON (${when}):`,
+            ...partnerSaturn,
+            REPORT_PARTNER_SATURN_RULE,
+          ]
         : []),
       ...(lines.length
         ? ['UPCOMING TRANSITS (exact, from the ephemeris):', ...lines, REPORT_TRANSIT_RULE]
@@ -662,10 +736,13 @@ export function computeScoresWithCondition(
   // forwards to reportFactsMessage, and set as its own score key so the separate
   // verdict call — which serialises whatever is on `scores` — picks it up too, without
   // touching all 16 report modules.
+  // A remembered ('approximate') time is hedged too, more mildly (audit M6): chat always was.
   const birthTimeCaveat =
     ctx.personBirthTimeAccuracy === 'unknown'
       ? unknownBirthTimeGuidance(ctx.personTimeOfBirth)
-      : null;
+      : ctx.personBirthTimeAccuracy === 'approximate'
+        ? approximateBirthTimeGuidance()
+        : null;
   if (birthTimeCaveat) planetCondition = [...planetCondition, birthTimeCaveat];
 
   // Same treatment for the other person on a compatibility purchase — their unknown
@@ -675,7 +752,9 @@ export function computeScoresWithCondition(
   const partnerCaveat =
     ctx.partnerBirthTimeAccuracy === 'unknown'
       ? `PARTNER — ${unknownBirthTimeGuidance(ctx.partnerTimeOfBirth)}`
-      : null;
+      : ctx.partnerBirthTimeAccuracy === 'approximate'
+        ? `PARTNER — ${approximateBirthTimeGuidance()}`
+        : null;
   if (partnerCaveat) planetCondition = [...planetCondition, partnerCaveat];
 
   // The Moon may sit on the other side of a sign or star boundary somewhere in the reader's window,
@@ -734,12 +813,16 @@ export async function buildReportScoreContext(
     partnerTimeOfBirth: typeof row.input?.timeOfBirth === 'string' ? row.input.timeOfBirth : null,
     partnerBirthTimeAccuracy:
       typeof row.input?.timeAccuracy === 'string' ? row.input.timeAccuracy : null,
-    // Sade Sati and Dhaiya as of today: the saved copy is from the day the
-    // kundli was made, so a report could name a Sade Sati that had ended.
-    doshaData: await withLiveSaturnTransits(kundli?.doshaData ?? null, undefined, {
-      chart: kundli?.chartData ?? null,
-      ashtakavarga: kundli?.ashtakavargaData ?? null,
-    }),
+    // Sade Sati and Dhaiya as of today (a monthly report: as of its month, audit M11): the saved
+    // copy is from the day the kundli was made, so a report could name a Sade Sati that had ended.
+    doshaData: await withLiveSaturnTransits(
+      kundli?.doshaData ?? null,
+      reportAsOf(row.reportKey, row.periodMonth),
+      {
+        chart: kundli?.chartData ?? null,
+        ashtakavarga: kundli?.ashtakavargaData ?? null,
+      },
+    ),
     yogaData: kundli?.yogaData ?? null,
     ashtakavargaData: kundli?.ashtakavargaData ?? null,
     dashaData: kundli?.dashaData ?? null,
@@ -905,6 +988,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
       baseScores,
       kundli.chartData,
       scoreContext.doshaData ?? null,
+      { asOf: reportAsOf(row.reportKey, row.periodMonth), partnerChart },
     );
 
     // Resume hint for a reclaimed row (a previous attempt's checkpoint — see
@@ -1926,6 +2010,7 @@ async function regenerateReportContentInner(row: ReportRow): Promise<'regenerate
     baseScores,
     kundli.chartData,
     scoreContext.doshaData ?? null,
+    { asOf: reportAsOf(row.reportKey, row.periodMonth), partnerChart },
   );
   const generated = await generator.generateNarrative(scores, 'en');
   // Same fact-check second pass as the initial generation path above, so a
