@@ -7,13 +7,14 @@ import type { BirthProfileRow } from '../src/db/schema.js';
 // its Kundli screen, while chat, reports and the horoscope kept reading the stale chart.
 
 const state = vi.hoisted(() => ({
-  before: null,
+  before: null as BirthProfileRow | null,
   updateOwnedBirthProfile: vi.fn(),
   deleteHoroscopesForProfile: vi.fn(),
   deleteHouseInsightsForUser: vi.fn(),
   deleteGemstoneForUser: vi.fn(),
   deleteRemedyInsightForUser: vi.fn(),
   requestKundliGeneration: vi.fn(),
+  markReportsStaleForProfile: vi.fn(),
 }));
 
 vi.mock('../src/modules/birth-profiles/birth-profiles.repo.js', () => ({
@@ -37,6 +38,9 @@ vi.mock('../src/modules/astro/remedy-insight.repo.js', () => ({
 }));
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   requestKundliGeneration: state.requestKundliGeneration,
+}));
+vi.mock('../src/modules/reports/reports.repo.js', () => ({
+  markReportsStaleForProfile: state.markReportsStaleForProfile,
 }));
 
 const { updateBirthProfile } =
@@ -77,7 +81,9 @@ beforeEach(() => {
   state.deleteHouseInsightsForUser.mockResolvedValue(undefined);
   state.deleteGemstoneForUser.mockResolvedValue(undefined);
   state.deleteRemedyInsightForUser.mockResolvedValue(undefined);
-  state.requestKundliGeneration.mockResolvedValue(undefined);
+  // requestKundliGeneration answers true when it really rebuilt the chart.
+  state.requestKundliGeneration.mockResolvedValue(true);
+  state.markReportsStaleForProfile.mockResolvedValue(2);
 });
 
 describe('M16: editing a saved profile’s birth details invalidates what was built from them', () => {
@@ -128,6 +134,34 @@ describe('M16: editing a saved profile’s birth details invalidates what was bu
     await settle();
     expect(state.deleteHoroscopesForProfile).not.toHaveBeenCalled();
     expect(state.requestKundliGeneration).not.toHaveBeenCalled();
+  });
+
+  // The text of a bought report is frozen on the chart it was written from, while its numbers are
+  // recomputed from the current chart on every open. After a rebuild the report must be rebuilt
+  // (free, on next open) or it would show old text beside new numbers.
+  it('marks that profile’s bought reports old once the chart has really been rebuilt', async () => {
+    const order: string[] = [];
+    state.requestKundliGeneration.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      order.push('chart');
+      return true;
+    });
+    state.markReportsStaleForProfile.mockImplementation(() => {
+      order.push('reports');
+      return Promise.resolve(2);
+    });
+    await updateBirthProfile(OWNER, MA, { timeOfBirth: '18:15' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(state.markReportsStaleForProfile).toHaveBeenCalledWith(OWNER, MA);
+    // After the rebuild, never before: a report opened too early would be rebuilt from the old chart.
+    expect(order).toEqual(['chart', 'reports']);
+  });
+
+  it('leaves the reports alone when the chart was not rebuilt (nothing really changed, or it failed)', async () => {
+    state.requestKundliGeneration.mockResolvedValue(false);
+    await updateBirthProfile(OWNER, MA, { timeOfBirth: '18:15' });
+    await settle();
+    expect(state.markReportsStaleForProfile).not.toHaveBeenCalled();
   });
 
   it('still saves the edit when the clean-up fails', async () => {

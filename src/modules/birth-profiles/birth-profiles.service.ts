@@ -6,6 +6,7 @@ import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { deleteRemedyInsightForUser } from '../astro/remedy-insight.repo.js';
 import { deleteHoroscopesForProfile } from '../horoscope/horoscope.repo.js';
+import { markReportsStaleForProfile } from '../reports/reports.repo.js';
 import type {
   BirthProfileDto,
   CreateBirthProfileBody,
@@ -107,7 +108,17 @@ async function invalidateAfterBirthEdit(ownerUserId: string, id: string): Promis
     ['house insights', () => deleteHouseInsightsForUser(ownerUserId, id)],
     ['gemstone', () => deleteGemstoneForUser(ownerUserId, id)],
     ['remedy insight', () => deleteRemedyInsightForUser(ownerUserId, id)],
-    ['kundli rebuild', () => requestKundliGeneration(ownerUserId, id)],
+    [
+      // Bought reports are marked old only AFTER the chart is rebuilt, and only if it really was:
+      // one opened earlier would be rebuilt from the old chart and stay wrong. Each is then
+      // rebuilt free on its next open (audit M16).
+      'kundli rebuild',
+      async () => {
+        if (await requestKundliGeneration(ownerUserId, id)) {
+          await markReportsStaleForProfile(ownerUserId, id);
+        }
+      },
+    ],
   ];
   const results = await Promise.allSettled(steps.map(([, run]) => run()));
   results.forEach((r, i) => {

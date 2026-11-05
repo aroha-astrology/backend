@@ -392,7 +392,7 @@ async function runGeneration(
   profile: ProfileContext,
   inputs: BirthInputs,
   claimedAt: Date,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const chart = await calculateChart(
       inputs.year,
@@ -503,6 +503,7 @@ async function runGeneration(
         });
       }
     }
+    return true;
   } catch (err) {
     logger.error({ err, userId: user.id }, 'kundli generation failed');
     await markKundliFailed(
@@ -511,6 +512,7 @@ async function runGeneration(
       claimedAt,
       err instanceof Error ? err.message : String(err),
     );
+    return false;
   }
 }
 
@@ -525,17 +527,19 @@ async function runGeneration(
 export async function requestKundliGeneration(
   userId: string,
   birthProfileId: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const user = await findActiveUserById(userId);
-  if (!user) return;
+  if (!user) return false;
   const profile = await resolveProfileContext(user, birthProfileId);
   const inputs = birthInputsForProfile(profile, user);
-  if (!inputs) return; // a required parameter is missing
+  if (!inputs) return false; // a required parameter is missing
 
   const claimed = await claimKundliGeneration(userId, profile.birthProfileId, inputs.birthHash);
-  if (!claimed?.startedAt) return; // another run owns it, or it's already ready for this hash
+  if (!claimed?.startedAt) return false; // another run owns it, or it's already ready for this hash
 
-  await runGeneration(user, profile, inputs, claimed.startedAt);
+  // True only when THIS call really rebuilt the chart (audit M16 uses it to know a birth edit
+  // changed the chart before it marks bought reports old).
+  return runGeneration(user, profile, inputs, claimed.startedAt);
 }
 
 export type RegenerateResult =

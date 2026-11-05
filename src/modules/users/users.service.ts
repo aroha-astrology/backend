@@ -10,6 +10,7 @@ import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { deleteRemedyInsightForUser } from '../astro/remedy-insight.repo.js';
 import { deleteHoroscopesForProfile } from '../horoscope/horoscope.repo.js';
+import { markReportsStaleForProfile } from '../reports/reports.repo.js';
 import { type ProfileContext } from '../birth-profiles/profile-context.js';
 import { priceOf, payoutOf, type ResolvedFeature } from '../features/features.service.js';
 import { formatPaise } from '../../lib/money.js';
@@ -658,10 +659,17 @@ export async function updateMe(
     body.preferredAyanamsa !== undefined ||
     body.preferredHouseSystem !== undefined;
   if (next.profileCompletedAt !== null && (becameComplete || touchedBirth)) {
-    // Primary profile only — see the birthProfileId: null comment above.
-    void requestKundliGeneration(userId, null).catch((err: unknown) => {
-      logger.error({ err, userId }, 'kundli generation trigger failed');
-    });
+    // Primary profile only — see the birthProfileId: null comment above. Once the chart has
+    // really been rebuilt, the owner's bought reports are marked old so each is rebuilt free on
+    // its next open: their text is frozen on the old chart while their numbers follow the new
+    // one (audit M16).
+    void requestKundliGeneration(userId, null)
+      .then(async (rebuilt) => {
+        if (rebuilt && touchedBirth) await markReportsStaleForProfile(userId, null);
+      })
+      .catch((err: unknown) => {
+        logger.error({ err, userId }, 'kundli generation trigger failed');
+      });
   }
 
   // Users who onboard with an admittedly-unknown birth time never get a kundli

@@ -24,6 +24,39 @@ function profileFilter(birthProfileId: string | null): SQL {
     : eq(reports.birthProfileId, birthProfileId);
 }
 
+/**
+ * Marks every ready report of one profile as old (content version 0), so the existing rebuild-on-open
+ * (refreshIfOld) rebuilds each one free, on its owner's next open, from the profile's current chart.
+ * Used after a birth-detail edit has rebuilt the chart (audit M16): a bought report's text is frozen
+ * on the chart it was written from while its numbers are recomputed from the current one on every
+ * open, so without this an edited profile showed old text beside new numbers. Scoped to one user and
+ * one profile; the 3-try rebuild counter starts again. Returns how many reports were marked.
+ */
+export async function markReportsStaleForProfile(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<number> {
+  const rows = await db
+    .update(reports)
+    .set({
+      content: sql`jsonb_set(coalesce(${reports.content}, '{}'::jsonb), '{contentVersion}', '0'::jsonb)`,
+      refreshAttempts: 0,
+      refreshError: null,
+      refreshStartedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(reports.userId, userId),
+        profileFilter(birthProfileId),
+        eq(reports.status, 'ready'),
+        sql`${reports.content} is not null`,
+      ),
+    )
+    .returning({ id: reports.id });
+  return rows.length;
+}
+
 /** `periodMonth === null` filters to one-time reports; a non-null value filters to that month's row. */
 function periodFilter(periodMonth: string | null): SQL {
   return periodMonth === null ? isNull(reports.periodMonth) : eq(reports.periodMonth, periodMonth);
@@ -413,7 +446,17 @@ export function isReportRefreshRunning(row: Pick<ReportRow, 'refreshStartedAt'>)
 /** Mark a claimed report as successfully rebuilt. */
 export async function markReportRefreshed(
   id: string,
-  patch: { content: Record<string, unknown>; model: string; chartSnapshot: Record<string, unknown>; calculationVersion: string | null; ephemerisVersion: string | null; ayanamsa: string | null; houseSystem: string | null; nodeType: string | null; promptVersion: string },
+  patch: {
+    content: Record<string, unknown>;
+    model: string;
+    chartSnapshot: Record<string, unknown>;
+    calculationVersion: string | null;
+    ephemerisVersion: string | null;
+    ayanamsa: string | null;
+    houseSystem: string | null;
+    nodeType: string | null;
+    promptVersion: string;
+  },
 ): Promise<void> {
   await db
     .update(reports)
@@ -445,7 +488,15 @@ export async function markReportRefreshFailed(id: string, error: string): Promis
 }
 
 /** Counts for the Admin report-refresh dashboard. */
-export async function reportRefreshCounts(currentContentVersion: number): Promise<{ waiting: number; running: number; failed: number; rebuilt: number; byModel: Array<{ model: string; count: number }> }> {
+export async function reportRefreshCounts(
+  currentContentVersion: number,
+): Promise<{
+  waiting: number;
+  running: number;
+  failed: number;
+  rebuilt: number;
+  byModel: Array<{ model: string; count: number }>;
+}> {
   const cutoff = new Date(Date.now() - REPORT_REFRESH_STALE_MS);
   const [counts] = await db
     .select({
