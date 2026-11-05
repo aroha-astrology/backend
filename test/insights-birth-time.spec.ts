@@ -328,3 +328,68 @@ describe('getBirthTimeStatus', () => {
     await expect(getBirthTimeStatus(user)).rejects.toThrow('PASS_REQUIRED');
   });
 });
+
+describe('part-of-day readers (audit sprint 15)', () => {
+  const unknownCtx = (timeOfBirth: string) =>
+    makeProfileContext({
+      dateOfBirth: '1990-05-15',
+      timeOfBirth,
+      birthTimeAccuracy: 'unknown',
+      placeOfBirth: { name: 'Kolkata', lat: 22.57, lon: 88.36, tz: 'Asia/Kolkata' },
+    });
+
+  it('searches only the part of the day the reader named, and remembers they did not know the time', async () => {
+    state.resolveActiveProfileContext.mockResolvedValue(unknownCtx('18:00'));
+    state.rectifyBirthTime.mockResolvedValue(RESULT);
+
+    await runBirthTimeCheck(user, EVENTS);
+
+    // Evening is 16:00-20:00: 120 minutes before the stand-in 18:00, 119 after (last minute 19:59).
+    expect(state.rectifyBirthTime).toHaveBeenCalledWith(
+      expect.objectContaining({ windowBeforeMinutes: 120, windowAfterMinutes: 119 }),
+    );
+    expect(state.insertRectification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({ statedAccuracy: 'unknown' }),
+      }),
+    );
+  });
+
+  it('keeps the wide symmetric search for the noon stand-in, which names no window', async () => {
+    state.resolveActiveProfileContext.mockResolvedValue(unknownCtx('12:00'));
+    state.rectifyBirthTime.mockResolvedValue(RESULT);
+
+    await runBirthTimeCheck(user, EVENTS);
+
+    expect(state.rectifyBirthTime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        windowMinutes: 180,
+        windowBeforeMinutes: 180,
+        windowAfterMinutes: 180,
+      }),
+    );
+  });
+
+  it('saves a suggestion for a part-of-day reader as approximate, never exact', async () => {
+    state.findRectificationForUser.mockResolvedValue(
+      rowFrom({
+        detail: {
+          events: EVENTS,
+          eventMatches: RESULT.eventMatches,
+          reasoning: RESULT.reasoning,
+          offsetMinutes: -8,
+          statedAccuracy: 'unknown',
+        },
+      }),
+    );
+    state.findActiveUserById.mockResolvedValue(user);
+    state.markRectificationApplied.mockResolvedValue(true);
+
+    await applyBirthTimeCheck(user, 'rect-1');
+
+    expect(state.updateUserById).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ birthTimeAccuracy: 'approximate' }),
+    );
+  });
+});

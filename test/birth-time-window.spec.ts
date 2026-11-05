@@ -17,7 +17,7 @@ describe('birthTimeWindowFor', () => {
       const hh = String(h).padStart(2, '0');
       const matches = BIRTH_TIME_WINDOWS.filter((w) => h >= w.startH && h < w.endH);
       expect(matches, `hour ${hh}`).toHaveLength(1);
-      expect(birthTimeWindowFor(`${hh}:00`)?.key).toBe(matches[0]?.key);
+      expect(birthTimeWindowFor(`${hh}:30`)?.key).toBe(matches[0]?.key);
     }
   });
 
@@ -52,5 +52,16 @@ describe('buildProfileFacts — unknown birth time', () => {
 
     const unset = buildProfileFacts({ timeOfBirth: '09:00' }, {});
     expect(unset.some((f) => f.startsWith('BIRTH TIME'))).toBe(false);
+  });
+});
+
+describe('the noon stand-in (audit sprint 15)', () => {
+  it('names no window for 12:00, which is a skipped time and not a part of the day', async () => {
+    const { birthTimeWindowFor, unknownBirthTimeGuidance } =
+      await import('../src/lib/birth-time-window.js');
+    expect(birthTimeWindowFor('12:00')).toBeNull();
+    expect(birthTimeWindowFor('12:00:00')).toBeNull();
+    expect(birthTimeWindowFor('12:01')?.key).toBe('afternoon');
+    expect(unknownBirthTimeGuidance('12:00')).not.toContain('afternoon');
   });
 });

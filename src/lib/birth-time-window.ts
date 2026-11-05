@@ -59,6 +59,8 @@ export function birthTimeWindowFor(time: string | null | undefined): BirthTimeWi
   if (!time) return null;
   const hour = Number(time.split(':')[0]);
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  // Exactly 12:00 is the stand-in for a skipped time, not a part of the day: it names no window.
+  if (time.slice(0, 5) === '12:00') return null;
   return BIRTH_TIME_WINDOWS.find((w) => hour >= w.startH && hour < w.endH) ?? null;
 }
 

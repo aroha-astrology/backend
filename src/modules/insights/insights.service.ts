@@ -19,6 +19,7 @@ import {
   resolveActiveProfileContext,
   type ProfileContext,
 } from '../birth-profiles/profile-context.js';
+import { birthTimeWindowFor } from '../../lib/birth-time-window.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { requestKundliGeneration, tzOffsetHours } from '../kundli/kundli.service.js';
 import { findActiveUserById, updateUserById } from '../users/users.repo.js';
@@ -238,6 +239,24 @@ export function searchWindowMinutes(accuracy: ProfileContext['birthTimeAccuracy'
 }
 
 /**
+ * The range a check searches, in minutes before and after the stated time. A reader who only knew
+ * the part of the day has that window's midpoint saved, so the search stays inside the window they
+ * named (the last minute is 1 before its end). Anyone else, and the 12:00 stand-in that names no
+ * window, gets the symmetric search above.
+ */
+export function searchRangeMinutes(
+  accuracy: ProfileContext['birthTimeAccuracy'],
+  timeOfBirth: string,
+): { before: number; after: number } {
+  const wide = searchWindowMinutes(accuracy);
+  const w = accuracy === 'unknown' ? birthTimeWindowFor(timeOfBirth) : null;
+  if (!w) return { before: wide, after: wide };
+  const [hh, mm] = timeOfBirth.split(':').map(Number);
+  const stated = (hh ?? 0) * 60 + (mm ?? 0);
+  return { before: stated - w.startH * 60, after: w.endH * 60 - stated - 1 };
+}
+
+/**
  * Runs a birth-time check for the active profile (Aroha Pass only).
  */
 export async function runBirthTimeCheck(
@@ -258,6 +277,7 @@ export async function runBirthTimeCheck(
   const [hh, mm] = profile.timeOfBirth.split(':').map(Number);
   if (!y || !m || !d || hh == null || mm == null) throw Errors.unprocessable('MISSING_BIRTH_DATA');
 
+  const range = searchRangeMinutes(profile.birthTimeAccuracy, profile.timeOfBirth);
   const result = await rectifyBirthTime({
     year: y,
     month: m,
@@ -269,6 +289,8 @@ export async function runBirthTimeCheck(
     lng: place.lon,
     events,
     windowMinutes: searchWindowMinutes(profile.birthTimeAccuracy),
+    windowBeforeMinutes: range.before,
+    windowAfterMinutes: range.after,
   });
   if (!result) throw Errors.unprocessable('NOT_ENOUGH_EVIDENCE');
 
@@ -287,6 +309,7 @@ export async function runBirthTimeCheck(
       events,
       eventMatches: result.eventMatches,
       reasoning: result.reasoning,
+      statedAccuracy: profile.birthTimeAccuracy,
       offsetMinutes: result.best.offsetMinutes,
     },
     confidence: result.confidence,
@@ -314,7 +337,9 @@ export async function applyBirthTimeCheck(
   if (row.appliedAt) throw Errors.conflict('ALREADY_APPLIED');
   if (!dto.canApply) throw Errors.conflict('NOT_CONFIDENT_ENOUGH');
 
-  const accuracy = row.confidence === 'high' ? 'exact' : 'approximate';
+  // A reader who only knew the part of the day never becomes 'exact' from a few life events.
+  const accuracy =
+    row.confidence === 'high' && row.detail.statedAccuracy !== 'unknown' ? 'exact' : 'approximate';
   if (row.birthProfileId === null) {
     const current = await findActiveUserById(user.id);
     if (!current) throw Errors.notFound('User not found');

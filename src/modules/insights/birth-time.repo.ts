@@ -17,6 +17,8 @@ export interface RectificationDetail {
   events: LifeEvent[];
   eventMatches: EventMatch[];
   reasoning: string;
+  /** How sure the reader was of the time when the check ran. 'unknown' = they only knew the part of the day. */
+  statedAccuracy?: 'exact' | 'approximate' | 'unknown' | null;
   offsetMinutes: number;
 }
 
@@ -145,10 +147,7 @@ export async function claimDueRectifications(
     .update(birthTimeRectifications)
     .set({ notifiedAt: now })
     .where(
-      and(
-        inArray(birthTimeRectifications.id, due),
-        isNull(birthTimeRectifications.notifiedAt),
-      ),
+      and(inArray(birthTimeRectifications.id, due), isNull(birthTimeRectifications.notifiedAt)),
     )
     .returning({ id: birthTimeRectifications.id, userId: birthTimeRectifications.userId });
 }

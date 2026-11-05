@@ -143,3 +143,18 @@ describe('rectificationConfidencePct', () => {
     ).toBeGreaterThanOrEqual(75);
   });
 });
+
+describe('rectifyBirthTime: a search range that is not symmetric', () => {
+  it('only tests candidates inside the range it is given', async () => {
+    const out = await rectifyBirthTime({
+      ...BASE,
+      events: EVENTS,
+      windowBeforeMinutes: 12,
+      windowAfterMinutes: 40,
+    });
+    const offsets = (out?.candidates ?? []).map((c) => c.offsetMinutes);
+    expect(offsets.length).toBeGreaterThan(0);
+    expect(Math.min(...offsets)).toBeGreaterThanOrEqual(-12);
+    expect(Math.max(...offsets)).toBeLessThanOrEqual(40);
+  });
+});

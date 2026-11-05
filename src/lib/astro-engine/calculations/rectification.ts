@@ -263,6 +263,9 @@ export interface RectifyInput {
   houseSystem?: HouseSystem;
   /** How far either side of the stated time to search. Default +/-60 min. */
   windowMinutes?: number;
+  /** Search range that is not symmetric: minutes before / after the stated time. Each falls back to `windowMinutes`. */
+  windowBeforeMinutes?: number;
+  windowAfterMinutes?: number;
   /** Candidate spacing. Default 4 min — finer than the Lagna moves anyway. */
   stepMinutes?: number;
 }
@@ -281,7 +284,11 @@ export async function rectifyBirthTime(input: RectifyInput): Promise<Rectificati
   const events = input.events.filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date));
   if (events.length < MIN_EVENTS_FOR_RECTIFICATION) return null;
 
-  const windowMinutes = input.windowMinutes ?? 60;
+  const baseWindow = input.windowMinutes ?? 60;
+  const windowBefore = input.windowBeforeMinutes ?? baseWindow;
+  const windowAfter = input.windowAfterMinutes ?? baseWindow;
+  // Confidence maths reads the half-width of whatever range was searched.
+  const windowMinutes = (windowBefore + windowAfter) / 2;
   const stepMinutes = input.stepMinutes ?? 4;
   const ayanamsa = input.ayanamsa ?? 'lahiri';
   const houseSystem = input.houseSystem ?? 'W';
@@ -291,7 +298,7 @@ export async function rectifyBirthTime(input: RectifyInput): Promise<Rectificati
   // be reported without casting it a second time.
   const evidence = new Map<number, { chart: ChartLike; mahadashas: PeriodLike[] }>();
 
-  for (let offset = -windowMinutes; offset <= windowMinutes; offset += stepMinutes) {
+  for (let offset = -windowBefore; offset <= windowAfter; offset += stepMinutes) {
     // Wall-clock arithmetic on the local birth date, so a candidate that
     // crosses midnight lands on the neighbouring day (audit item RC1).
     const local = new Date(
