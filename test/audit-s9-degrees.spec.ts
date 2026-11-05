@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { detectKaalSarpDosha } from '../src/lib/astro-engine/doshas/kaalSarp.js';
 import { detectGuruChandalDosha } from '../src/lib/astro-engine/doshas/guruChandal.js';
 import { detectGrahanDosha } from '../src/lib/astro-engine/doshas/grahanDosha.js';
+import { detectMangalDosha } from '../src/lib/astro-engine/doshas/mangalDosha.js';
 import { detectPitraDosha } from '../src/lib/astro-engine/doshas/pitraDosha.js';
 import { separationDeg } from '../src/lib/astro-engine/doshas/separation.js';
 import { detectAllYogas } from '../src/lib/astro-engine/yogas/index.js';
@@ -188,5 +189,24 @@ describe('G2: true angular separation on every node conjunction', () => {
     const g = detectGuruChandalDosha(chartAt({ Rahu: 91, Jupiter: 116 }));
     expect(g.present).toBe(true);
     expect(g.separationDeg).toBe(25);
+  });
+});
+
+describe("G2: Mangal Dosha carries the true separation from Jupiter, Venus or the Moon in Mars's sign", () => {
+  it('lists each of them with its distance, data only', () => {
+    // Mars 100 and Jupiter 104 in Cancer, Moon 118 in Cancer, Venus far away.
+    const m = detectMangalDosha(
+      chartAt({ Rahu: 200, Mars: 100, Jupiter: 104, Moon: 118, Venus: 10 }),
+    );
+    expect(m.conjunctionSeparations).toEqual([
+      { planet: 'Moon', deg: 18 },
+      { planet: 'Jupiter', deg: 4 },
+    ]);
+  });
+  it("is absent when none of them shares Mars's sign", () => {
+    const m = detectMangalDosha(
+      chartAt({ Rahu: 200, Mars: 100, Jupiter: 10, Moon: 40, Venus: 250 }),
+    );
+    expect(m.conjunctionSeparations).toBeUndefined();
   });
 });

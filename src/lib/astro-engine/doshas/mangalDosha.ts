@@ -34,6 +34,8 @@ const MANGAL_DOSHA_HOUSES = [1, 2, 4, 7, 8, 12];
 const MALEFICS: Planet[] = ['Sun', 'Mars', 'Saturn', 'Rahu', 'Ketu'];
 const SUFFIX = ' - cancellation applies';
 
+import { separationDeg } from './separation';
+
 type Point = 'Lagna' | 'Moon' | 'Venus';
 
 /** Compute house number of a planet relative to a reference sign index (0-based). */
@@ -241,6 +243,16 @@ export function detectMangalDosha(chartData: ChartData, birthDate?: string): Man
   else if (remaining.length === 3) type = 'full';
   else type = 'partial';
 
+  // True angular distance from Mars to Jupiter, Venus or the Moon when they share its sign
+  // (audit G2). Data only: the sign rule decides what cancels.
+  const conjunctionSeparations = chartData.planets
+    .filter(
+      (p) =>
+        p.signIndex === marsSignIndex &&
+        (p.planet === 'Jupiter' || p.planet === 'Venus' || p.planet === 'Moon'),
+    )
+    .map((p) => ({ planet: p.planet, deg: separationDeg(p.longitude, mars.longitude) }));
+
   let description = buildDescription(
     present,
     type,
@@ -270,6 +282,7 @@ export function detectMangalDosha(chartData: ChartData, birthDate?: string): Man
     marsHouseFromVenus,
     cancellations,
     ...(clearedPoints.length ? { clearedPoints } : {}),
+    ...(conjunctionSeparations.length ? { conjunctionSeparations } : {}),
     type,
     description,
   };

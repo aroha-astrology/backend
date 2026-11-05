@@ -223,6 +223,8 @@ export interface MangalDosha {
    * while another point stays afflicted (type 'partial' or 'full'). Absent when there is none.
    */
   clearedPoints?: { point: 'Lagna' | 'Moon' | 'Venus'; reason: string }[];
+  /** Jupiter, Venus or the Moon in Mars's sign, with the true angular distance (data only, audit G2). */
+  conjunctionSeparations?: { planet: 'Jupiter' | 'Venus' | 'Moon'; deg: number }[];
   type: 'partial' | 'full' | 'cancelled' | 'none';
   description: string;
 }

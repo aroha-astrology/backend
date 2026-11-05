@@ -305,6 +305,15 @@ Read in the translation (E-BPHS-ENG, vol 2, chapter 91, "Remedies from birth in 
 
 The names Kaal Sarp, Grahan Dosha and Pitra Dosha were searched in the BPHS translation (both volumes) and in the Phaladeepika: no occurrence (searched 2026-10-09 in the OCR text). The Bṛhat Jātaka and the Bṛhat Saṃhitā were read earlier and have none.
 
+### Kaal Sarp by longitude, and the Kaal Amrit direction name (audit Sprint 9, G3, SB4): modern, no old text
+
+- **What the engine does now.** Ketu is Rahu + 180 degrees. All seven planets (Sun to Saturn) on the Rahu-to-Ketu half of the zodiac, read by longitude, are called Kaal Sarp; all on the Ketu-to-Rahu half are called Kaal Amrit; exactly one planet outside either half is a partial. A planet in a node's sign that has not reached the node, or is past it, is outside (the old house test counted it as inside, SB4).
+- **Source status.** No classical text: BPHS, Phaladeepika, Brihat Jataka and Brihat Samhita have no Kaal Sarp (see the section above). The direction naming (Kaal Amrit for the Ketu-to-Rahu half) was checked on 2026-11-05 only in secondary writing: B.V. Raman's discussion as quoted on shyamasundaradasa.com (jyotish Q&A, "Kala-sarpa yoga and Kala-amrita yoga"), which says all planets between Rahu and Ketu is Kala-sarpa and between Ketu and Rahu is Kala-amrita, and that the same page's readers disagree on which half a given chart is in. Other pages found say "as per recent astrological theories". Raman's book was not opened.
+- **Label.** MODERN / later tradition, direction naming a convention. The description text already says Kaal Sarp is "a later tradition rather than a rule of the old Parashari texts". Not a verified ancient rule.
+- **Not changed.** The 12 named types still come from the Rahu and Ketu houses; severity stays severe (full) / mild (partial). No degree-based partial: the owner may ask for one later.
+- **Guru Chandal (G11).** Jupiter with Rahu only. Jupiter with Ketu was a "moderate" Guru Chandal; no verse names it, so it is removed. The name itself is a later tradition (not in the BPHS translation).
+- **Separation (G2).** `separationDeg` is shown as data on Guru Chandal, Grahan, Pitra (Sun-Rahu), the Angarak yoga and Mangal (Jupiter, Venus, Moon in Mars's sign). It decides nothing.
+
 ### Choghadiya and the day's sunrise convention (PN3, PN4): no old text found
 
 - **Searched** (2026-10-09, OCR text of the BPHS translation, both volumes, and of the Phaladeepika): no occurrence of Choghadiya (or Chaughadia). The Bṛhat Jātaka and the Bṛhat Saṃhitā have none (read earlier). A web search for a classical source of the 16-period Choghadiya returned only popular almanac pages, none of them quoting a text, and a page that describes the method gives no table. So the Choghadiya is a regional almanac convention with no old text opened.
