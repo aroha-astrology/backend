@@ -367,16 +367,20 @@ async function chargeAndMint(
     // all — the conversation itself streams client-to-Google and never touches this server
     // (see the module doc comment) — so tokensIn/tokensOut are deliberately 0, not omitted:
     // Gemini Live's audio pricing has no verified token-equivalent conversion in this
-    // codebase yet, and a guessed rate would be confidently wrong in a cost dashboard. This
-    // at least makes voice call volume and duration visible; ai_usage's $ rollups (which key
-    // off tokens) will undercount voice cost until that conversion is added.
+    // codebase yet, and a guessed rate would be confidently wrong in a cost dashboard.
+    // Audit L9: Gemini Live is priced per minute of audio, so the row carries the minute itself
+    // (audioSeconds, the most one minted token can cover) and the key tier that minted it. The
+    // admin cost view prices voice from those instead of from tokens. Real talk time is unknown
+    // to this server, so that price is an upper bound.
     void insertAiUsage({
       userId,
       agent: 'voice',
       model: minted.model,
+      tier: minted.tier,
       tokensIn: 0,
       tokensOut: 0,
       durationMs: 60_000,
+      audioSeconds: 60,
     }).catch((err: unknown) => {
       logger.warn({ err, userId, voiceSessionId }, 'voice: ai_usage write failed');
     });

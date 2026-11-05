@@ -27,7 +27,13 @@
 import { env } from '../../config/env.js';
 import { logger } from '../logger.js';
 import { alertThrottled } from '../notifications/alerts.js';
-import { pickKey, markRateLimited, poolSize, paidKeyNameAt } from './gemini-key-pool.js';
+import {
+  pickKey,
+  markRateLimited,
+  poolSize,
+  paidKeyNameAt,
+  type KeyTier,
+} from './gemini-key-pool.js';
 import { recordPaidKeyUse } from './paid-usage.js';
 
 export class GeminiLiveTokenError extends Error {
@@ -84,6 +90,8 @@ export interface MintedLiveToken {
   expiresAt: number;
   /** The model the token is pinned to; echoed to the client so it connects to the right one. */
   model: string;
+  /** Which key tier minted it, so the minute's cost lands on the right side of the bill (audit L9). */
+  tier: KeyTier;
 }
 
 interface MintOptions {
@@ -172,7 +180,9 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: opts.voiceName ?? env.GEMINI_LIVE_VOICE } },
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: opts.voiceName ?? env.GEMINI_LIVE_VOICE },
+            },
           },
         },
         // Required for the client to resume across paid-minute boundaries
@@ -270,7 +280,7 @@ export async function mintLiveToken(opts: MintOptions): Promise<MintedLiveToken>
       throw new GeminiLiveTokenError('Token mint returned no token');
     }
 
-    return { token: parsed.name, expiresAt, model: env.GEMINI_LIVE_MODEL };
+    return { token: parsed.name, expiresAt, model: env.GEMINI_LIVE_MODEL, tier: picked.tier };
   }
 
   // Only reachable when every key in the pool is rate limited or cooling down.

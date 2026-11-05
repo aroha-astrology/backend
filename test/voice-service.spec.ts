@@ -208,9 +208,12 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ 'paid.voiceChat': { enabled: true, pricePaise: PRICE } });
 
-  state.mintLiveToken
-    .mockReset()
-    .mockResolvedValue({ token: 'tok-abc', expiresAt: 1_800_000, model: 'live-model' });
+  state.mintLiveToken.mockReset().mockResolvedValue({
+    token: 'tok-abc',
+    expiresAt: 1_800_000,
+    model: 'live-model',
+    tier: 'paid',
+  });
 
   state.getKundliForUser.mockReset().mockResolvedValue({ status: 'ready', chartData: {} });
   state.withLiveSaturnTransits
@@ -243,9 +246,10 @@ describe('startVoiceSession', () => {
   it('records the minute in ai_usage — the only point this server can observe voice usage at all', async () => {
     // Regression: realtime voice was previously invisible everywhere in ai_usage-based cost
     // reporting, since the conversation itself never touches this server (see the module doc
-    // comment). tokensIn/tokensOut are deliberately 0, not omitted — there is no verified
-    // token-equivalent for Gemini Live's audio pricing in this codebase, so this only makes
-    // call volume/duration visible, not $ cost, until that conversion exists.
+    // comment). tokensIn/tokensOut are deliberately 0, not omitted — Gemini Live is priced per
+    // minute of audio, and this server never sees the audio, so tokens would be a guess. Audit L9:
+    // the row now carries the minute as audioSeconds (the most a minted token can cover) and the
+    // key tier that minted it, so the cost view can price voice per minute instead of showing 0.
     await startVoiceSession(USER, profile, 'en');
 
     await vi.waitFor(() => {
@@ -253,9 +257,11 @@ describe('startVoiceSession', () => {
         userId: USER,
         agent: 'voice',
         model: 'live-model',
+        tier: 'paid',
         tokensIn: 0,
         tokensOut: 0,
         durationMs: 60_000,
+        audioSeconds: 60,
       });
     });
   });

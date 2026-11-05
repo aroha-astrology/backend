@@ -341,7 +341,10 @@ export const users = pgTable(
     /** IANA zone of home; adopted from the device the first time the travel pill is on. */
     homeTimezone: text('home_timezone'),
     /** HOME, TRAVEL_SYNCED (times for where the device is) or TRAVEL_DISMISSED (keep home while away). */
-    skyMode: text('sky_mode').$type<'HOME' | 'TRAVEL_SYNCED' | 'TRAVEL_DISMISSED'>().notNull().default('HOME'),
+    skyMode: text('sky_mode')
+      .$type<'HOME' | 'TRAVEL_SYNCED' | 'TRAVEL_DISMISSED'>()
+      .notNull()
+      .default('HOME'),
     /** The device zone the user said "keep home" for; asked again when it changes. */
     skyDismissedTz: text('sky_dismissed_tz'),
     /** Lives outside India and wants the Delhi times beside the local ones. */
@@ -1061,6 +1064,11 @@ export const aiUsage = pgTable(
     tokensIn: integer('tokens_in').notNull().default(0),
     tokensOut: integer('tokens_out').notNull().default(0),
     durationMs: integer('duration_ms'),
+    // Input tokens served from the provider's prompt cache (audit L10). NULL for rows written
+    // before the column existed; 0 when the call reported none cached.
+    cachedTokens: integer('cached_tokens'),
+    // Voice only (audit L9): seconds of audio the minted token could cover, 60 per minute.
+    audioSeconds: integer('audio_seconds'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -3457,7 +3465,9 @@ export const uiSkinChanges = pgTable('ui_skin_changes', {
     .references(() => users.id, { onDelete: 'cascade' }),
   fromSkin: text('from_skin'),
   toSkin: text('to_skin').notNull(),
-  kind: text('kind').$type<'first_pick' | 'free_change' | 'change' | 'reset' | 'test_change'>().notNull(),
+  kind: text('kind')
+    .$type<'first_pick' | 'free_change' | 'change' | 'reset' | 'test_change'>()
+    .notNull(),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),
@@ -3541,7 +3551,12 @@ export const hookProgress = pgTable(
       .default(sql`now()`),
   },
   (table) => ({
-    uq: uniqueIndex('hook_progress_uq').on(table.userId, table.hook, table.profileKey, table.localDate),
+    uq: uniqueIndex('hook_progress_uq').on(
+      table.userId,
+      table.hook,
+      table.profileKey,
+      table.localDate,
+    ),
     hookDateIdx: index('hook_progress_hook_date_idx').on(table.hook, table.localDate),
   }),
 );
@@ -3752,7 +3767,10 @@ export const skyPosts = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     body: text('body').notNull(),
     /** PENDING (waiting), APPROVED (visible), REJECTED (never shown), REMOVED (taken down later). */
-    status: text('status').$type<'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED'>().notNull().default('PENDING'),
+    status: text('status')
+      .$type<'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED'>()
+      .notNull()
+      .default('PENDING'),
     checkReason: text('check_reason'),
     reviewedBy: text('reviewed_by'),
     reportCount: integer('report_count').notNull().default(0),

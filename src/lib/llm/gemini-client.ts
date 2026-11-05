@@ -107,9 +107,30 @@ interface GeminiChoice {
   finish_reason?: string | null;
 }
 
+/** The usage block of an OpenAI-compatible reply. `prompt_tokens_details` is omitted when nothing was cached. */
+export interface CompatUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number } | null;
+}
+
 interface GeminiResponse {
   choices: GeminiChoice[];
-  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  usage?: CompatUsage;
+}
+
+/**
+ * Input tokens the provider served from its prompt cache (audit L10). Checked live on 2026-11-05:
+ * the compat endpoint returns `prompt_tokens_details.cached_tokens` on gemini-3.1-flash-lite and
+ * gemini-3.5-flash-lite, and leaves the whole block out when nothing was cached. So a missing field
+ * is a real 0, not "unknown". A non-number, a negative or a figure above the prompt is clamped, so
+ * a garbled reply can never make the hit rate read above 100%.
+ */
+export function cachedTokensOf(usage: CompatUsage): number {
+  const raw = usage.prompt_tokens_details?.cached_tokens;
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) return 0;
+  return Math.min(Math.floor(raw), Math.max(0, usage.prompt_tokens));
 }
 
 /**
@@ -222,7 +243,9 @@ async function tryOxionFirst(opts: LLMRequestOptions): Promise<string | null> {
         ...messages,
         {
           role: 'system',
-          content: 'Reply with one JSON object only, matching this JSON schema exactly:\n' + JSON.stringify(opts.responseSchema),
+          content:
+            'Reply with one JSON object only, matching this JSON schema exactly:\n' +
+            JSON.stringify(opts.responseSchema),
         },
       ];
     }
@@ -244,7 +267,10 @@ async function tryOxionFirst(opts: LLMRequestOptions): Promise<string | null> {
     if (opts.profile.jsonMode) {
       let stripped = text.trim();
       if (stripped.startsWith('```')) {
-        stripped = stripped.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
+        stripped = stripped
+          .replace(/^```(?:json)?\s*\n?/, '')
+          .replace(/\n?```\s*$/, '')
+          .trim();
       }
       try {
         JSON.parse(stripped);
@@ -472,6 +498,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
               tier: 'free',
               tokensIn: fb.usage.prompt_tokens,
               tokensOut: billedOutputTokens(fb.usage),
+              cachedTokens: cachedTokensOf(fb.usage),
               durationMs: Date.now() - startedAt,
             }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed'));
           }
@@ -665,6 +692,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
         tier: servedByTier,
         tokensIn: data.usage.prompt_tokens,
         tokensOut: billedOutputTokens(data.usage),
+        cachedTokens: cachedTokensOf(data.usage),
         durationMs: Date.now() - startedAt,
       }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed'));
     }
@@ -749,6 +777,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
                 tier: 'free',
                 tokensIn: fb.usage.prompt_tokens,
                 tokensOut: billedOutputTokens(fb.usage),
+                cachedTokens: cachedTokensOf(fb.usage),
                 durationMs: Date.now() - startedAt,
               }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed (stream)'));
             }
@@ -914,9 +943,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
       // stream_options.include_usage flag set in doRequest). Captured per
       // attempt so a retried stream records what it actually consumed rather
       // than replaying a previous attempt's numbers.
-      let usage:
-        | { prompt_tokens: number; completion_tokens: number; total_tokens?: number }
-        | undefined;
+      let usage: CompatUsage | undefined;
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -983,6 +1010,7 @@ export async function* stream(opts: LLMRequestOptions): AsyncGenerator<string, v
             tier: streamedByTier,
             tokensIn: usage.prompt_tokens,
             tokensOut: billedOutputTokens(usage),
+            cachedTokens: cachedTokensOf(usage),
             durationMs: Date.now() - startedAt,
           }).catch((err: unknown) => logger.warn({ err }, 'ai_usage insert failed (stream)'));
         }

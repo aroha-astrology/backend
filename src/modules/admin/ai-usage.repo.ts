@@ -12,6 +12,10 @@ export interface NewAiUsageEntry {
   tokensIn: number;
   tokensOut: number;
   durationMs: number;
+  /** Input tokens the provider served from its prompt cache (audit L10). 0 = reported, none. */
+  cachedTokens?: number;
+  /** Voice only (audit L9): seconds of audio the minted token could cover. */
+  audioSeconds?: number;
 }
 
 /** Records one LLM call's token/timing telemetry. See gemini-client.ts's `generate()` for the (fire-and-forget, must-never-throw) call site. */
@@ -33,6 +37,20 @@ export interface AgentCostRow {
   paidTokensIn: number;
   paidTokensOut: number;
   paidCalls: number;
+  /** Input tokens served from the provider's prompt cache (audit L10), all tiers. */
+  cachedTokensIn: number;
+  /** The cached subset of paidTokensIn: the part billed at the cached rate. */
+  paidCachedTokensIn: number;
+  /**
+   * Calls whose row carries a cached-token figure at all (0 counts). Rows from before the column
+   * existed are NULL and must not drag a hit rate down, so the rate is cachedTokensIn over the
+   * input of THESE calls only; see tokensInOfCacheReportedCalls.
+   */
+  cacheReportedCalls: number;
+  /** Input tokens of the calls counted in cacheReportedCalls: the denominator of the hit rate. */
+  tokensInOfCacheReportedCalls: number;
+  /** Voice: seconds of audio minted (60 per minute); 0 for every other agent. */
+  audioSeconds: number;
 }
 
 /**
@@ -57,6 +75,11 @@ export async function costByAgent(
       paidTokensIn: sql<number>`coalesce(sum(${aiUsage.tokensIn}) filter (where ${paid}), 0)`,
       paidTokensOut: sql<number>`coalesce(sum(${aiUsage.tokensOut}) filter (where ${paid}), 0)`,
       paidCalls: sql<number>`count(*) filter (where ${paid})`,
+      cachedTokensIn: sql<number>`coalesce(sum(${aiUsage.cachedTokens}), 0)`,
+      paidCachedTokensIn: sql<number>`coalesce(sum(${aiUsage.cachedTokens}) filter (where ${paid}), 0)`,
+      cacheReportedCalls: sql<number>`count(${aiUsage.cachedTokens})`,
+      tokensInOfCacheReportedCalls: sql<number>`coalesce(sum(${aiUsage.tokensIn}) filter (where ${aiUsage.cachedTokens} is not null), 0)`,
+      audioSeconds: sql<number>`coalesce(sum(${aiUsage.audioSeconds}), 0)`,
     })
     .from(aiUsage)
     .where(
@@ -78,5 +101,10 @@ export async function costByAgent(
     paidTokensIn: Number(row.paidTokensIn ?? 0),
     paidTokensOut: Number(row.paidTokensOut ?? 0),
     paidCalls: Number(row.paidCalls ?? 0),
+    cachedTokensIn: Number(row.cachedTokensIn ?? 0),
+    paidCachedTokensIn: Number(row.paidCachedTokensIn ?? 0),
+    cacheReportedCalls: Number(row.cacheReportedCalls ?? 0),
+    tokensInOfCacheReportedCalls: Number(row.tokensInOfCacheReportedCalls ?? 0),
+    audioSeconds: Number(row.audioSeconds ?? 0),
   }));
 }

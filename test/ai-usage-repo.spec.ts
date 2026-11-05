@@ -121,7 +121,8 @@ describe('costByAgent', () => {
     expect(calls.from).toBe(aiUsage);
     const whereSql = compile(calls.where).sql;
     expect(whereSql).toMatch(/created_at/);
-    expect(result).toEqual(rows);
+    // The cached-token and voice columns (audit S6) are added with 0 when the rows lack them.
+    expect(result).toMatchObject(rows);
   });
 
   it('does not filter by user unless asked to', async () => {
