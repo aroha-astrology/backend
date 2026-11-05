@@ -1911,7 +1911,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
 
@@ -1960,7 +1960,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         id: 'current-report',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
 
@@ -1992,7 +1992,7 @@ describe('getReportForUser', () => {
         status: 'ready',
         content: {
           sections: [{ heading: 'H', paragraphs: ['p'] }],
-          contentVersion: 12,
+          contentVersion: 13,
           windowSummaries: { field: 'windows', summaries: ['A window worth watching.'] },
         },
       }),
@@ -2026,7 +2026,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         reportKey: 'true_love',
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
 
@@ -2050,7 +2050,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         status: 'ready',
         isPreview: true,
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
 
@@ -2070,7 +2070,7 @@ describe('getReportForUser', () => {
       makeReportRow({
         status: 'ready',
         isPreview: false,
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
 
@@ -2091,7 +2091,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: englishSections, contentVersion: 12 },
+        content: { sections: englishSections, contentVersion: 13 },
         translations: {
           hi: {
             sections: {
@@ -2126,7 +2126,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H (changed)', paragraphs: ['p'] }], contentVersion: 13 },
         translations: {
           hi: {
             sections: {
@@ -2161,7 +2161,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: englishSections, contentVersion: 12 },
+        content: { sections: englishSections, contentVersion: 13 },
       }),
     );
 
@@ -2188,7 +2188,7 @@ describe('getReportForUser', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
 
@@ -2382,7 +2382,7 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
       expect.objectContaining({
         content: expect.objectContaining({
           sections: [{ heading: 'H', paragraphs: ['p'] }],
-          contentVersion: 12,
+          contentVersion: 13,
           verdict: { headline: 'H', bullets: ['a', 'b', 'c'], nextStep: 'Next' },
         }),
         model: expect.any(String),
@@ -2625,7 +2625,7 @@ describe('getReportForUser — old reports are rebuilt free on open', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
     const dto = await getReportForUser('report-1', 'user-1', 'en');
@@ -2731,7 +2731,7 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
 
@@ -2758,7 +2758,7 @@ describe('getReportForUser carries the basis block (audit release R4)', () => {
     state.findReportById.mockResolvedValue(
       makeReportRow({
         status: 'ready',
-        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 12 },
+        content: { sections: [{ heading: 'H', paragraphs: ['p'] }], contentVersion: 13 },
       }),
     );
 

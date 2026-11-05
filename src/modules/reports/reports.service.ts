@@ -171,7 +171,9 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
 // Saturn as of its month (M11); Kundli Milan, Match Report and the spouse part of the Marriage
 // Report say who is Manglik in force, who is cancelled and why, and flag an active-versus-cancelled
 // pair as a mismatch (SB1/SB2).
-const CONTENT_VERSION = 12;
+// 13 (2026-11-05, audit Sprint 7): Mangal Dosha follows BPHS 80.47 and Raman's Muhurtha, judged
+// per point (M12), so a report written on the old rules may name the wrong Manglik status.
+const CONTENT_VERSION = 13;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes
