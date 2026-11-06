@@ -381,6 +381,24 @@ export function answerWindow(
   }
   if (open !== null) runs.push([open, lastIn]);
 
+  /** The best `maxDays` stretch inside a run longer than the cap (highest mean); shorter runs as they are. */
+  const capped = ([a, b]: [number, number]): [number, number] => {
+    const cap = W.answerWindow.maxDays;
+    if (b - a + 1 <= cap) return [a, b];
+    let sum = 0;
+    for (let i = a; i < a + cap; i++) sum += series[i]!;
+    let bestSum = sum;
+    let bestStart = a;
+    for (let s = a + 1; s + cap - 1 <= b; s++) {
+      sum += series[s + cap - 1]! - series[s - 1]!;
+      if (sum > bestSum) {
+        bestSum = sum;
+        bestStart = s;
+      }
+    }
+    return [bestStart, bestStart + cap - 1];
+  };
+
   const make = ([a, b]: [number, number]): AnswerWindow => {
     let peak = a;
     let sum = 0;
@@ -400,7 +418,10 @@ export function answerWindow(
     };
   };
 
-  const long = runs.filter(([a, b]) => b - a + 1 >= W.answerWindow.minRunDays).map(make);
+  const long = runs
+    .filter(([a, b]) => b - a + 1 >= W.answerWindow.minRunDays)
+    .map(capped)
+    .map(make);
   if (long.length === 0) {
     // Nothing reaches Light Green for a week: report the best seven days and call the year weak.
     let bestStart = startDay;

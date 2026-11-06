@@ -399,8 +399,13 @@ export const VARSHIK_WEIGHTS = {
     minDaysShare: 0.33,
   },
 
-  /** answerWindow: the shortest stretch worth calling a window, and gaps that do not split one. */
-  answerWindow: { minRunDays: 7, mergeGapDays: 3 },
+  /**
+   * answerWindow: the shortest stretch worth calling a window, gaps that do not split one, and the
+   * longest a window may be. A good chart can sit above the Light Green edge for most of the year;
+   * "it eases between 1 January and 31 December" tells the reader nothing, so a longer run is cut
+   * to its best `maxDays` days (the stretch with the highest mean score).
+   */
+  answerWindow: { minRunDays: 7, mergeGapDays: 3, maxDays: 42 },
 
   /** reliefTimeline: how far back it reads, how far ahead, and what counts as a real change. */
   relief: {

@@ -81,6 +81,14 @@ describe('answerWindow', () => {
     }
     expect(() => answerWindow(scores, ctx, 'nonsense')).toThrow();
   });
+  it('never gives a window longer than the cap, even for a year that is good all through', () => {
+    const high = { ...scores, series: { ...scores.series, areas: Object.fromEntries(AREAS.map((a) => [a, Array.from({ length: 365 }, (_, i) => 70 + Math.sin(i / 20) * 5)])) } } as VarshikScores;
+    const w = answerWindow(high, ctx, 'love');
+    expect(w.weak).toBe(false);
+    expect(w.best!.toDay - w.best!.fromDay + 1).toBeLessThanOrEqual(42);
+    // the cap keeps the strongest stretch of the run, so the mean beats the run's weakest stretch
+    expect(w.best!.score).toBeGreaterThanOrEqual(72);
+  });
   it('never starts before the reader bought the report', () => {
     const after = ctx.days[200]!.atMs;
     const w = answerWindow(scores, ctx, 'career', after);

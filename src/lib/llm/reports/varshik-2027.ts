@@ -403,6 +403,7 @@ ${sade.map((d) => `- ${d.label}: ${d.status === 'present' ? `running in 2027, aw
 }
 
 function call2(f: VarshikFacts): CallSpec {
+  const eclipseDates = f.skyEvents.filter((e) => e.kind.startsWith('eclipse')).map((e) => dayMonth(e.date));
   const planets = f.scores.planetImpact
     .map(
       (p) =>
@@ -495,7 +496,7 @@ MAJOR FESTIVALS: ${fest}`;
 4. area_love, area_career, area_money, area_health, area_family, area_growth, area_travel: each EXACTLY 2 paragraphs. First: how this area reads across 2027 and its best window. Second: what it means for THIS reader given what they told us, the best months to act and the quiet months to rest in. Never write about a partner, children or a job the reader did not tell us about.
 5. timing_map: 2 paragraphs reading the 7 by 12 map of months and areas: where the green months gather and where the quiet ones do.
 6. year_rhythm: 2 paragraphs on the shape of the year: the Mudda periods in order with their dates, and the Saham windows that add a push.
-7. sky_calendar: 2 paragraphs. The 2027 eclipses, each named with its date and the house it falls in, then the retrogrades and stations that matter most for this reader.
+7. sky_calendar: 2 paragraphs. The first paragraph names ALL ${eclipseDates.length} eclipses of 2027, none left out and none merged (${eclipseDates.join(', ')}), each with its date and the house it falls in. Say the number of eclipses as ${eclipseDates.length}. The second paragraph covers the retrogrades and stations that matter most for this reader.
 8. when_to_act: 2 paragraphs. Using the decisions given for this reader only, say when to move on each and when to hold. The reader's own big decision comes first.
 9. golden_windows: 2 paragraphs naming the best windows with their dates and any major festival that falls inside one.`,
     user: 'Write the planet, dosha, yoga, area and timing sections.',
