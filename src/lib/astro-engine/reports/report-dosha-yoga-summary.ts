@@ -1,3 +1,8 @@
+import {
+  activeNowNote,
+  doshaPlanets,
+  type ActiveLords,
+} from '../../astro-tools/dasha-activation.js';
 // =============================================================================
 // Report dosha & yoga summary panel
 // =============================================================================
@@ -127,6 +132,8 @@ export function computeDoshaYogaSummary(
   yogaData: Record<string, unknown> | null,
   relevantDoshaKeys: string[],
   relevantYogaTypes: string[],
+  /** The Mahadasha/Antardasha lords running now (audit G7); omitted = no activation note. */
+  lords: ActiveLords | null = null,
 ): DoshaYogaSummary {
   const cautions: DoshaYogaSummary['cautions'] = [];
   if (doshaData) {
@@ -137,7 +144,10 @@ export function computeDoshaYogaSummary(
       if (!dosha || typeof dosha !== 'object') continue;
       const doshaObj = dosha as Record<string, unknown>;
       if (handler.isPresent(doshaObj)) {
-        cautions.push({ label: handler.label, detail: handler.detail(doshaObj) });
+        cautions.push({
+          label: handler.label,
+          detail: handler.detail(doshaObj) + activeNowNote(doshaPlanets(key, doshaObj), lords),
+        });
       }
     }
   }
@@ -150,7 +160,8 @@ export function computeDoshaYogaSummary(
     if (!relevantYogaTypes.includes(String(yoga.type))) continue;
     positives.push({
       label: String(yoga.name ?? yoga.type ?? 'Yoga'),
-      detail: String(yoga.description ?? ''),
+      detail:
+        String(yoga.description ?? '') + activeNowNote(yoga.planets as string[] | undefined, lords),
     });
   }
 

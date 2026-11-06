@@ -17,6 +17,7 @@ import { computeAgeBandTable, type AgeBand } from './report-age-bands.js';
 import { computeArchetype, type Archetype } from './report-archetype.js';
 import { computeDecadeArc, type DecadeBand } from './report-decade-arc.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { reportActiveLords } from '../../astro-tools/dasha-activation.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { buildReportRemedies } from './report-remedy-slots.js';
@@ -214,6 +215,7 @@ export function computeTrueLoveScores(
     ctx.yogaData ?? null,
     ['mangal', 'kaalSarp', 'sadeSati', 'dhaiya'],
     ['benefic', 'mahapurusha'],
+    reportActiveLords(ctx),
   );
 
   const lifeContext = computeLifeContext(chart, analyses, ctx.dashaData ?? null, now);

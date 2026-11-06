@@ -15,6 +15,7 @@ import { calculateDashakootaForPair } from '../matching/dashakoota.js';
 import { manglikPairStatus, type ManglikPairStatus } from './manglik-status.js';
 import { computeMatchRiskFactors, type MatchRiskFactor } from '../matching/match-risks.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { reportActiveLords } from '../../astro-tools/dasha-activation.js';
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
@@ -153,6 +154,7 @@ export function computeKundliMilanScores(
     ctx.yogaData ?? null,
     ['kaalSarp', 'sadeSati', 'dhaiya', 'mangal', 'guruChandal'],
     ['raja', 'mahapurusha', 'benefic'],
+    reportActiveLords(ctx),
   );
 
   // Built before `riskFactors` since computeMatchRiskFactors (below) reads this same object's

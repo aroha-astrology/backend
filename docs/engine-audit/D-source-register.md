@@ -603,6 +603,13 @@ Searched in E-BPHS-ENG (both volumes), E-PHALA and E-UK-ENG for the names Chandr
 - Updated: Pancha Mahapurusha (two more texts), Viparita Raja (UK finding), Neechabhanga (second look), Guru Chandal (MODERN since Sprint 9), Daridra (PD-6.57).
 - Still UNVERIFIED after this sprint: Mangal beyond BPHS 80.47-49 (Sprint 7 section), Pitra, Grahan, Sade Sati, Dhaiya, Kendradhipati, Angarak, Chandra-Mangal, Budhaditya, functional lordship. No text opened for them.
 
+### Dasha activation (audit Sprint 12, G7): Aroha's own, no verse
+
+- **Rule built:** a present yoga or dosha is "active now" when the running Mahadasha or Antardasha lord is one of the planets that make it (`astro-tools/dasha-activation.ts`). Doshas map to planets by a fixed table (Mangal: Mars; Guru Chandal: Jupiter, Rahu; Kaal Sarp: Rahu, Ketu; Kemdruma: Moon; Grahan: Sun and/or Moon with the nodes). Sade Sati, Dhaiya and Pitra have no entry (transits, or indicators that vary).
+- **Source:** none opened. The idea that a yoga gives its result in the period of a planet that forms it is common in later practice; no verse read states it. Every line carries the label "Active in your current period (Aroha's reading)" (chat: "Running now (Aroha's reading)"), and is never shown as classical.
+- **Stand-in birth time:** only the Mahadasha counts; the Antardasha swings with the minute.
+- **Where:** chat (one line, at most three items), and the dosha/yoga panel of the 11 reports that show it (one shared helper, `reportActiveLords`, and a test over every report file).
+
 ---
 
 ## Reading list (what to open, not what has been read)

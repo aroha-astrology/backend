@@ -16,6 +16,7 @@ import {
   type MonthSubPeriod,
 } from './monthly-dasha-context.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { reportActiveLords } from '../../astro-tools/dasha-activation.js';
 import { readerSituationFromAnswers } from './reader-situation.js';
 import { computeLifeContext, RELATIONSHIP_KEY_HOUSES } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
@@ -75,6 +76,7 @@ export function computeRelationshipMonthlyScores(
     ctx.yogaData ?? null,
     ['mangal', 'kaalSarp', 'sadeSati', 'dhaiya'],
     ['benefic', 'mahapurusha'],
+    reportActiveLords(ctx),
   );
 
   const subPeriods = findMonthSubPeriods(chart, periodMonth, KEY_HOUSES, analyses);

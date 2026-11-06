@@ -38,6 +38,7 @@ import { computeAgeBandTable, type AgeBand } from './report-age-bands.js';
 import { computeDecadeArc, type DecadeBand } from './report-decade-arc.js';
 import { computeLoveVsArrangedTilt } from './true-love.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { reportActiveLords } from '../../astro-tools/dasha-activation.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { buildReportRemedies } from './report-remedy-slots.js';
@@ -334,6 +335,7 @@ export function computeMarriageScores(
     ctx.yogaData ?? null,
     ['mangal', 'kaalSarp', 'sadeSati', 'dhaiya', 'guruChandal'],
     ['raja', 'dhana', 'mahapurusha'],
+    reportActiveLords(ctx),
   );
 
   // Trait-significator mapping (classical, documented, order-matched to traitLabels below):

@@ -82,7 +82,10 @@ describe('chat grounding: upcoming transit dates', () => {
       // appended after it, or the tail is silently cut.
       const block = facts.map((f) => `- ${f}`).join('\n');
       expect(block.indexOf('UPCOMING TRANSITS')).toBeGreaterThan(-1);
-      expect(block.length).toBeLessThan(36_000 - 3_000);
+      // 2,700 (was 3,000): the one "Running now" line of audit G7 uses 300 of the reserve. assembleChatFacts
+      // drops the least-used divisional charts before it cuts the tail (audit M1), so a heavy chart
+      // loses a varga line, not a fact.
+      expect(block.length).toBeLessThan(36_000 - 2_700);
     },
     SLOW,
   );

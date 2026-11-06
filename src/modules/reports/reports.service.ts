@@ -177,7 +177,7 @@ import { refundDebtOrRelease } from '../billing/play-refunds.repo.js';
 // counts the Sun with Ketu as well as Rahu (SB3), so older reports may name the wrong dosha.
 // 15 (2026-11-05, audit Sprint 9): Kaal Sarp is read on the longitude arc with a direction (G3, SB4)
 // and Jupiter with Ketu is no longer Guru Chandal (G11), so older reports may name the wrong dosha.
-const CONTENT_VERSION = 15;
+const CONTENT_VERSION = 16;
 
 /**
  * Hand-maintained, bumped whenever a report-type's narrative PROMPT wording changes

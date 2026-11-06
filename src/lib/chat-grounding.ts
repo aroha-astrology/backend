@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { dashaLordTransitQuality, detectDoubleTransit, SIGNS } from './astro-tools/index.js';
+import { activeDashaLords, activeNowLine, doshaPlanets } from './astro-tools/dasha-activation.js';
 import { approximateBirthTimeGuidance, unknownBirthTimeGuidance } from './birth-time-window.js';
 import { birthTimeDoubtFacts } from './birth-time-doubt.js';
 import { findPeriodAsOf, type RawDashaPeriod } from './astro-tools/dasha-reading.js';
@@ -276,6 +277,40 @@ function relevantYogas(yogas: Record<string, unknown> | null): string[] {
       .map((y) => String(y.description ?? y.name ?? ''))
       .filter(Boolean)
   );
+}
+
+/** The same present yogas relevantYogas names, with the planets that make them (audit G7). */
+function activeYogaItems(yogas: Record<string, unknown> | null) {
+  const list = (yogas?.yogas ?? []) as Array<Record<string, unknown>>;
+  return list
+    .filter(
+      (y) =>
+        y.present &&
+        RELEVANT_YOGA_TYPES.includes(String(y.type)) &&
+        y.name !== 'Kemadruma Cancellation',
+    )
+    .sort((a, b) => Number(b.strength ?? 0) - Number(a.strength ?? 0))
+    .slice(0, MAX_YOGA_FACTS)
+    .map((y) => ({ name: String(y.name ?? ''), planets: y.planets as string[] | undefined }));
+}
+
+const DOSHA_NAMES: Record<string, string> = {
+  mangal: 'Mangal Dosha',
+  kaalSarp: 'Kaal Sarp Dosha',
+  kemDruma: 'Kemdruma Dosha',
+  grahan: 'Grahan Dosha',
+  guruChandal: 'Guru Chandal Dosha',
+};
+
+/** Present natal doshas with their planets; a cancelled Mangal is not present (audit H2). */
+function activeDoshaItems(doshas: Record<string, unknown> | null) {
+  const out: Array<{ name: string; planets: string[] }> = [];
+  for (const [key, name] of Object.entries(DOSHA_NAMES)) {
+    const d = doshas?.[key] as Record<string, unknown> | undefined;
+    if (!d?.present || (key === 'mangal' && d.type === 'cancelled')) continue;
+    out.push({ name, planets: doshaPlanets(key, d) });
+  }
+  return out;
 }
 
 async function currentTransitSignIndex(planet: string, asOfDate?: string): Promise<number | null> {
@@ -1759,6 +1794,15 @@ export async function buildGroundingSections(
 
   // --- Key yogas (all domains, strongest first) ---------------------------
   for (const y of relevantYogas(src.yogas)) facts.push(`Significant Planetary Combination: ${y}`);
+  // Which of them are running now (audit G7). A stand-in birth time keeps the Mahadasha only:
+  // the Antardasha swings with the minute.
+  const running = activeNowLine(
+    [...activeYogaItems(src.yogas), ...activeDoshaItems(src.doshas)],
+    activeDashaLords(src.dasha, dashaAsOf, {
+      mahadashaOnly: src.birthTime?.accuracy === 'unknown',
+    }),
+  );
+  if (running) facts.push(running);
 
   // --- House lord + sign for all 12 houses --------------------------------
   // The 1st (named as the Lagna lord), 7th and 10th also get their lord's

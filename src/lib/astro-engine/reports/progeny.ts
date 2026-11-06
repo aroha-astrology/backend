@@ -25,6 +25,7 @@
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { getHouseLord, strengthOfPlanet, strengthScoreOfPlanet } from './chart-facts.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { reportActiveLords } from '../../astro-tools/dasha-activation.js';
 import { readerSituationFromAnswers } from './reader-situation.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
@@ -322,6 +323,7 @@ export function computeProgenyScores(
     ctx.yogaData ?? null,
     ['mangal', 'kaalSarp', 'pitra', 'sadeSati', 'dhaiya'],
     ['raja', 'dhana'],
+    reportActiveLords(ctx),
   );
 
   const analyses = analyzePlanetStrengths(chart);

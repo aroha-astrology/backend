@@ -19,6 +19,7 @@ import {
 import { computeArchetype, type Archetype } from './report-archetype.js';
 import { readerSituationFromAnswers } from './reader-situation.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { reportActiveLords } from '../../astro-tools/dasha-activation.js';
 import { computeLifeContext, CAREER_KEY_HOUSES } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { computeReportVargas } from './report-vargas.js';
@@ -138,6 +139,7 @@ export function computeCareerMonthlyScores(
     ctx.yogaData ?? null,
     ['sadeSati', 'dhaiya', 'kaalSarp'],
     ['raja', 'mahapurusha'],
+    reportActiveLords(ctx),
   );
 
   const industryFit = industryFitForTenthLord(getHouseLord(10, chart));

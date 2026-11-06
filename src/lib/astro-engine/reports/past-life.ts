@@ -9,6 +9,7 @@
 import { analyzePlanetStrengths, type PlanetStrength } from '../gemstones.js';
 import { getHouseLord, getPlanetPosition, strengthOfPlanet } from './chart-facts.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { reportActiveLords } from '../../astro-tools/dasha-activation.js';
 import { computeLifeSoFarArc, type DecadeBand } from './report-decade-arc.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
@@ -145,6 +146,7 @@ export function computePastLifeScores(
     ctx.yogaData ?? null,
     ['kaalSarp', 'pitra', 'grahan'],
     ['mahapurusha', 'benefic'],
+    reportActiveLords(ctx),
   );
 
   const now = new Date();

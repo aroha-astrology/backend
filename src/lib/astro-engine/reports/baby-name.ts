@@ -17,6 +17,7 @@ import { calculateNakshatra } from '../panchang/nakshatra.js';
 import { getPlanetPosition } from './chart-facts.js';
 import { analyzePlanetStrengths } from '../gemstones.js';
 import { computeDoshaYogaSummary, type DoshaYogaSummary } from './report-dosha-yoga-summary.js';
+import { reportActiveLords } from '../../astro-tools/dasha-activation.js';
 import { computeLifeContext } from './report-life-context.js';
 import { buildReportHeader } from './report-header.js';
 import { computeReportVargas } from './report-vargas.js';
@@ -119,6 +120,7 @@ export function computeBabyNameScores(
     ctx.yogaData ?? null,
     ['mangal', 'kaalSarp'],
     ['raja', 'dhana'],
+    reportActiveLords(ctx),
   );
 
   const analyses = analyzePlanetStrengths(chart);
