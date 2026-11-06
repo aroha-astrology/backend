@@ -1,6 +1,7 @@
 import { and, count, desc, eq, inArray, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import { db } from '../../config/db.js';
+import { getReportDef } from '../../config/reports.js';
 import { reports, users, type ReportRow, type NewReportRow } from '../../db/schema.js';
 import { decryptField } from '../../lib/crypto/field-encryption.js';
 import type { ReportSection } from './report-generator.types.js';
@@ -160,6 +161,11 @@ export async function findActiveYearlyReportRow(
   reportKey: string,
   now: string,
 ): Promise<ReportRow | undefined> {
+  // A fixed-window report (Varshik 2027) is active for its whole calendar window, whatever day it
+  // was bought: any ready/generating row bought before the window closes still owns the year.
+  // Once the window is over nothing is active (and a purchase is refused anyway).
+  const fixed = getReportDef(reportKey)?.fixedWindow;
+  if (fixed && now >= fixed.endExclusive) return undefined;
   const rows = await db
     .select()
     .from(reports)
@@ -169,7 +175,9 @@ export async function findActiveYearlyReportRow(
         profileFilter(birthProfileId),
         eq(reports.reportKey, reportKey),
         sql`${reports.periodMonth} is not null`,
-        sql`${reports.periodMonth} > (${now}::date - interval '1 year')`,
+        fixed
+          ? sql`${reports.periodMonth} < ${fixed.endExclusive}::date`
+          : sql`${reports.periodMonth} > (${now}::date - interval '1 year')`,
         sql`${reports.periodMonth} <= ${now}::date`,
         inArray(reports.status, ['ready', 'generating']),
       ),

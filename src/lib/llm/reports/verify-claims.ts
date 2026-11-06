@@ -156,3 +156,8 @@ export async function verifyReportClaims(
   logger.info({ dropped: dropKeys.size, total: claims.length }, 'report claim verification');
   return { sections: cleaned, dropped: dropKeys.size };
 }
+
+// Varshik Rashifal 2027: the text checks (polarity, persona, claims against VarshikFacts, fear and
+// death words, the AI-tell counter) live in verify-varshik-text.ts and are exported from here, the
+// one place the report checks are found.
+export * from './verify-varshik-text.js';

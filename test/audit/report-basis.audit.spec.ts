@@ -17,18 +17,18 @@ import { ORIGIN_RULE, reportFactsMessage } from '../../src/lib/llm/reports/repor
 // =============================================================================
 // Audit release R4 (Group 4): the provenance and safety block on every report
 // =============================================================================
-// Every one of the 16 paid reports carries a basis block (calculation_basis, source_profile,
+// Every one of the 17 paid reports carries a basis block (calculation_basis, source_profile,
 // traditional_rules, modern_rules, aroha_proprietary_rules, unverified_rules,
 // safety_classification) read from the provenance registry, and every report's narrative
 // call carries the origin rule and the safety rule of its subject. One check over all 16,
-// so a report added later without them fails here.
+// so a report added later without them fails here. (17 since Varshik Rashifal 2027.)
 // =============================================================================
 
 const KEYS = REPORT_CATALOGUE.map((r) => r.key);
 
 describe('[R4] every report has a basis block', () => {
-  it('there are sixteen report types', () => {
-    expect(KEYS).toHaveLength(16);
+  it('there are seventeen report types', () => {
+    expect(KEYS).toHaveLength(17);
   });
 
   it.each(KEYS)('%s: all five fields and registered ids', (key) => {

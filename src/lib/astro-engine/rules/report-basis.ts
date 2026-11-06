@@ -161,6 +161,11 @@ const SPECS: Record<ReportKey, Spec> = {
     safety: 'standard',
     adds: 'the Krishnamurti Paddhati reading of the year (a 20th-century system)',
   },
+  varshik_rashifal_2027: {
+    features: [...CHART_CORE, ...DOSHAS, 'RPT-RPT'],
+    safety: 'standard',
+    adds: "the two Varsha (solar-return) charts for 2027, Mudda dasha, Tajika yogas and Aroha's own month and area scores",
+  },
 };
 
 export interface BasisRule {

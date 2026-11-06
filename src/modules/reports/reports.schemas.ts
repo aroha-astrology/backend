@@ -102,6 +102,10 @@ export const ReportCatalogueEntrySchema = z
     /** True for the 4 one-time report types that renew once a year (marriage/wealth/
      * true_love/numerology) — see backend's ReportDef.isYearly doc comment. */
     isYearly: z.boolean(),
+    /** Only on a report that covers one fixed calendar window (Varshik Rashifal 2027: 1 Jan to
+     * 31 Dec 2027): the card says which months have already gone by. `endExclusive` is the day
+     * after the last covered day. Absent for every other report. */
+    fixedWindow: z.object({ start: z.string(), endExclusive: z.string() }).optional(),
     requiresPartner: z.boolean(),
     enabled: z.boolean(),
     /** Shows the catalogue's "New" badge — an admin enabled this report within the last

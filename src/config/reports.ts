@@ -29,7 +29,8 @@ export type ReportKey =
   | 'name_change'
   | 'remedies'
   | 'progeny'
-  | 'kp_annual';
+  | 'kp_annual'
+  | 'varshik_rashifal_2027';
 
 export interface ReportDef {
   key: ReportKey;
@@ -55,6 +56,15 @@ export interface ReportDef {
    * never stored.
    */
   isYearly?: boolean;
+  /**
+   * A yearly report that covers ONE fixed calendar window instead of "12 months from the purchase
+   * day" (Varshik Rashifal 2027: always 1 Jan - 31 Dec 2027). Only meaningful with `isYearly`.
+   * The row's `periodMonth` is still the purchase day (so the unique indexes keep working), but
+   * the report's validity window, its one-active-copy rule and its timing clamp all use this
+   * window, and a purchase is refused once `endExclusive` has passed. A buyer in mid-2027 gets
+   * all 12 months; the catalogue card says which have already gone by.
+   */
+  fixedWindow?: { start: string; endExclusive: string };
   /** True for kundli_milan and match_report — the two reports that take a second person's birth details. */
   requiresPartner: boolean;
   /**
@@ -233,6 +243,19 @@ export const REPORT_CATALOGUE: readonly ReportDef[] = [
     // ₹101 against a ₹251 MRP (the strike-through lives on the feature flag's
     // defaultOriginalPricePaise so the admin panel can move either number without a deploy).
     basePricePaise: 10100,
+  },
+  {
+    key: 'varshik_rashifal_2027',
+    featureFlagKey: 'reports.varshik_rashifal_2027',
+    label: 'Varshik Rashifal 2027',
+    isMonthly: false,
+    // Always Jan 1 - Dec 31 2027, whatever day it is bought (see ReportDef.fixedWindow). On sale
+    // now through 2027; one active copy per profile.
+    isYearly: true,
+    fixedWindow: { start: '2027-01-01', endExclusive: '2028-01-01' },
+    requiresPartner: false,
+    // Rs 599. Pass discounts (10/20/30%) come from withPassDiscount like every other report.
+    basePricePaise: 59900,
   },
 ] as const;
 

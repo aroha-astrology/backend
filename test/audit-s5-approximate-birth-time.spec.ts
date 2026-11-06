@@ -21,8 +21,8 @@ function lines(scores: unknown): string[] {
 }
 
 describe('M6: an approximate birth time is hedged in every report', () => {
-  it('the catalogue still has the 16 report types this test must cover', () => {
-    expect(REPORT_CATALOGUE.length).toBe(16);
+  it('the catalogue still has the 17 report types this test must cover', () => {
+    expect(REPORT_CATALOGUE.length).toBe(17);
   });
 
   it.each(REPORT_CATALOGUE.map((r) => r.key))(

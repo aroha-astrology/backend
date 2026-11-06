@@ -425,6 +425,96 @@ describe('purchaseReport — kp_annual reader questions', () => {
   });
 });
 
+describe('purchaseReport — varshik_rashifal_2027 guard', () => {
+  const place = { name: 'Pune', lat: 18.52, lon: 73.86, tz: 'Asia/Kolkata' };
+  const exactProfile = {
+    birthProfileId: null,
+    timeOfBirth: '07:40',
+    birthTimeAccuracy: 'exact',
+    birthTimeSource: null,
+    placeOfBirth: place,
+  };
+  const answers = { relationship: 'single', occupation: 'student', children: 'none', mainDecision: 'study' };
+
+  it('is refused while the switch is off, before the wallet is touched', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({ 'reports.varshik_rashifal_2027': { enabled: false } });
+    await expect(
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027' }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN', message: 'FEATURE_DISABLED' });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('refuses a birth time that is only remembered, part of a day, or missing', async () => {
+    for (const profile of [
+      { ...exactProfile, birthTimeAccuracy: 'approximate' },
+      { ...exactProfile, birthTimeAccuracy: 'unknown' },
+      { ...exactProfile, birthTimeAccuracy: null },
+      { ...exactProfile, timeOfBirth: null },
+    ]) {
+      state.resolveProfileContext.mockResolvedValue(profile);
+      await expect(
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'BIRTH_TIME_NOT_CONFIRMED' });
+    }
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
+  it('refuses a profile without coordinates and a zone', async () => {
+    for (const placeOfBirth of [null, { ...place, tz: '' }, { ...place, lat: Number.NaN }]) {
+      state.resolveProfileContext.mockResolvedValue({ ...exactProfile, placeOfBirth });
+      await expect(
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'BIRTH_PLACE_MISSING' });
+    }
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('refuses an answer outside the four questions it asks', async () => {
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    await expect(
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: { relationship: 'complicated' } }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: { question1: 'hello' } }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('is refused once 2027 is over', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2028-01-02T06:00:00Z'));
+    try {
+      state.resolveProfileContext.mockResolvedValue(exactProfile);
+      await expect(
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'REPORT_WINDOW_CLOSED' });
+      expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('charges Rs 599 and keeps the four answers on the row', async () => {
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    state.claimReportRow.mockResolvedValue({ id: 'v-1', periodMonth: '2026-11-06', status: 'queued' });
+    await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers });
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(expect.anything(), 59900, expect.any(String));
+    expect(state.claimReportRow).toHaveBeenCalledWith(
+      expect.objectContaining({ reportKey: 'varshik_rashifal_2027', input: { answers } }),
+    );
+  });
+
+  it('a second purchase while one is active reuses it and refunds', async () => {
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    state.findActiveYearlyReportRow.mockResolvedValue({ id: 'v-old', periodMonth: '2027-03-01', status: 'ready' });
+    const r = await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers });
+    expect(r.reports[0]).toMatchObject({ id: 'v-old' });
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+    expect(state.addWalletBalance).toHaveBeenCalled();
+  });
+});
+
 describe('purchaseReport — pricing and row shape', () => {
   it("an Aroha Pass holder pays their tier's discount less", async () => {
     state.passReportDiscountPct.mockResolvedValue(20);

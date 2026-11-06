@@ -131,6 +131,21 @@ export interface ReportScoreContext {
    * `prepareContext` hook (see ReportGenerator.prepareContext). Absent for every other report.
    */
   kpRaw?: KpRawData | null;
+  /**
+   * Who the report is for, set by buildReportScoreContext from the row. Only
+   * varshik_rashifal_2027 reads them (its generator reads the reader's stored chat facts for this
+   * birth profile in prepareContext); optional and additive like every field above.
+   */
+  userId?: string;
+  birthProfileId?: string | null;
+  /**
+   * The Varshik Rashifal 2027 facts (a VarshikFacts object, see
+   * astro-engine/reports/varshik-facts.ts), filled in by that generator's prepareContext. Typed
+   * loosely here so this file does not import the Varshik module. Absent for every other report.
+   */
+  varshikFacts?: Record<string, unknown> | null;
+  /** Why prepareContext could not build `varshikFacts`, as field names; the preflight reports it. */
+  varshikBuildError?: string | null;
 }
 
 /**
@@ -260,6 +275,33 @@ export interface ReportGenerator {
    * needs explaining to the model.
    */
   translateNarrative(sections: ReportSection[], language: string): Promise<ReportSection[]>;
+  /**
+   * Optional. A report whose deterministic facts are heavy to rebuild (a year of daily ephemeris)
+   * freezes them into `content` at generation (see `contentExtras`) and serves them from there on
+   * every read instead of recomputing. Returns the saved scores, or null when the row has none
+   * (an older row), in which case the service recomputes as usual.
+   */
+  frozenScores?(content: unknown): ReportScores | null;
+  /** Optional. Extra keys merged into `content` when the report is saved (see `frozenScores`). */
+  contentExtras?(scores: ReportScores): Record<string, unknown> | null;
+  /**
+   * Optional. True when this generator checks its own text against its own facts, so the generic
+   * natal-chart claim check (verify-claims.ts verifyReportClaims) is skipped: it only knows the
+   * natal planetCondition lines and would delete correct sentences about the year's transits.
+   */
+  ownsClaimCheck?: boolean;
+}
+
+/**
+ * Thrown from generateNarrative when retrying cannot help (a missing fact, a failed preflight):
+ * the service marks the row failed and refunds at once instead of waiting out three attempts.
+ * The message is stored on the row, so it names which fields failed (the admin log).
+ */
+export class ReportGenerationAbort extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReportGenerationAbort';
+  }
 }
 
 /**

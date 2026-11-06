@@ -115,8 +115,10 @@ import {
   translateReportVerdict,
   type ReportVerdict,
 } from '../../lib/llm/reports/verdict.js';
+import { assertVarshikPurchaseAllowed } from './varshik-purchase.js';
 import {
   REPORT_GENERATORS,
+  ReportGenerationAbort,
   type ReportGenerator,
   type ReportSection,
   type ReportScoreContext,
@@ -652,6 +654,9 @@ interface YearWindow {
 }
 
 function yearWindowFor(reportKey: string, periodMonth: string | null): YearWindow | null {
+  // A fixed-window report (Varshik 2027) covers its own calendar window whatever the purchase day.
+  const fixed = getReportDef(reportKey)?.fixedWindow;
+  if (fixed) return { start: fixed.start, end: fixed.endExclusive };
   if (!periodMonth || !getReportDef(reportKey)?.isYearly) return null;
   const start = new Date(periodMonth);
   if (Number.isNaN(start.getTime())) return null;
@@ -835,6 +840,8 @@ export async function buildReportScoreContext(
     dashaData: kundli?.dashaData ?? null,
     ...personContext,
     userAnswers,
+    userId: row.userId,
+    birthProfileId: row.birthProfileId ?? null,
   };
   // An unknown birth time: no divisional charts (their Lagna swings with the minute), and is the Moon
   // in doubt, and how far can the dasha dates move?
@@ -1019,13 +1026,17 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
     };
     const generated = await generator.generateNarrative(scores, 'en', progress);
     // Second pass: drop any sentence that contradicts this report's own facts.
-    // Fails open — see verifyReportClaims.
-    const { sections } = await verifyReportClaims(
-      generated,
-      (scores as { planetCondition?: string[] }).planetCondition ?? [],
-    ).catch(() => ({ sections: generated, dropped: 0 }));
+    // Fails open — see verifyReportClaims. A generator that checks its own text against its own
+    // facts (Varshik) skips it: this pass only knows the natal planetCondition lines.
+    const { sections } = generator.ownsClaimCheck
+      ? { sections: generated }
+      : await verifyReportClaims(
+          generated,
+          (scores as { planetCondition?: string[] }).planetCondition ?? [],
+        ).catch(() => ({ sections: generated, dropped: 0 }));
     const windowSummaries = await computeWindowSummaries(scores);
     const verdict = await computeReportVerdict(scores, row.reportKey as ReportKey, row.periodMonth);
+    const extras = generator.contentExtras?.(scores) ?? null;
 
     // Every dated timing window this report just promised, recorded so it can
     // later be scored against what actually happened. Best-effort: capture must
@@ -1040,6 +1051,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
         contentVersion: CONTENT_VERSION,
         ...(windowSummaries ? { windowSummaries } : {}),
         ...(verdict ? { verdict } : {}),
+        ...(extras ?? {}),
       },
       model: MODEL,
       // Provenance snapshot, frozen at generation time — see the `chartSnapshot` doc comment
@@ -1068,7 +1080,7 @@ async function runReportGeneration(row: ReportRow, birthProfileId: string | null
       { err, reportId: row.id, reportKey: row.reportKey, attempt: row.generationAttempts },
       'report background generation failed',
     );
-    await failOrRequeueReport(row, claimedAt, message);
+    await failOrRequeueReport(row, claimedAt, message, err instanceof ReportGenerationAbort);
   }
 }
 
@@ -1097,10 +1109,12 @@ async function failOrRequeueReport(
   row: ReportRow,
   claimedAt: Date,
   message: string,
+  /** True when retrying cannot help (a ReportGenerationAbort): fail and refund at once. */
+  permanent = false,
 ): Promise<void> {
   // generationAttempts is incremented by claimQueuedReports when the row is pulled,
   // so it already counts the attempt that just failed.
-  if (row.generationAttempts < MAX_REPORT_GENERATION_ATTEMPTS) {
+  if (!permanent && row.generationAttempts < MAX_REPORT_GENERATION_ATTEMPTS) {
     const nextAttemptAt = new Date(Date.now() + retryBackoffMs(row.generationAttempts));
     const requeued = await requeueReportForRetry(row.id, claimedAt, nextAttemptAt);
     if (requeued) {
@@ -1294,6 +1308,17 @@ export async function purchaseReport(
   // primary profile (see resolveProfileContext's doc comment).
   const profile = await resolveProfileContext(user, body.birthProfileId ?? null, { strict: true });
   const birthProfileId = profile.birthProfileId;
+  // Varshik Rashifal 2027 reads the exact Lagna and the Varsha Lagna, so it is refused (before any
+  // money moves) without a confirmed birth time and coordinates, after its window closes, or with
+  // a pre-purchase answer outside the list the scorer understands.
+  if (def.key === 'varshik_rashifal_2027') {
+    assertVarshikPurchaseAllowed({
+      profile,
+      user,
+      answers: body.answers,
+      today: todayForApp(),
+    });
+  }
 
   // Aroha Pass holders get their tier's discount (nobody has a Pass until it's switched on).
   const perUnitPricePaise = withPassDiscount(
@@ -1579,6 +1604,7 @@ export async function getReportCatalogueForUser(
       label: def.label,
       isMonthly: def.isMonthly,
       isYearly: def.isYearly ?? false,
+      ...(def.fixedWindow ? { fixedWindow: { ...def.fixedWindow } } : {}),
       requiresPartner: def.requiresPartner,
       enabled,
       isNew: computeIsNewReport(enabled, resolved?.enabledAt ?? null, now),
@@ -1617,6 +1643,11 @@ export async function getReportCatalogueForUser(
 async function recomputeScoresForRead(row: ReportRow): Promise<Record<string, unknown>> {
   const generator = REPORT_GENERATORS[row.reportKey as ReportKey];
   if (!generator) return {};
+
+  // A report that froze its facts at generation (Varshik: a year of daily ephemeris) serves them
+  // as saved instead of rebuilding the sky on every page view.
+  const frozen = generator.frozenScores?.(row.content);
+  if (frozen) return frozen;
 
   const kundli = await findKundliByUserId(row.userId, row.birthProfileId);
 
@@ -2022,12 +2053,15 @@ async function regenerateReportContentInner(row: ReportRow): Promise<'regenerate
   const generated = await generator.generateNarrative(scores, 'en');
   // Same fact-check second pass as the initial generation path above, so a
   // regenerated report is never held to a weaker standard than a fresh one.
-  const { sections } = await verifyReportClaims(
-    generated,
-    (scores as { planetCondition?: string[] }).planetCondition ?? [],
-  ).catch(() => ({ sections: generated, dropped: 0 }));
+  const { sections } = generator.ownsClaimCheck
+    ? { sections: generated }
+    : await verifyReportClaims(
+        generated,
+        (scores as { planetCondition?: string[] }).planetCondition ?? [],
+      ).catch(() => ({ sections: generated, dropped: 0 }));
   const windowSummaries = await computeWindowSummaries(scores);
   const verdict = await computeReportVerdict(scores, row.reportKey as ReportKey, row.periodMonth);
+  const extras = generator.contentExtras?.(scores) ?? null;
 
   await markReportRefreshed(row.id, {
     content: {
@@ -2035,6 +2069,7 @@ async function regenerateReportContentInner(row: ReportRow): Promise<'regenerate
       contentVersion: CONTENT_VERSION,
       ...(windowSummaries ? { windowSummaries } : {}),
       ...(verdict ? { verdict } : {}),
+      ...(extras ?? {}),
     },
     model: getRequestContext()?.oxionModel ?? MODEL,
     chartSnapshot: {

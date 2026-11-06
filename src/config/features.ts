@@ -463,6 +463,19 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultPricePaise: 10100,
     defaultOriginalPricePaise: 25100,
   },
+  // Varshik Rashifal 2027: a personal annual report for 1 Jan - 31 Dec 2027 built from the reader's
+  // exact birth time and place (two Varsha charts, Mudda dasha, a 12 x 7 timing map, a month-by-month
+  // reading and the reader's own questions). Rs 599. Ships dark per the standing rule; turn it on from
+  // Admin -> Features once the screen, PDF and share cards (Sprints 4-6) are live. Needs a confirmed
+  // birth time and coordinates or the purchase is refused.
+  {
+    key: 'reports.varshik_rashifal_2027',
+    label: 'Varshik Rashifal 2027',
+    group: 'reports',
+    defaultEnabled: false,
+    defaultPricePaise: 59900,
+    tag: 'new',
+  },
   // panchang
   {
     key: 'panchang.purchasePlan',

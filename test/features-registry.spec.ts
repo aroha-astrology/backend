@@ -17,7 +17,8 @@ describe('FEATURE_REGISTRY', () => {
     // also allow underscores in the name segment — several report keys are
     // intentionally snake_case (e.g. `reports.past_life`, `reports.health_monthly`)
     // to match their existing report-type identifiers used elsewhere.
-    const KEY_SHAPE = /^[a-z]+\.[a-zA-Z_]+$/;
+    // Digits are allowed too: `reports.varshik_rashifal_2027` carries its year in the key.
+    const KEY_SHAPE = /^[a-z]+\.[a-zA-Z0-9_]+$/;
     for (const feature of FEATURE_REGISTRY) {
       expect(feature.key).toMatch(KEY_SHAPE);
     }
@@ -61,8 +62,10 @@ describe('roadmap features (tag "new")', () => {
   it('NEW marks only what shipped in the v7 launch (2026-10-25); earlier features lost the mark', () => {
     const tagged = new Set(NEW.map((f) => f.key));
     const v7 = ['money.coins', 'money.coinPacks', 'money.razorpayIntl', 'money.signupDrip', 'money.freeProfiles', 'money.houseOffer', 'money.voiceSlices', 'money.passCoins', 'money.refundKeys', 'money.platinumReport', 'money.razorpayPass', 'money.storekit', 'experience.picker', 'experience.testSwitch', 'experience.homeLayout', 'experience.travelPill', 'experience.nriMode', 'experience.signShift', 'experience.wheelChart', 'nav.pills', 'nav.shortMenu', 'nav.coachMarks', 'live.nowBar', 'live.widget', 'ritual.morning', 'circles.circles', 'circles.invite', 'circles.pulse', 'hooks.kundliRahasya', 'hooks.shubhLabh', 'hooks.gharKavach', 'hooks.sankalpDiya', 'hooks.cosmicReceipts', 'hooks.textTiming', 'hooks.sleepSync', 'hooks.mysteryDrop', 'home.timeMorph', 'memory.babaMemory', 'memory.vault', 'memory.rectifyChip', 'chat.personas', 'community.sameSky', 'lang.localNames', 'lang.gitaScripts', 'lang.pushAll'];
-    for (const key of v7) expect(tagged.has(key), key).toBe(true);
-    expect(NEW.length).toBe(v7.length);
+    // marked NEW after the v7 launch, each shipping OFF
+    const later = ['reports.varshik_rashifal_2027'];
+    for (const key of [...v7, ...later]) expect(tagged.has(key), key).toBe(true);
+    expect(NEW.length).toBe(v7.length + later.length);
     // the earlier roadmap features are no longer NEW
     for (const key of ['home.whyAroha', 'nav.bonds', 'nav.arohaPass', 'paid.arohaPassA', 'nav.relocation', 'nav.reportBook', 'paid.refundClawback', 'palm.strictGate']) expect(tagged.has(key), key).toBe(false);
   });

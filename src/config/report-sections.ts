@@ -44,6 +44,56 @@ export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> =
     'closing_note',
     'your_questions',
   ],
+  // Varshik Rashifal 2027, 5 LLM calls (lib/llm/reports/varshik-2027.ts). The page order of the
+  // designed screen is NOT this order: the app and the PDF put each question_N page between
+  // month_12/simple_remedies and what_changes by id. Generation order puts the 0-5 question pages
+  // LAST so this list stays append-only (a reader with no facts gets the first 35 sections).
+  varshik_rashifal_2027: [
+    // call 1: the shape of the year
+    'welcome_letter',
+    'year_at_a_glance',
+    'year_lord_muntha',
+    'two_varsha_years',
+    'big_sky_moves',
+    // call 2: planets, doshas, yogas, seven areas, timing
+    'planet_by_planet',
+    'doshas',
+    'yogas',
+    'area_love',
+    'area_career',
+    'area_money',
+    'area_health',
+    'area_family',
+    'area_growth',
+    'area_travel',
+    'timing_map',
+    'year_rhythm',
+    'sky_calendar',
+    'when_to_act',
+    'golden_windows',
+    // calls 3 and 4: month by month (5 paragraphs each)
+    'month_01',
+    'month_02',
+    'month_03',
+    'month_04',
+    'month_05',
+    'month_06',
+    'month_07',
+    'month_08',
+    'month_09',
+    'month_10',
+    'month_11',
+    'month_12',
+    // call 5: Chapter V and VI
+    'simple_remedies',
+    'what_changes',
+    'closing_letter',
+    'question_1',
+    'question_2',
+    'question_3',
+    'question_4',
+    'question_5',
+  ],
   // 9 sections over 3 LLM calls (3 each) — see lib/llm/reports/progeny.ts. The count here MUST
   // stay in lockstep with what that file emits; assignSectionIds zips by position and silently
   // labels nothing on a mismatch. NOT in APPEND_ONLY_SECTION_IDS: every section is
@@ -206,6 +256,8 @@ const APPEND_ONLY_SECTION_IDS: ReadonlySet<string> = new Set([
   'numerology',
   // `your_questions` only exists when the reader typed a question at purchase.
   'kp_annual',
+  // `question_1..5` only exist for a reader with facts or answers to draw questions from.
+  'varshik_rashifal_2027',
 ]);
 
 /**

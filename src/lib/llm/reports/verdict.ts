@@ -62,6 +62,8 @@ export const VERDICT_TOPIC: Record<ReportKey, string> = {
     "the reader's and their spouse's prospects for children — traditional progeny indications, the likely child sequence and its timing, NOT fertility as a medical matter",
   kp_annual:
     "the reader's next 12 months read through KP — which life areas the cuspal sub lords promise, the peak months and best windows, and the reader's own questions. Name months, never any score",
+  varshik_rashifal_2027:
+    "the reader's calendar year 2027 — the strongest months, the months to go slowly, and the best windows for the decisions they face. Name months, never any score",
 };
 
 /** `lifeContext` and `planetCondition` are cross-domain grounding attached to EVERY report
@@ -86,6 +88,11 @@ const VERDICT_EXCLUDED_KEYS = new Set([
   'planets',
   'engine',
   'sensitiveCusps',
+  // varshik_rashifal_2027's whole facts object (365-day series, sky events, both Varsha charts):
+  // the verdict reads the compact `verdictBrief` beside it instead.
+  'varshik',
+  'varshikError',
+  'textFlags',
 ]);
 
 export function factsForVerdict(scores: Record<string, unknown>): Record<string, unknown> {
