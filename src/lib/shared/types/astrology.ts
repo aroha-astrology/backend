@@ -360,6 +360,35 @@ export interface DoshaAnalysis {
   kemDruma: KemDrumaDosha;
   grahan: GrahanDosha;
   guruChandal: GuruChandalDosha;
+  /** Read at read time from the saved chart (audit Sprint 10, G4); absent on kundlis not yet read. */
+  gandanta?: GandantaDosha;
+}
+
+/** Gandanta: a birth at a junction point (BPHS 92). Detail in astro-engine/doshas/gandanta.ts. */
+export interface GandantaDosha {
+  /** False when the birth time is a stand-in: nothing is claimed then. */
+  timeKnown: boolean;
+  present: boolean;
+  moon: {
+    present: boolean;
+    part: 'start' | 'end' | null;
+    nakshatra: string | null;
+    degreesFromJunction: number | null;
+  } | null;
+  tithi: {
+    present: boolean;
+    part: 'start' | 'end' | null;
+    tithi: number;
+    kind: 'purna' | 'nanda' | null;
+  } | null;
+  lagna: {
+    present: boolean;
+    part: 'start' | 'end' | null;
+    sign: string | null;
+    degreesFromJunction: number | null;
+  } | null;
+  abhuktaMoola: boolean;
+  description: string;
 }
 
 // ============================================================

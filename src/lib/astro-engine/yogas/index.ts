@@ -1944,8 +1944,9 @@ function detectSunapha2ndLord(chartData: ChartData): Yoga {
   };
 }
 
-function detectChandraMangalDhana(chartData: ChartData): Yoga {
-  // 1st and 2nd lord conjunction or exchange
+function detectLagnaSecondLordDhana(chartData: ChartData): Yoga {
+  // 1st and 2nd lord conjunction or exchange. (Was misnamed detectChandraMangalDhana; it has
+  // nothing to do with the Moon or Mars, audit Sprint 10 G12.)
   const lord1 = getHouseLord(1, chartData);
   const lord2 = getHouseLord(2, chartData);
   const conjunct = arePlanetsConjunct(lord1, lord2, chartData);
@@ -2605,7 +2606,7 @@ export function detectAllYogas(chartData: ChartData): Yoga[] {
   yogas.push(detectVasumathi(chartData));
   yogas.push(detectKalanidhi(chartData));
   yogas.push(detectSunapha2ndLord(chartData));
-  yogas.push(detectChandraMangalDhana(chartData));
+  yogas.push(detectLagnaSecondLordDhana(chartData));
   yogas.push(detectMahaLakshmi(chartData));
   yogas.push(detectKhadrga(chartData));
 

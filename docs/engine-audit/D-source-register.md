@@ -542,6 +542,67 @@ Editions opened for these rows, besides E-BPHS-ENG, E-BPHS-SKT and E-PHALA above
 
 ---
 
+## Audit Sprint 10: missing detectors (opened 2026-11-06)
+
+Texts opened again for this sprint: E-BPHS-ENG (both volumes, archive.org OCR), E-PHALA (2nd ed. 1950), E-UK-ENG. Each rule below was read before it was built or left out.
+
+### BPHS-92 — Gandanta (built: `doshas/gandanta.ts`, audit G4)
+
+- **Translation (E-BPHS-ENG, ch. 92.1-5, Santhanam numbering; the Sanskrit lines in this scan are unreadable):** "Gandanta is of the three kinds, namely of Tithi, Nakshatra and Lagna." Tithi: "the last 2 ghatikas of Poorna tithi (5th, 10th, 15th) and the first 2 ghatikas of Nanda tithi (1st, 6th, 11th) total 4 ghatikas". Nakshatra: "the last two ghatikas of Revati and first two ghatikas of Aswini, the last two ghatikas of Ashlesha and first two ghatikas of Makha and the last two ghatikas of Jyestha and first two ghatikas of Moola". Lagna: "the last half ghatika of Pisces and first half ghatika of Aries, ... Cancer ... Leo, ... Scorpio ... Sagittarius". 92.5: "the last 6 ghatikas of Jyestha and first 8 ghatikas of Moola are known as Abhukta Moola ... extremely inauspicious". Ch. 93 repeats Abhukta Moola as the worst (Indra against Rakshasa).
+- **Also (E-BPHS-ENG ch. 7 note, a translator's note, not a verse):** "The last Navamsas of Cancer, of Scorpio and of Pisces are called as Gandanta" and a Gandanta Lagna or Moon causes early death when the Moon and malefics are in the angles. The verses of ch. 92 give shorter stretches and do not say that; the note's 3d20m (a navamsa, a pada) is the figure the blogs repeat.
+- **How the engine reads it:** a ghatika is 1/60 of its unit: nakshatra 13d20m, tithi 12d, sign 30d. So 2 ghatikas = 0.444 degree of Moon, 0.4 degree of Sun-Moon distance, and half a ghatika = 0.25 degree of Lagna. The nakshatra and tithi reading is the usual one. **For the Lagna the verse gives no unit**: a clock-time reading (half a ghatika = 12 minutes = about 3 degrees of rising) is the other option and is NOT used. Abhukta Moola is 1d20m of Jyeshtha and 1d46m40s of Moola.
+- **Not built:** the text's remedies, and its death warnings (the chat line says "a point to weigh, not a verdict"; the owner's rule is no fear text).
+- **Time:** the Moon crosses 0.444 degree in under an hour, so nothing is claimed without a real birth time (no Moon, tithi or Lagna from a stand-in time); with an approximate time the line says it holds only if the time is right within minutes.
+- **Supports:** DOH-GND, ANCIENT_CLASSICAL (BPHS, whose surviving form is of disputed date). Confidence 85 for the definitions (translation read, Sanskrit not), 60 for the ghatika-to-degree reading.
+
+### Vish (Saturn with the Moon) and Shrapit (Saturn with Rahu) — NOT built (audit G5)
+
+- **Owner decision 2026-11-06 (asked at the start of Sprint 10): do not show them.** No detector, no label, no chat line. Reason on record: no classical verse names either; the BPHS gives Saturn-Moon and Saturn-Rahu only as ordinary conjunction results. Revisit only if the owner asks.
+
+### PD-7.26-30 — Neechabhanga, second look (audit G8): no change
+
+- **Read again (E-PHALA 7.26-29):** the four rules already built (register PD-7.26-29, YG6). The heading in the table of contents is "26-30", but the English of sloka 30 is missing in this scan (the page break swallows it; the Sanskrit lines are garbled). Three other archive.org items of the Phaladeepika were tried (`Phaladeepika1stEd...`, `dli.ernet.507316`, `Phaladeepika`): none has a readable Neechabhanga passage.
+- **Left out because no verse read says it:** the debilitated planet exalted in the Navamsa, a planet exalted in the debilitation sign joining it, and an exchange (parivartana). They are in modern books and web pages only. The translator's note under 7.26 ("according to some, [the lord of the exaltation sign] means the planet that is exalted in that Rasi") is too garbled to tell which sign it means, so it is not applied.
+- **Result:** nothing built. If a readable sloka 30 or a second translation turns up, add what it says as a profile option.
+
+### UK-I.IV — Viparita Raja Yoga in the Uttara Kalamrita (audit G9): label only
+
+- **Translation (E-UK-ENG, First Kanda, chapter IV; verse number not legible; P. S. Sastri):** "There are three yogas: (i) The lord of the eighth in the sixth or twelfth; (ii) The lord of the sixth in the eighth or twelfth; and (iii) The lord of the twelfth in the sixth or eighth. ... These lords must be related mutually by conjunction, mutual aspect, or mutual exchange of houses. They should not at the same time have any such relation with other planets. Then the native becomes a famous, prosperous and powerful king or emperor." The translator's note: the relation is "only between the two"; with all three involved "all the more powerful".
+- **This is the first old text found that names the yoga**, and it is **not the engine's rule**. The engine reads "two of the three lords of the 6th, 8th and 12th stand in any of 6, 8, 12" (a lord in its own house counts; no mutual relation; no purity). The text: each lord in one of the other two dusthanas, related to the other lord, and unrelated to other planets.
+- **The spec's purity clauses** (Lagna lord and kendra or trikona lords unafflicted) are **in no text opened**. Not built.
+- **Why the text's own clause is not built either:** the translator's worked charts do not follow it (chart 73: the eighth lord in the twelfth "with the malefic Rahu" counts as fulfilled), so "no relation with other planets" cannot be turned into a rule without guessing. Left for the owner: keep Aroha's looser rule with an honest label, or build the text's three-yoga rule once the owner decides how to read the purity clause.
+- **Result:** provenance note updated (YGA-VIP stays UNVERIFIED for the rule, name found). No code change, no count change.
+
+### BPHS-75.1-2 and PD-6.1 — Pancha Mahapurusha filters (audit G10): no change
+
+- **Translation (E-BPHS-ENG 75.1-2):** "When Mars, Mercury, Jupiter, Venus and Saturn being in their own sign or in their sign of exaltation, be in kendra to the Ascendant, they give rise to Ruchaka, Bhadra, Hamsa, Malavya and Sasa yogas." **E-PHALA 6.1:** the same five, each "in a Kendra identical with its Swakshetra or Swochcha". Bṛhat Saṃhitā 68 (BS-68.1-2) had the same already.
+- **Against the engine:** the detector is exactly this (own or exalted sign, kendra from the Lagna). No verse in three texts mentions the Navamsa, an avastha, combustion or the Moon as a filter. The engine's combustion deduction (−20 on the strength number) is Aroha's modifier and does not stop the yoga. Nothing is added: the spec's filters are modern and are not built.
+
+### Smaller items (audit G12): label or rename only
+
+Searched in E-BPHS-ENG (both volumes), E-PHALA and E-UK-ENG for the names Chandra-Mangala, Angaraka (Angarak), Budhaditya and Kendradhipati, and for a mutual-7th Chandra-Mangal: **no hits for any of them** (OCR variants tried), so none has a text behind it; no rule was changed.
+
+- **Angarak ignores Ketu:** left as is (Mars with Rahu). Mars with Ketu has no text either; adding it would be inventing a rule.
+- **Chandra-Mangal mutual-7th variant:** not built; no text.
+- **`detectChandraMangalDhana` misnamed:** it detects the 1st and 2nd lords joined or exchanging; **renamed to `detectLagnaSecondLordDhana`** (the yoga's name string "Dhana Yoga (1-2 Lords)" was already right and is unchanged, so nothing stored changes).
+- **Daridra has one rule:** that is the whole of Phaladeepika 6.57 for the 11th house ("the lords of the several Bhavas ... occupy the 6th, 8th or 12th", register PD-6.57-69); nothing is missing against the text. Provenance entry added.
+- **Budhaditya not stopped by combustion:** Mercury is never more than about 28 degrees from the Sun and is combust inside its orb (calculations/planet-state.ts), which is a large share of the charts with Sun and Mercury together (not counted here); a combustion stop would remove many Budhaditya yogas, and no text defines the yoga. Left; provenance note says so.
+- **No maraka/badhaka per planet, Kendradhipati not applied:** not a detector change; no text found for the Kendradhipati rule as coded. Left.
+
+### BPHS-45.3-4 — Baladi Avastha (provenance hole, audit G13)
+
+- **Translation (E-BPHS-ENG 45.3-4):** "Infant, youthful, adolescent, old and dead are the states of planets placed in the ascending order at the rate of six degrees in odd signs. This arrangement is reverse in the case of even signs." 45.4: "One fourth, half, full, negligible and nil are the grades of results". 45.5: awake (own sign, exaltation), dreaming (friend or neutral), asleep (enemy, debilitation) give full, medium, nil.
+- **Against the engine (`calculations/avastha.ts`):** the six-degree steps and the odd/even reversal are the verse. The potency numbers 0.25 / 0.5 / 1.0 / 0.25 / 0 are the verse's grades with "negligible" set to 0.25, which is Aroha's number.
+- **Supports:** AVS-BAL, ANCIENT_CLASSICAL, confidence 85.
+
+### Provenance holes closed or marked (audit G13)
+
+- Added: Gandanta (BPHS-92), Baladi Avastha (BPHS-45.3-4), Bhava Chalit / Sripati (MODERN, Sprint 11 section above), functional lordship (UNVERIFIED: yogakaraka as "lord of a kendra and a trikona" is used, no text opened).
+- Updated: Pancha Mahapurusha (two more texts), Viparita Raja (UK finding), Neechabhanga (second look), Guru Chandal (MODERN since Sprint 9), Daridra (PD-6.57).
+- Still UNVERIFIED after this sprint: Mangal beyond BPHS 80.47-49 (Sprint 7 section), Pitra, Grahan, Sade Sati, Dhaiya, Kendradhipati, Angarak, Chandra-Mangal, Budhaditya, functional lordship. No text opened for them.
+
+---
+
 ## Reading list (what to open, not what has been read)
 
 | Text                              | Edition target                                                                   | Where to find it                   |

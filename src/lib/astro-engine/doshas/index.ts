@@ -9,6 +9,7 @@ export { detectPitraDosha } from './pitraDosha';
 export { detectKemDrumaDosha } from './kemDrumaDosha';
 export { detectGrahanDosha } from './grahanDosha';
 export { detectGuruChandalDosha } from './guruChandal';
+export { detectGandanta } from './gandanta';
 
 import { detectMangalDosha } from './mangalDosha';
 import { detectKaalSarpDosha } from './kaalSarp';

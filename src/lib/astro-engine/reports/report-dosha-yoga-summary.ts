@@ -95,6 +95,13 @@ const DOSHA_HANDLERS: Record<string, DoshaHandler> = {
     detail: (d) =>
       `house ${String(d.house ?? '?')}, ${String(d.severity ?? 'unspecified')} severity`,
   },
+  // Gandanta (audit Sprint 10, G4). No report lists it in its relevant keys yet; a stand-in birth
+  // time never counts as present.
+  gandanta: {
+    label: 'Gandanta',
+    isPresent: (d) => d.timeKnown === true && Boolean(d.present),
+    detail: () => 'birth at a junction point',
+  },
 };
 
 /**

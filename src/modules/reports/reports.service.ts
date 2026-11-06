@@ -827,6 +827,7 @@ export async function buildReportScoreContext(
       {
         chart: kundli?.chartData ?? null,
         ashtakavarga: kundli?.ashtakavargaData ?? null,
+        timeKnown: kundli?.timeKnown ?? null,
       },
     ),
     yogaData: kundli?.yogaData ?? null,

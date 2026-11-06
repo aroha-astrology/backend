@@ -1689,6 +1689,7 @@ export async function* chatStream(
         ? await withLiveSaturnTransits(kundli.doshaData ?? null, undefined, {
             chart: kundli.chartData,
             ashtakavarga: kundli.ashtakavargaData,
+            timeKnown: kundli.timeKnown,
           })
         : null,
     ashtakavarga: kundli?.status === 'ready' ? (kundli.ashtakavargaData ?? null) : null,

@@ -534,7 +534,20 @@ const REGISTRY: ProvenanceEntry[] = [
     sourceIds: [],
     note: 'Not in any text opened. The BPHS father curse (register BPHS-83.20-30) is eleven sonlessness combinations, none of them these indicators',
   },
-  { featureId: 'DOH-GCH', featureName: 'Guru Chandal', tag: 'UNVERIFIED', sourceIds: [] },
+  {
+    featureId: 'DOH-GCH',
+    featureName: 'Guru Chandal',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+    note: 'Jupiter with Rahu only (audit Sprint 9). No classical text opened for the name or the rule; the split from Jupiter with Ketu is modern too',
+  },
+  {
+    featureId: 'DOH-GND',
+    featureName: 'Gandanta (Tithi, Nakshatra, Lagna; Abhukta Moola)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-92'],
+    note: 'BPHS ch. 92 (Santhanam numbering): last/first 2 ghatikas of the junction nakshatras and tithis, half a ghatika of the junction signs, Abhukta Moola 6+8 ghatikas. A ghatika is read as 1/60 of its unit; the Lagna unit is not in the verse. Nothing is said without a real birth time. The remedies and death warnings are not used',
+  },
   {
     featureId: 'DOH-GRH',
     featureName: 'Grahan Dosha',
@@ -565,8 +578,8 @@ const REGISTRY: ProvenanceEntry[] = [
     featureId: 'YGA-PMP',
     featureName: 'Pancha Mahapurusha',
     tag: 'ANCIENT_CLASSICAL',
-    sourceIds: ['BS-68.1-2'],
-    note: 'The conditions (own or exalted sign, in an angle) are Bṛhat Saṃhitā 68. The result sentences shown to users are not from that text, which describes the body of each man; one translator reads the conditions as alternatives',
+    sourceIds: ['BS-68.1-2', 'BPHS-75.1-2'],
+    note: "The conditions (own or exalted sign, in an angle from the Lagna) are Bṛhat Saṃhitā 68, BPHS 75.1-2 and Phaladeepika 6.1, all three alike; none names a Navamsa, avastha or combustion filter (audit Sprint 10, G10). The combustion deduction on the strength number is Aroha's. The result sentences shown to users are not from the texts; one translator reads the Saṃhitā conditions as alternatives",
   },
   { featureId: 'YGA-RAJ', featureName: 'Raja Yoga', tag: 'UNVERIFIED', sourceIds: [] },
   {
@@ -580,7 +593,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Viparita Raja Yoga',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'The name is in none of the texts opened (Bṛhat Jātaka, BPHS translation, Phaladeepika). The two-of-three rule is Aroha own; Harsha, Sarala and Vimala (PD-6.57) are the nearest old rules',
+    note: 'Not in the Bṛhat Jātaka, BPHS translation or Phaladeepika. The Uttara Kalamrita (First Kanda ch. IV, register UK-I.IV) names it with a different rule: three separate yogas, each lord in one of the OTHER two dusthanas, the two lords related and not related to other planets. The two-of-three rule here (any dusthana, own house counted, no relation) is Aroha own; the spec purity clauses are in no text. Harsha, Sarala and Vimala (PD-6.57) are the nearest old rules',
   },
   {
     featureId: 'YGA-SAR',
@@ -608,7 +621,21 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Neechabhanga',
     tag: 'LATER_CLASSICAL',
     sourceIds: ['PD-7.26-29'],
-    note: 'Phaladeepika 7.26-29. No Navamsa rule in those verses. The earlier engine set is the profile value neechabhangaRules earlier',
+    note: 'Phaladeepika 7.26-29. No Navamsa rule in those verses. The earlier engine set is the profile value neechabhangaRules earlier. Read again in audit Sprint 10 (G8): the English of sloka 30 is missing in every scan opened, so nothing was added; exalted-in-Navamsa, an exalted planet joining, and exchange are in no verse read',
+  },
+  {
+    featureId: 'YGA-DAR',
+    featureName: 'Daridra Yoga',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['PD-6.57-69'],
+    note: 'Phaladeepika 6.57: Daridra is the yoga of the 11th house, the lord of the 11th in the 6th, 8th or 12th. The single rule in the engine is the whole text rule (audit Sprint 10, G12)',
+  },
+  {
+    featureId: 'YGA-AKC',
+    featureName: 'Angarak, Chandra-Mangal, Kendradhipati (the names)',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'The names Angaraka, Chandra-Mangala and Kendradhipati are in none of the BPHS translation, Phaladeepika or Uttara Kalamrita text searched (audit Sprint 10, G12). Angarak is Mars with Rahu only; no text for adding Ketu or a mutual-7th Chandra-Mangal. Not changed',
   },
   { featureId: 'YGA-DHA', featureName: 'Dhana Yogas', tag: 'UNVERIFIED', sourceIds: [] },
   {
@@ -650,7 +677,7 @@ const REGISTRY: ProvenanceEntry[] = [
     featureName: 'Budhaditya Yoga',
     tag: 'UNVERIFIED',
     sourceIds: [],
-    note: 'The name is not in the BPHS translation or the Phaladeepika text searched',
+    note: 'The name is not in the BPHS translation or the Phaladeepika text searched. Not stopped by combustion: Mercury is combust inside its orb for many Sun-Mercury conjunctions, and no text defines the yoga, so a stop would be invented (audit Sprint 10, G12)',
   },
   {
     featureId: 'YGA-ASR',
@@ -1028,6 +1055,31 @@ const REGISTRY: ProvenanceEntry[] = [
     tag: 'UNVERIFIED',
     sourceIds: [],
     note: 'Uses real sunrise (correct); DOC entry',
+  },
+
+  // -------------------------------------------------------------------------
+  // Planet condition and house systems (audit Sprint 10, G13)
+  // -------------------------------------------------------------------------
+  {
+    featureId: 'AVS-BAL',
+    featureName: 'Baladi Avastha (infant, youthful, adolescent, old, dead)',
+    tag: 'ANCIENT_CLASSICAL',
+    sourceIds: ['BPHS-45.3-4'],
+    note: 'BPHS 45.3-4: five states at six degrees each, reversed in even signs; results one fourth, half, full, negligible, nil. The potency number for "negligible" (0.25) is Aroha\'s',
+  },
+  {
+    featureId: 'BHC-SRI',
+    featureName: 'Bhava Chalit (Sripati bhavas beside the equal bhava)',
+    tag: 'MODERN_ASTROLOGICAL',
+    sourceIds: [],
+    note: 'Swisseph system S cusps as bhava boundaries, converted to sidereal; polar fallback to the equal bhava. No verse opened for reading events from the chalit chart (BPHS ch. 7 not read); text and a Mangal note only, no detector reads it (register, Sprint 11 section)',
+  },
+  {
+    featureId: 'FNC-LRD',
+    featureName: 'Functional lordship (yogakaraka, lord of kendra and trikona)',
+    tag: 'UNVERIFIED',
+    sourceIds: [],
+    note: 'Used by Saturn role for the Lagna, Vakri and Kendradhipati. No text opened for the yogakaraka rule as coded; shown as common practice, not as a verse',
   },
 
   // -------------------------------------------------------------------------

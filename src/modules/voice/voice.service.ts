@@ -201,6 +201,7 @@ async function buildSessionInstruction(
       ? await withLiveSaturnTransits(kundli.doshaData ?? null, undefined, {
           chart: kundli.chartData,
           ashtakavarga: kundli.ashtakavargaData,
+          timeKnown: kundli.timeKnown,
         })
       : null,
     ashtakavarga: ready ? (kundli.ashtakavargaData ?? null) : null,

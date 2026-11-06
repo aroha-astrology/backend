@@ -682,6 +682,17 @@ export function doshaFacts(
     );
   }
 
+  // Gandanta (audit Sprint 10, G4): said only for a real birth time; with a stand-in time the
+  // detector claims nothing and no line is written, so a reader is never told "not present" either.
+  const gandanta = doshas.gandanta as Record<string, unknown> | undefined;
+  if (gandanta && gandanta.timeKnown === true) {
+    facts.push(
+      gandanta.present && typeof gandanta.description === 'string'
+        ? `Gandanta: present. ${gandanta.description}`
+        : 'Gandanta: not present',
+    );
+  }
+
   return facts;
 }
 

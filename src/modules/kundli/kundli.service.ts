@@ -33,6 +33,7 @@ import { detectPitraDosha } from '../../lib/astro-engine/doshas/pitraDosha.js';
 import { detectGrahanDosha } from '../../lib/astro-engine/doshas/grahanDosha.js';
 import { detectKaalSarpDosha } from '../../lib/astro-engine/doshas/kaalSarp.js';
 import { detectGuruChandalDosha } from '../../lib/astro-engine/doshas/guruChandal.js';
+import { detectGandanta } from '../../lib/astro-engine/doshas/gandanta.js';
 import { logger } from '../../lib/logger.js';
 import type { KundliRow, UserRow } from '../../db/schema.js';
 import type { KundliDto } from './kundli.schemas.js';
@@ -633,7 +634,7 @@ export async function withLiveSaturnTransits(
    * The saved chart (and its Ashtakavarga): with it, Sade Sati and Dhaiya also carry what softens
    * or sharpens them and the Sade Sati cycle number (audit M2/M3, spec review G6).
    */
-  natal?: { chart: unknown; ashtakavarga?: unknown } | null,
+  natal?: { chart: unknown; ashtakavarga?: unknown; timeKnown?: boolean | null } | null,
 ): Promise<Record<string, unknown> | null> {
   if (!doshaData) return doshaData;
   const saturnNatal: SaturnNatal | null =
@@ -665,6 +666,13 @@ export async function withLiveSaturnTransits(
         { err },
         'live Pitra/Grahan recompute failed at read time (serving cached value)',
       );
+    }
+    // Gandanta (audit Sprint 10, G4) is new, so every kundli gets it here. Only a real birth time
+    // counts: a null or false `timeKnown` is a stand-in time and the detector claims nothing.
+    try {
+      live.gandanta = detectGandanta(saturnNatal.chart, { timeKnown: natal?.timeKnown === true });
+    } catch (err) {
+      logger.warn({ err }, 'live Gandanta recompute failed at read time (left out)');
     }
   }
   const cached = doshaData.sadeSati as { moonSign?: ZodiacSign } | undefined;
@@ -700,6 +708,7 @@ export async function toKundliDto(row: KundliRow): Promise<KundliDto> {
     doshas: await withLiveSaturnTransits(row.doshaData, undefined, {
       chart: row.chartData,
       ashtakavarga: row.ashtakavargaData,
+      timeKnown: row.timeKnown,
     }),
     generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
   };

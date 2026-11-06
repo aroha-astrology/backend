@@ -131,6 +131,7 @@ export async function buildHoroscopeContext(
     ? await withLiveSaturnTransits(kundli.doshaData ?? null, new Date(`${forDate}T12:00:00.000Z`), {
         chart: kundli.chartData,
         ashtakavarga: kundli.ashtakavargaData,
+        timeKnown: kundli.timeKnown,
       })
     : null;
   return {
