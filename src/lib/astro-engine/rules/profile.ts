@@ -93,6 +93,16 @@ export interface AstrologyRuleProfile {
    * orb). 'single': the direct orb for a retrograde planet too, as before.
    */
   combustionOrbs: 'by-motion' | 'single';
+  /**
+   * Viparita Raja Yoga.
+   *  - 'uttara-kalamrita': the Uttara Kalamrita (First Kanda ch. IV, register UK-I.IV). Three
+   *    separate yogas: the lord of the 6th in the 8th or 12th, of the 8th in the 6th or 12th,
+   *    of the 12th in the 6th or 8th; the two lords related (joined, in mutual aspect, or
+   *    exchanging); neither related to any of the other five planets. Rahu and Ketu are not
+   *    counted as "other planets" (the text's own worked chart 73 counts a fulfilled yoga with Rahu).
+   *  - 'aroha-two-of-three': what the engine used before: two of the three lords in any of 6, 8, 12.
+   */
+  viparitaRule: 'uttara-kalamrita' | 'aroha-two-of-three';
   /** How sunrise is defined for day-based rules. */
   sunrise: 'upper-limb-refracted';
 }
@@ -112,6 +122,7 @@ export const DEFAULT_PROFILE: AstrologyRuleProfile = {
   gajakesariRule: 'bphs',
   bhakootRule: 'muhurta-chintamani',
   combustionOrbs: 'by-motion',
+  viparitaRule: 'uttara-kalamrita',
   sunrise: 'upper-limb-refracted',
 };
 

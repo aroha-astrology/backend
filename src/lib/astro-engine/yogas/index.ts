@@ -372,7 +372,78 @@ function detectDharmaKarmadhipati(chartData: ChartData): Yoga {
   };
 }
 
+const VIPARITA_NAME = 'Viparita Raja Yoga';
+const VIPARITA_DESCRIPTION =
+  "Lords of 6th, 8th, and 12th houses placed in dusthana houses (6, 8, 12). Turns adversity into advantage; gains through unexpected events, enemies' losses, or insurance.";
+
+/**
+ * Viparita Raja Yoga after the Uttara Kalamrita, First Kanda ch. IV (register UK-I.IV, audit G9).
+ * Three yogas: the lord of the 6th in the 8th or 12th, the lord of the 8th in the 6th or 12th, the
+ * lord of the 12th in the 6th or 8th (never in its own house). The lord and the lord of the house it
+ * stands in must be related (joined, in mutual aspect, or exchanging houses) and neither may be
+ * related (joined or aspected) to any of the other five planets. Rahu and Ketu are not "other
+ * planets" here: the text's own worked chart 73 counts the 8th lord in the 12th with Rahu.
+ */
+function detectViparitaRajaUttaraKalamrita(chartData: ChartData): Yoga {
+  const dusthanas = [6, 8, 12];
+  const SEVEN: Planet[] = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
+  const involved: Planet[] = [];
+  const involvedHouses: number[] = [];
+  let formed = 0;
+
+  for (const x of dusthanas) {
+    const lordX = getHouseLord(x, chartData);
+    const hX = getPlanetHouse(lordX, chartData);
+    if (hX === x || !dusthanas.includes(hX)) continue;
+    const lordH = getHouseLord(hX, chartData);
+    const hH = getPlanetHouse(lordH, chartData);
+    if (hH === 0) continue;
+
+    const same = lordX === lordH;
+    const joined = same || hH === hX;
+    const mutualAspect =
+      doesPlanetAspect(lordX, hH, chartData) && doesPlanetAspect(lordH, hX, chartData);
+    const exchange = !same && hH === x;
+    if (!(joined || mutualAspect || exchange)) continue;
+
+    const touchedByOther = SEVEN.some((p) => {
+      if (p === lordX || p === lordH) return false;
+      const ph = getPlanetHouse(p, chartData);
+      if (ph === 0) return false;
+      return [hX, hH].some((h) => ph === h || doesPlanetAspect(p, h, chartData));
+    });
+    if (touchedByOther) continue;
+
+    formed++;
+    involved.push(lordX, lordH);
+    involvedHouses.push(hX, hH);
+  }
+
+  const planets = [...new Set(involved)];
+  const present = formed > 0;
+  let strength = 0;
+  if (present) {
+    strength = Math.round(
+      planets.reduce((sum, p) => sum + computePlanetStrength(p, chartData), 0) / planets.length,
+    );
+    if (formed === 3) strength = Math.min(100, strength + 15); // the text: all three is "all the more powerful"
+  }
+  return {
+    name: VIPARITA_NAME,
+    type: 'raja',
+    present,
+    strength,
+    description: VIPARITA_DESCRIPTION,
+    planets,
+    houses: [...new Set(involvedHouses)],
+    activationPeriod: planets.length > 0 ? `${planets[0]} Mahadasha/Antardasha` : undefined,
+  };
+}
+
 function detectViparitaRaja(chartData: ChartData): Yoga {
+  if (getActiveProfile().viparitaRule === 'uttara-kalamrita') {
+    return detectViparitaRajaUttaraKalamrita(chartData);
+  }
   const lord6 = getHouseLord(6, chartData);
   const lord8 = getHouseLord(8, chartData);
   const lord12 = getHouseLord(12, chartData);

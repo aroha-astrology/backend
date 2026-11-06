@@ -591,9 +591,9 @@ const REGISTRY: ProvenanceEntry[] = [
   {
     featureId: 'YGA-VIP',
     featureName: 'Viparita Raja Yoga',
-    tag: 'UNVERIFIED',
-    sourceIds: [],
-    note: 'Not in the Bṛhat Jātaka, BPHS translation or Phaladeepika. The Uttara Kalamrita (First Kanda ch. IV, register UK-I.IV) names it with a different rule: three separate yogas, each lord in one of the OTHER two dusthanas, the two lords related and not related to other planets. The two-of-three rule here (any dusthana, own house counted, no relation) is Aroha own; the spec purity clauses are in no text. Harsha, Sarala and Vimala (PD-6.57) are the nearest old rules',
+    tag: 'LATER_CLASSICAL',
+    sourceIds: ['UK-I.IV'],
+    note: 'Uttara Kalamrita First Kanda ch. IV (not in the Bṛhat Jātaka, BPHS translation or Phaladeepika): three yogas, each lord in one of the OTHER two dusthanas, the two lords related and not related to other planets. Built as the default (profile viparitaRule uttara-kalamrita); how "related" and "other planets" are read is Aroha\'s reading (register). The old two-of-three rule (any dusthana, own house counted) is the option aroha-two-of-three. The spec purity clauses are in no text',
   },
   {
     featureId: 'YGA-SAR',
