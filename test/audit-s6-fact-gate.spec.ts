@@ -25,6 +25,15 @@ describe('shouldExtractFacts: skips only what carries nothing to remember', () =
     expect(shouldExtractFacts('my son has his exam next week', GENERIC, 'en')).toBe(true);
   });
 
+  it('extracts first-person statements with everyday life verbs', () => {
+    expect(shouldExtractFacts('I run a small bakery and want to expand', GENERIC, 'en')).toBe(true);
+    expect(shouldExtractFacts('I own two flats in Pune', GENERIC, 'en')).toBe(true);
+    expect(shouldExtractFacts('I manage a team of ten', GENERIC, 'en')).toBe(true);
+    expect(shouldExtractFacts('I quit my job yesterday', GENERIC, 'en')).toBe(true);
+    expect(shouldExtractFacts('I moved to Dubai in winter', GENERIC, 'en')).toBe(true);
+    expect(shouldExtractFacts('I study medicine, any advice?', GENERIC, 'en')).toBe(true);
+  });
+
   it('extracts when the reply names a dated timing, even if the question was plain', () => {
     expect(
       shouldExtractFacts('When will I get a job?', 'A good window opens from March 2027.', 'en'),
