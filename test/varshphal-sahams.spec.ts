@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   isBetweenZodiacally,
+  isBetweenBySign,
   vivahaSaham,
   punyaSaham,
   vidyaSaham,
   rajyaSaham,
-  vittaSaham,
+  arthaSaham,
   computeAllSahams,
   karyasiddhiSaham,
   pardeshSaham,
@@ -83,29 +84,32 @@ describe('punyaSaham', () => {
 });
 
 describe('vidyaSaham', () => {
-  it('Asc + Mercury - Moon', () => {
-    // 10 + 50 - 200 = -140 -> 220
-    const result = vidyaSaham(FIXTURE_CHART);
-    expect(result.longitude).toBe(220);
-    expect(result.signIndex).toBe(7); // Scorpio
+  it('Sun - Moon + Asc by day, swapped at night; the +30 test is by sign', () => {
+    // Day: 100 - 200 + 10 = -90 -> 270. Going forward by sign from Moon's (Libra) the Asc's sign
+    // (Aries) is reached before the Sun's (Cancer), so no +30.
+    expect(vidyaSaham(FIXTURE_CHART).longitude).toBe(270);
+    // Night: 200 - 100 + 10 = 110. From the Sun's sign (Cancer) the Moon's (Libra) comes before
+    // the Asc's (Aries) -> +30 = 140.
+    expect(vidyaSaham(FIXTURE_CHART, false).longitude).toBe(140);
   });
 });
 
 describe('rajyaSaham', () => {
-  it('Asc + Sun - Moon', () => {
-    // 10 + 100 - 200 = -90 -> 270
-    const result = rajyaSaham(FIXTURE_CHART);
-    expect(result.longitude).toBe(270);
-    expect(result.signIndex).toBe(9);
+  it('Saturn - Sun + Asc by day, swapped at night', () => {
+    // Day: 250 - 100 + 10 = 160; from the Sun's sign Saturn's is reached before Aries -> +30 = 190.
+    expect(rajyaSaham(FIXTURE_CHART).longitude).toBe(190);
+    expect(rajyaSaham(FIXTURE_CHART).signIndex).toBe(6);
+    // Night: 100 - 250 + 10 = -140 -> 220; from Saturn's sign Aries comes first -> no +30.
+    expect(rajyaSaham(FIXTURE_CHART, false).longitude).toBe(220);
   });
 });
 
-describe('vittaSaham', () => {
-  it('Asc + Jupiter - Sun', () => {
-    // 10 + 300 - 100 = 210, +30 because Asc (10) is not between Sun (100) and Jupiter (300) = 240
-    const result = vittaSaham(FIXTURE_CHART);
-    expect(result.longitude).toBe(240);
-    expect(result.signIndex).toBe(8); // Sagittarius
+describe('arthaSaham', () => {
+  it('2nd house point - 2nd lord + Asc, the same by day and night', () => {
+    // 2nd house point = 10 + 30 = 40 (Taurus, lord Venus at 150). 40 - 150 + 10 = -100 -> 260;
+    // from Venus' sign (Virgo) Aries comes before Taurus -> no +30.
+    expect(arthaSaham(FIXTURE_CHART, true).longitude).toBe(260);
+    expect(arthaSaham(FIXTURE_CHART, false).longitude).toBe(260);
   });
 });
 
@@ -131,10 +135,11 @@ describe('computeAllSahams', () => {
 });
 
 describe('rules shared by every Saham (changed in the Varshik 2027 work)', () => {
-  it('a night return swaps the two points of the Sahams that swap', () => {
-    // Vitta at night: Sun - Jupiter + Asc = 100 - 300 + 10 = -190 -> 170. Asc (10) is between
-    // Jupiter (300) and Sun (100) going forward (arc 160, Asc at 70), so no +30.
-    expect(vittaSaham(FIXTURE_CHART, false).longitude).toBe(170);
+  it('the +30 test goes by sign, so the same sign as the subtracted point counts as not between', () => {
+    expect(isBetweenBySign(150, 250, 10)).toBe(true); // Virgo, Sagittarius, Aries: Aries comes first
+    expect(isBetweenBySign(150, 250, 245)).toBe(false); // Asc in the same sign as the subtracted point
+    expect(isBetweenBySign(100, 200, 100)).toBe(true); // Asc in the sign of the added point counts
+    expect(isBetweenBySign(100, 200, 130)).toBe(false); // wrong side: Leo is not between Libra and Cancer
   });
 
   it('Putra is Jupiter - Moon + Asc by day and swaps at night', () => {
@@ -153,11 +158,11 @@ describe('rules shared by every Saham (changed in the Varshik 2027 work)', () =>
     expect(karyasiddhiSaham(FIXTURE_CHART, false).longitude).toBe(230);
   });
 
-  it('Pardesh is the 9th cusp - the 9th lord + Asc, falling back to whole signs without a house list', () => {
-    // Asc sign 0 -> 9th sign is Sagittarius (240), ruled by Jupiter (300).
-    // 240 - 300 + 10 = -50 -> 310; Asc (10) IS between the 9th lord (300) and the cusp (240) going forward -> no +30.
-    expect(pardeshSaham(FIXTURE_CHART, true).longitude).toBe(310);
-    expect(pardeshSaham(FIXTURE_CHART, false).longitude).toBe(310);
+  it('Pardesh is the 9th house point (Lagna + 240) - the 9th lord + Asc', () => {
+    // The 9th house point is the Lagna + 240 = 250 (Sagittarius, ruled by Jupiter at 300).
+    // 250 - 300 + 10 = -40 -> 320; from Jupiter's sign (Aquarius) Aries comes before Sagittarius -> no +30.
+    expect(pardeshSaham(FIXTURE_CHART, true).longitude).toBe(320);
+    expect(pardeshSaham(FIXTURE_CHART, false).longitude).toBe(320);
   });
 
   it('every Saham carries the lord of its own sign', () => {

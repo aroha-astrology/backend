@@ -10,13 +10,13 @@
     "varshaLagna": 357.260985,
     "yearLord": "Jupiter",
     "sahams": {
-     "Vivaha": 293.723634,
+     "Vivaha": 323.723634,
      "Punya": 284.897813,
-     "Vidya": 93.808269,
-     "Rajya": 99.624158,
-     "Vitta": 175.063106,
+     "Vidya": 99.624158,
+     "Rajya": 62.130967,
+     "Artha": 117.385001,
      "Karyasiddhi": 180.493681,
-     "Pardesh": 300.124016,
+     "Pardesh": 327.385001,
      "Putra": 247.426279
     },
     "muddaLords": [
@@ -67,11 +67,11 @@
     "sahams": {
      "Vivaha": 244.858879,
      "Punya": 40.412648,
-     "Vidya": 165.713248,
-     "Rajya": 172.418663,
-     "Vitta": 267.927121,
+     "Vidya": 172.418663,
+     "Rajya": 14.598533,
+     "Artha": 305.009732,
      "Karyasiddhi": 10.452817,
-     "Pardesh": 330.105543,
+     "Pardesh": 331.521198,
      "Putra": 318.930128
     },
     "muddaLords": [
@@ -109,11 +109,11 @@
     "sahams": {
      "Vivaha": 188.811527,
      "Punya": 198.000916,
-     "Vidya": 61.311477,
-     "Rajya": 62.783203,
-     "Vitta": 163.471169,
+     "Vidya": 62.783203,
+     "Rajya": 25.189985,
+     "Artha": 276.758383,
      "Karyasiddhi": 242.104846,
-     "Pardesh": 192.635976,
+     "Pardesh": 218.028035,
      "Putra": 260.862313
     },
     "muddaLords": [
@@ -160,11 +160,11 @@
     "sahams": {
      "Vivaha": 335.822964,
      "Punya": 102.455536,
-     "Vidya": 25.733231,
-     "Rajya": 15.124074,
-     "Vitta": 302.554557,
+     "Vidya": 15.124074,
+     "Rajya": 176.365281,
+     "Artha": 212.742643,
      "Karyasiddhi": 285.568038,
-     "Pardesh": 316.986519,
+     "Pardesh": 330.776324,
      "Putra": 273.888826
     },
     "muddaLords": [
@@ -201,13 +201,13 @@
     "varshaLagna": 76.289256,
     "yearLord": "Jupiter",
     "sahams": {
-     "Vivaha": 113.795617,
+     "Vivaha": 83.795617,
      "Punya": 29.689654,
-     "Vidya": 138.275629,
-     "Rajya": 152.888858,
-     "Vitta": 186.717542,
-     "Karyasiddhi": 119.662625,
-     "Pardesh": 37.054917,
+     "Vidya": 152.888858,
+     "Rajya": 85.066296,
+     "Artha": 258.720815,
+     "Karyasiddhi": 89.662625,
+     "Pardesh": 53.344174,
      "Putra": 233.317144
     },
     "muddaLords": [
@@ -250,11 +250,11 @@
     "sahams": {
      "Vivaha": 243.623162,
      "Punya": 67.929119,
-     "Vidya": 301.315867,
-     "Rajya": 273.764521,
-     "Vitta": 12.289552,
+     "Vidya": 273.764521,
+     "Rajya": 135.768629,
+     "Artha": 48.934493,
      "Karyasiddhi": 224.919637,
-     "Pardesh": 283.087673,
+     "Pardesh": 288.934493,
      "Putra": 100.207254
     },
     "muddaLords": [
@@ -299,11 +299,11 @@
     "sahams": {
      "Vivaha": 187.200615,
      "Punya": 204.919364,
-     "Vidya": 50.261392,
-     "Rajya": 73.353466,
-     "Vitta": 277.020911,
+     "Vidya": 73.353466,
+     "Rajya": 51.647928,
+     "Artha": 184.102109,
      "Karyasiddhi": 303.418727,
-     "Pardesh": 47.656911,
+     "Pardesh": 51.793326,
      "Putra": 46.237963
     },
     "muddaLords": [
@@ -338,11 +338,11 @@
     "sahams": {
      "Vivaha": 26.485515,
      "Punya": 185.197462,
-     "Vidya": 300.445191,
-     "Rajya": 301.022878,
-     "Vitta": 355.687228,
+     "Vidya": 301.022878,
+     "Rajya": 113.42513,
+     "Artha": 58.587435,
      "Karyasiddhi": 73.512589,
-     "Pardesh": 316.369913,
+     "Pardesh": 334.480082,
      "Putra": 248.599936
     },
     "muddaLords": [
@@ -381,11 +381,11 @@
     "sahams": {
      "Vivaha": 143.606578,
      "Punya": 37.513755,
-     "Vidya": 271.817916,
-     "Rajya": 254.08406,
-     "Vitta": 348.220417,
+     "Vidya": 254.08406,
+     "Rajya": 102.249272,
+     "Artha": 187.19259,
      "Karyasiddhi": 92.833183,
-     "Pardesh": 3.230208,
+     "Pardesh": 14.029116,
      "Putra": 261.505569
     },
     "muddaLords": [
@@ -423,11 +423,11 @@
     "sahams": {
      "Vivaha": 335.567999,
      "Punya": 327.144261,
-     "Vidya": 171.508755,
-     "Rajya": 168.636049,
-     "Vitta": 36.116334,
+     "Vidya": 168.636049,
+     "Rajya": 161.086243,
+     "Artha": 26.826281,
      "Karyasiddhi": 307.01082,
-     "Pardesh": 319.259509,
+     "Pardesh": 342.149664,
      "Putra": 151.862229
     },
     "muddaLords": [
@@ -479,12 +479,12 @@
     "sahams": {
      "Vivaha": 301.795139,
      "Punya": 243.905551,
-     "Vidya": 0.467398,
-     "Rajya": 23.272294,
-     "Vitta": 166.752712,
+     "Vidya": 23.272294,
+     "Rajya": 294.738776,
+     "Artha": 103.678518,
      "Karyasiddhi": 143.310032,
-     "Pardesh": 333.253386,
-     "Putra": 41.436084
+     "Pardesh": 31.842308,
+     "Putra": 71.436084
     },
     "muddaLords": [
      "Moon",
@@ -524,12 +524,12 @@
     "yearLord": "Saturn",
     "sahams": {
      "Vivaha": 45.710788,
-     "Punya": 244.117157,
-     "Vidya": 241.209535,
-     "Rajya": 186.178344,
-     "Vitta": 176.695047,
+     "Punya": 214.117157,
+     "Vidya": 186.178344,
+     "Rajya": 38.118347,
+     "Artha": 254.959535,
      "Karyasiddhi": 26.501115,
-     "Pardesh": 71.617232,
+     "Pardesh": 121.764983,
      "Putra": 162.72564
     },
     "muddaLords": [
@@ -561,11 +561,11 @@
     "sahams": {
      "Vivaha": 218.554131,
      "Punya": 89.816036,
-     "Vidya": 333.824171,
-     "Rajya": 348.757577,
-     "Vitta": 299.74619,
+     "Vidya": 348.757577,
+     "Rajya": 192.832422,
+     "Artha": 259.901095,
      "Karyasiddhi": 347.218133,
-     "Pardesh": 172.967845,
+     "Pardesh": 197.254651,
      "Putra": 264.21696
     },
     "muddaLords": [
@@ -598,11 +598,11 @@
     "sahams": {
      "Vivaha": 269.710802,
      "Punya": 308.85544,
-     "Vidya": 320.146852,
-     "Rajya": 303.961974,
-     "Vitta": 199.27119,
+     "Vidya": 303.961974,
+     "Rajya": 319.035273,
+     "Artha": 46.957836,
      "Karyasiddhi": 225.792974,
-     "Pardesh": 323.411613,
+     "Pardesh": 344.82032,
      "Putra": 1.824458
     },
     "muddaLords": [
@@ -640,11 +640,11 @@
     "sahams": {
      "Vivaha": 287.811503,
      "Punya": 55.571886,
-     "Vidya": 351.502908,
-     "Rajya": 1.80898,
-     "Vitta": 288.214449,
-     "Karyasiddhi": 350.218864,
-     "Pardesh": 273.185047,
+     "Vidya": 1.80898,
+     "Rajya": 158.298451,
+     "Artha": 61.770021,
+     "Karyasiddhi": 320.218864,
+     "Pardesh": 286.87548,
      "Putra": 66.332996
     },
     "muddaLords": [
@@ -678,13 +678,13 @@
     "varshaLagna": 276.235854,
     "yearLord": "Jupiter",
     "sahams": {
-     "Vivaha": 308.426856,
-     "Punya": 314.995295,
-     "Vidya": 259.371027,
-     "Rajya": 267.476414,
-     "Vitta": 183.515531,
+     "Vivaha": 278.426856,
+     "Punya": 284.995295,
+     "Vidya": 267.476414,
+     "Rajya": 330.149029,
+     "Artha": 225.573424,
      "Karyasiddhi": 107.553655,
-     "Pardesh": 67.319008,
+     "Pardesh": 73.554863,
      "Putra": 174.75609
     },
     "muddaLords": [
@@ -724,11 +724,11 @@
     "sahams": {
      "Vivaha": 302.566349,
      "Punya": 19.723191,
-     "Vidya": 128.497517,
-     "Rajya": 122.28106,
-     "Vitta": 46.866021,
+     "Vidya": 122.28106,
+     "Rajya": 155.854895,
+     "Artha": 57.933269,
      "Karyasiddhi": 344.155734,
-     "Pardesh": 335.567456,
+     "Pardesh": 1.569582,
      "Putra": 113.144956
     },
     "muddaLords": [
@@ -762,12 +762,12 @@
     "sahams": {
      "Vivaha": 236.989339,
      "Punya": 292.347383,
-     "Vidya": 331.055406,
-     "Rajya": 351.540485,
-     "Vitta": 190.622531,
+     "Vidya": 351.540485,
+     "Rajya": 39.815903,
+     "Artha": 214.08551,
      "Karyasiddhi": 168.562856,
-     "Pardesh": 359.999993,
-     "Putra": 25.219082
+     "Pardesh": 6.943927,
+     "Putra": 355.219082
     },
     "muddaLords": [
      "Sun",
@@ -807,11 +807,11 @@
     "sahams": {
      "Vivaha": 210.671671,
      "Punya": 75.691541,
-     "Vidya": 272.453537,
-     "Rajya": 288.775129,
-     "Vitta": 37.823406,
+     "Vidya": 288.775129,
+     "Rajya": 142.045455,
+     "Artha": 40.925303,
      "Karyasiddhi": 257.187453,
-     "Pardesh": 263.691968,
+     "Pardesh": 280.925303,
      "Putra": 129.3652
     },
     "muddaLords": [
@@ -846,11 +846,11 @@
     "sahams": {
      "Vivaha": 358.785884,
      "Punya": 19.796654,
-     "Vidya": 164.716388,
-     "Rajya": 152.159487,
-     "Vitta": 86.768262,
+     "Vidya": 152.159487,
+     "Rajya": 214.394664,
+     "Artha": 183.580912,
      "Karyasiddhi": 75.969406,
-     "Pardesh": 89.186248,
+     "Pardesh": 100.164319,
      "Putra": 347.949679
     },
     "muddaLords": [
@@ -887,11 +887,11 @@
     "sahams": {
      "Vivaha": 317.225664,
      "Punya": 130.319712,
-     "Vidya": 85.446199,
-     "Rajya": 97.051825,
-     "Vitta": 153.808409,
-     "Karyasiddhi": 337.491956,
-     "Pardesh": 130.930005,
+     "Vidya": 97.051825,
+     "Rajya": 257.34395,
+     "Artha": 249.879581,
+     "Karyasiddhi": 7.491956,
+     "Pardesh": 139.615773,
      "Putra": 332.174466
     },
     "muddaLords": [
@@ -925,11 +925,11 @@
     "sahams": {
      "Vivaha": 324.092124,
      "Punya": 318.353484,
-     "Vidya": 126.966104,
-     "Rajya": 146.140277,
-     "Vitta": 196.576908,
+     "Vidya": 146.140277,
+     "Rajya": 99.954368,
+     "Artha": 167.517797,
      "Karyasiddhi": 21.565113,
-     "Pardesh": 318.389256,
+     "Pardesh": 325.636136,
      "Putra": 275.470304
     },
     "muddaLords": [
@@ -964,11 +964,11 @@
     "sahams": {
      "Vivaha": 219.454702,
      "Punya": 333.527811,
-     "Vidya": 100.630034,
-     "Rajya": 125.278962,
-     "Vitta": 124.943014,
+     "Vidya": 125.278962,
+     "Rajya": 226.635672,
+     "Artha": 255.753469,
      "Karyasiddhi": 242.838286,
-     "Pardesh": 318.231295,
+     "Pardesh": 322.634682,
      "Putra": 185.818589
     },
     "muddaLords": [
@@ -1004,11 +1004,11 @@
     "sahams": {
      "Vivaha": 312.377725,
      "Punya": 289.723861,
-     "Vidya": 328.610694,
-     "Rajya": 336.023653,
-     "Vitta": 183.18229,
+     "Vidya": 336.023653,
+     "Rajya": 295.977152,
+     "Artha": 87.343138,
      "Karyasiddhi": 209.698693,
-     "Pardesh": 334.777913,
+     "Pardesh": 2.65167,
      "Putra": 11.332186
     },
     "muddaLords": [

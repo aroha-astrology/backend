@@ -6,15 +6,18 @@
 // Punya reversed at night):
 //   1. NIGHT: for a night return the `plus` and `minus` points swap, except for the Sahams
 //      whose night form is a different formula (Karyasiddhi) or none (Pardesh).
-//   2. +30: if `add` does not lie on the forward arc from `minus` to `plus` (after any
-//      night swap), 30 degrees are added.
+//   2. +30: if `add` is not found going forward by SIGN from the sign of `minus` to the
+//      sign of `plus` (after any night swap), 30 degrees are added. The test is by sign,
+//      not by exact degree, as PyJHora (a JHora port) does it.
 // The per-Saham switches live in SAHAM_RULES, so one that JHora disagrees with is a
 // one-line change.
 //
 // SOURCES: no verse numbers are cited here because none was opened and checked. The
-// formulas are the standard Tajika ones as the earlier audit gave them, plus Karyasiddhi,
-// Pardesh and Putra, which are UNVERIFIED against JHora until the benchmark fixtures
-// (backend/test/fixtures/varshik/) are recorded.
+// formulas were aligned to PyJHora 4.8.7 (jhora/horoscope/transit/saham.py), a port of JHora,
+// by reading its source on 2026-11-06; PyJHora could not be run here, so nothing is checked
+// against real JHora output yet (backend/test/fixtures/varshik/jhora.json is empty). Before
+// that alignment Vidya, Rajya and Vitta used the formulas of an earlier audit that no text
+// backed; Vitta has no JHora counterpart and is replaced by Artha.
 // =============================================================================
 
 import { getAspectedSigns, SIGNS } from '../../astro-tools/transit.js';
@@ -36,6 +39,22 @@ export function isBetweenZodiacally(from: number, to: number, test: number): boo
   const arc = normalizeDegree(t - f);
   const pos = normalizeDegree(x - f);
   return pos <= arc;
+}
+
+/**
+ * JHora's "C between B and A": walking forward by SIGN from the sign after B's, is C's sign
+ * reached before A's sign is passed? C in the same sign as B counts as not between.
+ */
+export function isBetweenBySign(aLon: number, bLon: number, cLon: number): boolean {
+  const a = Math.floor(normalizeDegree(aLon) / 30);
+  const b = Math.floor(normalizeDegree(bLon) / 30);
+  const c = Math.floor(normalizeDegree(cLon) / 30);
+  for (let n = b; n < b + 11; n++) {
+    const next = (n + 1) % 12;
+    if (next === c) return true;
+    if (next === a) return false;
+  }
+  return false;
 }
 
 export interface SahamResult {
@@ -112,6 +131,14 @@ function signLordLongitude(chart: ChartData, longitude: number): number {
   return planetLongitude(chart, SIGN_LORDS[sign]);
 }
 
+/** House `n` as JHora takes it: the Lagna longitude + (n-1)*30, with the lord of that sign. */
+function housePoint(chart: ChartData, n: number): SahamPoints {
+  const asc = ascLongitude(chart);
+  const point = normalizeDegree(asc + (n - 1) * 30);
+  const sign = ZODIAC_SIGNS[Math.floor(point / 30)]!;
+  return { plus: point, minus: planetLongitude(chart, SIGN_LORDS[sign]), add: asc };
+}
+
 export const SAHAM_RULES = {
   vivaha: {
     name: 'Vivaha (Marriage)',
@@ -127,24 +154,26 @@ export const SAHAM_RULES = {
   },
   vidya: {
     name: 'Vidya (Education)',
-    points: ruleOf('Mercury', 'Moon', ascLongitude),
+    points: ruleOf('Sun', 'Moon', ascLongitude),
     nightSwap: true,
     plus30: true,
   },
   rajya: {
     name: 'Rajya (Career/Authority)',
-    points: ruleOf('Sun', 'Moon', ascLongitude),
+    points: ruleOf('Saturn', 'Sun', ascLongitude),
     nightSwap: true,
     plus30: true,
   },
-  vitta: {
-    name: 'Vitta (Wealth)',
-    points: ruleOf('Jupiter', 'Sun', ascLongitude),
-    nightSwap: true,
+  // Artha (money): the 2nd house point - the 2nd lord + the Lagna, the same by day and night.
+  // The 2nd house point is the Lagna longitude + 30 (JHora's equal-house point, not the sign start).
+  artha: {
+    name: 'Artha (Wealth)',
+    points: (chart) => housePoint(chart, 2),
+    nightSwap: false,
     plus30: true,
   },
   // Karyasiddhi (success in undertakings): Saturn - Sun + the lord of the Sun's sign by day,
-  // Saturn - Moon + the lord of the Moon's sign by night. Unverified against JHora.
+  // Saturn - Moon + the lord of the Moon's sign by night (as PyJHora has it).
   karyasiddhi: {
     name: 'Karyasiddhi (Success)',
     points: (chart, isDay) => {
@@ -158,24 +187,15 @@ export const SAHAM_RULES = {
     nightSwap: false,
     plus30: true,
   },
-  // Pardesh (foreign travel and settling abroad): the 9th cusp - the 9th lord + the Lagna, the
-  // same by day and night. Unverified against JHora.
+  // Pardesh (foreign travel and settling abroad): the 9th house point - the 9th lord + the
+  // Lagna, the same by day and night.
   pardesh: {
     name: 'Pardesh (Foreign travel)',
-    points: (chart) => {
-      // Whole-sign fallback when a chart carries no house list.
-      const ninthSign = (chart.ascendant.signIndex + 8) % 12;
-      const ninth = chart.houses?.[8];
-      return {
-        plus: ninth?.cusp ?? ninthSign * 30,
-        minus: planetLongitude(chart, ninth?.lord ?? SIGN_LORDS[ZODIAC_SIGNS[ninthSign]!]),
-        add: ascLongitude(chart),
-      };
-    },
+    points: (chart) => housePoint(chart, 9),
     nightSwap: false,
     plus30: true,
   },
-  // Putra (children): Jupiter - Moon + the Lagna, swapped at night. Unverified against JHora.
+  // Putra (children): Jupiter - Moon + the Lagna, swapped at night (as PyJHora has it).
   putra: {
     name: 'Putra (Children)',
     points: ruleOf('Jupiter', 'Moon', ascLongitude),
@@ -193,7 +213,7 @@ export function sahamLongitude(rule: SahamRule, chart: ChartData, isDay: boolean
   if (!isDay && rule.nightSwap) [plus, minus] = [minus, plus];
 
   let longitude = normalizeDegree(plus - minus + add);
-  if (rule.plus30 && !isBetweenZodiacally(minus, plus, add)) {
+  if (rule.plus30 && !isBetweenBySign(plus, minus, add)) {
     longitude = normalizeDegree(longitude + 30);
   }
   return longitude;
@@ -212,17 +232,17 @@ export const vivahaSaham = (chart: ChartData, isDayReturn = true): SahamResult =
 export const punyaSaham = (chart: ChartData, isDayReturn = true): SahamResult =>
   build('punya', chart, isDayReturn);
 
-/** Vidya Saham (Education) — Asc + Mercury - Moon. */
+/** Vidya Saham (Education) — Sun - Moon + Asc. */
 export const vidyaSaham = (chart: ChartData, isDayReturn = true): SahamResult =>
   build('vidya', chart, isDayReturn);
 
-/** Rajya Saham (Career/Authority) — Asc + Sun - Moon. */
+/** Rajya Saham (Career/Authority) — Saturn - Sun + Asc. */
 export const rajyaSaham = (chart: ChartData, isDayReturn = true): SahamResult =>
   build('rajya', chart, isDayReturn);
 
-/** Vitta Saham (Wealth) — Asc + Jupiter - Sun. */
-export const vittaSaham = (chart: ChartData, isDayReturn = true): SahamResult =>
-  build('vitta', chart, isDayReturn);
+/** Artha Saham (Wealth) — 2nd house point - 2nd lord + Asc (replaced Vitta, which JHora does not have). */
+export const arthaSaham = (chart: ChartData, isDayReturn = true): SahamResult =>
+  build('artha', chart, isDayReturn);
 
 export const karyasiddhiSaham = (chart: ChartData, isDayReturn = true): SahamResult =>
   build('karyasiddhi', chart, isDayReturn);
