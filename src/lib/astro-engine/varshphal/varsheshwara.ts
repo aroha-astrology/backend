@@ -8,6 +8,11 @@
 // (Tajika aspects); the rules are in tajika.ts. This module used to rank them by Shadbala
 // and to read aspects the Parashari way, neither of which the text does.
 //
+// DELIBERATE DIVERGENCE (2026-11-06): PyJHora 4.8.7, a JHora port, shortlists the candidates by
+// a benefic aspect on the Lagna, then a malefic one, then Panchavargi above a threshold. That
+// code cites no source; the rule below follows the book edition recorded above and is kept.
+// Not checked against real JHora output.
+//
 // The Tri-Rashi table below is verse 60 and was checked against it (2026-10-11): by day
 // Aries to Cancer have the Sun, Venus, Saturn, Venus; by night Jupiter, the Moon, Mercury,
 // Mars; Leo to Scorpio take the other time's planets; Sagittarius to Pisces always Saturn,

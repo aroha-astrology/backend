@@ -12,8 +12,14 @@
 // starts with the lord of the birth nakshatra, and each later year moves on one lord. It does
 // NOT come from the Varsha Moon.
 //
-// UNVERIFIED: whether JHora also starts the first period part-way (a balance) is not known
-// until the benchmark fixtures are recorded; this module starts every Varsha year on a whole
+// DELIBERATE DIVERGENCE from PyJHora 4.8.7 (a JHora port, read but not run, 2026-11-06): it uses
+// the tropical year, starts each list at (birth + age x year - a natal-Moon balance) instead
+// of at the solar return, so one year's list does not end where the next begins, and it picks
+// the start lord by using a planet id as a position in the reordered Mudda list, which looks
+// inconsistent. We keep the exact solar-return anchoring because the plan needs the seam to
+// be an exact equality. Web searches (2026-11-06) gave no classical rule for the start lord or
+// the balance. UNVERIFIED until real JHora output is recorded in
+// backend/test/fixtures/varshik/jhora.json; this module starts every Varsha year on a whole
 // period. No verse is cited because none was opened and checked.
 //
 // SEAM: the periods are placed with integer milliseconds from the two solar returns that bound
