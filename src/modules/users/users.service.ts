@@ -5,7 +5,7 @@ import { env } from '../../config/env.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { Errors } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
-import { requestKundliGeneration } from '../kundli/kundli.service.js';
+import { requestKundliGeneration, type KundliUpdateState } from '../kundli/kundli.service.js';
 import { deleteHouseInsightsForUser } from '../kundli/house-insight.repo.js';
 import { deleteGemstoneForUser } from '../gemstone/gemstone.repo.js';
 import { deleteRemedyInsightForUser } from '../astro/remedy-insight.repo.js';
@@ -138,6 +138,8 @@ export function toUserDto(
   } | null,
   /** The running gift questions, via `getActiveChatGift()` (pass/chat-gifts.repo.ts). */
   chatGift: ActiveChatGift | null = null,
+  /** The active profile's Kundli state, via `resolveKundliUpdate()` (kundli.service.ts). */
+  kundliUpdate: KundliUpdateState = { kundliOutdated: false, kundliUpdating: false },
 ): UserDto {
   return {
     id: row.id,
@@ -217,6 +219,8 @@ export function toUserDto(
     freeProfilesLeft: Math.max(0, FREE_PROFILE_SLOTS - row.freeProfilesUsed),
     purchasesBlocked: row.purchasesBlockedAt != null,
     chatGift,
+    kundliOutdated: kundliUpdate.kundliOutdated,
+    kundliUpdating: kundliUpdate.kundliUpdating,
     nextReportVote: row.nextReportVote,
     // When the free chat follow-up is next usable; null = usable now. See
     // lib/chat-follow-up.ts — the server re-checks atomically on the tap itself.

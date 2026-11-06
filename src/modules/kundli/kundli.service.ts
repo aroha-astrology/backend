@@ -611,6 +611,44 @@ export function isStaleGenerating(row: KundliRow): boolean {
   );
 }
 
+export interface KundliUpdateState {
+  /** A ready chart that an older calculation built; opening Kundli rebuilds it. */
+  kundliOutdated: boolean;
+  /** That old chart is being rebuilt right now. */
+  kundliUpdating: boolean;
+}
+
+/**
+ * Whether a saved chart still needs the current calculation (audit Sprint 16). A chart without a
+ * recorded version predates versioning, so it counts as old too. A first chart that is still being
+ * built has no version yet and is not an "update"; a run that crashed long ago is not shown either.
+ */
+export function kundliUpdateState(
+  row: Pick<KundliRow, 'status' | 'calculationVersion' | 'startedAt'> | undefined,
+): KundliUpdateState {
+  const none = { kundliOutdated: false, kundliUpdating: false };
+  if (!row) return none;
+  const old = row.calculationVersion !== CALCULATION_VERSION;
+  if (row.status === 'ready') return { kundliOutdated: old, kundliUpdating: false };
+  if (row.status === 'generating' && row.calculationVersion !== null && old) {
+    return { kundliOutdated: false, kundliUpdating: !isStaleGenerating(row as KundliRow) };
+  }
+  return none;
+}
+
+/** The flag for the active profile's chart, read for /me. A failed lookup reports "nothing to update". */
+export async function resolveKundliUpdate(
+  userId: string,
+  birthProfileId: string | null,
+): Promise<KundliUpdateState> {
+  try {
+    return kundliUpdateState(await findKundliByUserId(userId, birthProfileId));
+  } catch (err) {
+    logger.warn({ err, userId }, 'kundli update state lookup failed');
+    return { kundliOutdated: false, kundliUpdating: false };
+  }
+}
+
 export async function getKundliForUser(
   userId: string,
   birthProfileId: string | null,

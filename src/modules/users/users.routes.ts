@@ -3,6 +3,7 @@ import { requireUser } from '../../middleware/auth.js';
 import { resolveActiveProfileContext } from '../birth-profiles/profile-context.js';
 import { isFeatureOn, resolveFeaturesForUser } from '../features/features.service.js';
 import { unlockAllHouses, unlockHouseWithOffer } from '../kundli/house-offer.service.js';
+import { resolveKundliUpdate } from '../kundli/kundli.service.js';
 import { hasGivenFeedback } from '../feedback/feedback.repo.js';
 import {
   ensureReferralCode,
@@ -209,12 +210,9 @@ const claimCampaignBonusRoute = createRoute({
           schema: z.object({
             claimed: z.boolean(),
             walletBalancePaise: z.number().int(),
-            expiresAt: z
-              .string()
-              .nullable()
-              .openapi({
-                description: 'When this bonus itself expires and gets clawed back, if ever.',
-              }),
+            expiresAt: z.string().nullable().openapi({
+              description: 'When this bonus itself expires and gets clawed back, if ever.',
+            }),
           }),
         },
       },
@@ -320,6 +318,7 @@ usersRouter.openapi(getMeRoute, async (c) => {
   const claimedCampaigns = await getClaimedCampaignKeys(user.id, CLAIM_CAMPAIGN_KEYS);
   const activeClaimableCampaign = await resolveActiveClaimableCampaign(user, claimedCampaigns);
   const chatGift = await getActiveChatGift(user.id).catch(() => null);
+  const kundliUpdate = await resolveKundliUpdate(user.id, profile.birthProfileId);
   return c.json(
     toUserDto(
       user,
@@ -329,6 +328,7 @@ usersRouter.openapi(getMeRoute, async (c) => {
       claimedCampaigns,
       activeClaimableCampaign,
       chatGift,
+      kundliUpdate,
     ),
     200,
   );
@@ -347,6 +347,7 @@ usersRouter.openapi(patchMeRoute, async (c) => {
   const claimedCampaigns = await getClaimedCampaignKeys(next.id, CLAIM_CAMPAIGN_KEYS);
   const activeClaimableCampaign = await resolveActiveClaimableCampaign(next, claimedCampaigns);
   const chatGift = await getActiveChatGift(next.id).catch(() => null);
+  const kundliUpdate = await resolveKundliUpdate(next.id, profile.birthProfileId);
   return c.json(
     toUserDto(
       next,
@@ -356,6 +357,7 @@ usersRouter.openapi(patchMeRoute, async (c) => {
       claimedCampaigns,
       activeClaimableCampaign,
       chatGift,
+      kundliUpdate,
     ),
     200,
   );

@@ -280,10 +280,18 @@ export const UserSchema = z
     freeProfilesLeft: z
       .number()
       .int()
-      .describe('Free extra-profile slots still open (counts only while the money.freeProfiles switch is on)'),
+      .describe(
+        'Free extra-profile slots still open (counts only while the money.freeProfiles switch is on)',
+      ),
     purchasesBlocked: z
       .boolean()
       .describe('True after repeated Google Play refunds: top-ups, packs and the Pass are refused'),
+    kundliOutdated: z
+      .boolean()
+      .describe(
+        'True when the active profile has a ready Kundli built by an older calculation; opening Kundli rebuilds it',
+      ),
+    kundliUpdating: z.boolean().describe('True while that older Kundli is being rebuilt right now'),
     chatGift: z
       .object({
         campaign: z.string(),
