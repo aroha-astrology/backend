@@ -1734,6 +1734,21 @@ function basisOf(reportKey: string): { basis?: NonNullable<ReturnType<typeof rep
   return basis ? { basis } : {};
 }
 
+/** Varshik Rashifal 2027 is written in 5 checkpointed groups (lib/llm/reports/varshik-2027.ts). */
+const VARSHIK_GROUPS = 5;
+
+/** The "generating" answer: which report it is and, for Varshik, how many groups are already written. */
+function generatingDto(row: ReportRow): ReportDto {
+  const dto: ReportDto = { status: 'generating', reportKey: row.reportKey };
+  if (row.reportKey === 'varshik_rashifal_2027') {
+    const groups = (row.content as { sectionGroups?: unknown[] } | null)?.sectionGroups;
+    const done = row.status === 'queued' || !Array.isArray(groups) ? 0 : Math.min(groups.length, VARSHIK_GROUPS - 1);
+    // Never show 5 of 5 while still generating: the last group is saved only with the finished report.
+    return { ...dto, progress: { done, total: VARSHIK_GROUPS } };
+  }
+  return dto;
+}
+
 export async function getReportForUser(
   id: string,
   userId: string,
@@ -1746,7 +1761,7 @@ export async function getReportForUser(
   // 'queued' included: a bought-but-not-yet-started row is a 202-poll for the client,
   // exactly like one mid-generation. Also keeps this ahead of the ready/failed branches
   // so a queued row never falls through to the content path with null content.
-  if (row.status === 'queued' || row.status === 'generating') return { status: 'generating' };
+  if (row.status === 'queued' || row.status === 'generating') return generatingDto(row);
   // Keep the raw provider error in the DB column for ops/debugging, but never
   // echo it verbatim to the client — it can contain API key fragments or
   // internal stack details. The refund (if any) is handled by the background

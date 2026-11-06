@@ -179,6 +179,10 @@ export const ReportGeneratingSchema = z
     status: z.literal('generating'),
     /** true while an old report is being rebuilt free with the corrected chart */
     refreshing: z.boolean().optional(),
+    /** Which report is being written, so the waiting screen can match it. */
+    reportKey: z.string().optional(),
+    /** Real progress for a report written in checkpointed groups: groups finished out of all of them. */
+    progress: z.object({ done: z.number().int().min(0), total: z.number().int().min(1) }).optional(),
   })
   .openapi('ReportGenerating');
 

@@ -1977,8 +1977,30 @@ describe('getReportForUser', () => {
   it('returns {status: generating} without touching chart/generator lookups', async () => {
     state.findReportById.mockResolvedValue(makeReportRow({ status: 'generating' }));
     const dto = await getReportForUser('report-1', 'user-1', 'en');
-    expect(dto).toEqual({ status: 'generating' });
+    expect(dto).toEqual({ status: 'generating', reportKey: 'marriage' });
     expect(state.findKundliByUserId).not.toHaveBeenCalled();
+  });
+
+  it('Varshik: a queued row reports 0 of 5 groups written', async () => {
+    state.findReportById.mockResolvedValue(makeReportRow({ reportKey: 'varshik_rashifal_2027', status: 'queued' }));
+    expect(await getReportForUser('report-1', 'user-1', 'en')).toEqual({
+      status: 'generating',
+      reportKey: 'varshik_rashifal_2027',
+      progress: { done: 0, total: 5 },
+    });
+  });
+
+  it('Varshik: reports the checkpointed groups, and never 5 of 5 while it is still generating', async () => {
+    const groups = (n: number) => ({ sectionGroups: Array.from({ length: n }, () => [{ heading: 'h', paragraphs: ['p'] }]) });
+    state.findReportById.mockResolvedValue(makeReportRow({ reportKey: 'varshik_rashifal_2027', status: 'generating', content: groups(2) }));
+    expect(await getReportForUser('report-1', 'user-1', 'en')).toMatchObject({ progress: { done: 2, total: 5 } });
+    state.findReportById.mockResolvedValue(makeReportRow({ reportKey: 'varshik_rashifal_2027', status: 'generating', content: groups(5) }));
+    expect(await getReportForUser('report-1', 'user-1', 'en')).toMatchObject({ progress: { done: 4, total: 5 } });
+  });
+
+  it('other reports carry no progress', async () => {
+    state.findReportById.mockResolvedValue(makeReportRow({ reportKey: 'kp_annual', status: 'generating' }));
+    expect(await getReportForUser('report-1', 'user-1', 'en')).not.toHaveProperty('progress');
   });
 
   it('returns {status: failed, error} for a failed row', async () => {
