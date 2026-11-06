@@ -105,7 +105,7 @@ export async function computeSolarReturn(
     exactAt.getUTCHours(),
     // Seconds ride along as a fraction of the minute; dropping them moved the
     // annual Lagna by up to a quarter of a degree.
-    exactAt.getUTCMinutes() + exactAt.getUTCSeconds() / 60,
+    exactAt.getUTCMinutes() + (exactAt.getUTCSeconds() + exactAt.getUTCMilliseconds() / 1000) / 60,
     0, // exactAt is already UT
     latitude,
     longitude,

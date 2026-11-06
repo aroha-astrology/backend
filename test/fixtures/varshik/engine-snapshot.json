@@ -1,0 +1,1036 @@
+{
+ "source": "ENGINE SNAPSHOT, NOT JHora. Rebuild with UPDATE_VARSHIK_SNAPSHOT=1 and read the diff.",
+ "births": {
+  "b01": [
+   {
+    "targetYear": 2026,
+    "startMs": 1768199105941,
+    "endMs": 1799756773668,
+    "isDayReturn": true,
+    "varshaLagna": 357.260985,
+    "yearLord": "Jupiter",
+    "sahams": {
+     "Vivaha": 293.723634,
+     "Punya": 284.897813,
+     "Vidya": 93.808269,
+     "Rajya": 99.624158,
+     "Vitta": 175.063106,
+     "Karyasiddhi": 180.493681,
+     "Pardesh": 300.124016,
+     "Putra": 247.426279
+    },
+    "muddaLords": [
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu"
+    ],
+    "yogas": [
+     "ithasala:Moon+Mercury",
+     "radda:Moon+Mercury",
+     "ithasala:Moon+Sun",
+     "ithasala:Moon+Jupiter",
+     "radda:Moon+Jupiter",
+     "ithasala:Mercury+Sun",
+     "radda:Mercury+Sun",
+     "ithasala:Mercury+Mars",
+     "radda:Mercury+Mars",
+     "ithasala:Mercury+Jupiter",
+     "radda:Mercury+Jupiter",
+     "ishrafa:Venus+Sun",
+     "ishrafa:Venus+Mars",
+     "ishrafa:Venus+Jupiter",
+     "ishrafa:Sun+Mars",
+     "ishrafa:Sun+Jupiter",
+     "ishrafa:Mars+Jupiter",
+     "kamboola:Mercury+Sun+Moon",
+     "kamboola:Mercury+Mars+Moon",
+     "kamboola:Mercury+Jupiter+Moon",
+     "nakta:Sun+Mars+Mercury",
+     "nakta:Sun+Jupiter+Moon",
+     "nakta:Sun+Jupiter+Mercury",
+     "nakta:Mars+Jupiter+Mercury"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1799756773668,
+    "endMs": 1831314997139,
+    "isDayReturn": false,
+    "varshaLagna": 91.415656,
+    "yearLord": "Saturn",
+    "sahams": {
+     "Vivaha": 244.858879,
+     "Punya": 40.412648,
+     "Vidya": 165.713248,
+     "Rajya": 172.418663,
+     "Vitta": 267.927121,
+     "Karyasiddhi": 10.452817,
+     "Pardesh": 330.105543,
+     "Putra": 318.930128
+    },
+    "muddaLords": [
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Venus",
+     "ithasala:Moon+Sun",
+     "ishrafa:Moon+Mars",
+     "ithasala:Mercury+Venus",
+     "radda:Mercury+Venus",
+     "ithasala:Venus+Mars",
+     "radda:Venus+Mars",
+     "ithasala:Venus+Saturn",
+     "nakta:Mars+Saturn+Venus"
+    ]
+   }
+  ],
+  "b02": [
+   {
+    "targetYear": 2026,
+    "startMs": 1798604598668,
+    "endMs": 1830162448523,
+    "isDayReturn": true,
+    "varshaLagna": 295.392059,
+    "yearLord": "Saturn",
+    "sahams": {
+     "Vivaha": 188.811527,
+     "Punya": 198.000916,
+     "Vidya": 61.311477,
+     "Rajya": 62.783203,
+     "Vitta": 163.471169,
+     "Karyasiddhi": 242.104846,
+     "Pardesh": 192.635976,
+     "Putra": 260.862313
+    },
+    "muddaLords": [
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus"
+    ],
+    "yogas": [
+     "ithasala:Moon+Mercury",
+     "radda:Moon+Mercury",
+     "ithasala:Moon+Sun",
+     "ithasala:Moon+Saturn",
+     "ithasala:Mercury+Sun",
+     "radda:Mercury+Sun",
+     "ithasala:Mercury+Mars",
+     "radda:Mercury+Mars",
+     "ithasala:Mercury+Saturn",
+     "radda:Mercury+Saturn",
+     "ithasala:Sun+Mars",
+     "ishrafa:Sun+Jupiter",
+     "ishrafa:Sun+Saturn",
+     "kamboola:Mercury+Sun+Moon",
+     "kamboola:Mercury+Mars+Moon",
+     "kamboola:Mercury+Saturn+Moon",
+     "kamboola:Sun+Mars+Moon",
+     "nakta:Sun+Saturn+Moon",
+     "nakta:Sun+Saturn+Mercury",
+     "nakta:Mars+Saturn+Mercury"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1830162448523,
+    "endMs": 1861720205601,
+    "isDayReturn": true,
+    "varshaLagna": 43.789805,
+    "yearLord": "Saturn",
+    "sahams": {
+     "Vivaha": 335.822964,
+     "Punya": 102.455536,
+     "Vidya": 25.733231,
+     "Rajya": 15.124074,
+     "Vitta": 302.554557,
+     "Karyasiddhi": 285.568038,
+     "Pardesh": 316.986519,
+     "Putra": 273.888826
+    },
+    "muddaLords": [
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun"
+    ],
+    "yogas": [
+     "ithasala:Moon+Venus",
+     "ishrafa:Moon+Jupiter",
+     "ishrafa:Mercury+Sun",
+     "ithasala:Mercury+Saturn",
+     "radda:Mercury+Saturn",
+     "ithasala:Venus+Saturn",
+     "ishrafa:Sun+Jupiter",
+     "ithasala:Mars+Jupiter",
+     "kamboola:Venus+Saturn+Moon",
+     "yamaya:Mercury+Venus+Saturn"
+    ]
+   }
+  ],
+  "b03": [
+   {
+    "targetYear": 2026,
+    "startMs": 1773556805156,
+    "endMs": 1805114123244,
+    "isDayReturn": true,
+    "varshaLagna": 76.289256,
+    "yearLord": "Jupiter",
+    "sahams": {
+     "Vivaha": 113.795617,
+     "Punya": 29.689654,
+     "Vidya": 138.275629,
+     "Rajya": 152.888858,
+     "Vitta": 186.717542,
+     "Karyasiddhi": 119.662625,
+     "Pardesh": 37.054917,
+     "Putra": 233.317144
+    },
+    "muddaLords": [
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun"
+    ],
+    "yogas": [
+     "ithasala:Moon+Venus",
+     "ishrafa:Moon+Sun",
+     "ishrafa:Moon+Saturn",
+     "ishrafa:Mercury+Mars",
+     "ithasala:Mercury+Jupiter",
+     "radda:Mercury+Jupiter",
+     "ithasala:Venus+Jupiter",
+     "ishrafa:Venus+Saturn",
+     "ithasala:Sun+Saturn",
+     "radda:Sun+Saturn",
+     "ithasala:Mars+Jupiter",
+     "radda:Mars+Jupiter",
+     "kamboola:Venus+Jupiter+Moon",
+     "yamaya:Mercury+Venus+Jupiter",
+     "yamaya:Mercury+Mars+Jupiter",
+     "yamaya:Venus+Mars+Jupiter"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1805114123244,
+    "endMs": 1836672547176,
+    "isDayReturn": false,
+    "varshaLagna": 155.84682,
+    "yearLord": "Saturn",
+    "sahams": {
+     "Vivaha": 243.623162,
+     "Punya": 67.929119,
+     "Vidya": 301.315867,
+     "Rajya": 273.764521,
+     "Vitta": 12.289552,
+     "Karyasiddhi": 224.919637,
+     "Pardesh": 283.087673,
+     "Putra": 100.207254
+    },
+    "muddaLords": [
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Venus",
+     "ithasala:Moon+Mars",
+     "radda:Moon+Mars",
+     "ishrafa:Moon+Jupiter",
+     "ishrafa:Moon+Saturn",
+     "ithasala:Venus+Mars",
+     "radda:Venus+Mars",
+     "ithasala:Venus+Jupiter",
+     "radda:Venus+Jupiter",
+     "ishrafa:Venus+Saturn",
+     "ishrafa:Mars+Jupiter",
+     "ishrafa:Mars+Saturn",
+     "ishrafa:Jupiter+Saturn",
+     "kamboola:Venus+Mars+Moon",
+     "yamaya:Moon+Venus+Mars",
+     "nakta:Mars+Jupiter+Venus"
+    ]
+   }
+  ],
+  "b04": [
+   {
+    "targetYear": 2026,
+    "startMs": 1782146931912,
+    "endMs": 1813705021285,
+    "isDayReturn": false,
+    "varshaLagna": 304.136415,
+    "yearLord": "Jupiter",
+    "sahams": {
+     "Vivaha": 187.200615,
+     "Punya": 204.919364,
+     "Vidya": 50.261392,
+     "Rajya": 73.353466,
+     "Vitta": 277.020911,
+     "Karyasiddhi": 303.418727,
+     "Pardesh": 47.656911,
+     "Putra": 46.237963
+    },
+    "muddaLords": [
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun"
+    ],
+    "yogas": [
+     "ithasala:Moon+Venus",
+     "ishrafa:Moon+Sun",
+     "ithasala:Moon+Saturn",
+     "ithasala:Mercury+Mars",
+     "ithasala:Mercury+Jupiter",
+     "ithasala:Venus+Saturn",
+     "ithasala:Mars+Jupiter",
+     "kamboola:Venus+Saturn+Moon"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1813705021285,
+    "endMs": 1845263273452,
+    "isDayReturn": false,
+    "varshaLagna": 48.11017,
+    "yearLord": "Sun",
+    "sahams": {
+     "Vivaha": 26.485515,
+     "Punya": 185.197462,
+     "Vidya": 300.445191,
+     "Rajya": 301.022878,
+     "Vitta": 355.687228,
+     "Karyasiddhi": 73.512589,
+     "Pardesh": 316.369913,
+     "Putra": 248.599936
+    },
+    "muddaLords": [
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon"
+    ],
+    "yogas": [
+     "ithasala:Moon+Venus",
+     "ithasala:Moon+Jupiter",
+     "ishrafa:Mercury+Sun",
+     "ishrafa:Mercury+Saturn",
+     "ithasala:Venus+Mars",
+     "ithasala:Venus+Jupiter",
+     "ishrafa:Sun+Saturn",
+     "kamboola:Venus+Mars+Moon",
+     "kamboola:Venus+Jupiter+Moon",
+     "nakta:Mars+Jupiter+Venus"
+    ]
+   }
+  ],
+  "b05": [
+   {
+    "targetYear": 2026,
+    "startMs": 1786198661360,
+    "endMs": 1817756582545,
+    "isDayReturn": false,
+    "varshaLagna": 310.798908,
+    "yearLord": "Venus",
+    "sahams": {
+     "Vivaha": 143.606578,
+     "Punya": 37.513755,
+     "Vidya": 271.817916,
+     "Rajya": 254.08406,
+     "Vitta": 348.220417,
+     "Karyasiddhi": 92.833183,
+     "Pardesh": 3.230208,
+     "Putra": 261.505569
+    },
+    "muddaLords": [
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Sun",
+     "ishrafa:Moon+Saturn",
+     "ithasala:Mercury+Venus",
+     "radda:Mercury+Venus",
+     "ishrafa:Venus+Mars",
+     "ithasala:Venus+Jupiter",
+     "radda:Venus+Jupiter",
+     "ishrafa:Sun+Jupiter",
+     "ishrafa:Sun+Saturn",
+     "ithasala:Jupiter+Saturn",
+     "radda:Jupiter+Saturn"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1817756582545,
+    "endMs": 1849315148085,
+    "isDayReturn": false,
+    "varshaLagna": 52.890155,
+    "yearLord": "Saturn",
+    "sahams": {
+     "Vivaha": 335.567999,
+     "Punya": 327.144261,
+     "Vidya": 171.508755,
+     "Rajya": 168.636049,
+     "Vitta": 36.116334,
+     "Karyasiddhi": 307.01082,
+     "Pardesh": 319.259509,
+     "Putra": 151.862229
+    },
+    "muddaLords": [
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu"
+    ],
+    "yogas": [
+     "ithasala:Moon+Mercury",
+     "radda:Moon+Mercury",
+     "ithasala:Moon+Venus",
+     "radda:Moon+Venus",
+     "ithasala:Moon+Sun",
+     "ishrafa:Moon+Jupiter",
+     "ithasala:Mercury+Venus",
+     "radda:Mercury+Venus",
+     "ithasala:Mercury+Sun",
+     "radda:Mercury+Sun",
+     "ithasala:Mercury+Mars",
+     "radda:Mercury+Mars",
+     "ithasala:Venus+Sun",
+     "radda:Venus+Sun",
+     "ishrafa:Venus+Mars",
+     "ishrafa:Sun+Mars",
+     "ishrafa:Jupiter+Saturn",
+     "kamboola:Mercury+Venus+Moon",
+     "kamboola:Mercury+Sun+Moon",
+     "kamboola:Mercury+Mars+Moon",
+     "kamboola:Venus+Sun+Moon",
+     "nakta:Venus+Mars+Mercury",
+     "nakta:Sun+Mars+Mercury"
+    ]
+   }
+  ],
+  "b06": [
+   {
+    "targetYear": 2026,
+    "startMs": 1790803805464,
+    "endMs": 1822361988106,
+    "isDayReturn": false,
+    "varshaLagna": 118.588923,
+    "yearLord": "Moon",
+    "sahams": {
+     "Vivaha": 301.795139,
+     "Punya": 243.905551,
+     "Vidya": 0.467398,
+     "Rajya": 23.272294,
+     "Vitta": 166.752712,
+     "Karyasiddhi": 143.310032,
+     "Pardesh": 333.253386,
+     "Putra": 41.436084
+    },
+    "muddaLords": [
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun"
+    ],
+    "yogas": [
+     "ithasala:Moon+Sun",
+     "ishrafa:Moon+Mars",
+     "ithasala:Moon+Saturn",
+     "radda:Moon+Saturn",
+     "ithasala:Mercury+Mars",
+     "radda:Mercury+Mars",
+     "ishrafa:Venus+Mars",
+     "ishrafa:Sun+Mars",
+     "ithasala:Sun+Jupiter",
+     "ithasala:Sun+Saturn",
+     "radda:Sun+Saturn",
+     "ishrafa:Jupiter+Saturn",
+     "kamboola:Sun+Jupiter+Moon",
+     "kamboola:Sun+Saturn+Moon",
+     "nakta:Jupiter+Saturn+Sun"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1822361988106,
+    "endMs": 1853919987150,
+    "isDayReturn": true,
+    "varshaLagna": 200.147751,
+    "yearLord": "Saturn",
+    "sahams": {
+     "Vivaha": 45.710788,
+     "Punya": 244.117157,
+     "Vidya": 241.209535,
+     "Rajya": 186.178344,
+     "Vitta": 176.695047,
+     "Karyasiddhi": 26.501115,
+     "Pardesh": 71.617232,
+     "Putra": 162.72564
+    },
+    "muddaLords": [
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Venus",
+     "ishrafa:Mercury+Saturn",
+     "ishrafa:Mars+Jupiter"
+    ]
+   }
+  ],
+  "b07": [
+   {
+    "targetYear": 2026,
+    "startMs": 1794483457520,
+    "endMs": 1826041707956,
+    "isDayReturn": true,
+    "varshaLagna": 24.286806,
+    "yearLord": "Moon",
+    "sahams": {
+     "Vivaha": 218.554131,
+     "Punya": 89.816036,
+     "Vidya": 333.824171,
+     "Rajya": 348.757577,
+     "Vitta": 299.74619,
+     "Karyasiddhi": 347.218133,
+     "Pardesh": 172.967845,
+     "Putra": 264.21696
+    },
+    "muddaLords": [
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Jupiter",
+     "ithasala:Venus+Mars",
+     "radda:Venus+Mars",
+     "ithasala:Sun+Mars",
+     "radda:Sun+Mars",
+     "yamaya:Venus+Sun+Mars"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1826041707956,
+    "endMs": 1857599692029,
+    "isDayReturn": false,
+    "varshaLagna": 111.408707,
+    "yearLord": "Mercury",
+    "sahams": {
+     "Vivaha": 269.710802,
+     "Punya": 308.85544,
+     "Vidya": 320.146852,
+     "Rajya": 303.961974,
+     "Vitta": 199.27119,
+     "Karyasiddhi": 225.792974,
+     "Pardesh": 323.411613,
+     "Putra": 1.824458
+    },
+    "muddaLords": [
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu"
+    ],
+    "yogas": [
+     "ithasala:Moon+Mercury",
+     "ithasala:Venus+Mars",
+     "ithasala:Sun+Jupiter",
+     "radda:Sun+Jupiter",
+     "ithasala:Mars+Jupiter",
+     "ithasala:Mars+Saturn",
+     "radda:Mars+Saturn",
+     "yamaya:Sun+Mars+Jupiter",
+     "nakta:Jupiter+Saturn+Mars"
+    ]
+   }
+  ],
+  "b08": [
+   {
+    "targetYear": 2026,
+    "startMs": 1777985551778,
+    "endMs": 1809542982457,
+    "isDayReturn": true,
+    "varshaLagna": 193.690433,
+    "yearLord": "Saturn",
+    "sahams": {
+     "Vivaha": 287.811503,
+     "Punya": 55.571886,
+     "Vidya": 351.502908,
+     "Rajya": 1.80898,
+     "Vitta": 288.214449,
+     "Karyasiddhi": 350.218864,
+     "Pardesh": 273.185047,
+     "Putra": 66.332996
+    },
+    "muddaLords": [
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus"
+    ],
+    "yogas": [
+     "ithasala:Moon+Mercury",
+     "radda:Moon+Mercury",
+     "ithasala:Mercury+Sun",
+     "radda:Mercury+Sun",
+     "ithasala:Venus+Mars",
+     "ishrafa:Venus+Saturn",
+     "ithasala:Sun+Jupiter",
+     "ishrafa:Mars+Jupiter",
+     "kamboola:Mercury+Sun+Moon"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1809542982457,
+    "endMs": 1841101051775,
+    "isDayReturn": false,
+    "varshaLagna": 276.235854,
+    "yearLord": "Jupiter",
+    "sahams": {
+     "Vivaha": 308.426856,
+     "Punya": 314.995295,
+     "Vidya": 259.371027,
+     "Rajya": 267.476414,
+     "Vitta": 183.515531,
+     "Karyasiddhi": 107.553655,
+     "Pardesh": 67.319008,
+     "Putra": 174.75609
+    },
+    "muddaLords": [
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun"
+    ],
+    "yogas": [
+     "ithasala:Moon+Sun",
+     "radda:Moon+Sun",
+     "ishrafa:Moon+Mars",
+     "ishrafa:Mercury+Sun",
+     "ishrafa:Mercury+Jupiter",
+     "ishrafa:Venus+Jupiter",
+     "ithasala:Venus+Saturn",
+     "ithasala:Sun+Jupiter",
+     "ithasala:Jupiter+Saturn",
+     "kamboola:Sun+Jupiter+Moon",
+     "yamaya:Venus+Jupiter+Saturn"
+    ]
+   }
+  ],
+  "b09": [
+   {
+    "targetYear": 2026,
+    "startMs": 1784251730537,
+    "endMs": 1815809816129,
+    "isDayReturn": false,
+    "varshaLagna": 56.002125,
+    "yearLord": "Jupiter",
+    "sahams": {
+     "Vivaha": 302.566349,
+     "Punya": 19.723191,
+     "Vidya": 128.497517,
+     "Rajya": 122.28106,
+     "Vitta": 46.866021,
+     "Karyasiddhi": 344.155734,
+     "Pardesh": 335.567456,
+     "Putra": 113.144956
+    },
+    "muddaLords": [
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu"
+    ],
+    "yogas": [
+     "ithasala:Moon+Venus",
+     "ishrafa:Mercury+Saturn",
+     "ithasala:Venus+Mars",
+     "ithasala:Sun+Jupiter",
+     "radda:Sun+Jupiter",
+     "ithasala:Mars+Saturn",
+     "kamboola:Venus+Mars+Moon"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1815809816129,
+    "endMs": 1847368383446,
+    "isDayReturn": true,
+    "varshaLagna": 126.943934,
+    "yearLord": "Jupiter",
+    "sahams": {
+     "Vivaha": 236.989339,
+     "Punya": 292.347383,
+     "Vidya": 331.055406,
+     "Rajya": 351.540485,
+     "Vitta": 190.622531,
+     "Karyasiddhi": 168.562856,
+     "Pardesh": 359.999993,
+     "Putra": 25.219082
+    },
+    "muddaLords": [
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Mercury",
+     "ithasala:Moon+Venus",
+     "radda:Moon+Venus",
+     "ishrafa:Moon+Mars",
+     "ishrafa:Mercury+Mars",
+     "ishrafa:Mercury+Jupiter",
+     "ishrafa:Mercury+Saturn",
+     "ithasala:Sun+Mars",
+     "ithasala:Sun+Saturn",
+     "radda:Sun+Saturn",
+     "ishrafa:Jupiter+Saturn",
+     "nakta:Mars+Saturn+Sun"
+    ]
+   }
+  ],
+  "b10": [
+   {
+    "targetYear": 2026,
+    "startMs": 1771946150166,
+    "endMs": 1803504105174,
+    "isDayReturn": false,
+    "varshaLagna": 167.233335,
+    "yearLord": "Moon",
+    "sahams": {
+     "Vivaha": 210.671671,
+     "Punya": 75.691541,
+     "Vidya": 272.453537,
+     "Rajya": 288.775129,
+     "Vitta": 37.823406,
+     "Karyasiddhi": 257.187453,
+     "Pardesh": 263.691968,
+     "Putra": 129.3652
+    },
+    "muddaLords": [
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Sun",
+     "ishrafa:Moon+Saturn",
+     "ishrafa:Mercury+Venus",
+     "ishrafa:Mercury+Jupiter",
+     "ishrafa:Venus+Jupiter",
+     "ishrafa:Sun+Mars",
+     "ithasala:Sun+Jupiter",
+     "radda:Sun+Jupiter"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1803504105174,
+    "endMs": 1835062120569,
+    "isDayReturn": false,
+    "varshaLagna": 250.978071,
+    "yearLord": "Saturn",
+    "sahams": {
+     "Vivaha": 358.785884,
+     "Punya": 19.796654,
+     "Vidya": 164.716388,
+     "Rajya": 152.159487,
+     "Vitta": 86.768262,
+     "Karyasiddhi": 75.969406,
+     "Pardesh": 89.186248,
+     "Putra": 347.949679
+    },
+    "muddaLords": [
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Venus",
+     "ithasala:Moon+Sun",
+     "ithasala:Moon+Mars",
+     "radda:Moon+Mars",
+     "ishrafa:Mercury+Jupiter",
+     "ishrafa:Sun+Mars",
+     "ishrafa:Jupiter+Saturn",
+     "nakta:Sun+Mars+Moon"
+    ]
+   }
+  ],
+  "b11": [
+   {
+    "targetYear": 2026,
+    "startMs": 1772320883128,
+    "endMs": 1803878789744,
+    "isDayReturn": false,
+    "varshaLagna": 278.685768,
+    "yearLord": "Moon",
+    "sahams": {
+     "Vivaha": 317.225664,
+     "Punya": 130.319712,
+     "Vidya": 85.446199,
+     "Rajya": 97.051825,
+     "Vitta": 153.808409,
+     "Karyasiddhi": 337.491956,
+     "Pardesh": 130.930005,
+     "Putra": 332.174466
+    },
+    "muddaLords": [
+     "Saturn",
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Saturn",
+     "ithasala:Mercury+Venus",
+     "radda:Mercury+Venus",
+     "ishrafa:Mercury+Jupiter",
+     "ishrafa:Venus+Jupiter",
+     "ithasala:Sun+Jupiter",
+     "radda:Sun+Jupiter"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1803878789744,
+    "endMs": 1835436662909,
+    "isDayReturn": true,
+    "varshaLagna": 37.246881,
+    "yearLord": "Jupiter",
+    "sahams": {
+     "Vivaha": 324.092124,
+     "Punya": 318.353484,
+     "Vidya": 126.966104,
+     "Rajya": 146.140277,
+     "Vitta": 196.576908,
+     "Karyasiddhi": 21.565113,
+     "Pardesh": 318.389256,
+     "Putra": 275.470304
+    },
+    "muddaLords": [
+     "Mercury",
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Mercury",
+     "ishrafa:Moon+Sun",
+     "ishrafa:Moon+Jupiter",
+     "ishrafa:Moon+Saturn",
+     "ishrafa:Mercury+Jupiter",
+     "ishrafa:Jupiter+Saturn"
+    ]
+   }
+  ],
+  "b12": [
+   {
+    "targetYear": 2026,
+    "startMs": 1792108270229,
+    "endMs": 1823666747329,
+    "isDayReturn": false,
+    "varshaLagna": 34.403387,
+    "yearLord": "Moon",
+    "sahams": {
+     "Vivaha": 219.454702,
+     "Punya": 333.527811,
+     "Vidya": 100.630034,
+     "Rajya": 125.278962,
+     "Vitta": 124.943014,
+     "Karyasiddhi": 242.838286,
+     "Pardesh": 318.231295,
+     "Putra": 185.818589
+    },
+    "muddaLords": [
+     "Ketu",
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Sun",
+     "ishrafa:Moon+Jupiter",
+     "ishrafa:Mercury+Mars",
+     "ithasala:Mercury+Jupiter",
+     "ithasala:Venus+Mars",
+     "radda:Venus+Mars",
+     "ishrafa:Sun+Jupiter",
+     "ithasala:Mars+Saturn",
+     "radda:Mars+Saturn"
+    ]
+   },
+   {
+    "targetYear": 2027,
+    "startMs": 1823666747329,
+    "endMs": 1855224775908,
+    "isDayReturn": false,
+    "varshaLagna": 117.873757,
+    "yearLord": "Venus",
+    "sahams": {
+     "Vivaha": 312.377725,
+     "Punya": 289.723861,
+     "Vidya": 328.610694,
+     "Rajya": 336.023653,
+     "Vitta": 183.18229,
+     "Karyasiddhi": 209.698693,
+     "Pardesh": 334.777913,
+     "Putra": 11.332186
+    },
+    "muddaLords": [
+     "Venus",
+     "Sun",
+     "Moon",
+     "Mars",
+     "Rahu",
+     "Jupiter",
+     "Saturn",
+     "Mercury",
+     "Ketu"
+    ],
+    "yogas": [
+     "ishrafa:Moon+Mercury",
+     "ithasala:Moon+Venus",
+     "ishrafa:Moon+Saturn",
+     "ishrafa:Mercury+Saturn",
+     "ithasala:Venus+Jupiter",
+     "kamboola:Venus+Jupiter+Moon"
+    ]
+   }
+  ]
+ }
+}

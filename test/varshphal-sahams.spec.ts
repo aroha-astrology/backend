@@ -7,6 +7,9 @@ import {
   rajyaSaham,
   vittaSaham,
   computeAllSahams,
+  karyasiddhiSaham,
+  pardeshSaham,
+  putraSaham,
 } from '../src/lib/astro-engine/varshphal/sahams.js';
 import type { ChartData } from '@aroha-astrology/shared';
 
@@ -64,11 +67,11 @@ describe('vivahaSaham', () => {
 });
 
 describe('punyaSaham', () => {
-  it('day return: Moon - Sun + Asc', () => {
-    // 200 - 100 + 10 = 110
+  it('day return: Moon - Sun + Asc, +30 because Asc (10) is not between Sun (100) and Moon (200)', () => {
+    // 200 - 100 + 10 = 110, +30 = 140 (the +30 rule now applies to every Saham)
     const result = punyaSaham(FIXTURE_CHART, true);
-    expect(result.longitude).toBe(110);
-    expect(result.signIndex).toBe(3); // Cancer
+    expect(result.longitude).toBe(140);
+    expect(result.signIndex).toBe(4); // Leo
   });
 
   it('night return: Sun - Moon + Asc', () => {
@@ -99,17 +102,17 @@ describe('rajyaSaham', () => {
 
 describe('vittaSaham', () => {
   it('Asc + Jupiter - Sun', () => {
-    // 10 + 300 - 100 = 210
+    // 10 + 300 - 100 = 210, +30 because Asc (10) is not between Sun (100) and Jupiter (300) = 240
     const result = vittaSaham(FIXTURE_CHART);
-    expect(result.longitude).toBe(210);
-    expect(result.signIndex).toBe(7); // Scorpio
+    expect(result.longitude).toBe(240);
+    expect(result.signIndex).toBe(8); // Sagittarius
   });
 });
 
 describe('computeAllSahams', () => {
-  it('returns all 5 Sahams with valid house-from-Varsha-Asc (1-12) and a boolean benefic verdict', () => {
+  it('returns all 8 Sahams with valid house-from-Varsha-Asc (1-12) and a boolean benefic verdict', () => {
     const results = computeAllSahams(FIXTURE_CHART, true);
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(8);
     for (const r of results) {
       expect(r.houseFromVarshaAsc).toBeGreaterThanOrEqual(1);
       expect(r.houseFromVarshaAsc).toBeLessThanOrEqual(12);
@@ -124,5 +127,40 @@ describe('computeAllSahams', () => {
     const dayPunya = day.find((r) => r.name.startsWith('Punya'))!;
     const nightPunya = night.find((r) => r.name.startsWith('Punya'))!;
     expect(dayPunya.longitude).not.toBe(nightPunya.longitude);
+  });
+});
+
+describe('rules shared by every Saham (changed in the Varshik 2027 work)', () => {
+  it('a night return swaps the two points of the Sahams that swap', () => {
+    // Vitta at night: Sun - Jupiter + Asc = 100 - 300 + 10 = -190 -> 170. Asc (10) is between
+    // Jupiter (300) and Sun (100) going forward (arc 160, Asc at 70), so no +30.
+    expect(vittaSaham(FIXTURE_CHART, false).longitude).toBe(170);
+  });
+
+  it('Putra is Jupiter - Moon + Asc by day and swaps at night', () => {
+    // Day: 300 - 200 + 10 = 110; Asc (10) is not between Moon (200) and Jupiter (300) -> 140.
+    expect(putraSaham(FIXTURE_CHART, true).longitude).toBe(140);
+    // Night: 200 - 300 + 10 = -90 -> 270; Asc is between Jupiter (300) and Moon (200) -> no +30.
+    expect(putraSaham(FIXTURE_CHART, false).longitude).toBe(270);
+  });
+
+  it('Karyasiddhi uses the Sun by day and the Moon by night, and the lord of that sign', () => {
+    // Day: Sun at 100 is Cancer, ruled by the Moon (200). Saturn 250 - Sun 100 + 200 = 350;
+    // 200 is between Sun (100) and Saturn (250) -> no +30.
+    expect(karyasiddhiSaham(FIXTURE_CHART, true).longitude).toBe(350);
+    // Night: Moon at 200 is Libra, ruled by Venus (150). 250 - 200 + 150 = 200; 150 is not
+    // between Moon (200) and Saturn (250) -> +30 = 230.
+    expect(karyasiddhiSaham(FIXTURE_CHART, false).longitude).toBe(230);
+  });
+
+  it('Pardesh is the 9th cusp - the 9th lord + Asc, falling back to whole signs without a house list', () => {
+    // Asc sign 0 -> 9th sign is Sagittarius (240), ruled by Jupiter (300).
+    // 240 - 300 + 10 = -50 -> 310; Asc (10) IS between the 9th lord (300) and the cusp (240) going forward -> no +30.
+    expect(pardeshSaham(FIXTURE_CHART, true).longitude).toBe(310);
+    expect(pardeshSaham(FIXTURE_CHART, false).longitude).toBe(310);
+  });
+
+  it('every Saham carries the lord of its own sign', () => {
+    for (const r of computeAllSahams(FIXTURE_CHART, true)) expect(r.lord.length).toBeGreaterThan(0);
   });
 });

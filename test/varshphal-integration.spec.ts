@@ -27,7 +27,7 @@ describe('computeVarshphal (end-to-end)', () => {
     expect(result.muntha.signIndex).toBeGreaterThanOrEqual(0);
     expect(result.muntha.signIndex).toBeLessThanOrEqual(11);
     expect(result.varsheshwara.candidates).toHaveLength(5);
-    expect(result.sahams).toHaveLength(5);
+    expect(result.sahams).toHaveLength(8);
 
     // Muntha must be exactly (age + natal Asc) mod 12.
     expect(result.muntha.signIndex).toBe((41 + 4) % 12);

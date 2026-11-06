@@ -1,0 +1,139 @@
+// =============================================================================
+// Mudda dasha — the Vimshottari order squeezed into one Varsha year
+// =============================================================================
+// The nine Vimshottari lords, in Vimshottari order, share ONE Varsha year in the same ratio
+// as their Vimshottari years (Ketu 7 ... Venus 20, 120 in all). The year here is the exact
+// span from one solar return to the next (about 365.256 days), not a constant 360 days.
+//
+// START LORD (classical, as the Varshik 2027 plan fixes it): the lord at index
+//   (birth-nakshatra number + completed years - 2) mod 9
+// of the Vimshottari order Ketu, Venus, Sun, ...; the nakshatra number runs 1 to 27 and the
+// completed years are the age the birthday makes. So the first birthday (1 completed year)
+// starts with the lord of the birth nakshatra, and each later year moves on one lord. It does
+// NOT come from the Varsha Moon.
+//
+// UNVERIFIED: whether JHora also starts the first period part-way (a balance) is not known
+// until the benchmark fixtures are recorded; this module starts every Varsha year on a whole
+// period. No verse is cited because none was opened and checked.
+//
+// SEAM: the periods are placed with integer milliseconds from the two solar returns that bound
+// the year, and the last period ends on exactly the next solar return, so the list for one
+// year ends on the very number the next year's list starts on.
+// =============================================================================
+
+export type MuddaPlanet =
+  | 'Ketu'
+  | 'Venus'
+  | 'Sun'
+  | 'Moon'
+  | 'Mars'
+  | 'Rahu'
+  | 'Jupiter'
+  | 'Saturn'
+  | 'Mercury';
+
+/** Vimshottari order with each lord's Vimshottari years. */
+export const MUDDA_ORDER: ReadonlyArray<{ planet: MuddaPlanet; years: number }> = [
+  { planet: 'Ketu', years: 7 },
+  { planet: 'Venus', years: 20 },
+  { planet: 'Sun', years: 6 },
+  { planet: 'Moon', years: 10 },
+  { planet: 'Mars', years: 7 },
+  { planet: 'Rahu', years: 18 },
+  { planet: 'Jupiter', years: 16 },
+  { planet: 'Saturn', years: 19 },
+  { planet: 'Mercury', years: 17 },
+];
+
+const TOTAL_YEARS = 120;
+
+export interface MuddaPeriod {
+  lord: MuddaPlanet;
+  startMs: number;
+  endMs: number;
+  /** The nine sub-periods, starting with the lord itself, in the same proportions. */
+  antardashas: Array<{ lord: MuddaPlanet; startMs: number; endMs: number }>;
+}
+
+/**
+ * Index into MUDDA_ORDER of the first lord of a Varsha year.
+ * @param nakshatraNumber the Moon's birth nakshatra, 1 (Ashwini) to 27 (Revati)
+ * @param completedYears age in whole years at the solar return that opens the year
+ */
+export function muddaStartIndex(nakshatraNumber: number, completedYears: number): number {
+  return (((nakshatraNumber + completedYears - 2) % 9) + 9) % 9;
+}
+
+/** `total` split by `weights`, as integer cut points from `startMs` that end exactly on `endMs`. */
+function cutPoints(startMs: number, endMs: number, weights: number[]): number[] {
+  const span = endMs - startMs;
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const cuts = [startMs];
+  let run = 0;
+  for (let i = 0; i < weights.length - 1; i++) {
+    run += weights[i]!;
+    cuts.push(startMs + Math.round((span * run) / sum));
+  }
+  cuts.push(endMs);
+  return cuts;
+}
+
+/**
+ * The nine Mudda periods (each with its nine sub-periods) of the Varsha year that begins at
+ * `solarReturnMs` and ends at `nextSolarReturnMs`.
+ */
+export function computeMuddaDasha(args: {
+  nakshatraNumber: number;
+  completedYears: number;
+  solarReturnMs: number;
+  nextSolarReturnMs: number;
+}): MuddaPeriod[] {
+  const { nakshatraNumber, completedYears, solarReturnMs, nextSolarReturnMs } = args;
+  if (!(nextSolarReturnMs > solarReturnMs)) {
+    throw new Error('Mudda dasha: the next solar return must be after this one');
+  }
+  if (!Number.isInteger(nakshatraNumber) || nakshatraNumber < 1 || nakshatraNumber > 27) {
+    throw new Error('Mudda dasha: nakshatraNumber must be an integer from 1 to 27');
+  }
+
+  const start = muddaStartIndex(nakshatraNumber, completedYears);
+  const sequence = Array.from({ length: 9 }, (_, i) => MUDDA_ORDER[(start + i) % 9]!);
+  const cuts = cutPoints(
+    solarReturnMs,
+    nextSolarReturnMs,
+    sequence.map((s) => s.years),
+  );
+
+  return sequence.map((main, i) => {
+    const from = cuts[i]!;
+    const to = cuts[i + 1]!;
+    // Sub-periods start with the lord itself and follow the same order.
+    const mainIdx = (start + i) % 9;
+    const subs = Array.from({ length: 9 }, (_, k) => MUDDA_ORDER[(mainIdx + k) % 9]!);
+    const subCuts = cutPoints(
+      from,
+      to,
+      subs.map((s) => s.years),
+    );
+    return {
+      lord: main.planet,
+      startMs: from,
+      endMs: to,
+      antardashas: subs.map((s, k) => ({
+        lord: s.planet,
+        startMs: subCuts[k]!,
+        endMs: subCuts[k + 1]!,
+      })),
+    };
+  });
+}
+
+/** The period (and sub-period) running at `atMs`, or null outside the year. */
+export function muddaAt(periods: MuddaPeriod[], atMs: number) {
+  const main = periods.find((p) => atMs >= p.startMs && atMs < p.endMs);
+  if (!main) return null;
+  const sub = main.antardashas.find((a) => atMs >= a.startMs && atMs < a.endMs);
+  return { main, sub: sub ?? main.antardashas[main.antardashas.length - 1]! };
+}
+
+export { TOTAL_YEARS as MUDDA_TOTAL_YEARS };
