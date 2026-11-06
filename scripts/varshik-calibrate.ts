@@ -75,8 +75,8 @@ interface Synthetic {
   place: (typeof PLACES)[number];
 }
 
-function makeBirths(n: number): Synthetic[] {
-  const r = rng(20270101);
+function makeBirths(n: number, seed: number): Synthetic[] {
+  const r = rng(seed);
   const out: Synthetic[] = [];
   // A shuffled hour list and a shuffled month list, each cycled, so both are evenly covered.
   const shuffle = <T,>(xs: T[]) => xs.map((x) => [r(), x] as const).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
@@ -89,7 +89,7 @@ function makeBirths(n: number): Synthetic[] {
     const d = 1 + Math.floor(r() * dim);
     const hf = hours[i]!;
     out.push({
-      id: `c${String(i + 1).padStart(3, '0')}`,
+      id: `s${seed}-c${String(i + 1).padStart(3, '0')}`,
       y,
       mo,
       d,
@@ -124,7 +124,7 @@ async function buildContext(b: Synthetic): Promise<VarshikContext> {
   });
 }
 
-async function loadContexts(births: Synthetic[]): Promise<VarshikContext[]> {
+async function loadContexts(births: Synthetic[], cachePath: string | undefined): Promise<VarshikContext[]> {
   if (cachePath && fs.existsSync(cachePath)) {
     const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8')) as VarshikContext[];
     if (cached.length === births.length) return cached;
@@ -248,15 +248,21 @@ function report(st: Stats, label: string) {
 }
 
 async function main() {
-  const births = makeBirths(N);
-  const ids = births.map((b) => b.id);
-  const ctxs = await loadContexts(births);
+  // --seeds 20270101,777,4242 scores several independent sets of N charts together; each set has its own cache file.
+  const seeds = (opt('seeds') ?? opt('seed') ?? '20270101').split(',').map(Number);
+  const ids: string[] = [];
+  const ctxs: VarshikContext[] = [];
+  for (const seed of seeds) {
+    const births = makeBirths(N, seed);
+    ids.push(...births.map((b) => b.id));
+    ctxs.push(...(await loadContexts(births, cachePath ? `${cachePath}-${seed}.json` : undefined)));
+  }
   console.log(`${ctxs.length} synthetic charts, year 2027.`);
 
   if (fit) {
     let best = { base: W.base, scale: W.scale, err: Infinity };
-    for (let scale = 0.5; scale <= 3.01; scale += 0.1) {
-      for (let base = -0.2; base <= 0.81; base += 0.05) {
+    for (let scale = 0.4; scale <= 1.01; scale += 0.05) {
+      for (let base = -0.4; base <= 0.21; base += 0.05) {
         W.base = base;
         W.scale = scale;
         const err = mixError(evaluate(ctxs, ids));

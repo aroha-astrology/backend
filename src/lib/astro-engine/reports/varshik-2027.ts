@@ -359,6 +359,12 @@ function natalModelOf(ctx: VarshikContext): NatalModel {
   return { m, lordSignal: lordSig, lagnaPoint, lagnaLordLon, moonSign, relAvg };
 }
 
+/** The natal signal of each planet as a dasha lord (-1..+1): used to tell whether a dasha change helps or weighs. */
+export function natalLordSignals(ctx: VarshikContext): Record<string, number> {
+  const nat = natalModelOf(ctx);
+  return Object.fromEntries(SCORE_PLANETS.map((p) => [p, nat.lordSignal[p]!.signal]));
+}
+
 // -----------------------------------------------------------------------------
 // One day, one Varsha year
 // -----------------------------------------------------------------------------

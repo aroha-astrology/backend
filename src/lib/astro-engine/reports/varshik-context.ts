@@ -58,10 +58,17 @@ export interface VarshikContext {
   monthOfDay: number[];
   /** Natal Maha / Antar / Pratyantar lord over the year, as flat segments. */
   natalDasha: DashaSegment[];
+  /**
+   * Daily midday positions of the four slow planets from 18+ months before the year to the end of
+   * year + 2 (for relief timelines, which look back and ahead). Not used by the daily scorer.
+   */
+  slowSky: Array<{ atMs: number; lon: Partial<Record<Planet, number>> }>;
   sahamWindows: SahamWindow[];
 }
 
 const MS_PER_DAY = 86_400_000;
+/** About 24 months, so an 18-month look-back always has sky data behind it. */
+const SLOW_LOOKBACK_DAYS = 730;
 
 /** The instant 00:00 on a calendar date in `timezone`. */
 function zonedDateStartMs(
@@ -195,6 +202,22 @@ export async function buildVarshikContext(args: BuildVarshikArgs): Promise<Varsh
   for (const b of bhinna) bav[b.planet] = b.bindus;
 
   const moon = natal.planets.find((p) => p.planet === 'Moon')!;
+
+  // The look-back and look-ahead: from SLOW_LOOKBACK_DAYS before the year to the end of year + 2.
+  const slowFromMs = Date.UTC(year, 0, 1, 12) - SLOW_LOOKBACK_DAYS * MS_PER_DAY;
+  const slowToMs = Date.UTC(year + 2, 11, 31, 12);
+  const slowSky: VarshikContext['slowSky'] = [];
+  for (let t = slowFromMs; t <= slowToMs; t += MS_PER_DAY) {
+    const positions = await calculatePlanetPositions(jdFromDate(new Date(t)), ayanamsa);
+    const lon: Partial<Record<Planet, number>> = {};
+    for (const p of positions) {
+      if (p.planet === 'Saturn' || p.planet === 'Jupiter' || p.planet === 'Rahu' || p.planet === 'Ketu') {
+        lon[p.planet] = p.longitude;
+      }
+    }
+    slowSky.push({ atMs: t, lon });
+  }
+
   return {
     year,
     timezone: tz,
@@ -209,9 +232,10 @@ export async function buildVarshikContext(args: BuildVarshikArgs): Promise<Varsh
     natalDasha: natalDashaSegments(
       moon.longitude,
       inputs.birthDate.getTime(),
-      calendar.windowStartMs,
-      calendar.windowEndMs,
+      slowFromMs,
+      slowToMs,
     ),
+    slowSky,
     sahamWindows,
   };
 }

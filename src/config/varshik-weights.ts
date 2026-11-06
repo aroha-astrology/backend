@@ -72,10 +72,10 @@ export const CALIBRATION_TARGETS = {
 } as const;
 
 export const VARSHIK_WEIGHTS = {
-  /** Log-odds of a day with no signals (0 = a score of 50). Fitted on 100 synthetic charts, 2026-11-06. */
-  base: 0,
+  /** Log-odds of a day with no signals (0 = a score of 50). Fitted on 300 synthetic charts (3 seeds), 2026-11-06. */
+  base: -0.1,
   /** Multiplier on the summed component signals; the second population-level knob. */
-  scale: 0.6,
+  scale: 0.65,
 
   /** Houses (from the Lagna, whole sign) that carry each area. */
   areaHouses: {
@@ -376,13 +376,56 @@ export const VARSHIK_WEIGHTS = {
   } as Record<string, string[]>,
   mainDecisionBoost: 2,
 
+  /** Dosha activity by month: which planets make each dosha and what wakes it up. */
+  dosha: {
+    planetsOf: {
+      mangal: ['Mars'],
+      kaalSarp: ['Rahu', 'Ketu'],
+      pitra: ['Sun', 'Rahu'],
+      guruChandal: ['Jupiter', 'Rahu'],
+      grahan: ['Sun', 'Moon', 'Rahu', 'Ketu'],
+      kemadruma: ['Moon'],
+    } as Record<string, ScorePlanet[]>,
+    /** A slow planet standing in the sign of one of the dosha's natal planets wakes it up. */
+    transitTriggers: {
+      mangal: ['Mars', 'Saturn'],
+      kaalSarp: ['Rahu', 'Ketu', 'Saturn'],
+      pitra: ['Saturn', 'Rahu', 'Ketu'],
+      guruChandal: ['Jupiter', 'Rahu', 'Saturn'],
+      grahan: ['Rahu', 'Ketu'],
+      kemadruma: ['Saturn', 'Jupiter'],
+    } as Record<string, ScorePlanet[]>,
+    /** A trigger counts for a month when it holds on at least this share of its days. */
+    minDaysShare: 0.33,
+  },
+
+  /** answerWindow: the shortest stretch worth calling a window, and gaps that do not split one. */
+  answerWindow: { minRunDays: 7, mergeGapDays: 3 },
+
+  /** reliefTimeline: how far back it reads, how far ahead, and what counts as a real change. */
+  relief: {
+    lookbackMonths: 18,
+    /** Calendar year the look-ahead runs to (inclusive). */
+    aheadUntilYear: 2029,
+    /** A slow planet's move between houses (change in its house-table value) that counts. */
+    transitDelta: 0.6,
+    /** A natal Antar or Maha change (change in the lord's signal) that counts. */
+    dashaDelta: 0.25,
+    /** Hard events in the look-back (Sade Sati/Dhaiya days included as one) for "a hard stretch". */
+    hardStretchMinEvents: 2,
+  },
+
   /** Planet impact: the share of a planet's net log-odds that counts as "helping" or "weighing". */
   planetImpact: { neutralBand: 0.04 },
 } as const;
 
 /**
- * 'provisional' until the owner has seen the calibration tier mix and spread and said to lock;
- * the Sprint 1 engine is itself unconfirmed against JHora, so a formula change there means this
- * has to be re-run.
+ * LOCKED 2026-11-06 on the calibration of scripts/varshik-calibrate.ts: base and scale fitted on
+ * 300 synthetic charts (3 seeds) and confirmed on 200 more the fit never saw (cell mix 18/40/30/13,
+ * 2% of profiles all in one tier, median month range 26). The component weights above were not
+ * tuned. Locked means the calibration is done, not that the engine is verified: the Sprint 1
+ * engine is still unchecked against JHora, so if any Sprint 1 formula changes, re-run
+ * `tsx scripts/varshik-calibrate.ts --n 100 --seeds 20270101,777,4242 --cache <file> --fit`
+ * and update base and scale before shipping.
  */
-export const VARSHIK_WEIGHTS_STATUS: 'provisional' | 'locked' = 'provisional';
+export const VARSHIK_WEIGHTS_STATUS: 'provisional' | 'locked' = 'locked';
