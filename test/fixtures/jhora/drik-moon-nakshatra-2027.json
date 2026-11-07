@@ -1,0 +1,15 @@
+{
+  "source": "drikpanchang.com day panchang, New Delhi (geoname-id 1261481), read 2026-11-07. Times are IST as printed.",
+  "changes": [
+    { "at": "2027-01-14T23:18", "to": "Revati" },
+    { "at": "2027-02-10T03:40", "to": "UttaraBhadrapada" },
+    { "at": "2027-03-15T09:26", "to": "Mrigashira" },
+    { "at": "2027-04-21T04:28", "to": "Swati" },
+    { "at": "2027-06-30T21:01", "to": "Krittika" },
+    { "at": "2027-08-12T11:34", "to": "Moola" },
+    { "at": "2027-09-25T14:27", "to": "Pushya" },
+    { "at": "2027-11-09T03:13", "to": "PurvaBhadrapada" },
+    { "at": "2027-12-22T00:25", "to": "Chitra" }
+  ],
+  "note": "27 May 2027 page prints 'Dhanishtha upto Full Night' (no end time); consistent with the engine's 28 May 07:14."
+}
