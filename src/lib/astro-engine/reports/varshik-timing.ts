@@ -126,8 +126,12 @@ function saturnFromMoon(ctx: VarshikContext): number[] {
   return ctx.days.map((d) => (d.lon.Saturn === undefined ? 0 : houseFrom(moon, signOf(d.lon.Saturn))));
 }
 
-const SADE_PHASE: Record<number, string> = { 12: 'rising', 1: 'peak', 2: 'setting' };
-const DHAIYA_PHASE: Record<number, string> = { 4: '4th', 8: '8th' };
+const SADE_PHASE: Record<number, string> = {
+  12: 'Saturn in the 12th from your Moon (the rising phase)',
+  1: 'Saturn over your Moon sign (the peak phase)',
+  2: 'Saturn in the 2nd from your Moon (the setting phase)',
+};
+const DHAIYA_PHASE: Record<number, string> = { 4: 'Saturn in the 4th from your Moon', 8: 'Saturn in the 8th from your Moon' };
 
 /** All 8 doshas for every month of the year (one pass over the days). */
 export function doshaActivityAll(ctx: VarshikContext): DoshaMonth[] {
@@ -520,7 +524,7 @@ export function reliefTimeline(ctx: VarshikContext, asOfMs: number = ctx.dayStar
         const dip = !isNode && signOf(b) === (signOf(a) + 11) % 12;
         if (Math.abs(delta) >= R.transitDelta) {
           all.push({
-            atMs: day.atMs,
+            atMs: prev.atMs,
             kind: 'slow_planet_house',
             effect: delta > 0 ? 'relief' : 'hard',
             detail: `${p} ${dip ? 'steps back' : 'moves'} from your ${ORDINAL[hOld]} house to your ${ORDINAL[hNew]} house`,
@@ -536,12 +540,12 @@ export function reliefTimeline(ctx: VarshikContext, asOfMs: number = ctx.dayStar
           const is = [12, 1, 2].includes(mNew);
           const back = signOf(b) === (signOf(a) + 11) % 12;
           const tmp = back ? { temporary: true } : {};
-          if (!was && is) all.push({ atMs: day.atMs, kind: 'sade_sati_start', effect: 'hard', detail: 'Sade Sati begins (from your Moon sign)', planet: 'Saturn', ...tmp });
-          if (was && !is) all.push({ atMs: day.atMs, kind: 'sade_sati_end', effect: 'relief', detail: 'Sade Sati ends (from your Moon sign)', planet: 'Saturn', ...tmp });
+          if (!was && is) all.push({ atMs: prev.atMs, kind: 'sade_sati_start', effect: 'hard', detail: 'Sade Sati begins (from your Moon sign)', planet: 'Saturn', ...tmp });
+          if (was && !is) all.push({ atMs: prev.atMs, kind: 'sade_sati_end', effect: 'relief', detail: 'Sade Sati ends (from your Moon sign)', planet: 'Saturn', ...tmp });
           const dWas = [4, 8].includes(mOld);
           const dIs = [4, 8].includes(mNew);
-          if (!dWas && dIs) all.push({ atMs: day.atMs, kind: 'dhaiya_start', effect: 'hard', detail: `Dhaiya begins (Saturn in the ${ORDINAL[mNew]} from your Moon)`, planet: 'Saturn', ...tmp });
-          if (dWas && !dIs) all.push({ atMs: day.atMs, kind: 'dhaiya_end', effect: 'relief', detail: 'Dhaiya ends (from your Moon sign)', planet: 'Saturn', ...tmp });
+          if (!dWas && dIs) all.push({ atMs: prev.atMs, kind: 'dhaiya_start', effect: 'hard', detail: `Dhaiya begins (Saturn in the ${ORDINAL[mNew]} from your Moon)`, planet: 'Saturn', ...tmp });
+          if (dWas && !dIs) all.push({ atMs: prev.atMs, kind: 'dhaiya_end', effect: 'relief', detail: 'Dhaiya ends (from your Moon sign)', planet: 'Saturn', ...tmp });
         }
       }
     }

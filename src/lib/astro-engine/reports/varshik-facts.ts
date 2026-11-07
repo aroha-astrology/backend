@@ -775,8 +775,23 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
   }
 
   const rel = reliefTimeline(ctx);
+  // The relief timeline finds a sign change from daily samples; the sky calendar finds the same ingress from
+  // the ephemeris. They can sit a day apart, and the reader would see two dates for one event. Wherever the sky
+  // calendar has the ingress (all of 2027), the timeline adopts its date: one source of truth.
+  const SIGN_CHANGE_KINDS = new Set(['slow_planet_house', 'sade_sati_start', 'sade_sati_end', 'dhaiya_start', 'dhaiya_end']);
+  const alignToSky = (e: (typeof rel.ahead)[number], date: string): string => {
+    if (!e.planet || !SIGN_CHANGE_KINDS.has(e.kind)) return date;
+    const at = Date.parse(`${date}T00:00:00Z`);
+    let best: { date: string; gap: number } | null = null;
+    for (const s of skyEvents) {
+      if (s.kind !== 'ingress' || s.planet !== e.planet) continue;
+      const gap = Math.abs(Date.parse(`${s.date}T00:00:00Z`) - at);
+      if (gap <= 2 * 86_400_000 && (!best || gap < best.gap)) best = { date: s.date, gap };
+    }
+    return best ? best.date : date;
+  };
   const relEv = (e: (typeof rel.ahead)[number]) => ({
-    date: localDate(e.atMs, tz),
+    date: alignToSky(e, localDate(e.atMs, tz)),
     kind: e.kind,
     effect: e.effect,
     detail: e.detail,

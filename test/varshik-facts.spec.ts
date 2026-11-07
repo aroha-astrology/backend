@@ -147,3 +147,23 @@ describe('coverage', () => {
     expect(coverageProblems(facts, s)).toEqual([]);
   });
 });
+
+describe('one date for one event', () => {
+  it('a slow planet move on the relief timeline falls on the same day as its ingress in the sky calendar', () => {
+    const moves = [...facts.scores.relief.ahead, ...facts.scores.relief.lookback].filter(
+      (e) => e.kind === 'slow_planet_house' && e.date >= '2027-01-01' && e.date <= '2027-12-31',
+    );
+    expect(moves.length).toBeGreaterThan(0);
+    for (const e of moves) {
+      const planet = /^(Saturn|Jupiter|Rahu|Ketu)/.exec(e.detail)![1]!;
+      const sky = facts.skyEvents.filter((x) => x.kind === 'ingress' && x.planet === planet).map((x) => x.date);
+      expect(sky, `${e.detail} on ${e.date}`).toContain(e.date);
+    }
+  });
+
+  it('the Dhaiya and Sade Sati reasons say they are counted from the Moon, never a chart house', () => {
+    for (const d of facts.doshas.filter((x) => x.key === 'dhaiya' || x.key === 'sadeSati')) {
+      for (const why of Object.values(d.because).flat()) expect(why).toMatch(/from your Moon|over your Moon/);
+    }
+  });
+});
