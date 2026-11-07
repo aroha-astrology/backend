@@ -670,6 +670,12 @@ export interface VarshikAnswers {
   occupation?: string;
   children?: string;
   mainDecision?: string;
+  livingWith?: string;
+  home?: string;
+  moneyFocus?: string;
+  travelPlan?: string;
+  studyPlan?: string;
+  practice?: string;
 }
 
 export interface Cell {
@@ -811,6 +817,11 @@ function personaAllows(
 
 export function decisionTable(scores: VarshikScores, answers: VarshikAnswers = {}): DecisionRow[] {
   const mainKeys = new Set(W.mainDecisionKeys[answers.mainDecision ?? ''] ?? []);
+  const focusKeys = new Set<string>();
+  for (const [field, byValue] of Object.entries(W.focusKeys)) {
+    const v = answers[field as keyof VarshikAnswers];
+    for (const key of (v && byValue[v]) || []) focusKeys.add(key);
+  }
   const rows: DecisionRow[] = [];
   for (const d of W.decisions) {
     if (!personaAllows(d, answers)) continue;
@@ -833,7 +844,17 @@ export function decisionTable(scores: VarshikScores, answers: VarshikAnswers = {
       .map((x) => x.m)
       .sort((a, b) => a - b);
     const isMain = mainKeys.has(d.key);
-    rows.push({ key: d.key, months: monthly, best, hold, isMain, relevance: isMain ? W.mainDecisionBoost : 1 });
+    // A row the reader's other answers point at (a planned purchase, a trip, an exam, a money goal) rises in the
+    // list without being marked as the main decision.
+    const focused = focusKeys.has(d.key);
+    rows.push({
+      key: d.key,
+      months: monthly,
+      best,
+      hold,
+      isMain,
+      relevance: isMain ? W.mainDecisionBoost : focused ? W.focusBoost : 1,
+    });
   }
   return rows.sort((a, b) => b.relevance - a.relevance);
 }

@@ -13,9 +13,9 @@
 //      reader rectified passes.
 //   3. Birth place. Latitude, longitude and zone must all be there: the solar return is cast for
 //      the birth place and the calendar year is cut in its zone.
-//   4. The four answers. Only these keys and these values, because the scorer's decision table
-//      reads them as they are (config/varshik-weights.ts) and the persona check in
-//      verify-claims.ts reads the same values.
+//   4. The ten answers. ALL of them are required, with only these keys and values: the report is
+//      written from what the reader told us and never from a guess, and the scorer's decision table
+//      (config/varshik-weights.ts) and the persona check in verify-claims.ts read the same values.
 // =============================================================================
 
 import { getReportDef } from '../../config/reports.js';
@@ -26,7 +26,7 @@ import type { ProfileContext } from '../birth-profiles/profile-context.js';
 
 export const VARSHIK_KEY = 'varshik_rashifal_2027';
 
-/** The four pre-purchase questions and every value each may take (the frontend lists the same). */
+/** The ten pre-purchase questions and every value each may take (the frontend lists the same). */
 export const VARSHIK_ANSWER_VALUES = {
   relationship: ['single', 'partnered', 'married', 'previously_married'],
   occupation: ['student', 'working', 'business', 'seeking_work', 'homemaker', 'retired'],
@@ -41,6 +41,12 @@ export const VARSHIK_ANSWER_VALUES = {
     'study',
     'nothing_specific',
   ],
+  livingWith: ['alone', 'partner', 'parents', 'joint_family', 'friends_or_others'],
+  home: ['own', 'rented', 'family_home', 'buying_or_building'],
+  moneyFocus: ['saving', 'investing', 'clearing_debt', 'earning_more', 'big_purchase', 'nothing_specific'],
+  travelPlan: ['abroad', 'within_india', 'none'],
+  studyPlan: ['exam', 'course', 'none'],
+  practice: ['daily', 'sometimes', 'never'],
 } as const;
 
 export type VarshikAnswerKey = keyof typeof VARSHIK_ANSWER_VALUES;
@@ -76,8 +82,16 @@ export function varshikBirthDataProblem(
   return ok ? null : 'BIRTH_PLACE_MISSING';
 }
 
-/** Throws a 400 for an answer key or value outside the lists above. */
-export function assertVarshikAnswersValid(answers: Record<string, string> | undefined): void {
+/**
+ * Throws a 400 for an answer key or value outside the lists above. With `requireAll` (every purchase)
+ * it also throws for any of the ten answers that is missing: nothing about the reader's life is guessed.
+ */
+export function assertVarshikAnswersValid(answers: Record<string, string> | undefined, requireAll = false): void {
+  if (requireAll) {
+    for (const key of VARSHIK_ANSWER_KEYS) {
+      if (!answers?.[key]) throw Errors.badRequest(`Missing answer for ${VARSHIK_KEY}.${key}`);
+    }
+  }
   if (!answers) return;
   for (const [key, value] of Object.entries(answers)) {
     const allowed = (VARSHIK_ANSWER_VALUES as Record<string, readonly string[]>)[key];
@@ -101,5 +115,5 @@ export function assertVarshikPurchaseAllowed(args: {
   }
   const problem = varshikBirthDataProblem(args.profile, args.user);
   if (problem) throw Errors.badRequest(problem);
-  assertVarshikAnswersValid(args.answers);
+  assertVarshikAnswersValid(args.answers, true);
 }

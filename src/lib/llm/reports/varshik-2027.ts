@@ -180,6 +180,42 @@ const ANSWER_WORDS: Record<string, Record<string, string>> = {
     study: 'the biggest decision they face in 2027 is about study or an exam',
     nothing_specific: 'they have no single big decision in mind for 2027',
   },
+  livingWith: {
+    alone: 'they live alone',
+    partner: 'they live with their partner or spouse',
+    parents: 'they live with their parents',
+    joint_family: 'they live in a joint or extended family',
+    friends_or_others: 'they live with friends or others, not family',
+  },
+  home: {
+    own: 'they own the home they live in',
+    rented: 'they live in a rented home',
+    family_home: 'they live in the family home',
+    buying_or_building: 'they plan to buy or build a home',
+  },
+  moneyFocus: {
+    saving: 'their money focus for 2027 is saving',
+    investing: 'their money focus for 2027 is investing',
+    clearing_debt: 'their money focus for 2027 is clearing a loan or debt',
+    earning_more: 'their money focus for 2027 is earning more',
+    big_purchase: 'their money focus for 2027 is a big purchase',
+    nothing_specific: 'they have no particular money goal for 2027',
+  },
+  travelPlan: {
+    abroad: 'they plan to travel abroad in 2027',
+    within_india: 'they plan to travel within India in 2027',
+    none: 'they do not plan any long travel in 2027',
+  },
+  studyPlan: {
+    exam: 'they are preparing for an exam in 2027',
+    course: 'they are doing a course or studies in 2027',
+    none: 'they are not studying or preparing for an exam in 2027',
+  },
+  practice: {
+    daily: 'they keep a daily spiritual practice',
+    sometimes: 'they keep a spiritual practice now and then',
+    never: 'they do not keep a spiritual practice, so suggest only simple everyday remedies and never ritual duties',
+  },
 };
 
 const DRIVER_WORDS: Array<[RegExp, (m: RegExpExecArray) => string]> = [
@@ -235,7 +271,7 @@ export function renderReader(f: VarshikFacts): string {
     if (w) lines.push(`What the reader told us: ${w}.`);
   }
   if (Object.keys(f.reader.answers).length === 0) {
-    lines.push('The reader answered none of the four questions: assume nothing about their partner, children or work.');
+    lines.push('The reader answered none of the questions: assume nothing about their partner, children, home, work, money or plans.');
   }
   return lines.join('\n');
 }

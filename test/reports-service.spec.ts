@@ -434,7 +434,19 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     birthTimeSource: null,
     placeOfBirth: place,
   };
-  const answers = { relationship: 'single', occupation: 'student', children: 'none', mainDecision: 'study' };
+  // All ten answers are required: nothing about the reader's life is guessed.
+  const answers = {
+    relationship: 'single',
+    occupation: 'student',
+    children: 'none',
+    mainDecision: 'study',
+    livingWith: 'parents',
+    home: 'family_home',
+    moneyFocus: 'saving',
+    travelPlan: 'none',
+    studyPlan: 'exam',
+    practice: 'sometimes',
+  };
 
   it('is refused while the switch is off, before the wallet is touched', async () => {
     state.resolveFeaturesForUser.mockResolvedValue({ 'reports.varshik_rashifal_2027': { enabled: false } });
@@ -470,13 +482,28 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
   });
 
-  it('refuses an answer outside the four questions it asks', async () => {
+  it('refuses a purchase with any of the ten answers missing, before the wallet is touched', async () => {
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    for (const key of Object.keys(answers)) {
+      const { [key]: _left, ...rest } = answers as Record<string, string>;
+      await expect(
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: rest }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: `Missing answer for varshik_rashifal_2027.${key}` });
+    }
+    await expect(purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027' })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
+  it('refuses an answer outside the questions it asks', async () => {
     state.resolveProfileContext.mockResolvedValue(exactProfile);
     await expect(
-      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: { relationship: 'complicated' } }),
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: { ...answers, relationship: 'complicated' } }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     await expect(
-      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: { question1: 'hello' } }),
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: { ...answers, question1: 'hello' } }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
   });
@@ -495,7 +522,7 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     }
   });
 
-  it('charges Rs 599 and keeps the four answers on the row', async () => {
+  it('charges Rs 599 and keeps the ten answers on the row', async () => {
     state.resolveProfileContext.mockResolvedValue(exactProfile);
     state.claimReportRow.mockResolvedValue({ id: 'v-1', periodMonth: '2026-11-06', status: 'queued' });
     await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers });

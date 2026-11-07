@@ -375,6 +375,20 @@ export const VARSHIK_WEIGHTS = {
     study: ['study_exam'],
   } as Record<string, string[]>,
   mainDecisionBoost: 2,
+  /** Other answers that point at a decision row: they raise it in the list (focusBoost) without marking it the main one. */
+  focusKeys: {
+    home: { buying_or_building: ['move_home'], rented: [] },
+    travelPlan: { abroad: ['travel_abroad'] },
+    studyPlan: { exam: ['study_exam'], course: ['study_exam'] },
+    moneyFocus: {
+      saving: ['money_move'],
+      investing: ['money_move'],
+      clearing_debt: ['money_move'],
+      earning_more: ['money_move', 'new_work'],
+      big_purchase: ['money_move'],
+    },
+  } as Record<string, Record<string, string[]>>,
+  focusBoost: 1.5,
 
   /** Dosha activity by month: which planets make each dosha and what wakes it up. */
   dosha: {

@@ -81,4 +81,15 @@ describe('decision table follows the reader, never assumes', () => {
     expect(rows[0]!.key).toBe('money_move');
     expect(rows[0]!.isMain).toBe(true);
   });
+  it('lifts the rows the other answers point at, without calling them the main decision', () => {
+    const rows = decisionTable(fake, { mainDecision: 'job_change', travelPlan: 'abroad', home: 'buying_or_building' });
+    const order = rows.map((r) => r.key);
+    expect(order[0]).toBe('new_work');
+    expect(order.indexOf('travel_abroad')).toBeLessThan(order.indexOf('health_routine'));
+    expect(order.indexOf('move_home')).toBeLessThan(order.indexOf('health_routine'));
+    expect(rows.find((r) => r.key === 'travel_abroad')!.isMain).toBe(false);
+    // no such answer, no such lift
+    const plain = decisionTable(fake, { mainDecision: 'job_change' }).map((r) => r.key);
+    expect(plain.indexOf('travel_abroad')).toBeGreaterThanOrEqual(order.indexOf('travel_abroad'));
+  });
 });

@@ -22,6 +22,7 @@ import type { CalendarYearInputs } from '../../../lib/astro-engine/varshphal/cal
 import { buildVarshikContext } from '../../../lib/astro-engine/reports/varshik-context.js';
 import { computeVarshikScores, type VarshikAnswers } from '../../../lib/astro-engine/reports/varshik-2027.js';
 import {
+  ANSWER_KEYS,
   VarshikFactsSchema,
   buildVarshikFacts,
   preflightVarshikFacts,
@@ -46,10 +47,10 @@ import {
 
 const MAX_FACT_CHARS = 300;
 
-/** The four pre-purchase answers, as the scorer reads them. Unknown values are dropped. */
+/** The ten pre-purchase answers, as the scorer reads them. Unknown values are dropped. */
 function answersFrom(raw: Record<string, string> | null | undefined): VarshikAnswers {
   const out: VarshikAnswers = {};
-  for (const key of ['relationship', 'occupation', 'children', 'mainDecision'] as const) {
+  for (const key of ANSWER_KEYS) {
     const v = raw?.[key];
     if (typeof v === 'string' && v.length > 0) out[key] = v;
   }

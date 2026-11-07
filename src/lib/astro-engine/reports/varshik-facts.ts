@@ -145,7 +145,18 @@ const windowZ = z.object({
   tier: tierZ,
 });
 
-export const ANSWER_KEYS = ['relationship', 'occupation', 'children', 'mainDecision'] as const;
+export const ANSWER_KEYS = [
+  'relationship',
+  'occupation',
+  'children',
+  'mainDecision',
+  'livingWith',
+  'home',
+  'moneyFocus',
+  'travelPlan',
+  'studyPlan',
+  'practice',
+] as const;
 
 const planetRowZ = z.object({
   planet: z.string().min(2),
@@ -289,6 +300,12 @@ export const VarshikFactsSchema = z.object({
       occupation: z.string().optional(),
       children: z.string().optional(),
       mainDecision: z.string().optional(),
+      livingWith: z.string().optional(),
+      home: z.string().optional(),
+      moneyFocus: z.string().optional(),
+      travelPlan: z.string().optional(),
+      studyPlan: z.string().optional(),
+      practice: z.string().optional(),
     }),
     /** The reader's stored chat facts for this birth profile; may be empty, the one group that may. */
     facts: z.array(z.object({ id: z.string().regex(/^F\d+$/), fact: z.string().min(1) })),
