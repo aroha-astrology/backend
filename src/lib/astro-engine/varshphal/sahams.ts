@@ -42,7 +42,19 @@ export function isBetweenZodiacally(from: number, to: number, test: number): boo
 }
 
 /**
- * JHora's "C between B and A": walking forward by SIGN from the sign after B's, is C's sign
+ * JHora's real test (C0, b01 fixtures, 2026-11-07): "C between B and A" by exact longitude, the
+ * ends NOT counted. On b01 it explains all 16 Saham cases: a Saham whose Asc point sits in the
+ * same sign as A but past it (Rajya 2026) still gets the +30, and one whose Asc point sits exactly
+ * on A (Karyasiddhi 2027) gets it too. The by-sign reading below (from PyJHora's source) does not.
+ */
+export function isStrictlyBetween(from: number, to: number, test: number): boolean {
+  const arc = normalizeDegree(to - from);
+  const pos = normalizeDegree(test - from);
+  return pos > 0 && pos < arc;
+}
+
+/**
+ * The by-sign reading from PyJHora's source: "C between B and A": walking forward by SIGN from the sign after B's, is C's sign
  * reached before A's sign is passed? C in the same sign as B counts as not between.
  */
 export function isBetweenBySign(aLon: number, bLon: number, cLon: number): boolean {
@@ -107,6 +119,8 @@ interface SahamPoints {
   plus: number;
   minus: number;
   add: number;
+  /** The point the +30 test looks at, when it is not `add` (Karyasiddhi: the Lagna). */
+  between?: number;
 }
 
 interface SahamRule {
@@ -182,6 +196,9 @@ export const SAHAM_RULES = {
         plus: planetLongitude(chart, 'Saturn'),
         minus: body,
         add: signLordLongitude(chart, body),
+        // JHora (C0, 20 chart-years of fixtures): the +30 test looks at the Lagna here, not at the
+        // lord that is added. The lord-based test fits only 17 of the 20.
+        between: ascLongitude(chart),
       };
     },
     nightSwap: false,
@@ -209,11 +226,11 @@ export type SahamKey = keyof typeof SAHAM_RULES;
 /** One Saham's longitude, with the shared night and +30 rules applied. */
 export function sahamLongitude(rule: SahamRule, chart: ChartData, isDay: boolean): number {
   let { plus, minus } = rule.points(chart, isDay);
-  const { add } = rule.points(chart, isDay);
+  const { add, between } = rule.points(chart, isDay);
   if (!isDay && rule.nightSwap) [plus, minus] = [minus, plus];
 
   let longitude = normalizeDegree(plus - minus + add);
-  if (rule.plus30 && !isBetweenBySign(plus, minus, add)) {
+  if (rule.plus30 && !isStrictlyBetween(minus, plus, between ?? add)) {
     longitude = normalizeDegree(longitude + 30);
   }
   return longitude;

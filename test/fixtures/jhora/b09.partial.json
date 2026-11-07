@@ -1,0 +1,558 @@
+{
+  "_status": "IN PROGRESS - b09 recording. Transcribed by hand from Jagannatha Hora screens (zoomed). Not compared with the engine.",
+  "settings": {
+    "ayanamsa": "Traditional Lahiri",
+    "node": "mean",
+    "tajikaCalculationOptions": {
+      "solarMotion": "Exact solar motion",
+      "yearType": "Sidereal solar year (mean: 365.256364 days)",
+      "muntha": "Muntha from each varga chart, with antardasas starting from dasa sign"
+    },
+    "birthplace": "entered as raw coordinates; city label left as 'South Grafton, Massachusetts, USA' but ignored"
+  },
+  "id": "b09",
+  "birth": {
+    "date": "1983-07-17",
+    "time": "02:10:00",
+    "place": "London",
+    "lat": "51 N 30' 36\"",
+    "lon": "0 W 07' 48\"",
+    "tz": "1:00 East of GMT (British Summer Time, entered as 1:00 East)"
+  },
+  "natal": {
+    "sunSidereal": "0 Cn 18' 14.25\"",
+    "lagnaSidereal": "20 Ta 49' 11.79\"",
+    "ayanamsaAtBirth": "23-37-37.62",
+    "siderealTimeAtBirth": "20:46:41",
+    "source": "Basics tab planet table (Lagna, Sun rows) and Key Info pane (Ayanamsa, Sid Time), natal chart July 17 1983 2:10:00, 1:00 East of GMT, 0 W 07' 48\", 51 N 30' 36\". Read zoomed."
+  },
+  "varsha": {
+    "2026": {
+      "solarReturnLocal": "2026-07-17 02:39:17 BST (+01:00)",
+      "returnSource": "Tajika tab, Year box = 2026 (single year), 'Find Tajika Chart'; 'Tajika annual' text pane Date/Time/Time Zone rows (Time Zone printed '1:00:00 (East of GMT)'). Read zoomed.",
+      "sunSidereal": "0 Cn 18' 14.28\"",
+      "varshaLagnaSidereal": "28 Ta 42' 02.42\"",
+      "ayanamsaAtReturn": "24-13-40.09",
+      "siderealTimeAtReturn": "21:18:23",
+      "panchavargiyaSource": "Tajika tab > 'Pancha-vargeeya Bala' -> Strengths tab > 'Other strengths' sub-tab, 'Pancha-vargeeya / Classification' table. Read zoomed.",
+      "panchavargiya": {
+        "Sun": 10.27,
+        "Moon": 8.65,
+        "Mars": 6.61,
+        "Mercury": 14.0,
+        "Jupiter": 11.13,
+        "Venus": 5.89,
+        "Saturn": 5.51
+      },
+      "panchavargiyaClassification": {
+        "Sun": "Powerful",
+        "Moon": "Ordinary",
+        "Mars": "Ordinary",
+        "Mercury": "Powerful",
+        "Jupiter": "Powerful",
+        "Venus": "Ordinary",
+        "Saturn": "Ordinary"
+      },
+      "harsha": {
+        "source": "Tajika tab > 'Harsha Bala' -> Strengths tab > 'Other strengths' sub-tab, 'Harsha Bala / Strength' table. Read zoomed.",
+        "values": {
+          "Sun": 0,
+          "Moon": 5,
+          "Mars": 0,
+          "Mercury": 15,
+          "Jupiter": 5,
+          "Venus": 5,
+          "Saturn": 5
+        },
+        "labels": {
+          "Sun": "Nil",
+          "Moon": "Little",
+          "Mars": "Nil",
+          "Mercury": "Full",
+          "Jupiter": "Little",
+          "Venus": "Little",
+          "Saturn": "Little"
+        }
+      },
+      "dwadashavargiya": {
+        "source": "Tajika tab > 'Dwadasa-vargeeya Bala (12)' -> Strengths tab > 'Other strengths' sub-tab, 'Dwadasa-vargeeya' table (N out of 12). Read zoomed.",
+        "values": {
+          "Sun": 8,
+          "Moon": 5,
+          "Mars": 6,
+          "Mercury": 6,
+          "Jupiter": 6,
+          "Venus": 4,
+          "Saturn": 8
+        }
+      },
+      "muntha": {
+        "source": "Miscellany tab > 'Progressions' sub-tab, point table scrolled to bottom, last row 'Muntha' (2026 chart). V2..V12 rows show 28 xx 42' 02.42\", confirming the 2026 Varsha Lagna. Read zoomed.",
+        "longitudeSidereal": "20 Sg 49' 11.79\"",
+        "sign": "Sagittarius",
+        "nakshatra": "PSha",
+        "pada": 3
+      },
+      "sahams": {
+        "source": "Basics tab > right-click the planet table > 'Sahams (sahams)' (2026 Tajika annual chart; not 'Natal Sahams'). All 36 rows as printed (sign, deg, min, sec; sidereal). Read zoomed from two scroll positions; list ends at Labha.",
+        "values": {
+          "Punya": "22 Ar 19' 47.54\"",
+          "Vidya": "5 Le 04' 17.30\"",
+          "Yasas": "11 Ar 35' 36.69\"",
+          "Mitra": "26 Ge 46' 51.84\"",
+          "Mahatmya": "24 Cn 59' 46.08\"",
+          "Asha": "26 Le 53' 11.30\"",
+          "Samartha": "23 Le 57' 48.78\"",
+          "Bhratru": "17 Vi 41' 53.36\"",
+          "Gaurava": "27 Le 32' 30.18\"",
+          "Pitru": "8 Vi 33' 54.38\"",
+          "Rajya": "8 Vi 33' 54.38\"",
+          "Matru": "5 Cn 54' 50.82\"",
+          "Putra": "25 Cn 56' 18.32\"",
+          "Jeeva": "17 Vi 41' 53.36\"",
+          "Karma": "4 Cn 08' 40.12\"",
+          "Roga": "20 Pi 43' 35.67\"",
+          "Kali": "7 Ta 53' 20.36\"",
+          "Sastra": "5 Ar 04' 17.97\"",
+          "Bandhu": "11 Le 18' 22.66\"",
+          "Mrityu": "20 Sc 43' 35.67\"",
+          "Paradesa": "6 Ar 57' 42.52\"",
+          "Artha": "3 Cn 19' 55.92\"",
+          "Paradara": "15 Ar 06' 59.13\"",
+          "Vanik": "16 Ar 05' 42.17\"",
+          "Karyasiddhi": "14 Pi 04' 07.44\"",
+          "Vivaha": "5 Aq 15' 07.17\"",
+          "Santapa": "14 Pi 56' 09.26\"",
+          "Sraddha": "3 Ar 26' 16.05\"",
+          "Preeti": "15 Cn 57' 31.98\"",
+          "Jadya": "25 Ar 53' 00.02\"",
+          "Vyapara": "26 Le 53' 11.30\"",
+          "Satru": "0 Ar 30' 53.53\"",
+          "Jalapatana": "4 Pi 08' 24.73\"",
+          "Bandhana": "26 Ar 48' 37.20\"",
+          "Apamrityu": "18 Sc 37' 31.20\"",
+          "Labha": "17 Pi 57' 51.57\""
+        },
+        "note": "36 rows read. JHora prints Pitru = Rajya, Bhratru = Jeeva, Asha = Vyapara. Not hand-checked against formulas."
+      },
+      "muddaVimshottari": {
+        "source": "Dasas tab > Nakshatra dasas sub-tab, heading 'Mudda/Vimsottari Dasa', header note 'Using solar longitude based dasa compression / Started from Moon' (2026 chart). Times local (+01:00) as printed. Read zoomed.",
+        "mahaDasas": [
+          {
+            "lord": "Sun",
+            "start": "2026-07-08 11:45:52",
+            "end": "2026-07-27 08:23:52"
+          },
+          {
+            "lord": "Moon",
+            "start": "2026-07-27 08:23:52",
+            "end": "2026-08-27 14:29:26"
+          },
+          {
+            "lord": "Mars",
+            "start": "2026-08-27 14:29:26",
+            "end": "2026-09-18 05:47:58"
+          },
+          {
+            "lord": "Rah",
+            "start": "2026-09-18 05:47:58",
+            "end": "2026-11-11 17:46:47"
+          },
+          {
+            "lord": "Jup",
+            "start": "2026-11-11 17:46:47",
+            "end": "2026-12-29 02:07:29"
+          },
+          {
+            "lord": "Sat",
+            "start": "2026-12-29 02:07:29",
+            "end": "2027-02-23 05:18:37"
+          },
+          {
+            "lord": "Merc",
+            "start": "2027-02-23 05:18:37",
+            "end": "2027-04-15 13:17:12"
+          },
+          {
+            "lord": "Ket",
+            "start": "2027-04-15 13:17:12",
+            "end": "2027-05-07 03:00:42"
+          },
+          {
+            "lord": "Ven",
+            "start": "2027-05-07 03:00:42",
+            "end": "2027-07-08 17:48:52"
+          }
+        ],
+        "note": "First dasa starts 2026-07-08, before the 2026-07-17 return (balance)."
+      },
+      "muddaYogini": {
+        "source": "Dasas tab > Nakshatra dasas sub-tab > right-click > 'Yogini dasa' (2026 chart); heading 'Yogini Dasa (with planets replacing Yoginis)', compressed, started from Moon. Treated as the Mudda Yogini. Times local (+01:00). Read zoomed.",
+        "mahaDasas": [
+          {
+            "lord": "Sat",
+            "start": "2026-06-18 08:50:11",
+            "end": "2026-08-20 03:25:50"
+          },
+          {
+            "lord": "Ven",
+            "start": "2026-08-20 03:25:50",
+            "end": "2026-10-30 13:58:22"
+          },
+          {
+            "lord": "Rah",
+            "start": "2026-10-30 13:58:22",
+            "end": "2027-01-17 12:38:07"
+          },
+          {
+            "lord": "Moon",
+            "start": "2027-01-17 12:38:07",
+            "end": "2027-01-27 08:36:09"
+          },
+          {
+            "lord": "Sun",
+            "start": "2027-01-27 08:36:09",
+            "end": "2027-02-16 02:08:42"
+          },
+          {
+            "lord": "Jup",
+            "start": "2027-02-16 02:08:42",
+            "end": "2027-03-17 23:59:38"
+          },
+          {
+            "lord": "Mars",
+            "start": "2027-03-17 23:59:38",
+            "end": "2027-04-27 15:47:30"
+          },
+          {
+            "lord": "Merc",
+            "start": "2027-04-27 15:47:30",
+            "end": "2027-06-18 14:56:40"
+          }
+        ]
+      },
+      "patyayini": {
+        "source": "Dasas tab > 'Other dasas' sub-tab, 'Patyayini Dasa (useful in Tajika charts)' (2026 chart). Times local (+01:00). Read zoomed.",
+        "mahaDasas": [
+          {
+            "lord": "Sun",
+            "start": "2026-07-17 02:39:17",
+            "end": "2026-07-21 02:31:23"
+          },
+          {
+            "lord": "Moon",
+            "start": "2026-07-21 02:31:23",
+            "end": "2026-10-11 14:32:03"
+          },
+          {
+            "lord": "Jup",
+            "start": "2026-10-11 14:32:03",
+            "end": "2026-11-15 07:30:39"
+          },
+          {
+            "lord": "Ven",
+            "start": "2026-11-15 07:30:39",
+            "end": "2027-01-09 07:11:00"
+          },
+          {
+            "lord": "Mars",
+            "start": "2027-01-09 07:11:00",
+            "end": "2027-03-09 00:24:42"
+          },
+          {
+            "lord": "Sat",
+            "start": "2027-03-09 00:24:42",
+            "end": "2027-03-31 21:58:09"
+          },
+          {
+            "lord": "Merc",
+            "start": "2027-03-31 21:58:09",
+            "end": "2027-05-17 14:41:56"
+          },
+          {
+            "lord": "Asc",
+            "start": "2027-05-17 14:41:56",
+            "end": "2027-07-17 08:49:11"
+          },
+          {
+            "lord": "Sun",
+            "start": "2027-07-17 08:49:11",
+            "end": "2027-07-21 08:45:03"
+          }
+        ],
+        "note": "Dasa 1 starts exactly at the 2026 return (02:39:17). The Asc dasa ends 2027-07-17 08:49:11 (to be confirmed against the 2027 return). Last row is the next cycle."
+      },
+      "triPataki": {
+        "source": "Chakras tab > 'Tripataki' sub-tab, 'Planets in D-1(from Lagna in D-1)' (2026 chart). Placements only; verdict not read. The Leo cell has overlapping labels (read as Mo/Ke over Ve); membership confirmed against the Tajika planet table (Moon 6 Le, Ketu 7 Le, Venus 13 Le).",
+        "placements": {
+          "Asc": "Ta",
+          "Sun": "Cn",
+          "Moon": "Le",
+          "Mars": "Ta",
+          "Mercury": "Ge (shown in brackets, retrograde)",
+          "Jupiter": "Cn",
+          "Venus": "Le",
+          "Saturn": "Pi",
+          "Rahu": "Aq",
+          "Ketu": "Le"
+        }
+      }
+    },
+    "2027": {
+      "solarReturnLocal": "2027-07-17 08:49:11 BST (+01:00)",
+      "returnSource": "Tajika tab, Year box = 2027 (checked single year), 'Find Tajika Chart'; 'Tajika annual' text pane Date/Time/Time Zone rows (Time Zone printed '1:00:00 (East of GMT)'). Matches the end of the Asc dasa in the 2026 Patyayini table. Read zoomed.",
+      "sunSidereal": "0 Cn 18' 14.28\"",
+      "varshaLagnaSidereal": "9 Le 06' 07.13\"",
+      "ayanamsaAtReturn": "24-14-30.39",
+      "siderealTimeAtReturn": "3:28:21",
+      "panchavargiyaSource": "Tajika tab > 'Pancha-vargeeya Bala' -> Strengths tab > 'Other strengths' sub-tab (2027 chart). Read zoomed.",
+      "panchavargiya": {
+        "Sun": 10.27,
+        "Moon": 7.75,
+        "Mars": 5.14,
+        "Mercury": 14.54,
+        "Jupiter": 13.26,
+        "Venus": 8.85,
+        "Saturn": 4.22
+      },
+      "panchavargiyaClassification": {
+        "Sun": "Powerful",
+        "Moon": "Ordinary",
+        "Mars": "Ordinary",
+        "Mercury": "Powerful",
+        "Jupiter": "Powerful",
+        "Venus": "Ordinary",
+        "Saturn": "Weak"
+      },
+      "harsha": {
+        "source": "Tajika tab > 'Harsha Bala' -> Strengths tab > 'Other strengths' sub-tab (2027 chart). Read zoomed.",
+        "values": {
+          "Sun": 10,
+          "Moon": 0,
+          "Mars": 5,
+          "Mercury": 5,
+          "Jupiter": 5,
+          "Venus": 0,
+          "Saturn": 5
+        },
+        "labels": {
+          "Sun": "Average",
+          "Moon": "Nil",
+          "Mars": "Little",
+          "Mercury": "Little",
+          "Jupiter": "Little",
+          "Venus": "Nil",
+          "Saturn": "Little"
+        }
+      },
+      "dwadashavargiya": {
+        "source": "Tajika tab > 'Dwadasa-vargeeya Bala (12)' -> Strengths tab > 'Other strengths' sub-tab (2027 chart). Read zoomed.",
+        "values": {
+          "Sun": 8,
+          "Moon": 8,
+          "Mars": 6,
+          "Mercury": 9,
+          "Jupiter": 7,
+          "Venus": 8,
+          "Saturn": 3
+        }
+      },
+      "muntha": {
+        "source": "Miscellany tab > 'Progressions' sub-tab, point table scrolled to bottom, last row 'Muntha' (2027 chart). V2..V12 rows show 9 xx 06' 07.13\", confirming the 2027 Varsha Lagna. Read zoomed.",
+        "longitudeSidereal": "20 Cp 49' 11.79\"",
+        "sign": "Capricorn",
+        "nakshatra": "Srav",
+        "pada": 4
+      },
+      "sahams": {
+        "source": "Basics tab > planet table > 'Sahams (sahams)' (2027 Tajika annual chart). All 36 rows as printed (sign, deg, min, sec; sidereal). Read zoomed from two scroll positions; list ends at Labha.",
+        "values": {
+          "Punya": "24 Cp 35' 42.11\"",
+          "Vidya": "23 Pi 36' 32.15\"",
+          "Yasas": "18 Pi 29' 03.92\"",
+          "Mitra": "2 Aq 36' 45.89\"",
+          "Mahatmya": "26 Cp 44' 23.44\"",
+          "Asha": "5 Ar 18' 33.70\"",
+          "Samartha": "15 Li 45' 18.65\"",
+          "Bhratru": "9 Cp 54' 53.66\"",
+          "Gaurava": "18 Pi 29' 03.92\"",
+          "Pitru": "11 Ta 57' 45.23\"",
+          "Rajya": "11 Ta 57' 45.23\"",
+          "Matru": "1 Aq 40' 07.29\"",
+          "Putra": "27 Ar 16' 56.77\"",
+          "Jeeva": "8 Ar 17' 20.60\"",
+          "Karma": "6 Sc 14' 22.71\"",
+          "Roga": "2 Ar 24' 25.00\"",
+          "Kali": "6 Le 07' 20.23\"",
+          "Sastra": "10 Sc 37' 56.75\"",
+          "Bandhu": "3 Pi 07' 28.09\"",
+          "Mrityu": "2 Sg 24' 25.00\"",
+          "Paradesa": "11 Ar 14' 48.46\"",
+          "Artha": "8 Sc 23' 04.04\"",
+          "Paradara": "2 Le 01' 41.95\"",
+          "Vanik": "15 Aq 04' 46.16\"",
+          "Karyasiddhi": "18 Vi 39' 27.35\"",
+          "Vivaha": "29 Sc 10' 03.85\"",
+          "Santapa": "26 Ta 28' 10.25\"",
+          "Sraddha": "25 Ge 22' 30.42\"",
+          "Preeti": "25 Ta 08' 21.77\"",
+          "Jadya": "13 Sc 36' 43.65\"",
+          "Vyapara": "12 Cp 53' 40.56\"",
+          "Satru": "12 Cp 53' 40.56\"",
+          "Jalapatana": "20 Sg 56' 14.76\"",
+          "Bandhana": "0 Ge 31' 56.86\"",
+          "Apamrityu": "11 Pi 14' 48.46\"",
+          "Labha": "8 Le 23' 04.04\""
+        },
+        "note": "36 rows read. JHora prints Yasas = Gaurava, Pitru = Rajya, Vyapara = Satru. Bhratru's nakshatra column prints 'Abhi'. Not hand-checked against formulas."
+      },
+      "muddaVimshottari": {
+        "source": "Dasas tab > Nakshatra dasas sub-tab > right-click > 'Mudda/Vimshottari dasa' (2027 chart). Header note 'Using solar longitude based dasa compression / Started from Moon'. Times local (+01:00) as printed. Read zoomed.",
+        "mahaDasas": [
+          {
+            "lord": "Moon",
+            "start": "2027-07-02 23:50:26",
+            "end": "2027-08-03 10:09:17"
+          },
+          {
+            "lord": "Mars",
+            "start": "2027-08-03 10:09:17",
+            "end": "2027-08-25 07:00:21"
+          },
+          {
+            "lord": "Rah",
+            "start": "2027-08-25 07:00:21",
+            "end": "2027-10-19 12:07:34"
+          },
+          {
+            "lord": "Jup",
+            "start": "2027-10-19 12:07:34",
+            "end": "2027-12-06 06:14:32"
+          },
+          {
+            "lord": "Sat",
+            "start": "2027-12-06 06:14:32",
+            "end": "2028-01-31 06:15:58"
+          },
+          {
+            "lord": "Merc",
+            "start": "2028-01-31 06:15:58",
+            "end": "2028-03-21 23:53:52"
+          },
+          {
+            "lord": "Ket",
+            "start": "2028-03-21 23:53:52",
+            "end": "2028-04-12 06:43:45"
+          },
+          {
+            "lord": "Ven",
+            "start": "2028-04-12 06:43:45",
+            "end": "2028-06-13 09:19:52"
+          },
+          {
+            "lord": "Sun",
+            "start": "2028-06-13 09:19:52",
+            "end": "2028-07-02 06:01:30"
+          }
+        ],
+        "note": "First dasa starts 2027-07-02, before the 2027 return (balance)."
+      },
+      "muddaYogini": {
+        "source": "Dasas tab > Nakshatra dasas sub-tab > right-click > 'Yogini dasa' (2027 chart); heading 'Yogini Dasa (with planets replacing Yoginis)', compressed, started from Moon. Treated as the Mudda Yogini. Times local (+01:00). Read zoomed.",
+        "mahaDasas": [
+          {
+            "lord": "Ven",
+            "start": "2027-06-13 20:05:29",
+            "end": "2027-08-26 01:01:08"
+          },
+          {
+            "lord": "Rah",
+            "start": "2027-08-26 01:01:08",
+            "end": "2027-11-15 05:18:43"
+          },
+          {
+            "lord": "Moon",
+            "start": "2027-11-15 05:18:43",
+            "end": "2027-11-25 03:10:28"
+          },
+          {
+            "lord": "Sun",
+            "start": "2027-11-25 03:10:28",
+            "end": "2027-12-14 20:22:31"
+          },
+          {
+            "lord": "Jup",
+            "start": "2027-12-14 20:22:31",
+            "end": "2028-01-13 07:11:06"
+          },
+          {
+            "lord": "Mars",
+            "start": "2028-01-13 07:11:06",
+            "end": "2028-02-21 17:34:59"
+          },
+          {
+            "lord": "Merc",
+            "start": "2028-02-21 17:34:59",
+            "end": "2028-04-11 23:58:14"
+          },
+          {
+            "lord": "Sat",
+            "start": "2028-04-11 23:58:14",
+            "end": "2028-06-13 02:23:43"
+          }
+        ]
+      },
+      "patyayini": {
+        "source": "Dasas tab > 'Other dasas' sub-tab, 'Patyayini Dasa (useful in Tajika charts)' (2027 chart). Times local (+01:00). Read zoomed.",
+        "mahaDasas": [
+          {
+            "lord": "Sun",
+            "start": "2027-07-17 08:49:11",
+            "end": "2027-07-22 07:19:57"
+          },
+          {
+            "lord": "Sat",
+            "start": "2027-07-22 07:19:57",
+            "end": "2027-09-06 10:30:41"
+          },
+          {
+            "lord": "Jup",
+            "start": "2027-09-06 10:30:41",
+            "end": "2027-09-19 09:20:00"
+          },
+          {
+            "lord": "Mars",
+            "start": "2027-09-19 09:20:00",
+            "end": "2027-11-05 01:31:11"
+          },
+          {
+            "lord": "Asc",
+            "start": "2027-11-05 01:31:11",
+            "end": "2027-12-07 23:52:02"
+          },
+          {
+            "lord": "Merc",
+            "start": "2027-12-07 23:52:02",
+            "end": "2027-12-18 22:26:20"
+          },
+          {
+            "lord": "Moon",
+            "start": "2027-12-18 22:26:20",
+            "end": "2028-03-19 11:49:43"
+          },
+          {
+            "lord": "Ven",
+            "start": "2028-03-19 11:49:43",
+            "end": "2028-07-16 15:06:25"
+          },
+          {
+            "lord": "Sun",
+            "start": "2028-07-16 15:06:25",
+            "end": "2028-07-21 13:32:28"
+          }
+        ],
+        "note": "Dasa 1 starts exactly at the 2027 return (08:49:11). Ven ends 2028-07-16 15:06:25 (presumably the 2028 return); last row is the next cycle."
+      }
+    }
+  }
+}

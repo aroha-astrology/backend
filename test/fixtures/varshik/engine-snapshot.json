@@ -10,10 +10,10 @@
     "varshaLagna": 357.260985,
     "yearLord": "Jupiter",
     "sahams": {
-     "Vivaha": 323.723634,
+     "Vivaha": 293.723634,
      "Punya": 284.897813,
      "Vidya": 99.624158,
-     "Rajya": 62.130967,
+     "Rajya": 92.130967,
      "Artha": 117.385001,
      "Karyasiddhi": 180.493681,
      "Pardesh": 327.385001,
@@ -70,7 +70,7 @@
      "Vidya": 172.418663,
      "Rajya": 14.598533,
      "Artha": 305.009732,
-     "Karyasiddhi": 10.452817,
+     "Karyasiddhi": 40.452817,
      "Pardesh": 331.521198,
      "Putra": 318.930128
     },
@@ -112,7 +112,7 @@
      "Vidya": 62.783203,
      "Rajya": 25.189985,
      "Artha": 276.758383,
-     "Karyasiddhi": 242.104846,
+     "Karyasiddhi": 212.104846,
      "Pardesh": 218.028035,
      "Putra": 260.862313
     },
@@ -201,12 +201,12 @@
     "varshaLagna": 76.289256,
     "yearLord": "Jupiter",
     "sahams": {
-     "Vivaha": 83.795617,
+     "Vivaha": 113.795617,
      "Punya": 29.689654,
      "Vidya": 152.888858,
-     "Rajya": 85.066296,
+     "Rajya": 115.066296,
      "Artha": 258.720815,
-     "Karyasiddhi": 89.662625,
+     "Karyasiddhi": 119.662625,
      "Pardesh": 53.344174,
      "Putra": 233.317144
     },
@@ -302,7 +302,7 @@
      "Vidya": 73.353466,
      "Rajya": 51.647928,
      "Artha": 184.102109,
-     "Karyasiddhi": 303.418727,
+     "Karyasiddhi": 273.418727,
      "Pardesh": 51.793326,
      "Putra": 46.237963
     },
@@ -340,8 +340,8 @@
      "Punya": 185.197462,
      "Vidya": 301.022878,
      "Rajya": 113.42513,
-     "Artha": 58.587435,
-     "Karyasiddhi": 73.512589,
+     "Artha": 88.587435,
+     "Karyasiddhi": 103.512589,
      "Pardesh": 334.480082,
      "Putra": 248.599936
     },
@@ -483,8 +483,8 @@
      "Rajya": 294.738776,
      "Artha": 103.678518,
      "Karyasiddhi": 143.310032,
-     "Pardesh": 31.842308,
-     "Putra": 71.436084
+     "Pardesh": 1.842308,
+     "Putra": 41.436084
     },
     "muddaLords": [
      "Moon",
@@ -524,12 +524,12 @@
     "yearLord": "Saturn",
     "sahams": {
      "Vivaha": 45.710788,
-     "Punya": 214.117157,
+     "Punya": 244.117157,
      "Vidya": 186.178344,
      "Rajya": 38.118347,
      "Artha": 254.959535,
      "Karyasiddhi": 26.501115,
-     "Pardesh": 121.764983,
+     "Pardesh": 91.764983,
      "Putra": 162.72564
     },
     "muddaLords": [
@@ -678,8 +678,8 @@
     "varshaLagna": 276.235854,
     "yearLord": "Jupiter",
     "sahams": {
-     "Vivaha": 278.426856,
-     "Punya": 284.995295,
+     "Vivaha": 308.426856,
+     "Punya": 314.995295,
      "Vidya": 267.476414,
      "Rajya": 330.149029,
      "Artha": 225.573424,
@@ -726,7 +726,7 @@
      "Punya": 19.723191,
      "Vidya": 122.28106,
      "Rajya": 155.854895,
-     "Artha": 57.933269,
+     "Artha": 87.933269,
      "Karyasiddhi": 344.155734,
      "Pardesh": 1.569582,
      "Putra": 113.144956
@@ -767,7 +767,7 @@
      "Artha": 214.08551,
      "Karyasiddhi": 168.562856,
      "Pardesh": 6.943927,
-     "Putra": 355.219082
+     "Putra": 25.219082
     },
     "muddaLords": [
      "Sun",
@@ -890,7 +890,7 @@
      "Vidya": 97.051825,
      "Rajya": 257.34395,
      "Artha": 249.879581,
-     "Karyasiddhi": 7.491956,
+     "Karyasiddhi": 337.491956,
      "Pardesh": 139.615773,
      "Putra": 332.174466
     },
@@ -928,7 +928,7 @@
      "Vidya": 146.140277,
      "Rajya": 99.954368,
      "Artha": 167.517797,
-     "Karyasiddhi": 21.565113,
+     "Karyasiddhi": 51.565113,
      "Pardesh": 325.636136,
      "Putra": 275.470304
     },

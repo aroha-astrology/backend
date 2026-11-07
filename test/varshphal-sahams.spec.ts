@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isBetweenZodiacally,
-  isBetweenBySign,
+  isStrictlyBetween,
   vivahaSaham,
   punyaSaham,
   vidyaSaham,
@@ -135,11 +135,13 @@ describe('computeAllSahams', () => {
 });
 
 describe('rules shared by every Saham (changed in the Varshik 2027 work)', () => {
-  it('the +30 test goes by sign, so the same sign as the subtracted point counts as not between', () => {
-    expect(isBetweenBySign(150, 250, 10)).toBe(true); // Virgo, Sagittarius, Aries: Aries comes first
-    expect(isBetweenBySign(150, 250, 245)).toBe(false); // Asc in the same sign as the subtracted point
-    expect(isBetweenBySign(100, 200, 100)).toBe(true); // Asc in the sign of the added point counts
-    expect(isBetweenBySign(100, 200, 130)).toBe(false); // wrong side: Leo is not between Libra and Cancer
+  it('the +30 test goes by exact longitude with the ends not counted (JHora, b01 fixtures)', () => {
+    expect(isStrictlyBetween(150, 250, 200)).toBe(true);
+    expect(isStrictlyBetween(150, 250, 260)).toBe(false); // past the far end
+    expect(isStrictlyBetween(150, 250, 250)).toBe(false); // exactly on the far end: not between
+    expect(isStrictlyBetween(350, 10, 355)).toBe(true); // across 0 degrees
+    // Rajya 2026 on b01: the Asc point is in the same sign as the far end but past it.
+    expect(isStrictlyBetween(267.8, 332.7, 356.3)).toBe(false);
   });
 
   it('Putra is Jupiter - Moon + Asc by day and swaps at night', () => {
@@ -151,10 +153,10 @@ describe('rules shared by every Saham (changed in the Varshik 2027 work)', () =>
 
   it('Karyasiddhi uses the Sun by day and the Moon by night, and the lord of that sign', () => {
     // Day: Sun at 100 is Cancer, ruled by the Moon (200). Saturn 250 - Sun 100 + 200 = 350;
-    // 200 is between Sun (100) and Saturn (250) -> no +30.
-    expect(karyasiddhiSaham(FIXTURE_CHART, true).longitude).toBe(350);
+    // JHora's +30 test looks at the Lagna (10), which is not between Sun (100) and Saturn (250) -> +30 = 20.
+    expect(karyasiddhiSaham(FIXTURE_CHART, true).longitude).toBe(20);
     // Night: Moon at 200 is Libra, ruled by Venus (150). 250 - 200 + 150 = 200; 150 is not
-    // between Moon (200) and Saturn (250) -> +30 = 230.
+    // between Moon (200) and Saturn (250) -> +30 = 230 (the Lagna, 10, is not between them either).
     expect(karyasiddhiSaham(FIXTURE_CHART, false).longitude).toBe(230);
   });
 
