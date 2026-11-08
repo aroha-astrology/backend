@@ -17,7 +17,7 @@ const parse = (s: string) => {
 const SPAN = 360 / 27;
 const dd = (a: number, b: number) => ((((a - b + 540) % 360) + 360) % 360) - 180;
 
-const KNOWN_SUB_MISSES = ['b04 Mercury', 'b09 Venus', 'b10 Mercury', 'b10 Venus'];
+const KNOWN_SUB_MISSES = ['b10 Mercury'];
 const files = fs.readdirSync(dir).filter((f) => /^b\d+\.natal\.json$/.test(f));
 
 describe('natal data against JHora (Traditional Lahiri, mean nodes)', () => {
@@ -54,12 +54,24 @@ describe('natal data against JHora (Traditional Lahiri, mean nodes)', () => {
         if (kp.starLord !== LORD[jh.kpStarLord]) bad.push(`${name} KP star ${kp.starLord} vs ${jh.kpStarLord}`);
         if (kp.subLord !== LORD[jh.kpSubLord]) subMiss.push(`${fx.id} ${name}`);
       }
-      // KNOWN, UNRESOLVED: these recorded JHora sub lords disagree with the Vimshottari subdivision worked by hand
-      // (b04 Mercury 54.787: offset 1.454 deg into Mrigashira is Rahu's sub, JHora row says Mars). They are more likely
-      // transcription slips than JHora differences, and no ayanamsa shift fixes them (96 of 100 is the best at shift 0).
-      // Re-read these four rows in JHora, then empty this list.
+      // KNOWN: b10 Mercury (313.600). JHora's KP row prints sub lord Ra, but its own Prati-sub there is Ma, which only fits
+      // a Mercury sub (the Mercury sub covers 5.889 to 7.778 deg into Shatabhisha; Rahu's ends at 2.0). Re-read twice, still Ra.
+      // The first three suspect rows (b04 Mercury, b09 Venus, b10 Venus) were transcription slips and are corrected.
       expect(subMiss).toEqual(KNOWN_SUB_MISSES.filter((k) => k.startsWith(fx.id)));
       expect(bad).toEqual([]);
     }, 30_000);
   }
+
+  it('the re-read KP rows (b04, b09, b10 .kpfix.json): star, sub and Prati-sub equal the engine table, except the one recorded above', () => {
+    const odd: string[] = [];
+    for (const id of ['b04', 'b09', 'b10']) {
+      for (const r of JSON.parse(fs.readFileSync(new URL(`${id}.kpfix.json`, dir), 'utf8'))) {
+        const k = kpLordsFor(parse(r.longitudeSidereal));
+        if (k.starLord !== LORD[r.kpStarLord]) odd.push(`${id} ${r.body} star`);
+        if (k.subLord !== LORD[r.kpSubLord]) odd.push(`${id} ${r.body} sub`);
+        if (k.subSubLord !== LORD[r.pratiSub]) odd.push(`${id} ${r.body} prati`);
+      }
+    }
+    expect(odd).toEqual(['b10 Mercury sub']);
+  });
 });

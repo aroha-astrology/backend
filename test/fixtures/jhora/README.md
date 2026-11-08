@@ -34,6 +34,8 @@ Both skip unless `PYJHORA_PYTHON` points at a Python 3.11 with `pyswisseph` (and
 - **Tri-Pataki.** JHora draws the placements only and prints no verdict, so the verdict stays unverified. The placements (2026 and 2027, all 10 charts) are recorded, and the sign of every planet equals the engine's sign at the same instant (`test/varshik-jhora.spec.ts`; a planet within 0.05 degrees of a sign edge is skipped).
 - **Gandanta.** JHora shows no Gandanta flag. `test/varshik-gandanta-sweep.spec.ts` restates BPHS chapter 92 independently and sweeps the whole zodiac (Moon, Abhukta Moola, tithi, Lagna) plus the 10 gold charts; the detector agrees everywhere.
 
-## Unresolved fixture rows
+## Unresolved fixture row
 
-Four KP sub lords recorded from JHora disagree with the Vimshottari subdivision worked out by hand: b04 Mercury (54.787), b09 Venus (130.589), b10 Mercury (313.600), b10 Venus (270.655). No ayanamsa shift fixes them (96 of 100 rows match at shift zero; none better at any other). They look like transcription slips. Re-read those four rows in the JHora KP tab, then empty `KNOWN_SUB_MISSES` in `test/varshik-jhora-natal.spec.ts`.
+The four KP sub lords that first disagreed were re-read in JHora (`b04.kpfix.json`, `b09.kpfix.json`, `b10.kpfix.json`, each with the neighbouring rows). Three were transcription slips and are corrected in the natal files (b04 Mercury Ra, b09 Venus Sa, b10 Venus Ra). The engine's star, sub and Prati-sub now equal JHora's on every row read.
+
+One row stays open: **b10 Mercury (313.600)**. JHora prints sub lord Ra, but its own Prati-sub on that row is Ma, which only fits a Mercury sub (engine: Mercury sub, Mars Prati-sub). The row was read twice with the same result. Pinned as `KNOWN_SUB_MISSES` in `test/varshik-jhora-natal.spec.ts`. Either JHora differs here or the same column was misread twice; a look at the KP tab with a second pair of eyes would settle it, but it does not block anything.

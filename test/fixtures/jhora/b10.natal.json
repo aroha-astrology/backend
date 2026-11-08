@@ -80,8 +80,9 @@
       "pada": 2,
       "nakshatraLord": "Su",
       "kpStarLord": "Su",
-      "kpSubLord": "Ve",
-      "printedLabel": "Venus - DK"
+      "kpSubLord": "Ra",
+      "printedLabel": "Venus - DK",
+      "kpSubLordNote": "Corrected 2026-11-08 from a re-read of the JHora KP tab (was Ve); see b10.kpfix.json. The first recording was a transcription slip."
     },
     "Saturn": {
       "longitudeSidereal": "23 Pi 46' 59.25\"",

@@ -1,0 +1,37 @@
+[
+  {
+    "neighbour": true,
+    "body": "Jupiter",
+    "printedLabel": "Ju",
+    "longitudeSidereal": "7 Sc 40' 21.73\"",
+    "kpStarLord": "Sa",
+    "kpSubLord": "Ke",
+    "pratiSub": "Ra",
+    "sookshmaSub": "Ra",
+    "praanaSub": "Mo",
+    "dehaSub": "Ra"
+  },
+  {
+    "body": "Venus",
+    "printedLabel": "Ve",
+    "longitudeSidereal": "10 Le 35' 20.97\"",
+    "kpStarLord": "Ke",
+    "kpSubLord": "Sa",
+    "pratiSub": "Mo",
+    "sookshmaSub": "Ra",
+    "praanaSub": "Ve",
+    "dehaSub": "Ve"
+  },
+  {
+    "neighbour": true,
+    "body": "Saturn",
+    "printedLabel": "Sa",
+    "longitudeSidereal": "4 Li 18' 01.11\"",
+    "kpStarLord": "Ma",
+    "kpSubLord": "Ve",
+    "pratiSub": "Sa",
+    "sookshmaSub": "Mo",
+    "praanaSub": "Ra",
+    "dehaSub": "Ju"
+  }
+]

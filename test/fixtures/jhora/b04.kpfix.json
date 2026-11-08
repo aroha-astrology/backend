@@ -1,0 +1,37 @@
+[
+  {
+    "neighbour": true,
+    "body": "Mars",
+    "printedLabel": "Ma",
+    "longitudeSidereal": "24 Aq 56' 36.30\"",
+    "kpStarLord": "Ju",
+    "kpSubLord": "Me",
+    "pratiSub": "Ma",
+    "sookshmaSub": "Mo",
+    "praanaSub": "Su",
+    "dehaSub": "Ke"
+  },
+  {
+    "body": "Mercury",
+    "printedLabel": "Me",
+    "longitudeSidereal": "24 Ta 47' 13.05\"",
+    "kpStarLord": "Ma",
+    "kpSubLord": "Ra",
+    "pratiSub": "Sa",
+    "sookshmaSub": "Ke",
+    "praanaSub": "Sa",
+    "dehaSub": "Ve"
+  },
+  {
+    "neighbour": true,
+    "body": "Jupiter",
+    "printedLabel": "Ju",
+    "longitudeSidereal": "0 Ta 28' 59.47\"",
+    "kpStarLord": "Su",
+    "kpSubLord": "Ra",
+    "pratiSub": "Ke",
+    "sookshmaSub": "Sa",
+    "praanaSub": "Ma",
+    "dehaSub": "Sa"
+  }
+]

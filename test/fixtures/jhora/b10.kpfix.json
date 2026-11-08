@@ -1,0 +1,60 @@
+[
+  {
+    "neighbour": true,
+    "body": "Mars",
+    "printedLabel": "Ma",
+    "longitudeSidereal": "29 Aq 47' 13.40\"",
+    "kpStarLord": "Ju",
+    "kpSubLord": "Mo",
+    "pratiSub": "Ju",
+    "sookshmaSub": "Ju",
+    "praanaSub": "Ra",
+    "dehaSub": "Ke"
+  },
+  {
+    "body": "Mercury",
+    "printedLabel": "Me",
+    "longitudeSidereal": "13 Aq 35' 58.29\"",
+    "kpStarLord": "Ra",
+    "kpSubLord": "Ra",
+    "pratiSub": "Ma",
+    "sookshmaSub": "Su",
+    "praanaSub": "Me",
+    "dehaSub": "Ra"
+  },
+  {
+    "neighbour": true,
+    "body": "Jupiter",
+    "printedLabel": "Ju",
+    "longitudeSidereal": "10 Aq 58' 23.93\"",
+    "kpStarLord": "Ra",
+    "kpSubLord": "Sa",
+    "pratiSub": "Me",
+    "sookshmaSub": "Ra",
+    "praanaSub": "Ke",
+    "dehaSub": "Ra"
+  },
+  {
+    "body": "Venus",
+    "printedLabel": "Ve",
+    "longitudeSidereal": "0 Cp 39' 19.56\"",
+    "kpStarLord": "Su",
+    "kpSubLord": "Ra",
+    "pratiSub": "Ve",
+    "sookshmaSub": "Ra",
+    "praanaSub": "Ke",
+    "dehaSub": "Ra"
+  },
+  {
+    "neighbour": true,
+    "body": "Saturn",
+    "printedLabel": "Sa",
+    "longitudeSidereal": "23 Pi 46' 59.25\"",
+    "kpStarLord": "Me",
+    "kpSubLord": "Ma",
+    "pratiSub": "Me",
+    "sookshmaSub": "Ma",
+    "praanaSub": "Su",
+    "dehaSub": "Me"
+  }
+]
