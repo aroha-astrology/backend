@@ -26,7 +26,7 @@ beforeAll(async () => {
 }, 120_000);
 
 describe('doshaActivity', () => {
-  it('covers all 8 doshas in all 12 months, every one with a status', () => {
+  it('covers all 9 doshas in all 12 months, every one with a status', () => {
     const all = doshaActivityAll(ctx);
     expect(all).toHaveLength(12);
     for (const m of all) {

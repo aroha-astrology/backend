@@ -126,6 +126,15 @@ function moonPoint(moonLon: number): MoonGandanta & { abhukta: boolean } {
   };
 }
 
+/**
+ * Nakshatra Gandanta (and Abhukta Moola) of any single sidereal longitude: a planet, the Lagna or the Moon.
+ * The same test detectGandanta applies to the Moon, exported so every natal point is read by one rule.
+ */
+export function nakshatraGandantaAt(longitude: number): MoonGandanta & { abhuktaMoola: boolean } {
+  const { abhukta, ...rest } = moonPoint(norm(longitude));
+  return { ...rest, abhuktaMoola: abhukta };
+}
+
 function tithiPoint(sunLon: number, moonLon: number): TithiGandanta {
   const elongation = norm(moonLon - sunLon);
   const number = Math.floor(elongation / 12) + 1; // 1-30

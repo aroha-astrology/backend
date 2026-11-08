@@ -53,7 +53,8 @@ export type DoshaKeyName =
   | 'grahan'
   | 'kemadruma'
   | 'sadeSati'
-  | 'dhaiya';
+  | 'dhaiya'
+  | 'gandanta';
 
 export const DOSHA_LABEL: Record<DoshaKeyName, string> = {
   mangal: 'Mangal Dosha',
@@ -64,6 +65,7 @@ export const DOSHA_LABEL: Record<DoshaKeyName, string> = {
   kemadruma: 'Kemadruma',
   sadeSati: 'Sade Sati',
   dhaiya: 'Dhaiya',
+  gandanta: 'Gandanta',
 };
 
 export const TAJIKA_LABEL: Record<string, string> = {

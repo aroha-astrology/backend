@@ -204,7 +204,7 @@ export async function findTransitEvents(from: Date, to: Date): Promise<TransitEv
   let prev = await calculatePlanetPositions(jdPrev);
   const jdEnd = jdFromDate(to);
 
-  for (let jd = jdPrev + 1; jd <= jdEnd; jd += 1) {
+  for (let jd = Math.min(jdPrev + 1, jdEnd); jdPrev < jdEnd; jd = Math.min(jd + 1, jdEnd)) {
     const curr = await calculatePlanetPositions(jd);
 
     for (const planet of INGRESS_PLANETS) {
@@ -281,6 +281,9 @@ export interface NakshatraChange {
  * Daily sampling is safe for the slow planets this is meant for (Jupiter,
  * Saturn, Rahu, Ketu): none moves anywhere near a 13°20' nakshatra in a day.
  * Do not pass the Moon, which crosses one about every day.
+ *
+ * The last step is cut to `to`, so a window that is not a whole number of days is scanned to its end
+ * (it used to stop at the last whole day; C1 2026-11-08).
  */
 export async function findNakshatraChanges(
   from: Date,
@@ -293,7 +296,7 @@ export async function findNakshatraChanges(
   let prev = await calculatePlanetPositions(jdPrev);
   const jdEnd = jdFromDate(to);
 
-  for (let jd = jdPrev + 1; jd <= jdEnd; jd += 1) {
+  for (let jd = Math.min(jdPrev + 1, jdEnd); jdPrev < jdEnd; jd = Math.min(jd + 1, jdEnd)) {
     const curr = await calculatePlanetPositions(jd);
 
     for (const planet of planets) {

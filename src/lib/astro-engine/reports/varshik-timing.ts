@@ -4,7 +4,7 @@
 // Four pure functions that sit beside the scorer (varshik-2027.ts) and read the same
 // VarshikContext:
 //
-//   doshaActivity(ctx, month)   all 8 doshas: status, and whether each is awake that month
+//   doshaActivity(ctx, month)   all 9 doshas: status, and whether each is awake that month
 //   yogaDelivery(ctx)           the months each natal and each Tajika yoga delivers
 //   answerWindow(scores, key)   the best dated window for an area or decision key
 //   reliefTimeline(ctx, asOf)   the recent hard stretch and the dated turning points ahead
@@ -31,6 +31,7 @@ import {
   type ScorePlanet,
   type Tier,
 } from '../../../config/varshik-weights.js';
+import { detectGandanta } from '../doshas/gandanta.js';
 import { detectGrahanDosha } from '../doshas/grahanDosha.js';
 import { detectGuruChandalDosha } from '../doshas/guruChandal.js';
 import { detectKaalSarpDosha } from '../doshas/kaalSarp.js';
@@ -58,7 +59,8 @@ export type DoshaKey =
   | 'grahan'
   | 'kemadruma'
   | 'sadeSati'
-  | 'dhaiya';
+  | 'dhaiya'
+  | 'gandanta';
 
 export const DOSHA_KEYS: DoshaKey[] = [
   'mangal',
@@ -69,6 +71,7 @@ export const DOSHA_KEYS: DoshaKey[] = [
   'kemadruma',
   'sadeSati',
   'dhaiya',
+  'gandanta',
 ];
 
 export type DoshaTrigger = 'natal_dasha' | 'mudda_dasha' | 'transit';
@@ -96,7 +99,7 @@ interface NatalDoshaState {
   cancellations: string[];
 }
 
-/** The six natal doshas from the detectors the app already uses, so nothing is judged twice. */
+/** The seven natal doshas (Gandanta is the ninth dosha, added in C1) from the detectors the app already uses, so nothing is judged twice. */
 function natalDoshas(chart: ChartData, birthMs: number): Record<string, NatalDoshaState> {
   const mangal = detectMangalDosha(chart, new Date(birthMs).toISOString().slice(0, 10));
   const kaal = detectKaalSarpDosha(chart);
@@ -104,6 +107,8 @@ function natalDoshas(chart: ChartData, birthMs: number): Record<string, NatalDos
   const guru = detectGuruChandalDosha(chart);
   const grahan = detectGrahanDosha(chart);
   const kem = detectKemDrumaDosha(chart);
+  // A birth time is required for a Varshik report, so the Gandanta rule is applied in full.
+  const gandanta = detectGandanta(chart, { timeKnown: true });
   return {
     mangal: {
       status: mangal.type === 'cancelled' ? 'cancelled' : mangal.present ? 'present' : 'not_present',
@@ -117,6 +122,7 @@ function natalDoshas(chart: ChartData, birthMs: number): Record<string, NatalDos
       status: kem.present ? 'present' : kem.cancellations.length > 0 ? 'cancelled' : 'not_present',
       cancellations: kem.cancellations,
     },
+    gandanta: { status: gandanta.present ? 'present' : 'not_present', cancellations: [] },
   };
 }
 
@@ -133,7 +139,7 @@ const SADE_PHASE: Record<number, string> = {
 };
 const DHAIYA_PHASE: Record<number, string> = { 4: 'Saturn in the 4th from your Moon', 8: 'Saturn in the 8th from your Moon' };
 
-/** All 8 doshas for every month of the year (one pass over the days). */
+/** All 9 doshas for every month of the year (one pass over the days). */
 export function doshaActivityAll(ctx: VarshikContext): DoshaMonth[] {
   const natal = natalDoshas(ctx.natal, ctx.birthMs);
   const satHouse = saturnFromMoon(ctx);
@@ -155,7 +161,7 @@ export function doshaActivityAll(ctx: VarshikContext): DoshaMonth[] {
     holds[m]![k][t].set(why, (holds[m]![k][t].get(why) ?? 0) + 1);
   };
 
-  const natalKeys = ['mangal', 'kaalSarp', 'pitra', 'guruChandal', 'grahan', 'kemadruma'] as const;
+  const natalKeys = ['mangal', 'kaalSarp', 'pitra', 'guruChandal', 'grahan', 'kemadruma', 'gandanta'] as const;
   for (let i = 0; i < ctx.days.length; i++) {
     const m = ctx.monthOfDay[i]!;
     const atMs = ctx.days[i]!.atMs;
@@ -216,7 +222,7 @@ export function doshaActivityAll(ctx: VarshikContext): DoshaMonth[] {
   }));
 }
 
-/** The 8 doshas for one month (0-11). */
+/** The 9 doshas for one month (0-11). */
 export function doshaActivity(ctx: VarshikContext, month: number): DoshaMonth {
   return doshaActivityAll(ctx)[month]!;
 }

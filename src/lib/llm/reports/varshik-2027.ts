@@ -6,7 +6,7 @@
 //
 //   call 1  the shape of the year     welcome letter, 2027 at a glance, Year Lord and Muntha,
 //                                     the two Varsha charts, the big sky moves
-//   call 2  planets and areas         planet by planet, 8 doshas, yogas, 7 life areas, the
+//   call 2  planets and areas         planet by planet, 9 doshas, yogas, 7 life areas, the
 //                                     timing pages (map, rhythm, sky calendar, when to act,
 //                                     golden windows)
 //   call 3  months 1 to 6             5 paragraphs each (the month at a glance, what to do and
@@ -492,7 +492,7 @@ function call2(f: VarshikFacts): CallSpec {
   const facts = `${renderCommon(f)}
 PLANETS:
 ${planets}
-DOSHAS (all eight, each must get its own paragraph in this order: ${f.doshas.map((d) => d.label).join(', ')}):
+DOSHAS (all ${f.doshas.length}, each must get its own paragraph in this order: ${f.doshas.map((d) => d.label).join(', ')}):
 ${doshas}
 YOGAS THAT DELIVER IN 2027 (use these exact names):
 ${yogas || 'none'}
@@ -515,7 +515,7 @@ MAJOR FESTIVALS: ${fest}`;
     ids: CALL2_IDS,
     counts: {
       planet_by_planet: 9,
-      doshas: 8,
+      doshas: f.doshas.length,
       yogas: null,
       ...Object.fromEntries(AREA_IDS.map((id) => [id, 2])),
       timing_map: 2,
@@ -527,7 +527,7 @@ MAJOR FESTIVALS: ${fest}`;
     facts,
     instructions: `Write EXACTLY these sections, with these ids, in this order.
 1. planet_by_planet: EXACTLY 9 paragraphs, one per planet in this order: ${NINE_PLANETS.join(', ')}. Each starts with the planet's name. 2 sentences: where it moves in the reader's year and what it does for them, using the effect, best month and hard month given. Word each planet differently: no two paragraphs may use the same sentence frame.
-2. doshas: EXACTLY 8 paragraphs in this order: ${f.doshas.map((d) => d.label).join(', ')}. Each starts with the dosha's name. State its status plainly. A dosha that is not in the chart gets one short line saying it was checked and is not in the chart. One that is present or cancelled gets the months it is awake, what it touches, and its simple remedy. Calm words, no fear.
+2. doshas: EXACTLY ${f.doshas.length} paragraphs in this order: ${f.doshas.map((d) => d.label).join(', ')}. Each starts with the dosha's name. State its status plainly. A dosha that is not in the chart gets one short line saying it was checked and is not in the chart. One that is present or cancelled gets the months it is awake, what it touches, and its simple remedy. Calm words, no fear.
 3. yogas: 4 to 7 paragraphs. First the natal yogas from the birth chart that deliver in 2027, strongest first: each paragraph may cover up to three related yogas, and every natal yoga listed must be named by its base name exactly as written without the bracket (for example "Raja Yoga", "Budhaditya Yoga"), with the months it delivers and what that gives the reader. Then one paragraph for the Tajika yogas of the Varsha chart that rules early 2027 and one for the chart that takes over, naming each Tajika kind that appears (Ithasala, Ishrafa, Nakta, Yamaya, Kamboola, Radda) with its planets and months. A Radda is a promise that is spoiled for the reason given: say so gently. If nothing is listed, write 1 paragraph saying so plainly.
 4. area_love, area_career, area_money, area_health, area_family, area_growth, area_travel: each EXACTLY 2 paragraphs. First: how this area reads across 2027 and its best window. Second: what it means for THIS reader given what they told us, the best months to act and the quiet months to rest in. Never write about a partner, children or a job the reader did not tell us about.
 5. timing_map: 2 paragraphs reading the 7 by 12 map of months and areas: where the green months gather and where the quiet ones do.

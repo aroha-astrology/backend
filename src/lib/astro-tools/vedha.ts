@@ -79,6 +79,13 @@ const EXCEPTION_PAIRS: Array<[string, string]> = [
   ['Moon', 'Mercury'],
 ];
 
+const NODES = new Set(['Rahu', 'Ketu']);
+
+export interface VedhaOptions {
+  /** Default true (every planet in the sky can obstruct). False: Rahu and Ketu never cause vedha. */
+  nodesCauseVedha?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -116,7 +123,8 @@ function isExceptionPair(planet1: string, planet2: string): boolean {
 export function checkVedha(
   transitingPlanet: string,
   transitSigns: Record<string, number>,
-  natalMoonSign: number
+  natalMoonSign: number,
+  options: VedhaOptions = {},
 ): VedhaResult {
   const planetSign = transitSigns[transitingPlanet];
   if (planetSign === undefined) {
@@ -144,6 +152,7 @@ export function checkVedha(
       // Check if any OTHER planet sits in the vedha house
       for (const [otherPlanet, otherSign] of Object.entries(transitSigns)) {
         if (otherPlanet === transitingPlanet) continue;
+        if (options.nodesCauseVedha === false && NODES.has(otherPlanet)) continue;
 
         const otherHouse = houseFromMoon(otherSign, natalMoonSign);
         if (otherHouse === vedhaHouse) {
@@ -187,4 +196,74 @@ export function checkAllVedha(
   return Object.keys(transitSigns).map((planet) =>
     checkVedha(planet, transitSigns, natalMoonSign)
   );
+}
+
+// ---------------------------------------------------------------------------
+// Vipreet (reversed) vedha
+// ---------------------------------------------------------------------------
+
+export interface VipreetVedhaResult {
+  planet: string;
+  /** House (1-12 from the natal Moon) of the transiting planet. */
+  transitHouse: number;
+  /** The planet stands in the vedha point of an auspicious house (so it is an unfavourable place for it). */
+  inVedhaPoint: boolean;
+  /** The auspicious house whose vedha point this is. */
+  auspiciousHouse: number | null;
+  /** Another planet stands in that auspicious house and so cancels the unfavourable result. */
+  cancelled: boolean;
+  cancelledBy: VedhaObstruction[];
+}
+
+/**
+ * Vipreet (reversed) vedha: the same pairing read the other way round. A planet in an unfavourable house
+ * that is the vedha point of an auspicious house loses its bad result when another planet stands in that
+ * auspicious house. Source: the Gochara and Vedha page of the Vedic Astrology Blog (indianastrologysoftware
+ * .com/?p=210): "when a planet is in an unfavourable position and another planet is in its favourable
+ * position, its adverse effects will be cancelled", and "a benefic point has only one corresponding
+ * malefic point". Same exceptions as vedha (Sun/Saturn, Moon/Mercury). Phaladeepika ch. 26 states vedha
+ * only, so the reverse pairing rests on that page alone. A house that is itself auspicious for the planet
+ * (Venus 3 and 12, for instance) is never treated as a vedha point here.
+ */
+export function checkVipreetVedha(
+  transitingPlanet: string,
+  transitSigns: Record<string, number>,
+  natalMoonSign: number,
+  options: VedhaOptions = {},
+): VipreetVedhaResult {
+  const planetSign = transitSigns[transitingPlanet];
+  const none: VipreetVedhaResult = {
+    planet: transitingPlanet,
+    transitHouse: 0,
+    inVedhaPoint: false,
+    auspiciousHouse: null,
+    cancelled: false,
+    cancelledBy: [],
+  };
+  if (planetSign === undefined) return none;
+  const transitHouse = houseFromMoon(planetSign, natalMoonSign);
+  const auspicious = AUSPICIOUS_HOUSES[transitingPlanet] ?? [];
+  if (auspicious.includes(transitHouse)) return { ...none, transitHouse };
+  const pairs = VEDHA_PAIRS[transitingPlanet] ?? {};
+  const good = Object.keys(pairs)
+    .map(Number)
+    .find((g) => pairs[g] === transitHouse);
+  if (good === undefined) return { ...none, transitHouse };
+
+  const cancelledBy: VedhaObstruction[] = [];
+  for (const [otherPlanet, otherSign] of Object.entries(transitSigns)) {
+    if (otherPlanet === transitingPlanet) continue;
+    if (options.nodesCauseVedha === false && NODES.has(otherPlanet)) continue;
+    if (houseFromMoon(otherSign, natalMoonSign) !== good) continue;
+    if (isExceptionPair(transitingPlanet, otherPlanet)) continue;
+    cancelledBy.push({ obstructingPlanet: otherPlanet, obstructingHouse: good, obstructingSign: otherSign });
+  }
+  return {
+    planet: transitingPlanet,
+    transitHouse,
+    inVedhaPoint: true,
+    auspiciousHouse: good,
+    cancelled: cancelledBy.length > 0,
+    cancelledBy,
+  };
 }

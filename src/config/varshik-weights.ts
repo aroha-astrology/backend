@@ -399,6 +399,9 @@ export const VARSHIK_WEIGHTS = {
       guruChandal: ['Jupiter', 'Rahu'],
       grahan: ['Sun', 'Moon', 'Rahu', 'Ketu'],
       kemadruma: ['Moon'],
+      // Gandanta of the Moon, the Lagna or any planet is a birth-point matter; its planets are the Moon
+      // (the point the BPHS Gandanta rule is about) and the Lagna lord is not tracked here.
+      gandanta: ['Moon'],
     } as Record<string, ScorePlanet[]>,
     /** A slow planet standing in the sign of one of the dosha's natal planets wakes it up. */
     transitTriggers: {
@@ -408,6 +411,7 @@ export const VARSHIK_WEIGHTS = {
       guruChandal: ['Jupiter', 'Rahu', 'Saturn'],
       grahan: ['Rahu', 'Ketu'],
       kemadruma: ['Saturn', 'Jupiter'],
+      gandanta: ['Saturn', 'Rahu', 'Ketu'],
     } as Record<string, ScorePlanet[]>,
     /** A trigger counts for a month when it holds on at least this share of its days. */
     minDaysShare: 0.33,
@@ -436,6 +440,92 @@ export const VARSHIK_WEIGHTS = {
 
   /** Planet impact: the share of a planet's net log-odds that counts as "helping" or "weighing". */
   planetImpact: { neutralBand: 0.04 },
+} as const;
+
+
+// =============================================================================
+// C1: nakshatra transits, birth stars, gochar from the natal Moon (Varshik classical completeness)
+// =============================================================================
+// Owner decisions 2026-11-07/08: transits are read from the Lagna AND from the natal Moon; Sarvatobhadra
+// was offered and declined (not built); no death wording anywhere in output. Sources were read on 2026-11-08:
+//   [PD]  Phaladeepika ch. 26, v. 3-8 (Mantreswara), English text at siva.sh/phaladeepika/26 : good houses and vedha points
+//   [VB]  Gochara and Vedha, Vedic Astrology Blog (blog.indianastrologysoftware.com/?p=210) : vipreet vedha, Rahu/Ketu like Mars
+//   [VJ1] vijayalur.com/2011/10/02/tarabala/ : Tara count and which remainders are good
+//   [VJ2] vijayalur.com/2011/04/22/moorti-nirnaya/ : Moorti table
+//   [SF]  shrifreedom.org/vedic-astrology/navatara-chakra/ : Navatara and the special taras
+//   [KK]  Kakshya order and 3d45m span: astro-tools/kakshya.ts, whose 8 lords and span match the usual statement
+//         (no written source opened by this sprint; the compartments are the engine's existing code)
+// =============================================================================
+
+/** Sarvatobhadra Chakra: offered to the owner on 2026-11-08 and declined. Not built. */
+export const SBC_ENABLED = false;
+
+export const VARSHIK_NAKSHATRA = {
+  /**
+   * Tara from the birth star [VJ1]: count both stars inclusive, divide by 9; remainder 2, 4, 6, 8, 9 (or 0)
+   * is good, 1, 3, 5, 7 is not. Names after [SF]/[VJ1]: 7 is written "Vadha" (the sources' other name for it);
+   * the plain lines never use the sources' harsher glosses (no death wording).
+   */
+  tara: {
+    1: { name: 'Janma', good: false, plain: 'your own star, a day to go gently' },
+    2: { name: 'Sampat', good: true, plain: 'a star of wealth and gain' },
+    3: { name: 'Vipat', good: false, plain: 'a star of setbacks, so go carefully' },
+    4: { name: 'Kshema', good: true, plain: 'a star of well-being and comfort' },
+    5: { name: 'Pratyari', good: false, plain: 'a star of obstacles and push-back' },
+    6: { name: 'Sadhaka', good: true, plain: 'a star of achievement' },
+    7: { name: 'Vadha', good: false, plain: 'a hard, draining star' },
+    8: { name: 'Mitra', good: true, plain: 'a star of friends and support' },
+    9: { name: 'Parama Mitra', good: true, plain: 'a star of close friends and good company' },
+  } as Record<number, { name: string; good: boolean; plain: string }>,
+
+  /**
+   * The special taras counted over 28 stars (Abhijit between Uttara Ashadha and Shravana) [SF], limited to
+   * the owner's list 1, 4, 10, 12, 16, 18, 22, 25, 28. [SF] also lists 7 (its death-named tara) and 19, which the
+   * owner left out. [SF] gives Manasa as the 25th "or the 11th depending on tradition"; the owner chose 25.
+   * Vainashika (22) is "a hard, draining stretch" in output, never the word the source uses.
+   */
+  specialTaras: {
+    1: { name: 'Janma', plain: 'your birth star, the reference point of the chart' },
+    4: { name: 'Jati', plain: 'your community and social circle' },
+    10: { name: 'Karma', plain: 'your work and profession' },
+    12: { name: 'Desha', plain: 'your country, place and culture' },
+    16: { name: 'Sanghatika', plain: 'your close group and inner circle' },
+    18: { name: 'Samudaya', plain: 'crowds, the wider group' },
+    22: { name: 'Vainashika', plain: 'a hard, draining stretch' },
+    25: { name: 'Manasa', plain: 'your mind and what it dwells on' },
+    28: { name: 'Abhisheka', plain: 'recognition, a coronation of effort' },
+  } as Record<number, { name: string; plain: string }>,
+
+  /** Natal Navatara: a planet in these taras from the birth star is weakened for its themes; in these it is emphasised. */
+  natalNavatara: {
+    weakened: [3, 5, 7] as number[],
+    /** Special-tara numbers (28-star count) that emphasise a natal planet: Janma 1, Karma 10, Sanghatika 16. */
+    emphasisedSpecial: [1, 10, 16] as number[],
+  },
+
+  /** Moorti nirnaya [VJ2]: the transit Moon's house from the natal Moon when a planet changes sign. */
+  moorti: {
+    swarna: { houses: [1, 6, 11], metal: 'gold', quality: 'very good' },
+    rajata: { houses: [2, 5, 9], metal: 'silver', quality: 'good' },
+    tamra: { houses: [3, 7, 10], metal: 'copper', quality: 'middling' },
+    loha: { houses: [4, 8, 12], metal: 'iron', quality: 'hard' },
+  } as Record<'swarna' | 'rajata' | 'tamra' | 'loha', { houses: number[]; metal: string; quality: string }>,
+
+  /**
+   * Rahu and Ketu do not cause vedha (owner decision 2026-11-07, which names ashtakvargajyoti.wordpress.com
+   * as its source). That page, as read on 2026-11-08, shows the vedha table and the Sun/Saturn and
+   * Moon/Mercury exemptions but does NOT say the nodes cannot cause vedha. The owner's rule is applied;
+   * the source line is unconfirmed. [PD] says "planets" without naming the nodes either way.
+   */
+  nodesCauseVedha: false,
+
+  /** Rahu and Ketu take Mars's good houses and vedha points [VB]. */
+  nodeGoodHousesLikeMars: true,
+
+  /** Planets whose daily star, tara and house are written down (Moon is handled by its own change list). */
+  starPlanets: ['Sun', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Rahu', 'Ketu'] as ScorePlanet[],
+  /** The natal points whose stars a crossing is a trigger for. */
+  natalStarPoints: ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu', 'Lagna'] as string[],
 } as const;
 
 /**

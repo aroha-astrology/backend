@@ -5,5 +5,6 @@ export * from './types/api';
 
 // Constants
 export * from './constants/astrology';
+export * from './constants/nakshatra-info';
 export * from './lib/astrologer-plans';
 export * from './lib/productDetect';

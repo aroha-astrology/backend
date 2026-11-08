@@ -41,7 +41,7 @@ describe('preflight', () => {
     expect(preflightVarshikFacts(clone(facts)).ok).toBe(true);
   });
 
-  it('holds all eight doshas, twelve months, seven areas of twelve cells and 365 days', () => {
+  it('holds all nine doshas, twelve months, seven areas of twelve cells and 365 days', () => {
     expect(facts.doshas.map((d) => d.key)).toEqual(DOSHA_KEYS);
     expect(facts.scores.months).toHaveLength(12);
     for (const a of AREAS) expect(facts.scores.timingMap[a]).toHaveLength(12);
@@ -124,7 +124,7 @@ describe('coverage', () => {
     expect(coverageProblems(facts, s.filter((x) => x.id !== 'month_07'))).toContain('section month_07: missing');
     const d = s.find((x) => x.id === 'doshas')!;
     d.paragraphs = d.paragraphs.slice(0, 7);
-    expect(coverageProblems(facts, s).join('|')).toMatch(/doshas: expected 8 paragraphs/);
+    expect(coverageProblems(facts, s).join('|')).toMatch(/doshas: expected 9 paragraphs/);
     const y = s.find((x) => x.id === 'yogas')!;
     y.paragraphs = ['Nothing is named here.'];
     expect(coverageProblems(facts, s).join('|')).toMatch(/yogas: does not mention/);

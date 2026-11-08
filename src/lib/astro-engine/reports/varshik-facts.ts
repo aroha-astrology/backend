@@ -84,6 +84,10 @@ const DOSHA_NOTES: Record<DoshaKey, { touches: string; remedy: string }> = {
     touches: 'effort, routine and the weight of duty',
     remedy: 'Saturday service: a small act of help to someone who works with their hands.',
   },
+  gandanta: {
+    touches: 'a sensitive junction point at birth, felt in how the mind settles and in new beginnings',
+    remedy: 'Monday is the Moon day: a few quiet minutes of prayer or stillness, and time with an elder.',
+  },
 };
 
 const KAKSHYA_LORDS = ['Saturn', 'Jupiter', 'Mars', 'Sun', 'Venus', 'Mercury', 'Moon', 'Lagna'] as const;
@@ -372,7 +376,7 @@ export const VarshikFactsSchema = z.object({
       )
       .length(48),
   }),
-  doshas: z.array(doshaZ).length(8),
+  doshas: z.array(doshaZ).length(DOSHA_KEYS.length),
   yogas: z.array(yogaZ),
   varsha: z.array(varshaZ).min(1).max(2),
   muddaSeamExact: z.boolean(),
@@ -986,7 +990,7 @@ export function yogaBaseName(name: string): string {
 /**
  * What the written text must cover, as plain problems (empty = complete):
  *   all 12 months with both pages' text (5 paragraphs each), all 7 area pages, a line for every
- *   one of the 8 doshas (a dosha that is not present still gets its "not in your chart" line),
+ *   one of the 9 doshas (a dosha that is not present still gets its "not in your chart" line),
  *   every yoga that delivers in 2027, and every eclipse. Sections are found by id.
  */
 export function coverageProblems(
@@ -1045,8 +1049,8 @@ export function coverageProblems(
 
   const doshaSec = need('doshas');
   if (doshaSec) {
-    if (doshaSec.paragraphs.length !== 8) {
-      problems.push(`section doshas: expected 8 paragraphs, found ${doshaSec.paragraphs.length}`);
+    if (doshaSec.paragraphs.length !== DOSHA_KEYS.length) {
+      problems.push(`section doshas: expected ${DOSHA_KEYS.length} paragraphs, found ${doshaSec.paragraphs.length}`);
     } else {
       DOSHA_KEYS.forEach((k, i) => {
         if (!stripPunct(doshaSec.paragraphs[i]!).includes(stripPunct(DOSHA_LABEL[k]))) {
