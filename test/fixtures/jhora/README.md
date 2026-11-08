@@ -39,3 +39,21 @@ Both skip unless `PYJHORA_PYTHON` points at a Python 3.11 with `pyswisseph` (and
 The four KP sub lords that first disagreed were re-read in JHora (`b04.kpfix.json`, `b09.kpfix.json`, `b10.kpfix.json`, each with the neighbouring rows). Three were transcription slips and are corrected in the natal files (b04 Mercury Ra, b09 Venus Sa, b10 Venus Ra). The engine's star, sub and Prati-sub now equal JHora's on every row read.
 
 One row stays open: **b10 Mercury (313.600)**. JHora prints sub lord Ra, but its own Prati-sub on that row is Ma, which only fits a Mercury sub (engine: Mercury sub, Mars Prati-sub). The row was read twice with the same result. Pinned as `KNOWN_SUB_MISSES` in `test/varshik-jhora-natal.spec.ts`. Either JHora differs here or the same column was misread twice; a look at the KP tab with a second pair of eyes would settle it, but it does not block anything.
+
+## C2 evidence (2026-11-08): Year Lord and Tajika yogas against M.S. Mehta
+
+Source: M.S. Mehta, *Annual Horoscope (Varshaphala)*, ch. V-X (`test/varshik-mehta.spec.ts` holds his worked examples).
+
+**Year Lord.**
+- Mehta's rule: of the five office bearers, the strongest by Panchavargiya bala that looks at the Varsha Lagna; if none looks, the Muntha lord; if the strongest is under 5 and none looks, the Muntha lord; a tie goes to the planet holding more of the five roles; the Moon is normally passed over.
+- The engine's Panchavargiya bala equals his worked table: Nehru 1946-47, kshetra, uccha, hadda and drekkana on all 7 planets; Year Lord strengths for Rajiv Gandhi 1984 (Sun 14.35 vs 14.23), V.P. Singh 1989 (Moon 13.63 vs 13.62) and 1990 (Mercury 14.60 vs 14.51). One rule differs: he gives full navamsa marks to a planet whose navamsa sign is its sign of exaltation (the Moon in Taurus); the engine, which reads the navamsa lord only, gives 1.25 instead of 5.
+- PyJHora's `lord_of_the_year` is wrong in four places, which is why it agrees with the engine on only 54 of 307 charts: it counts the Muntha from the Varsha Lagna instead of the natal Lagna; where it falls back to Panchavargiya it returns the candidate's position in its list instead of the planet; it casts the chart at birth + age x sidereal year, not at the true return; its Panchavargiya uses natural friendship and the Parashari D-3.
+- Engine defect found (NOT yet changed, owner to decide): when one planet holds two of the five roles and is the strongest, the engine treats the two roles as a tie and returns the Muntha lord. On 300 seeded charts that is 76 wrong picks (115 charts have a double-role top planet). Smaller differences from Mehta: Moon chosen as Year Lord on 32 of 300 (he passes it over, though his own V.P. Singh 1989 example has the Moon); no candidate looks at the Lagna: Mehta takes the Muntha lord, the engine the strongest (5 of 300).
+
+**Tajika yogas.** The engine's orbs (mean of the two deeptamsha) and aspect rule (none at 2/12 or 6/8) are Mehta's. PyJHora finds more yogas because it counts the 2nd and 12th place as an aspect ("semi-sextile"), which Mehta rules out with a worked example (p. 130). Engine unchanged.
+
+**Fixed in C2 (JHora wins):** the Mudda start lord was one place out on all 20 gold chart-years. The rule is now (nakshatra + completed years - 1) mod 9, which equals Mehta's and JHora's first lord on 20 of 20.
+
+**Built and checked against the gold set:** Patyayini (lords in JHora's order on 20 of 20, bar a 0.003 degree near-tie; cut points within 4.5 days, the wander is unexplained), Harsha bala 140 of 140, Dwadashavargiya bala 100 of 100 for Sun, Mars, Jupiter, Venus, Saturn and 5 of 40 for Moon and Mercury (flagged `jhoraVerified: false`), 20 life Sahams plus Roga 21 of 21 on all 20.
+
+**Not matched:** Mudda Yogini start lord equals JHora on 14 of 20 (every chart-year at ages 26-42; the 6 at ages 43-57 are five places off, cause not found); the Tri-Pataki vedha table (the book's drawing cannot be read, no second source found), so there is no verdict yet; JHora's Tripataki tab shows the annual planets, which is not Mehta's natal-count method (built, checked on his Nehru example).

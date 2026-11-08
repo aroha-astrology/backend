@@ -20,7 +20,6 @@
      "Putra": 247.426279
     },
     "muddaLords": [
-     "Jupiter",
      "Saturn",
      "Mercury",
      "Ketu",
@@ -28,7 +27,8 @@
      "Sun",
      "Moon",
      "Mars",
-     "Rahu"
+     "Rahu",
+     "Jupiter"
     ],
     "yogas": [
      "ithasala:Moon+Mercury",
@@ -75,7 +75,6 @@
      "Putra": 318.930128
     },
     "muddaLords": [
-     "Saturn",
      "Mercury",
      "Ketu",
      "Venus",
@@ -83,7 +82,8 @@
      "Moon",
      "Mars",
      "Rahu",
-     "Jupiter"
+     "Jupiter",
+     "Saturn"
     ],
     "yogas": [
      "ishrafa:Moon+Venus",
@@ -117,7 +117,6 @@
      "Putra": 260.862313
     },
     "muddaLords": [
-     "Sun",
      "Moon",
      "Mars",
      "Rahu",
@@ -125,7 +124,8 @@
      "Saturn",
      "Mercury",
      "Ketu",
-     "Venus"
+     "Venus",
+     "Sun"
     ],
     "yogas": [
      "ithasala:Moon+Mercury",
@@ -168,7 +168,6 @@
      "Putra": 273.888826
     },
     "muddaLords": [
-     "Moon",
      "Mars",
      "Rahu",
      "Jupiter",
@@ -176,7 +175,8 @@
      "Mercury",
      "Ketu",
      "Venus",
-     "Sun"
+     "Sun",
+     "Moon"
     ],
     "yogas": [
      "ithasala:Moon+Venus",
@@ -211,7 +211,6 @@
      "Putra": 233.317144
     },
     "muddaLords": [
-     "Moon",
      "Mars",
      "Rahu",
      "Jupiter",
@@ -219,7 +218,8 @@
      "Mercury",
      "Ketu",
      "Venus",
-     "Sun"
+     "Sun",
+     "Moon"
     ],
     "yogas": [
      "ithasala:Moon+Venus",
@@ -258,7 +258,6 @@
      "Putra": 100.207254
     },
     "muddaLords": [
-     "Mars",
      "Rahu",
      "Jupiter",
      "Saturn",
@@ -266,7 +265,8 @@
      "Ketu",
      "Venus",
      "Sun",
-     "Moon"
+     "Moon",
+     "Mars"
     ],
     "yogas": [
      "ishrafa:Moon+Venus",
@@ -307,7 +307,6 @@
      "Putra": 46.237963
     },
     "muddaLords": [
-     "Moon",
      "Mars",
      "Rahu",
      "Jupiter",
@@ -315,7 +314,8 @@
      "Mercury",
      "Ketu",
      "Venus",
-     "Sun"
+     "Sun",
+     "Moon"
     ],
     "yogas": [
      "ithasala:Moon+Venus",
@@ -346,7 +346,6 @@
      "Putra": 248.599936
     },
     "muddaLords": [
-     "Mars",
      "Rahu",
      "Jupiter",
      "Saturn",
@@ -354,7 +353,8 @@
      "Ketu",
      "Venus",
      "Sun",
-     "Moon"
+     "Moon",
+     "Mars"
     ],
     "yogas": [
      "ithasala:Moon+Venus",
@@ -389,7 +389,6 @@
      "Putra": 261.505569
     },
     "muddaLords": [
-     "Rahu",
      "Jupiter",
      "Saturn",
      "Mercury",
@@ -397,7 +396,8 @@
      "Venus",
      "Sun",
      "Moon",
-     "Mars"
+     "Mars",
+     "Rahu"
     ],
     "yogas": [
      "ishrafa:Moon+Sun",
@@ -431,7 +431,6 @@
      "Putra": 151.862229
     },
     "muddaLords": [
-     "Jupiter",
      "Saturn",
      "Mercury",
      "Ketu",
@@ -439,7 +438,8 @@
      "Sun",
      "Moon",
      "Mars",
-     "Rahu"
+     "Rahu",
+     "Jupiter"
     ],
     "yogas": [
      "ithasala:Moon+Mercury",
@@ -487,7 +487,6 @@
      "Putra": 41.436084
     },
     "muddaLords": [
-     "Moon",
      "Mars",
      "Rahu",
      "Jupiter",
@@ -495,7 +494,8 @@
      "Mercury",
      "Ketu",
      "Venus",
-     "Sun"
+     "Sun",
+     "Moon"
     ],
     "yogas": [
      "ithasala:Moon+Sun",
@@ -533,7 +533,6 @@
      "Putra": 162.72564
     },
     "muddaLords": [
-     "Mars",
      "Rahu",
      "Jupiter",
      "Saturn",
@@ -541,7 +540,8 @@
      "Ketu",
      "Venus",
      "Sun",
-     "Moon"
+     "Moon",
+     "Mars"
     ],
     "yogas": [
      "ishrafa:Moon+Venus",
@@ -569,7 +569,6 @@
      "Putra": 264.21696
     },
     "muddaLords": [
-     "Ketu",
      "Venus",
      "Sun",
      "Moon",
@@ -577,7 +576,8 @@
      "Rahu",
      "Jupiter",
      "Saturn",
-     "Mercury"
+     "Mercury",
+     "Ketu"
     ],
     "yogas": [
      "ishrafa:Moon+Jupiter",
@@ -606,7 +606,6 @@
      "Putra": 1.824458
     },
     "muddaLords": [
-     "Venus",
      "Sun",
      "Moon",
      "Mars",
@@ -614,7 +613,8 @@
      "Jupiter",
      "Saturn",
      "Mercury",
-     "Ketu"
+     "Ketu",
+     "Venus"
     ],
     "yogas": [
      "ithasala:Moon+Mercury",
@@ -648,7 +648,6 @@
      "Putra": 66.332996
     },
     "muddaLords": [
-     "Sun",
      "Moon",
      "Mars",
      "Rahu",
@@ -656,7 +655,8 @@
      "Saturn",
      "Mercury",
      "Ketu",
-     "Venus"
+     "Venus",
+     "Sun"
     ],
     "yogas": [
      "ithasala:Moon+Mercury",
@@ -688,7 +688,6 @@
      "Putra": 174.75609
     },
     "muddaLords": [
-     "Moon",
      "Mars",
      "Rahu",
      "Jupiter",
@@ -696,7 +695,8 @@
      "Mercury",
      "Ketu",
      "Venus",
-     "Sun"
+     "Sun",
+     "Moon"
     ],
     "yogas": [
      "ithasala:Moon+Sun",
@@ -732,7 +732,6 @@
      "Putra": 113.144956
     },
     "muddaLords": [
-     "Venus",
      "Sun",
      "Moon",
      "Mars",
@@ -740,7 +739,8 @@
      "Jupiter",
      "Saturn",
      "Mercury",
-     "Ketu"
+     "Ketu",
+     "Venus"
     ],
     "yogas": [
      "ithasala:Moon+Venus",
@@ -770,7 +770,6 @@
      "Putra": 25.219082
     },
     "muddaLords": [
-     "Sun",
      "Moon",
      "Mars",
      "Rahu",
@@ -778,7 +777,8 @@
      "Saturn",
      "Mercury",
      "Ketu",
-     "Venus"
+     "Venus",
+     "Sun"
     ],
     "yogas": [
      "ishrafa:Moon+Mercury",
@@ -815,7 +815,6 @@
      "Putra": 129.3652
     },
     "muddaLords": [
-     "Moon",
      "Mars",
      "Rahu",
      "Jupiter",
@@ -823,7 +822,8 @@
      "Mercury",
      "Ketu",
      "Venus",
-     "Sun"
+     "Sun",
+     "Moon"
     ],
     "yogas": [
      "ishrafa:Moon+Sun",
@@ -854,7 +854,6 @@
      "Putra": 347.949679
     },
     "muddaLords": [
-     "Mars",
      "Rahu",
      "Jupiter",
      "Saturn",
@@ -862,7 +861,8 @@
      "Ketu",
      "Venus",
      "Sun",
-     "Moon"
+     "Moon",
+     "Mars"
     ],
     "yogas": [
      "ishrafa:Moon+Venus",
@@ -895,7 +895,6 @@
      "Putra": 332.174466
     },
     "muddaLords": [
-     "Saturn",
      "Mercury",
      "Ketu",
      "Venus",
@@ -903,7 +902,8 @@
      "Moon",
      "Mars",
      "Rahu",
-     "Jupiter"
+     "Jupiter",
+     "Saturn"
     ],
     "yogas": [
      "ishrafa:Moon+Saturn",
@@ -933,7 +933,6 @@
      "Putra": 275.470304
     },
     "muddaLords": [
-     "Mercury",
      "Ketu",
      "Venus",
      "Sun",
@@ -941,7 +940,8 @@
      "Mars",
      "Rahu",
      "Jupiter",
-     "Saturn"
+     "Saturn",
+     "Mercury"
     ],
     "yogas": [
      "ishrafa:Moon+Mercury",
@@ -972,7 +972,6 @@
      "Putra": 185.818589
     },
     "muddaLords": [
-     "Ketu",
      "Venus",
      "Sun",
      "Moon",
@@ -980,7 +979,8 @@
      "Rahu",
      "Jupiter",
      "Saturn",
-     "Mercury"
+     "Mercury",
+     "Ketu"
     ],
     "yogas": [
      "ishrafa:Moon+Sun",
@@ -1012,7 +1012,6 @@
      "Putra": 11.332186
     },
     "muddaLords": [
-     "Venus",
      "Sun",
      "Moon",
      "Mars",
@@ -1020,7 +1019,8 @@
      "Jupiter",
      "Saturn",
      "Mercury",
-     "Ketu"
+     "Ketu",
+     "Venus"
     ],
     "yogas": [
      "ishrafa:Moon+Mercury",

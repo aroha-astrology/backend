@@ -538,3 +538,24 @@ export const VARSHIK_NAKSHATRA = {
  * and update base and scale before shipping.
  */
 export const VARSHIK_WEIGHTS_STATUS: 'provisional' | 'locked' = 'locked';
+
+/**
+ * C2: the natal-promise cap. M.S. Mehta, Annual Horoscope (Varshaphala), ch. XI: "The annual chart
+ * cannot give what is not promised in the birth chart" (the book states the rule; the numbers below
+ * are ours and are NOT calibrated: C3 recalibrates and the owner agrees before they are locked).
+ * A house's promise runs -1 (weak) to +1 (strong) from the natal chart. A good annual signal for
+ * that area is held to a ceiling that rises from `floorCeiling` at promise -1 to 1 at promise
+ * `fullAt` and above; a bad annual signal is never lifted.
+ */
+export const NATAL_PROMISE = {
+  floorCeiling: 0.4,
+  fullAt: 0.3,
+  /** Weight of each part of the promise (they are summed, then clamped to -1..+1). */
+  lordDignity: 0.6,
+  lordInDusthana: -0.35,
+  beneficPresence: 0.2,
+  maleficPresence: -0.15,
+  benefics: ['Jupiter', 'Venus', 'Mercury'] as string[],
+  malefics: ['Saturn', 'Mars', 'Rahu', 'Ketu'] as string[],
+  dusthana: [6, 8, 12] as number[],
+} as const;
