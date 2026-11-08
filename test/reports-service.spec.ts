@@ -1,3 +1,4 @@
+import { VARSHIK_TEXT_GROUPS } from '../src/lib/llm/reports/varshik-2027.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../src/config/env.js';
 import { getReportDef } from '../src/config/reports.js';
@@ -2008,21 +2009,24 @@ describe('getReportForUser', () => {
     expect(state.findKundliByUserId).not.toHaveBeenCalled();
   });
 
-  it('Varshik: a queued row reports 0 of 5 groups written', async () => {
+  it('Varshik: a queued row reports 0 of VARSHIK_TEXT_GROUPS groups written', async () => {
     state.findReportById.mockResolvedValue(makeReportRow({ reportKey: 'varshik_rashifal_2027', status: 'queued' }));
     expect(await getReportForUser('report-1', 'user-1', 'en')).toEqual({
       status: 'generating',
       reportKey: 'varshik_rashifal_2027',
-      progress: { done: 0, total: 5 },
+      progress: { done: 0, total: VARSHIK_TEXT_GROUPS },
     });
   });
 
-  it('Varshik: reports the checkpointed groups, and never 5 of 5 while it is still generating', async () => {
+  it('Varshik: reports the checkpointed groups, and never N of N while it is still generating', async () => {
+    const N = VARSHIK_TEXT_GROUPS;
+    expect(N).toBe(6); // 5 parallel calls + the Chapter V/VI call (C3 added the stars call)
     const groups = (n: number) => ({ sectionGroups: Array.from({ length: n }, () => [{ heading: 'h', paragraphs: ['p'] }]) });
     state.findReportById.mockResolvedValue(makeReportRow({ reportKey: 'varshik_rashifal_2027', status: 'generating', content: groups(2) }));
-    expect(await getReportForUser('report-1', 'user-1', 'en')).toMatchObject({ progress: { done: 2, total: 5 } });
-    state.findReportById.mockResolvedValue(makeReportRow({ reportKey: 'varshik_rashifal_2027', status: 'generating', content: groups(5) }));
-    expect(await getReportForUser('report-1', 'user-1', 'en')).toMatchObject({ progress: { done: 4, total: 5 } });
+    expect(await getReportForUser('report-1', 'user-1', 'en')).toMatchObject({ progress: { done: 2, total: N } });
+    // Every group saved, but the row still says generating: the count stops one short of the total.
+    state.findReportById.mockResolvedValue(makeReportRow({ reportKey: 'varshik_rashifal_2027', status: 'generating', content: groups(N) }));
+    expect(await getReportForUser('report-1', 'user-1', 'en')).toMatchObject({ progress: { done: N - 1, total: N } });
   });
 
   it('other reports carry no progress', async () => {

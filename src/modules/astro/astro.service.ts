@@ -29,7 +29,12 @@ import {
   type AnnualRotation,
 } from '../../lib/astro-engine/lalkitab/annualRotation.js';
 import { computeVarshphal } from '../../lib/astro-engine/varshphal/index.js';
-import { nextEclipses, localEclipses } from '../../lib/astro-engine/panchang/eclipse.js';
+import {
+  classifyEclipse,
+  INDIA_ECLIPSE_CITIES,
+  nextEclipses,
+  type EclipseEvent,
+} from '../../lib/astro-engine/panchang/eclipse.js';
 import { SIGNS } from '../../lib/astro-tools/index.js';
 import { findPredictionsDueForReview, recordPrediction } from './prediction-outcomes.repo.js';
 import { MODEL as MODEL_NAME, FORECAST_PERIODIC_TRANSLATION_PROFILE } from '../../config/llm.js';
@@ -1223,26 +1228,40 @@ async function buildChatPanchangFacts(lat: number, lon: number): Promise<string[
  * "will it affect me" directly instead of hedging every time. Best-effort:
  * swisseph failing must never break the chat reply.
  */
-async function buildChatEclipseFacts(lat?: number, lon?: number): Promise<string[]> {
-  const { solar, lunar } = await nextEclipses();
-  const fmt = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+async function buildChatEclipseFacts(here?: { lat: number; lon: number; name?: string } | null): Promise<string[]> {
+  const { solarEvent, lunarEvent } = await nextEclipses();
+  const ist = (d: Date) =>
+    d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  const day = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  // Seen from the user's CURRENT location when we have it; otherwise a labelled India-wide summary.
+  // Never the birth place: an eclipse is seen where a person lives now (Varshik C5, fix-once).
+  const places = here
+    ? [{ name: here.name ?? "the user's current location", lat: here.lat, lon: here.lon }]
+    : INDIA_ECLIPSE_CITIES;
+  const scope = here ? 'reader' : 'india';
+  const where = here ? "the user's current location" : 'India (Delhi, Mumbai, Kolkata, Chennai, Bengaluru)';
 
-  const local = lat != null && lon != null ? await localEclipses(lat, lon).catch(() => null) : null;
-
-  const describe = (label: string, globalDate: Date, localDate: Date | undefined): string => {
-    if (!localDate) {
-      return `Next ${label}: ${fmt(globalDate)} — a global sky event, not necessarily visible from every location.`;
+  const describe = async (label: string, e: EclipseEvent): Promise<string> => {
+    const c = await classifyEclipse(e, places, scope);
+    const kind = `${e.subtype} ${label}`;
+    if (c.class === 'upachchaya') {
+      return `Next ${label}: ${day(e.at)}, a PENUMBRAL eclipse (Upachchaya, penumbral magnitude ${(e.penumbralMagnitude ?? 0).toFixed(2)}): the Moon only dims slightly, it is not seen as a Grahan, no Sutak applies and it is not a personal trigger.`;
     }
-    if (fmt(localDate) === fmt(globalDate)) {
-      return `Next ${label}: ${fmt(globalDate)} — this one IS visible from the user's location, so it does affect them.`;
+    if (c.class === 'not_visible') {
+      return `Next ${label}: ${day(e.at)}, a ${kind}, NOT visible from ${where}, so no Sutak there and it is not a personal trigger there.`;
     }
-    return `Next ${label} anywhere is ${fmt(globalDate)}, but it is NOT visible from the user's location so it does not affect them there; the next one visible from their location is ${fmt(localDate)}.`;
+    const seen = c.local
+      .filter((l) => l.visible && l.fromAt && l.toAt)
+      .map((l) => `${l.place.name} ${ist(l.fromAt!)}-${ist(l.toAt!).slice(-5)} IST${l.magnitude != null ? ` (${Math.round(l.magnitude * 100)}%)` : ''}`)
+      .join('; ');
+    const sutak = c.sutak[0] ? ` Sutak from ${ist(c.sutak[0].fromAt)} IST (${e.kind === 'solar' ? 12 : 9} hours before it starts${c.sutak.length > 1 ? ', in ' + c.sutak[0].place : ''}).` : '';
+    return `Next ${label}: ${day(e.at)}, a ${kind} (Grahan) seen from ${where}: ${seen}.${sutak}`;
   };
 
-  return [
-    describe('solar eclipse (Surya Grahan)', solar, local?.solar),
-    describe('lunar eclipse (Chandra Grahan)', lunar, local?.lunar),
-  ];
+  return Promise.all([
+    describe('solar eclipse (Surya Grahan)', solarEvent),
+    describe('lunar eclipse (Chandra Grahan)', lunarEvent),
+  ]);
 }
 
 /** Narrows an `unknown` field pulled off a loosely-typed chart object to a
@@ -1756,10 +1775,13 @@ export async function* chatStream(
       ? await buildChatPanchangFacts(place.lat, place.lon).catch(() => [])
       : [];
 
-  // Next eclipse dates — NOT gated on a birth place being on file (unlike
-  // panchangFacts above), but uses one when present to resolve local
-  // visibility too.
-  const eclipseFacts = await buildChatEclipseFacts(place?.lat, place?.lon).catch(() => []);
+  // Next eclipses with their type and where they are seen. Visibility is read at the account
+  // owner's CURRENT location (only for their own profile: a saved family member may live
+  // elsewhere), else a labelled India-wide summary; never the birth place (Varshik C5).
+  const here = !profile?.birthProfileId ? user?.currentLocation : null;
+  const eclipseFacts = await buildChatEclipseFacts(
+    here ? { lat: here.lat, lon: here.lon, name: here.name } : null,
+  ).catch(() => []);
 
   // The annual (Varshphal) chart for the year currently running, cast at the
   // birth location — same best-effort contract as the Panchang facts above.

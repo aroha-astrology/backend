@@ -93,6 +93,10 @@ export const REPORT_SECTION_IDS: Partial<Record<ReportKey, readonly string[]>> =
     'question_3',
     'question_4',
     'question_5',
+    // C3: written by their own call and carry their own ids (see assignSectionIds)
+    'birth_stars',
+    'three_flags',
+    'your_stars_2027',
   ],
   // 9 sections over 3 LLM calls (3 each) — see lib/llm/reports/progeny.ts. The count here MUST
   // stay in lockstep with what that file emits; assignSectionIds zips by position and silently
@@ -273,6 +277,9 @@ const APPEND_ONLY_SECTION_IDS: ReadonlySet<string> = new Set([
 export function assignSectionIds<T extends SectionWithId>(reportKey: string, sections: T[]): T[] {
   const ids = REPORT_SECTION_IDS[reportKey as ReportKey];
   if (!ids) return sections;
+  // Varshik writes the id on every section itself (the variable number of question pages and the C3 star pages
+  // make the positional zip unsafe), so a list that already carries ids is left alone.
+  if (reportKey === 'varshik_rashifal_2027' && sections.length > 0 && sections.every((s) => !!s.id)) return sections;
   const prefixMatches =
     APPEND_ONLY_SECTION_IDS.has(reportKey) && sections.length < ids.length && sections.length > 0;
   if (ids.length !== sections.length && !prefixMatches) return sections;

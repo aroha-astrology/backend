@@ -72,10 +72,10 @@ export const CALIBRATION_TARGETS = {
 } as const;
 
 export const VARSHIK_WEIGHTS = {
-  /** Log-odds of a day with no signals (0 = a score of 50). Fitted on 300 synthetic charts (3 seeds), 2026-11-06. */
-  base: -0.1,
+  /** Log-odds of a day with no signals (0 = a score of 50). LOCKED 2026-11-09 by the owner after C3: fitted on 300 synthetic charts (3 seeds) with the star-family cap (was -0.1 / 0.65 before C3). */
+  base: 0.2,
   /** Multiplier on the summed component signals; the second population-level knob. */
-  scale: 0.65,
+  scale: 0.4,
 
   /** Houses (from the Lagna, whole sign) that carry each area. */
   areaHouses: {
@@ -343,6 +343,8 @@ export const VARSHIK_WEIGHTS = {
       key: 'marriage',
       areas: { love: 0.6, family: 0.3, growth: 0.1 },
       requires: { relationship: ['single', 'partnered'] },
+      // S3 open item, fixed in C3: a single student is not shown a marriage row (a partnered student still is).
+      excludesWhen: [{ relationship: ['single'], occupation: ['student'] }],
     },
     {
       key: 'family_planning',
@@ -363,6 +365,8 @@ export const VARSHIK_WEIGHTS = {
     areas: Partial<Record<Area, number>>;
     requires?: Partial<Record<'relationship' | 'occupation' | 'children' | 'mainDecision', readonly string[]>>;
     excludes?: Partial<Record<'relationship' | 'occupation' | 'children' | 'mainDecision', readonly string[]>>;
+    /** The row hides when ALL the fields of any one entry match (a combination, where `excludes` hides on any single answer). */
+    excludesWhen?: ReadonlyArray<Partial<Record<'relationship' | 'occupation' | 'children' | 'mainDecision', readonly string[]>>>;
   }>,
   /** The reader's "big decision in 2027" answer -> the rows it marks as theirs. */
   mainDecisionKeys: {
@@ -538,6 +542,9 @@ export const VARSHIK_NAKSHATRA = {
  * and update base and scale before shipping.
  */
 export const VARSHIK_WEIGHTS_STATUS: 'provisional' | 'locked' = 'locked';
+// C3 (2026-11-09): re-locked by the owner at base 0.20 / scale 0.40 after the star-family cap (C3.familyCap): cell mix
+// 18.6/38.9/29.4/13.1, median month range 31, 0% of profiles in one tier, one profile (s777-c064) at a range of 9.
+// A first fit without the cap (0.30 / 0.33) let the Moon-gochar family alone turn three Light Green months into Rust.
 
 /**
  * C2: the natal-promise cap. M.S. Mehta, Annual Horoscope (Varshaphala), ch. XI: "The annual chart
@@ -558,4 +565,137 @@ export const NATAL_PROMISE = {
   benefics: ['Jupiter', 'Venus', 'Mercury'] as string[],
   malefics: ['Saturn', 'Mars', 'Rahu', 'Ketu'] as string[],
   dusthana: [6, 8, 12] as number[],
+} as const;
+
+
+// =============================================================================
+// C3: the C1 + C2 inputs in the score (Varshik classical completeness, 2026-11-09)
+// =============================================================================
+// Every number here is OURS (a tuning value), not a quotation. The sources say which rule exists
+// (Phaladeepika ch. 26 for good houses and vedha, the Tara and Moorti pages named above, Mehta for
+// the Tajika items); none of them gives a weight. They are PROVISIONAL until the owner has seen the
+// before/after tier mix and agreed (VARSHIK_WEIGHTS_STATUS above).
+//
+// All of these are signals in -1..+1, added to the log-odds like the older components:
+//   moonGochar  each transiting planet's house from the NATAL MOON (good / blocked by vedha / relieved / hard)
+//   moorti      the metal of the planet's last sign change, from the Moon's house then (slow planets)
+//   tara        the Navatara of the planet's star from the birth star
+//   sensitive   a planet standing in a special tara (Janma, Karma, ...) or in a natal planet's star
+//   starLord    the natal role of the lord of the star the planet stands in
+//   kakshya     whether the kakshya lord gave the planet a bindu where it stands
+//   muddaYogini / patyayini   run alongside Mudda, with the same lord reading
+//   annualBala  Harsha + Dwadashavargiya bala, folded into the Year Lord and the three annual dasha lords
+//   extraYogas  the 10 further Tajika yogas; lifeSahams the life Sahams, as a steady quiet part
+//   natalCap    the C2 natal-promise cap on the annual (Varsha-side) part
+// Tri-Pataki is NOT scored: Mehta gives no combined verdict (owner decision 2026-11-08), so it is words only.
+// =============================================================================
+export const VARSHIK_C3 = {
+  components: {
+    moonGochar: 0.9,
+    moorti: 0.35,
+    tara: 0.5,
+    sensitive: 0.5,
+    starLord: 0.4,
+    kakshya: 0.3,
+    muddaYogini: 0.5,
+    patyayini: 0.35,
+    extraYogas: 0.45,
+    lifeSahams: 0.4,
+  },
+  /**
+   * No single star family may move an area's log-odds (before `scale`) by more than this, in either direction. Found in C3
+   * (2026-11-09): for one test profile the Moon-gochar family alone summed to -2.4 raw (Jupiter and Saturn both in hard houses
+   * from the natal Moon), three to four times the next term, and by itself turned three Light Green months into Rust.
+   */
+  familyCap: { families: ['gochar', 'tara', 'moorti', 'sensitive', 'starLord', 'kakshya'] as string[], raw: 1.2 },
+  /** Moon-gochar verdict -> signal. */
+  gochar: { good: 1, relieved: 0.4, blocked: -0.2, hard: -0.8, none: 0 } as Record<string, number>,
+  /** Moorti metal -> signal; planets it is read for. */
+  moortiValue: { swarna: 1, rajata: 0.5, tamra: 0, loha: -0.7 } as Record<string, number>,
+  moortiPlanets: ['Saturn', 'Jupiter', 'Rahu', 'Ketu', 'Mars'] as ScorePlanet[],
+  /** Tara number (1-9) -> signal. */
+  taraValue: { 1: -0.2, 2: 0.7, 3: -0.7, 4: 0.7, 5: -0.5, 6: 0.8, 7: -0.8, 8: 0.6, 9: 0.9 } as Record<number, number>,
+  sensitive: {
+    /** A special tara or a natal planet's star amplifies the planet's own reading of the day by this much. */
+    emphasisGain: 0.8,
+    natalStarGain: 0.5,
+    /** Fixed signals: Vainashika is a hard, draining stretch; Abhisheka is recognition. */
+    vainashika: -0.7,
+    abhisheka: 0.5,
+    /** The areas each special tara speaks for (full strength); other areas get `otherShare`. */
+    areaOf: {
+      1: ['health', 'growth'],
+      4: ['family', 'love'],
+      10: ['career'],
+      12: ['travel', 'family'],
+      16: ['family', 'love'],
+      18: ['growth', 'money'],
+      22: ['love', 'career', 'money', 'health', 'family', 'growth', 'travel'],
+      25: ['growth', 'health'],
+      28: ['career', 'growth'],
+    } as Record<number, string[]>,
+    otherShare: 0.3,
+  },
+  /** Planets read through the star-related components (the eight that move in the daily sky; the Moon changes star every day). */
+  starPlanets: ['Sun', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Rahu', 'Ketu'] as ScorePlanet[],
+  kakshyaPlanets: ['Sun', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'] as ScorePlanet[],
+
+  /** Annual bala: Harsha total is 0-20, Dwadashavargiya 0-12. Share of the lord signal taken from the bala. */
+  annualBala: {
+    share: 0.25,
+    harshaCenter: 10,
+    harshaHalfWidth: 10,
+    dwadashaCenter: 6,
+    dwadashaHalfWidth: 6,
+    /** Dwadashavargiya differs from JHora on the Moon and Mercury (fitted friend table), so only these count. */
+    dwadashaVerified: ['Sun', 'Mars', 'Jupiter', 'Venus', 'Saturn'] as string[],
+  },
+
+  /** The 10 extra Tajika yogas -> signal (ours). Iqbal counts in full only with a strong Lagna lord. */
+  extraYogaValue: {
+    iqbal: 1,
+    'gairi-kamboola': 0.5,
+    kuttha: 0.5,
+    'duhphali-kuttha': -0.3,
+    induvara: -0.4,
+    manau: -0.6,
+    khallasara: -0.5,
+    'dutthottha-davira': -0.4,
+    tambira: -0.4,
+    durupha: -0.7,
+  } as Record<string, number>,
+  iqbalWeakLagnesh: 0.3,
+
+  /** Life Sahams -> the area each speaks for. Shatru (rivals) and Jalapatha (crossing water) are left out: their good side is ambiguous. */
+  lifeSahamArea: {
+    'Yasha (Fame)': 'career',
+    'Mitra (Friends)': 'family',
+    'Mahatmya (Greatness)': 'growth',
+    'Asha (Desires)': 'growth',
+    'Samartha (Ability)': 'career',
+    'Bhratri (Brothers and sisters)': 'family',
+    'Gaurava (Respect)': 'career',
+    'Pitru (Father)': 'family',
+    'Matru (Mother)': 'family',
+    'Jeeva (Vitality)': 'health',
+    'Karma (Work)': 'career',
+    'Shastra (Learning)': 'growth',
+    'Bandhu (Relatives)': 'family',
+    'Vanik (Trade)': 'money',
+    'Shraddha (Devotion)': 'growth',
+    'Preeti (Affection)': 'love',
+    'Vyapara (Business)': 'money',
+    'Labha (Gain)': 'money',
+    'Roga (Health)': 'health',
+  } as Record<string, Area>,
+
+  /**
+   * The natal-promise cap (natal-promise.ts) is applied to the annual part (Varsha chart, Year Lord, Muntha,
+   * the three annual dashas, annual yogas and life Sahams) of each area: its sum, divided by `annualRef`,
+   * is held under the ceiling the natal promise of the area's houses allows.
+   */
+  natalCap: { annualRef: 2.0 },
+
+  /** Patyayini is read by the week (its cut points wander up to 4 days from JHora): days are grouped in blocks of this many. */
+  patyayiniBlockDays: 7,
 } as const;

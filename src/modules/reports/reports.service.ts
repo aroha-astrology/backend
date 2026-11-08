@@ -8,6 +8,7 @@
 // file does not change.
 // =============================================================================
 
+import { VARSHIK_TEXT_GROUPS } from '../../lib/llm/reports/varshik-2027.js';
 import { passReportDiscountPct } from '../../lib/entitlements.js';
 import {
   givePassFreeReportBack,
@@ -551,6 +552,7 @@ async function fetchPersonContext(
     | 'personTimeOfBirth'
     | 'personBirthTimeAccuracy'
     | 'personBirthPlace'
+    | 'personCurrentPlace'
   >
 > {
   try {
@@ -565,6 +567,7 @@ async function fetchPersonContext(
         personTimeOfBirth: null,
         personBirthTimeAccuracy: null,
         personBirthPlace: null,
+        personCurrentPlace: null,
       };
     }
     const profile = await resolveProfileContext(user, birthProfileId);
@@ -588,6 +591,16 @@ async function fetchPersonContext(
             tz: profile.placeOfBirth.tz,
           }
         : null,
+      // Account-level, so the owner's own profile only (same rule as relationship status above).
+      personCurrentPlace:
+        !profile.birthProfileId && user.currentLocation
+          ? {
+              name: user.currentLocation.name,
+              lat: user.currentLocation.lat,
+              lon: user.currentLocation.lon,
+              tz: user.currentLocation.tz,
+            }
+          : null,
     };
   } catch (err) {
     logger.warn(
@@ -603,6 +616,7 @@ async function fetchPersonContext(
       personTimeOfBirth: null,
       personBirthTimeAccuracy: null,
       personBirthPlace: null,
+      personCurrentPlace: null,
     };
   }
 }
@@ -1734,8 +1748,8 @@ function basisOf(reportKey: string): { basis?: NonNullable<ReturnType<typeof rep
   return basis ? { basis } : {};
 }
 
-/** Varshik Rashifal 2027 is written in 5 checkpointed groups (lib/llm/reports/varshik-2027.ts). */
-const VARSHIK_GROUPS = 5;
+/** Varshik Rashifal is written in VARSHIK_TEXT_GROUPS checkpointed groups, read from the generator itself. */
+const VARSHIK_GROUPS = VARSHIK_TEXT_GROUPS;
 
 /** The "generating" answer: which report it is and, for Varshik, how many groups are already written. */
 function generatingDto(row: ReportRow): ReportDto {
@@ -1743,7 +1757,7 @@ function generatingDto(row: ReportRow): ReportDto {
   if (row.reportKey === 'varshik_rashifal_2027') {
     const groups = (row.content as { sectionGroups?: unknown[] } | null)?.sectionGroups;
     const done = row.status === 'queued' || !Array.isArray(groups) ? 0 : Math.min(groups.length, VARSHIK_GROUPS - 1);
-    // Never show 5 of 5 while still generating: the last group is saved only with the finished report.
+    // Never show N of N while still generating: the last group is saved only with the finished report.
     return { ...dto, progress: { done, total: VARSHIK_GROUPS } };
   }
   return dto;

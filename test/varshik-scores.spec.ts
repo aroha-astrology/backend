@@ -66,6 +66,11 @@ describe('decision table follows the reader, never assumes', () => {
     ),
   } as never;
   const keys = (ans: object) => decisionTable(fake, ans).map((r) => r.key);
+  it('shows no marriage row to a single student, but one to a partnered student and a single worker', () => {
+    expect(keys({ relationship: 'single', occupation: 'student' })).not.toContain('marriage');
+    expect(keys({ relationship: 'partnered', occupation: 'student' })).toContain('marriage');
+    expect(keys({ relationship: 'single', occupation: 'working' })).toContain('marriage');
+  });
 
   it('hides partner and child rows unless the reader said so', () => {
     expect(keys({})).not.toContain('marriage');

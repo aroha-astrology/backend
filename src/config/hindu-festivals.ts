@@ -67,6 +67,8 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   // Note: previously dated 2025-10-28 — actual Chhath Puja (Sandhya Arghya) is Oct 27; Oct 28 is
   // the closing Usha Arghya morning ritual, not the main day.
   '2025-10-27': [{ name: 'Chhath Puja', emoji: '🌅', importance: 'major' }],
+  // Devuthani (Prabodhini) Ekadashi, Smarta date, drikpanchang New Delhi (C5, 2026-11-09): ends Chaturmas.
+  '2025-11-01': [{ name: 'Devuthani Ekadashi', emoji: '🕉', importance: 'minor' }],
   // Note: previously dated 2025-11-15 — that's actually Utpanna Ekadashi's date (a swap error).
   '2025-11-02': [{ name: 'Tulsi Vivah', emoji: '🌿', importance: 'minor' }],
   // Note: previously dated 2025-11-25 — actual is Nov 15 (was swapped with Tulsi Vivah above).
@@ -115,6 +117,8 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2026-11-10': [{ name: 'Govardhan Puja', emoji: '🐄', importance: 'minor' }],
   '2026-11-11': [{ name: 'Bhai Dooj', emoji: '👫', importance: 'minor' }],
   '2026-11-15': [{ name: 'Chhath Puja', emoji: '🌅', importance: 'major' }],
+  // Devuthani (Prabodhini) Ekadashi, Smarta date, drikpanchang New Delhi (C5, 2026-11-09): ends Chaturmas.
+  '2026-11-20': [{ name: 'Devuthani Ekadashi', emoji: '🕉', importance: 'minor' }],
   '2026-12-20': [{ name: 'Mokshada Ekadashi (Gita Jayanti)', emoji: '📖', importance: 'major' }],
 
   // -- 2027 --------------------------------------------------------------
@@ -210,6 +214,8 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
     },
   ],
   '2027-11-04': [{ name: 'Chhath Puja', emoji: '🌅', importance: 'major' }],
+  // Devuthani (Prabodhini) Ekadashi, Smarta date, drikpanchang New Delhi (C5, 2026-11-09): ends Chaturmas.
+  '2027-11-10': [{ name: 'Devuthani Ekadashi', emoji: '🕉', importance: 'minor' }],
   '2027-12-09': [{ name: 'Mokshada Ekadashi (Gita Jayanti)', emoji: '📖', importance: 'major' }],
 
   // -- 2028 --------------------------------------------------------------
@@ -273,6 +279,8 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2028-10-18': [{ name: 'Govardhan Puja', emoji: '🐄', importance: 'minor' }],
   '2028-10-19': [{ name: 'Bhai Dooj', emoji: '👫', importance: 'minor' }],
   '2028-10-23': [{ name: 'Chhath Puja', emoji: '🌅', importance: 'major' }],
+  // Devuthani (Prabodhini) Ekadashi, Smarta date, drikpanchang New Delhi (C5, 2026-11-09): ends Chaturmas.
+  '2028-10-28': [{ name: 'Devuthani Ekadashi', emoji: '🕉', importance: 'minor' }],
   '2028-11-27': [{ name: 'Mokshada Ekadashi (Gita Jayanti)', emoji: '📖', importance: 'major' }],
 
   // -- 2029 --------------------------------------------------------------
@@ -301,6 +309,8 @@ export const HINDU_FESTIVALS: Record<string, HinduFestival[]> = {
   '2029-11-06': [{ name: 'Govardhan Puja', emoji: '🐄', importance: 'minor' }],
   '2029-11-07': [{ name: 'Bhai Dooj', emoji: '👫', importance: 'minor' }],
   '2029-11-11': [{ name: 'Chhath Puja', emoji: '🌅', importance: 'major' }],
+  // Devuthani (Prabodhini) Ekadashi, Smarta date, drikpanchang New Delhi (C5, 2026-11-09): ends Chaturmas.
+  '2029-11-16': [{ name: 'Devuthani Ekadashi', emoji: '🕉', importance: 'minor' }],
   '2029-12-16': [{ name: 'Mokshada Ekadashi (Gita Jayanti)', emoji: '📖', importance: 'major' }],
 };
 

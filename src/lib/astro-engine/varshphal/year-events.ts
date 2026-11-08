@@ -6,12 +6,12 @@
 // The one new piece is combustion, found by a daily scan of each planet's angular distance
 // from the Sun and refined by bisection.
 //
-// NOT YET CHECKED against NASA's eclipse catalogue or drikpanchang (the plan calls for it); the
-// spec only checks the well-known 2027 eclipses and Mercury's three retrogrades.
+// Eclipses carry their type, magnitude and contacts (C5); the 2027 set is checked against NASA and
+// drikpanchang in test/varshik-c5.spec.ts.
 // =============================================================================
 
 import type { Ayanamsa } from '@aroha-astrology/shared';
-import { eclipsesBetween } from '../panchang/eclipse.js';
+import { eclipsesBetween, type EclipseEvent } from '../panchang/eclipse.js';
 import { dateFromJd, findTransitEvents, jdFromDate } from '../../astro-tools/transit-events.js';
 import { calculatePlanetPositions } from '../calculations/planetPositions.js';
 import { COMBUST_ORB } from './tajika-yogas.js';
@@ -33,6 +33,8 @@ export interface YearEvent {
   /** Ingress: the signs left and entered. Station: the sign it stands in. */
   fromSign?: string;
   toSign?: string | null;
+  /** Eclipses: type, magnitude and contacts (C5). */
+  eclipse?: EclipseEvent;
 }
 
 const COMBUSTIBLE = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn'] as const;
@@ -107,7 +109,7 @@ export async function computeYearEvents(
   events.push(...(await findCombustionEvents(fromMs, toMs, ayanamsa)));
 
   for (const e of await eclipsesBetween(new Date(fromMs), new Date(toMs))) {
-    events.push({ kind: e.kind === 'solar' ? 'eclipse-solar' : 'eclipse-lunar', atMs: e.at.getTime() });
+    events.push({ kind: e.kind === 'solar' ? 'eclipse-solar' : 'eclipse-lunar', atMs: e.at.getTime(), eclipse: e });
   }
 
   return events.sort((a, b) => a.atMs - b.atMs);

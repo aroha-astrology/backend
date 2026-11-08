@@ -81,6 +81,10 @@ export interface ReaderInput {
   answers: VarshikAnswers;
   /** The reader's stored chat facts for this birth profile; may be empty. */
   facts: string[];
+  /** Where the reader lives now (account owner only), for eclipse visibility; null = India summary. Never the birth place. */
+  currentPlace?: { name: string; lat: number; lon: number; tz: string } | null;
+  /** The calendar year the report reads. 2027 for a purchase; a dev-only test may ask for another (the owner's 2026 accuracy test). */
+  year?: number;
 }
 
 /**
@@ -107,7 +111,7 @@ export async function buildVarshikFactsForReader(reader: ReaderInput): Promise<V
     longitude: place.lon,
     timezone: place.tz,
   };
-  const vctx = await buildVarshikContext({ inputs, natal, year: 2027 });
+  const vctx = await buildVarshikContext({ inputs, natal, year: reader.year ?? 2027 });
   const scores = computeVarshikScores(vctx, reader.answers);
   return buildVarshikFacts({
     ctx: vctx,
@@ -122,6 +126,7 @@ export async function buildVarshikFactsForReader(reader: ReaderInput): Promise<V
       lng: place.lon,
       answers: reader.answers,
       facts: reader.facts.map((fact) => ({ fact })),
+      currentPlace: reader.currentPlace ?? null,
     },
   });
 }
@@ -157,6 +162,7 @@ const varshikGenerator: ReportGenerator = {
         birthDate: dob,
         birthTime: time,
         place,
+        currentPlace: ctx.personCurrentPlace ?? null,
         answers,
         facts: readerFacts,
       });

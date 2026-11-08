@@ -22,6 +22,7 @@ import {
   type CalendarYearVarshphal,
 } from '../varshphal/calendar-year.js';
 import { computeSahamWindows, type PositionsAt, type SahamWindow } from '../varshphal/saham-windows.js';
+import { buildNakshatraTransits, type NakshatraTransitFacts } from './nakshatra-transits.js';
 
 export interface DashaSegment {
   startMs: number;
@@ -64,6 +65,11 @@ export interface VarshikContext {
    */
   slowSky: Array<{ atMs: number; lon: Partial<Record<Planet, number>> }>;
   sahamWindows: SahamWindow[];
+  /**
+   * C1/C3: the dated star events of the year (star segments, sensitive crossings, Moorti, the Moon's stars). The daily rows are
+   * not stored (they are worked out from `days` by dailyStarRows). Absent in contexts built before C3.
+   */
+  stars?: Omit<NakshatraTransitFacts, 'daily'>;
 }
 
 const MS_PER_DAY = 86_400_000;
@@ -218,7 +224,7 @@ export async function buildVarshikContext(args: BuildVarshikArgs): Promise<Varsh
     slowSky.push({ atMs: t, lon });
   }
 
-  return {
+  const ctx: VarshikContext = {
     year,
     timezone: tz,
     natal,
@@ -238,6 +244,12 @@ export async function buildVarshikContext(args: BuildVarshikArgs): Promise<Varsh
     slowSky,
     sahamWindows,
   };
+  // The dated star events need the finished context (natal chart, day boundaries) and the ephemeris once more.
+  if (!args.positionsAt) {
+    const { daily: _daily, ...stars } = await buildNakshatraTransits(ctx);
+    ctx.stars = stars;
+  }
+  return ctx;
 }
 
 /** The lord of a sign by index. */

@@ -28,10 +28,11 @@
 // illness, no diagnoses, no stocks or amounts, no products, no technology names.
 // =============================================================================
 
+import { NAKSHATRAS } from '@aroha-astrology/shared';
 import { generate } from '../gemini-client.js';
 import { HUMAN_VOICE_RULE } from '../human-voice.js';
 import { REPORT_PROFILE, REPORT_TRANSLATION_PROFILE } from '../../../config/llm.js';
-import { TIER_TOKENS, AREAS, type Tier } from '../../../config/varshik-weights.js';
+import { TIER_TOKENS, AREAS, VARSHIK_NAKSHATRA, type Tier } from '../../../config/varshik-weights.js';
 import { cleanJsonString } from '../horoscope.js';
 import { classifyAssistantOutput } from '../../content-policy.js';
 import { logger } from '../../logger.js';
@@ -69,12 +70,12 @@ import {
 /** Headings are fixed copy (humanized once, translated in Sprint 7), never written by the model. */
 export const VARSHIK_HEADINGS: Record<string, string> = {
   welcome_letter: 'A letter from Baba Ji',
-  year_at_a_glance: '2027 at a glance',
+  year_at_a_glance: '{Y} at a glance',
   year_lord_muntha: 'Your Year Lord and Muntha',
   two_varsha_years: 'Your two Varsha charts',
   big_sky_moves: 'The big sky moves',
   planet_by_planet: 'Planet by planet',
-  doshas: 'Doshas in your 2027',
+  doshas: 'Doshas in your {Y}',
   yogas: 'Yogas on your side',
   area_love: 'Love',
   area_career: 'Career',
@@ -85,9 +86,12 @@ export const VARSHIK_HEADINGS: Record<string, string> = {
   area_travel: 'Travel',
   timing_map: 'Your timing map',
   year_rhythm: 'The rhythm of the year',
-  sky_calendar: 'Sky calendar 2027',
+  sky_calendar: 'Sky calendar {Y}',
   when_to_act: 'When to act',
   golden_windows: 'Golden windows and key dates',
+  birth_stars: 'Your birth stars',
+  three_flags: "The year's three flags",
+  your_stars_2027: 'Your stars in {Y}',
   simple_remedies: 'Simple remedies',
   what_changes: 'What you have been through, and what changes',
   closing_letter: 'A closing note from Baba Ji',
@@ -133,6 +137,12 @@ const GROUNDING_BLOCK = `GROUNDING. Everything below the instructions is a GIVEN
 const JSON_BLOCK =
   'Return STRICT JSON only, no markdown fences: {"sections": [{"id": string, "paragraphs": string[]}]}. Return the sections in the order asked, with exactly the ids and exactly the number of paragraphs asked for each. Plain text in every paragraph.';
 
+/** The prompt prose is written for 2027. For another report year the static prose moves with it (2026 -> year-1, 2028 -> year+1); the facts never go through this. */
+export function yearize(text: string, year: number): string {
+  if (year === 2027) return text;
+  return text.replace(/\b(2026|2027|2028)\b/g, (m) => String(year + Number(m) - 2027));
+}
+
 function baseSystem(): string {
   return `You are writing "Varshik Rashifal 2027", a paid personal year report for a mobile astrology app, in the voice of Baba Ji. It reads calendar year 2027 (1 January to 31 December) from the reader's birth chart and two Varsha (solar return) charts.
 
@@ -141,7 +151,59 @@ ${VARSHIK_STYLE_BLOCK}
 ${HUMAN_VOICE_RULE}
 ${TONE_BLOCK}
 ${SAFETY_BLOCK}
+${C5_CALENDAR_RULES}
 ${JSON_BLOCK}`;
+}
+
+/** C5: house references, eclipse classes and the no-muhurat periods, for every call. */
+const C5_CALENDAR_RULES = `HOUSES, ECLIPSES AND MUHURAT:
+- Every house a moving planet stands in names what it is counted from, as the facts give it: "the 6th from your Lagna", "the 3rd from your Moon". Never a bare "6th house" for a moving planet. Sade Sati and Dhaiya are always counted from the Moon.
+- An eclipse marked Grahan may be read for the reader, with its local times and its Sutak exactly as given. An eclipse marked Upachchaya (penumbral) or not visible is a plain marker in the sky: give its date and type, say it brings no Sutak, and never tie it to a house, a person or an outcome.
+- Never write Sutak for an eclipse the facts do not give a Sutak for.
+- When the eclipse times are an India-wide summary, say "across India" and name the cities; never present them as the reader's own place.
+- A wedding, commitment or move into a new home never gets a window inside a no-muhurat period the facts list for it. Say the period plainly with its dates. Where the facts say "traditionally no muhurat", you may say so; where they say "this report keeps it clear", say that instead and never claim a panchang forbids it.`;
+
+const CLOSURE_WORDS: Record<string, string> = {
+  shukra_asta: 'Venus is combust (Shukra Asta)',
+  guru_asta: 'Jupiter is combust (Guru Asta)',
+  kharmas: 'the Sun is in Sagittarius or Pisces (Kharmas)',
+  chaturmas: 'Chaturmas',
+};
+
+const CLOSED_EVENT_WORDS: Record<string, string> = {
+  marriage: 'wedding',
+  commit_relationship: 'engagement or commitment',
+  move_home: 'move-in (griha pravesh)',
+};
+
+function closureLines(d: VarshikFacts['scores']['decisionTable'][number]): string {
+  if (!d.closed) return '';
+  const ev = CLOSED_EVENT_WORDS[d.key] ?? 'start';
+  const parts = d.closures.map((c, i) => {
+    const how = d.ruleSource[i] === 'panchang' ? `traditionally no ${ev} muhurat` : `this report keeps ${ev} dates clear of it`;
+    return `${CLOSURE_WORDS[c.reason]} from ${dayMonth(c.from)} to ${dayMonth(c.to)}: ${how}`;
+  });
+  const open = d.openSpans.map((sp) => (sp.from === sp.to ? dayMonth(sp.from) : `${dayMonth(sp.from)} to ${dayMonth(sp.to)}`)).join(' and ');
+  return `; no-muhurat periods: ${parts.join('; ')}${open ? `; the open days inside the best stretch: ${open}` : ''}`;
+}
+
+function eclipseWords(e: VarshikFacts['skyEvents'][number], f: VarshikFacts): string {
+  const x = e.eclipse;
+  const body = e.kind === 'eclipse-solar' ? 'solar' : 'lunar';
+  if (!x) return `${body} eclipse`;
+  const place = f.reader.eclipsePlace.scope === 'india' ? `across ${f.reader.eclipsePlace.name}` : `from the reader's current home (${f.reader.eclipsePlace.name})`;
+  if (x.class === 'not_visible') {
+    return `${x.subtype} ${body} eclipse, NOT visible ${place}: no Sutak; a plain marker, not a personal trigger, name no house for it`;
+  }
+  if (x.class === 'upachchaya') {
+    return `penumbral ${body} eclipse (Upachchaya, penumbral magnitude ${(x.penumbralMagnitude ?? 0).toFixed(2)}): only a faint shading of the Moon, no Sutak; a plain marker, not a personal trigger, name no house for it`;
+  }
+  const seen = x.places
+    .filter((p) => p.visible)
+    .map((p) => `${p.name} ${p.from} to ${p.to}${p.magnitude !== null && body === 'solar' ? ` (${Math.round(p.magnitude * 100)}% of the Sun covered)` : ''}`)
+    .join(', ');
+  const sutak = x.sutak.map((st) => `${st.place} from ${st.from.slice(11)}${st.from.slice(0, 10) !== e.date ? ` on ${dayMonth(st.from.slice(0, 10))}` : ''}`).join(', ');
+  return `${x.subtype} ${body} eclipse globally, seen as a Grahan ${place}: ${seen}. Sutak (${body === 'solar' ? 12 : 9} hours before it begins): ${sutak}`;
 }
 
 // -----------------------------------------------------------------------------
@@ -171,14 +233,14 @@ const ANSWER_WORDS: Record<string, Record<string, string>> = {
     have: 'they have children',
   },
   mainDecision: {
-    job_change: 'the biggest decision they face in 2027 is a change of job',
-    start_business: 'the biggest decision they face in 2027 is starting a business',
-    relationship: 'the biggest decision they face in 2027 is about a relationship',
-    move_or_travel: 'the biggest decision they face in 2027 is a move or a long trip',
-    money: 'the biggest decision they face in 2027 is about money',
-    health: 'the biggest decision they face in 2027 is about their health routine',
-    study: 'the biggest decision they face in 2027 is about study or an exam',
-    nothing_specific: 'they have no single big decision in mind for 2027',
+    job_change: 'the biggest decision they face in {Y} is a change of job',
+    start_business: 'the biggest decision they face in {Y} is starting a business',
+    relationship: 'the biggest decision they face in {Y} is about a relationship',
+    move_or_travel: 'the biggest decision they face in {Y} is a move or a long trip',
+    money: 'the biggest decision they face in {Y} is about money',
+    health: 'the biggest decision they face in {Y} is about their health routine',
+    study: 'the biggest decision they face in {Y} is about study or an exam',
+    nothing_specific: 'they have no single big decision in mind for {Y}',
   },
   livingWith: {
     alone: 'they live alone',
@@ -194,22 +256,22 @@ const ANSWER_WORDS: Record<string, Record<string, string>> = {
     buying_or_building: 'they plan to buy or build a home',
   },
   moneyFocus: {
-    saving: 'their money focus for 2027 is saving',
-    investing: 'their money focus for 2027 is investing',
-    clearing_debt: 'their money focus for 2027 is clearing a loan or debt',
-    earning_more: 'their money focus for 2027 is earning more',
-    big_purchase: 'their money focus for 2027 is a big purchase',
-    nothing_specific: 'they have no particular money goal for 2027',
+    saving: 'their money focus for {Y} is saving',
+    investing: 'their money focus for {Y} is investing',
+    clearing_debt: 'their money focus for {Y} is clearing a loan or debt',
+    earning_more: 'their money focus for {Y} is earning more',
+    big_purchase: 'their money focus for {Y} is a big purchase',
+    nothing_specific: 'they have no particular money goal for {Y}',
   },
   travelPlan: {
-    abroad: 'they plan to travel abroad in 2027',
-    within_india: 'they plan to travel within India in 2027',
-    none: 'they do not plan any long travel in 2027',
+    abroad: 'they plan to travel abroad in {Y}',
+    within_india: 'they plan to travel within India in {Y}',
+    none: 'they do not plan any long travel in {Y}',
   },
   studyPlan: {
-    exam: 'they are preparing for an exam in 2027',
-    course: 'they are doing a course or studies in 2027',
-    none: 'they are not studying or preparing for an exam in 2027',
+    exam: 'they are preparing for an exam in {Y}',
+    course: 'they are doing a course or studies in {Y}',
+    none: 'they are not studying or preparing for an exam in {Y}',
   },
   practice: {
     daily: 'they keep a daily spiritual practice',
@@ -227,6 +289,16 @@ const DRIVER_WORDS: Array<[RegExp, (m: RegExpExecArray) => string]> = [
   [/^transit:(\w+)$/, (m) => `${m[1]} moving through the sky`],
   [/^sadeSati:Saturn$/, () => "Saturn's position counted from the natal Moon (the Sade Sati and Dhaiya count)"],
   [/^saham:(\w+)$/, (m) => `a Saham window triggered by ${m[1]}`],
+  [/^gochar:(\w+)$/, (m) => `${m[1]} counted from your natal Moon`],
+  [/^moorti:(\w+)$/, (m) => `the Moorti of ${m[1]}'s last sign change`],
+  [/^tara:(\w+)$/, (m) => `the star ${m[1]} stands in, counted from your birth star`],
+  [/^sensitive:(\w+)$/, (m) => `${m[1]} crossing a sensitive star`],
+  [/^starLord:(\w+)$/, (m) => `the lord of the star ${m[1]} stands in`],
+  [/^kakshya:(\w+)$/, (m) => `the kakshya ${m[1]} stands in`],
+  [/^yogini:(\w+)$/, (m) => `the ${m[1]} Mudda Yogini period`],
+  [/^patyayini:(\w+)$/, (m) => `the ${m[1]} Patyayini period`],
+  [/^tajikaExtra$/, () => 'the further yogas of the Varsha chart'],
+  [/^lifeSaham$/, () => 'the Sahams of everyday life in the Varsha chart'],
 ];
 
 function driverText(key: string): string | null {
@@ -267,7 +339,7 @@ export function renderReader(f: VarshikFacts): string {
   const lines: string[] = [];
   lines.push(`Reader: ${f.reader.name ?? 'the reader'}.`);
   for (const [k, v] of Object.entries(f.reader.answers)) {
-    const w = ANSWER_WORDS[k]?.[v];
+    const w = ANSWER_WORDS[k]?.[v]?.split('{Y}').join(String(f.year));
     if (w) lines.push(`What the reader told us: ${w}.`);
   }
   if (Object.keys(f.reader.answers).length === 0) {
@@ -279,7 +351,7 @@ export function renderReader(f: VarshikFacts): string {
 export function renderCommon(f: VarshikFacts): string {
   const lines: string[] = [renderReader(f)];
   lines.push(
-    `Report window: 1 January to 31 December 2027. The birth chart reads from a ${f.birth.lagna.sign} Lagna at ${f.birth.lagna.degree} degrees (${f.birth.lagna.nakshatra}). The natal dasha balance at birth was ${f.dashas.balance.planet}.`,
+    `Report window: 1 January to 31 December ${f.year}. The birth chart reads from a ${f.birth.lagna.sign} Lagna at ${f.birth.lagna.degree} degrees (${f.birth.lagna.nakshatra}). The natal dasha balance at birth was ${f.dashas.balance.planet}.`,
   );
   lines.push('BIRTH CHART:');
   for (const p of f.birth.planets) lines.push(`- ${planetLine(p)}`);
@@ -288,8 +360,8 @@ export function renderCommon(f: VarshikFacts): string {
     const rules =
       f.varsha.length === 2
         ? i === 0
-          ? `rules from 1 January until ${dayMonth(v.endsAt.slice(0, 10))} 2027`
-          : `rules from ${dayMonth(v.startsAt.slice(0, 10))} 2027 to the end of the year`
+          ? `rules from 1 January until ${dayMonth(v.endsAt.slice(0, 10))} ${f.year}`
+          : `rules from ${dayMonth(v.startsAt.slice(0, 10))} ${f.year} to the end of the year`
         : 'rules the whole year';
     lines.push(
       `- The ${v.targetYear} Varsha chart (solar return ${v.startsAt}, ${v.isDayReturn ? 'a day' : 'a night'} return) ${rules}. Varsha Lagna ${v.lagna}. Year Lord ${v.yearLord}${v.wonByMunthaTiebreak ? ' (chosen because the Muntha lord won the tie)' : ''}. Muntha in ${v.muntha.sign}, the Varsha ${ORD[v.muntha.house]} house, lord ${v.muntha.lord}, ${v.muntha.auspicious ? 'a supportive house' : 'a demanding house'}. Panchadhikari: ${v.panchadhikari.map((c) => `${c.role} ${c.planet}`).join('; ')}. Strength of the seven planets in this chart: ${Object.entries(v.panchavargi).map(([p, n]) => `${p} ${strengthWord(n)}`).join(', ')}.`,
@@ -311,8 +383,8 @@ function whyLines(f: VarshikFacts, m: number): string {
   return `lifting: ${part(w.lifting)}. weighing: ${part(w.weighing)}.`;
 }
 
-function eventLine(e: VarshikFacts['skyEvents'][number]): string {
-  const where = `your ${ORD[e.natalHouse]} house, the ${ORD[e.varshaHouse]} in your Varsha chart`;
+function eventLine(e: VarshikFacts['skyEvents'][number], f?: VarshikFacts): string {
+  const where = `the ${ORD[e.natalHouse]} from your Lagna and the ${ORD[e.moonHouse]} from your Moon, the ${ORD[e.varshaHouse]} in your Varsha chart`;
   switch (e.kind) {
     case 'ingress':
       return `${dayMonth(e.date)}: ${e.planet} enters ${e.sign}${e.fromSign ? ` from ${e.fromSign}` : ''} (${where})`;
@@ -325,9 +397,10 @@ function eventLine(e: VarshikFacts['skyEvents'][number]): string {
     case 'combust-out':
       return `${dayMonth(e.date)}: ${e.planet} comes out of combustion in ${e.sign} (${where})`;
     case 'eclipse-solar':
-      return `${dayMonth(e.date)}: solar eclipse in ${e.sign} (${where})`;
     case 'eclipse-lunar':
-      return `${dayMonth(e.date)}: lunar eclipse in ${e.sign} (${where})`;
+      return e.eclipse?.personalTrigger
+        ? `${dayMonth(e.date)}: ${f ? eclipseWords(e, f) : 'eclipse'}; in ${e.sign} (${where})`
+        : `${dayMonth(e.date)}: ${f ? eclipseWords(e, f) : 'eclipse'}; in ${e.sign}`;
   }
 }
 
@@ -375,7 +448,19 @@ const AREA_TOPIC: Record<string, { houses: string; saham: string | null }> = {
 // The five calls: what each owns and what it is told
 // -----------------------------------------------------------------------------
 
+/** The prompt writes every two-word star with a space ("Uttara Bhadrapada"); the facts keep one word. */
+export function spaceStars(text: string): string {
+  let out = text;
+  for (const n of NAKSHATRAS) {
+    const spaced = n.replace(/([a-z])([A-Z])/g, '$1 $2');
+    if (spaced !== n) out = out.split(n).join(spaced);
+  }
+  return out;
+}
+
 export interface CallSpec {
+  /** The report year (2027 when absent). */
+  year?: number;
   /** Section ids this call writes, in order. */
   ids: string[];
   /** Exact paragraph count per id (null = 1 or more). */
@@ -388,6 +473,7 @@ export interface CallSpec {
 const AREA_IDS = AREAS.map((a) => `area_${a}`);
 const MONTH_IDS = MONTH_NAMES.map((_, i) => `month_${String(i + 1).padStart(2, '0')}`);
 
+export const STARS_IDS = ['birth_stars', 'three_flags', 'your_stars_2027'];
 export const CALL1_IDS = ['welcome_letter', 'year_at_a_glance', 'year_lord_muntha', 'two_varsha_years', 'big_sky_moves'];
 export const CALL2_IDS = [
   'planet_by_planet',
@@ -405,25 +491,25 @@ function call1(f: VarshikFacts): CallSpec {
   const peaks = monthList(f.scores.peakMonths);
   const slow = f.ashtakavarga.transits
     .filter((t) => t.month === 0 || t.month === 5 || t.month === 11)
-    .map((t) => `${monthName(t.month)}: ${t.planet} in ${t.sign}, your ${ORD[t.natalHouse]} house`)
+    .map((t) => `${monthName(t.month)}: ${t.planet} in ${t.sign}, the ${ORD[t.natalHouse]} from your Lagna and the ${ORD[t.moonHouse]} from your Moon`)
     .join('\n');
   const slowEvents = f.skyEvents
     .filter((e) => ['Saturn', 'Jupiter', 'Rahu', 'Ketu'].includes(e.planet) && e.kind !== 'combust-in' && e.kind !== 'combust-out')
-    .map(eventLine)
+    .map((e) => eventLine(e, f))
     .join('\n');
   const sade = f.doshas.filter((d) => d.key === 'sadeSati' || d.key === 'dhaiya');
   const facts = `${renderCommon(f)}
 THE YEAR:
-Overall tone of 2027: ${tierToken(f.scores.overall.tier)} (${TIER_MEANING[f.scores.overall.tier]}).
+Overall tone of ${f.year}: ${tierToken(f.scores.overall.tier)} (${TIER_MEANING[f.scores.overall.tier]}).
 Strongest three months: ${peaks}. The quietest month, best for rest: ${monthName(f.scores.restMonth)}.
 Month by month:
 ${monthTierLines(f)}
-SLOW PLANETS (mid-month position, house counted from the birth Lagna):
+SLOW PLANETS (mid-month position, counted from the birth Lagna and from the natal Moon sign):
 ${slow}
 Slow planet events:
 ${slowEvents || 'none'}
 SADE SATI AND DHAIYA (counted from the natal Moon sign only):
-${sade.map((d) => `- ${d.label}: ${d.status === 'present' ? `running in 2027, awake in ${monthList(d.activeMonths)}` : 'not running in 2027'}. ${d.cancellations.join('; ')}`).join('\n')}`;
+${sade.map((d) => `- ${d.label}: ${d.status === 'present' ? `running in ${f.year}, awake in ${monthList(d.activeMonths)}` : `not running in ${f.year}`}. ${d.cancellations.join('; ')}`).join('\n')}`;
   return {
     ids: CALL1_IDS,
     counts: { welcome_letter: 3, year_at_a_glance: 3, year_lord_muntha: 3, two_varsha_years: 2, big_sky_moves: 3 },
@@ -433,7 +519,7 @@ ${sade.map((d) => `- ${d.label}: ${d.status === 'present' ? `running in 2027, aw
 2. year_at_a_glance: 3 paragraphs. The overall tone of the year in words (use the tone given, never a number), the three strongest months, the quietest month as a time for rest, and the one idea that ties the year together.
 3. year_lord_muntha: 3 paragraphs. Explain the Year Lord (the planet that leads the year) and the Muntha (a point that moves one sign each year and shows where the year's attention goes), then what they mean for this reader from their houses in the Varsha chart. If the Muntha house is demanding, say so kindly and say what helps.
 4. two_varsha_years: 2 paragraphs. Two Varsha charts touch 2027: say which rules until the solar return and which after, with the dates, and what changes at the handover.
-5. big_sky_moves: 3 paragraphs. Saturn, Jupiter, Rahu and Ketu by house through the year, naming the months they change house. Then Sade Sati and Dhaiya, counted from the Moon sign, only as the facts state them: calm wording.`,
+5. big_sky_moves: 3 paragraphs. Saturn, Jupiter, Rahu and Ketu by house through the year, naming the months they change house; give each house as counted from your Lagna and from your Moon, as listed. Then Sade Sati and Dhaiya, counted from the Moon sign, only as the facts state them: calm wording.`,
     user: 'Write the five opening sections of the report.',
   };
 }
@@ -468,18 +554,19 @@ function call2(f: VarshikFacts): CallSpec {
   }).join('\n');
   const mudda = f.varsha
     .flatMap((v) => v.mudda.map((p) => ({ ...p, y: v.targetYear })))
-    .filter((p) => p.to >= '2027-01-01' && p.from <= '2027-12-31')
-    .map((p) => `- ${p.lord} Mudda period of the ${p.y} chart: ${dayMonth(p.from)}${p.from < '2027-01-01' ? ' 2026' : ''} to ${dayMonth(p.to)}${p.to > '2027-12-31' ? ' 2028' : ''}`)
+    .filter((p) => p.to >= `${f.year}-01-01` && p.from <= `${f.year}-12-31`)
+    .map((p) => `- ${p.lord} Mudda period of the ${p.y} chart: ${dayMonth(p.from)}${p.from < `${f.year}-01-01` ? ` ${f.year - 1}` : ''} to ${dayMonth(p.to)}${p.to > `${f.year}-12-31` ? ` ${f.year + 1}` : ''}`)
     .join('\n');
   const strongSaham = [...f.sahamWindows]
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 8)
     .map((w) => `- ${w.saham} Saham touched by ${w.planet}${w.roles.length ? ` (${w.roles.join(', ')})` : ''}: ${dayMonth(w.from)} to ${dayMonth(w.to)}, exact on ${w.exact.map(dayMonth).join(', ') || 'no single day'}`)
     .join('\n');
-  const events = f.skyEvents.map(eventLine);
+  const events = f.skyEvents.map((e) => eventLine(e, f));
   const decisions = f.scores.decisionTable
-    .map((d) => `- ${DECISION_WORDS[d.key] ?? d.key}${d.isMain ? ' (the reader\'s own big decision)' : ''}: best stretch ${monthName(d.best.from)}${d.best.to !== d.best.from ? ` to ${monthName(d.best.to)}` : ''} (${tierToken(d.best.tier)}); hold off in ${monthList(d.hold)}`)
+    .map((d) => `- ${DECISION_WORDS[d.key] ?? d.key}${d.isMain ? ' (the reader\'s own big decision)' : ''}: best stretch ${monthName(d.best.from)}${d.best.to !== d.best.from ? ` to ${monthName(d.best.to)}` : ''} (${tierToken(d.best.tier)}); hold off in ${monthList(d.hold)}${closureLines(d)}`)
     .join('\n');
+  const grahanCount = f.skyEvents.filter((e) => e.eclipse?.class === 'grahan').length;
   const golden = Object.entries(f.scores.answerWindows)
     .filter(([k, w]) => (AREAS as readonly string[]).includes(k) && !w.weak)
     .sort((a, b) => b[1].best.score - a[1].best.score)
@@ -494,7 +581,7 @@ PLANETS:
 ${planets}
 DOSHAS (all ${f.doshas.length}, each must get its own paragraph in this order: ${f.doshas.map((d) => d.label).join(', ')}):
 ${doshas}
-YOGAS THAT DELIVER IN 2027 (use these exact names):
+YOGAS THAT DELIVER IN ${f.year} (use these exact names):
 ${yogas || 'none'}
 SEVEN AREAS:
 ${areas}
@@ -504,7 +591,7 @@ MUDDA PERIODS:
 ${mudda}
 STRONGEST SAHAM WINDOWS:
 ${strongSaham || 'none'}
-SKY EVENTS 2027:
+SKY EVENTS ${f.year}:
 ${events.join('\n')}
 DECISIONS FOR THIS READER:
 ${decisions}
@@ -532,17 +619,132 @@ MAJOR FESTIVALS: ${fest}`;
 4. area_love, area_career, area_money, area_health, area_family, area_growth, area_travel: each EXACTLY 2 paragraphs. First: how this area reads across 2027 and its best window. Second: what it means for THIS reader given what they told us, the best months to act and the quiet months to rest in. Never write about a partner, children or a job the reader did not tell us about.
 5. timing_map: 2 paragraphs reading the 7 by 12 map of months and areas: where the green months gather and where the quiet ones do.
 6. year_rhythm: 2 paragraphs on the shape of the year: the Mudda periods in order with their dates, and the Saham windows that add a push.
-7. sky_calendar: 2 paragraphs. The first paragraph names ALL ${eclipseDates.length} eclipses of 2027, none left out and none merged (${eclipseDates.join(', ')}), each with its date and the house it falls in. Say the number of eclipses as ${eclipseDates.length}. The second paragraph covers the retrogrades and stations that matter most for this reader.
-8. when_to_act: 2 paragraphs. Using the decisions given for this reader only, say when to move on each and when to hold. The reader's own big decision comes first.
+7. sky_calendar: 2 paragraphs. The first paragraph names ALL ${eclipseDates.length} eclipses of 2027, none left out and none merged (${eclipseDates.join(', ')}), each with its date and its type as the facts give it. Say the number of eclipses as ${eclipseDates.length}. ${grahanCount > 0 ? `Only ${grahanCount === 1 ? 'one is a visible Grahan' : `${grahanCount} are visible Grahans`}: for ${grahanCount === 1 ? 'it' : 'each'}, give the house it falls in (from your Lagna and your Moon), the local times and the Sutak exactly as listed.` : 'None is a visible Grahan, so no Sutak applies this year: say so once.'} Every Upachchaya (penumbral) or unseen eclipse gets its date, its type and "no Sutak", and nothing more. The second paragraph covers the retrogrades and stations that matter most for this reader.
+8. when_to_act: 2 paragraphs. Using the decisions given for this reader only, say when to move on each and when to hold. The reader's own big decision comes first. For a wedding, an engagement or commitment, or a move into a new home, name each no-muhurat period listed for it with its dates, in plain words, and give the open days inside its best stretch.
 9. golden_windows: 2 paragraphs naming the best windows with their dates and any major festival that falls inside one.`,
     user: 'Write the planet, dosha, yoga, area and timing sections.',
   };
 }
 
+function starsCall(f: VarshikFacts): CallSpec {
+  const st = f.stars;
+  const bs = st.birthStar;
+  const row = (r: (typeof st.table)[number]): string => {
+    const bits = [`${r.point}: ${r.nakshatra} pada ${r.pada}, star lord ${r.starLord} (in the ${ORD[r.starLordHouse]} house${r.starLordRules.length ? `, rules the ${r.starLordRules.map((h) => ORD[h]).join(' and ')}` : ''}), nature ${r.nature}, deity ${r.deity}, symbol ${r.symbol}, meaning "${r.shakti}", KP sub lord ${r.kpSubLord}`];
+    bits.push(`counted from the birth star it is ${taraWords(r.tara)}`);
+    if (r.special) bits.push(`also a sensitive star: ${specialWords(r.special)}`);
+    if (r.gandanta.present) bits.push(`a Gandanta point, the ${r.gandanta.part} of the junction: a sensitive spot in the chart, to be spoken of calmly`);
+    return `- ${bits.join('; ')}`;
+  };
+  const dl = st.dashaLords
+    .map((d) => `- ${d.planet} (${d.roles.join(', ')}): in ${d.nakshatra}, star lord ${d.starLord} in the ${ORD[d.starLordHouse]} house, KP sub lord ${d.subLord}`)
+    .join('\n');
+  const last = f.varsha[f.varsha.length - 1]!;
+  const pat = f.varsha.map((v) => `- ${v.targetYear} chart, Patyayini (shown by the week only): ${v.extra.patyayini.map((p) => `${p.lord} from the ${p.fromWeek} to the ${p.toWeek}`).join('; ')}`).join('\n');
+  const yog = f.varsha.map((v) => `- ${v.targetYear} chart, Mudda Yogini: ${v.extra.muddaYogini.map((p) => `${p.lord} (${p.yogini}) ${dayMonth(p.from)} to ${dayMonth(p.to)}`).join('; ')}`).join('\n');
+  const mud = f.varsha.map((v) => `- ${v.targetYear} chart, Mudda: ${v.mudda.map((p) => `${p.lord} ${dayMonth(p.from)} to ${dayMonth(p.to)}`).join('; ')}`).join('\n');
+  const flags = f.varsha.map((v) => `- ${v.targetYear} chart: ${v.extra.triPataki.lines.join(' ')}`).join('\n');
+  const slow = st.segments
+    .filter((s) => (STAR_PLANETS_SLOW as readonly string[]).includes(s.planet))
+    .map((s) => (s.enters ? starMoveLine(f, s) : `${s.planet} begins the year in ${s.nakshatra} until ${dayMonth(s.to)}: ${taraWords(s.tara)}`))
+    .join('\n');
+  const moorti = st.moorti
+    .filter((x) => (STAR_PLANETS_SLOW as readonly string[]).includes(x.planet) || x.planet === 'Mars')
+    .map((x) => `- ${x.planet} enters ${x.toSign} on ${dayMonth(x.date)}: ${x.plain}`)
+    .join('\n');
+  const wheel = Array.from({ length: 9 }, (_, i) => i + 1)
+    .map((n) => {
+      const t = taraRowsOf(n);
+      return `${n}: ${t}`;
+    })
+    .join('; ');
+  const facts = `${renderCommon(f)}
+BIRTH STAR: ${bs.name}, pada ${bs.pada}, number ${bs.number} of 27, star lord ${bs.lord}, in ${bs.sign}.
+BIRTH STARS OF THE NINE PLANETS AND THE LAGNA:
+${st.table.map(row).join('\n')}
+PLANETS IN STARS THAT STAND OUT: ${st.planetInStar.filter((p) => p.inOwnStar || p.gandanta).map((p) => `${p.planet} in ${p.nakshatra}${p.inOwnStar ? ' (its own star)' : ''}${p.gandanta ? ' (a Gandanta point)' : ''}`).join('; ') || 'none'}.
+PLANETS IN A TESTING STAR FROM THE BIRTH STAR: ${st.navatara.weakened.map((w) => `${w.planet}, ${taraWords(w.tara)}`).join('; ') || 'none'}.
+PLANETS AND LAGNA IN AN EMPHASISED STAR: ${st.navatara.emphasised.map((e) => `${e.point}, ${specialWords(e.special)}`).join('; ') || 'none'}.
+STARS OF THE LORDS THAT RUN IN ${f.year}:
+${dl}
+THE RUNNING DASHA SYSTEMS (three, side by side):
+${mud}
+${yog}
+${pat}
+TRI-PATAKI FLAGS (words only, no score):
+${flags}
+THE TARA WHEEL, counted from the birth star (1 is the birth star itself): ${wheel}
+SLOW PLANETS THROUGH THE STARS IN ${f.year}, WITH DATES:
+${slow}
+MOORTI OF SIGN CHANGES:
+${moorti || 'none'}
+The Year Lord of the ${last.targetYear} chart is ${last.yearLord}.`;
+  return {
+    ids: STARS_IDS,
+    counts: { birth_stars: 4, three_flags: 3, your_stars_2027: 4 },
+    facts,
+    instructions: `Write EXACTLY these 3 sections, with these ids, in this order.
+1. birth_stars: EXACTLY 4 paragraphs. First: the reader's birth star ${bs.name}, its pada, its lord and what the star stands for (deity, symbol, meaning), in plain words. Second: the Lagna and the Sun, each in its star, and what the star lord's house adds. Third: the planets that stand out (a planet in its own star, a Gandanta point if any, a planet in a testing or an emphasised star), kindly; if none stand out, say the stars sit evenly. Fourth: the stars of the lords that run in 2027 (${st.dashaLords.map((d) => d.planet).join(', ')}), each named with its star and what its star lord's house adds. A Gandanta point is "a sensitive junction point where one sign ends and the next begins", never a defect.
+2. three_flags: EXACTLY 3 paragraphs. First: the Tri-Pataki flags of each Varsha chart, as the facts word them (who touches the Lagna and who touches the Moon), supportive and testing planets named plainly, no score and no verdict. Second: the Mudda period and the Mudda Yogini period running together through 2027, with dates, and what it means when they point the same way or differ. Third: the Patyayini period, only by the week as given ("the 2nd week of March"), never as an exact day, with a short plain gloss of the three systems the first time each appears.
+3. your_stars_2027: EXACTLY 4 paragraphs. First: how the Tara wheel works in plain words (every star is counted from the birth star; the 2nd, 4th, 6th, 8th and 9th are friendly, the others ask for care), using the meanings given. Second: Saturn and Jupiter through the stars with every date given, saying what each star means for this reader. Third: Rahu and Ketu the same way, then Mars if it appears. Fourth: the sensitive-star crossings and the Moorti of the sign changes, each with its date. Say a hard, draining star or stretch as exactly that and never use its classical name.
+Use only the dates, stars and meanings in the facts.`,
+    user: 'Write the birth stars page, the three flags page and the stars of 2027 page.',
+  };
+}
+
+const withSpacedStars = (spec: CallSpec): CallSpec => ({ ...spec, facts: spaceStars(spec.facts), instructions: spaceStars(spec.instructions) });
+const withYear = (f: VarshikFacts) => (spec: CallSpec): CallSpec => ({ ...spec, year: f.year });
+
+function taraRowsOf(n: number): string {
+  const t = VARSHIK_NAKSHATRA.tara[n]!;
+  return n === 7 ? t.plain : `${t.name}, ${t.plain}`;
+}
+
+type StarTara = VarshikFacts['stars']['segments'][number]['tara'];
+type StarSpecial = NonNullable<VarshikFacts['stars']['segments'][number]['special']>;
+
+/** Tara 7 is never named: it is "a hard, draining star". */
+export const taraWords = (t: StarTara): string => (t.number === 7 ? t.plain : `${t.name}, ${t.plain}`);
+/** The 22nd star (Vainashika) is never named either: it is "a hard, draining stretch". */
+export const specialWords = (s: StarSpecial): string => (s.number === 22 ? s.plain : `${s.name}, ${s.plain}`);
+const GOCHAR_PLAIN = {
+  good: 'a favourable house from your Moon',
+  blocked: 'a favourable house from your Moon, but something stands in its way',
+  relieved: 'an unfavourable house from your Moon that is eased',
+  hard: 'an unfavourable house from your Moon',
+} as const;
+export const STAR_PLANETS_SLOW = ['Saturn', 'Jupiter', 'Rahu', 'Ketu'] as const;
+
+/** One star move as a fact line: the planet, the date it enters, the star, what the star means for this reader. */
+function starMoveLine(f: VarshikFacts, seg: VarshikFacts['stars']['segments'][number]): string {
+  const bits = [taraWords(seg.tara)];
+  if (seg.special) bits.push(`a sensitive star of the reader's chart: ${specialWords(seg.special)}`);
+  if (seg.natalPointsHere.length) bits.push(`the star of the reader's own natal ${seg.natalPointsHere.join(' and ')}`);
+  if (seg.starLordHouse) bits.push(`its star lord ${seg.starLord} sits in the reader's ${ORD[seg.starLordHouse]} house`);
+  return `${seg.planet} moves into ${seg.nakshatra} on ${dayMonth(seg.from)}${seg.retro ? ' (moving backwards)' : ''}: ${bits.join('; ')}`;
+}
+
+function monthStarLines(f: VarshikFacts, m: number): string {
+  const mm = String(m + 1).padStart(2, '0');
+  const inMonth = (d: string): boolean => d.slice(0, 7) === `${f.year}-${mm}`;
+  const moves = f.stars.segments
+    .filter((s) => s.enters && inMonth(s.from) && (s.planet === 'Mars' || (STAR_PLANETS_SLOW as readonly string[]).includes(s.planet)))
+    .map((s) => starMoveLine(f, s));
+  const moorti = f.stars.moorti
+    .filter((x) => inMonth(x.date) && (x.planet === 'Mars' || (STAR_PLANETS_SLOW as readonly string[]).includes(x.planet)))
+    .map((x) => `${x.planet} enters ${x.toSign} on ${dayMonth(x.date)}: ${x.plain}`);
+  const stand = f.stars.monthStars[m]!.rows
+    .filter((r) => (STAR_PLANETS_SLOW as readonly string[]).includes(r.planet))
+    .map((r) => `${r.planet} in ${r.nakshatra} stands in your ${ORD[r.houseFromMoon]} house from your Moon, ${GOCHAR_PLAIN[r.verdict]}`);
+  return `   STAR MOVES THIS MONTH (name each with its date in paragraph 1 or 2, in plain words): ${moves.join(' | ') || 'none'}
+   MOORTI OF SIGN CHANGES: ${moorti.join(' | ') || 'none'}
+   MID-MONTH, FROM THE MOON: ${stand.join(' | ')}`;
+}
+
 function monthFacts(f: VarshikFacts, m: number): string {
   const mm = String(m + 1).padStart(2, '0');
-  const first = `2027-${mm}-01`;
-  const last = `2027-${mm}-${String(new Date(Date.UTC(2027, m + 1, 0)).getUTCDate()).padStart(2, '0')}`;
+  const first = `${f.year}-${mm}-01`;
+  const last = `${f.year}-${mm}-${String(new Date(Date.UTC(f.year, m + 1, 0)).getUTCDate()).padStart(2, '0')}`;
   const mudda = f.varsha
     .flatMap((v) =>
       v.mudda.flatMap((p) => {
@@ -566,14 +768,21 @@ function monthFacts(f: VarshikFacts, m: number): string {
     .filter((w) => w.to >= first && w.from <= last)
     .map((w) => `${w.saham} Saham touched by ${w.planet}: ${dayMonth(w.from)} to ${dayMonth(w.to)}${w.exact.length ? `, exact on ${w.exact.map(dayMonth).join(', ')}` : ''}`)
     .join('\n   ');
-  const events = f.skyEvents.filter((e) => e.month === m).map(eventLine).join('\n   ');
+  const events = f.skyEvents.filter((e) => e.month === m).map((e) => eventLine(e, f)).join('\n   ');
   const fest = f.calendar.festivals.filter((x) => x.month === m).map((x) => `${dayMonth(x.date)}: ${x.name}`).join('; ');
   const doshaAwake = f.doshas.filter((d) => d.activeMonths.includes(m)).map((d) => d.label).join(', ');
   const areaTiers = AREAS.map((a) => `${a} ${tierToken(f.scores.timingMap[a]![m]!.tier)}`).join(', ');
-  const decisions = f.scores.decisionTable
-    .filter((d) => d.hold.includes(m) || (d.best.from <= m && m <= d.best.to))
-    .map((d) => `${DECISION_WORDS[d.key] ?? d.key}: ${d.hold.includes(m) ? 'a month to hold off' : 'inside the best stretch'}`)
-    .join('; ');
+  const monthFirst = `${f.year}-${String(m + 1).padStart(2, '0')}-01`;
+  const monthLast = `${f.year}-${String(m + 1).padStart(2, '0')}-${String(new Date(Date.UTC(f.year, m + 1, 0)).getUTCDate()).padStart(2, '0')}`;
+  const closedHere = f.calendar.closures.filter((c) => c.to >= monthFirst && c.from <= monthLast);
+  const decisions = [
+    ...f.scores.decisionTable
+      .filter((d) => d.hold.includes(m) || (d.best.from <= m && m <= d.best.to))
+      .map((d) => `${DECISION_WORDS[d.key] ?? d.key}: ${d.hold.includes(m) ? 'a month to hold off' : 'inside the best stretch'}`),
+    ...(f.scores.decisionTable.some((d) => d.closed) && closedHere.length
+      ? [`no wedding, engagement or move-in window while ${closedHere.map((c) => `${CLOSURE_WORDS[c.reason]} (${dayMonth(c.from)} to ${dayMonth(c.to)})`).join(', ')}`]
+      : []),
+  ].join('; ');
   const lords = [...new Set(f.dashas.pratyantar2027.filter((d) => d.to >= first && d.from <= last).map((d) => d.antar))];
   const weekday = lords[0] ? WEEKDAY_OF[lords[0]] : null;
   return `${monthName(m).toUpperCase()}:
@@ -587,6 +796,7 @@ function monthFacts(f: VarshikFacts, m: number): string {
  - sky events: ${events || 'none'}
  - festivals: ${fest || 'none'}
  - doshas awake: ${doshaAwake || 'none'}
+${monthStarLines(f, m)}
  - a free weekday habit can follow the running Antar lord${lords[0] ? ` ${lords[0]}, whose day is ${weekday}` : ''}`;
 }
 
@@ -604,7 +814,7 @@ ${months.map((m) => monthFacts(f, m)).join('\n')}`;
     facts,
     instructions: `Write EXACTLY ${ids.length} sections, with these ids in this order: ${ids.join(', ')}. Each section is one month and has EXACTLY 5 paragraphs, each 2 to 4 sentences:
 1. The month at a glance: its tone in words, the Varsha chart and the Mudda lord in force with their dates, and the one or two dates that matter (a station, a Saham peak, a festival).
-2. Living the month: what to do and what to hold, tied to the tone. In a TIER_HOLD month this is rest, patience and preparation.
+2. Living the month: what to do and what to hold, tied to the tone. In a TIER_HOLD month this is rest, patience and preparation. Name every star move listed under STAR MOVES THIS MONTH with its date, in plain words, for example "Saturn moves into your 10th star from 3 May: work asks for patience and steady effort". Use the meaning given for the star, never invent one. Where the mid-month lines say a planet stands in an unfavourable house from your Moon, say it gently as a stretch that asks for patience. The Moorti lines may be mentioned in one sentence.
 3. Career and money: notes written for THIS reader's work and situation (see "What the reader told us"). General money habits only.
 4. Love and health: written for this reader's real situation. Health is rest, routine and check-ups only.
 5. One remedy, dated: a free, simple act on a named weekday in this month, linked to the running Antar lord. One sentence of why, one of how.
@@ -705,7 +915,7 @@ export async function askOnce(spec: CallSpec, note: string | null): Promise<RawS
     profile: VARSHIK_PROFILE,
     responseSchema: SECTIONS_SCHEMA,
     messages: [
-      { role: 'system', content: `${baseSystem()}\n\n${spec.instructions}` },
+      { role: 'system', content: yearize(`${baseSystem()}\n\n${spec.instructions}`, spec.year ?? 2027) },
       // The facts go in as DATA. No planetCondition: those lines are as of today and name the
       // natal chart only, and the facts above already hold everything this report may say.
       reportFactsMessage(spec.facts, [], [], 'varshik_rashifal_2027'),
@@ -726,11 +936,23 @@ interface CheckedCall {
   flags: TextFlag[];
 }
 
-function toSections(parsed: RawSection[]): ReportSection[] {
+/**
+ * Words the model keeps using after being told not to ("serves as", "journeys", from the S3 open items).
+ * They are swapped by rule before the checks run, so no flag is left. The swaps keep the sentence grammatical.
+ */
+export function scrubTells(text: string): string {
+  const keepCase = (from: string, to: string): string => (from[0] === from[0]!.toUpperCase() ? to[0]!.toUpperCase() + to.slice(1) : to);
+  return text
+    .replace(/\b(serves|served|stands|stood) as\b/gi, (m, v: string) => keepCase(m, /^(serves|stands)$/i.test(v) ? 'is' : 'was'))
+    .replace(/\bjourneys\b/gi, (m) => keepCase(m, 'trips'))
+    .replace(/\bjourney\b/gi, (m) => keepCase(m, 'trip'));
+}
+
+function toSections(parsed: RawSection[], year = 2027): ReportSection[] {
   return parsed.map((s) => ({
     id: s.id,
-    heading: VARSHIK_HEADINGS[s.id] ?? s.topic ?? s.id,
-    paragraphs: s.paragraphs,
+    heading: (VARSHIK_HEADINGS[s.id] ?? s.topic ?? s.id).split('{Y}').join(String(year)),
+    paragraphs: s.paragraphs.map(scrubTells),
   }));
 }
 
@@ -766,7 +988,7 @@ export async function runCheckedCall(
   const evaluate = (parsed: RawSection[] | null) => {
     const structure = structureProblems(spec, parsed);
     if (structure.length > 0 || !parsed) return { structure, coverage: [] as string[], hits: new Map<string, TextHit[]>(), sections: null as ReportSection[] | null };
-    const sections = toSections(parsed);
+    const sections = toSections(parsed, facts.year);
     return {
       structure,
       coverage: coverageProblems(facts, sections, only),
@@ -959,24 +1181,43 @@ function reliefFacts(f: VarshikFacts): string {
   for (const e of r.lookback) lines.push(`- ${e.effect === 'hard' ? 'weighed' : 'eased'}: ${ev(e)}`);
   if (r.varsha2026) {
     lines.push(
-      `The 2026 Varsha year (ended ${dayMonth(r.varsha2026.endedOn)} 2027): Year Lord ${r.varsha2026.yearLord}, Muntha in the Varsha ${ORD[r.varsha2026.munthaHouse]} house (${r.varsha2026.munthaAuspicious ? 'a supportive house' : 'a demanding house'}).`,
+      `The ${f.year - 1} Varsha year (ended ${dayMonth(r.varsha2026.endedOn)} ${f.year}): Year Lord ${r.varsha2026.yearLord}, Muntha in the Varsha ${ORD[r.varsha2026.munthaHouse]} house (${r.varsha2026.munthaAuspicious ? 'a supportive house' : 'a demanding house'}).`,
     );
   }
   lines.push('TURNING POINTS AHEAD, soonest first:');
   for (const e of r.ahead.slice(0, 14)) lines.push(`- ${e.effect === 'relief' ? 'eases' : 'weighs'}: ${ev(e)}`);
   lines.push(
     r.reliefInYear
-      ? `Relief arrives inside 2027. The first is: ${r.nextRelief ? ev(r.nextRelief) : 'see the list'}.`
-      : `No real relief arrives inside 2027. Say so gently. The next turning point is: ${r.nextReliefBeyondYear ? ev(r.nextReliefBeyondYear) : 'beyond the dates the chart reaches'}. Name what makes the wait easier.`,
+      ? `Relief arrives inside ${f.year}. The first is: ${r.nextRelief ? ev(r.nextRelief) : 'see the list'}.`
+      : `No real relief arrives inside ${f.year}. Say so gently. The next turning point is: ${r.nextReliefBeyondYear ? ev(r.nextReliefBeyondYear) : 'beyond the dates the chart reaches'}. Name what makes the wait easier.`,
   );
   return lines.join('\n');
+}
+
+/** The dated star facts a Chapter VI answer may lean on: friendly stars for the slow planets and the sensitive crossings. */
+function chapterSixStars(f: VarshikFacts): string {
+  const slow = (STAR_PLANETS_SLOW as readonly string[]);
+  const sens = f.stars.sensitive
+    .filter((s) => slow.includes(s.planet) && s.enters)
+    .map((s) => {
+      const seg = f.stars.segments.find((x) => x.planet === s.planet && x.from === s.from)!;
+      return `- ${starMoveLine(f, seg)}`;
+    });
+  const friendly = f.stars.segments
+    .filter((s) => slow.includes(s.planet) && s.enters && s.tara.good)
+    .map((s) => `- ${s.planet} enters ${s.nakshatra} on ${dayMonth(s.from)}: ${taraWords(s.tara)}`);
+  return `STAR DATES A QUESTION PAGE MAY USE (only these; say hard stretches as "a stretch that asks for patience" and never name the 7th tara or the 22nd star):
+Sensitive crossings:
+${sens.join('\n') || '- none'}
+Friendly stars entered by the slow planets:
+${friendly.join('\n') || '- none'}`;
 }
 
 function remedyFacts(f: VarshikFacts): string {
   const v = f.varsha[f.varsha.length - 1]!;
   const awake = f.doshas.filter((d) => d.status !== 'not_present' && d.activeMonths.length > 0);
   return `Year Lord ${v.yearLord} (${WEEKDAY_OF[v.yearLord] ?? 'its weekday'}); Muntha lord ${v.muntha.lord} (${WEEKDAY_OF[v.muntha.lord] ?? 'its weekday'}).
-Doshas awake in 2027: ${awake.map((d) => `${d.label} (simple remedy: ${d.remedy})`).join('; ') || 'none'}.`;
+Doshas awake in ${f.year}: ${awake.map((d) => `${d.label} (simple remedy: ${d.remedy})`).join('; ') || 'none'}.`;
 }
 
 interface QuestionPlan {
@@ -991,16 +1232,17 @@ function call5(f: VarshikFacts, plans: QuestionPlan[]): CallSpec {
   const qFacts = plans
     .map((p, i) => {
       const lines = p.proposal.factIds
-        .map((id) => (id === 'MAIN' ? ANSWER_WORDS.mainDecision![f.reader.answers.mainDecision!]! : (factText.get(id) ?? '')))
+        .map((id) => (id === 'MAIN' ? ANSWER_WORDS.mainDecision![f.reader.answers.mainDecision!]!.split('{Y}').join(String(f.year)) : (factText.get(id) ?? '')))
         .join(' | ');
       const w = p.window;
-      return `QUESTION ${i + 1} (${qIds[i]}): topic "${p.proposal.topic}". What the reader told us: ${lines}. Engine key ${p.proposal.key}: ${w.weak ? `the calmest stretch is ${windowPhrase(w.best)} (${tierToken(w.best.tier)}); NO strong window opens in 2027, so say gently that this is the steadiest stretch and that a better one lies beyond this year` : `best window ${windowPhrase(w.best)} (${tierToken(w.best.tier)})`}${w.then ? `; a second window follows: ${windowPhrase(w.then)}` : ''}.`;
+      return `QUESTION ${i + 1} (${qIds[i]}): topic "${p.proposal.topic}". What the reader told us: ${lines}. Engine key ${p.proposal.key}: ${w.weak ? `the calmest stretch is ${windowPhrase(w.best)} (${tierToken(w.best.tier)}); NO strong window opens in ${f.year}, so say gently that this is the steadiest stretch and that a better one lies beyond this year` : `best window ${windowPhrase(w.best)} (${tierToken(w.best.tier)})`}${w.then ? `; a second window follows: ${windowPhrase(w.then)}` : ''}.`;
     })
     .join('\n');
   const facts = `${renderCommon(f)}
 ${remedyFacts(f)}
 PEAK MONTHS: ${monthList(f.scores.peakMonths)}. QUIETEST MONTH: ${monthName(f.scores.restMonth)}.
 ${reliefFacts(f)}
+${chapterSixStars(f)}
 ${plans.length ? `READER'S QUESTIONS:\n${qFacts}` : 'The reader gave no questions: write only the first three sections.'}`;
   const counts: Record<string, number | null> = { simple_remedies: 3, what_changes: 4, closing_letter: 2 };
   for (const id of qIds) counts[id] = 3;
@@ -1012,7 +1254,7 @@ ${plans.length ? `READER'S QUESTIONS:\n${qFacts}` : 'The reader gave no question
 1. simple_remedies: EXACTLY 3 paragraphs, one simple free remedy each, drawn from the Year Lord, the Muntha lord and a dosha that is awake (if none is awake, from the Year Lord's weekday and the quietest month). Name the weekday and say how to do it in one or two sentences. No product, no cost, no "must".
 2. what_changes: EXACTLY 4 paragraphs. First, the hard stretch of the recent past, read from the look-back facts, named gently and specifically (dasha changes, Saturn or Rahu and Ketu over key houses, Sade Sati or Dhaiya, the 2026 Varsha year); if the chart shows no heavy stretch say that plainly and kindly. Second and third, the dated turning points that bring relief, using only the dates given. Fourth, what makes the way easier. If no relief arrives inside 2027, say so gently, name the next turning point with its date, and say what helps meanwhile.
 3. closing_letter: EXACTLY 2 paragraphs, a short closing note from Baba Ji. Name the Year Lord and the strongest months once. Do not sign it; the signature is added separately.
-${plans.length ? `4. ${qIds.join(', ')}: each EXACTLY 3 paragraphs for its question: (a) what the reader may be going through, named gently and specifically without repeating their private words back too bluntly; (b) when it eases: write the sentence as you like but put the exact text {window} where the dated window belongs (it expands to words like "between 12 March and 4 April", so write "it eases {window}", never "during {window}"), and {next} the same way for the second window if one is given. Never write a date yourself in this paragraph. (c) one or two practical steps that help meanwhile.
+${plans.length ? `4. ${qIds.join(', ')}: each EXACTLY 3 paragraphs for its question: (a) what the reader may be going through, named gently and specifically without repeating their private words back too bluntly; (b) when it eases: write the sentence as you like but put the exact text {window} where the dated window belongs (it expands to words like "between 12 March and 4 April", so write "it eases {window}", never "during {window}"), and {next} the same way for the second window if one is given. Never write a date yourself in this paragraph. (c) one or two practical steps that help meanwhile. If it fits, one sentence in paragraph (a) or (c) may use a dated star crossing from "STAR DATES A QUESTION PAGE MAY USE", worded gently.
 These question pages are extra gentle: no negative statements except something the reader genuinely needs to know, said kindly together with what helps. Never use the words never, impossible, unfortunately or worst.` : ''}`,
     user: plans.length ? 'Write the remedies, the relief page, the closing note and the question pages.' : 'Write the remedies, the relief page and the closing note.',
   };
@@ -1027,6 +1269,22 @@ export interface VarshikNarrative {
   flags: TextFlag[];
 }
 
+/** The independent calls of a Varshik report, run in parallel and saved in this order. */
+const PARALLEL_CALLS: ReadonlyArray<(f: VarshikFacts) => CallSpec> = [
+  call1,
+  call2,
+  (f) => monthCall(f, 0),
+  (f) => monthCall(f, 6),
+  starsCall,
+];
+
+/**
+ * How many checkpointed groups a Varshik report is written in: the parallel calls, then the last call
+ * (Chapter V and VI) that needs the chosen questions. The waiting screen's progress total reads this, so
+ * adding a call can never leave the "x of N" count behind (reports.service generatingDto).
+ */
+export const VARSHIK_TEXT_GROUPS = PARALLEL_CALLS.length + 1;
+
 export async function generateVarshikNarrative(
   facts: VarshikFacts,
   progress?: SectionGenerationProgress,
@@ -1039,7 +1297,7 @@ export async function generateVarshikNarrative(
 
   // Calls 1 to 4 are independent, so they run in parallel; the checkpoint contract is that only a
   // contiguous prefix of successes is saved, so each waits its turn to save (see kp_annual).
-  const specs = [call1(facts), call2(facts), monthCall(facts, 0), monthCall(facts, 6)];
+  const specs = PARALLEL_CALLS.map((build) => build(facts)).map(withSpacedStars).map(withYear(facts));
   const first = await Promise.allSettled(
     specs.map((spec, i) =>
       i < existing.length ? Promise.resolve(existing[i]!) : runCheckedCall(spec, facts, askFor?.(spec)),
@@ -1064,8 +1322,8 @@ export async function generateVarshikNarrative(
 
   // Call 5 (Chapter V and VI) needs the questions chosen first.
   let group5: ReportSection[];
-  if (existing.length > 4) {
-    group5 = existing[4]!;
+  if (existing.length > PARALLEL_CALLS.length) {
+    group5 = existing[PARALLEL_CALLS.length]!;
   } else {
     const proposals = await proposeQuestions(facts, proposeAsk).catch((err: unknown) => {
       logger.warn({ err }, 'varshik: choosing the reader questions failed, skipping them');
@@ -1074,7 +1332,7 @@ export async function generateVarshikNarrative(
     const plans: QuestionPlan[] = proposals
       .map((proposal) => ({ proposal, window: facts.scores.answerWindows[proposal.key]! }))
       .filter((p) => !!p.window);
-    const spec5 = call5(facts, plans);
+    const spec5 = withYear(facts)(withSpacedStars(call5(facts, plans)));
     const done = await runCheckedCall(spec5, facts, askFor?.(spec5));
     flags.push(...done.flags);
     group5 = done.sections.map((s) => {

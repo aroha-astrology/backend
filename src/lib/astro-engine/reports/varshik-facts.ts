@@ -44,10 +44,22 @@ import {
 } from './varshik-timing.js';
 import { munthaLordOf, type VarshikContext } from './varshik-context.js';
 import { DOSHA_LABEL, MONTH_NAMES, NINE_PLANETS, TAJIKA_LABEL } from './varshik-labels.js';
+import { buildStarFacts, buildVarshaExtraFacts, starsZ, varshaExtraZ } from './varshik-facts-c3.js';
+import {
+  closureZ,
+  decisionC5Z,
+  eclipseInfo,
+  eclipseInfoZ,
+  eclipsePlaceOf,
+  eclipsePlaceZ,
+  type ReaderPlace,
+} from './varshik-facts-c5.js';
+import { CLOSED_DECISION_KEYS, MIN_OPEN_DAYS, chaturmasOf, ruleSource } from './varshik-muhurta.js';
 
 export { DOSHA_LABEL, MONTH_NAMES, NINE_PLANETS };
 
 const SEVEN_PLANETS: Planet[] = NINE_PLANETS.slice(0, 7);
+const BALA_PLANETS_7: string[] = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
 const SLOW: Planet[] = ['Saturn', 'Jupiter', 'Rahu', 'Ketu'];
 
 /** What each dosha touches and the one simple, free remedy. Plain facts, no fear. */
@@ -237,6 +249,8 @@ const varshaZ = z.object({
     }),
   ),
   mudda: z.array(muddaZ).length(9),
+  /** C2/C3: Mudda Yogini, Patyayini (by week), balas, extra yogas, life Sahams, Tri-Pataki. */
+  extra: varshaExtraZ,
 });
 
 const skyEventZ = z.object({
@@ -255,7 +269,11 @@ const skyEventZ = z.object({
   sign,
   fromSign: z.string().nullable(),
   natalHouse: z.number().int().min(1).max(12),
+  /** C5: the same sign counted from the natal Moon sign ("3rd from your Moon"). */
+  moonHouse: z.number().int().min(1).max(12),
   varshaHouse: z.number().int().min(1).max(12),
+  /** C5: eclipses only: type, magnitude, Grahan / Upachchaya / not visible, local times and Sutak. */
+  eclipse: eclipseInfoZ.optional(),
 });
 
 const doshaZ = z.object({
@@ -290,7 +308,7 @@ const reliefEventZ = z.object({
 
 export const VarshikFactsSchema = z.object({
   version: z.literal(1),
-  year: z.literal(2027),
+  year: z.number().int().min(2026).max(2100),
   window: z.object({ start: isoDate, end: isoDate }),
   reader: z.object({
     name: z.string().nullable(),
@@ -313,6 +331,8 @@ export const VarshikFactsSchema = z.object({
     }),
     /** The reader's stored chat facts for this birth profile; may be empty, the one group that may. */
     facts: z.array(z.object({ id: z.string().regex(/^F\d+$/), fact: z.string().min(1) })),
+    /** C5: where eclipses are judged (the reader's current place, else the India summary; never the birth place). */
+    eclipsePlace: eclipsePlaceZ,
   }),
   birth: z.object({
     lagna: z.object({
@@ -370,12 +390,16 @@ export const VarshikFactsSchema = z.object({
           planet: z.string().min(2),
           sign,
           natalHouse: z.number().int().min(1).max(12),
+          /** C5: counted from the natal Moon sign. */
+          moonHouse: z.number().int().min(1).max(12),
           bindus: z.number().int().min(0).max(60),
           kakshya: z.string().min(3),
         }),
       )
       .length(48),
   }),
+  /** C1/C3: the birth stars, the stars the planets cross in the year, Moorti, and the month-by-month Moon gochar. */
+  stars: starsZ,
   doshas: z.array(doshaZ).length(DOSHA_KEYS.length),
   yogas: z.array(yogaZ),
   varsha: z.array(varshaZ).min(1).max(2),
@@ -413,7 +437,7 @@ export const VarshikFactsSchema = z.object({
         best: z.object({ from: month, to: month, score: fin, tier: tierZ }),
         hold: z.array(month),
         isMain: z.boolean(),
-      }),
+      }).merge(decisionC5Z),
     ),
     planetImpact: z
       .array(
@@ -472,6 +496,8 @@ export const VarshikFactsSchema = z.object({
         }),
       )
       .min(1),
+    /** C5: the year's Shukra Asta, Guru Asta, Kharmas and Chaturmas, as inclusive local date runs. */
+    closures: z.array(closureZ),
   }),
 });
 
@@ -500,6 +526,8 @@ export interface BuildFactsArgs {
     lng: number;
     answers: VarshikAnswers;
     facts: ReaderFactInput[];
+    /** C5: where the reader lives now (account owner only); null = use the India summary for eclipses. */
+    currentPlace?: ReaderPlace | null;
   };
 }
 
@@ -529,10 +557,14 @@ function kakshyaOf(lon: number): string {
 }
 
 /** Every sky event of the year with the sign it stands in and the houses it falls in. */
-async function skyEventFacts(ctx: VarshikContext): Promise<SkyEventFact[]> {
+async function skyEventFacts(
+  ctx: VarshikContext,
+  where: ReturnType<typeof eclipsePlaceOf>,
+): Promise<SkyEventFact[]> {
   const tz = ctx.timezone;
   const events = await computeYearEvents(ctx.calendar.windowStartMs, ctx.calendar.windowEndMs);
   const natalLagna = ctx.natal.ascendant.signIndex;
+  const natalMoon = ctx.natal.planets.find((p) => p.planet === 'Moon')!.signIndex;
   const slices = ctx.calendar.varshaYears;
   const out: SkyEventFact[] = [];
   const cache = new Map<number, Map<string, number>>();
@@ -565,7 +597,9 @@ async function skyEventFacts(ctx: VarshikContext): Promise<SkyEventFact[]> {
       sign: signName,
       fromSign: e.fromSign ?? null,
       natalHouse: houseFromSign(natalLagna, signIdx),
+      moonHouse: houseFromSign(natalMoon, signIdx),
       varshaHouse: houseFromSign(slice.varshphal.solarReturn.chart.ascendant.signIndex, signIdx),
+      ...(e.eclipse ? { eclipse: await eclipseInfo(e.eclipse, where) } : {}),
     });
   }
   return out;
@@ -600,8 +634,8 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
     planet: first.planet,
     yearsLeft: r2(Math.max(0, (first.endDate.getTime() - ctx.birthMs) / (365.25 * 86_400_000))),
   };
-  const from2026 = Date.UTC(2026, 0, 1);
-  const to2030 = Date.UTC(2030, 0, 1);
+  const from2026 = Date.UTC(ctx.year - 1, 0, 1);
+  const to2030 = Date.UTC(ctx.year + 3, 0, 1);
   const antar: VarshikFacts['dashas']['antar'] = [];
   for (const seg of ctx.natalDasha) {
     if (seg.endMs <= from2026 || seg.startMs >= to2030) continue;
@@ -623,6 +657,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
 
   // --- Ashtakavarga and slow transits -------------------------------------
   const transits: VarshikFacts['ashtakavarga']['transits'] = [];
+  const natalMoonSign = natal.planets.find((p) => p.planet === 'Moon')!.signIndex;
   for (let m = 0; m < 12; m++) {
     const idx = ctx.monthOfDay.findIndex((x) => x === m);
     const count = ctx.monthOfDay.filter((x) => x === m).length;
@@ -636,6 +671,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
         planet,
         sign: ZODIAC_SIGNS[s]!,
         natalHouse: houseFromSign(natalLagna, s),
+        moonHouse: houseFromSign(natalMoonSign, s),
         bindus: planet === 'Saturn' || planet === 'Jupiter' ? (ctx.bav[planet]?.[s] ?? 0) : (ctx.sav[s] ?? 0),
         kakshya: kakshyaOf(lon),
       });
@@ -732,6 +768,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
         ...(y.reason ? { reason: y.reason } : {}),
       })),
       mudda,
+      extra: buildVarshaExtraFacts(s, natal, tz, (ms) => localDate(ms, tz)),
     };
   });
   // The seam: the first Varsha year's Mudda list ends on the same number that starts the next.
@@ -743,10 +780,11 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
   }
 
   // --- sky and calendar ----------------------------------------------------
-  const skyEvents = await skyEventFacts(ctx);
+  const where = eclipsePlaceOf(reader.currentPlace);
+  const skyEvents = await skyEventFacts(ctx, where);
   const festivals: VarshikFacts['calendar']['festivals'] = [];
   for (const [date, list] of Object.entries(HINDU_FESTIVALS)) {
-    if (!date.startsWith('2027-')) continue;
+    if (!date.startsWith(`${ctx.year}-`)) continue;
     for (const f of list) {
       festivals.push({
         date,
@@ -804,8 +842,8 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
 
   const facts: VarshikFacts = {
     version: 1,
-    year: 2027,
-    window: { start: '2027-01-01', end: '2027-12-31' },
+    year: ctx.year,
+    window: { start: `${ctx.year}-01-01`, end: `${ctx.year}-12-31` },
     reader: {
       name: reader.name,
       birthDate: reader.birthDate,
@@ -817,6 +855,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
         Object.entries(reader.answers).filter(([, v]) => typeof v === 'string' && v.length > 0),
       ) as VarshikFacts['reader']['answers'],
       facts: reader.facts.map((f, i) => ({ id: `F${i + 1}`, fact: f.fact })),
+      eclipsePlace: where.fact,
     },
     birth: {
       lagna: {
@@ -833,6 +872,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
     },
     dashas: { balance, antar, pratyantar2027 },
     ashtakavarga: { bav: ctx.bav, sav: ctx.sav, transits },
+    stars: buildStarFacts(ctx, (ms) => localDate(ms, tz)),
     doshas,
     yogas,
     varsha,
@@ -858,13 +898,23 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
         lifting: w.lifting.map((d) => ({ key: d.key, effect: r2(d.effect) })),
         weighing: w.weighing.map((d) => ({ key: d.key, effect: r2(d.effect) })),
       })),
-      decisionTable: scores.decisionTable.map((d) => ({
-        key: d.key,
-        months: d.months,
-        best: d.best,
-        hold: d.hold,
-        isMain: d.isMain,
-      })),
+      decisionTable: scores.decisionTable.map((d) => {
+        const closures = d.closed
+          ? scores.closures.map((c) => ({ reason: c.reason, from: c.from, to: c.to }))
+          : [];
+        return {
+          key: d.key,
+          months: d.months,
+          best: d.best,
+          hold: d.hold,
+          isMain: d.isMain,
+          closed: d.closed,
+          openSpans: d.openSpans,
+          closures,
+          ruleSource: closures.map((c) => ruleSource(d.key, c.reason)),
+          noOpenWindow: d.noOpenWindow,
+        };
+      }),
       planetImpact: scores.planetImpact.map((p) => ({
         planet: p.planet,
         natalHouse: p.natalHouse,
@@ -899,7 +949,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
         nextReliefBeyondYear: rel.nextReliefBeyondYear ? relEv(rel.nextReliefBeyondYear) : null,
       },
     },
-    calendar: { festivals },
+    calendar: { festivals, closures: scores.closures.map((c) => ({ reason: c.reason, from: c.from, to: c.to })) },
   };
   return facts;
 }
@@ -935,7 +985,7 @@ export function preflightVarshikFacts(input: unknown): PreflightResult {
   }
   const f = parsed.data;
 
-  if (!f.muddaSeamExact) failures.push('muddaSeamExact: the 2026 Mudda list does not end where 2027 starts');
+  if (!f.muddaSeamExact) failures.push('muddaSeamExact: the earlier Mudda list does not end where the later one starts');
   if (f.varsha.length === 0) failures.push('varsha: no Varsha year');
 
   // Every tier agrees with its score.
@@ -957,10 +1007,66 @@ export function preflightVarshikFacts(input: unknown): PreflightResult {
 
   // 2027 events: every month that has an ingress or station has them dated inside the year.
   for (const [i, e] of f.skyEvents.entries()) {
-    if (e.date < f.window.start || e.date > f.window.end) failures.push(`skyEvents.${i}: date outside 2027`);
+    if (e.date < f.window.start || e.date > f.window.end) failures.push(`skyEvents.${i}: date outside ${f.year}`);
   }
   const eclipses = f.skyEvents.filter((e) => e.kind === 'eclipse-solar' || e.kind === 'eclipse-lunar');
-  if (eclipses.length < 2) failures.push('skyEvents: fewer than 2 eclipses found for 2027');
+  if (eclipses.length < 2) failures.push(`skyEvents: fewer than 2 eclipses found for ${f.year}`);
+
+  // C5: every eclipse is classified; only a Grahan has Sutak or may be a personal trigger.
+  for (const e of eclipses) {
+    const x = e.eclipse;
+    if (!x) {
+      failures.push(`skyEvents: the eclipse on ${e.date} has no type or visibility`);
+      continue;
+    }
+    if (x.class === 'grahan' && x.sutak.length === 0) failures.push(`skyEvents: the Grahan on ${e.date} has no Sutak time`);
+    if (x.class !== 'grahan' && (x.sutak.length > 0 || x.personalTrigger)) failures.push(`skyEvents: the ${x.class} eclipse on ${e.date} carries Sutak or a trigger`);
+    if (x.subtype === 'penumbral' && x.class === 'grahan') failures.push(`skyEvents: the penumbral eclipse on ${e.date} is marked Grahan`);
+  }
+  // C5: the no-muhurat periods. Chaturmas needs both Ekadashis in the festival table.
+  if (!chaturmasOf(f.year)) failures.push(`calendar: the festival table lacks Devshayani or Devuthani Ekadashi for ${f.year}`);
+  else if (!f.calendar.closures.some((c) => c.reason === 'chaturmas')) failures.push('calendar.closures: no Chaturmas');
+  for (const d of f.scores.decisionTable) {
+    if (CLOSED_DECISION_KEYS.includes(d.key) !== d.closed) failures.push(`scores.decisionTable.${d.key}: closed flag is wrong`);
+    if (!d.closed || d.noOpenWindow) continue;
+    if (d.openSpans.length === 0) failures.push(`scores.decisionTable.${d.key}: the best window has no open day`);
+    for (const span of d.openSpans) {
+      for (const c of d.closures) {
+        if (span.from <= c.to && span.to >= c.from) failures.push(`scores.decisionTable.${d.key}: open span ${span.from}..${span.to} overlaps ${c.reason}`);
+      }
+    }
+    const open = d.openSpans.reduce((n, sp) => n + 1 + (Date.parse(sp.to) - Date.parse(sp.from)) / 86_400_000, 0);
+    if (open < MIN_OPEN_DAYS) failures.push(`scores.decisionTable.${d.key}: the best window has only ${open} open days`);
+  }
+
+  // C3: the star layer and the other dashas. Any hole stops generation and refunds the reader.
+  for (const planet of ['Sun', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Rahu', 'Ketu']) {
+    const segs = f.stars.segments.filter((s) => s.planet === planet);
+    if (segs.length === 0) failures.push(`stars.segments: no row for ${planet}`);
+    else {
+      if (segs[0]!.from !== f.window.start) failures.push(`stars.segments: ${planet} does not start on 1 January`);
+      if (segs[segs.length - 1]!.to !== f.window.end) failures.push(`stars.segments: ${planet} does not end on 31 December`);
+      for (let i = 1; i < segs.length; i++) {
+        if (!segs[i]!.enters) failures.push(`stars.segments: ${planet} row ${i} is not an entry`);
+      }
+    }
+  }
+  const order = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu', 'Lagna'];
+  order.forEach((p, i) => {
+    if (f.stars.table[i]?.point !== p) failures.push(`stars.table.${i}: expected ${p}`);
+  });
+  for (const m of f.stars.moorti) {
+    if (m.date < f.window.start || m.date > f.window.end) failures.push(`stars.moorti: ${m.planet} ${m.date} outside ${f.year}`);
+  }
+  if (f.stars.moorti.filter((m) => m.planet === 'Saturn' || m.planet === 'Jupiter').length === 0 && f.skyEvents.some((e) => e.kind === 'ingress' && (e.planet === 'Saturn' || e.planet === 'Jupiter'))) {
+    failures.push('stars.moorti: a Saturn or Jupiter sign change in the sky calendar has no Moorti');
+  }
+  for (const [i, v] of f.varsha.entries()) {
+    if (v.extra.muddaYogini[0]!.from !== localDate(v.startMs, f.reader.timezone)) failures.push(`varsha.${i}.extra.muddaYogini: does not start on the solar return`);
+    if (v.extra.muddaYogini[v.extra.muddaYogini.length - 1]!.to !== localDate(v.endMs, f.reader.timezone)) failures.push(`varsha.${i}.extra.muddaYogini: does not end on the next solar return`);
+    if (v.extra.lifeSahams.some((s) => /mrityu|apamrityu/i.test(s.name))) failures.push(`varsha.${i}.extra.lifeSahams: a Saham that is never shown`);
+    if (!BALA_PLANETS_7.every((p) => p in v.extra.harsha && p in v.extra.dwadasha)) failures.push(`varsha.${i}.extra: Harsha and Dwadashavargiya must cover 7 planets`);
+  }
 
   // Dasha rows cover the whole of 2027 without a hole.
   const pr = f.dashas.pratyantar2027;
@@ -1075,11 +1181,72 @@ export function coverageProblems(
     }
   }
 
+  // C3: the three star pages, and the slow planets' star moves in the month pages.
+  const stars = need('birth_stars');
+  if (stars) {
+    const text = stars.paragraphs.join(' ');
+    if (!stripPunct(text).replace(/\s+/g, '').includes(stripPunct(facts.stars.birthStar.name))) problems.push(`birth_stars: does not name the birth star ${facts.stars.birthStar.name}`);
+    for (const d of facts.stars.dashaLords) {
+      if (!text.includes(d.planet)) problems.push(`birth_stars: does not name the ${d.planet} dasha lord's star`);
+    }
+  }
+  const flags = need('three_flags');
+  if (flags) {
+    const text = flags.paragraphs.join(' ');
+    for (const w of ['Tri-Pataki', 'Lagna', 'Moon', 'Mudda', 'Yogini', 'Patyayini']) {
+      if (!text.includes(w)) problems.push(`three_flags: does not mention ${w}`);
+    }
+  }
+  const sky27 = need('your_stars_2027');
+  if (sky27) {
+    const text = sky27.paragraphs.join(' ');
+    for (const s of facts.stars.sensitive) {
+      if (!s.enters || !['Saturn', 'Jupiter', 'Rahu', 'Ketu'].includes(s.planet)) continue;
+      if (!text.includes(dayMonth(s.from))) problems.push(`your_stars_2027: does not date the ${s.planet} move into ${s.nakshatra} (${dayMonth(s.from)})`);
+    }
+    for (const m of facts.stars.moorti) {
+      if (!['Saturn', 'Jupiter'].includes(m.planet)) continue;
+      if (!text.includes(dayMonth(m.date))) problems.push(`your_stars_2027: does not date the ${m.planet} sign change (${dayMonth(m.date)})`);
+    }
+  }
+  for (let m = 1; m <= 12; m++) {
+    const id = `month_${String(m).padStart(2, '0')}`;
+    if (!wants(id)) continue;
+    const s = byId.get(id);
+    if (!s) continue;
+    const text = s.paragraphs.join(' ');
+    for (const seg of facts.stars.segments) {
+      if (!seg.enters || !['Saturn', 'Jupiter', 'Rahu', 'Ketu'].includes(seg.planet)) continue;
+      if (Number(seg.from.slice(5, 7)) !== m) continue;
+      if (!text.includes(dayMonth(seg.from))) problems.push(`${id}: does not date the ${seg.planet} move into ${seg.nakshatra} (${dayMonth(seg.from)})`);
+    }
+  }
+
   const skySec = need('sky_calendar');
   if (skySec) {
     const text = skySec.paragraphs.join(' ');
     for (const e of facts.skyEvents.filter((x) => x.kind.startsWith('eclipse'))) {
       if (!text.includes(dayMonth(e.date))) problems.push(`sky_calendar: does not mention the eclipse on ${dayMonth(e.date)}`);
+    }
+    // C5: each eclipse class is said in words.
+    const classes = new Set(facts.skyEvents.map((e) => e.eclipse?.class).filter(Boolean));
+    if (classes.has('grahan') && !/\bsutak\b/i.test(text)) problems.push('sky_calendar: does not give the Sutak of the visible Grahan');
+    if (classes.has('upachchaya') && !/\b(?:penumbral|upachchaya)\b/i.test(text)) problems.push('sky_calendar: does not call the penumbral eclipses penumbral (Upachchaya)');
+    if (classes.has('not_visible') && !/\bnot\s+(?:be\s+)?(?:visible|seen)\b/i.test(text)) problems.push('sky_calendar: does not say which eclipse is not visible');
+  }
+
+  // C5: when_to_act names every no-muhurat period of a wedding, commitment or home-move row it covers.
+  const act = need('when_to_act');
+  if (act && facts.scores.decisionTable.some((d) => d.closed)) {
+    const text = act.paragraphs.join(' ');
+    const said: Record<string, boolean> = {
+      shukra_asta: /\b(?:Venus|Shukra)\b/.test(text) && /\b(?:combust\w*|asta)\b/i.test(text),
+      guru_asta: /\b(?:Jupiter|Guru)\b/.test(text) && /\b(?:combust\w*|asta)\b/i.test(text),
+      kharmas: /\bkharmas\b/i.test(text),
+      chaturmas: /\bchaturmas\b/i.test(text),
+    };
+    for (const reason of new Set(facts.calendar.closures.map((c) => c.reason))) {
+      if (!said[reason]) problems.push(`when_to_act: does not name ${reason.replace('_', ' ')} for the wedding or move-in rows`);
     }
   }
   return problems;

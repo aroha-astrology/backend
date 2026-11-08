@@ -29,6 +29,7 @@ import {
   AREAS,
   SCORE_PLANETS,
   TIER_EDGES,
+  VARSHIK_C3 as C3,
   VARSHIK_WEIGHTS as W,
   type Area,
   type ScorePlanet,
@@ -41,7 +42,21 @@ import { computeTajikaYogas, type TajikaYoga } from '../varshphal/tajika-yogas.j
 import { muddaAt, type MuddaPeriod } from '../varshphal/mudda-dasha.js';
 import type { VarshaYearSlice } from '../varshphal/calendar-year.js';
 import type { SahamWindow } from '../varshphal/saham-windows.js';
+import { dashaAt, type DashaPeriod } from '../varshphal/annual-dashas.js';
+import { BALA_PLANETS, dwadashavargiyaBala, harshaBala } from '../varshphal/annual-balas.js';
+import { computeExtraTajikaYogas } from '../varshphal/tajika-yogas-extra.js';
+import { computeLifeSahams } from '../varshphal/sahams-life.js';
+import { natalPromise, capByPromise } from './natal-promise.js';
+import { buildStarSignals, type StarSignals } from './varshik-star-signals.js';
 import type { VarshikContext } from './varshik-context.js';
+import {
+  CLOSED_DECISION_KEYS,
+  MIN_OPEN_DAYS,
+  muhurtaClosures,
+  openDaysByMonth,
+  openSpans,
+  type Closure,
+} from './varshik-muhurta.js';
 
 const MS_PER_DAY = 86_400_000;
 const SEVEN = new Set<string>(['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn']);
@@ -230,7 +245,22 @@ interface SliceModel {
   sahamQuality: Record<string, number>;
   windows: SahamWindow[];
   gates: { vetoYearLord: boolean; vetoMuntha: boolean; kamboola: boolean };
+  /** C3: Mudda Yogini and Patyayini run beside Mudda; their lords are read like Mudda's. */
+  lagnaLord: ScorePlanet;
+  /** C3: flat signal of the 10 extra Tajika yogas, and of each area's life Sahams. */
+  extraYogaSignal: number;
+  lifeSahamPart: Record<Area, number>;
 }
+
+const dashaLordAt = <L extends string>(periods: DashaPeriod<L>[], atMs: number): { main: L; sub: L } | null => {
+  if (periods.length === 0) return null;
+  const hit = dashaAt(periods, atMs);
+  if (hit) return { main: hit.main.lord, sub: hit.sub.lord };
+  const first = periods[0]!;
+  const last = periods[periods.length - 1]!;
+  const edge = atMs < first.startMs ? first : last;
+  return { main: edge.lord, sub: (atMs < first.startMs ? edge.antardashas[0]! : edge.antardashas[edge.antardashas.length - 1]!).lord };
+};
 
 function sliceModel(slice: VarshaYearSlice, ctx: VarshikContext): SliceModel {
   const chart = slice.varshphal.solarReturn.chart;
@@ -249,9 +279,27 @@ function sliceModel(slice: VarshaYearSlice, ctx: VarshikContext): SliceModel {
   const munthaPart = {} as Record<Area, number>;
 
   const ylCand = slice.varshphal.varsheshwara.candidates.find((c) => c.planet === yearLord);
-  const ylSignal = clamp(
-    W.yearLord.strengthShare * vimsopakaNorm(ylCand?.strength ?? W.houseQuality.vimCenter) +
-      W.yearLord.aspectShare * ((ylCand?.aspectKala ?? 0) / 60 * 2 - 1),
+  // C3: Harsha + Dwadashavargiya bala of each planet in the Varsha chart, folded into the lord signals.
+  const harsha = harshaBala(chart, slice.varshphal.solarReturn.isDayReturn);
+  const dwad = dwadashavargiyaBala(chart);
+  const bala: Partial<Record<ScorePlanet, number>> = {};
+  for (const bp of BALA_PLANETS) {
+    const h = clamp((harsha[bp].total - C3.annualBala.harshaCenter) / C3.annualBala.harshaHalfWidth);
+    if (C3.annualBala.dwadashaVerified.includes(bp)) {
+      const d = clamp((dwad[bp].score - C3.annualBala.dwadashaCenter) / C3.annualBala.dwadashaHalfWidth);
+      bala[bp] = (h + d) / 2;
+    } else {
+      bala[bp] = h;
+    }
+  }
+  const withBala = (planet: ScorePlanet, signal: number): number =>
+    bala[planet] === undefined ? signal : clamp((1 - C3.annualBala.share) * signal + C3.annualBala.share * bala[planet]!);
+  const ylSignal = withBala(
+    yearLord,
+    clamp(
+      W.yearLord.strengthShare * vimsopakaNorm(ylCand?.strength ?? W.houseQuality.vimCenter) +
+        W.yearLord.aspectShare * ((ylCand?.aspectKala ?? 0) / 60 * 2 - 1),
+    ),
   );
   const mhSignal = clamp(
     W.muntha.houseShare * (W.placement[munthaHouse] ?? 0) + W.muntha.lordShare * varsha.strength(munthaLord),
@@ -271,7 +319,7 @@ function sliceModel(slice: VarshaYearSlice, ctx: VarshikContext): SliceModel {
   const muddaLord: SliceModel['muddaLord'] = {};
   for (const planet of SCORE_PLANETS) {
     muddaLord[planet] = {
-      signal: lordSignal(varsha, planet, W.mudda, W.mudda.nodeNature),
+      signal: withBala(planet, lordSignal(varsha, planet, W.mudda, W.mudda.nodeNature)),
       touch: touchMap(varsha, planet, W.mudda.areaTouchBoost),
     };
   }
@@ -286,6 +334,29 @@ function sliceModel(slice: VarshaYearSlice, ctx: VarshikContext): SliceModel {
         W.saham.supportShare * (s.beneficSupported ? W.saham.supportedValue : W.saham.unsupportedValue),
     );
   }
+
+  // C3: the 10 further Tajika yogas (flat, mean over the yogas found) and the life Sahams (steady, per area).
+  const extra = computeExtraTajikaYogas(chart);
+  const extraVals = extra.map((y) =>
+    y.kind === 'iqbal' && y.lagneshStrong === false ? C3.iqbalWeakLagnesh : (C3.extraYogaValue[y.kind] ?? 0),
+  );
+  const extraYogaSignal = clamp(extraVals.reduce((a, b) => a + b, 0));
+  const lifeBy = {} as Record<Area, number[]>;
+  for (const a of AREAS) lifeBy[a] = [];
+  for (const s of computeLifeSahams(chart, slice.varshphal.solarReturn.isDayReturn)) {
+    const area = C3.lifeSahamArea[s.name];
+    if (!area) continue;
+    const lord = s.lord as ScorePlanet;
+    lifeBy[area].push(
+      clamp(
+        W.saham.lordShare * varsha.strength(lord) +
+          W.saham.houseShare * (W.placement[s.houseFromVarshaAsc] ?? 0) +
+          W.saham.supportShare * (s.beneficSupported ? W.saham.supportedValue : W.saham.unsupportedValue),
+      ),
+    );
+  }
+  const lifeSahamPart = {} as Record<Area, number>;
+  for (const a of AREAS) lifeSahamPart[a] = lifeBy[a].length ? lifeBy[a].reduce((x, y) => x + y, 0) / lifeBy[a].length : 0;
 
   const ylVim = ylCand?.strength ?? 20;
   const vetoYearLord =
@@ -321,6 +392,9 @@ function sliceModel(slice: VarshaYearSlice, ctx: VarshikContext): SliceModel {
     sahamQuality,
     windows,
     gates: { vetoYearLord, vetoMuntha, kamboola },
+    lagnaLord: SIGN_LORDS[ZODIAC_SIGNS[varsha.lagna]!] as ScorePlanet,
+    extraYogaSignal,
+    lifeSahamPart,
   };
 }
 
@@ -336,6 +410,9 @@ interface NatalModel {
   moonSign: number;
   /** Average of the on/off-area relevance, so transit relevance has a mean of 1. */
   relAvg: Record<Area, number>;
+  /** C3: daily star signals, and the natal promise of each area (-1..+1), for the natal-promise cap. */
+  stars: StarSignals;
+  promise: Record<Area, number>;
 }
 
 function natalModelOf(ctx: VarshikContext): NatalModel {
@@ -356,7 +433,12 @@ function natalModelOf(ctx: VarshikContext): NatalModel {
     const k = W.areaHouses[a].length;
     relAvg[a] = (k * W.relevance.onArea + (12 - k) * W.relevance.offArea) / 12;
   }
-  return { m, lordSignal: lordSig, lagnaPoint, lagnaLordLon, moonSign, relAvg };
+  const promise = {} as Record<Area, number>;
+  for (const a of AREAS) {
+    const hs = W.areaHouses[a];
+    promise[a] = hs.reduce((x, h) => x + natalPromise(ctx.natal, h).score, 0) / hs.length;
+  }
+  return { m, lordSignal: lordSig, lagnaPoint, lagnaLordLon, moonSign, relAvg, stars: buildStarSignals(ctx), promise };
 }
 
 /** The natal signal of each planet as a dasha lord (-1..+1): used to tell whether a dasha change helps or weighs. */
@@ -416,6 +498,12 @@ function scoreDay(
   };
 
   const { main, sub } = muddaLordsAt(S.slice.mudda, atMs);
+  // C3: Mudda Yogini and Patyayini. Patyayini is read by the week (its cut points are only good to a few days).
+  const yog = dashaLordAt(S.slice.muddaYogini, atMs);
+  const blockStart = ctx.days[Math.floor(dayIdx / C3.patyayiniBlockDays) * C3.patyayiniBlockDays]!.atMs;
+  const pat = dashaLordAt(S.slice.patyayini, blockStart);
+  const patLord = (l: string): ScorePlanet => (l === 'Lagna' ? S.lagnaLord : (l as ScorePlanet));
+  const SS = nat.stars;
   const dasha = ctx.natalDasha.find((d) => atMs >= d.startMs && atMs < d.endMs);
 
   // Transit signals do not depend on the area, only their relevance does.
@@ -492,6 +580,63 @@ function scoreDay(
       const karaka = W.karakas[area].includes(t.planet) ? W.karakaBoost : 1;
       const rel = ((onArea ? W.relevance.onArea : W.relevance.offArea) / nat.relAvg[area]) * karaka;
       add(area, `transit:${t.planet}`, c.transit * t.weight * t.signal * rel);
+
+      // C3: the same planet read from the natal Moon and through the stars.
+      const p = t.planet;
+      if (SS.gochar[p]) {
+        const k = C3.components;
+        add(area, `gochar:${p}`, k.moonGochar * t.weight * SS.gochar[p]![dayIdx]! * rel);
+        add(area, `moorti:${p}`, k.moorti * t.weight * SS.moorti[p]![dayIdx]! * rel);
+        add(area, `tara:${p}`, k.tara * t.weight * SS.tara[p]![dayIdx]! * rel);
+        const lord = SS.starLord[p]![dayIdx]! as ScorePlanet;
+        add(area, `starLord:${p}`, k.starLord * t.weight * (nat.lordSignal[lord]?.signal ?? 0) * rel);
+        if (C3.kakshyaPlanets.includes(p)) add(area, `kakshya:${p}`, k.kakshya * t.weight * SS.kakshya[p]![dayIdx]! * rel);
+        const sp = SS.special[p]![dayIdx]!;
+        let sens = 0;
+        if (sp) {
+          const share = (C3.sensitive.areaOf[sp] ?? []).includes(area) ? 1 : C3.sensitive.otherShare;
+          const fixed = sp === 22 ? C3.sensitive.vainashika : sp === 28 ? C3.sensitive.abhisheka : null;
+          const raw = fixed !== null ? fixed : sp === 25 ? 0 : C3.sensitive.emphasisGain * t.signal;
+          sens += share * raw;
+        }
+        if (SS.natalHit[p]![dayIdx]) sens += C3.sensitive.natalStarGain * t.signal;
+        add(area, `sensitive:${p}`, k.sensitive * t.weight * sens * rel);
+      }
+    }
+
+    // C3: Mudda Yogini and Patyayini beside Mudda; the 10 further Tajika yogas; the life Sahams.
+    for (const [key, comp, lords, conv] of [
+      ['yogini', C3.components.muddaYogini, yog, (l: string) => l as ScorePlanet],
+      ['patyayini', C3.components.patyayini, pat, patLord],
+    ] as const) {
+      if (!lords) continue;
+      const lm = S.muddaLord[conv(lords.main)]!;
+      const ls = S.muddaLord[conv(lords.sub)]!;
+      add(area, `${key}:${conv(lords.main)}`, comp * W.mudda.mainShare * lm.signal * lm.touch[area]);
+      add(area, `${key}:${conv(lords.sub)}`, comp * W.mudda.subShare * ls.signal * ls.touch[area]);
+    }
+    add(area, 'tajikaExtra', C3.components.extraYogas * S.extraYogaSignal);
+    add(area, 'lifeSaham', C3.components.lifeSahams * S.lifeSahamPart[area]);
+
+    // C3: no single star family may swamp the rest (see C3.familyCap).
+    for (const fam of C3.familyCap.families) {
+      const keys = Object.keys(contrib[area]).filter((k) => k.startsWith(`${fam}:`));
+      const sum = keys.reduce((x, k) => x + contrib[area][k]!, 0);
+      const cap = C3.familyCap.raw;
+      if (Math.abs(sum) > cap) for (const k of keys) contrib[area][k] = contrib[area][k]! * (cap / Math.abs(sum));
+    }
+
+    // C3: the natal chart limits the annual part (Mehta): its sum is held under the area's natal-promise ceiling.
+    {
+      const annual = (k: string) =>
+        k === 'varshaChart' || k === 'tajikaExtra' || k === 'lifeSaham' || /^(yearLord|muntha|mudda|yogini|patyayini):/.test(k);
+      const keys = Object.keys(contrib[area]).filter(annual);
+      const sum = keys.reduce((x, k) => x + contrib[area][k]!, 0);
+      if (sum > 0) {
+        const ref = C3.natalCap.annualRef;
+        const capped = capByPromise(sum / ref, nat.promise[area]) * ref;
+        if (capped < sum) for (const k of keys) contrib[area][k] = contrib[area][k]! * (capped / sum);
+      }
     }
 
     if (damper > 0) add(area, 'sadeSati:Saturn', -damper * W.sadeSati.areaSensitivity[area]);
@@ -567,9 +712,17 @@ export interface MomentumSeries {
   damperDays: number;
 }
 
+// The natal and Varsha-year models depend only on the context (not on base or scale), and are the slow part,
+// so a calibration run that scores the same contexts many times builds them once.
+const modelCache = new WeakMap<VarshikContext, { nat: NatalModel; slices: SliceModel[] }>();
+
 export function momentumSeries(ctx: VarshikContext): MomentumSeries {
-  const nat = natalModelOf(ctx);
-  const slices = ctx.calendar.varshaYears.map((v) => sliceModel(v, ctx));
+  let models = modelCache.get(ctx);
+  if (!models) {
+    models = { nat: natalModelOf(ctx), slices: ctx.calendar.varshaYears.map((v) => sliceModel(v, ctx)) };
+    modelCache.set(ctx, models);
+  }
+  const { nat, slices } = models;
   const n = ctx.days.length;
   const boundary = slices.length > 1 ? slices[1]!.slice.startMs : null;
 
@@ -706,6 +859,8 @@ export interface VarshikScores {
   decisionTable: DecisionRow[];
   planetImpact: PlanetImpactRow[];
   gates: MomentumSeries['gates'];
+  /** C5: the year's no-muhurat periods (Shukra and Guru Asta, Kharmas, Chaturmas). */
+  closures: Closure[];
 }
 
 function monthlyMeans(series: number[], monthOfDay: number[]): number[] {
@@ -771,10 +926,23 @@ export function computeVarshikScores(
     decisionTable: [],
     planetImpact: [],
     gates: series.gates,
+    closures: [],
   };
-  result.decisionTable = decisionTable(result, answers);
+  const dateOfDay = localDayDate(ctx);
+  const closures = muhurtaClosures(ctx, dateOfDay);
+  result.closures = closures;
+  result.decisionTable = decisionTable(result, answers, { closures, openDays: openDaysByMonth(ctx, closures) });
+  for (const row of result.decisionTable) {
+    row.openSpans = row.closed ? openSpans(ctx, closures, row.best.from, row.best.to, dateOfDay) : [];
+  }
   result.planetImpact = planetImpact(ctx, result);
   return result;
+}
+
+/** The reader's local date (YYYY-MM-DD) of ctx.days[i], taken at the middle of the day. */
+export function localDayDate(ctx: VarshikContext): (i: number) => string {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: ctx.timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  return (i: number) => fmt.format(new Date(ctx.dayStartMs[i]! + 12 * 3_600_000));
 }
 
 // -----------------------------------------------------------------------------
@@ -791,6 +959,12 @@ export interface DecisionRow {
   /** True when this is the reader's own main 2027 decision. */
   isMain: boolean;
   relevance: number;
+  /** C5: a marriage, commitment or home-move row, whose "go" window keeps out of every closure. */
+  closed: boolean;
+  /** C5: the open runs of days inside the best window (empty for a row that is not closed). */
+  openSpans: Array<{ from: string; to: string }>;
+  /** C5: no month had enough open days, so the best window ignores the closures (never in 2027). */
+  noOpenWindow: boolean;
 }
 
 function personaAllows(
@@ -812,10 +986,21 @@ function personaAllows(
       if (v !== undefined && banned.includes(v)) return false;
     }
   }
+  for (const combo of d.excludesWhen ?? []) {
+    const hit = Object.entries(combo).every(([field, banned]) => {
+      const v = a[field as keyof VarshikAnswers];
+      return v !== undefined && banned.includes(v);
+    });
+    if (hit) return false;
+  }
   return true;
 }
 
-export function decisionTable(scores: VarshikScores, answers: VarshikAnswers = {}): DecisionRow[] {
+export function decisionTable(
+  scores: VarshikScores,
+  answers: VarshikAnswers = {},
+  muhurta?: { closures: Closure[]; openDays: number[] },
+): DecisionRow[] {
   const mainKeys = new Set(W.mainDecisionKeys[answers.mainDecision ?? ''] ?? []);
   const focusKeys = new Set<string>();
   for (const [field, byValue] of Object.entries(W.focusKeys)) {
@@ -831,12 +1016,24 @@ export function decisionTable(scores: VarshikScores, answers: VarshikAnswers = {
       const raw = parts.reduce((s, [a, w]) => s + w * scores.timingMap[a][m]!.score, 0) / total;
       return cell(raw);
     });
-    let best = { from: 0, to: 0, score: -1, tier: 'rust' as Tier };
-    for (let m = 0; m < 12; m++) {
-      const to = Math.min(11, m + 1);
-      const s = (monthly[m]!.score + monthly[to]!.score) / 2;
-      if (s > best.score) best = { from: m, to, score: Math.round(s), tier: tierOf(s) };
-    }
+    // C5: a marriage, commitment or home-move row may only use months with at least MIN_OPEN_DAYS days
+    // outside Shukra/Guru Asta, Kharmas and Chaturmas; a 2-month run needs both months open.
+    const closed = CLOSED_DECISION_KEYS.includes(d.key) && !!muhurta;
+    const eligible = (m: number) => !closed || muhurta!.openDays[m]! >= MIN_OPEN_DAYS;
+    const pickBest = (useClosures: boolean) => {
+      let b = { from: 0, to: 0, score: -1, tier: 'rust' as Tier };
+      for (let m = 0; m < 12; m++) {
+        if (useClosures && !eligible(m)) continue;
+        let to = Math.min(11, m + 1);
+        if (useClosures && !eligible(to)) to = m;
+        const s = (monthly[m]!.score + monthly[to]!.score) / 2;
+        if (s > b.score) b = { from: m, to, score: Math.round(s), tier: tierOf(s) };
+      }
+      return b;
+    };
+    let best = pickBest(closed);
+    const noOpenWindow = best.score < 0;
+    if (noOpenWindow) best = pickBest(false);
     const hold = monthly
       .map((c, m) => ({ m, s: c.score }))
       .sort((a, b) => a.s - b.s || a.m - b.m)
@@ -854,6 +1051,9 @@ export function decisionTable(scores: VarshikScores, answers: VarshikAnswers = {
       hold,
       isMain,
       relevance: isMain ? W.mainDecisionBoost : focused ? W.focusBoost : 1,
+      closed,
+      openSpans: [],
+      noOpenWindow,
     });
   }
   return rows.sort((a, b) => b.relevance - a.relevance);

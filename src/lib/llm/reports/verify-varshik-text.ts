@@ -18,12 +18,14 @@
 // saved report's `textFlags`, which the admin sees.
 // =============================================================================
 
+import { NAKSHATRAS } from '@aroha-astrology/shared';
 import type { ReportSection } from '../../../modules/reports/report-generator.types.js';
 import type { VarshikFacts } from '../../astro-engine/reports/varshik-facts.js';
 import {
   MONTH_NAMES,
   NINE_PLANETS,
   SIGN_NAMES,
+  TAJIKA_LABEL,
 } from '../../astro-engine/reports/varshik-labels.js';
 import {
   checkProse,
@@ -51,6 +53,27 @@ export interface FactIndex {
   /** How many eclipses the year holds, and how many times each planet turns retrograde. */
   eclipses: number;
   retrogrades: Record<string, number>;
+  /** The report year. */
+  year: number;
+  /** C3: every star, 'Planet:Star' pairing, Tara name, star number, Tajika yoga, Saham, Yogini name and week label in the facts. */
+  nakshatras: Set<string>;
+  planetStars: Set<string>;
+  /** C5: 'Planet:house' counted from the natal Moon sign (sky events, slow transits, Moon gochar). */
+  moonHouses: Set<string>;
+  /** C5: eclipse dates 'YYYY-MM-DD' by class. */
+  eclipseClass: Map<string, 'grahan' | 'upachchaya' | 'not_visible'>;
+  /** C5: the closures of the marriage, commitment and home-move rows. */
+  closures: VarshikFacts['calendar']['closures'];
+  /** C5: months (0-11) a closed row may never be told to go in (fewer than 7 open days). */
+  closedMonths: Set<number>;
+  taraNames: Set<string>;
+  starNumbers: Set<number>;
+  tajika: Set<string>;
+  sahams: Set<string>;
+  yoginiLords: Set<string>;
+  patyayiniLords: Set<string>;
+  yoginiNames: Set<string>;
+  weeks: Set<string>;
 }
 
 const ISO = /^\d{4}-\d{2}-\d{2}/;
@@ -82,14 +105,24 @@ export function buildFactIndex(facts: VarshikFacts): FactIndex {
   addDate(facts.window.start);
   addDate(facts.window.end);
   for (let m = 0; m < 12; m++) {
-    const last = new Date(Date.UTC(2027, m + 1, 0)).getUTCDate();
-    addDate(`2027-${String(m + 1).padStart(2, '0')}-01`);
-    addDate(`2027-${String(m + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`);
+    const last = new Date(Date.UTC(facts.year, m + 1, 0)).getUTCDate();
+    addDate(`${facts.year}-${String(m + 1).padStart(2, '0')}-01`);
+    addDate(`${facts.year}-${String(m + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`);
   }
+  const moonHouses = new Set<string>();
+  const eclipseClass = new Map<string, 'grahan' | 'upachchaya' | 'not_visible'>();
   for (const e of facts.skyEvents) {
     addDate(e.date);
     houses.add(`${e.planet}:${e.natalHouse}`);
     houses.add(`${e.planet}:${e.varshaHouse}`);
+    moonHouses.add(`${e.planet}:${e.moonHouse}`);
+    if (e.eclipse) {
+      eclipseClass.set(e.date, e.eclipse.class);
+      for (const st of e.eclipse.sutak) {
+        addDate(st.from.slice(0, 10));
+        addDate(st.to.slice(0, 10));
+      }
+    }
     signs.add(`${e.planet}:${e.sign}`);
     if (e.fromSign) signs.add(`${e.planet}:${e.fromSign}`);
   }
@@ -185,12 +218,139 @@ export function buildFactIndex(facts: VarshikFacts): FactIndex {
     }
   }
 
+  // --- C3: the star layer, the other dashas, the yogas and Sahams --------------------------------
+  const nakshatras = new Set<string>();
+  const planetStars = new Set<string>();
+  const taraNames = new Set<string>();
+  const starNumbers = new Set<number>();
+  const tajika = new Set<string>();
+  const sahams = new Set<string>();
+  const yoginiLords = new Set<string>();
+  const patyayiniLords = new Set<string>();
+  const yoginiNames = new Set<string>();
+  const weeks = new Set<string>();
+  const st = facts.stars;
+  const seeStar = (planet: string, nak: string): void => {
+    nakshatras.add(nak);
+    planetStars.add(`${planet}:${nak}`);
+  };
+  const seeTara = (t: { number: number; name: string }): void => {
+    taraNames.add(t.name);
+    starNumbers.add(t.number);
+  };
+  nakshatras.add(st.birthStar.name);
+  for (const r of st.table) {
+    seeStar(r.point, r.nakshatra);
+    seeTara(r.tara);
+    if (r.special) seeTara(r.special);
+    houses.add(`${r.starLord}:${r.starLordHouse}`);
+    for (const h of r.starLordRules) houses.add(`${r.starLord}:${h}`);
+    houses.add(`${r.kpSubLord}:${r.subLordHouse}`);
+  }
+  for (const w of st.navatara.weakened) seeTara(w.tara);
+  for (const e of st.navatara.emphasised) seeTara(e.special);
+  for (const p of st.planetInStar) seeStar(p.planet, p.nakshatra);
+  for (const d of st.dashaLords) {
+    seeStar(d.planet, d.nakshatra);
+    houses.add(`${d.starLord}:${d.starLordHouse}`);
+    houses.add(`${d.subLord}:${d.subLordHouse}`);
+  }
+  for (const s of st.segments) {
+    seeStar(s.planet, s.nakshatra);
+    seeTara(s.tara);
+    if (s.special) seeTara(s.special);
+    addDate(s.from);
+    addDate(s.to);
+    houses.add(`${s.starLord}:${s.starLordHouse}`);
+  }
+  for (const s of st.sensitive) {
+    addDate(s.from);
+    addDate(s.to);
+  }
+  for (const m of st.moorti) {
+    addDate(m.date);
+    signs.add(`${m.planet}:${m.toSign}`);
+    signs.add(`${m.planet}:${m.fromSign}`);
+  }
+  for (const ms of st.monthStars) {
+    for (const r of ms.rows) {
+      seeStar(r.planet, r.nakshatra);
+      seeTara(r.tara);
+      houses.add(`${r.planet}:${r.houseFromMoon}`);
+    }
+  }
+  for (const v of facts.varsha) {
+    for (const y of v.tajikaYogas) tajika.add(TAJIKA_LABEL[y.kind] ?? y.kind);
+    for (const y of v.extra.extraYogas) tajika.add(y.name);
+    for (const s of [...v.sahams, ...v.extra.lifeSahams]) {
+      sahams.add(s.name.split(/[\s(]/)[0]!);
+      houses.add(`${s.name}:${s.house}`);
+    }
+    for (const p of v.extra.muddaYogini) {
+      addDate(p.from);
+      addDate(p.to);
+      yoginiLords.add(p.lord);
+      yoginiNames.add(p.yogini);
+    }
+    for (const p of v.extra.patyayini) {
+      patyayiniLords.add(p.lord);
+      weeks.add(p.fromWeek);
+      weeks.add(p.toWeek);
+    }
+  }
+  for (const y of facts.yogas) if (y.source === 'tajika') tajika.add(TAJIKA_LABEL[y.kind] ?? y.kind);
+  for (const w of facts.sahamWindows) sahams.add(w.saham.split(/[\s(]/)[0]!);
+
+  for (const t of facts.ashtakavarga.transits) moonHouses.add(`${t.planet}:${t.moonHouse}`);
+  for (const ms of facts.stars.monthStars) for (const r of ms.rows) moonHouses.add(`${r.planet}:${r.houseFromMoon}`);
+  for (const c of facts.calendar.closures) {
+    addDate(c.from);
+    addDate(c.to);
+  }
+  for (const d of facts.scores.decisionTable) for (const sp of d.openSpans) {
+    addDate(sp.from);
+    addDate(sp.to);
+  }
+  const closedMonths = new Set<number>();
+  const closedDay = (iso: string) => facts.calendar.closures.some((c) => iso >= c.from && iso <= c.to);
+  for (let m = 0; m < 12; m++) {
+    const last = new Date(Date.UTC(facts.year, m + 1, 0)).getUTCDate();
+    let open = 0;
+    for (let d = 1; d <= last; d++) {
+      if (!closedDay(`${facts.year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`)) open++;
+    }
+    if (open < 7) closedMonths.add(m);
+  }
+
   const retrogrades: Record<string, number> = {};
   for (const e of facts.skyEvents) {
     if (e.kind === 'station-retrograde') retrogrades[e.planet] = (retrogrades[e.planet] ?? 0) + 1;
   }
   const eclipses = facts.skyEvents.filter((e) => e.kind.startsWith('eclipse')).length;
-  return { dates, houses, signs, lords, yearLords, eclipses, retrogrades };
+  return {
+    dates,
+    houses,
+    signs,
+    lords,
+    yearLords,
+    eclipses,
+    retrogrades,
+    year: facts.year,
+    nakshatras,
+    planetStars,
+    taraNames,
+    starNumbers,
+    tajika,
+    sahams,
+    yoginiLords,
+    patyayiniLords,
+    yoginiNames,
+    weeks,
+    moonHouses,
+    eclipseClass,
+    closures: facts.calendar.closures,
+    closedMonths,
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -224,8 +384,10 @@ const DATE_DM = new RegExp(
   'g',
 );
 const DATE_MD = new RegExp(`\\b(${MONTH_ALT})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?!\\d)(?:,?\\s+(\\d{4}))?`, 'g');
+// A planet binds to the house that follows it directly: no other planet or the Muntha may stand in the gap, or
+// "Saturn enters Ashwini, linked to your natal Rahu, while its lord Ketu sits in your 3rd house" would read as Rahu in the 3rd.
 const HOUSE_CLAIM = new RegExp(
-  `\\b(${PLANET_ALT}|Muntha)\\b([^.!?]{0,45}?)\\b(\\d{1,2})(?:st|nd|rd|th) house\\b`,
+  `\\b(${PLANET_ALT}|Muntha)\\b((?:(?!\\b(?:${PLANET_ALT}|Muntha)\\b)[^.!?]){0,45}?)\\b(\\d{1,2})(?:st|nd|rd|th) house\\b`,
   'g',
 );
 const SIGN_CLAIM = new RegExp(
@@ -240,6 +402,36 @@ const YEAR_LORD_CLAIM = new RegExp(
   `\\bYear Lord\\b[^.!?]{0,20}?\\b(?:is|:|will be)\\s+(${PLANET_ALT})\\b|\\b(${PLANET_ALT})\\b[^.!?]{0,20}?\\b(?:is|as|becomes)\\s+(?:your |the )?Year Lord\\b`,
   'g',
 );
+// --- C3 claims: stars, taras, yogas, Sahams, the other dashas, week labels --------------------------
+// A star may be written "UttaraBhadrapada" (the facts) or "Uttara Bhadrapada" (the prompt asks for a space).
+const NAK_ALT = [...NAKSHATRAS].sort((a, b) => b.length - a.length).map((n) => n.replace(/([a-z])([A-Z])/g, '$1\\s?$2')).join('|');
+const nakKey = (written: string): string => written.replace(/\s+/g, '');
+const NAK_NAMED = new RegExp(`\\b(${NAK_ALT})\\b`, 'g');
+const STAR_PAIR = new RegExp(
+  `\\b(Sun|Mercury|Venus|Mars|Jupiter|Saturn|Rahu|Ketu)\\b (?:moves into|moves to|enters|crosses|reaches|passes into|stands in|sits in|is in|moves through|begins the year in) (?:the star of |the star |the |your )?(${NAK_ALT})\\b`,
+  'g',
+);
+const NTH_STAR = /\b(\d{1,2})(?:st|nd|rd|th) star\b/g;
+/** Tara and special-tara names that can be checked (Karma and Mitra are common words and are left out). */
+const TARA_NAMES = ['Janma', 'Sampat', 'Vipat', 'Kshema', 'Pratyari', 'Sadhaka', 'Parama Mitra', 'Jati', 'Desha', 'Sanghatika', 'Samudaya', 'Manasa', 'Abhisheka'];
+const TARA_NAMED = new RegExp(`\\b(${TARA_NAMES.join('|')})\\b`, 'g');
+/** The two classical names that never reach the reader. */
+const HARSH_NAMES = /\b(?:Vadha|Vainashika)\b/i;
+const TAJIKA_NAMES = [
+  'Ithasala', 'Ishrafa', 'Nakta', 'Yamaya', 'Kamboola', 'Radda', 'Iqbal', 'Induvara', 'Manau', 'Gairi-Kamboola', 'Khallasara',
+  'Duhphali-kuttha', 'Dutthottha-davira', 'Tambira', 'Kuttha', 'Durupha',
+].sort((a, b) => b.length - a.length);
+const TAJIKA_NAMED = new RegExp(`(?<![\\w-])(${TAJIKA_NAMES.join('|')})(?![\\w-])`, 'g');
+const SAHAM_NAMED = /\b([A-Z][a-z]+) Saham\b/g;
+const YOGINI_NAMES = ['Mangala', 'Pingala', 'Dhanya', 'Bhramari', 'Bhadrika', 'Ulka', 'Siddha', 'Sankata'];
+const YOGINI_NAMED = new RegExp(`\\b(${YOGINI_NAMES.join('|')})\\b`, 'g');
+const OTHER_DASHA = new RegExp(
+  `\\b(Yogini|Patyayini)(?: period)?(?: of| is| in| lord)? (${PLANET_ALT})\\b|\\b(${PLANET_ALT}) (Yogini|Patyayini)\\b`,
+  'g',
+);
+const WEEK_WORDS: Record<string, string> = { first: '1st', second: '2nd', third: '3rd', fourth: '4th', '1st': '1st', '2nd': '2nd', '3rd': '3rd', '4th': '4th' };
+const WEEK_NAMED = new RegExp(`\\b(first|second|third|fourth|1st|2nd|3rd|4th) week of (${MONTH_NAMES.join('|')})\\b`, 'gi');
+
 const COUNT_WORDS: Record<string, number> = {
   once: 1,
   twice: 2,
@@ -280,7 +472,7 @@ export function claimHitsForSentence(sentence: string, index: FactIndex): TextHi
       // (a Mudda or dasha date from 2026 or 2028); never 2025 or 2029, which the facts give with their year.
       const known = year
         ? index.dates.has(`${year}-${mm}-${dd}`)
-        : ['2026', '2027', '2028'].some((y) => index.dates.has(`${y}-${mm}-${dd}`));
+        : [-1, 0, 1].some((o) => index.dates.has(`${index.year + o}-${mm}-${dd}`));
       if (!known) miss(`the date ${day} ${monthName} is not in the facts`);
     }
   }
@@ -289,6 +481,8 @@ export function claimHitsForSentence(sentence: string, index: FactIndex): TextHi
     for (const m of sentence.matchAll(new RegExp(HOUSE_CLAIM.source, 'g'))) {
       const planet = m[1]!;
       const house = Number(m[3]);
+      // "the 3rd house from your Moon" is counted from the Moon sign: the C5 check below reads it.
+      if (/^\s+(?:counted\s+)?from\s+(?:your|the)\s+(?:natal\s+)?Moon\b/i.test(sentence.slice(m.index! + m[0].length))) continue;
       if (house < 1 || house > 12) {
         miss(`${house}th house does not exist`);
       } else if (!index.houses.has(`${planet}:${house}`)) {
@@ -296,12 +490,13 @@ export function claimHitsForSentence(sentence: string, index: FactIndex): TextHi
       }
     }
   }
+  hits.push(...c5ClaimHits(sentence, index));
 
   for (const m of sentence.matchAll(new RegExp(SIGN_CLAIM.source, 'g'))) {
     if (!index.signs.has(`${m[1]}:${m[2]}`)) miss(`${m[1]} in ${m[2]} is not in the facts`);
   }
 
-  for (const m of sentence.matchAll(new RegExp(DASHA_CLAIM.source, 'g'))) {
+  for (const m of sentence.replace(/Mudda Yogini/gi, 'Yogini').matchAll(new RegExp(DASHA_CLAIM.source, 'g'))) {
     const level = (m[1] ?? m[4])!.toLowerCase();
     const planet = (m[2] ?? m[3])!;
     if (!index.lords.has(`${level}:${planet}`)) miss(`${level} ${planet} is not in the facts`);
@@ -318,13 +513,137 @@ export function claimHitsForSentence(sentence: string, index: FactIndex): TextHi
     if (planets.length === 1) {
       const n = COUNT_WORDS[RETRO_COUNT.exec(sentence)![1]!.toLowerCase()]!;
       const real = index.retrogrades[planets[0]!] ?? 0;
-      if (n !== real) miss(`${planets[0]} turns retrograde ${real} times in 2027, not ${n}`);
+      if (n !== real) miss(`${planets[0]} turns retrograde ${real} times in ${index.year}, not ${n}`);
     }
+  }
+
+  // --- C3 ---------------------------------------------------------------------------------------
+  if (HARSH_NAMES.test(sentence)) hits.push({ rule: 'death', text: `a classical star name that must not reach the reader: ${sentence}` });
+  for (const m of sentence.matchAll(NAK_NAMED)) {
+    if (!index.nakshatras.has(nakKey(m[1]!))) miss(`the star ${m[1]} is not in the facts`);
+  }
+  for (const m of sentence.matchAll(STAR_PAIR)) {
+    if (!index.planetStars.has(`${m[1]}:${nakKey(m[2]!)}`)) miss(`${m[1]} in ${m[2]} is not in the facts`);
+  }
+  for (const m of sentence.matchAll(NTH_STAR)) {
+    if (!index.starNumbers.has(Number(m[1]))) miss(`a ${m[1]}th star is not in the facts`);
+  }
+  for (const m of sentence.matchAll(TARA_NAMED)) {
+    if (!index.taraNames.has(m[1]!)) miss(`the tara ${m[1]} is not in the facts`);
+  }
+  for (const m of sentence.matchAll(TAJIKA_NAMED)) {
+    if (!index.tajika.has(m[1]!)) miss(`the ${m[1]} yoga is not in the facts`);
+  }
+  for (const m of sentence.matchAll(SAHAM_NAMED)) {
+    if (!index.sahams.has(m[1]!)) miss(`the ${m[1]} Saham is not in the facts`);
+  }
+  for (const m of sentence.matchAll(YOGINI_NAMED)) {
+    if (!index.yoginiNames.has(m[1]!)) miss(`the Yogini ${m[1]} is not in the facts`);
+  }
+  for (const m of sentence.matchAll(OTHER_DASHA)) {
+    const kind = (m[1] ?? m[4])!;
+    const planet = (m[2] ?? m[3])!;
+    const set = kind === 'Yogini' ? index.yoginiLords : index.patyayiniLords;
+    if (!set.has(planet)) miss(`${kind} ${planet} is not in the facts`);
+  }
+  for (const m of sentence.matchAll(WEEK_NAMED)) {
+    const label = `${WEEK_WORDS[m[1]!.toLowerCase()]} week of ${m[2]}`;
+    if (!index.weeks.has(label)) miss(`the ${label} is not a Patyayini week in the facts`);
   }
 
   for (const m of sentence.matchAll(new RegExp(YEAR_LORD_CLAIM.source, 'g'))) {
     const planet = (m[1] ?? m[2])!;
     if (!index.yearLords.has(planet)) miss(`${planet} is not the Year Lord`);
+  }
+  return hits;
+}
+
+// -----------------------------------------------------------------------------
+// C5: Lagna and Moon references, eclipse class and Sutak, the no-muhurat periods
+// -----------------------------------------------------------------------------
+
+// "6th from your Lagna", "the 3rd house from your Moon", "3rd from the Moon sign".
+const REF_HOUSE = /\b(\d{1,2})(?:st|nd|rd|th)\s+(?:house\s+)?(?:counted\s+)?from\s+(?:your|the)\s+(?:natal\s+|birth\s+)?(Moon|Lagna|Ascendant)\b/gi;
+// A planet name that is a reference ("from your Moon"), not the planet being placed.
+const PLANET_TOKEN = new RegExp(`\\b(${NINE_PLANETS.join('|')})\\b`, 'g');
+const TRANSIT_VERB = /\b(?:enters|moves (?:into|to)|shifts into|crosses into|transits|turns (?:retrograde|direct)|stations)\b/i;
+const NTH_HOUSE_BARE = /\b(\d{1,2})(?:st|nd|rd|th) house\b(?!\s+(?:counted\s+)?from)/i;
+const SUTAK = /\bsutak\b/i;
+const NO_SUTAK = /\b(?:no|without)\s+sutak\b|\bsutak\s+(?:does not|doesn't|is not|isn't|will not|won't|need not|never)\b|\bnot\s+(?:a\s+)?sutak\b/i;
+const TRIGGER_WORDS = /\b(?:trigger\w*|activat\w*|stirs?|shak\w+|jolts?|sets? off|sparks?|lights? up|falls? in your|lands? in your)\b/i;
+const GRAHAN_WORD = /\bgrahan\b/i;
+const NOT_GRAHAN = /\b(?:not\s+(?:a\s+)?(?:full\s+)?grahan|no\s+grahan|upachchaya)\b/i;
+const CLOSED_EVENT = /\b(?:marri\w+|wedding|vivah|engage\w*|roka|commitment|griha pravesh|move (?:into|to) (?:a |your |the )?(?:new )?home|moving (?:in|home)|house[- ]?warming|new home)\b/i;
+const CLOSED_GO = /\b(?:best|good|ideal|favourable|favorable|auspicious|open window|window opens|go ahead|green light|right time|strong (?:time|window|month))\b/i;
+const CLOSED_NEG = /\b(?:no|not|avoid|hold|wait|after|until|once|outside|combust|asta|kharmas|chaturmas|closed)\b/i;
+
+function isoOfDate(day: string, monthName: string, year: number): string {
+  return `${year}-${String(monthNumber(monthName)).padStart(2, '0')}-${String(Number(day)).padStart(2, '0')}`;
+}
+
+function datesIn(sentence: string, year: number): string[] {
+  const out: string[] = [];
+  for (const m of sentence.matchAll(new RegExp(DATE_DM.source, 'g'))) out.push(isoOfDate(m[1]!, m[2]!, m[3] ? Number(m[3]) : year));
+  for (const m of sentence.matchAll(new RegExp(DATE_MD.source, 'g'))) out.push(isoOfDate(m[2]!, m[1]!, m[3] ? Number(m[3]) : year));
+  return out;
+}
+
+export function c5ClaimHits(sentence: string, index: FactIndex): TextHit[] {
+  const hits: TextHit[] = [];
+  const miss = (why: string): void => {
+    hits.push({ rule: 'claim', text: `${why}: ${sentence}` });
+  };
+
+  // 1. Every "Nth from your Lagna / Moon" binds to the nearest planet before it that is not itself a reference.
+  for (const m of sentence.matchAll(new RegExp(REF_HOUSE.source, 'gi'))) {
+    const n = Number(m[1]);
+    const ref = m[2]!.toLowerCase() === 'moon' ? 'moon' : 'lagna';
+    let planet: string | null = null;
+    for (const t of sentence.slice(0, m.index!).matchAll(new RegExp(PLANET_TOKEN.source, 'g'))) {
+      const before = sentence.slice(Math.max(0, t.index! - 12), t.index!);
+      if (/from\s+(?:your|the)\s+(?:natal\s+|birth\s+)?$/i.test(before)) continue;
+      planet = t[1]!;
+    }
+    if (!planet) continue;
+    if (n < 1 || n > 12) miss(`${n}th house does not exist`);
+    else if (!(ref === 'moon' ? index.moonHouses : index.houses).has(`${planet}:${n}`)) {
+      miss(`${planet} ${n}th from your ${ref === 'moon' ? 'Moon' : 'Lagna'} is not in the facts`);
+    }
+  }
+
+  // 2. A transit house says which chart it counts from.
+  if (TRANSIT_VERB.test(sentence) && NTH_HOUSE_BARE.test(sentence) && !/\b(?:Lagna|Ascendant|Moon|Varsha|birth chart|natal)\b/i.test(sentence)) {
+    hits.push({ rule: 'claim', text: `say whether the house counts from your Lagna or your Moon: ${sentence}` });
+  }
+
+  // 3. Eclipses: Sutak only for a Grahan; an Upachchaya or unseen eclipse is a plain marker, never a trigger.
+  const dates = datesIn(sentence, index.year);
+  const named = dates.map((d) => index.eclipseClass.get(d)).filter((c): c is NonNullable<typeof c> => !!c);
+  const hasGrahan = [...index.eclipseClass.values()].includes('grahan');
+  if (SUTAK.test(sentence) && !NO_SUTAK.test(sentence)) {
+    if (!hasGrahan) miss(`no eclipse this year is a visible Grahan, so no Sutak applies`);
+    else if (named.some((c) => c !== 'grahan')) miss(`Sutak applies only to the visible Grahan`);
+  }
+  if (named.some((c) => c !== 'grahan')) {
+    if (TRIGGER_WORDS.test(sentence) || /\b\d{1,2}(?:st|nd|rd|th) house\b/i.test(sentence)) {
+      miss(`a penumbral or unseen eclipse is a plain marker, not a personal trigger`);
+    }
+    if (GRAHAN_WORD.test(sentence) && !NOT_GRAHAN.test(sentence) && !named.includes('grahan')) {
+      miss(`a penumbral or unseen eclipse is not a Grahan`);
+    }
+  }
+
+  // 4. No "go" for a wedding, commitment or home move inside Shukra/Guru Asta, Kharmas or Chaturmas.
+  if (CLOSED_EVENT.test(sentence) && CLOSED_GO.test(sentence) && !CLOSED_NEG.test(sentence)) {
+    for (const d of dates) {
+      const c = index.closures.find((x) => d >= x.from && d <= x.to);
+      if (c) miss(`${d} falls in ${c.reason.replace('_', ' ')} (${c.from} to ${c.to}): no wedding or move-in window there`);
+    }
+    for (let m = 0; m < 12; m++) {
+      if (index.closedMonths.has(m) && new RegExp(`\\b${MONTH_NAMES[m]}\\b`).test(sentence)) {
+        miss(`${MONTH_NAMES[m]} is closed to weddings and move-ins this year`);
+      }
+    }
   }
   return hits;
 }

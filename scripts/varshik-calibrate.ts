@@ -261,8 +261,8 @@ async function main() {
 
   if (fit) {
     let best = { base: W.base, scale: W.scale, err: Infinity };
-    for (let scale = 0.4; scale <= 1.01; scale += 0.05) {
-      for (let base = -0.4; base <= 0.21; base += 0.05) {
+    for (let scale = 0.3; scale <= 0.551; scale += 0.05) {
+      for (let base = -0.1; base <= 0.401; base += 0.1) {
         W.base = base;
         W.scale = scale;
         const err = mixError(evaluate(ctxs, ids));

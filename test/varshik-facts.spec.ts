@@ -109,7 +109,24 @@ function completeSections(f: VarshikFacts) {
       if (id === 'planet_by_planet') paragraphs = NINE_PLANETS.map((p) => `${p} moves through the year.`);
       if (id === 'doshas') paragraphs = DOSHA_KEYS.map((k) => `${DOSHA_LABEL[k]} was checked.`);
       if (id === 'yogas') paragraphs = [`These yogas deliver: ${yogaNames.join(', ')}.`];
-      if (id === 'sky_calendar') paragraphs = [`The eclipses fall on ${eclipses.join(', ')}.`];
+      if (id === 'sky_calendar') paragraphs = [`The eclipses fall on ${eclipses.join(', ')}. ` + 'Two are penumbral (Upachchaya) and one is not visible from India, so no Sutak for those three; only the visible Grahan carries a Sutak.'];
+      if (id === 'when_to_act') paragraphs = ['A wedding or a move-in waits while Venus is combust (Shukra Asta), while Jupiter is combust (Guru Asta), through Kharmas and through Chaturmas.'];
+      const mm = /^month_(\d{2})$/.exec(id);
+      if (mm) {
+        const dates = f.stars.segments
+          .filter((s) => s.enters && ['Saturn', 'Jupiter', 'Rahu', 'Ketu'].includes(s.planet) && Number(s.from.slice(5, 7)) === Number(mm[1]))
+          .map((s) => dayMonth(s.from));
+        paragraphs = [...paragraphs.slice(0, 4), `${paragraphs[4]} ${dates.join(' ')}`];
+      }
+      if (id === 'birth_stars') paragraphs = [`${f.stars.birthStar.name} ${f.stars.dashaLords.map((d) => d.planet).join(' ')}`];
+      if (id === 'three_flags') paragraphs = ['Tri-Pataki Lagna Moon Mudda Yogini Patyayini'];
+      if (id === 'your_stars_2027') {
+        const dates = [
+          ...f.stars.sensitive.filter((s) => s.enters && ['Saturn', 'Jupiter', 'Rahu', 'Ketu'].includes(s.planet)).map((s) => dayMonth(s.from)),
+          ...f.stars.moorti.filter((m) => ['Saturn', 'Jupiter'].includes(m.planet)).map((m) => dayMonth(m.date)),
+        ];
+        paragraphs = [dates.join(' ') || 'No crossings.'];
+      }
       return { id, heading: id, paragraphs };
     });
 }
@@ -131,6 +148,17 @@ describe('coverage', () => {
     const k = s.find((x) => x.id === 'sky_calendar')!;
     k.paragraphs = ['No dates at all.'];
     expect(coverageProblems(facts, s).join('|')).toMatch(/sky_calendar: does not mention the eclipse/);
+  });
+
+  it('finds a star move that the month page leaves undated, and a star page with no birth star', () => {
+    const s = completeSections(facts);
+    const seg = facts.stars.segments.find((x) => x.enters && ['Saturn', 'Jupiter', 'Rahu', 'Ketu'].includes(x.planet))!;
+    const id = `month_${seg.from.slice(5, 7)}`;
+    const month = s.find((x) => x.id === id)!;
+    month.paragraphs = month.paragraphs.map((p) => p.split(dayMonth(seg.from)).join('on that day'));
+    expect(coverageProblems(facts, s).join('|')).toContain(`${id}: does not date the ${seg.planet} move into ${seg.nakshatra}`);
+    s.find((x) => x.id === 'birth_stars')!.paragraphs = ['A star page without the star.'];
+    expect(coverageProblems(facts, s).join('|')).toMatch(/birth_stars: does not name the birth star/);
   });
 
   it('can check one call at a time', () => {

@@ -127,6 +127,13 @@ export interface ReportScoreContext {
    */
   personBirthPlace?: { lat: number; lon: number; tz: string } | null;
   /**
+   * Where the person lives NOW (the account's `currentLocation`), only when the report is for the
+   * account owner: a saved family profile has no current location of its own, and the owner's
+   * would be a guess. Varshik reads it for eclipse visibility (C5); null = an India-wide summary.
+   * Never fall back to the birth place.
+   */
+  personCurrentPlace?: { name: string; lat: number; lon: number; tz: string } | null;
+  /**
    * KP-ayanamsa / Placidus ephemeris data for kp_annual, filled in by that generator's own
    * `prepareContext` hook (see ReportGenerator.prepareContext). Absent for every other report.
    */

@@ -57,12 +57,43 @@ function goodAnswer(spec: CallSpec, f: VarshikFacts): RawSection[] {
     // Each month opens with its own name, so no opening repeats across the six months of a call.
     const month = /^month_(\d{2})$/.exec(id);
     const lead = month ? MONTH_NAMES[Number(month[1]) - 1] : `Words ${id} number ${n + 1}`;
-    let paragraphs = Array.from({ length: want }, (_, i) => `${lead} holds part ${i + 1} and stays plain and calm.`);
+    let paragraphs = Array.from({ length: want }, (_, i) => `${lead} ${['holds', 'brings', 'asks for', 'offers', 'keeps'][i % 5]} part ${i + 1} and stays plain and calm.`);
     if (id === 'planet_by_planet') paragraphs = NINE_PLANETS.map((p) => `${p} moves quietly through the year.`);
     if (id === 'doshas') paragraphs = DOSHA_KEYS.map((k) => `${DOSHA_LABEL[k]} was checked for you.`);
     if (id === 'yogas') paragraphs = [`These yogas deliver this year: ${yogaNames.join(', ')}.`];
-    if (id === 'sky_calendar') paragraphs = [`The eclipses fall on ${eclipses.join(', ')}.`, 'Retrograde spells ask for patience.'];
-    if (id.startsWith('question_')) paragraphs = ['Something is on your mind.', 'It eases {window}, and again {next}.', 'Take one small step each day.'];
+    if (id === 'sky_calendar') paragraphs = [`The eclipses fall on ${eclipses.join(', ')}. ` + 'Two are penumbral (Upachchaya) and one is not visible from India, so no Sutak for those three; only the visible Grahan carries a Sutak.', 'Retrograde spells ask for patience.'];
+    if (id === 'when_to_act') paragraphs = ['A wedding or a move-in waits while Venus is combust (Shukra Asta), while Jupiter is combust (Guru Asta), through Kharmas and through Chaturmas.', 'Words when_to_act number two stays plain and calm.'];
+    if (id.startsWith('question_')) paragraphs = ['Something is on your mind.', 'It eases {window}. A second window follows {next}.', 'Take one small step each day.'];
+    // C3: the star moves of the month, the three star pages
+    if (month) {
+      const mi = Number(month[1]);
+      const dates = f.stars.segments
+        .filter((s) => s.enters && ['Saturn', 'Jupiter', 'Rahu', 'Ketu'].includes(s.planet) && Number(s.from.slice(5, 7)) === mi)
+        .map((s) => `${s.planet} moves into ${s.nakshatra} on ${dayMonth(s.from)}.`);
+      if (dates.length) paragraphs[1] = `${paragraphs[1]} ${dates.join(' ')}`;
+    }
+    if (id === 'birth_stars') {
+      paragraphs = [
+        `Your birth star is ${f.stars.birthStar.name}.`,
+        'The Lagna and the Sun each stand in a star of their own.',
+        'No planet stands out in the stars.',
+        `The stars of the lords: ${f.stars.dashaLords.map((d) => d.planet).join(', ')}.`,
+      ];
+    }
+    if (id === 'three_flags') {
+      paragraphs = [
+        'The Tri-Pataki flags: the Lagna flag and the Moon flag are read in plain words.',
+        'The Mudda and the Mudda Yogini run together through the year.',
+        'The Patyayini period is read by the week.',
+      ];
+    }
+    if (id === 'your_stars_2027') {
+      const dates = [
+        ...f.stars.sensitive.filter((s) => s.enters && ['Saturn', 'Jupiter', 'Rahu', 'Ketu'].includes(s.planet)).map((s) => dayMonth(s.from)),
+        ...f.stars.moorti.filter((m) => ['Saturn', 'Jupiter'].includes(m.planet)).map((m) => dayMonth(m.date)),
+      ];
+      paragraphs = ['Each star is counted from your birth star.', 'Saturn and Jupiter cross the stars.', 'Rahu and Ketu cross the stars.', `The key dates are ${[...new Set(dates)].join(', ') || 'few this year'}.`];
+    }
     return { id, paragraphs };
   });
 }
@@ -127,15 +158,26 @@ describe('one checked call', () => {
       if (!['2026', '2027', '2028'].some((y) => known.has(`${y}-03-${dd}`))) bad = `2027-03-${dd}`;
     }
     expect(bad).not.toBe('');
-    const r = await runCheckedCall(spec, facts, answer((s) => { s[1]!.paragraphs[1] = `A great day arrives on ${dayMonth(bad)}. Rest well.`; }));
+    const r = await runCheckedCall(spec, facts, answer((s) => { s[1]!.paragraphs[3] = `A great day arrives on ${dayMonth(bad)}. Rest well.`; }));
     expect(r.sections.flatMap((s) => s.paragraphs).join(' ')).not.toContain(dayMonth(bad));
   });
 
   it('an AI tell that survives the regenerate is kept and flagged, not deleted', async () => {
-    const withTell = answer((s) => { s[1]!.paragraphs[2] = 'This journey asks for patience.'; });
+    const withTell = answer((s) => { s[1]!.paragraphs[2] = 'This tapestry asks for patience.'; });
     const r = await runCheckedCall(spec, facts, withTell);
-    expect(r.sections[1]!.paragraphs[2]).toBe('This journey asks for patience.');
+    expect(r.sections[1]!.paragraphs[2]).toBe('This tapestry asks for patience.');
     expect(r.flags.some((f) => f.rule === 'ai-tell:stock-word' && f.section === 'month_02')).toBe(true);
+  });
+});
+
+describe('words the model keeps using', () => {
+  it('swaps "serves as" and "journeys" by rule, so they never reach a flag', async () => {
+    const spec: CallSpec = { ids: ['month_01', 'month_02'], counts: { month_01: 5, month_02: 5 }, instructions: '', facts: '', user: '' };
+    const s = goodAnswer(spec, facts);
+    s[0]!.paragraphs[2] = 'January serves as a pause. Journeys are easy now.';
+    const r = await runCheckedCall(spec, facts, () => Promise.resolve(s));
+    expect(r.sections[0]!.paragraphs[2]).toBe('January is a pause. Trips are easy now.');
+    expect(r.flags).toEqual([]);
   });
 });
 
@@ -203,7 +245,7 @@ describe('Chapter VI questions', () => {
 });
 
 describe('the whole narrative', () => {
-  it('writes 35 sections, covers everything, and saves five checkpoints, with no questions when there is nothing to ask', async () => {
+  it('writes 38 sections, covers everything, and saves six checkpoints, with no questions when there is nothing to ask', async () => {
     const f = clone(facts);
     f.reader.facts = [];
     f.reader.answers.mainDecision = undefined;
@@ -213,9 +255,11 @@ describe('the whole narrative', () => {
       { existingGroups: [], onGroupComplete: (g) => { saved.push(g); return Promise.resolve(); } },
       (spec) => () => Promise.resolve(goodAnswer(spec, f)),
     );
-    const ids = (REPORT_SECTION_IDS.varshik_rashifal_2027 as readonly string[]).slice(0, 35);
+    const all = REPORT_SECTION_IDS.varshik_rashifal_2027 as readonly string[];
+    // generation order: the star pages are written after the months, before Chapter V
+    const ids = [...all.slice(0, 32), 'birth_stars', 'three_flags', 'your_stars_2027', ...all.slice(32, 35)];
     expect(out.sections.map((s) => s.id)).toEqual(ids);
-    expect(saved).toHaveLength(5);
+    expect(saved).toHaveLength(6);
     expect(coverageProblems(f, out.sections)).toEqual([]);
     expect(out.sections.some((s) => s.id!.startsWith('question_'))).toBe(false);
     expect(out.flags).toEqual([]);
@@ -233,7 +277,7 @@ describe('the whole narrative', () => {
     expect(q.paragraphs[1]).toMatch(/between \d+ \w+ and \d+ \w+/);
     const w = f.scores.answerWindows[key]!;
     expect(q.uiData).toMatchObject({ key, factIds: ['F1'], windowFrom: w.best.fromDate, windowTo: w.best.toDate, tier: w.best.tier });
-    expect(out.sections).toHaveLength(36);
+    expect(out.sections).toHaveLength(39);
   });
 
   it('skips the calls a previous attempt already saved', async () => {
@@ -248,8 +292,8 @@ describe('the whole narrative', () => {
       { existingGroups: first.slice(0, 3), onGroupComplete: () => Promise.resolve() },
       (spec) => () => { asked.add(spec.ids[0]!); return Promise.resolve(goodAnswer(spec, f)); },
     );
-    expect([...asked].sort()).toEqual(['month_07', 'simple_remedies']);
-    expect(out.sections).toHaveLength(35);
+    expect([...asked].sort()).toEqual(['birth_stars', 'month_07', 'simple_remedies']);
+    expect(out.sections).toHaveLength(38);
   });
 
   it('fails the run, without saving a partial report, when a call can never be completed', async () => {

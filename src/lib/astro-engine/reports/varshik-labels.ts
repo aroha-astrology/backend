@@ -75,6 +75,31 @@ export const TAJIKA_LABEL: Record<string, string> = {
   yamaya: 'Yamaya',
   kamboola: 'Kamboola',
   radda: 'Radda',
+  // C2: the ten further yogas (varshphal/tajika-yogas-extra.ts)
+  iqbal: 'Iqbal',
+  induvara: 'Induvara',
+  manau: 'Manau',
+  'gairi-kamboola': 'Gairi-Kamboola',
+  khallasara: 'Khallasara',
+  'duhphali-kuttha': 'Duhphali-kuttha',
+  'dutthottha-davira': 'Dutthottha-davira',
+  tambira: 'Tambira',
+  kuttha: 'Kuttha',
+  durupha: 'Durupha',
+};
+
+/** One plain, gentle line for each further Tajika yoga (ours; the classical name stays in TAJIKA_LABEL). */
+export const EXTRA_YOGA_PLAIN: Record<string, string> = {
+  iqbal: 'the planets stand in the strong houses, a year of standing and steady progress',
+  induvara: 'the planets stand in the soft, hidden houses, a year for patience and quiet work',
+  manau: 'a promise is being made but a hard planet presses on it, so results come slower',
+  'gairi-kamboola': 'a goal is reached with the help of a third person',
+  khallasara: 'a hope that drifts and is hard to hold, so keep plans simple',
+  'duhphali-kuttha': 'a result that arrives with some strain attached',
+  'dutthottha-davira': 'two weaker sides carried by a stronger helper',
+  tambira: 'a promise that is about to change sign, so it matures just after a turn',
+  kuttha: 'a strong planet looks at the Lagna and lifts it',
+  durupha: 'two tired sides meeting in a hard house, so go slowly and ask for help',
 };
 
 export const AREA_LABEL: Record<string, string> = {
