@@ -1,5 +1,5 @@
 {
-  "_status": "IN PROGRESS - b08 recording. Transcribed by hand from Jagannatha Hora screens (zoomed). Not compared with the engine.",
+  "_status": "COMPLETE 2026-11-08 except the 2027 Tri-Pataki placements. Compared with the engine in test/varshik-jhora.spec.ts. Year Lord, Tajika yogas and the Tri-Pataki verdict are not shown by JHora (see README).",
   "settings": {
     "ayanamsa": "Traditional Lahiri",
     "node": "mean",
@@ -312,7 +312,7 @@
         "Mars": 8.26,
         "Mercury": 5.91,
         "Jupiter": 14.8,
-        "Venus": 9.0,
+        "Venus": 9,
         "Saturn": 4.39
       },
       "panchavargiyaClassification": {

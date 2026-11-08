@@ -1,0 +1,244 @@
+{
+  "_status": "SUPERSEDED BY AUTOMATED CHECK (2026-11-08, owner decision). Kept only as extra hand-copied evidence; incomplete (Sun events to 2027-12-03, other planets not recorded). The real check is test/varshik-sky-events-2027.spec.ts against scripts/ephemeris-check/events_2027.py.",
+  "settings": {
+    "ayanamsa": "Traditional Lahiri",
+    "node": "mean",
+    "timezone": "chart cast at 5:30 East of GMT (IST); place 77 E 12' 36\", 28 N 36' 36\" (New Delhi coordinates, raw entry)"
+  },
+  "positions_2027-01-01_1200_IST": {
+    "source": "Chart cast for January 1 2027 12:00:00, 5:30 East of GMT, 77 E 12' 36\", 28 N 36' 36\"; Basics tab planet table. Read zoomed.",
+    "planets": {
+      "Sun": {
+        "longitudeSidereal": "16 Sg 21' 54.62\"",
+        "nakshatra": "PSha",
+        "pada": 1
+      },
+      "Mars": {
+        "longitudeSidereal": "15 Le 39' 53.97\"",
+        "nakshatra": "PPha",
+        "pada": 1
+      },
+      "Mercury": {
+        "longitudeSidereal": "16 Sg 06' 46.57\"",
+        "nakshatra": "PSha",
+        "pada": 1
+      },
+      "Jupiter": {
+        "longitudeSidereal": "2 Le 11' 12.60\"",
+        "nakshatra": "Magh",
+        "pada": 1,
+        "printedLabel": "Jupiter (R) - GK"
+      },
+      "Venus": {
+        "longitudeSidereal": "29 Li 31' 40.91\"",
+        "nakshatra": "Visa",
+        "pada": 3
+      },
+      "Saturn": {
+        "longitudeSidereal": "14 Pi 06' 26.17\"",
+        "nakshatra": "UBha",
+        "pada": 4
+      },
+      "Rahu": {
+        "longitudeSidereal": "28 Cp 35' 33.04\"",
+        "nakshatra": "Dhan",
+        "pada": 2
+      },
+      "Ketu": {
+        "longitudeSidereal": "28 Cn 35' 33.04\"",
+        "nakshatra": "Asre",
+        "pada": 4
+      }
+    }
+  },
+  "nakshatraChanges": {
+    "screen": "Mundane tab > 'Planetary Transit Mode' (find when a planet changed a zodiacal division; planet dropdown, division = Nakshatra, After), stepped from a chart cast at 2027-01-01 00:00:00 IST. Each click casts a chart titled 'Nakshatra change (<planet>)'; date/time read from that chart's text pane and the planet's longitude/nakshatra from the planet table. 'from' = nakshatra printed at the previous event (or at 2027-01-01 00:00 IST for the first), 'to' = nakshatra printed at this event.",
+    "startPositions_2027-01-01_0000_IST": {
+      "Sun": "PSha",
+      "Mars": "PPha",
+      "Mercury": "PSha",
+      "Jupiter": "Magh",
+      "Venus": "Visa",
+      "Saturn": "UBha",
+      "Rahu": "Dhan",
+      "Ketu": "Asre"
+    },
+    "events": [
+      {
+        "planet": "Sun",
+        "from": "PSha",
+        "to": "USha",
+        "dateTimeIST": "2027-01-11 14:31:22",
+        "longitudeAtChangeAsPrinted": "26 Sg 40' 00.03\""
+      },
+      {
+        "planet": "Sun",
+        "from": "USha",
+        "to": "Srav",
+        "dateTimeIST": "2027-01-24 16:52:07",
+        "longitudeAtChangeAsPrinted": "10 Cp 00' 00.03\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Srav",
+        "to": "Dhan",
+        "dateTimeIST": "2027-02-06 19:59:57",
+        "longitudeAtChangeAsPrinted": "23 Cp 20' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Dhan",
+        "to": "Sata",
+        "dateTimeIST": "2027-02-20 00:29:18",
+        "longitudeAtChangeAsPrinted": "6 Aq 40' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Sata",
+        "to": "PBha",
+        "dateTimeIST": "2027-03-05 06:49:08",
+        "longitudeAtChangeAsPrinted": "20 Aq 00' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "PBha",
+        "to": "UBha",
+        "dateTimeIST": "2027-03-18 15:11:30",
+        "longitudeAtChangeAsPrinted": "3 Pi 20' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "UBha",
+        "to": "Reva",
+        "dateTimeIST": "2027-04-01 02:05:17",
+        "longitudeAtChangeAsPrinted": "16 Pi 40' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Reva",
+        "to": "Aswi",
+        "dateTimeIST": "2027-04-14 15:19:46",
+        "longitudeAtChangeAsPrinted": "0 Ar 00' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Aswi",
+        "to": "Bhar",
+        "dateTimeIST": "2027-04-28 07:14:06",
+        "longitudeAtChangeAsPrinted": "13 Ar 20' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Bhar",
+        "to": "Krit",
+        "dateTimeIST": "2027-05-12 01:18:29",
+        "longitudeAtChangeAsPrinted": "26 Ar 40' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Krit",
+        "to": "Rohi",
+        "dateTimeIST": "2027-05-25 21:36:02",
+        "longitudeAtChangeAsPrinted": "10 Ta 00' 00.03\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Rohi",
+        "to": "Mrig",
+        "dateTimeIST": "2027-06-08 19:23:20",
+        "longitudeAtChangeAsPrinted": "23 Ta 20' 00.03\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Mrig",
+        "to": "Ardr",
+        "dateTimeIST": "2027-06-22 18:27:18",
+        "longitudeAtChangeAsPrinted": "6 Ge 40' 00.02\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Ardr",
+        "to": "Puna",
+        "dateTimeIST": "2027-07-06 17:58:31",
+        "longitudeAtChangeAsPrinted": "20 Ge 00' 00.02\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Puna",
+        "to": "Push",
+        "dateTimeIST": "2027-07-20 17:32:45",
+        "longitudeAtChangeAsPrinted": "3 Cn 20' 00.01\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Push",
+        "to": "Asre",
+        "dateTimeIST": "2027-08-03 16:24:12",
+        "longitudeAtChangeAsPrinted": "16 Cn 40' 00.01\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Asre",
+        "to": "Magh",
+        "dateTimeIST": "2027-08-17 14:05:03",
+        "longitudeAtChangeAsPrinted": "0 Le 00' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Magh",
+        "to": "PPha",
+        "dateTimeIST": "2027-08-31 10:03:10",
+        "longitudeAtChangeAsPrinted": "13 Le 20' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "PPha",
+        "to": "UPha",
+        "dateTimeIST": "2027-09-14 03:53:49",
+        "longitudeAtChangeAsPrinted": "26 Le 40' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "UPha",
+        "to": "Hast",
+        "dateTimeIST": "2027-09-27 19:26:29",
+        "longitudeAtChangeAsPrinted": "10 Vi 00' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Hast",
+        "to": "Chit",
+        "dateTimeIST": "2027-10-11 08:23:19",
+        "longitudeAtChangeAsPrinted": "23 Vi 20' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Chit",
+        "to": "Swat",
+        "dateTimeIST": "2027-10-24 18:58:27",
+        "longitudeAtChangeAsPrinted": "6 Li 40' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Swat",
+        "to": "Visa",
+        "dateTimeIST": "2027-11-07 03:02:45",
+        "longitudeAtChangeAsPrinted": "20 Li 00' 00.01\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Visa",
+        "to": "Anu",
+        "dateTimeIST": "2027-11-20 09:11:10",
+        "longitudeAtChangeAsPrinted": "3 Sc 20' 00.00\""
+      },
+      {
+        "planet": "Sun",
+        "from": "Anu",
+        "to": "Jye",
+        "dateTimeIST": "2027-12-03 13:25:22",
+        "longitudeAtChangeAsPrinted": "16 Sc 40' 00.01\""
+      }
+    ]
+  }
+}

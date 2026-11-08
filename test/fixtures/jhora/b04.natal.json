@@ -1,0 +1,115 @@
+{
+  "_status": "COMPLETE. Compared with the engine in test/varshik-jhora-natal.spec.ts (4 KP sub-lord rows unresolved, see README).",
+  "id": "b04",
+  "birth": {
+    "date": "1988-06-22",
+    "time": "04:30:00",
+    "place": "Chennai",
+    "lat": "13 N 04' 48\"",
+    "lon": "80 E 16' 12\"",
+    "tz": "5:30 East of GMT"
+  },
+  "settings": {
+    "ayanamsa": "Traditional Lahiri",
+    "node": "mean",
+    "birthplace": "entered as raw coordinates; city label 'South Grafton, Massachusetts, USA' ignored"
+  },
+  "sources": {
+    "longitude_nakshatra_pada": "Basics tab, planet table top right ('Longitudes & Basic Info'), natal chart. Read zoomed.",
+    "nakshatraLord_and_KP": "Basics tab > 'KP' sub-tab (bottom of right pane): table 'Body/Cusp | Nakshatra lord | Sub lord | Prati-sub | Sookshma-sub | Praana-sub | Deha-sub'. JHora has one 'Nakshatra lord' column; it is recorded both as nakshatraLord and as kpStarLord. These KP lords are computed with the chart's ayanamsa (Traditional Lahiri), not a separate KP ayanamsa. Read zoomed.",
+    "planetLabels": "Planet-table labels such as '(R)' and the Jaimini karaka suffix (AK, AmK...) are kept in printedLabel."
+  },
+  "bodies": {
+    "Lagna": {
+      "longitudeSidereal": "18 Ta 51' 28.16\"",
+      "nakshatra": "Rohi",
+      "pada": 3,
+      "nakshatraLord": "Mo",
+      "kpStarLord": "Mo",
+      "kpSubLord": "Me",
+      "printedLabel": "Lagna"
+    },
+    "Sun": {
+      "longitudeSidereal": "7 Ge 03' 58.55\"",
+      "nakshatra": "Ardr",
+      "pada": 1,
+      "nakshatraLord": "Ra",
+      "kpStarLord": "Ra",
+      "kpSubLord": "Ra",
+      "printedLabel": "Sun - MK"
+    },
+    "Moon": {
+      "longitudeSidereal": "1 Vi 52' 00.86\"",
+      "nakshatra": "UPha",
+      "pada": 2,
+      "nakshatraLord": "Su",
+      "kpStarLord": "Su",
+      "kpSubLord": "Ju",
+      "printedLabel": "Moon - GK"
+    },
+    "Mars": {
+      "longitudeSidereal": "24 Aq 56' 36.30\"",
+      "nakshatra": "PBha",
+      "pada": 2,
+      "nakshatraLord": "Ju",
+      "kpStarLord": "Ju",
+      "kpSubLord": "Me",
+      "printedLabel": "Mars - AK"
+    },
+    "Mercury": {
+      "longitudeSidereal": "24 Ta 47' 13.05\"",
+      "nakshatra": "Mrig",
+      "pada": 1,
+      "nakshatraLord": "Ma",
+      "kpStarLord": "Ma",
+      "kpSubLord": "Ma",
+      "printedLabel": "Mercury (R) - AmK"
+    },
+    "Jupiter": {
+      "longitudeSidereal": "0 Ta 28' 59.47\"",
+      "nakshatra": "Krit",
+      "pada": 2,
+      "nakshatraLord": "Su",
+      "kpStarLord": "Su",
+      "kpSubLord": "Ra",
+      "printedLabel": "Jupiter - DK"
+    },
+    "Venus": {
+      "longitudeSidereal": "23 Ta 21' 12.47\"",
+      "nakshatra": "Mrig",
+      "pada": 1,
+      "nakshatraLord": "Ma",
+      "kpStarLord": "Ma",
+      "kpSubLord": "Ma",
+      "printedLabel": "Venus (R) - BK"
+    },
+    "Saturn": {
+      "longitudeSidereal": "5 Sg 26' 17.93\"",
+      "nakshatra": "Mool",
+      "pada": 2,
+      "nakshatraLord": "Ke",
+      "kpStarLord": "Ke",
+      "kpSubLord": "Ma",
+      "printedLabel": "Saturn (R) - PK"
+    },
+    "Rahu": {
+      "longitudeSidereal": "24 Aq 18' 45.22\"",
+      "nakshatra": "PBha",
+      "pada": 2,
+      "nakshatraLord": "Ju",
+      "kpStarLord": "Ju",
+      "kpSubLord": "Me",
+      "printedLabel": "Rahu - PiK"
+    },
+    "Ketu": {
+      "longitudeSidereal": "24 Le 18' 45.22\"",
+      "nakshatra": "PPha",
+      "pada": 4,
+      "nakshatraLord": "Ve",
+      "kpStarLord": "Ve",
+      "kpSubLord": "Me",
+      "printedLabel": "Ketu"
+    }
+  },
+  "gandanta": "not shown by JHora: no Gandanta flag in the Basics planet table, its right-click menu (all items listed), the Key Info pane, the View menu or MoreMenus."
+}
