@@ -79,6 +79,8 @@ export const decisionC5Z = z.object({
   /** Per closure: 'panchang' when drikpanchang states the rule for this event, 'report' when it is the report's own rule. */
   ruleSource: z.array(z.enum(['panchang', 'report'])),
   noOpenWindow: z.boolean(),
+  /** A soft custom line: move-in (many families also avoid Kharmas and Chaturmas), engagement (the wedding rules). */
+  note: z.enum(['move_custom', 'sagai_custom']).nullable(),
 });
 
 export interface ReaderPlace {

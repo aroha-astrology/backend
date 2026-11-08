@@ -352,6 +352,8 @@ export const VARSHIK_WEIGHTS = {
       requires: { children: ['planning'] },
     },
     { key: 'move_home', areas: { family: 0.5, money: 0.3, travel: 0.2 } },
+    /** Owner 2026-11-09: buying property is its own row, apart from moving in; no no-muhurat period closes it. */
+    { key: 'buy_property', areas: { money: 0.6, family: 0.25, career: 0.15 } },
     { key: 'travel_abroad', areas: { travel: 0.7, money: 0.15, health: 0.15 } },
     {
       key: 'study_exam',
@@ -381,7 +383,7 @@ export const VARSHIK_WEIGHTS = {
   mainDecisionBoost: 2,
   /** Other answers that point at a decision row: they raise it in the list (focusBoost) without marking it the main one. */
   focusKeys: {
-    home: { buying_or_building: ['move_home'], rented: [] },
+    home: { buying_or_building: ['buy_property', 'move_home'], rented: [] },
     travelPlan: { abroad: ['travel_abroad'] },
     studyPlan: { exam: ['study_exam'], course: ['study_exam'] },
     moneyFocus: {

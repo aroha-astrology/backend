@@ -24,7 +24,7 @@ import {
   getLocalSunTimes,
   panchangReferenceJd,
 } from '../../lib/astro-engine/panchang/index.js';
-import { eclipsesBetween } from '../../lib/astro-engine/panchang/eclipse.js';
+import { classifyEclipse, eclipsesBetween } from '../../lib/astro-engine/panchang/eclipse.js';
 import {
   dashaPeriodsInRange,
   type StoredMahadasha,
@@ -140,11 +140,19 @@ export async function daySkies(
     logger.warn({ err }, 'decision eclipse lookup failed — scoring without eclipses');
     return [];
   });
+  // Only an eclipse seen as a Grahan at this place is a day to avoid (owner, 2026-11-09): a penumbral
+  // eclipse (Upachchaya) carries no Sutak, and one below the horizon here is not seen at all.
+  const seen = await Promise.all(
+    eclipses.map(async (e) =>
+      (await classifyEclipse(e, [{ name: 'here', lat: place.lat, lon: place.lon }], 'reader').catch(() => null))?.class === 'grahan'
+        ? e
+        : null,
+    ),
+  );
   const eclipseOn = new Map(
-    eclipses.map((e) => [
-      new Date(e.at.getTime() + tzHours * 3_600_000).toISOString().slice(0, 10),
-      e.kind,
-    ]),
+    seen
+      .filter((e): e is NonNullable<typeof e> => e !== null)
+      .map((e) => [new Date(e.at.getTime() + tzHours * 3_600_000).toISOString().slice(0, 10), e.kind]),
   );
 
   return Promise.all(

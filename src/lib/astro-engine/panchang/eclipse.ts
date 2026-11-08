@@ -450,18 +450,21 @@ export async function localEclipseAt(e: EclipseEvent, place: EclipsePlace): Prom
   }
   if (Math.abs(t[0]! - maxJd) > 0.5) return none;
 
+  // Swiss Ephemeris returns 0 for a contact that happens below the horizon; the visible edge is then
+  // the rise or set time it also returns (Madrid, 28 Aug 2026: the Moon sets at 05:44 before U4).
   if (e.kind === 'solar') {
     // tret: 1 first contact, 4 fourth contact, 5 sunrise, 6 sunset (set only when inside the eclipse).
-    let from = t[1]!;
-    let to = t[4]!;
+    let from = t[1]! > 0 ? t[1]! : t[5]!;
+    let to = t[4]! > 0 ? t[4]! : t[6]!;
+    if (!(from > 0) || !(to > 0)) return none;
     if (t[5]! > from && t[5]! < to) from = t[5]!;
     if (t[6]! > from && t[6]! < to) to = t[6]!;
     return { place, visible: true, fromAt: jdToDate(from), toAt: jdToDate(to), magnitude: attr[0]!, obscuration: attr[2]! };
   }
   // Lunar: 2/3 umbral (partial) begin/end, 8 moonrise, 9 moonset (set only when inside the eclipse).
-  if (!(t[2]! > 0)) return none;
-  let from = t[2]!;
-  let to = t[3]!;
+  let from = t[2]! > 0 ? t[2]! : t[8]!;
+  let to = t[3]! > 0 ? t[3]! : t[9]!;
+  if (!(from > 0) || !(to > 0)) return none;
   if (t[8]! > from && t[8]! < to) from = t[8]!;
   if (t[9]! > from && t[9]! < to) to = t[9]!;
   if (!(to > from)) return none;

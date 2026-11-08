@@ -1,22 +1,24 @@
 // =============================================================================
 // Varshik C5: the classical no-muhurat periods of the year
 // =============================================================================
-// Four periods close the "go" window for marriage, commitment and a move into a new home:
-//   shukra_asta  Venus combust: within 10 deg of the Sun (8 deg when retrograde)
-//   guru_asta    Jupiter combust: within 11 deg of the Sun
+// Owner decisions 2026-11-09:
+//   marriage     closed by all four periods below (drikpanchang's Vivah rules)
+//   move_home    closed by Shukra and Guru Asta only (drikpanchang's Griha Pravesh rules); the report adds a
+//                soft line that many families also avoid Kharmas and Chaturmas
+//   commitment   (sagai, engagement) not closed: no source gives a rule; a soft line only
+//   buy_property its own row, closed by nothing (drikpanchang's property calendar blocks none of the four)
+//
+//   shukra_asta  Venus Tara Asta, drikpanchang's PUBLISHED dates (config/asta-dates.ts, visibility based)
+//   guru_asta    Jupiter Tara Asta, the same table
 //   kharmas      the Sun in Sagittarius (Dhanu) or Pisces (Meena)
 //   chaturmas    Devshayani Ekadashi up to (not including) Devuthani Ekadashi, from the festival table
 //
-// The orbs are the shared `isCombust` table (calculations/planet-state.ts), the same one the Decide
-// screen uses, so the report and the app never disagree on a combust day. Days are judged at the
-// middle of the reader's local day, the same sample the rest of the year's scoring uses.
+// The fixed Surya Siddhanta orbs (isCombust) stay for planet strength and combustion in the scoring only.
+// A day is closed when a period covers any part of it.
 //
 // Sources (checked 2026-11-09):
-//   - Orbs: Surya Siddhanta as quoted by drikpanchang's Shukra Asta and Guru Asta pages
-//     ("10 deg on both sides of the Sun when Venus is in forward motion, 8 deg when retrograde";
-//     "for Jupiter ... 11 deg"). Drikpanchang's own published asta dates use visibility
-//     (Tara Asta, 2027: Venus 21 Jul-9 Sep, Jupiter 17 Aug-13 Sep), which falls inside the
-//     orb windows here, so the orb windows are the stricter of the two.
+//   - Asta: drikpanchang's Shukra Asta and Guru Asta pages (2027: Venus 21 Jul 05:08 to 9 Sep 19:00,
+//     Jupiter 17 Aug 19:32 to 13 Sep 05:22 IST), copied into config/asta-dates.ts with their URLs.
 //   - Marriage: drikpanchang "Choosing an auspicious marriage date": no marriage while Shukra
 //     or Guru Tara is set; Dhanu month (Kharmas) and Meena are prohibited solar months (the
 //     solar-month rule is the one it attributes to Muhurta Chintamani); none in Chaturmas.
@@ -24,34 +26,45 @@
 //     labels 14 Jul-9 Nov "Prohibited Chaturmas" where nothing else already closes the day.
 //   - Griha pravesh: drikpanchang's Griha Pravesh page removes days when Shukra or Guru Tara is
 //     set and lists no 2027 date in Jul-Oct.
-//   - Kharmas and Chaturmas for a home move, and all four for a commitment (roka, engagement),
-//     are the owner's rule for this report (C5 plan), NOT a panchang rule: drikpanchang lists
-//     griha pravesh dates inside Meena (Mar 2027) and property-purchase dates inside Chaturmas.
-//     The words the reader sees say so (`ruleSource`).
+//   - Property purchase: drikpanchang's property calendar lists dates inside all four periods.
 // =============================================================================
 
 import { ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import { HINDU_FESTIVALS } from '../../../config/hindu-festivals.js';
-import { isCombust } from '../calculations/planet-state.js';
+import { ASTA_PERIODS, astaCovered } from '../../../config/asta-dates.js';
 import type { VarshikContext } from './varshik-context.js';
 
 export type ClosureReason = 'shukra_asta' | 'guru_asta' | 'kharmas' | 'chaturmas';
 
 export const CLOSURE_REASONS: readonly ClosureReason[] = ['shukra_asta', 'guru_asta', 'kharmas', 'chaturmas'];
 
-/** The decision rows that must never get a "go" window inside a closure. */
-export const CLOSED_DECISION_KEYS: readonly string[] = ['marriage', 'commit_relationship', 'move_home'];
+/** Which periods close which decision row (owner, 2026-11-09). Every rule here is drikpanchang's. */
+export const CLOSURE_RULES: Readonly<Record<string, readonly ClosureReason[]>> = {
+  marriage: ['shukra_asta', 'guru_asta', 'kharmas', 'chaturmas'],
+  move_home: ['shukra_asta', 'guru_asta'],
+};
 
-/**
- * Where each (row, reason) rule comes from. 'panchang' = drikpanchang states it for this kind of
- * event (the text may say "traditionally no muhurat"); 'report' = this report's own rule (the text
- * says the report keeps the window clear, never that a panchang forbids it).
- */
-export function ruleSource(key: string, reason: ClosureReason): 'panchang' | 'report' {
-  if (key === 'marriage') return 'panchang';
-  if (key === 'move_home') return reason === 'shukra_asta' || reason === 'guru_asta' ? 'panchang' : 'report';
-  return 'report';
+/** The decision rows that must never get a "go" window inside one of their closures. */
+export const CLOSED_DECISION_KEYS: readonly string[] = Object.keys(CLOSURE_RULES);
+
+/** A soft line for rows where custom goes further than the panchang rule, or where no rule exists. */
+export const ROW_NOTES: Readonly<Record<string, 'move_custom' | 'sagai_custom'>> = {
+  move_home: 'move_custom',
+  commit_relationship: 'sagai_custom',
+};
+
+/** The year's closures that apply to one decision row. */
+export function closuresFor(key: string, closures: Closure[]): Closure[] {
+  const reasons = CLOSURE_RULES[key];
+  return reasons ? closures.filter((c) => reasons.includes(c.reason)) : [];
 }
+
+/** Every rule in CLOSURE_RULES is stated by drikpanchang for that event. Kept for the facts field. */
+export function ruleSource(_key: string, _reason: ClosureReason): 'panchang' | 'report' {
+  return 'panchang';
+}
+
+export { astaCovered };
 
 export interface Closure {
   reason: ClosureReason;
@@ -63,8 +76,8 @@ export interface Closure {
   toDay: number;
 }
 
-const SAGITTARIUS = ZODIAC_SIGNS.indexOf('Sagittarius' as (typeof ZODIAC_SIGNS)[number]);
-const PISCES = ZODIAC_SIGNS.indexOf('Pisces' as (typeof ZODIAC_SIGNS)[number]);
+const SAGITTARIUS = ZODIAC_SIGNS.indexOf('Sagittarius');
+const PISCES = ZODIAC_SIGNS.indexOf('Pisces');
 
 const signOf = (lon: number) => Math.floor((((lon % 360) + 360) % 360) / 30);
 
@@ -94,9 +107,17 @@ export function chaturmasOf(year: number): { from: string; to: string } | null {
 export function muhurtaClosures(ctx: VarshikContext, dateOfDay: (i: number) => string): Closure[] {
   const n = ctx.days.length;
   const chaturmas = chaturmasOf(ctx.year);
-  // A day is closed when the period covers ANY part of it (a wedding muhurat needs the whole day
-  // clear), so each day is judged at its start, middle and end. The start and end longitudes are
-  // the midpoints between neighbouring midday samples (planets move smoothly; error is minutes).
+  // Asta from drikpanchang's published dates: a day is closed when the period covers any part of it.
+  const astaMs = (planet: 'Venus' | 'Jupiter') =>
+    ASTA_PERIODS.filter((p) => p.planet === planet).map((p) => [Date.parse(p.startsAt), Date.parse(p.endsAt)] as const);
+  const venus = astaMs('Venus');
+  const jupiter = astaMs('Jupiter');
+  const dayStart = (i: number) => ctx.dayStartMs[i]!;
+  const dayEnd = (i: number) => ctx.dayStartMs[i + 1] ?? ctx.dayStartMs[i]! + 86_400_000;
+  const inAsta = (periods: ReadonlyArray<readonly [number, number]>, i: number) =>
+    periods.some(([a, b]) => a < dayEnd(i) && b > dayStart(i));
+  // Kharmas: the Sun's sign at the start, middle and end of the day; the edges are the midpoints between
+  // neighbouring midday samples (the Sun moves about a degree a day; the error is minutes).
   const lonAt = (planet: 'Sun' | 'Venus' | 'Jupiter', i: number, edge: -1 | 0 | 1): number | undefined => {
     const here = ctx.days[i]!.lon[planet];
     if (here === undefined || edge === 0) return here;
@@ -113,14 +134,9 @@ export function muhurtaClosures(ctx: VarshikContext, dateOfDay: (i: number) => s
     if (d.lon.Sun === undefined) return false;
     switch (reason) {
       case 'shukra_asta':
-      case 'guru_asta': {
-        const planet = reason === 'shukra_asta' ? 'Venus' : 'Jupiter';
-        return EDGES.some((edge) => {
-          const sun = lonAt('Sun', i, edge);
-          const lon = lonAt(planet, i, edge);
-          return sun !== undefined && lon !== undefined && isCombust(planet, lon, sun, Boolean(d.retro[planet]));
-        });
-      }
+        return inAsta(venus, i);
+      case 'guru_asta':
+        return inAsta(jupiter, i);
       case 'kharmas':
         return EDGES.some((edge) => {
           const sun = lonAt('Sun', i, edge);

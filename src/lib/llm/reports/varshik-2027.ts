@@ -161,7 +161,8 @@ const C5_CALENDAR_RULES = `HOUSES, ECLIPSES AND MUHURAT:
 - An eclipse marked Grahan may be read for the reader, with its local times and its Sutak exactly as given. An eclipse marked Upachchaya (penumbral) or not visible is a plain marker in the sky: give its date and type, say it brings no Sutak, and never tie it to a house, a person or an outcome.
 - Never write Sutak for an eclipse the facts do not give a Sutak for.
 - When the eclipse times are an India-wide summary, say "across India" and name the cities; never present them as the reader's own place.
-- A wedding, commitment or move into a new home never gets a window inside a no-muhurat period the facts list for it. Say the period plainly with its dates. Where the facts say "traditionally no muhurat", you may say so; where they say "this report keeps it clear", say that instead and never claim a panchang forbids it.`;
+- A wedding or a move into a new home never gets a window inside a no-muhurat period the facts list for it. Say the period plainly with its dates, as "traditionally no muhurat".
+- An engagement (sagai) and a property purchase have no no-muhurat period of their own: never say one forbids them. Where the facts give a soft line for a row, say it once in your own words, as a family custom, not a rule.`;
 
 const CLOSURE_WORDS: Record<string, string> = {
   shukra_asta: 'Venus is combust (Shukra Asta)',
@@ -176,15 +177,21 @@ const CLOSED_EVENT_WORDS: Record<string, string> = {
   move_home: 'move-in (griha pravesh)',
 };
 
+const NOTE_WORDS: Record<string, string> = {
+  move_custom: 'soft line: many families also avoid Kharmas and Chaturmas for moving in, so check your family custom',
+  sagai_custom: 'soft line: families often choose a sagai (engagement) date by the same rules as the wedding',
+};
+
 function closureLines(d: VarshikFacts['scores']['decisionTable'][number]): string {
-  if (!d.closed) return '';
+  const note = d.note ? `; ${NOTE_WORDS[d.note]}` : '';
+  if (!d.closed) return note;
   const ev = CLOSED_EVENT_WORDS[d.key] ?? 'start';
   const parts = d.closures.map((c, i) => {
     const how = d.ruleSource[i] === 'panchang' ? `traditionally no ${ev} muhurat` : `this report keeps ${ev} dates clear of it`;
     return `${CLOSURE_WORDS[c.reason]} from ${dayMonth(c.from)} to ${dayMonth(c.to)}: ${how}`;
   });
   const open = d.openSpans.map((sp) => (sp.from === sp.to ? dayMonth(sp.from) : `${dayMonth(sp.from)} to ${dayMonth(sp.to)}`)).join(' and ');
-  return `; no-muhurat periods: ${parts.join('; ')}${open ? `; the open days inside the best stretch: ${open}` : ''}`;
+  return `; no-muhurat periods: ${parts.join('; ')}${open ? `; the open days inside the best stretch: ${open}` : ''}${note}`;
 }
 
 function eclipseWords(e: VarshikFacts['skyEvents'][number], f: VarshikFacts): string {
@@ -427,7 +434,8 @@ const DECISION_WORDS: Record<string, string> = {
   commit_relationship: 'committing to a relationship',
   marriage: 'marriage talks',
   family_planning: 'planning for a child',
-  move_home: 'moving home',
+  move_home: 'moving into a new home',
+  buy_property: 'buying property (a house, flat or land)',
   travel_abroad: 'a long trip or time abroad',
   study_exam: 'study or an exam',
   health_routine: 'starting a health routine',
@@ -620,7 +628,7 @@ MAJOR FESTIVALS: ${fest}`;
 5. timing_map: 2 paragraphs reading the 7 by 12 map of months and areas: where the green months gather and where the quiet ones do.
 6. year_rhythm: 2 paragraphs on the shape of the year: the Mudda periods in order with their dates, and the Saham windows that add a push.
 7. sky_calendar: 2 paragraphs. The first paragraph names ALL ${eclipseDates.length} eclipses of 2027, none left out and none merged (${eclipseDates.join(', ')}), each with its date and its type as the facts give it. Say the number of eclipses as ${eclipseDates.length}. ${grahanCount > 0 ? `Only ${grahanCount === 1 ? 'one is a visible Grahan' : `${grahanCount} are visible Grahans`}: for ${grahanCount === 1 ? 'it' : 'each'}, give the house it falls in (from your Lagna and your Moon), the local times and the Sutak exactly as listed.` : 'None is a visible Grahan, so no Sutak applies this year: say so once.'} Every Upachchaya (penumbral) or unseen eclipse gets its date, its type and "no Sutak", and nothing more. The second paragraph covers the retrogrades and stations that matter most for this reader.
-8. when_to_act: 2 paragraphs. Using the decisions given for this reader only, say when to move on each and when to hold. The reader's own big decision comes first. For a wedding, an engagement or commitment, or a move into a new home, name each no-muhurat period listed for it with its dates, in plain words, and give the open days inside its best stretch.
+8. when_to_act: 2 paragraphs. Using the decisions given for this reader only, say when to move on each and when to hold. The reader's own big decision comes first. For a wedding or a move into a new home, name each no-muhurat period listed for it with its dates, in plain words, and give the open days inside its best stretch. Where a soft line is given, include it once, gently.
 9. golden_windows: 2 paragraphs naming the best windows with their dates and any major festival that falls inside one.`,
     user: 'Write the planet, dosha, yoga, area and timing sections.',
   };
@@ -774,14 +782,18 @@ function monthFacts(f: VarshikFacts, m: number): string {
   const areaTiers = AREAS.map((a) => `${a} ${tierToken(f.scores.timingMap[a]![m]!.tier)}`).join(', ');
   const monthFirst = `${f.year}-${String(m + 1).padStart(2, '0')}-01`;
   const monthLast = `${f.year}-${String(m + 1).padStart(2, '0')}-${String(new Date(Date.UTC(f.year, m + 1, 0)).getUTCDate()).padStart(2, '0')}`;
-  const closedHere = f.calendar.closures.filter((c) => c.to >= monthFirst && c.from <= monthLast);
   const decisions = [
     ...f.scores.decisionTable
       .filter((d) => d.hold.includes(m) || (d.best.from <= m && m <= d.best.to))
       .map((d) => `${DECISION_WORDS[d.key] ?? d.key}: ${d.hold.includes(m) ? 'a month to hold off' : 'inside the best stretch'}`),
-    ...(f.scores.decisionTable.some((d) => d.closed) && closedHere.length
-      ? [`no wedding, engagement or move-in window while ${closedHere.map((c) => `${CLOSURE_WORDS[c.reason]} (${dayMonth(c.from)} to ${dayMonth(c.to)})`).join(', ')}`]
-      : []),
+    ...f.scores.decisionTable
+      .filter((d) => d.closed)
+      .flatMap((d) => {
+        const here = d.closures.filter((c) => c.to >= monthFirst && c.from <= monthLast);
+        return here.length
+          ? [`no ${CLOSED_EVENT_WORDS[d.key] ?? d.key} window while ${here.map((c) => `${CLOSURE_WORDS[c.reason]} (${dayMonth(c.from)} to ${dayMonth(c.to)})`).join(', ')}`]
+          : [];
+      }),
   ].join('; ');
   const lords = [...new Set(f.dashas.pratyantar2027.filter((d) => d.to >= first && d.from <= last).map((d) => d.antar))];
   const weekday = lords[0] ? WEEKDAY_OF[lords[0]] : null;

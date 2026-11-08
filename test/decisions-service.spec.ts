@@ -85,15 +85,19 @@ beforeEach(async () => {
 });
 
 describe('daySkies', () => {
-  it("reads each day's weekday, tithi and nakshatra at local noon and marks eclipse days", async () => {
+  it("reads each day's weekday, tithi and nakshatra at local noon and marks only eclipses seen there", async () => {
     const skies = await daySkies('2026-08-10', 20, 5.5, 'lahiri', { lat: 28.6139, lon: 77.209 });
     expect(skies).toHaveLength(20);
     expect(skies[0]).toMatchObject({ date: '2026-08-10', weekday: 1 });
     const byDate = new Map(skies.map((s) => [s.date, s]));
-    // 12 Aug 2026 total solar eclipse (new moon); 28 Aug partial lunar eclipse.
-    expect(byDate.get('2026-08-12')).toMatchObject({ eclipse: 'solar', tithi: 30 });
-    expect(byDate.get('2026-08-28')?.eclipse).toBe('lunar');
-    expect(skies.filter((s) => s.eclipse)).toHaveLength(2);
+    // 12 Aug 2026 total solar eclipse (new moon) and 28 Aug partial lunar eclipse: neither is seen from
+    // Delhi (the Sun has set; the Moon is down), so since 2026-11-09 neither is a day to avoid there.
+    expect(byDate.get('2026-08-12')).toMatchObject({ tithi: 30 });
+    expect(skies.filter((s) => s.eclipse)).toHaveLength(0);
+    // New York sees both as a Grahan (the solar one partial, before sunset; the lunar one before dawn).
+    const ny = new Map((await daySkies('2026-08-10', 20, -4, 'lahiri', { lat: 40.7128, lon: -74.006 })).map((s) => [s.date, s]));
+    expect(ny.get('2026-08-12')?.eclipse).toBe('solar');
+    expect(ny.get('2026-08-28')?.eclipse).toBe('lunar');
     for (const s of skies) {
       expect(s.tithi).toBeGreaterThanOrEqual(1);
       expect(s.tithi).toBeLessThanOrEqual(30);

@@ -62,10 +62,10 @@ export interface FactIndex {
   moonHouses: Set<string>;
   /** C5: eclipse dates 'YYYY-MM-DD' by class. */
   eclipseClass: Map<string, 'grahan' | 'upachchaya' | 'not_visible'>;
-  /** C5: the closures of the marriage, commitment and home-move rows. */
-  closures: VarshikFacts['calendar']['closures'];
-  /** C5: months (0-11) a closed row may never be told to go in (fewer than 7 open days). */
-  closedMonths: Set<number>;
+  /** C5: the closures of the wedding row and of the move-in row (Asta only), by event. */
+  closures: { wedding: VarshikFacts['calendar']['closures']; move: VarshikFacts['calendar']['closures'] };
+  /** C5: months (0-11) each event may never be told to go in (fewer than 7 open days). */
+  closedMonths: { wedding: Set<number>; move: Set<number> };
   taraNames: Set<string>;
   starNumbers: Set<number>;
   tajika: Set<string>;
@@ -311,16 +311,26 @@ export function buildFactIndex(facts: VarshikFacts): FactIndex {
     addDate(sp.from);
     addDate(sp.to);
   }
-  const closedMonths = new Set<number>();
-  const closedDay = (iso: string) => facts.calendar.closures.some((c) => iso >= c.from && iso <= c.to);
-  for (let m = 0; m < 12; m++) {
-    const last = new Date(Date.UTC(facts.year, m + 1, 0)).getUTCDate();
-    let open = 0;
-    for (let d = 1; d <= last; d++) {
-      if (!closedDay(`${facts.year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`)) open++;
+  const WEDDING_REASONS = ['shukra_asta', 'guru_asta', 'kharmas', 'chaturmas'];
+  const MOVE_REASONS = ['shukra_asta', 'guru_asta'];
+  const eventClosures = {
+    wedding: facts.calendar.closures.filter((c) => WEDDING_REASONS.includes(c.reason)),
+    move: facts.calendar.closures.filter((c) => MOVE_REASONS.includes(c.reason)),
+  };
+  const monthsClosed = (list: VarshikFacts['calendar']['closures']): Set<number> => {
+    const out = new Set<number>();
+    for (let m = 0; m < 12; m++) {
+      const last = new Date(Date.UTC(facts.year, m + 1, 0)).getUTCDate();
+      let open = 0;
+      for (let d = 1; d <= last; d++) {
+        const iso = `${facts.year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        if (!list.some((c) => iso >= c.from && iso <= c.to)) open++;
+      }
+      if (open < 7) out.add(m);
     }
-    if (open < 7) closedMonths.add(m);
-  }
+    return out;
+  };
+  const closedMonths = { wedding: monthsClosed(eventClosures.wedding), move: monthsClosed(eventClosures.move) };
 
   const retrogrades: Record<string, number> = {};
   for (const e of facts.skyEvents) {
@@ -348,7 +358,7 @@ export function buildFactIndex(facts: VarshikFacts): FactIndex {
     weeks,
     moonHouses,
     eclipseClass,
-    closures: facts.calendar.closures,
+    closures: eventClosures,
     closedMonths,
   };
 }
@@ -482,7 +492,7 @@ export function claimHitsForSentence(sentence: string, index: FactIndex): TextHi
       const planet = m[1]!;
       const house = Number(m[3]);
       // "the 3rd house from your Moon" is counted from the Moon sign: the C5 check below reads it.
-      if (/^\s+(?:counted\s+)?from\s+(?:your|the)\s+(?:natal\s+)?Moon\b/i.test(sentence.slice(m.index! + m[0].length))) continue;
+      if (/^\s+(?:counted\s+)?from\s+(?:your|the)\s+(?:natal\s+)?Moon\b/i.test(sentence.slice(m.index + m[0].length))) continue;
       if (house < 1 || house > 12) {
         miss(`${house}th house does not exist`);
       } else if (!index.houses.has(`${planet}:${house}`)) {
@@ -573,7 +583,8 @@ const NO_SUTAK = /\b(?:no|without)\s+sutak\b|\bsutak\s+(?:does not|doesn't|is no
 const TRIGGER_WORDS = /\b(?:trigger\w*|activat\w*|stirs?|shak\w+|jolts?|sets? off|sparks?|lights? up|falls? in your|lands? in your)\b/i;
 const GRAHAN_WORD = /\bgrahan\b/i;
 const NOT_GRAHAN = /\b(?:not\s+(?:a\s+)?(?:full\s+)?grahan|no\s+grahan|upachchaya)\b/i;
-const CLOSED_EVENT = /\b(?:marri\w+|wedding|vivah|engage\w*|roka|commitment|griha pravesh|move (?:into|to) (?:a |your |the )?(?:new )?home|moving (?:in|home)|house[- ]?warming|new home)\b/i;
+const WEDDING_EVENT = /\b(?:marri\w+|wedding|vivah)\b/i;
+const MOVE_EVENT = /\b(?:griha pravesh|move (?:into|to) (?:a |your |the )?(?:new )?home|moving (?:in|home)|house[- ]?warming|new home)\b/i;
 const CLOSED_GO = /\b(?:best|good|ideal|favourable|favorable|auspicious|open window|window opens|go ahead|green light|right time|strong (?:time|window|month))\b/i;
 const CLOSED_NEG = /\b(?:no|not|avoid|hold|wait|after|until|once|outside|combust|asta|kharmas|chaturmas|closed)\b/i;
 
@@ -599,8 +610,8 @@ export function c5ClaimHits(sentence: string, index: FactIndex): TextHit[] {
     const n = Number(m[1]);
     const ref = m[2]!.toLowerCase() === 'moon' ? 'moon' : 'lagna';
     let planet: string | null = null;
-    for (const t of sentence.slice(0, m.index!).matchAll(new RegExp(PLANET_TOKEN.source, 'g'))) {
-      const before = sentence.slice(Math.max(0, t.index! - 12), t.index!);
+    for (const t of sentence.slice(0, m.index).matchAll(new RegExp(PLANET_TOKEN.source, 'g'))) {
+      const before = sentence.slice(Math.max(0, t.index - 12), t.index);
       if (/from\s+(?:your|the)\s+(?:natal\s+|birth\s+)?$/i.test(before)) continue;
       planet = t[1]!;
     }
@@ -633,15 +644,21 @@ export function c5ClaimHits(sentence: string, index: FactIndex): TextHit[] {
     }
   }
 
-  // 4. No "go" for a wedding, commitment or home move inside Shukra/Guru Asta, Kharmas or Chaturmas.
-  if (CLOSED_EVENT.test(sentence) && CLOSED_GO.test(sentence) && !CLOSED_NEG.test(sentence)) {
-    for (const d of dates) {
-      const c = index.closures.find((x) => d >= x.from && d <= x.to);
-      if (c) miss(`${d} falls in ${c.reason.replace('_', ' ')} (${c.from} to ${c.to}): no wedding or move-in window there`);
-    }
-    for (let m = 0; m < 12; m++) {
-      if (index.closedMonths.has(m) && new RegExp(`\\b${MONTH_NAMES[m]}\\b`).test(sentence)) {
-        miss(`${MONTH_NAMES[m]} is closed to weddings and move-ins this year`);
+  // 4. No "go" for a wedding inside Shukra/Guru Asta, Kharmas or Chaturmas, nor for a move-in inside an Asta.
+  if (CLOSED_GO.test(sentence) && !CLOSED_NEG.test(sentence)) {
+    for (const [event, test, label] of [
+      ['wedding', WEDDING_EVENT, 'wedding'],
+      ['move', MOVE_EVENT, 'move-in'],
+    ] as const) {
+      if (!test.test(sentence)) continue;
+      for (const d of dates) {
+        const c = index.closures[event].find((x) => d >= x.from && d <= x.to);
+        if (c) miss(`${d} falls in ${c.reason.replace('_', ' ')} (${c.from} to ${c.to}): no ${label} window there`);
+      }
+      for (let m = 0; m < 12; m++) {
+        if (index.closedMonths[event].has(m) && new RegExp(`\\b${MONTH_NAMES[m]}\\b`).test(sentence)) {
+          miss(`${MONTH_NAMES[m]} is closed to a ${label} this year`);
+        }
       }
     }
   }
@@ -681,7 +698,7 @@ export function polarityHitsForSection(
   const own = sectionMonth(sectionId);
   const area = /^area_(\w+)$/.exec(sectionId)?.[1];
   const tierOfMonth = (m: number): TierName => {
-    if (area && facts.scores.timingMap[area]) return facts.scores.timingMap[area]![m]!.tier;
+    if (area && facts.scores.timingMap[area]) return facts.scores.timingMap[area][m]!.tier;
     return facts.scores.months[m]!.tier;
   };
   for (const p of paragraphs) {

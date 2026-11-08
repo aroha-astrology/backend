@@ -54,7 +54,7 @@ import {
   eclipsePlaceZ,
   type ReaderPlace,
 } from './varshik-facts-c5.js';
-import { CLOSED_DECISION_KEYS, MIN_OPEN_DAYS, chaturmasOf, ruleSource } from './varshik-muhurta.js';
+import { CLOSED_DECISION_KEYS, MIN_OPEN_DAYS, astaCovered, chaturmasOf, closuresFor, ruleSource } from './varshik-muhurta.js';
 
 export { DOSHA_LABEL, MONTH_NAMES, NINE_PLANETS };
 
@@ -706,7 +706,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
     kind: y.kind,
     planets: y.planets,
     months: y.months,
-    because: Object.fromEntries(Object.entries(y.because).map(([k, v]) => [k, v])) as Record<string, string[]>,
+    because: Object.fromEntries(Object.entries(y.because).map(([k, v]) => [k, v])),
     targetYear: y.targetYear,
     ...(y.reason ? { reason: y.reason } : {}),
   }));
@@ -752,7 +752,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
       })),
       panchavargi: Object.fromEntries(
         SEVEN_PLANETS.map((p) => [p, r2(panchavargiBala(p, chart).vimsopaka)]),
-      ) as Record<string, number>,
+      ),
       planets: planetRows(chart),
       sahams: v.sahams.map((x) => ({
         name: x.name,
@@ -763,7 +763,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
       })),
       tajikaYogas: computeTajikaYogas(chart).map((y) => ({
         kind: y.kind,
-        planets: y.planets as string[],
+        planets: y.planets,
         gapDeg: y.gapDeg === null ? null : r2(y.gapDeg),
         ...(y.reason ? { reason: y.reason } : {}),
       })),
@@ -853,7 +853,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
       lng: reader.lng,
       answers: Object.fromEntries(
         Object.entries(reader.answers).filter(([, v]) => typeof v === 'string' && v.length > 0),
-      ) as VarshikFacts['reader']['answers'],
+      ),
       facts: reader.facts.map((f, i) => ({ id: `F${i + 1}`, fact: f.fact })),
       eclipsePlace: where.fact,
     },
@@ -880,7 +880,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
     sahamWindows: ctx.sahamWindows.map((w) => ({
       saham: w.saham,
       planet: w.planet,
-      roles: w.roles as string[],
+      roles: w.roles,
       from: localDate(w.startMs, tz),
       to: localDate(w.endMs, tz),
       exact: w.exactMs.map((ms) => localDate(ms, tz)),
@@ -900,7 +900,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
       })),
       decisionTable: scores.decisionTable.map((d) => {
         const closures = d.closed
-          ? scores.closures.map((c) => ({ reason: c.reason, from: c.from, to: c.to }))
+          ? closuresFor(d.key, scores.closures).map((c) => ({ reason: c.reason, from: c.from, to: c.to }))
           : [];
         return {
           key: d.key,
@@ -913,6 +913,7 @@ export async function buildVarshikFacts(args: BuildFactsArgs): Promise<VarshikFa
           closures,
           ruleSource: closures.map((c) => ruleSource(d.key, c.reason)),
           noOpenWindow: d.noOpenWindow,
+          note: d.note,
         };
       }),
       planetImpact: scores.planetImpact.map((p) => ({
@@ -1025,6 +1026,7 @@ export function preflightVarshikFacts(input: unknown): PreflightResult {
   }
   // C5: the no-muhurat periods. Chaturmas needs both Ekadashis in the festival table.
   if (!chaturmasOf(f.year)) failures.push(`calendar: the festival table lacks Devshayani or Devuthani Ekadashi for ${f.year}`);
+  if (!astaCovered(f.year)) failures.push(`calendar: config/asta-dates.ts has no drikpanchang Shukra/Guru Asta dates for ${f.year}`);
   else if (!f.calendar.closures.some((c) => c.reason === 'chaturmas')) failures.push('calendar.closures: no Chaturmas');
   for (const d of f.scores.decisionTable) {
     if (CLOSED_DECISION_KEYS.includes(d.key) !== d.closed) failures.push(`scores.decisionTable.${d.key}: closed flag is wrong`);
@@ -1245,7 +1247,8 @@ export function coverageProblems(
       kharmas: /\bkharmas\b/i.test(text),
       chaturmas: /\bchaturmas\b/i.test(text),
     };
-    for (const reason of new Set(facts.calendar.closures.map((c) => c.reason))) {
+    const reasons = new Set(facts.scores.decisionTable.flatMap((d) => d.closures.map((c) => c.reason)));
+    for (const reason of reasons) {
       if (!said[reason]) problems.push(`when_to_act: does not name ${reason.replace('_', ' ')} for the wedding or move-in rows`);
     }
   }

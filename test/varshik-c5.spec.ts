@@ -103,13 +103,25 @@ describe('2027 eclipses: India classes, local times and Sutak', () => {
   });
 });
 
+describe('a contact below the horizon', () => {
+  it('Madrid, 28 Aug 2026: the Moon sets during the partial lunar eclipse, so it is a Grahan seen until moonset', async () => {
+    const [e] = (await eclipsesBetween(new Date('2026-08-27T00:00:00Z'), new Date('2026-08-29T00:00:00Z'))).filter((x) => x.kind === 'lunar');
+    const c = await classifyEclipse(e!, [{ name: 'Madrid', lat: 40.4168, lon: -3.7038 }], 'reader');
+    expect(c.class).toBe('grahan');
+    const l = c.local[0]!;
+    expect(l.fromAt!.toISOString().slice(11, 16)).toBe('02:33');
+    expect(l.toAt!.toISOString().slice(11, 16)).toBe('05:44'); // moonset, before the umbral end at 05:52
+    expect(c.sutak[0]!.fromAt.getTime()).toBe(l.fromAt!.getTime() - 9 * 3_600_000);
+  });
+});
+
 describe('no-muhurat periods 2027', () => {
   it('Chaturmas is Devshayani (14 Jul) to the day before Devuthani (10 Nov, drikpanchang Smarta)', () => {
     expect(chaturmasOf(2027)).toEqual({ from: '2027-07-14', to: '2027-11-09' });
     expect(chaturmasOf(2026)).toEqual({ from: '2026-07-25', to: '2026-11-19' });
   });
 
-  it('Venus and Jupiter cross their Surya Siddhanta orbs (10 and 11 degrees) on the dates the closures use', async () => {
+  it('the scoring keeps the Surya Siddhanta orbs (10 and 11 degrees): Venus and Jupiter cross them on these dates', async () => {
     const ev = await findCombustionEvents(Date.parse('2027-06-01T00:00:00Z'), Date.parse('2027-10-01T00:00:00Z'));
     const day = (planet: string, kind: string) =>
       new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(ev.find((e) => e.planet === planet && e.kind === kind)!.atMs));
@@ -129,7 +141,7 @@ describe('facts: closures, decision rows, eclipse blocks, house references', () 
       birthDate: '1990-03-14',
       birthTime: '09:20',
       place: { lat: 28.61, lon: 77.21, tz: 'Asia/Kolkata' },
-      // single, buying a home: marriage, commitment and move_home rows are all shown
+      // single, buying a home: the marriage, commitment, move-in and property rows are all shown
       answers: { relationship: 'single', occupation: 'working', home: 'buying_or_building', mainDecision: 'relationship' },
       facts: [],
     });
@@ -140,34 +152,56 @@ describe('facts: closures, decision rows, eclipse blocks, house references', () 
     expect(pre.failures).toEqual([]);
   });
 
-  it('lists the closures with any-part-of-day edges', () => {
+  it('lists the closures: Asta from drikpanchang\'s published dates (owner 2026-11-09), any part of a day closes it', () => {
     expect(facts.calendar.closures).toEqual([
       { reason: 'kharmas', from: '2027-01-01', to: '2027-01-14' },
       { reason: 'kharmas', from: '2027-03-15', to: '2027-04-14' },
-      { reason: 'shukra_asta', from: '2027-07-06', to: '2027-09-17' },
       { reason: 'chaturmas', from: '2027-07-14', to: '2027-11-09' },
-      { reason: 'guru_asta', from: '2027-08-16', to: '2027-09-15' },
+      // drik: Venus Tara Asta 21 Jul 05:08 to 9 Sep 19:00; Jupiter 17 Aug 19:32 to 13 Sep 05:22 (IST)
+      { reason: 'shukra_asta', from: '2027-07-21', to: '2027-09-09' },
+      { reason: 'guru_asta', from: '2027-08-17', to: '2027-09-13' },
       { reason: 'kharmas', from: '2027-12-16', to: '2027-12-31' },
     ]);
   });
 
-  it('never puts a wedding, commitment or move-in window inside a closure', () => {
+  it('weddings keep out of all four periods; move-ins only out of Asta; engagement and property out of none', () => {
+    const row = (key: string) => facts.scores.decisionTable.find((d) => d.key === key)!;
     const closed = facts.scores.decisionTable.filter((d) => d.closed);
-    expect(closed.map((d) => d.key).sort()).toEqual(['commit_relationship', 'marriage', 'move_home']);
+    expect(closed.map((d) => d.key).sort()).toEqual(['marriage', 'move_home']);
+
+    const marriage = row('marriage');
+    expect(new Set(marriage.closures.map((c) => c.reason))).toEqual(new Set(['shukra_asta', 'guru_asta', 'kharmas', 'chaturmas']));
+    for (const m of [marriage.best.from, marriage.best.to]) expect([7, 8, 9]).not.toContain(m); // Aug-Oct: under 7 open days
+
+    const move = row('move_home');
+    expect(new Set(move.closures.map((c) => c.reason))).toEqual(new Set(['shukra_asta', 'guru_asta']));
+    for (const m of [move.best.from, move.best.to]) expect(m).not.toBe(7); // only August is shut by Asta
+    expect(move.note).toBe('move_custom');
+
+    const commit = row('commit_relationship');
+    expect(commit.closed).toBe(false);
+    expect(commit.closures).toEqual([]);
+    expect(commit.note).toBe('sagai_custom');
+
+    const property = row('buy_property');
+    expect(property).toBeTruthy();
+    expect(property.closed).toBe(false);
+    expect(property.closures).toEqual([]);
+    expect(property.note).toBeNull();
+
     for (const d of closed) {
-      for (const m of [d.best.from, d.best.to]) expect([6, 7, 8, 9]).not.toContain(m); // Jul-Oct have under 7 open days
+      expect(d.ruleSource.every((r) => r === 'panchang')).toBe(true);
       for (const sp of d.openSpans) {
-        for (const c of facts.calendar.closures) expect(sp.from > c.to || sp.to < c.from, `${d.key} ${sp.from}`).toBe(true);
+        for (const c of d.closures) expect(sp.from > c.to || sp.to < c.from, `${d.key} ${sp.from}`).toBe(true);
       }
-      expect(d.ruleSource.length).toBe(d.closures.length);
     }
-    const marriage = closed.find((d) => d.key === 'marriage')!;
-    expect(new Set(marriage.ruleSource)).toEqual(new Set(['panchang']));
-    const move = closed.find((d) => d.key === 'move_home')!;
-    expect(move.ruleSource[move.closures.findIndex((c) => c.reason === 'kharmas')]).toBe('report');
-    expect(move.ruleSource[move.closures.findIndex((c) => c.reason === 'shukra_asta')]).toBe('panchang');
-    // Rows that are not closed are untouched.
-    expect(facts.scores.decisionTable.filter((d) => !d.closed).every((d) => d.closures.length === 0 && d.openSpans.length === 0)).toBe(true);
+  });
+
+  it('7 to 13 July 2027 is open for a wedding (drik lists 7, 8, 9, 11 and 12 Jul); Chaturmas closes it from 14 July', () => {
+    const marriage = facts.scores.decisionTable.find((d) => d.key === 'marriage')!;
+    const closedOn = (iso: string) => marriage.closures.some((c) => iso >= c.from && iso <= c.to);
+    for (const d of ['2027-07-07', '2027-07-08', '2027-07-09', '2027-07-11', '2027-07-12', '2027-07-13']) expect(closedOn(d), d).toBe(false);
+    expect(closedOn('2027-07-14')).toBe(true);
   });
 
   it('every sky event has a Moon house, every eclipse its block; eclipses default to the India summary', () => {
@@ -201,7 +235,12 @@ describe('facts: closures, decision rows, eclipse blocks, house references', () 
     expect(c5ClaimHits('Sutak for the eclipse on 2 August starts early that morning.', index)).toEqual([]);
     expect(c5ClaimHits('August is the best month for the wedding.', index).length).toBeGreaterThan(0);
     expect(c5ClaimHits('The best time for the wedding is 20 August.', index).length).toBeGreaterThan(0);
-    expect(c5ClaimHits('Hold the wedding until Venus is out of combustion on 17 September.', index)).toEqual([]);
+    expect(c5ClaimHits('Hold the wedding until Venus is out of combustion on 9 September.', index)).toEqual([]);
     expect(c5ClaimHits('The best time for the wedding is 20 November.', index)).toEqual([]);
+    // Move-ins: only Asta closes them. Engagement and property: nothing does.
+    expect(c5ClaimHits('The best time for moving into a new home is 20 August.', index).length).toBeGreaterThan(0);
+    expect(c5ClaimHits('The best time for moving into a new home is 20 December.', index)).toEqual([]);
+    expect(c5ClaimHits('The best time for an engagement is 20 August.', index)).toEqual([]);
+    expect(c5ClaimHits('August is a good month to buy property.', index)).toEqual([]);
   });
 });

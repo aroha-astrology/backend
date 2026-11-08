@@ -52,6 +52,8 @@ import type { VarshikContext } from './varshik-context.js';
 import {
   CLOSED_DECISION_KEYS,
   MIN_OPEN_DAYS,
+  ROW_NOTES,
+  closuresFor,
   muhurtaClosures,
   openDaysByMonth,
   openSpans,
@@ -293,7 +295,7 @@ function sliceModel(slice: VarshaYearSlice, ctx: VarshikContext): SliceModel {
     }
   }
   const withBala = (planet: ScorePlanet, signal: number): number =>
-    bala[planet] === undefined ? signal : clamp((1 - C3.annualBala.share) * signal + C3.annualBala.share * bala[planet]!);
+    bala[planet] === undefined ? signal : clamp((1 - C3.annualBala.share) * signal + C3.annualBala.share * bala[planet]);
   const ylSignal = withBala(
     yearLord,
     clamp(
@@ -392,7 +394,7 @@ function sliceModel(slice: VarshaYearSlice, ctx: VarshikContext): SliceModel {
     sahamQuality,
     windows,
     gates: { vetoYearLord, vetoMuntha, kamboola },
-    lagnaLord: SIGN_LORDS[ZODIAC_SIGNS[varsha.lagna]!] as ScorePlanet,
+    lagnaLord: SIGN_LORDS[ZODIAC_SIGNS[varsha.lagna]!],
     extraYogaSignal,
     lifeSahamPart,
   };
@@ -585,7 +587,7 @@ function scoreDay(
       const p = t.planet;
       if (SS.gochar[p]) {
         const k = C3.components;
-        add(area, `gochar:${p}`, k.moonGochar * t.weight * SS.gochar[p]![dayIdx]! * rel);
+        add(area, `gochar:${p}`, k.moonGochar * t.weight * SS.gochar[p][dayIdx]! * rel);
         add(area, `moorti:${p}`, k.moorti * t.weight * SS.moorti[p]![dayIdx]! * rel);
         add(area, `tara:${p}`, k.tara * t.weight * SS.tara[p]![dayIdx]! * rel);
         const lord = SS.starLord[p]![dayIdx]! as ScorePlanet;
@@ -931,9 +933,12 @@ export function computeVarshikScores(
   const dateOfDay = localDayDate(ctx);
   const closures = muhurtaClosures(ctx, dateOfDay);
   result.closures = closures;
-  result.decisionTable = decisionTable(result, answers, { closures, openDays: openDaysByMonth(ctx, closures) });
+  result.decisionTable = decisionTable(result, answers, {
+    closures,
+    openDaysFor: (key) => openDaysByMonth(ctx, closuresFor(key, closures)),
+  });
   for (const row of result.decisionTable) {
-    row.openSpans = row.closed ? openSpans(ctx, closures, row.best.from, row.best.to, dateOfDay) : [];
+    row.openSpans = row.closed ? openSpans(ctx, closuresFor(row.key, closures), row.best.from, row.best.to, dateOfDay) : [];
   }
   result.planetImpact = planetImpact(ctx, result);
   return result;
@@ -965,6 +970,8 @@ export interface DecisionRow {
   openSpans: Array<{ from: string; to: string }>;
   /** C5: no month had enough open days, so the best window ignores the closures (never in 2027). */
   noOpenWindow: boolean;
+  /** A soft custom line for this row (move-in: Kharmas and Chaturmas; engagement: the wedding rules). */
+  note: 'move_custom' | 'sagai_custom' | null;
 }
 
 function personaAllows(
@@ -999,7 +1006,7 @@ function personaAllows(
 export function decisionTable(
   scores: VarshikScores,
   answers: VarshikAnswers = {},
-  muhurta?: { closures: Closure[]; openDays: number[] },
+  muhurta?: { closures: Closure[]; openDaysFor: (key: string) => number[] },
 ): DecisionRow[] {
   const mainKeys = new Set(W.mainDecisionKeys[answers.mainDecision ?? ''] ?? []);
   const focusKeys = new Set<string>();
@@ -1019,7 +1026,8 @@ export function decisionTable(
     // C5: a marriage, commitment or home-move row may only use months with at least MIN_OPEN_DAYS days
     // outside Shukra/Guru Asta, Kharmas and Chaturmas; a 2-month run needs both months open.
     const closed = CLOSED_DECISION_KEYS.includes(d.key) && !!muhurta;
-    const eligible = (m: number) => !closed || muhurta!.openDays[m]! >= MIN_OPEN_DAYS;
+    const openDays = closed ? muhurta.openDaysFor(d.key) : null;
+    const eligible = (m: number) => !openDays || openDays[m]! >= MIN_OPEN_DAYS;
     const pickBest = (useClosures: boolean) => {
       let b = { from: 0, to: 0, score: -1, tier: 'rust' as Tier };
       for (let m = 0; m < 12; m++) {
@@ -1054,6 +1062,7 @@ export function decisionTable(
       closed,
       openSpans: [],
       noOpenWindow,
+      note: ROW_NOTES[d.key] ?? null,
     });
   }
   return rows.sort((a, b) => b.relevance - a.relevance);
