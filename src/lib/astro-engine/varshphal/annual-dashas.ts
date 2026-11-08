@@ -18,13 +18,19 @@
 // MUDDA YOGINI (Mehta, ch. VI): the eight Yoginis share the year in the ratio of their days in
 // the 360-day Yogini round: Mangala (Moon) 10, Pingala (Sun) 20, Dhanya (Jupiter) 30, Bhramari
 // (Mars) 40, Bhadrika (Mercury) 50, Ulka (Saturn) 60, Siddha (Venus) 70, Sankata (Rahu) 80.
-// START LORD: (birth nakshatra + (completed years mod 43) - 1) mod 8 into that list. Found by testing
-// variants against Jagannatha Hora's first Yogini lord on the 20 gold chart-years (ages 26 to 57): this
-// is the only one that matches all 20 (the next best, with a wrap at 51, matches 16). Mehta's own rule
-// ("add 3, divide by 8") is three places away from JHora. The wrap at 43 is EMPIRICAL: JHora's reason
-// is not known and no chart older than 57 is recorded, so ages above 57 are unverified. As with
-// Mudda, the year starts on a whole period at the solar return; JHora and the book start it part-way
-// through a period (a balance).
+// START LORD: the Yogini lord of the PROGRESSED Moon star. The Moon moves on one nakshatra for each
+// completed year of age and, after Revati, comes back to Ashwini; the lord is the usual Yogini one of
+// that star, (star number + 3) mod 8 (Mehta: "add 3, divide by 8"), 1 = Mangala. So
+//   progressed star = ((birth nakshatra + completed years - 1) mod 27) + 1
+// Mehta's text adds the years without the wrap at 27, which is why a plain sum goes wrong once
+// nakshatra + years passes 27; 27 is not a multiple of 8, so every wrap moves the lord back by 3 places.
+// (The Mudda Vimshottari start lord is the same idea; 27 is a multiple of 9, so there the wrap does
+// not show and mudda-dasha.ts needs none.) CHECK: equals Jagannatha Hora's first Yogini lord on all 24
+// chart-years recorded, ages 21 to 65 (10 gold charts in 2026 and 2027, and two more charts C1 aged 21
+// and 22, C2 aged 64 and 65; test/fixtures/jhora/c1c2.json). Found 2026-11-09: it replaced an earlier
+// fit "(years mod 43)" that matched the same data but had no reason behind it.
+// As with Mudda, the year starts on a whole period at the solar return; JHora and the book start it
+// part-way through a period (a balance).
 // =============================================================================
 
 export type YoginiLord = 'Moon' | 'Sun' | 'Jupiter' | 'Mars' | 'Mercury' | 'Saturn' | 'Venus' | 'Rahu';
@@ -83,12 +89,10 @@ function build<L extends string>(
   });
 }
 
-/** See the header: the age wraps at 43 as Jagannatha Hora's does (empirical, ages 26 to 57). */
-export const YOGINI_AGE_WRAP = 43;
-
 /** Index into YOGINI_ORDER of the first lord of a Varsha year. */
 export function yoginiStartIndex(nakshatraNumber: number, completedYears: number): number {
-  return (((nakshatraNumber + (completedYears % YOGINI_AGE_WRAP) - 1) % 8) + 8) % 8;
+  const progressedStar = ((((nakshatraNumber + completedYears - 1) % 27) + 27) % 27) + 1;
+  return (progressedStar + 2) % 8;
 }
 
 export function computeMuddaYogini(args: {

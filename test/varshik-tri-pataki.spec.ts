@@ -40,4 +40,17 @@ describe('Tri-Pataki placements (Mehta, Nehru 1947)', () => {
     expect(r.lines.join(' ').toLowerCase()).not.toMatch(/death|die|destruction/);
     expect(Ari + Tau + Pis).toBeGreaterThan(0);
   });
+  it("JHora's own Tripataki screen (b01 2026 and 2027, owner screenshots 2026-11-09), read into houses from the Lagna, draws exactly these joins", () => {
+    // The screen puts the Lagna on the middle top flag; house 2 is the top-left flag, 12 the top-right,
+    // 3 4 5 down the left, 6 7 8 along the bottom, 9 10 11 up the right. Lines read off the figure
+    // (verticals, horizontals, and the diagonals that end on the points):
+    const edges: [number, number][] = [
+      [2, 6], [1, 7], [12, 8], // verticals
+      [3, 11], [4, 10], [5, 9], // horizontals
+      [2, 3], [2, 9], [1, 4], [1, 10], [12, 5], [12, 11], [6, 5], [6, 11], [7, 4], [7, 10], [8, 3], [8, 9], // diagonals
+    ];
+    const adj: Set<number>[] = Array.from({ length: 12 }, () => new Set<number>());
+    for (const [a, b] of edges) { adj[a - 1]!.add(b - 1); adj[b - 1]!.add(a - 1); }
+    for (let i = 0; i < 12; i++) expect([...adj[i]!].sort((a, b) => a - b), `house ${i + 1}`).toEqual([...TRIPATAKI_JOINS[i]!].sort((a, b) => a - b));
+  });
 });

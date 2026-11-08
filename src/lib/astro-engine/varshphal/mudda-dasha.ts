@@ -9,7 +9,9 @@
 //   (birth-nakshatra number + completed years - 1) mod 9
 // of the Vimshottari order Ketu, Venus, Sun, ...; the nakshatra number runs 1 to 27 and the
 // completed years are the age the birthday makes. Each later year moves on one lord. It does
-// NOT come from the Varsha Moon.
+// NOT come from the Varsha Moon. The idea behind it (see annual-dashas.ts): the lord of the natal
+// Moon star moved on one star per completed year. The 27-star wrap does not show here, because 27 is a
+// multiple of 9. Also checked on two more charts at ages 21-22 and 64-65 (test/fixtures/jhora/c1c2.json).
 // EVIDENCE: M.S. Mehta, Annual Horoscope (Varshaphala), ch. VI: (nakshatra - 2 + completed
 // years) mod 9 gives a number in the list Sun 1, Moon 2, Mars 3, Rahu 4, Jupiter 5, Saturn 6,
 // Mercury 7, Ketu 8, Venus 9 or 0; that is index (nakshatra + years - 1) in the Ketu-first

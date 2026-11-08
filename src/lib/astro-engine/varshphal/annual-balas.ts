@@ -13,11 +13,10 @@
 // DWADASHAVARGIYA BALA: the planet's sign in each of the twelve vargas D-1 to D-12 is looked at; it
 // gains one for every varga in which that sign is its own, its exaltation sign or a friend's sign.
 // The score is 0 to 12. (Mehta's Indira Gandhi exercise sorts the twelve into benefic, neutral and
-// malefic and counts them.) The friendship used is the natural one in rules/dignity.ts.
+// malefic and counts them.) The friendship used is JHora's own table, JHORA_DWADASHA_FRIENDS below.
 //
 // Result of that check (10 gold charts x 2 years x 7 planets = 140 values): Harsha 140 of 140;
-// Dwadashavargiya 100 of 100 for Sun, Mars, Jupiter, Venus, Saturn, and 5 of 40 for Moon and
-// Mercury (see DWADASHAVARGIYA_JHORA_VERIFIED). D-2, D-5, D-6, D-8 and D-11 are drawn as JHora
+// Dwadashavargiya 138 of 140 (see JHORA_DWADASHA_FRIENDS). D-2, D-5, D-6, D-8 and D-11 are drawn as JHora
 // draws them (the engine's own versions of those five are different schemes).
 //
 // Each rule is checked against Jagannatha Hora on 10 gold charts, 2026 and 2027, in
@@ -28,8 +27,7 @@ import type { ChartData, Planet } from '@aroha-astrology/shared';
 import {
   calculateD1, calculateD3, calculateD4, calculateD7, calculateD9, calculateD10, calculateD12,
 } from '../charts/divisionalCharts.js';
-import { signDignity } from '../rules/dignity.js';
-import { PLANET_EXALTATION, PLANET_OWN_SIGNS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
+import { PLANET_DEBILITATION, PLANET_EXALTATION, PLANET_OWN_SIGNS, SIGN_LORDS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
 
 export type BalaPlanet = 'Sun' | 'Moon' | 'Mars' | 'Mercury' | 'Jupiter' | 'Venus' | 'Saturn';
 export const BALA_PLANETS: BalaPlanet[] = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
@@ -100,18 +98,26 @@ const VARGA = [
 ];
 
 /**
- * The planets whose Dwadashavargiya score equals Jagannatha Hora's on all 20 gold chart-years.
- * The Moon (2 of 20) and Mercury (3 of 20) do not: JHora counts different signs as friendly for
- * them than the natural friendship table does (best fit for Mercury: Venus and Saturn only, 19 of
- * 20; for the Moon no simple set fits). The cause is not found, so those two scores are marked
- * `jhoraVerified: false` and must not feed a number the reader sees until it is.
+ * The sign lords that count as friends of each planet in Jagannatha Hora's Dwadasa-vargeeya count (its
+ * "Permanent" relationship setting; "Compound" is the other choice and "relevant varga chart" the
+ * basis). Found from the 20 gold chart-years and the per-varga table of b01 2026
+ * (screenshots 2026-11-09): the Sun, Mars, Jupiter, Venus and Saturn follow the usual table and the
+ * Moon and Mercury do not. Moon: Sun, Mars, Jupiter (not Mercury); Mercury: Venus, Saturn (not the Sun).
+ * A planet also counts its own signs and its sign of exaltation, and never its sign of fall. Result: 138 of 140 values equal JHora;
+ * the two that do not are in KNOWN_DWADASHAVARGIYA_MISSES (test/varshik-annual-balas.spec.ts).
+ * This is a fitted table, not a classical text: the reason JHora reads the Moon and Mercury so is not known.
  */
-export const DWADASHAVARGIYA_JHORA_VERIFIED: ReadonlySet<BalaPlanet> = new Set<BalaPlanet>([
-  'Sun', 'Mars', 'Jupiter', 'Venus', 'Saturn',
-]);
+export const JHORA_DWADASHA_FRIENDS: Record<BalaPlanet, BalaPlanet[]> = {
+  Sun: ['Moon', 'Mars', 'Jupiter'],
+  Moon: ['Sun', 'Mars', 'Jupiter'],
+  Mars: ['Sun', 'Moon', 'Jupiter'],
+  Mercury: ['Venus', 'Saturn'],
+  Jupiter: ['Sun', 'Moon', 'Mars'],
+  Venus: ['Mercury', 'Saturn'],
+  Saturn: ['Mercury', 'Venus'],
+};
 
 export interface DwadashavargiyaBala {
-  jhoraVerified: boolean;
   /** 0 to 12: the vargas in which the planet is in its own, exaltation or a friend's sign. */
   score: number;
   /** The sign index of the planet in D-1 to D-12. */
@@ -125,10 +131,12 @@ export function dwadashavargiyaBala(chart: ChartData): Record<BalaPlanet, Dwadas
     const lon = p ? ((p.longitude % 360) + 360) % 360 : 0;
     const signs = VARGA.map((fn) => fn(lon));
     const score = signs.filter((s) => {
-      const d = signDignity(planet as Planet, s);
-      return d === 'exalted' || d === 'own' || d === 'friend';
+      const sign = ZODIAC_SIGNS[s]!;
+      if (PLANET_DEBILITATION[planet as Planet]?.sign === sign) return false; // the sign of fall never counts
+      if (PLANET_OWN_SIGNS[planet as Planet]?.includes(sign) || PLANET_EXALTATION[planet as Planet]?.sign === sign) return true;
+      return JHORA_DWADASHA_FRIENDS[planet].includes(SIGN_LORDS[sign] as BalaPlanet);
     }).length;
-    out[planet] = { score, signs, jhoraVerified: DWADASHAVARGIYA_JHORA_VERIFIED.has(planet) };
+    out[planet] = { score, signs };
   }
   return out;
 }

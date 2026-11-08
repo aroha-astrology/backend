@@ -147,7 +147,7 @@ describe('Mudda Vimshottari first lord against Jagannatha Hora (the corrected st
 
 describe('Mudda Yogini', () => {
   const YN: Record<string, string> = { Moon: 'Moon', Sun: 'Sun', Jup: 'Jupiter', Mars: 'Mars', Merc: 'Mercury', Sat: 'Saturn', Ven: 'Venus', Rah: 'Rahu', Ket: 'Rahu' };
-  it('first lord equals Jagannatha Hora on all 20 chart-years (ages 26 to 57)', () => {
+  it('first lord equals Jagannatha Hora on all 20 gold chart-years (ages 26 to 57)', () => {
     const misses: string[] = [];
     for (const r of rows) {
       const lord = YOGINI_ORDER[yoginiStartIndex(r.moonNak, r.age)]!.lord;
@@ -156,15 +156,34 @@ describe('Mudda Yogini', () => {
     expect(misses).toEqual([]);
   });
 
-  it('the age wraps at 43: age 43 starts where age 0 would; Mehta book rule is not used', () => {
-    expect(yoginiStartIndex(8, 43)).toBe(yoginiStartIndex(8, 0));
-    expect(yoginiStartIndex(8, 42)).toBe(yoginiStartIndex(8, 85));
-    expect(yoginiStartIndex(8, 42)).not.toBe(yoginiStartIndex(8, 43));
+  it('the reason: the Moon progresses one star a year and wraps after 27 stars (Revati to Ashwini), which moves the lord back 3 places', () => {
+    // Star 27 + 1 year: star 1. 27 mod 8 = 3, so the lord is 3 places before the one a plain sum would give.
+    expect(yoginiStartIndex(27, 1)).toBe((1 + 2) % 8); // star 27 and one year on is star 1, lord index 3
+    expect(yoginiStartIndex(26, 2)).toBe((1 + 2) % 8); // star 26 + 2 years: star 1 again
+    expect(yoginiStartIndex(8, 43)).toBe(yoginiStartIndex(8, 43 - 27)); // the same star 27 years on
+    // Mehta's "add 3, divide by 8" without the wrap would give a different lord here:
+    expect((26 + 2 + 2) % 8).not.toBe(yoginiStartIndex(26, 2));
+  });
+
+  it('two more charts, aged 21-22 and 64-65: Yogini and Mudda first lords equal JHora (C1, C2)', () => {
+    const fx = JSON.parse(fs.readFileSync(new URL('c1c2.json', dir), 'utf8'));
+    const MUD: Record<string, string> = {};
+    for (const c of fx.charts) {
+      for (const yr of ['2026', '2027']) {
+        const y = c.years[yr];
+        const yog = YOGINI_ORDER[yoginiStartIndex(c.natalMoon.nakshatraNumber, y.age)]!.lord;
+        expect(yog, `${c.id} ${yr} Yogini`).toBe(y.yoginiFirst);
+        const mud = MUDDA_ORDER[muddaStartIndex(c.natalMoon.nakshatraNumber, y.age)]!.planet;
+        expect(mud, `${c.id} ${yr} Mudda`).toBe(y.muddaFirst);
+        MUD[`${c.id}${yr}`] = mud;
+      }
+    }
+    expect(Object.keys(MUD)).toHaveLength(4);
   });
 
   it('the eight lords run in the Yogini order for the year, 10:20:...:80, and fill it exactly', () => {
-    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 43, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
-    // (9 + (43 mod 43) - 1) = 8, mod 8 = 0: Mangala (Moon)
+    const p = computeMuddaYogini({ nakshatraNumber: 5, completedYears: 1, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
+    // progressed star 6, (6 + 3) mod 8 = 1: Mangala (Moon)
     expect(p.map((x) => x.lord)).toEqual(['Moon', 'Sun', 'Jupiter', 'Mars', 'Mercury', 'Saturn', 'Venus', 'Rahu']);
     expect(p.map((x) => (x.endMs - x.startMs) / DAY)).toEqual([10, 20, 30, 40, 50, 60, 70, 80]);
     expect(p[7]!.endMs).toBe(360 * DAY);
@@ -181,7 +200,7 @@ describe('Mudda Yogini', () => {
   });
 
   it('Mehta Bhadrika example: each antardasha is the lord first, then the next in order', () => {
-    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 43, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
+    const p = computeMuddaYogini({ nakshatraNumber: 5, completedYears: 1, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
     const sankata = p[7]!;
     expect(sankata.antardashas.map((x) => x.lord)).toEqual(['Rahu', 'Moon', 'Sun', 'Jupiter', 'Mars', 'Mercury', 'Saturn', 'Venus']);
     // 80 days x 80 / 360 days
@@ -194,7 +213,7 @@ describe('Mudda Yogini', () => {
   });
 
   it('dashaAt finds the running period and sub-period', () => {
-    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 43, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
+    const p = computeMuddaYogini({ nakshatraNumber: 5, completedYears: 1, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
     expect(dashaAt(p, 0)?.main.lord).toBe('Moon');
     expect(dashaAt(p, 10 * DAY)?.main.lord).toBe('Sun');
     expect(dashaAt(p, 360 * DAY)).toBeNull();

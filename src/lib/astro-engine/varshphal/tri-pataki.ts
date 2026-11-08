@@ -23,8 +23,10 @@
 // Nehru chart (p. 169): counted in HOUSES FROM THE VARSHA LAGNA (the first flag), the Moon (house 9)
 // is pierced by Rahu (house 2) and by Ketu and Saturn (house 8), and the Lagna (house 1) by Mercury and
 // Venus (house 10); Jupiter (house 12) and the Sun and Mars (house 11) pierce neither, as the book says.
-// Not yet confirmed on JHora's own Tripataki screen (its figure draws the annual planets, a different
-// placement); ask the owner for one screenshot if that is wanted.
+// CONFIRMED on Jagannatha Hora's own Tripataki screen (2026-11-09, b01 in 2026 and 2027): its figure
+// is drawn in houses from the Lagna (Lagna on the middle top flag) and its lines are exactly these
+// joins, all twelve houses (test/varshik-tri-pataki.spec.ts). JHora's figure carries the planets of the
+// annual chart; Mehta's method (above) carries the natal planets moved on by the year.
 //
 // THE VERDICT: Mehta gives no rule that combines the piercings into one score, only that a benefic
 // piercing is good and a malefic one is not, and what each planet piercing the Moon stands for. So
