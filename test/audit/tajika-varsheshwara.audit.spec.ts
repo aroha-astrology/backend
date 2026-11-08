@@ -165,7 +165,7 @@ describe('[TJ5] Tajika aspects (verses 77-78)', () => {
   });
 });
 
-describe('[T2] choosing the lord of the year (verses 64-67)', () => {
+describe('[T2] choosing the lord of the year (Mehta ch. VII, adopted 2026-11-08)', () => {
   const c = (
     role: Contender['role'],
     planet: Planet,
@@ -177,6 +177,8 @@ describe('[T2] choosing the lord of the year (verses 64-67)', () => {
     strength,
     aspectKala: aspect,
   });
+  // A day return, Aries Lagna, the Moon in Taurus: the Moon exceptions do not apply.
+  const ctx = { ascSign: 0, moonSign: 1, isDay: true, moonIthasalaPartner: null, moonSignLord: 'Venus' as Planet };
 
   it('the strongest of those that look at the lagna', () => {
     const r = chooseVarsheshwara([
@@ -184,65 +186,112 @@ describe('[T2] choosing the lord of the year (verses 64-67)', () => {
       c('Varsha Lagnesha', 'Venus', 12, 45),
       c('Munthesh', 'Saturn', 7, 0),
       c('Dina-Ratri Pati', 'Sun', 15, 0),
-      c('Tri-Rashi Pati', 'Moon', 8, 10),
-    ]);
+      c('Tri-Rashi Pati', 'Mercury', 8, 10),
+    ], ctx);
     expect(r.planet).toBe('Venus'); // 15 for the Sun is stronger but does not look at the lagna
   });
 
-  it('equal strength: the one that looks harder at the lagna', () => {
+  it('equal strength: the planet holding more of the five roles wins (Mehta: the greater number of portfolios)', () => {
     const r = chooseVarsheshwara([
       c('Janma Lagnesha', 'Mars', 11, 45),
       c('Varsha Lagnesha', 'Venus', 11, 60),
       c('Munthesh', 'Saturn', 3, 0),
-      c('Dina-Ratri Pati', 'Sun', 4, 0),
-      c('Tri-Rashi Pati', 'Moon', 4, 0),
-    ]);
+      c('Dina-Ratri Pati', 'Venus', 11, 60),
+      c('Tri-Rashi Pati', 'Mercury', 4, 0),
+    ], ctx);
     expect(r.planet).toBe('Venus');
+    expect(r.wonByMunthaTiebreak).toBe(false);
   });
 
-  it('equal in strength and in aspect: the Muntha lord', () => {
+  it('a planet that holds two roles and is the strongest wins over the Muntha lord (was returned as the Muntha lord)', () => {
+    const r = chooseVarsheshwara([
+      c('Janma Lagnesha', 'Mars', 6, 45),
+      c('Varsha Lagnesha', 'Jupiter', 13, 60),
+      c('Munthesh', 'Saturn', 7, 15),
+      c('Dina-Ratri Pati', 'Jupiter', 13, 60),
+      c('Tri-Rashi Pati', 'Mercury', 4, 0),
+    ], ctx);
+    expect(r.planet).toBe('Jupiter');
+  });
+
+  it('equal in strength, roles and aspect: the Muntha lord', () => {
     const r = chooseVarsheshwara([
       c('Janma Lagnesha', 'Mars', 11, 60),
       c('Varsha Lagnesha', 'Venus', 11, 60),
       c('Munthesh', 'Saturn', 3, 0),
       c('Dina-Ratri Pati', 'Sun', 4, 0),
-      c('Tri-Rashi Pati', 'Moon', 4, 0),
-    ]);
+      c('Tri-Rashi Pati', 'Mercury', 4, 0),
+    ], ctx);
     expect(r.planet).toBe('Saturn');
     expect(r.wonByMunthaTiebreak).toBe(true);
   });
 
-  it('all five weak (under 5): the Muntha lord', () => {
-    const r = chooseVarsheshwara([
-      c('Janma Lagnesha', 'Mars', 4, 60),
-      c('Varsha Lagnesha', 'Venus', 3, 45),
-      c('Munthesh', 'Saturn', 2, 0),
-      c('Dina-Ratri Pati', 'Sun', 4.9, 15),
-      c('Tri-Rashi Pati', 'Moon', 1, 0),
-    ]);
-    expect(r.planet).toBe('Saturn');
-  });
-
-  it('none looks at the lagna: the strongest', () => {
+  it('none looks at the lagna: the Muntha lord, however strong the others are', () => {
     const r = chooseVarsheshwara([
       c('Janma Lagnesha', 'Mars', 6, 0),
       c('Varsha Lagnesha', 'Venus', 9, 0),
       c('Munthesh', 'Saturn', 7, 0),
       c('Dina-Ratri Pati', 'Sun', 5, 0),
-      c('Tri-Rashi Pati', 'Moon', 8, 0),
-    ]);
+      c('Tri-Rashi Pati', 'Mercury', 8, 0),
+    ], ctx);
+    expect(r.planet).toBe('Saturn');
+    expect(r.wonByMunthaTiebreak).toBe(true);
+  });
+
+  it('weak planets that do look still beat the Muntha lord (Mehta takes the Muntha lord only when none looks)', () => {
+    const r = chooseVarsheshwara([
+      c('Janma Lagnesha', 'Mars', 4, 60),
+      c('Varsha Lagnesha', 'Venus', 3, 45),
+      c('Munthesh', 'Saturn', 2, 0),
+      c('Dina-Ratri Pati', 'Sun', 4.9, 15),
+      c('Tri-Rashi Pati', 'Mercury', 1, 0),
+    ], ctx);
+    expect(r.planet).toBe('Sun');
+  });
+
+  it('the Moon is passed over even when it is the strongest and looks at the lagna', () => {
+    const r = chooseVarsheshwara([
+      c('Janma Lagnesha', 'Moon', 14, 60),
+      c('Varsha Lagnesha', 'Venus', 9, 45),
+      c('Munthesh', 'Saturn', 7, 0),
+      c('Dina-Ratri Pati', 'Sun', 5, 0),
+      c('Tri-Rashi Pati', 'Mercury', 8, 0),
+    ], ctx);
     expect(r.planet).toBe('Venus');
   });
 
-  it('none looks at the lagna and the strongest are equal: the lord of the Sun sign by day, the Moon sign by night', () => {
+  it('...except Cancer rising with the Moon in the Lagna and the strongest of the five', () => {
     const r = chooseVarsheshwara([
-      c('Janma Lagnesha', 'Mars', 9, 0),
+      c('Janma Lagnesha', 'Moon', 14, 60),
+      c('Varsha Lagnesha', 'Moon', 14, 60),
+      c('Munthesh', 'Saturn', 7, 0),
+      c('Dina-Ratri Pati', 'Sun', 5, 0),
+      c('Tri-Rashi Pati', 'Mars', 8, 45),
+    ], { ...ctx, ascSign: 3, moonSign: 3 });
+    expect(r.planet).toBe('Moon');
+  });
+
+  it('...or a night return where the Moon is the Tri-Rashi lord, strongest, and looks at the lagna', () => {
+    const r = chooseVarsheshwara([
+      c('Janma Lagnesha', 'Mars', 9, 45),
+      c('Varsha Lagnesha', 'Venus', 9, 45),
+      c('Munthesh', 'Saturn', 7, 0),
+      c('Dina-Ratri Pati', 'Sun', 5, 0),
+      c('Tri-Rashi Pati', 'Moon', 12, 45),
+    ], { ...ctx, isDay: false });
+    expect(r.planet).toBe('Moon');
+  });
+
+  it('only the Moon looks at the lagna: the planet in Ithasala with the Moon, else the lord of the Moon sign', () => {
+    const only = [
+      c('Janma Lagnesha', 'Moon', 10, 60),
       c('Varsha Lagnesha', 'Venus', 9, 0),
       c('Munthesh', 'Saturn', 7, 0),
-      c('Dina-Ratri Pati', 'Sun', 9, 0),
-      c('Tri-Rashi Pati', 'Moon', 2, 0),
-    ]);
-    expect(r.planet).toBe('Sun');
+      c('Dina-Ratri Pati', 'Sun', 5, 0),
+      c('Tri-Rashi Pati', 'Mercury', 8, 0),
+    ];
+    expect(chooseVarsheshwara(only, { ...ctx, moonIthasalaPartner: 'Jupiter' as Planet }).planet).toBe('Jupiter');
+    expect(chooseVarsheshwara(only, ctx).planet).toBe('Venus');
   });
 });
 

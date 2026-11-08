@@ -8,10 +8,12 @@
 // (Tajika aspects); the rules are in tajika.ts. This module used to rank them by Shadbala
 // and to read aspects the Parashari way, neither of which the text does.
 //
-// DELIBERATE DIVERGENCE (2026-11-06): PyJHora 4.8.7, a JHora port, shortlists the candidates by
-// a benefic aspect on the Lagna, then a malefic one, then Panchavargi above a threshold. That
-// code cites no source; the rule below follows the book edition recorded above and is kept.
-// Not checked against real JHora output.
+// DELIBERATE DIVERGENCE (2026-11-06, confirmed 2026-11-08): PyJHora 4.8.7, a JHora port, shortlists
+// the candidates by a benefic aspect on the Lagna, then a malefic one, then Panchavargi above a
+// threshold. Its Year Lord has four defects (Muntha counted from the Varsha Lagna, a list position
+// returned for a planet, a chart cast at an approximate return, a different Panchavargiya), see
+// test/fixtures/jhora/README.md. The rule in tajika.ts is M.S. Mehta's (chapter VII), adopted by the
+// owner on 2026-11-08. JHora does not print the Year Lord.
 //
 // The Tri-Rashi table below is verse 60 and was checked against it (2026-10-11): by day
 // Aries to Cancer have the Sun, Venus, Saturn, Venus; by night Jupiter, the Moon, Mercury,
@@ -23,6 +25,7 @@ import { SIGN_LORDS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
 import type { ChartData, Planet } from '@aroha-astrology/shared';
 import type { DayContext } from '../rules/day.js';
 import { chooseVarsheshwara, panchavargiBala, tajikaAspectKala, type Contender } from './tajika.js';
+import { computeTajikaYogas } from './tajika-yogas.js';
 
 function signLordByIndex(signIndex: number): string {
   const signName = ZODIAC_SIGNS[signIndex];
@@ -131,7 +134,15 @@ export function selectVarsheshwara(
     strength: c.strength,
     aspectKala: c.aspectKala ?? 0,
   }));
-  const chosen = chooseVarsheshwara(contenders);
+  const moonSign = varshaChart.planets.find((p) => p.planet === 'Moon')?.signIndex ?? 0;
+  const moonYoga = computeTajikaYogas(varshaChart).find((y) => y.kind === 'ithasala' && y.planets.includes('Moon'));
+  const chosen = chooseVarsheshwara(contenders, {
+    ascSign: varshaAscSignIndex,
+    moonSign,
+    isDay: isDayReturn,
+    moonIthasalaPartner: (moonYoga?.planets.find((p) => p !== 'Moon') as Planet | undefined) ?? null,
+    moonSignLord: signLordByIndex(moonSign) as Planet,
+  });
 
   return {
     varsheshwara: chosen.planet,

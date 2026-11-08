@@ -44,8 +44,8 @@ describe('Mehta ch. V: Panchavargiya bala of the Nehru annual chart 1946-47 (Vis
     expect(b.hadda).toBeCloseTo(h, 6);
     expect(b.drekkana).toBeCloseTo(d, 6);
   });
-  it('the book scores the Moon navamsa (Taurus, its sign of exaltation) 5; the engine, by lord only, gives 1.25. Pending the owner\'s decision.', () => {
-    expect(panchavargiBala('Moon' as never, nehru).navamsa).toBe(1.25);
+  it("the Moon's navamsa falls in Taurus, its sign of exaltation: 5, as the book scores it (adopted 2026-11-08)", () => {
+    expect(panchavargiBala('Moon' as never, nehru).navamsa).toBe(5);
   });
   it('Year Lord of 1947 is Mars: strongest of the five that look at the Lagna (Moon, Mars, Saturn, Mars, Jupiter)', () => {
     const r = selectVarsheshwara(Can, Ari, nehru, true);
@@ -53,9 +53,11 @@ describe('Mehta ch. V: Panchavargiya bala of the Nehru annual chart 1946-47 (Vis
     expect(r.varsheshwara).toBe('Mars');
   });
   // Mehta: "When the office bearers have equal strength and all of them aspect lagna, one holding the
-  // greater number of portfolios qualifies". The engine, when one planet holds two roles and is the
-  // strongest, returns the Muntha lord instead (76 of 300 synthetic charts). Rule change awaits the owner.
-  it.todo('a planet that holds two of the five roles and is the strongest wins over the Muntha lord');
+  // greater number of portfolios qualifies" (adopted 2026-11-08; tests in test/audit/tajika-varsheshwara.audit.spec.ts).
+  it('a planet that holds two of the five roles and is the strongest wins over the Muntha lord', () => {
+    // Mars is both Muntha lord and Dina lord in Nehru's chart, so this passes either way; the audit spec has the case where it is not.
+    expect(selectVarsheshwara(Can, Ari, nehru, true).varsheshwara).toBe('Mars');
+  });
 });
 
 type Case = {

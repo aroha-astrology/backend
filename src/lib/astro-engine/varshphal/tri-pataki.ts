@@ -16,13 +16,20 @@
 // planets of the annual chart on the figure (its placements equal the Varsha chart's signs; see
 // test/fixtures/jhora/README.md).
 //
-// THE VEDHA (which signs pierce which) and the VERDICT: NOT BUILT. Mehta says each point of the
-// figure "is influenced by lines from three different points" and reads, in the Nehru example, Rahu,
-// Ketu and Saturn piercing the Moon and Mercury and Venus piercing the Lagna, but his drawing of
-// which points those are cannot be read from the book and no second source was found (2026-11-08).
-// Nothing here guesses. `readTriPataki` returns `computed: false` until `TRIPATAKI_VEDHA` is filled
-// in from a checked source and tested on the Nehru example. The meaning of each planet's vedha on the
-// Moon, in Mehta's words, is kept in VEDHA_ON_MOON_THEME in softened form.
+// THE VEDHA (which points of the figure pierce which). Source: PyJHora 4.8.7, jhora/ui/chakra.py,
+// class Tripataki: `rasi_labels` gives the drawing point of each of the twelve places, `lines` the
+// straight lines between points. Decoded (test/varshik-tri-pataki.spec.ts re-derives it from those
+// two tables), each place is joined to exactly three others. Checked on Mehta's own reading of the
+// Nehru chart (p. 169): counted in HOUSES FROM THE VARSHA LAGNA (the first flag), the Moon (house 9)
+// is pierced by Rahu (house 2) and by Ketu and Saturn (house 8), and the Lagna (house 1) by Mercury and
+// Venus (house 10); Jupiter (house 12) and the Sun and Mars (house 11) pierce neither, as the book says.
+// Not yet confirmed on JHora's own Tripataki screen (its figure draws the annual planets, a different
+// placement); ask the owner for one screenshot if that is wanted.
+//
+// THE VERDICT: Mehta gives no rule that combines the piercings into one score, only that a benefic
+// piercing is good and a malefic one is not, and what each planet piercing the Moon stands for. So
+// the reading lists the piercings of the Lagna and of the Moon, each marked benefic or malefic, in
+// plain words. No combined score is made up.
 // =============================================================================
 
 export type PatakiBody = 'Sun' | 'Moon' | 'Mars' | 'Mercury' | 'Jupiter' | 'Venus' | 'Saturn' | 'Rahu' | 'Ketu';
@@ -46,8 +53,16 @@ export function triPatakiPlacements(natal: NatalSigns, completedYears: number): 
   return out;
 }
 
-/** Not filled in: see the header. When it is, it maps a sign to the signs whose planets pierce it. */
-export const TRIPATAKI_VEDHA: Readonly<Record<number, readonly number[]>> | null = null;
+/**
+ * House (0 = the Lagna, counted from the Varsha Lagna) -> the three houses joined to it.
+ * Derived from PyJHora's Tripataki lines, see the header.
+ */
+export const TRIPATAKI_JOINS: Readonly<Record<number, readonly number[]>> = {
+  0: [3, 6, 9], 1: [2, 5, 8], 2: [1, 7, 10], 3: [0, 6, 9], 4: [5, 8, 11], 5: [1, 4, 10],
+  6: [0, 3, 9], 7: [2, 8, 11], 8: [1, 4, 7], 9: [0, 3, 6], 10: [2, 5, 11], 11: [4, 7, 10],
+};
+
+const BENEFIC: PatakiBody[] = ['Jupiter', 'Venus', 'Mercury'];
 
 /** What a planet piercing the Moon stands for, softened from Mehta (no death, no disease words). */
 export const VEDHA_ON_MOON_THEME: Record<Exclude<PatakiBody, 'Moon'>, string> = {
@@ -61,26 +76,40 @@ export const VEDHA_ON_MOON_THEME: Record<Exclude<PatakiBody, 'Moon'>, string> = 
   Ketu: 'detachment and an unsettled, searching mood',
 };
 
+export interface Piercing {
+  body: PatakiBody;
+  nature: 'benefic' | 'malefic';
+}
+
 export interface TriPatakiReading {
-  computed: boolean;
   placements: Record<PatakiBody, number>;
-  /** Present only when computed. */
-  onMoon?: PatakiBody[];
-  onLagna?: PatakiBody[];
-  reason?: string;
+  /** Bodies whose place in the figure is joined to the Moon's, and to the Lagna's. */
+  onMoon: Piercing[];
+  onLagna: Piercing[];
+  /** Plain sentences, one per flag. There is no combined score (Mehta gives no rule for one). */
+  lines: string[];
 }
 
 export function readTriPataki(natal: NatalSigns, completedYears: number, varshaLagnaSign: number): TriPatakiReading {
   const placements = triPatakiPlacements(natal, completedYears);
-  if (!TRIPATAKI_VEDHA) {
-    return { computed: false, placements, reason: 'the vedha table is not sourced yet' };
-  }
-  const piercing = (sign: number) =>
-    (Object.keys(placements) as PatakiBody[]).filter((b) => (TRIPATAKI_VEDHA![sign] ?? []).includes(placements[b]));
-  return {
-    computed: true,
-    placements,
-    onMoon: piercing(placements.Moon).filter((b) => b !== 'Moon'),
-    onLagna: piercing(varshaLagnaSign),
+  const houseOf = (b: PatakiBody) => mod(placements[b] - varshaLagnaSign, 12);
+  const piercing = (house: number, self?: PatakiBody): Piercing[] =>
+    (Object.keys(placements) as PatakiBody[])
+      .filter((b) => b !== self && TRIPATAKI_JOINS[house]!.includes(houseOf(b)))
+      .map((body) => ({ body, nature: BENEFIC.includes(body) ? 'benefic' : 'malefic' }));
+  const onMoon = piercing(houseOf('Moon'), 'Moon');
+  const onLagna = piercing(0);
+
+  const names = (l: Piercing[], nature: Piercing['nature']) => l.filter((p) => p.nature === nature).map((p) => p.body);
+  const say = (what: string, l: Piercing[]) => {
+    if (l.length === 0) return `Nothing pierces your ${what} in this chart.`;
+    const g = names(l, 'benefic'), m = names(l, 'malefic');
+    const parts = [];
+    if (g.length) parts.push(`${g.join(' and ')} (supportive)`);
+    if (m.length) parts.push(`${m.join(' and ')} (testing)`);
+    return `Your ${what} is pierced by ${parts.join(', and by ')}.`;
   };
+  const lines = [say('Lagna, the first flag', onLagna), say('Moon', onMoon)];
+  for (const p of onMoon) lines.push(`On the Moon, ${p.body} stands for ${VEDHA_ON_MOON_THEME[p.body as Exclude<PatakiBody, 'Moon'>]}.`);
+  return { placements, onMoon, onLagna, lines };
 }

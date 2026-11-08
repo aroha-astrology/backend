@@ -156,7 +156,7 @@
     "endMs": 1861720205601,
     "isDayReturn": true,
     "varshaLagna": 43.789805,
-    "yearLord": "Saturn",
+    "yearLord": "Venus",
     "sahams": {
      "Vivaha": 335.822964,
      "Punya": 102.455536,
@@ -246,7 +246,7 @@
     "endMs": 1836672547176,
     "isDayReturn": false,
     "varshaLagna": 155.84682,
-    "yearLord": "Saturn",
+    "yearLord": "Venus",
     "sahams": {
      "Vivaha": 243.623162,
      "Punya": 67.929119,
@@ -295,7 +295,7 @@
     "endMs": 1813705021285,
     "isDayReturn": false,
     "varshaLagna": 304.136415,
-    "yearLord": "Jupiter",
+    "yearLord": "Moon",
     "sahams": {
      "Vivaha": 187.200615,
      "Punya": 204.919364,
@@ -334,7 +334,7 @@
     "endMs": 1845263273452,
     "isDayReturn": false,
     "varshaLagna": 48.11017,
-    "yearLord": "Sun",
+    "yearLord": "Venus",
     "sahams": {
      "Vivaha": 26.485515,
      "Punya": 185.197462,
@@ -377,7 +377,7 @@
     "endMs": 1817756582545,
     "isDayReturn": false,
     "varshaLagna": 310.798908,
-    "yearLord": "Venus",
+    "yearLord": "Jupiter",
     "sahams": {
      "Vivaha": 143.606578,
      "Punya": 37.513755,
@@ -419,7 +419,7 @@
     "endMs": 1849315148085,
     "isDayReturn": false,
     "varshaLagna": 52.890155,
-    "yearLord": "Saturn",
+    "yearLord": "Venus",
     "sahams": {
      "Vivaha": 335.567999,
      "Punya": 327.144261,
@@ -475,7 +475,7 @@
     "endMs": 1822361988106,
     "isDayReturn": false,
     "varshaLagna": 118.588923,
-    "yearLord": "Moon",
+    "yearLord": "Saturn",
     "sahams": {
      "Vivaha": 301.795139,
      "Punya": 243.905551,
@@ -521,7 +521,7 @@
     "endMs": 1853919987150,
     "isDayReturn": true,
     "varshaLagna": 200.147751,
-    "yearLord": "Saturn",
+    "yearLord": "Mercury",
     "sahams": {
      "Vivaha": 45.710788,
      "Punya": 244.117157,
@@ -557,7 +557,7 @@
     "endMs": 1826041707956,
     "isDayReturn": true,
     "varshaLagna": 24.286806,
-    "yearLord": "Moon",
+    "yearLord": "Sun",
     "sahams": {
      "Vivaha": 218.554131,
      "Punya": 89.816036,
@@ -594,7 +594,7 @@
     "endMs": 1857599692029,
     "isDayReturn": false,
     "varshaLagna": 111.408707,
-    "yearLord": "Mercury",
+    "yearLord": "Mars",
     "sahams": {
      "Vivaha": 269.710802,
      "Punya": 308.85544,
@@ -636,7 +636,7 @@
     "endMs": 1809542982457,
     "isDayReturn": true,
     "varshaLagna": 193.690433,
-    "yearLord": "Saturn",
+    "yearLord": "Mercury",
     "sahams": {
      "Vivaha": 287.811503,
      "Punya": 55.571886,
@@ -803,7 +803,7 @@
     "endMs": 1803504105174,
     "isDayReturn": false,
     "varshaLagna": 167.233335,
-    "yearLord": "Moon",
+    "yearLord": "Venus",
     "sahams": {
      "Vivaha": 210.671671,
      "Punya": 75.691541,
@@ -883,7 +883,7 @@
     "endMs": 1803878789744,
     "isDayReturn": false,
     "varshaLagna": 278.685768,
-    "yearLord": "Moon",
+    "yearLord": "Saturn",
     "sahams": {
      "Vivaha": 317.225664,
      "Punya": 130.319712,
@@ -1000,7 +1000,7 @@
     "endMs": 1855224775908,
     "isDayReturn": false,
     "varshaLagna": 117.873757,
-    "yearLord": "Venus",
+    "yearLord": "Mars",
     "sahams": {
      "Vivaha": 312.377725,
      "Punya": 289.723861,

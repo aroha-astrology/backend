@@ -21,7 +21,7 @@
 // =============================================================================
 
 import type { ChartData, Planet } from '@aroha-astrology/shared';
-import { PLANET_DEBILITATION, SIGN_LORDS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
+import { PLANET_DEBILITATION, PLANET_EXALTATION, SIGN_LORDS, ZODIAC_SIGNS } from '@aroha-astrology/shared';
 
 import { calculateD9 } from '../charts/divisionalCharts.js';
 
@@ -212,7 +212,10 @@ export function panchavargiBala(planet: Planet, chart: ChartData): PanchavargiBa
   const hadda = divisionBala(chart, seven, haddaLord(signIndex, degree), 15);
   const drekkana = divisionBala(chart, seven, tajikaDrekkanaLord(signIndex, degree), 10);
   const navamsaSign = calculateD9(longitude);
-  const navamsa = divisionBala(chart, seven, SIGN_LORDS[ZODIAC_SIGNS[navamsaSign]!], 5);
+  // Mehta ch. V ("Navamsa bala"): a planet in exaltation or its own sign scores the full 5; his Nehru
+  // table gives the Moon, whose navamsa falls in Taurus, 5. (Owner decision 2026-11-08.)
+  const exaltedInNavamsa = (PLANET_EXALTATION as Record<string, { sign: string } | undefined>)[planet]?.sign === ZODIAC_SIGNS[navamsaSign];
+  const navamsa = exaltedInNavamsa ? 5 : divisionBala(chart, seven, SIGN_LORDS[ZODIAC_SIGNS[navamsaSign]!], 5);
   const uchcha = uchchaBala(seven, longitude);
 
   const total = griha + hadda + drekkana + navamsa + uchcha;
@@ -255,39 +258,79 @@ export interface Contender {
   aspectKala: number;
 }
 
-const WEAK_BELOW = 5;
+/** What the choice needs to know about the Varsha chart beyond the five officers. */
+export interface VarsheshwaraContext {
+  /** Sign index of the Varsha Lagna, and of the Moon in the Varsha chart. */
+  ascSign: number;
+  moonSign: number;
+  isDay: boolean;
+  /** The planet in Ithasala with the Moon, if any (used only when the Moon alone looks at the Lagna). */
+  moonIthasalaPartner: Planet | null;
+  /** The lord of the sign the Moon is in. */
+  moonSignLord: Planet;
+}
 
 /**
- * Verses 64-67: the lord of the year among the five officers.
- *  - Of those that look at the Varsha lagna, the strongest; if equal, the one that looks harder;
- *    if equal again, or if all five are weak (under 5), the Muntha lord.
- *  - If none looks at the lagna, the strongest of the five; if equal, the lord of the Sun's
- *    sign by day or of the Moon's sign by night (the first of the two views the verse reports;
- *    the author's own, the one the Moon has an ithasala with, is not built).
+ * The lord of the year among the five officers (M.S. Mehta, Annual Horoscope (Varshaphala), ch. VII;
+ * the first five clauses were adopted by the owner on 2026-11-08 after the C2 evidence, see
+ * test/fixtures/jhora/README.md).
+ *  1. Of the planets that look at the Varsha Lagna, the strongest by Panchavargiya bala. A planet that
+ *     holds more than one of the five roles is ONE planet, and wins a tie of strength by holding more
+ *     roles ("the greater number of portfolios"); a tie that remains goes to the one that looks harder,
+ *     then to the Muntha lord.
+ *  2. If none looks at the Lagna, the Muntha lord.
+ *  3. The Moon is passed over, except when the Varsha Lagna is Cancer with the Moon in it, or the
+ *     return is by night, the Moon is the Tri-Rashi lord and it looks at the Lagna, and in both cases it
+ *     is the strongest of the five.
+ *  4. If the Moon is the only one that looks, the planet in Ithasala with the Moon, else the lord of the
+ *     Moon's sign.
+ * (Mehta's own V.P. Singh 1989 example has the Moon as lord of the year; the book is not consistent.)
  */
-export function chooseVarsheshwara(contenders: Contender[]): {
-  planet: Planet;
-  wonByMunthaTiebreak: boolean;
-} {
+export function chooseVarsheshwara(
+  contenders: Contender[],
+  ctx: VarsheshwaraContext,
+): { planet: Planet; wonByMunthaTiebreak: boolean } {
   const munthesh = contenders.find((c) => c.role === 'Munthesh')!;
-  const dinaRatri = contenders.find((c) => c.role === 'Dina-Ratri Pati')!;
   const byMuntha = { planet: munthesh.planet, wonByMunthaTiebreak: true };
 
-  if (contenders.every((c) => c.strength < WEAK_BELOW)) return byMuntha;
-
-  const looking = contenders.filter((c) => c.aspectKala > 0);
-  if (looking.length > 0) {
-    const top = Math.max(...looking.map((c) => c.strength));
-    const strongest = looking.filter((c) => c.strength === top);
-    if (strongest.length === 1) return { planet: strongest[0]!.planet, wonByMunthaTiebreak: false };
-    const harder = Math.max(...strongest.map((c) => c.aspectKala));
-    const winners = strongest.filter((c) => c.aspectKala === harder);
-    if (winners.length === 1) return { planet: winners[0]!.planet, wonByMunthaTiebreak: false };
-    return byMuntha;
+  // One entry per planet: its best strength and aspect, and how many roles it holds.
+  const planets = new Map<Planet, { strength: number; aspectKala: number; roles: number; triRashi: boolean }>();
+  for (const c of contenders) {
+    const cur = planets.get(c.planet);
+    planets.set(c.planet, {
+      strength: Math.max(cur?.strength ?? 0, c.strength),
+      aspectKala: Math.max(cur?.aspectKala ?? 0, c.aspectKala),
+      roles: (cur?.roles ?? 0) + 1,
+      triRashi: (cur?.triRashi ?? false) || c.role === 'Tri-Rashi Pati',
+    });
   }
+  const looking = [...planets.entries()].filter(([, v]) => v.aspectKala > 0);
+  if (looking.length === 0) return byMuntha;
 
-  const top = Math.max(...contenders.map((c) => c.strength));
-  const strongest = contenders.filter((c) => c.strength === top);
-  if (strongest.length === 1) return { planet: strongest[0]!.planet, wonByMunthaTiebreak: false };
-  return { planet: dinaRatri.planet, wonByMunthaTiebreak: false };
+  const topAll = Math.max(...[...planets.values()].map((v) => v.strength));
+  const moon = planets.get('Moon' as Planet);
+  const moonAllowed =
+    !!moon &&
+    moon.strength === topAll &&
+    ((ctx.ascSign === 3 && ctx.moonSign === 3) || (!ctx.isDay && moon.triRashi && moon.aspectKala > 0));
+  const eligible = looking.filter(([p]) => p !== ('Moon' as Planet) || moonAllowed);
+
+  if (eligible.length === 0) {
+    return { planet: ctx.moonIthasalaPartner ?? ctx.moonSignLord, wonByMunthaTiebreak: false };
+  }
+  const top = Math.max(...eligible.map(([, v]) => v.strength));
+  let best = eligible.filter(([, v]) => v.strength === top);
+  if (best.length > 1) {
+    const roles = Math.max(...best.map(([, v]) => v.roles));
+    best = best.filter(([, v]) => v.roles === roles);
+  }
+  if (best.length > 1) {
+    const harder = Math.max(...best.map(([, v]) => v.aspectKala));
+    best = best.filter(([, v]) => v.aspectKala === harder);
+  }
+  if (best.length === 1) {
+    const planet = best[0]![0];
+    return { planet, wonByMunthaTiebreak: false };
+  }
+  return byMuntha;
 }

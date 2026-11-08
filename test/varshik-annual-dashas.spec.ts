@@ -36,12 +36,7 @@ const SHORT: Record<string, string> = {
   Asc: 'Lagna', Rah: 'Rahu', Ket: 'Ketu',
 };
 
-/**
- * Mudda Yogini start lords that Jagannatha Hora has and the rule does not (ages 43 to 57; the
- * rule fits every chart-year at 26 to 42). Cause not found. Do not add to this list to make a
- * failing test pass; find the cause.
- */
-const KNOWN_YOGINI_START_MISSES = ['b05 2026', 'b05 2027', 'b08 2026', 'b08 2027', 'b09 2026', 'b09 2027'];
+
 
 let rows: Array<{
   id: string; yr: string; moonNak: number; age: number;
@@ -151,18 +146,24 @@ describe('Mudda Vimshottari first lord against Jagannatha Hora (the corrected st
 
 describe('Mudda Yogini', () => {
   const YN: Record<string, string> = { Moon: 'Moon', Sun: 'Sun', Jup: 'Jupiter', Mars: 'Mars', Merc: 'Mercury', Sat: 'Saturn', Ven: 'Venus', Rah: 'Rahu', Ket: 'Rahu' };
-  it('first lord equals Jagannatha Hora on every chart-year except the pinned ones', () => {
+  it('first lord equals Jagannatha Hora on all 20 chart-years (ages 26 to 57)', () => {
     const misses: string[] = [];
     for (const r of rows) {
       const lord = YOGINI_ORDER[yoginiStartIndex(r.moonNak, r.age)]!.lord;
       if (lord !== YN[r.yogJhora[0].lord]) misses.push(`${r.id} ${r.yr}`);
     }
-    expect(misses).toEqual(KNOWN_YOGINI_START_MISSES);
+    expect(misses).toEqual([]);
+  });
+
+  it('the age wraps at 43: age 43 starts where age 0 would; Mehta book rule is not used', () => {
+    expect(yoginiStartIndex(8, 43)).toBe(yoginiStartIndex(8, 0));
+    expect(yoginiStartIndex(8, 42)).toBe(yoginiStartIndex(8, 85));
+    expect(yoginiStartIndex(8, 42)).not.toBe(yoginiStartIndex(8, 43));
   });
 
   it('the eight lords run in the Yogini order for the year, 10:20:...:80, and fill it exactly', () => {
-    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 56, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
-    // (9 + 56 - 1) = 64, mod 8 = 0: Mangala (Moon)
+    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 43, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
+    // (9 + (43 mod 43) - 1) = 8, mod 8 = 0: Mangala (Moon)
     expect(p.map((x) => x.lord)).toEqual(['Moon', 'Sun', 'Jupiter', 'Mars', 'Mercury', 'Saturn', 'Venus', 'Rahu']);
     expect(p.map((x) => (x.endMs - x.startMs) / DAY)).toEqual([10, 20, 30, 40, 50, 60, 70, 80]);
     expect(p[7]!.endMs).toBe(360 * DAY);
@@ -179,7 +180,7 @@ describe('Mudda Yogini', () => {
   });
 
   it('Mehta Bhadrika example: each antardasha is the lord first, then the next in order', () => {
-    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 56, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
+    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 43, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
     const sankata = p[7]!;
     expect(sankata.antardashas.map((x) => x.lord)).toEqual(['Rahu', 'Moon', 'Sun', 'Jupiter', 'Mars', 'Mercury', 'Saturn', 'Venus']);
     // 80 days x 80 / 360 days
@@ -192,7 +193,7 @@ describe('Mudda Yogini', () => {
   });
 
   it('dashaAt finds the running period and sub-period', () => {
-    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 56, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
+    const p = computeMuddaYogini({ nakshatraNumber: 9, completedYears: 43, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
     expect(dashaAt(p, 0)?.main.lord).toBe('Moon');
     expect(dashaAt(p, 10 * DAY)?.main.lord).toBe('Sun');
     expect(dashaAt(p, 360 * DAY)).toBeNull();
