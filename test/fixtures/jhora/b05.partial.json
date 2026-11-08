@@ -1,5 +1,5 @@
 {
-  "_status": "COMPLETE 2026-11-08 except the 2027 Tri-Pataki placements. Compared with the engine in test/varshik-jhora.spec.ts. Year Lord, Tajika yogas and the Tri-Pataki verdict are not shown by JHora (see README).",
+  "_status": "COMPLETE 2026-11-08. Compared with the engine in test/varshik-jhora.spec.ts. Year Lord, Tajika yogas and the Tri-Pataki verdict are not shown by JHora (see README).",
   "settings": {
     "ayanamsa": "Traditional Lahiri",
     "node": "mean",
@@ -552,6 +552,23 @@
           }
         ],
         "note": "Dasa 1 starts exactly at the 2027 return as printed in the text pane (02:00:32). Asc ends 2028-08-08 08:17:59 (presumably the 2028 return); last row is the next cycle."
+      },
+      "triPataki": {
+        "source": "JHora Chakras tab > 'Tripataki' sub-tab, with the Tajika 2027 chart loaded (Year box 2027, return 2027-08-09 02:00:32 IST). Title printed: 'Planets in D-1(from Lagna in D-1)'. Placements only. Read from a full-size screenshot.",
+        "placements": {
+          "Asc": "Ta",
+          "Sun": "Cn",
+          "Moon": "Li",
+          "Mars": "Vi",
+          "Mercury": "Cn",
+          "Jupiter": "Le",
+          "Venus": "Cn",
+          "Saturn": "Ar",
+          "Rahu": "Cp",
+          "Ketu": "Cn"
+        },
+        "verdict": "unreadable - JHora draws only the placements and prints no verdict text",
+        "note": "Four labels overlap in the Cn box (Su, Ve, Me, Ke print on top of each other: 'SuVe' over 'MeKe'). Checked against the sign column of the Tajika annual planet table: Sun, Mercury, Venus and Ketu are all Cn. The other six agree too: Lagna Ta, Moon Li, Mars Vi, Jupiter Le, Saturn Ar, Rahu Cp. No planet is drawn in brackets in this chart. Ge, Pi, Aq, Sc and Sg are empty."
       }
     }
   }

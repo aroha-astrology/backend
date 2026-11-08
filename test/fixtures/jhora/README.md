@@ -31,7 +31,7 @@ Both skip unless `PYJHORA_PYTHON` points at a Python 3.11 with `pyswisseph` (and
 
 - **Year Lord.** The engine's pick agrees with PyJHora `lord_of_the_year` on only 54 of 307 charts. The two use different rules (PyJHora's is a benefic-aspect shortlist, ours is Tajika Neelakanthi verses 64 to 67 with Panchavargiya), so no side is confirmed. M.S. Mehta's worked examples were NOT obtained: the book is a 266-page PDF and only the first part could be read. Still open: check the Year Lord against two or three worked examples in Mehta before trusting it.
 - **Tajika yogas (Ithasala, Ishrafa, Radda).** PyJHora finds more yogas than the engine on 172 of 318 charts and fewer on 17 (mean overlap 0.69). The difference is in the orb and aspect rules, not in noise. JHora does not print them, so this is unresolved. Same Mehta check needed. (Nakta, Yamaya, Kamboola are not compared: PyJHora's output for them could not be put in the same form.)
-- **Tri-Pataki verdict.** JHora draws the placements only. The 2027 placements are still to be copied for b01 and b03 to b10.
+- **Tri-Pataki.** JHora draws the placements only and prints no verdict, so the verdict stays unverified. The placements (2026 and 2027, all 10 charts) are recorded, and the sign of every planet equals the engine's sign at the same instant (`test/varshik-jhora.spec.ts`; a planet within 0.05 degrees of a sign edge is skipped).
 - **Gandanta.** JHora shows no Gandanta flag. `test/varshik-gandanta-sweep.spec.ts` restates BPHS chapter 92 independently and sweeps the whole zodiac (Moon, Abhukta Moola, tithi, Lagna) plus the 10 gold charts; the detector agrees everywhere.
 
 ## Unresolved fixture rows

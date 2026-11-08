@@ -44,6 +44,21 @@ for (const f of files) {
       const muntha = computeMuntha(+yr - +birth.date.slice(0, 4), inp.natalAscSignIndex, c.ascendant.signIndex);
       expect(SIGNS[muntha.signIndex], 'Muntha sign').toBe(rec.muntha.longitudeSidereal.match(/^\d+ (\w\w)/)[1]);
 
+      // Tri-Pataki placements: each planet's sign equals the engine's (skip a planet within 0.05 deg of a sign edge).
+      const tp = rec.triPataki?.placements as Record<string, string> | undefined;
+      if (tp) {
+        const wrong: string[] = [];
+        const lonOf = (n: string) => (n === 'Asc' ? c.ascendant.signIndex * 30 + c.ascendant.degree : c.planets.find((q) => q.planet === n)!.longitude);
+        for (const [name, val] of Object.entries(tp)) {
+          const lon = lonOf(name);
+          const edge = Math.min(lon % 30, 30 - (lon % 30));
+          if (edge < 0.05) continue;
+          const jh = String(val).slice(0, 2);
+          if (SIGNS[Math.floor(lon / 30)] !== jh) wrong.push(`${name}: engine ${SIGNS[Math.floor(lon / 30)]}, JHora ${jh}`);
+        }
+        expect(wrong, `${fx.id} ${yr} Tri-Pataki`).toEqual([]);
+      }
+
       const astroDay = await getAstroDay(t, birth.latitude, birth.longitude, birth.longitude / 15);
       const isDay = dayContextAt(astroDay!, t)!.isDay;
       const off: string[] = [];
