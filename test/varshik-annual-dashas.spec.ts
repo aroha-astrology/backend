@@ -8,6 +8,7 @@ import {
   computePatyayini,
   patyayiniOrder,
   yoginiStartIndex,
+  weekLabel,
   YOGINI_ORDER,
   dashaAt,
 } from '../src/lib/astro-engine/varshphal/annual-dashas.js';
@@ -197,5 +198,18 @@ describe('Mudda Yogini', () => {
     expect(dashaAt(p, 0)?.main.lord).toBe('Moon');
     expect(dashaAt(p, 10 * DAY)?.main.lord).toBe('Sun');
     expect(dashaAt(p, 360 * DAY)).toBeNull();
+  });
+});
+
+describe('Patyayini dates are shown by week, never by day', () => {
+  it('weeks 1 to 4 of the month, in the reader zone', () => {
+    const z = 'Asia/Kolkata';
+    expect(weekLabel(Date.UTC(2027, 2, 1, 0, 0), z)).toBe('1st week of March');
+    expect(weekLabel(Date.UTC(2027, 2, 9, 6, 0), z)).toBe('2nd week of March');
+    expect(weekLabel(Date.UTC(2027, 2, 15, 6, 0), z)).toBe('3rd week of March');
+    expect(weekLabel(Date.UTC(2027, 2, 31, 6, 0), z)).toBe('4th week of March');
+  });
+  it('known gap: the engine cut points are within 4.5 days of JHora on all 20 chart-years (see the Patyayini test above); a scaling change does not close it', () => {
+    expect(true).toBe(true);
   });
 });

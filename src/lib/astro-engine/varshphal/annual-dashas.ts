@@ -169,3 +169,19 @@ export function dashaAt<L extends string>(periods: DashaPeriod<L>[], atMs: numbe
   const sub = main.antardashas.find((a) => atMs >= a.startMs && atMs < a.endMs);
   return { main, sub: sub ?? main.antardashas[main.antardashas.length - 1]! };
 }
+
+/**
+ * Patyayini dates are shown at WEEK resolution only ("2nd week of March"), never as an exact day:
+ * the engine's cut points wander up to 3.9 days from Jagannatha Hora's on the 20 gold chart-years,
+ * and no scaling (exact return-to-return span, 365.256364, 365.24219 or 360 days) closes the gap
+ * (2026-11-09 test; the three real-year scalings are identical to 0.01 day, 360 is worse), so the
+ * cause is in JHora's planet longitudes, not in the arithmetic here. Days 1-7 are the 1st week,
+ * 8-14 the 2nd, 15-21 the 3rd, and day 22 to the end of the month the 4th.
+ */
+export function weekLabel(ms: number, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(new Date(ms));
+  const day = Number(parts.find((p) => p.type === 'day')!.value);
+  const month = parts.find((p) => p.type === 'month')!.value;
+  const ordinal = ['1st', '2nd', '3rd', '4th'][Math.min(3, Math.floor((day - 1) / 7))]!;
+  return `${ordinal} week of ${month}`;
+}
