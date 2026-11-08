@@ -5,19 +5,21 @@
 // as their Vimshottari years (Ketu 7 ... Venus 20, 120 in all). The year here is the exact
 // span from one solar return to the next (about 365.256 days), not a constant 360 days.
 //
-// START LORD (classical, as the Varshik 2027 plan fixes it): the lord at index
-//   (birth-nakshatra number + completed years - 2) mod 9
+// START LORD (corrected in C2, 2026-11-08): the lord at index
+//   (birth-nakshatra number + completed years - 1) mod 9
 // of the Vimshottari order Ketu, Venus, Sun, ...; the nakshatra number runs 1 to 27 and the
-// completed years are the age the birthday makes. So the first birthday (1 completed year)
-// starts with the lord of the birth nakshatra, and each later year moves on one lord. It does
+// completed years are the age the birthday makes. Each later year moves on one lord. It does
 // NOT come from the Varsha Moon.
+// EVIDENCE: M.S. Mehta, Annual Horoscope (Varshaphala), ch. VI: (nakshatra - 2 + completed
+// years) mod 9 gives a number in the list Sun 1, Moon 2, Mars 3, Rahu 4, Jupiter 5, Saturn 6,
+// Mercury 7, Ketu 8, Venus 9 or 0; that is index (nakshatra + years - 1) in the Ketu-first
+// list used here. Jagannatha Hora's first Mudda lord on all 10 gold charts, 2026 and 2027
+// (20 of 20), is the same lord. The earlier "- 2" was one lord out on every one of the 20.
 //
-// DELIBERATE DIVERGENCE from PyJHora 4.8.7 (a JHora port, read but not run, 2026-11-06): it uses
-// the tropical year, starts each list at (birth + age x year - a natal-Moon balance) instead
-// of at the solar return, so one year's list does not end where the next begins, and it picks
-// the start lord by using a planet id as a position in the reordered Mudda list, which looks
-// inconsistent. We keep the exact solar-return anchoring because the plan needs the seam to
-// be an exact equality. Web searches (2026-11-06) gave no classical rule for the start lord or
+// DELIBERATE DIVERGENCE from PyJHora 4.8.7 and JHora: they start each list at
+// (birth + age x year - a natal-Moon balance) instead of at the solar return, so one year's
+// list does not end where the next begins. We keep the exact solar-return anchoring because
+// the plan needs the seam to be an exact equality (owner decision 2026-11-06). Web searches (2026-11-06) gave no classical rule for the start lord or
 // the balance. UNVERIFIED until real JHora output is recorded in
 // backend/test/fixtures/varshik/jhora.json; this module starts every Varsha year on a whole
 // period. No verse is cited because none was opened and checked.
@@ -67,7 +69,7 @@ export interface MuddaPeriod {
  * @param completedYears age in whole years at the solar return that opens the year
  */
 export function muddaStartIndex(nakshatraNumber: number, completedYears: number): number {
-  return (((nakshatraNumber + completedYears - 2) % 9) + 9) % 9;
+  return (((nakshatraNumber + completedYears - 1) % 9) + 9) % 9;
 }
 
 /** `total` split by `weights`, as integer cut points from `startMs` that end exactly on `endMs`. */

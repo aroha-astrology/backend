@@ -89,7 +89,7 @@ function ascLongitude(chart: ChartData): number {
   return chart.ascendant.degree + chart.ascendant.signIndex * 30;
 }
 
-function buildSahamResult(name: string, longitude: number, varshaChart: ChartData): SahamResult {
+export function buildSahamResult(name: string, longitude: number, varshaChart: ChartData): SahamResult {
   const lon = normalizeDegree(longitude);
   const signIndex = Math.floor(lon / 30);
   const varshaAscSignIndex = varshaChart.ascendant.signIndex;
@@ -115,7 +115,7 @@ function buildSahamResult(name: string, longitude: number, varshaChart: ChartDat
   };
 }
 
-interface SahamPoints {
+export interface SahamPoints {
   plus: number;
   minus: number;
   add: number;
@@ -123,7 +123,7 @@ interface SahamPoints {
   between?: number;
 }
 
-interface SahamRule {
+export interface SahamRule {
   name: string;
   /** The three longitudes for a DAY return (a night-specific formula is returned when `isDay` is false). */
   points: (chart: ChartData, isDay: boolean) => SahamPoints;

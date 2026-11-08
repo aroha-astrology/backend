@@ -18,12 +18,12 @@ describe('Mudda dasha: the order and the start lord', () => {
   });
 
   it('starts at (nakshatra number + completed years - 2) mod 9', () => {
-    expect(muddaStartIndex(1, 1)).toBe(0); // the first birthday starts with the birth nakshatra's lord
-    expect(muddaStartIndex(1, 2)).toBe(1);
-    expect(muddaStartIndex(1, 0)).toBe(8);
-    expect(muddaStartIndex(27, 1)).toBe(8);
-    expect(muddaStartIndex(14, 10)).toBe(4);
-    expect(muddaStartIndex(3, 9)).toBe(1); // (3 + 9 - 2) = 10, mod 9
+    expect(muddaStartIndex(1, 1)).toBe(1); // Mehta: (1 - 2 + 1) = 0 means Venus
+    expect(muddaStartIndex(1, 2)).toBe(2);
+    expect(muddaStartIndex(1, 0)).toBe(0);
+    expect(muddaStartIndex(27, 1)).toBe(0);
+    expect(muddaStartIndex(14, 10)).toBe(5);
+    expect(muddaStartIndex(3, 9)).toBe(2); // (3 + 9 - 1) = 11, mod 9
   });
 });
 
@@ -31,13 +31,13 @@ describe('computeMuddaDasha', () => {
   const span360 = { solarReturnMs: 0, nextSolarReturnMs: 360 * DAY };
 
   it('on a 360-day year the periods are 21, 60, 18, 30, 21, 54, 48, 57, 51 days', () => {
-    const periods = computeMuddaDasha({ nakshatraNumber: 1, completedYears: 1, ...span360 });
+    const periods = computeMuddaDasha({ nakshatraNumber: 9, completedYears: 1, ...span360 });
     expect(periods.map((p) => p.lord)).toEqual(LORDS);
     expect(periods.map((p) => (p.endMs - p.startMs) / DAY)).toEqual([21, 60, 18, 30, 21, 54, 48, 57, 51]);
   });
 
   it('rotates the start lord with the completed years', () => {
-    const periods = computeMuddaDasha({ nakshatraNumber: 1, completedYears: 3, ...span360 });
+    const periods = computeMuddaDasha({ nakshatraNumber: 9, completedYears: 3, ...span360 });
     expect(periods[0]?.lord).toBe('Sun');
     expect(periods[8]?.lord).toBe('Venus');
   });
@@ -77,7 +77,7 @@ describe('computeMuddaDasha', () => {
   });
 
   it('sub-periods are proportional: in Ketu (21 days) Ketu gets 21*7/120 days, then Venus 21*20/120', () => {
-    const [ketu] = computeMuddaDasha({ nakshatraNumber: 1, completedYears: 1, ...span360 });
+    const [ketu] = computeMuddaDasha({ nakshatraNumber: 9, completedYears: 1, ...span360 });
     const [first, second] = ketu!.antardashas;
     expect(first?.lord).toBe('Ketu');
     expect(Math.abs((first!.endMs - first!.startMs) - (21 * 7 * DAY) / 120)).toBeLessThanOrEqual(1);
@@ -87,7 +87,7 @@ describe('computeMuddaDasha', () => {
 
   it('refuses a year that does not run forward, and a nakshatra outside 1 to 27', () => {
     const ok = { completedYears: 1, solarReturnMs: 0, nextSolarReturnMs: 100 };
-    expect(() => computeMuddaDasha({ nakshatraNumber: 1, completedYears: 1, solarReturnMs: 100, nextSolarReturnMs: 100 })).toThrow(/next solar return/);
+    expect(() => computeMuddaDasha({ nakshatraNumber: 9, completedYears: 1, solarReturnMs: 100, nextSolarReturnMs: 100 })).toThrow(/next solar return/);
     for (const bad of [0, 28, 1.5]) {
       expect(() => computeMuddaDasha({ nakshatraNumber: bad, ...ok })).toThrow(/nakshatraNumber/);
     }
@@ -96,7 +96,7 @@ describe('computeMuddaDasha', () => {
 
 describe('muddaAt', () => {
   it('finds the running period and sub-period, start inclusive and end exclusive', () => {
-    const periods = computeMuddaDasha({ nakshatraNumber: 1, completedYears: 1, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
+    const periods = computeMuddaDasha({ nakshatraNumber: 9, completedYears: 1, solarReturnMs: 0, nextSolarReturnMs: 360 * DAY });
 
     const first = muddaAt(periods, 0);
     expect(first?.main.lord).toBe('Ketu');

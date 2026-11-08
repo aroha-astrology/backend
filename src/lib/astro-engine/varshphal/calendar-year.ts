@@ -16,6 +16,13 @@ import type { Ayanamsa, HouseSystem } from '@aroha-astrology/shared';
 import { computeVarshphal, type VarshphalResult } from './index.js';
 import { findSolarReturnJd } from './solarReturn.js';
 import { computeMuddaDasha, type MuddaPeriod } from './mudda-dasha.js';
+import {
+  computeMuddaYogini,
+  computePatyayini,
+  type DashaPeriod,
+  type PatyayiniLord,
+  type YoginiLord,
+} from './annual-dashas.js';
 
 export interface CalendarYearInputs {
   natalSunLongitude: number;
@@ -44,6 +51,9 @@ export interface VarshaYearSlice {
   clippedEndMs: number;
   varshphal: VarshphalResult;
   mudda: MuddaPeriod[];
+  /** Mudda Yogini and Patyayini, cut on the same two solar returns (annual-dashas.ts). */
+  muddaYogini: DashaPeriod<YoginiLord>[];
+  patyayini: DashaPeriod<PatyayiniLord>[];
 }
 
 export interface CalendarYearVarshphal {
@@ -137,6 +147,27 @@ export async function computeCalendarYearVarshphal(
       nextSolarReturnMs: endMs,
     });
 
+    const chart = varshphal.solarReturn.chart;
+    const planetLon = (name: string) => chart.planets.find((p) => p.planet === name)?.longitude ?? 0;
+    const muddaYogini = computeMuddaYogini({
+      nakshatraNumber: birthNakshatraIndex + 1,
+      completedYears: varshphal.completedYearsOfAge,
+      solarReturnMs: startMs,
+      nextSolarReturnMs: endMs,
+    });
+    const patyayini = computePatyayini({
+      input: {
+        lagna: chart.ascendant.signIndex * 30 + chart.ascendant.degree,
+        planets: {
+          Sun: planetLon('Sun'), Moon: planetLon('Moon'), Mars: planetLon('Mars'),
+          Mercury: planetLon('Mercury'), Jupiter: planetLon('Jupiter'),
+          Venus: planetLon('Venus'), Saturn: planetLon('Saturn'),
+        },
+      },
+      solarReturnMs: startMs,
+      nextSolarReturnMs: endMs,
+    });
+
     varshaYears.push({
       targetYear: t,
       completedYears: varshphal.completedYearsOfAge,
@@ -146,6 +177,8 @@ export async function computeCalendarYearVarshphal(
       clippedEndMs: Math.min(endMs, windowEndMs),
       varshphal,
       mudda,
+      muddaYogini,
+      patyayini,
     });
   }
 

@@ -87,6 +87,7 @@ export * from './muntha.js';
 export * from './varsheshwara.js';
 export * from './sahams.js';
 export * from './mudda-dasha.js';
+export * from './annual-dashas.js';
 export * from './saham-windows.js';
 export * from './tajika-yogas.js';
 export * from './calendar-year.js';
