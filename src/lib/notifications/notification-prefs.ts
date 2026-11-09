@@ -39,6 +39,8 @@ const CATEGORY_BY_TYPE: Record<string, NotificationCategory> = {
   pass_launch: 'marketing',
   pass_launch_test: 'marketing',
   voice_trial_launch: 'marketing',
+  varshik_launch: 'marketing',
+  varshik_launch_test: 'marketing',
   voice_trial_launch_test: 'marketing',
   pass_double_launch: 'marketing',
   pass_double_launch_test: 'marketing',
