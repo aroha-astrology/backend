@@ -25,6 +25,7 @@ import {
   panchangReferenceJd,
 } from '../../lib/astro-engine/panchang/index.js';
 import { classifyEclipse, eclipsesBetween } from '../../lib/astro-engine/panchang/eclipse.js';
+import { ASTA_PERIODS, astaCovered, firstFallbackFor } from '../../config/asta-dates.js';
 import {
   dashaPeriodsInRange,
   type StoredMahadasha,
@@ -180,9 +181,29 @@ export async function daySkies(
           isRetrograde: p.isRetrograde,
         })),
         ...(eclipseOn.has(date) ? { eclipse: eclipseOn.get(date)! } : {}),
+        ...(astaCovered(y) ? { asta: astaOn(y, m, d, tzHours) } : fallbackNoted(y)),
       };
     }),
   );
+}
+
+/** A year without drikpanchang's Asta dates: logged once, then the fallback orb decides (decision-engine). */
+function fallbackNoted(year: number): Record<string, never> {
+  if (firstFallbackFor(year)) {
+    logger.warn({ year }, 'asta-dates: no drikpanchang Asta dates for this year, Decide uses the fallback orb (fill config/asta-dates.ts)');
+  }
+  return {};
+}
+
+/** Venus and Jupiter in drikpanchang's published Tara Asta during any part of this local day. */
+function astaOn(y: number, m: number, d: number, tzHours: number): Array<'Venus' | 'Jupiter'> {
+  const start = Date.UTC(y, m - 1, d) - tzHours * 3_600_000;
+  const end = start + MS_PER_DAY;
+  const out: Array<'Venus' | 'Jupiter'> = [];
+  for (const p of ASTA_PERIODS) {
+    if (Date.parse(p.startsAt) < end && Date.parse(p.endsAt) > start && !out.includes(p.planet)) out.push(p.planet);
+  }
+  return out;
 }
 
 /** Day-by-day dasha support for `area` over the range (the lords rarely change inside 90 days). */

@@ -5,12 +5,19 @@
 // Asta dates (worked out from visibility), not a fixed orb. The fixed Surya Siddhanta orbs stay for planet
 // strength and combustion in the scoring (calculations/planet-state.ts isCombust).
 //
-// Hand-kept like the festival table. Times are as drikpanchang prints them for New Delhi (IST). A period
-// that starts in one year and ends in the next is listed once, under the page that printed it.
+// Hand-kept like the festival table. Times are as drikpanchang prints them for New Delhi (IST); drikpanchang
+// works Tara Asta out for the observer's place (a California visitor sees Venus 2027 as 19 Jul to 13 Sep), and
+// this table is the New Delhi reading, the same place the festival table uses. A period that starts in one
+// year and ends in the next is listed once, under the page that printed it.
 //
-// 2028 and 2029 are NOT here yet: on 2026-11-09 drikpanchang served the 2027 page for every 2028 and 2029
-// URL form tried (it publishes only the current and next year). Add them when the pages go up; until a
-// year is covered, `astaCovered(year)` is false and the Varshik preflight refuses to build that year.
+// Read by the Varshik decision table (reports/varshik-muhurta.ts) and by the live Decide screen
+// (decisions.service daySkies -> decision-engine avoidFlags), so the report and the app agree on Asta days.
+//
+// 2028 and 2029 are NOT here yet: on 2026-11-09 (12 URL forms in two tries, plus a web search for indexed
+// copies) drikpanchang served only the 2027 page for 2028 and 2029; it publishes the current and
+// next year. Add them when the pages go up (expect 2028 from about January 2027). Until a year is covered,
+// `astaCovered(year)` is false: the Varshik preflight refuses to build that year, and Decide falls back to the
+// Surya Siddhanta orb for that year's wedding dates.
 // =============================================================================
 
 export interface AstaPeriod {
@@ -41,3 +48,36 @@ export const ASTA_PERIODS: readonly AstaPeriod[] = [
 export const ASTA_YEARS: readonly number[] = [2026, 2027];
 
 export const astaCovered = (year: number): boolean => ASTA_YEARS.includes(year);
+
+/**
+ * The fallback for a year the table does not cover (owner, 2026-11-09): it must never open a day drikpanchang
+ * blocks, so its window has to CONTAIN drikpanchang's. Drikpanchang works Tara Asta out from visibility, and
+ * its window edges sit at these distances from the Sun (2026-2027, measured with the engine):
+ *   Venus direct      6.1 to 7.8 deg   -> 10 deg (the Surya Siddhanta orb) contains it
+ *   Venus retrograde  17.6 deg at the start of Oct 2026 (inferior conjunction), 7.8 deg at the end
+ *                     -> 20 deg; the classical 8 deg (or even 10) would open 12 to 17 Oct 2026, which drik blocks
+ *   Jupiter           9.5 to 10.3 deg  -> 11 deg (Surya Siddhanta) contains it
+ * The retrograde figure rests on ONE observed window (Oct 2026); re-check it when 2028 is copied in.
+ * test/asta-fallback.spec.ts proves the containment for every period in the table.
+ */
+export const FALLBACK_ORB = { Venus: 10, VenusRetrograde: 20, Jupiter: 11 } as const;
+
+function separation(a: number, b: number): number {
+  const d = Math.abs((((a - b) % 360) + 360) % 360);
+  return d > 180 ? 360 - d : d;
+}
+
+/** Venus or Jupiter Asta by the fallback orb, for muhurat in a year the table does not cover. */
+export function fallbackAsta(planet: string, lon: number, sunLon: number, retrograde: boolean): boolean {
+  if (planet === 'Venus') return separation(lon, sunLon) < (retrograde ? FALLBACK_ORB.VenusRetrograde : FALLBACK_ORB.Venus);
+  if (planet === 'Jupiter') return separation(lon, sunLon) < FALLBACK_ORB.Jupiter;
+  return false;
+}
+
+const warned = new Set<number>();
+/** True the first time a year falls back, so the caller logs it once per process and year. */
+export function firstFallbackFor(year: number): boolean {
+  if (warned.has(year)) return false;
+  warned.add(year);
+  return true;
+}

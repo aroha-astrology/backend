@@ -19,7 +19,7 @@
 import { NAKSHATRAS } from '@aroha-astrology/shared';
 import { calculateKarana } from '../astro-engine/panchang/karana.js';
 import { calculatePanchangYoga } from '../astro-engine/panchang/yoga.js';
-import { isCombust } from '../astro-engine/calculations/planet-state.js';
+import { fallbackAsta } from '../../config/asta-dates.js';
 import type { WhyFactor } from '../intelligence/types.js';
 import { houseFrom } from '../intelligence/chart-context.js';
 import { isFavourableTransit } from '../intelligence/why.js';
@@ -52,6 +52,11 @@ export interface DaySky {
   moonSignIndex: number;
   planets: SkyPlanet[];
   eclipse?: 'solar' | 'lunar';
+  /**
+   * Venus and Jupiter in drikpanchang's published Tara Asta on this day (config/asta-dates.ts), any part of the
+   * day. Set only for years the table covers; absent means "not covered", and the fallback orb (config/asta-dates.ts fallbackAsta) decides.
+   */
+  asta?: Array<'Venus' | 'Jupiter'>;
 }
 
 export interface PersonalChart {
@@ -176,6 +181,21 @@ export function taraOf(birthNakshatraIndex: number, dayNakshatraIndex: number): 
   return (((dayNakshatraIndex - birthNakshatraIndex + 27) % 27) % 9) + 1;
 }
 
+/**
+ * The planet that makes the day Asta for a wedding: drikpanchang's published dates where the table covers the
+ * year (owner, 2026-11-09), else the fallback orb (config/asta-dates.ts), whose window always contains drik's.
+ */
+function combustPlanet(day: DaySky): string | null {
+  if (day.asta) return day.asta[0] ?? null;
+  const sun = day.planets.find((p) => p.planet === 'Sun');
+  if (!sun) return null;
+  return (
+    day.planets.find(
+      (p) => COMBUST_PLANETS.has(p.planet) && fallbackAsta(p.planet, p.longitude, sun.longitude, p.isRetrograde),
+    )?.planet ?? null
+  );
+}
+
 /** Which avoid rules the day trips for this category. */
 export function avoidFlags(day: DaySky, spec: CategorySpec): AvoidFlag[] {
   const out: AvoidFlag[] = [];
@@ -188,12 +208,7 @@ export function avoidFlags(day: DaySky, spec: CategorySpec): AvoidFlag[] {
     if (sun.signIndex === SAGITTARIUS || sun.signIndex === PISCES) out.push('kharmas');
   }
   if (spec.avoid.includes('combust') && sun) {
-    const combust = day.planets.some(
-      (p) =>
-        COMBUST_PLANETS.has(p.planet) &&
-        isCombust(p.planet, p.longitude, sun.longitude, p.isRetrograde),
-    );
-    if (combust) out.push('combust');
+    if (combustPlanet(day)) out.push('combust');
   }
   return out;
 }
@@ -211,13 +226,7 @@ function avoidFactor(flag: AvoidFlag, day: DaySky): WhyFactor {
     case 'kharmas':
       return { kind: 'transit', planet: 'Sun', effect: -1, textKey: 'decide.why.kharmas' };
     case 'combust': {
-      const sun = day.planets.find((p) => p.planet === 'Sun')!;
-      const planet =
-        day.planets.find(
-          (p) =>
-            COMBUST_PLANETS.has(p.planet) &&
-            isCombust(p.planet, p.longitude, sun.longitude, p.isRetrograde),
-        )?.planet ?? 'Venus';
+      const planet = combustPlanet(day) ?? 'Venus';
       return {
         kind: 'transit',
         planet,
