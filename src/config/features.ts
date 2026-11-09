@@ -10,6 +10,7 @@
  */
 
 import { SELECTABLE_OXION_MODELS } from './oxion-models.js';
+import { REPORT_CATALOGUE } from './reports.js';
 
 /**
  * Which section of the app a feature is for. 'classic' = users on the Indian look (Classic Vedic),
@@ -946,12 +947,14 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'nav',
     defaultEnabled: false,
   },
-  // The "Aroha Pass is here" popup on Home, with a button to /pass. Shown once to each user who has no Pass, and only while nav.arohaPass is on with at least one tier. A new user does not get it on their first visit: it waits for the second.
+  // (home.passLaunchPopup, the "Aroha Pass is here" popup, was removed in sprint L1, 2026-11-09. Old rows for it are ignored.)
+  // The Varshik Rashifal 2027 launch popup on Home: cover art and a "See your 2027" button. Shown once to each user (remembered on the server, so a reinstall or a new phone does not repeat it), never on a new user's first visit, and only while reports.varshik_rashifal_2027 is on too. No push goes with it.
   {
-    key: 'home.passLaunchPopup',
-    label: "Aroha Pass launch popup on Home (once per user, from a new user's second visit)",
+    key: 'home.varshikLaunchPopup',
+    label: 'Varshik Rashifal 2027 launch popup on Home (once per user; needs the report switch on too)',
     group: 'home',
     defaultEnabled: false,
+    tag: 'new',
   },
   // Silver: 30 questions, Life Timeline, Bonds, 20% off reports. The price here is only what the app shows; Google Play charges the base plan's own price, set in Play Console (base plan pass-199) — keep them the same.
   {
@@ -1586,6 +1589,15 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     group: 'paid',
     defaultEnabled: false,
   },
+  // One "Featured" switch per report (reports.featured_<report key>). A featured report sorts above everything else, even "New", on the reports page and in Home's reports slider; with several featured, catalogue order stays. All start OFF; the owner turns Varshik on with the launch.
+  ...REPORT_CATALOGUE.map(
+    (report): FeatureDef => ({
+      key: `reports.featured_${report.key}`,
+      label: `Featured: ${report.label} (sorts first on Reports and Home)`,
+      group: 'reports',
+      defaultEnabled: false,
+    }),
+  ),
 ] as const;
 
 const FEATURE_KEY_SET: ReadonlySet<string> = new Set(FEATURE_REGISTRY.map((f) => f.key));

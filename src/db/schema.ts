@@ -384,6 +384,10 @@ export const users = pgTable(
     // components/tour/tour-registry.ts). One column rather than a boolean per
     // tour so adding an 11th tour is a frontend-only change.
     toursCompleted: jsonb('tours_completed').$type<string[]>().notNull().default([]),
+    // Ids of the one-time launch pop-ups this user has been shown (e.g. 'varshik-2027'). Kept apart
+    // from toursCompleted because "Show me around again" clears that list, which must not make a
+    // launch pop-up come back.
+    popupsSeen: jsonb('popups_seen').$type<string[]>().notNull().default([]),
 
     // --- activity / client -------------------------------------------------
     lastActiveAt: timestamp('last_active_at', { withTimezone: true }),

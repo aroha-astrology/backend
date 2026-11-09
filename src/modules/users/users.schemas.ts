@@ -321,6 +321,13 @@ export const UserSchema = z
           'reinstall or a second device. Unrelated to the Google Play review card, which ' +
           'reports no outcome back and so can never set this.',
       ),
+    popupsSeen: z
+      .array(z.string())
+      .describe(
+        'Ids of the one-time launch pop-ups this user has already been shown (e.g. ' +
+          '"varshik-2027"). Server truth, so a reinstall or a second phone does not repeat one. ' +
+          'Unlike toursCompleted it is never cleared by "Show me around again".',
+      ),
     toursCompleted: z
       .array(z.string())
       .describe(
@@ -519,6 +526,14 @@ export const UpdateMeBodySchema = z
         'Id of a tour the user just finished, appended to `toursCompleted` if not already ' +
           'there. Deliberately an append of ONE id rather than a whole-array replace: two ' +
           'devices finishing different tours would otherwise clobber each other.',
+      ),
+    popupSeen: z
+      .string()
+      .max(64)
+      .optional()
+      .describe(
+        'Id of a one-time launch pop-up the user was just shown, appended to `popupsSeen` if ' +
+          'not already there (an append of ONE id, like tourCompleted).',
       ),
     resetTours: z
       .boolean()

@@ -62,7 +62,8 @@ describe('passLaunchReadiness', () => {
     expect(r.ready).toBe(false);
     const needed = r.switches.filter((s) => s.need === 'required').map((s) => s.key);
     expect([...needed].sort()).toEqual(['nav.arohaPass', ...ALL_TIERS, ...PLATINUM].sort());
-    expect(r.switches.find((s) => s.key === 'home.passLaunchPopup')?.need).toBe('optional');
+    // The Pass launch popup was removed in sprint L1 (2026-11-09): no switch for it is listed or registered.
+    expect(r.switches.find((s) => s.key === 'home.passLaunchPopup')).toBeUndefined();
   });
 
   it('is ready with all three tiers and every Pass feature on', async () => {

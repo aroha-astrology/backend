@@ -238,6 +238,7 @@ export function toUserDto(
     // jsonb default '[]' — the ?? is for rows read through a connection that
     // predates migration 0060, not for normal operation.
     toursCompleted: row.toursCompleted ?? [],
+    popupsSeen: row.popupsSeen ?? [],
     activeClaimableCampaign,
 
     features,
@@ -455,6 +456,11 @@ function buildPatch(body: UpdateMeBody): Partial<NewUserRow> {
   return out;
 }
 
+/** Adds one pop-up id to the list the user has seen; never duplicates, never replaces. */
+export function appendSeenPopup(seen: readonly string[], id: string): string[] {
+  return seen.includes(id) ? [...seen] : [...seen, id];
+}
+
 export async function updateMe(
   userId: string,
   body: UpdateMeBody,
@@ -509,6 +515,10 @@ export async function updateMe(
   } else if (body.tourCompleted) {
     const seen = current.toursCompleted ?? [];
     patch.toursCompleted = seen.includes(body.tourCompleted) ? seen : [...seen, body.tourCompleted];
+  }
+
+  if (body.popupSeen) {
+    patch.popupsSeen = appendSeenPopup(current.popupsSeen ?? [], body.popupSeen);
   }
 
   const consentLogs = body.consent ? applyConsent(body.consent, patch, userId, ctx) : [];

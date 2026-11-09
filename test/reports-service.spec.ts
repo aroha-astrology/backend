@@ -1845,6 +1845,21 @@ describe('getReportCatalogueForUser', () => {
     expect(wealth.purchases).toEqual([]);
   });
 
+  it('marks a report isFeatured only while its Featured switch is on', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.varshik_rashifal_2027': { enabled: true, pricePaise: 59900 },
+      'reports.featured_varshik_rashifal_2027': { enabled: true },
+      'reports.featured_marriage': { enabled: false },
+    });
+    state.listReportsForUser.mockResolvedValue([]);
+
+    const catalogue = await getReportCatalogueForUser(makeUser(), null);
+    expect(catalogue.find((c) => c.key === 'varshik_rashifal_2027')!.isFeatured).toBe(true);
+    expect(catalogue.find((c) => c.key === 'marriage')!.isFeatured).toBe(false);
+    // No row at all (the default) is not featured.
+    expect(catalogue.find((c) => c.key === 'wealth')!.isFeatured).toBe(false);
+  });
+
   it('surfaces originalPricePaise from the admin override when a discount is configured', async () => {
     state.resolveFeaturesForUser.mockResolvedValue({
       'reports.marriage': { enabled: true, pricePaise: 14900, originalPricePaise: 49900 },

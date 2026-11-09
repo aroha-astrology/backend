@@ -25,7 +25,6 @@ export const PASS_LAUNCH_TYPE = 'pass_launch';
 /** A try-out sent to the admin alone: it must not count as that admin's launch notification. */
 export const PASS_LAUNCH_TEST_TYPE = 'pass_launch_test';
 const PASS_SWITCH = 'nav.arohaPass';
-const POPUP_SWITCH = 'home.passLaunchPopup';
 /** Matches the other admin broadcasts. */
 const SEND_CONCURRENCY = 10;
 
@@ -125,7 +124,6 @@ export async function passLaunchReadiness(): Promise<PassLaunchReadiness> {
       row(FEATURE_SWITCH[f], promised.has(f) ? 'required' : 'optional'),
     ),
     row('home.bondsCard', 'optional'),
-    row(POPUP_SWITCH, 'optional'),
   ];
 
   const playConfigured = isGooglePlayConfigured();

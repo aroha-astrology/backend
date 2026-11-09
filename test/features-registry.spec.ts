@@ -63,7 +63,7 @@ describe('roadmap features (tag "new")', () => {
     const tagged = new Set(NEW.map((f) => f.key));
     const v7 = ['money.coins', 'money.coinPacks', 'money.razorpayIntl', 'money.signupDrip', 'money.freeProfiles', 'money.houseOffer', 'money.voiceSlices', 'money.passCoins', 'money.refundKeys', 'money.platinumReport', 'money.razorpayPass', 'money.storekit', 'experience.picker', 'experience.testSwitch', 'experience.homeLayout', 'experience.travelPill', 'experience.nriMode', 'experience.signShift', 'experience.wheelChart', 'nav.pills', 'nav.shortMenu', 'nav.coachMarks', 'live.nowBar', 'live.widget', 'ritual.morning', 'circles.circles', 'circles.invite', 'circles.pulse', 'hooks.kundliRahasya', 'hooks.shubhLabh', 'hooks.gharKavach', 'hooks.sankalpDiya', 'hooks.cosmicReceipts', 'hooks.textTiming', 'hooks.sleepSync', 'hooks.mysteryDrop', 'home.timeMorph', 'memory.babaMemory', 'memory.vault', 'memory.rectifyChip', 'chat.personas', 'community.sameSky', 'lang.localNames', 'lang.gitaScripts', 'lang.pushAll'];
     // marked NEW after the v7 launch, each shipping OFF
-    const later = ['reports.varshik_rashifal_2027'];
+    const later = ['reports.varshik_rashifal_2027', 'home.varshikLaunchPopup'];
     for (const key of [...v7, ...later]) expect(tagged.has(key), key).toBe(true);
     expect(NEW.length).toBe(v7.length + later.length);
     // the earlier roadmap features are no longer NEW

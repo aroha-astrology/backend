@@ -1622,6 +1622,7 @@ export async function getReportCatalogueForUser(
       requiresPartner: def.requiresPartner,
       enabled,
       isNew: computeIsNewReport(enabled, resolved?.enabledAt ?? null, now),
+      isFeatured: enabled && (features[`reports.featured_${def.key}`]?.enabled ?? false),
       pricePaise: withPassDiscount(resolved?.pricePaise ?? def.basePricePaise, passDiscountPct),
       // What everyone pays before the Pass discount, and the Pass's own percent
       // (0 without a Pass), so the buy screen can show the two discounts apart.
