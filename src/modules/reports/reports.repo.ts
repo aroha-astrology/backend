@@ -234,6 +234,8 @@ export interface ClaimReportInput {
   /** Partner birth details — kundli_milan only, null for every other report key. */
   input: Record<string, unknown> | null;
   pricePaidPaise: number;
+  /** Varshik Rashifal only: the tier bought. */
+  tier?: string | null;
   /** True for a free preview claim (see previewReport in reports.service.ts), false for a real
    * purchase claim. Written on EVERY claim (insert and reclaim-on-conflict alike) — a real
    * purchase claim always passes false, which is what flips a preview row to non-preview when
@@ -294,6 +296,7 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
     input: claim.input,
     inputHash,
     pricePaidPaise: claim.pricePaidPaise,
+    tier: claim.tier ?? null,
     isPreview: claim.isPreview,
     chargeKey: claim.chargeKey ?? null,
     // Enqueued, not started: claimReportRow's job is to establish the row's identity
@@ -327,6 +330,7 @@ export async function claimReportRow(claim: ClaimReportInput): Promise<ReportRow
         generationAttempts: 0,
         error: null,
         pricePaidPaise: claim.pricePaidPaise,
+        tier: claim.tier ?? null,
         isPreview: claim.isPreview,
         chargeKey: claim.chargeKey ?? null,
         updatedAt: now,
@@ -574,11 +578,31 @@ export async function upgradePreviewToPurchased(
   id: string,
   pricePaidPaise: number,
   chargeKey: string | null = null,
+  tier: string | null = null,
 ): Promise<void> {
   await db
     .update(reports)
-    .set({ isPreview: false, pricePaidPaise, chargeKey, updatedAt: new Date() })
+    .set({ isPreview: false, pricePaidPaise, chargeKey, ...(tier ? { tier } : {}), updatedAt: new Date() })
     .where(eq(reports.id, id));
+}
+
+/**
+ * Moves a bought Varshik report to a higher tier, only while it is still at the tier the caller
+ * saw (a second tap or a second phone cannot move it twice). Adds what was paid for the step.
+ * Returns whether the row moved.
+ */
+export async function moveReportTier(
+  id: string,
+  fromTier: string,
+  toTier: string,
+  addPaise: number,
+): Promise<boolean> {
+  const rows = await db
+    .update(reports)
+    .set({ tier: toTier, pricePaidPaise: sql`${reports.pricePaidPaise} + ${addPaise}`, updatedAt: new Date() })
+    .where(and(eq(reports.id, id), eq(reports.tier, fromTier)))
+    .returning({ id: reports.id });
+  return rows.length > 0;
 }
 
 export async function markReportFailed(id: string, claimedAt: Date, error: string): Promise<void> {

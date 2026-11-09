@@ -15,6 +15,8 @@ import {
   ReportIdParamSchema,
   ReportReadySchema,
   ReportStatsResponseSchema,
+  UpgradeReportBodySchema,
+  UpgradeReportResponseSchema,
   CheckQuestionsBodySchema,
   CheckQuestionsResponseSchema,
   VoteNextReportBodySchema,
@@ -27,6 +29,7 @@ import {
   getReportStats,
   previewReport,
   purchaseReport,
+  upgradeVarshikTier,
   checkKpQuestions,
   voteNextReport,
 } from './reports.service.js';
@@ -168,6 +171,38 @@ reportsRouter.openapi(purchaseRoute, async (c) => {
   const body = c.req.valid('json');
   const result = await purchaseReport(user, body);
   return c.json(result, 200);
+});
+
+const upgradeRoute = createRoute({
+  method: 'post',
+  path: '/reports/{id}/upgrade',
+  tags: ['Reports'],
+  summary: 'Pay the difference to move a bought Varshik Rashifal up a tier',
+  description:
+    'The report is already written in full, so the extra pages show at once. The price is the gap ' +
+    "between the two tiers' list prices (less any Aroha Pass discount), read on the server.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: ReportIdParamSchema,
+    body: { required: true, content: { 'application/json': { schema: UpgradeReportBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Upgraded',
+      content: { 'application/json': { schema: UpgradeReportResponseSchema } },
+    },
+    400: errorResponse('NOT_AN_UPGRADE / TIER_UNAVAILABLE'),
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Report not found'),
+    409: errorResponse('INSUFFICIENT_CREDITS / TIER_CHANGED / NOT_UPGRADABLE'),
+  },
+});
+
+reportsRouter.openapi(upgradeRoute, async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.valid('param');
+  const { tier } = c.req.valid('json');
+  return c.json(await upgradeVarshikTier(user, id, tier), 200);
 });
 
 const checkQuestionsRoute = createRoute({

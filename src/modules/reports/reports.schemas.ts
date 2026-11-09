@@ -1,4 +1,5 @@
 import { z } from '@hono/zod-openapi';
+import { VarshikCatalogueTierSchema, VarshikTierSlugSchema } from './varshik-tiers.js';
 
 export const LanguageQuerySchema = z.object({
   language: z
@@ -47,6 +48,8 @@ export const PurchaseReportBodySchema = z
      * set; ignored by every other report type's generator. Never persisted — read once by
      * runReportGeneration and discarded. */
     answers: z.record(z.string(), z.string()).optional(),
+    /** Varshik Rashifal only: which tier is bought. Required for that report, ignored by the rest. The price is read on the server from the tier table. */
+    tier: VarshikTierSlugSchema.optional(),
   })
   .openapi('PurchaseReportBody');
 
@@ -91,6 +94,8 @@ export const ReportCataloguePurchaseSchema = z
     id: z.string(),
     periodMonth: z.string().nullable(),
     status: z.enum(['generating', 'ready', 'failed']),
+    /** Varshik Rashifal only: the tier this purchase was bought at. */
+    tier: z.string().nullable().optional(),
   })
   .openapi('ReportCataloguePurchase');
 
@@ -124,6 +129,8 @@ export const ReportCatalogueEntrySchema = z
     /** Percent the caller's Aroha Pass takes off listPricePaise; 0 without a Pass. */
     passDiscountPct: z.number().int(),
     purchases: z.array(ReportCataloguePurchaseSchema),
+    /** Varshik Rashifal only: the tiers on sale, priced for this caller. Absent for every other report. */
+    tiers: z.array(VarshikCatalogueTierSchema).optional(),
     /** marriage only — the most recently purchased marriage report's own stored spouse birth
      * details, for pre-filling the optional spouse-details section on a later purchase. Always
      * null for every other report key. */
@@ -207,6 +214,8 @@ export const ReportReadySchema = z
     status: z.literal('ready'),
     reportKey: z.string(),
     periodMonth: z.string().nullable(),
+    /** Varshik Rashifal only: the tier bought, which decides the pages shown. Absent for every other report. */
+    tier: VarshikTierSlugSchema.optional(),
     /** Deterministic facts recomputed fresh from the live chart on every read — see
      * ReportGenerator['computeScores']. Shape differs per report type. */
     scores: z.record(z.string(), z.unknown()),
@@ -251,6 +260,14 @@ export const ReportIdParamSchema = z.object({
     .uuid()
     .openapi({ param: { name: 'id', in: 'path' } }),
 });
+
+export const UpgradeReportBodySchema = z
+  .object({ tier: VarshikTierSlugSchema })
+  .openapi('UpgradeReportBody');
+
+export const UpgradeReportResponseSchema = z
+  .object({ tier: VarshikTierSlugSchema, chargedPaise: z.number().int() })
+  .openapi('UpgradeReportResponse');
 
 export const VoteNextReportBodySchema = z
   .object({ reportKey: z.string() })

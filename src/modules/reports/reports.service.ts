@@ -16,6 +16,13 @@ import {
   takePassFreeReport,
 } from '../pass/pass-free-report.js';
 import { keyed, newChargeKey, refundOf } from '../billing/refund-keys.js';
+import {
+  getBuyableVarshikTier,
+  getVarshikTier,
+  listCatalogueVarshikTiers,
+  tierPayPaise,
+  type VarshikTierDto,
+} from './varshik-tiers.js';
 import '../reports/generators/index.js';
 import crypto from 'node:crypto';
 import { logger } from '../../lib/logger.js';
@@ -89,6 +96,7 @@ import {
   markReportRefreshFailed,
   overwriteReadyReportContent,
   markReportRefreshed,
+  moveReportTier,
   REPORT_REFRESH_MAX_ATTEMPTS,
   reportRefreshCounts,
   resetFailedReportRefreshes,
@@ -1334,9 +1342,12 @@ export async function purchaseReport(
     });
   }
 
+  // Varshik Rashifal is sold in tiers: the price is the chosen tier's, read here from the tier table
+  // (never from the client), refused before any money moves if the tier is missing or switched off.
+  const varshikTier = def.key === 'varshik_rashifal_2027' ? await getBuyableVarshikTier(body.tier) : null;
   // Aroha Pass holders get their tier's discount (nobody has a Pass until it's switched on).
   const perUnitPricePaise = withPassDiscount(
-    features[def.featureFlagKey]?.pricePaise ?? def.basePricePaise,
+    varshikTier?.pricePaise ?? features[def.featureFlagKey]?.pricePaise ?? def.basePricePaise,
     await passReportDiscountPct(user.id),
   );
   const months = body.months ?? [];
@@ -1425,6 +1436,7 @@ export async function purchaseReport(
         periodMonth,
         input,
         pricePaidPaise: rowPrice,
+        tier: varshikTier?.tierSlug ?? null,
         isPreview: false,
         chargeKey: rowKey(i),
       });
@@ -1458,7 +1470,8 @@ export async function purchaseReport(
           // always already 'ready' from the preview generation, so the buyer gets it
           // instantly — no new generation call needed here).
           const key = rowKey(i);
-          if (key) await upgradePreviewToPurchased(existing.id, rowPrice, key);
+          if (varshikTier) await upgradePreviewToPurchased(existing.id, rowPrice, key ?? null, varshikTier.tierSlug);
+          else if (key) await upgradePreviewToPurchased(existing.id, rowPrice, key);
           else await upgradePreviewToPurchased(existing.id, rowPrice);
           summaries.push({
             id: existing.id,
@@ -1505,6 +1518,50 @@ export async function purchaseReport(
   pumpReportQueue();
 
   return { reports: summaries };
+}
+
+/**
+ * Pay the difference to move a bought Varshik report up a tier (Snapshot to Gold or Sampoorna, Gold
+ * to Sampoorna). The report is already written in full, so the new pages show at once. The price is
+ * the gap between the two tiers' list prices, less the reader's Pass discount, read on the server.
+ */
+export async function upgradeVarshikTier(
+  user: UserRow,
+  reportId: string,
+  targetSlug: string,
+): Promise<{ tier: 'basic' | 'gold' | 'complete'; chargedPaise: number }> {
+  const row = await findReportById(reportId);
+  if (!row || row.userId !== user.id || row.reportKey !== 'varshik_rashifal_2027') {
+    throw Errors.notFound('Report not found');
+  }
+  if (row.isPreview || row.status === 'failed') throw Errors.conflict('NOT_UPGRADABLE');
+  const target = await getBuyableVarshikTier(targetSlug);
+  const current: VarshikTierDto | null = await getVarshikTier(row.tier ?? 'complete');
+  if (!current || target.sortOrder <= current.sortOrder) throw Errors.badRequest('NOT_AN_UPGRADE');
+
+  const chargedPaise = tierPayPaise(
+    Math.max(0, target.pricePaise - current.pricePaise),
+    await passReportDiscountPct(user.id),
+  );
+  const key = chargedPaise > 0 ? await newChargeKey(user.id, 'report_upgrade') : undefined;
+  if (chargedPaise > 0) {
+    const charged = await deductWalletBalance(
+      user.id,
+      chargedPaise,
+      `report_upgrade:${row.reportKey}:${current.tierSlug}:${target.tierSlug}`,
+      ...keyed(key),
+    );
+    if (!charged) throw Errors.conflict('INSUFFICIENT_CREDITS');
+  }
+  const moved = await moveReportTier(row.id, current.tierSlug, target.tierSlug, chargedPaise);
+  if (!moved) {
+    // Another tap moved it first: give this charge back.
+    if (chargedPaise > 0) {
+      await addWalletBalance(user.id, chargedPaise, `refund:report_upgrade:${row.reportKey}`, ...refundOf(key)).catch(() => {});
+    }
+    throw Errors.conflict('TIER_CHANGED');
+  }
+  return { tier: target.tierSlug, chargedPaise };
 }
 
 /**
@@ -1599,6 +1656,8 @@ export async function getReportCatalogueForUser(
     listReportsForUser(user.id, birthProfileId),
     passReportDiscountPct(user.id),
   ]);
+  const varshikTiers = await listCatalogueVarshikTiers(passDiscountPct);
+  const cheapestTier = [...varshikTiers].sort((a, b) => a.pricePaise - b.pricePaise)[0];
 
   const now = new Date();
   return REPORT_CATALOGUE.map((def) => {
@@ -1623,22 +1682,33 @@ export async function getReportCatalogueForUser(
       enabled,
       isNew: computeIsNewReport(enabled, resolved?.enabledAt ?? null, now),
       isFeatured: enabled && (features[`reports.featured_${def.key}`]?.enabled ?? false),
-      pricePaise: withPassDiscount(resolved?.pricePaise ?? def.basePricePaise, passDiscountPct),
+      // Varshik: the card shows "from" the cheapest tier on sale; the tier sheet shows all of them.
+      pricePaise:
+        def.key === 'varshik_rashifal_2027' && cheapestTier
+          ? cheapestTier.payPaise
+          : withPassDiscount(resolved?.pricePaise ?? def.basePricePaise, passDiscountPct),
       // What everyone pays before the Pass discount, and the Pass's own percent
       // (0 without a Pass), so the buy screen can show the two discounts apart.
-      listPricePaise: resolved?.pricePaise ?? def.basePricePaise,
+      listPricePaise:
+        def.key === 'varshik_rashifal_2027' && cheapestTier
+          ? cheapestTier.pricePaise
+          : (resolved?.pricePaise ?? def.basePricePaise),
       passDiscountPct,
       // No fallback to basePricePaise here — an unconfigured original price
       // means there's no discount to show, not a fabricated one. A Pass holder's
       // discount is a real one, so it shows the undiscounted price struck out.
       originalPricePaise:
-        passDiscountPct > 0
-          ? (resolved?.originalPricePaise ?? resolved?.pricePaise ?? def.basePricePaise)
-          : (resolved?.originalPricePaise ?? null),
+        def.key === 'varshik_rashifal_2027' && cheapestTier
+          ? (cheapestTier.originalPricePaise ?? (passDiscountPct > 0 ? cheapestTier.pricePaise : null))
+          : passDiscountPct > 0
+            ? (resolved?.originalPricePaise ?? resolved?.pricePaise ?? def.basePricePaise)
+            : (resolved?.originalPricePaise ?? null),
+      ...(def.key === 'varshik_rashifal_2027' ? { tiers: varshikTiers } : {}),
       purchases: ownRows.map((r) => ({
         id: r.id,
         periodMonth: r.periodMonth,
         status: publicStatus(r.status),
+        ...(def.key === 'varshik_rashifal_2027' ? { tier: r.tier ?? null } : {}),
       })),
       lastSpouseDetails: lastPartnerRow
         ? {
@@ -1749,6 +1819,13 @@ function basisOf(reportKey: string): { basis?: NonNullable<ReturnType<typeof rep
   return basis ? { basis } : {};
 }
 
+/** The tier a Varshik report was bought at (a row from before tiers counts as the full report). */
+function tierOf(row: ReportRow): { tier?: 'basic' | 'gold' | 'complete' } {
+  if (row.reportKey !== 'varshik_rashifal_2027') return {};
+  const t = row.tier;
+  return { tier: t === 'basic' || t === 'gold' ? t : 'complete' };
+}
+
 /** Varshik Rashifal is written in VARSHIK_TEXT_GROUPS checkpointed groups, read from the generator itself. */
 const VARSHIK_GROUPS = VARSHIK_TEXT_GROUPS;
 
@@ -1822,6 +1899,7 @@ export async function getReportForUser(
       scores: englishScores,
       isPreview: row.isPreview,
       sections: englishSections,
+      ...tierOf(row),
       ...basisOf(row.reportKey),
     };
   }
@@ -1847,6 +1925,7 @@ export async function getReportForUser(
     periodMonth: row.periodMonth,
     scores,
     isPreview: row.isPreview,
+    ...tierOf(row),
     ...basisOf(row.reportKey),
   };
 

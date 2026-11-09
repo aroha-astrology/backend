@@ -37,6 +37,7 @@ const state = vi.hoisted(() => {
     saveReportProgress: vi.fn(),
     saveReportTranslation: vi.fn(),
     upgradePreviewToPurchased: vi.fn(),
+    moveReportTier: vi.fn(),
     countReadyReportsByKey: vi.fn(),
     resolveFeatures: vi.fn(() => Promise.resolve({})),
     resolveFeaturesForUser: vi.fn(),
@@ -63,7 +64,32 @@ const state = vi.hoisted(() => {
   };
 });
 
+// The tier table is read from the DB; these tests use a fixed copy of the seeded tiers.
+const TIERS = vi.hoisted(() => {
+  const mk = (tierSlug: string, pricePaise: number, sortOrder: number, isActive = true) => ({
+    tierSlug, displayName: tierSlug, subtitle: '', badgeText: null, pricePaise, originalPricePaise: null,
+    pageCount: 20, shortDescription: '', features: [], excludes: [], isPopular: false, isActive, sortOrder,
+    updatedAt: '2026-11-09T00:00:00.000Z',
+  });
+  return { basic: mk('basic', 29900, 1), gold: mk('gold', 59900, 2), complete: mk('complete', 99900, 3), off: mk('gold', 59900, 2, false) };
+});
+vi.mock('../src/modules/reports/varshik-tiers.js', () => {
+  const bySlug = (s: unknown) => (typeof s === 'string' ? (TIERS as Record<string, unknown>)[s] : undefined);
+  const disc = (p: number, d: number) => (d > 0 ? Math.round((p * (100 - d)) / 100) : p);
+  return {
+    getBuyableVarshikTier: (s: unknown) =>
+      s === 'basic' || s === 'gold' || s === 'complete'
+        ? Promise.resolve(bySlug(s))
+        : Promise.reject(Object.assign(new Error('TIER_REQUIRED'), { code: 'BAD_REQUEST' })),
+    getVarshikTier: (s: string) => Promise.resolve(bySlug(s) ?? null),
+    listCatalogueVarshikTiers: (d: number) =>
+      Promise.resolve([TIERS.basic, TIERS.gold, TIERS.complete].map((t) => ({ ...t, payPaise: disc(t.pricePaise, d) }))),
+    tierPayPaise: disc,
+  };
+});
+
 vi.mock('../src/modules/reports/reports.repo.js', () => ({
+  moveReportTier: state.moveReportTier,
   claimReportRow: state.claimReportRow,
   claimQueuedReports: state.claimQueuedReports,
   findReportRow: state.findReportRow,
@@ -183,6 +209,7 @@ vi.mock('../src/modules/reports/report-generator.types.js', async () => {
 
 const {
   purchaseReport,
+  upgradeVarshikTier,
   purchaseReportShapeCheck,
   buildReportScoreContext,
   withUpcomingTransits,
@@ -217,6 +244,7 @@ function makeReportRow(overrides: Partial<ReportRow> = {}): ReportRow {
     input: null,
     model: null,
     pricePaidPaise: 9900,
+    tier: null,
     isPreview: false,
     startedAt: now,
     error: null,
@@ -466,7 +494,7 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     ]) {
       state.resolveProfileContext.mockResolvedValue(profile);
       await expect(
-        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers }),
       ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'BIRTH_TIME_NOT_CONFIRMED' });
     }
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
@@ -477,7 +505,7 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     for (const placeOfBirth of [null, { ...place, tz: '' }, { ...place, lat: Number.NaN }]) {
       state.resolveProfileContext.mockResolvedValue({ ...exactProfile, placeOfBirth });
       await expect(
-        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers }),
       ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'BIRTH_PLACE_MISSING' });
     }
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
@@ -488,7 +516,7 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     for (const key of Object.keys(answers)) {
       const { [key]: _left, ...rest } = answers as Record<string, string>;
       await expect(
-        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: rest }),
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers: rest }),
       ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: `Missing answer for varshik_rashifal_2027.${key}` });
     }
     await expect(purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027' })).rejects.toMatchObject({
@@ -501,10 +529,10 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
   it('refuses an answer outside the questions it asks', async () => {
     state.resolveProfileContext.mockResolvedValue(exactProfile);
     await expect(
-      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: { ...answers, relationship: 'complicated' } }),
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers: { ...answers, relationship: 'complicated' } }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     await expect(
-      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers: { ...answers, question1: 'hello' } }),
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers: { ...answers, question1: 'hello' } }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(state.deductWalletBalance).not.toHaveBeenCalled();
   });
@@ -515,7 +543,7 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     try {
       state.resolveProfileContext.mockResolvedValue(exactProfile);
       await expect(
-        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers }),
       ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'REPORT_WINDOW_CLOSED' });
       expect(state.deductWalletBalance).not.toHaveBeenCalled();
     } finally {
@@ -526,25 +554,55 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
   it('charges Rs 599 and keeps the ten answers on the row', async () => {
     state.resolveProfileContext.mockResolvedValue(exactProfile);
     state.claimReportRow.mockResolvedValue({ id: 'v-1', periodMonth: '2026-11-06', status: 'queued' });
-    await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers });
+    await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers });
     expect(state.deductWalletBalance).toHaveBeenCalledWith(expect.anything(), 59900, expect.any(String));
     expect(state.claimReportRow).toHaveBeenCalledWith(
       expect.objectContaining({ reportKey: 'varshik_rashifal_2027', input: { answers } }),
     );
   });
 
-  it('charges the price the admin set, and the catalogue shows the same price', async () => {
-    state.resolveFeaturesForUser.mockResolvedValue({
-      'reports.varshik_rashifal_2027': { enabled: true, pricePaise: 49900, originalPricePaise: 599900 },
-    });
+  it('charges the price of the tier chosen (from the tier table) and stores the tier on the row', async () => {
     state.listReportsForUser.mockResolvedValue([]);
     state.resolveProfileContext.mockResolvedValue(exactProfile);
     state.claimReportRow.mockResolvedValue({ id: 'v-2', periodMonth: '2026-11-06', status: 'queued' });
-    const catalogue = await getReportCatalogueForUser(makeUser(), null);
-    const shown = catalogue.find((c) => c.key === 'varshik_rashifal_2027')!.pricePaise;
-    expect(shown).toBe(49900);
-    await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers });
-    expect(state.deductWalletBalance).toHaveBeenCalledWith(expect.anything(), shown, expect.any(String));
+    const entry = (await getReportCatalogueForUser(makeUser(), null)).find((c) => c.key === 'varshik_rashifal_2027')!;
+    // The card shows "from" the cheapest tier, and lists all three with what this reader pays.
+    expect(entry.pricePaise).toBe(29900);
+    expect(entry.tiers?.map((t) => [t.tierSlug, t.payPaise])).toEqual([['basic', 29900], ['gold', 59900], ['complete', 99900]]);
+    for (const [tier, paise] of [['basic', 29900], ['gold', 59900], ['complete', 99900]] as const) {
+      state.deductWalletBalance.mockClear();
+      state.claimReportRow.mockClear();
+      await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier, answers });
+      expect(state.deductWalletBalance).toHaveBeenCalledWith(expect.anything(), paise, expect.any(String));
+      expect(state.claimReportRow).toHaveBeenCalledWith(expect.objectContaining({ tier, pricePaidPaise: paise }));
+    }
+  });
+
+  it('ignores the old per-report admin price: the tier table is the price', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.varshik_rashifal_2027': { enabled: true, pricePaise: 100, originalPricePaise: 200 },
+    });
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    state.claimReportRow.mockResolvedValue({ id: 'v-2b', periodMonth: '2026-11-06', status: 'queued' });
+    await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers });
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(expect.anything(), 59900, expect.any(String));
+  });
+
+  it('refuses a missing or unknown tier before the wallet is touched', async () => {
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    await expect(purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers })).rejects.toMatchObject({ message: 'TIER_REQUIRED' });
+    await expect(
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'platinum' as never, answers }),
+    ).rejects.toMatchObject({ message: 'TIER_REQUIRED' });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('a Pass discount applies to the tier price', async () => {
+    state.passReportDiscountPct.mockResolvedValue(20);
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    state.claimReportRow.mockResolvedValue({ id: 'v-2c', periodMonth: '2026-11-06', status: 'queued' });
+    await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'complete', answers });
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(expect.anything(), 79920, expect.any(String));
   });
 
   it('is open on the last day of 2027 and refused from the first day of 2028', async () => {
@@ -554,11 +612,11 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     try {
       vi.setSystemTime(new Date('2027-12-31T10:00:00Z'));
       await expect(
-        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers }),
       ).resolves.toBeDefined();
       vi.setSystemTime(new Date('2027-12-31T19:00:00Z')); // 1 Jan 2028 in India
       await expect(
-        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers }),
       ).rejects.toMatchObject({ message: 'REPORT_WINDOW_CLOSED' });
     } finally {
       vi.useRealTimers();
@@ -568,10 +626,58 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
   it('a second purchase while one is active reuses it and refunds', async () => {
     state.resolveProfileContext.mockResolvedValue(exactProfile);
     state.findActiveYearlyReportRow.mockResolvedValue({ id: 'v-old', periodMonth: '2027-03-01', status: 'ready' });
-    const r = await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers });
+    const r = await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers });
     expect(r.reports[0]).toMatchObject({ id: 'v-old' });
     expect(state.claimReportRow).not.toHaveBeenCalled();
     expect(state.addWalletBalance).toHaveBeenCalled();
+  });
+});
+
+describe('upgradeVarshikTier — pay the difference', () => {
+  beforeEach(() => {
+    state.moveReportTier.mockReset();
+    state.deductWalletBalance.mockReset();
+    state.addWalletBalance.mockReset().mockResolvedValue(undefined);
+  });
+
+  const row = (over: Record<string, unknown> = {}) =>
+    makeReportRow({ id: 'v-up', reportKey: 'varshik_rashifal_2027', status: 'ready', tier: 'basic', isPreview: false, userId: makeUser().id, ...over });
+
+  it('charges the gap between the tiers and moves the row', async () => {
+    state.findReportById.mockResolvedValue(row());
+    state.deductWalletBalance.mockResolvedValue(true);
+    state.moveReportTier.mockResolvedValue(true);
+    await expect(upgradeVarshikTier(makeUser(), 'v-up', 'gold')).resolves.toEqual({ tier: 'gold', chargedPaise: 30000 });
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(expect.anything(), 30000, expect.any(String));
+    expect(state.moveReportTier).toHaveBeenCalledWith('v-up', 'basic', 'gold', 30000);
+  });
+
+  it('applies the Pass discount to the gap', async () => {
+    state.passReportDiscountPct.mockResolvedValue(10);
+    state.findReportById.mockResolvedValue(row());
+    state.deductWalletBalance.mockResolvedValue(true);
+    state.moveReportTier.mockResolvedValue(true);
+    await expect(upgradeVarshikTier(makeUser(), 'v-up', 'complete')).resolves.toMatchObject({ chargedPaise: 63000 });
+  });
+
+  it('is refused for the same or a lower tier, and for a report that is not theirs', async () => {
+    state.findReportById.mockResolvedValue(row({ tier: 'gold' }));
+    await expect(upgradeVarshikTier(makeUser(), 'v-up', 'gold')).rejects.toMatchObject({ message: 'NOT_AN_UPGRADE' });
+    await expect(upgradeVarshikTier(makeUser(), 'v-up', 'basic')).rejects.toMatchObject({ message: 'NOT_AN_UPGRADE' });
+    state.findReportById.mockResolvedValue(row({ userId: 'someone-else' }));
+    await expect(upgradeVarshikTier(makeUser(), 'v-up', 'complete')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+  });
+
+  it('takes nothing when the wallet is short, and gives the charge back if another tap moved the row first', async () => {
+    state.findReportById.mockResolvedValue(row());
+    state.deductWalletBalance.mockResolvedValue(false);
+    await expect(upgradeVarshikTier(makeUser(), 'v-up', 'gold')).rejects.toMatchObject({ message: 'INSUFFICIENT_CREDITS' });
+    expect(state.moveReportTier).not.toHaveBeenCalled();
+    state.deductWalletBalance.mockResolvedValue(true);
+    state.moveReportTier.mockResolvedValue(false);
+    await expect(upgradeVarshikTier(makeUser(), 'v-up', 'gold')).rejects.toMatchObject({ message: 'TIER_CHANGED' });
+    expect(state.addWalletBalance).toHaveBeenCalledWith(expect.anything(), 30000, expect.any(String));
   });
 });
 

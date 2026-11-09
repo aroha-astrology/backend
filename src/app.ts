@@ -18,6 +18,7 @@ import { adminGroupsRouter } from './modules/admin/admin-groups.routes.js';
 import { adminGiftCampaignsRouter } from './modules/admin/admin-gift-campaigns.routes.js';
 import { adminBroadcastRouter } from './modules/admin/admin-broadcast.routes.js';
 import { adminVarshikLaunchRouter } from './modules/admin/admin-varshik-launch.routes.js';
+import { adminVarshikTiersRouter } from './modules/admin/admin-varshik-tiers.routes.js';
 import { adminGeminiKeysRouter } from './modules/admin/admin-gemini-keys.routes.js';
 import { experienceRouter } from './modules/experience/experience.routes.js';
 import { homeLayoutRouter } from './modules/home-layout/home-layout.routes.js';
@@ -152,6 +153,7 @@ export function createApp(): OpenAPIHono {
   app.route('/v1', adminGiftCampaignsRouter);
   app.route('/v1', adminBroadcastRouter);
   app.route('/v1', adminVarshikLaunchRouter);
+  app.route('/v1', adminVarshikTiersRouter);
   app.route('/v1', adminGeminiKeysRouter);
   app.route('/v1', experienceRouter);
   app.route('/v1', homeLayoutRouter);

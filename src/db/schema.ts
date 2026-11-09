@@ -1855,6 +1855,30 @@ export const reportStatusEnum = pgEnum('report_status', [
   'failed',
 ]);
 
+/* varshik_pricing_tiers — the three Varshik Rashifal 2027 tiers (migration 0109)  */
+/* Price and card text, edited in Admin. The server charges price_paise from here. */
+export const varshikPricingTiers = pgTable(
+  'varshik_pricing_tiers',
+  {
+    tierSlug: text('tier_slug').primaryKey(),
+    displayName: text('display_name').notNull(),
+    subtitle: text('subtitle').notNull(),
+    badgeText: text('badge_text'),
+    pricePaise: integer('price_paise').notNull(),
+    originalPricePaise: integer('original_price_paise'),
+    pageCount: integer('page_count').notNull(),
+    shortDescription: text('short_description').notNull(),
+    features: jsonb('features').$type<string[]>().notNull().default([]),
+    excludes: jsonb('excludes').$type<string[]>().notNull().default([]),
+    isPopular: boolean('is_popular').notNull().default(false),
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(1),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type VarshikTierRow = typeof varshikPricingTiers.$inferSelect;
+
 export const reports = pgTable(
   'reports',
   {
@@ -1937,6 +1961,8 @@ export const reports = pgTable(
      * standalone provenance record. */
     language: text('language'),
     pricePaidPaise: integer('price_paid_paise').notNull(),
+    /** Varshik Rashifal only: the tier it was bought at ('basic' | 'gold' | 'complete', migration 0109). The report is written in full whatever the tier; this decides which pages the reader sees. Null for every other report key. */
+    tier: text('tier'),
     /** True for a free "generate the real report and blur it" preview row (see
      * previewReport in reports.service.ts) — same generator pipeline as a real
      * purchase, billed at 0. Flipped back to false the moment the user actually
