@@ -533,6 +533,38 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     );
   });
 
+  it('charges the price the admin set, and the catalogue shows the same price', async () => {
+    state.resolveFeaturesForUser.mockResolvedValue({
+      'reports.varshik_rashifal_2027': { enabled: true, pricePaise: 49900, originalPricePaise: 599900 },
+    });
+    state.listReportsForUser.mockResolvedValue([]);
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    state.claimReportRow.mockResolvedValue({ id: 'v-2', periodMonth: '2026-11-06', status: 'queued' });
+    const catalogue = await getReportCatalogueForUser(makeUser(), null);
+    const shown = catalogue.find((c) => c.key === 'varshik_rashifal_2027')!.pricePaise;
+    expect(shown).toBe(49900);
+    await purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers });
+    expect(state.deductWalletBalance).toHaveBeenCalledWith(expect.anything(), shown, expect.any(String));
+  });
+
+  it('is open on the last day of 2027 and refused from the first day of 2028', async () => {
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    state.claimReportRow.mockResolvedValue({ id: 'v-3', periodMonth: '2027-12-31', status: 'queued' });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2027-12-31T10:00:00Z'));
+      await expect(
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+      ).resolves.toBeDefined();
+      vi.setSystemTime(new Date('2027-12-31T19:00:00Z')); // 1 Jan 2028 in India
+      await expect(
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', answers }),
+      ).rejects.toMatchObject({ message: 'REPORT_WINDOW_CLOSED' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a second purchase while one is active reuses it and refunds', async () => {
     state.resolveProfileContext.mockResolvedValue(exactProfile);
     state.findActiveYearlyReportRow.mockResolvedValue({ id: 'v-old', periodMonth: '2027-03-01', status: 'ready' });
