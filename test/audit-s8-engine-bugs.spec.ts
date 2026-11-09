@@ -47,7 +47,7 @@ describe('SB7: house 7 is both a kendra and a maraka', () => {
   });
 });
 
-describe('SB8: Decisions uses the same combustion rule as the chart', () => {
+describe('SB8: Decisions and the chart on combustion (muhurat Asta follows drikpanchang since 2026-11-09)', () => {
   const day = (venusLon: number, venusRetro: boolean): DaySky =>
     ({
       date: '2026-11-10',
@@ -69,9 +69,15 @@ describe('SB8: Decisions uses the same combustion rule as the chart', () => {
     }) as unknown as DaySky;
   const spec = { avoid: ['combust'] } as never;
 
-  it('retrograde Venus 9 degrees from the Sun is NOT combust (orb 8, like planet-state)', () => {
+  // Superseded for muhurat by the owner's decision of 2026-11-09: wedding Asta follows drikpanchang's published
+  // dates (config/asta-dates.ts), and a year the table does not cover uses a fallback orb that CONTAINS
+  // drikpanchang's windows. Drikpanchang's retrograde Venus Asta (Oct 2026) starts 17.6 deg from the Sun, so the
+  // fallback treats retrograde Venus within 20 deg as Asta. The chart's own combustion (planet-state) is unchanged.
+  it('the chart: retrograde Venus 9 degrees from the Sun is NOT combust (orb 8, planet-state)', () => {
     expect(isCombust('Venus', 209, 200, true)).toBe(false);
-    expect(avoidFlags(day(209, true), spec)).not.toContain('combust');
+  });
+  it('Decide, uncovered year: retrograde Venus 9 degrees from the Sun IS Asta for a wedding (fallback contains drik)', () => {
+    expect(avoidFlags(day(209, true), spec)).toContain('combust');
   });
   it('direct Venus 9 degrees from the Sun is combust (orb 10)', () => {
     expect(avoidFlags(day(209, false), spec)).toContain('combust');
