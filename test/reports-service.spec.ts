@@ -57,6 +57,8 @@ const state = vi.hoisted(() => {
     takePassFreeReport: vi.fn(),
     givePassFreeReportBack: vi.fn(),
     requestKundliGeneration: vi.fn(() => Promise.resolve(undefined)),
+    // The Varshik purchase compares the saved chart's birthHash with this one.
+    birthInputsForProfile: vi.fn((..._args: unknown[]) => ({ birthHash: 'hash-now' }) as { birthHash: string } | null),
     upcomingTransitFactsNow: vi.fn((..._args: unknown[]) => Promise.resolve([] as string[])),
     withLiveSaturnTransits: vi.fn((d: unknown, ..._rest: unknown[]) => Promise.resolve(d)),
     analyzeAllDoshasAt: vi.fn(),
@@ -141,6 +143,7 @@ vi.mock('../src/modules/pass/pass-free-report.js', () => ({
 
 vi.mock('../src/modules/kundli/kundli.service.js', () => ({
   requestKundliGeneration: state.requestKundliGeneration,
+  birthInputsForProfile: state.birthInputsForProfile,
   // Passthrough: these tests are about report flow, not live Saturn transits (a spy, so the
   // period-start tests can read the date it was asked for).
   withLiveSaturnTransits: state.withLiveSaturnTransits,
@@ -333,6 +336,7 @@ beforeEach(() => {
     .mockResolvedValue({ waiting: 0, running: 0, failed: 0, rebuilt: 0, byModel: [] });
   state.resetFailedReportRefreshes.mockReset().mockResolvedValue(0);
   state.requestKundliGeneration.mockReset().mockResolvedValue(undefined);
+  state.birthInputsForProfile.mockReset().mockReturnValue({ birthHash: 'hash-now' });
   state.upcomingTransitFactsNow.mockReset().mockResolvedValue([]);
   state.sendPushBatch.mockReset().mockResolvedValue({ success: 0, failure: 0 });
 });
@@ -476,6 +480,39 @@ describe('purchaseReport — varshik_rashifal_2027 guard', () => {
     studyPlan: 'exam',
     practice: 'sometimes',
   };
+
+  // The saved chart is current unless a test says otherwise.
+  beforeEach(() => {
+    state.findKundliByUserId.mockResolvedValue({ status: 'ready', birthHash: 'hash-now', chartData: { planets: [] } });
+  });
+
+  it('waits for the chart rebuilt from the current birth details, and starts that rebuild', async () => {
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    for (const kundli of [
+      { status: 'ready', birthHash: 'hash-before-the-edit' },
+      { status: 'generating', birthHash: 'hash-now' },
+      undefined,
+    ]) {
+      state.findKundliByUserId.mockResolvedValue(kundli);
+      state.requestKundliGeneration.mockClear();
+      await expect(
+        purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'CHART_UPDATING' });
+      expect(state.requestKundliGeneration).toHaveBeenCalledWith('user-1', null);
+    }
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+    expect(state.claimReportRow).not.toHaveBeenCalled();
+  });
+
+  it('refuses when no chart can be cast from the birth details, without starting a rebuild', async () => {
+    state.resolveProfileContext.mockResolvedValue(exactProfile);
+    state.birthInputsForProfile.mockReturnValue(null);
+    await expect(
+      purchaseReport(makeUser(), { reportKey: 'varshik_rashifal_2027', tier: 'gold', answers }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'BIRTH_DETAILS_MISSING' });
+    expect(state.requestKundliGeneration).not.toHaveBeenCalled();
+    expect(state.deductWalletBalance).not.toHaveBeenCalled();
+  });
 
   it('is refused while the switch is off, before the wallet is touched', async () => {
     state.resolveFeaturesForUser.mockResolvedValue({ 'reports.varshik_rashifal_2027': { enabled: false } });

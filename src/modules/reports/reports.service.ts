@@ -66,7 +66,7 @@ import { analyzeAllDoshasAt } from '../../lib/astro-engine/doshas/index.js';
 import { CALCULATION_VERSION } from '../../lib/astro-engine/version.js';
 import { upcomingTransitFactsNow } from '../../lib/upcoming-transits.js';
 import { INDIA_TZ } from '../../lib/user-time-zone.js';
-import { requestKundliGeneration, withLiveSaturnTransits } from '../kundli/kundli.service.js';
+import { birthInputsForProfile, requestKundliGeneration, withLiveSaturnTransits } from '../kundli/kundli.service.js';
 import { recordPrediction } from '../astro/prediction-outcomes.repo.js';
 import { verifyReportClaims } from '../../lib/llm/reports/verify-claims.js';
 import {
@@ -124,7 +124,7 @@ import {
   translateReportVerdict,
   type ReportVerdict,
 } from '../../lib/llm/reports/verdict.js';
-import { assertVarshikPurchaseAllowed } from './varshik-purchase.js';
+import { assertVarshikPurchaseAllowed, varshikChartProblem } from './varshik-purchase.js';
 import {
   REPORT_GENERATORS,
   ReportGenerationAbort,
@@ -1340,6 +1340,19 @@ export async function purchaseReport(
       answers: body.answers,
       today: todayForApp(),
     });
+    // ...and only on the chart as the birth details stand now: a detail filled in or confirmed in the
+    // purchase sheet rebuilds the Kundli in the background, and the report must wait for that rebuild.
+    const chartProblem = varshikChartProblem(
+      await findKundliByUserId(user.id, birthProfileId),
+      birthInputsForProfile(profile, user)?.birthHash ?? null,
+    );
+    if (chartProblem === 'CHART_UPDATING') {
+      // Start the rebuild (or join the one already running); the app waits for it, then the reader buys.
+      void requestKundliGeneration(user.id, birthProfileId).catch((err: unknown) => {
+        logger.warn({ err, userId: user.id }, 'varshik: starting the chart rebuild before purchase failed');
+      });
+    }
+    if (chartProblem) throw Errors.badRequest(chartProblem);
   }
 
   // Varshik Rashifal is sold in tiers: the price is the chosen tier's, read here from the tier table

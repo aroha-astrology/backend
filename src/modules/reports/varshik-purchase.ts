@@ -102,6 +102,22 @@ export function assertVarshikAnswersValid(answers: Record<string, string> | unde
   }
 }
 
+/**
+ * The report must be written on the chart as the birth details stand NOW. When the reader has just
+ * filled in or confirmed a birth detail, the Kundli is rebuilt in the background; until that rebuild is
+ * saved the stored chart is the old one (its birthHash no longer matches). Pure, so it is easy to test.
+ *   BIRTH_DETAILS_MISSING: no chart can be cast at all (date, time, place or zone missing or unreadable).
+ *   CHART_UPDATING: a chart can be cast, but the saved one is missing, still building or built from older details.
+ */
+export function varshikChartProblem(
+  kundli: { status: string; birthHash: string | null } | null | undefined,
+  currentBirthHash: string | null,
+): 'BIRTH_DETAILS_MISSING' | 'CHART_UPDATING' | null {
+  if (!currentBirthHash) return 'BIRTH_DETAILS_MISSING';
+  if (!kundli || kundli.status !== 'ready' || kundli.birthHash !== currentBirthHash) return 'CHART_UPDATING';
+  return null;
+}
+
 export function assertVarshikPurchaseAllowed(args: {
   profile: ProfileContext;
   user: UserRow;
