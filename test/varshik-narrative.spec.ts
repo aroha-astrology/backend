@@ -133,21 +133,71 @@ describe('one checked call', () => {
     expect(r.sections).toHaveLength(2);
   });
 
+  describe('a missing fact (2026-11-10: a paid report failed on one missing fact each time)', () => {
+    const sky: CallSpec = { ids: ['sky_calendar', 'month_01'], counts: { sky_calendar: null, month_01: 5 }, instructions: '', facts: '', user: '' };
+    // The good answer names the eclipse that is not visible from India; this one leaves it out.
+    const missing = () => {
+      const s = goodAnswer(sky, facts);
+      s[0]!.paragraphs[0] = 'The eclipses come and go. Retrograde spells ask for patience.';
+      return Promise.resolve(s);
+    };
+
+    it('rewrites only the section that missed it, with the gap named, and keeps the rest', async () => {
+      const ask = vi.fn(missing);
+      const subs: CallSpec[] = [];
+      const repair = vi.fn((sub: CallSpec) => {
+        subs.push(sub);
+        return Promise.resolve(goodAnswer(sub, facts));
+      });
+      const r = await runCheckedCall(sky, facts, ask, repair);
+      expect(ask).toHaveBeenCalledTimes(1);
+      expect(repair).toHaveBeenCalledTimes(1);
+      expect(subs[0]!.ids).toEqual(['sky_calendar']);
+      expect(subs[0]!.user).toMatch(/Missing:\n- sky_calendar:/);
+      expect(subs[0]!.user).toContain('The eclipses come and go.');
+      expect(r.sections.map((s) => s.id)).toEqual(['sky_calendar', 'month_01']);
+      expect(coverageProblems(facts, r.sections, new Set(sky.ids))).toEqual([]);
+    });
+
+    it('still throws, nothing checkpointed, when two repairs do not supply it', async () => {
+      const repair = vi.fn((sub: CallSpec) => missing().then((s) => s.filter((x) => sub.ids.includes(x.id))));
+      await expect(runCheckedCall(sky, facts, vi.fn(missing), repair)).rejects.toThrow(/coverage: sky_calendar/);
+      expect(repair).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('throws, so nothing is checkpointed, when the second answer is still wrong', async () => {
     const ask = vi.fn(() => Promise.resolve(goodAnswer(spec, facts).slice(0, 1)));
     await expect(runCheckedCall(spec, facts, ask)).rejects.toThrow(/structure/);
     expect(ask).toHaveBeenCalledTimes(2);
   });
 
-  it('a fear word is regenerated once, and a repeat is cut sentence by sentence', async () => {
+  it('a fear word is sent back in its own section only, and one that stays is cut sentence by sentence', async () => {
     const withFear = answer((s) => { s[0]!.paragraphs[0] = 'A disaster may come. The month is calm.'; });
     const ask = vi.fn(withFear);
-    const r = await runCheckedCall(spec, facts, ask);
-    expect(ask).toHaveBeenCalledTimes(2);
+    const subs: CallSpec[] = [];
+    const repair = vi.fn((sub: CallSpec) => {
+      subs.push(sub);
+      return withFear().then((s) => s.filter((x) => sub.ids.includes(x.id)));
+    });
+    const r = await runCheckedCall(spec, facts, ask, repair);
+    // No whole-call rewrite: the call is asked once, and only January goes back, twice at most.
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(repair).toHaveBeenCalledTimes(2);
+    expect(subs.every((s) => s.ids.join() === 'month_01')).toBe(true);
+    expect(subs[0]!.user).toMatch(/Section month_01, sentences to fix or drop/);
     const text = r.sections.flatMap((s) => s.paragraphs).join(' ');
     expect(text).not.toMatch(/disaster/);
     expect(r.sections[0]!.paragraphs).toHaveLength(5);
     expect(r.sections[0]!.paragraphs[0]).toBe('The month is calm.');
+  });
+
+  it('a section mended by its repair keeps its rewritten sentence', async () => {
+    const withFear = answer((s) => { s[0]!.paragraphs[0] = 'A disaster may come. The month is calm.'; });
+    const mended = answer((s) => { s[0]!.paragraphs[0] = 'A slow start gives way. The month is calm.'; });
+    const r = await runCheckedCall(spec, facts, vi.fn(withFear), (sub) => mended().then((s) => s.filter((x) => sub.ids.includes(x.id))));
+    expect(r.sections[0]!.paragraphs[0]).toBe('A slow start gives way. The month is calm.');
+    expect(r.sections[1]!.paragraphs).toEqual(goodAnswer(spec, facts)[1]!.paragraphs);
   });
 
   it('a date that is in no fact is cut, never shown', async () => {

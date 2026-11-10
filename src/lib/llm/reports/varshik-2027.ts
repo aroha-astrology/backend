@@ -991,38 +991,106 @@ const countHits = (m: Map<string, TextHit[]>): number => [...m.values()].reduce(
  * tells), and the AI tells that remain are returned as flags. A call that still has a structure or
  * coverage gap throws: it is never checkpointed.
  */
+/** The section ids a coverage problem points at ("yogas: does not mention ...", "section doshas: expected ..."). */
+export function coverageSectionIds(problems: string[], ids: readonly string[]): string[] {
+  const out = new Set<string>();
+  for (const p of problems) {
+    const id = p.replace(/^section /, '').split(':')[0]!.trim();
+    if (ids.includes(id)) out.add(id);
+  }
+  return ids.filter((id) => out.has(id));
+}
+
+/**
+ * A focused rewrite of only the sections that missed a required fact, with the gaps named. A whole-call
+ * retry of a 15-section call tends to fix one gap and drop another (2026-11-10: a paid report failed three
+ * times, each time on a different single fact), so the gaps left after the retry are mended here instead.
+ */
+export function repairSpec(
+  spec: CallSpec,
+  raw: RawSection[],
+  problems: string[],
+  ids: string[],
+  hits: Map<string, TextHit[]> = new Map(),
+): CallSpec {
+  const counts: Record<string, number | null> = {};
+  for (const id of ids) counts[id] = spec.counts[id] ?? null;
+  const current = raw.filter((s) => ids.includes(s.id)).map((s) => ({ id: s.id, paragraphs: s.paragraphs }));
+  const mine = problems.filter((p) => coverageSectionIds([p], ids).length > 0);
+  const sentences = ids
+    .map((id) => [id, (hits.get(id) ?? []).filter((h) => !h.rule.startsWith('ai-tell:'))] as const)
+    .filter(([, h]) => h.length > 0)
+    .map(([id, h]) => `Section ${id}, sentences to fix or drop:\n${hitsAsPromptLines(h)}`);
+  return {
+    ...spec,
+    ids,
+    counts,
+    user:
+      'Rewrite ONLY the sections below, fixing what is listed: add each missing fact and fix or drop each flagged sentence. ' +
+      'Keep every other point, keep the same section ids in the same order and exactly the same number of paragraphs in each, ' +
+      'and work each missing fact into the paragraph where it belongs, in the same calm voice. Use only the facts given above.\n\n' +
+      (mine.length ? `Missing:\n${mine.map((p) => `- ${p}`).join('\n')}\n\n` : '') +
+      (sentences.length ? `${sentences.join('\n')}\n\n` : '') +
+      `The sections as written:\n${JSON.stringify({ sections: current }, null, 2)}`,
+  };
+}
+
+/** How many focused repair rounds a call gets for the facts still missing after its retry. */
+const REPAIR_ROUNDS = 2;
+
 export async function runCheckedCall(
   spec: CallSpec,
   facts: VarshikFacts,
   ask: (note: string | null) => Promise<RawSection[] | null> = (note) => askOnce(spec, note),
+  repair: (sub: CallSpec) => Promise<RawSection[] | null> = (sub) => askOnce(sub, null),
 ): Promise<CheckedCall> {
   const only = new Set(spec.ids);
   const evaluate = (parsed: RawSection[] | null) => {
     const structure = structureProblems(spec, parsed);
-    if (structure.length > 0 || !parsed) return { structure, coverage: [] as string[], hits: new Map<string, TextHit[]>(), sections: null as ReportSection[] | null };
+    if (structure.length > 0 || !parsed) return { structure, coverage: [] as string[], hits: new Map<string, TextHit[]>(), sections: null as ReportSection[] | null, raw: null as RawSection[] | null };
     const sections = toSections(parsed, facts.year);
     return {
       structure,
       coverage: coverageProblems(facts, sections, only),
       hits: hitsOf(sections, facts),
       sections,
+      raw: parsed,
     };
   };
   const score = (e: ReturnType<typeof evaluate>): number =>
     e.structure.length * 1000 + e.coverage.length * 100 + countHits(e.hits);
 
   let best = evaluate(await ask(null));
-  if (score(best) > 0) {
-    const lines: string[] = [];
-    if (best.structure.length) lines.push(`Structure problems:\n${best.structure.map((p) => `- ${p}`).join('\n')}`);
-    if (best.coverage.length) lines.push(`Missing coverage:\n${best.coverage.map((p) => `- ${p}`).join('\n')}`);
-    for (const [id, hits] of best.hits) lines.push(`Section ${id}:\n${hitsAsPromptLines(hits)}`);
+  // Only an answer that cannot be used as it stands (unreadable, wrong ids or paragraph counts) is
+  // written again whole. Anything else is mended section by section below, which costs a fraction.
+  if (best.structure.length > 0) {
     const second = evaluate(
       await ask(
-        `Your first answer failed these checks. Write the whole answer again, fixing every one of them, keeping everything that was fine:\n${lines.join('\n')}`,
+        `Your first answer failed these checks. Write the whole answer again, fixing every one of them, keeping everything that was fine:\nStructure problems:\n${best.structure.map((p) => `- ${p}`).join('\n')}`,
       ),
     );
     if (score(second) <= score(best)) best = second;
+  }
+  // Missing facts and flagged sentences: rewrite only the sections that have them (AI tells are only flagged).
+  for (let round = 0; round < REPAIR_ROUNDS && best.raw && best.structure.length === 0; round++) {
+    const flagged = new Set(
+      [...best.hits].filter(([, hits]) => hits.some((h) => !h.rule.startsWith('ai-tell:'))).map(([id]) => id),
+    );
+    const missing = new Set(coverageSectionIds(best.coverage, spec.ids));
+    const ids = spec.ids.filter((id) => missing.has(id) || flagged.has(id));
+    if (ids.length === 0) break;
+    const sub = repairSpec(spec, best.raw, best.coverage, ids, best.hits);
+    const patched = await repair(sub).catch((err: unknown) => {
+      logger.warn({ err, ids }, 'varshik: repair call failed');
+      return null;
+    });
+    if (!patched || structureProblems(sub, patched).length > 0) continue;
+    const merged = best.raw.map((s) => patched.find((p) => p.id === s.id) ?? s);
+    const next = evaluate(merged);
+    if (next.structure.length === 0 && score(next) < score(best)) {
+      logger.info({ ids, before: score(best), after: score(next) }, 'varshik: repaired sections');
+      best = next;
+    }
   }
   if (!best.sections || best.structure.length > 0) {
     throw new Error(`varshik_rashifal_2027 call (${spec.ids[0]}...) structure: ${best.structure.join('; ')}`);
@@ -1306,13 +1374,15 @@ export async function generateVarshikNarrative(
 ): Promise<VarshikNarrative> {
   const existing = progress?.existingGroups ?? [];
   const flags: TextFlag[] = [];
+  // The test seam stands in for the repair call too (the real one is askOnce on the narrowed spec).
+  const repairFor = askFor ? (sub: CallSpec) => askFor(sub)(null) : undefined;
 
   // Calls 1 to 4 are independent, so they run in parallel; the checkpoint contract is that only a
   // contiguous prefix of successes is saved, so each waits its turn to save (see kp_annual).
   const specs = PARALLEL_CALLS.map((build) => build(facts)).map(withSpacedStars).map(withYear(facts));
   const first = await Promise.allSettled(
     specs.map((spec, i) =>
-      i < existing.length ? Promise.resolve(existing[i]!) : runCheckedCall(spec, facts, askFor?.(spec)),
+      i < existing.length ? Promise.resolve(existing[i]!) : runCheckedCall(spec, facts, askFor?.(spec), repairFor),
     ),
   );
   const groups: ReportSection[][] = [];
@@ -1345,7 +1415,7 @@ export async function generateVarshikNarrative(
       .map((proposal) => ({ proposal, window: facts.scores.answerWindows[proposal.key]! }))
       .filter((p) => !!p.window);
     const spec5 = withYear(facts)(withSpacedStars(call5(facts, plans)));
-    const done = await runCheckedCall(spec5, facts, askFor?.(spec5));
+    const done = await runCheckedCall(spec5, facts, askFor?.(spec5), repairFor);
     flags.push(...done.flags);
     group5 = done.sections.map((s) => {
       const m = /^question_(\d)$/.exec(s.id ?? '');
