@@ -18,6 +18,8 @@ import { listUserIdsNotified } from '../pass/pass.repo.js';
 
 export const VARSHIK_LAUNCH_PUSH_TYPE = 'varshik_launch';
 /** A try-out sent to the admin alone: it must not count as that admin's launch notification. */
+/** The follow-up once the report is live: its own type, so users who had the "arrives tomorrow" push get this one too. */
+export const VARSHIK_LIVE_PUSH_TYPE = 'varshik_live';
 export const VARSHIK_LAUNCH_PUSH_TEST_TYPE = 'varshik_launch_test';
 /** The reports page, where the report is featured while the switches are on. */
 export const VARSHIK_LAUNCH_PUSH_LINK = '/reports';
@@ -112,10 +114,10 @@ export interface VarshikLaunchPreview {
   copyEnglish: LaunchCopy;
 }
 
-async function dueAudience() {
+async function dueAudience(type: string = VARSHIK_LAUNCH_PUSH_TYPE) {
   const [audience, sent] = await Promise.all([
     resolveAudience(null),
-    listUserIdsNotified(VARSHIK_LAUNCH_PUSH_TYPE),
+    listUserIdsNotified(type),
   ]);
   return { due: audience.filter((a) => !sent.has(a.userId)), total: audience.length };
 }
@@ -152,15 +154,15 @@ export interface VarshikLaunchSend {
 }
 
 /** Sends to every user who has not had it. A second call reaches only the ones the first missed. */
-export async function sendVarshikLaunch(): Promise<VarshikLaunchSend> {
-  const { due } = await dueAudience();
+export async function sendVarshikLaunch(type: string = VARSHIK_LAUNCH_PUSH_TYPE): Promise<VarshikLaunchSend> {
+  const { due } = await dueAudience(type);
   const limit = pLimit(SEND_CONCURRENCY);
   const results = await Promise.allSettled(
     due.map((member) =>
       limit(() =>
         notifyUser(member.userId, {
           ...varshikLaunchCopy(member.locale),
-          type: VARSHIK_LAUNCH_PUSH_TYPE,
+          type,
           link: VARSHIK_LAUNCH_PUSH_LINK,
         }),
       ),
