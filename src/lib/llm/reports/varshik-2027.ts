@@ -861,7 +861,7 @@ const VARSHIK_PROFILE = { ...REPORT_PROFILE, name: 'report-varshik', maxTokens: 
  * A background job nobody waits on, and its biggest call writes about 15 sections: the default
  * 60 s per attempt and 90 s in all (gemini-client.ts) cut it off. Same override the palm scan uses.
  */
-const CALL_TIMING = { timeoutMs: 180_000, totalBudgetMs: 480_000 } as const;
+const CALL_TIMING = { timeoutMs: 180_000, totalBudgetMs: 480_000, preferPaid: true } as const;
 
 /** Drops any sentence the content-policy output filter blocks (same rule as kp_annual). */
 export function scrubPolicy(text: string): string {

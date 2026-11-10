@@ -471,7 +471,7 @@ export async function generate(opts: LLMRequestOptions): Promise<string> {
       // demand") or a string of timeouts — the failures most likely to be
       // capacity-related, and so most likely to be fixed by the paid tier —
       // exhausted every attempt on free keys and gave up with the reserve idle.
-      const picked = await pickKey(triedThisAttempt, attempt === MAX_ATTEMPTS || sawFailure);
+      const picked = await pickKey(triedThisAttempt, opts.preferPaid === true || attempt === MAX_ATTEMPTS || sawFailure);
 
       // The free Gemini keys are spent (or we are about to escalate to the
       // billed reserve). Chat and report calls get one try at the free fallback

@@ -73,6 +73,8 @@ export interface LLMRequestOptions {
    * leaves room for a retry.
    */
   totalBudgetMs?: number;
+  /** Try the paid Gemini reserve before the free keys for this call (paid, user-waiting work). Only reorders; with no paid key it falls back to free. */
+  preferPaid?: boolean;
   /**
    * Attributes this call's `ai_usage` telemetry row (see gemini-client.ts's
    * `generate()`) to a user. Optional and not yet threaded through every
