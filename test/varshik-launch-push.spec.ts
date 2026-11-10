@@ -54,8 +54,8 @@ beforeEach(() => {
 describe('the Varshik launch push copy', () => {
   it('has the owner\'s English text and all 15 app languages', () => {
     expect(VARSHIK_LAUNCH_PUSH_COPY.en).toEqual({
-      title: 'Varshik Rashifal 2027 arrives tomorrow',
-      body: 'Your year ahead, month by month, read from your own birth chart. Tap to get ready.',
+      title: 'Varshik Rashifal 2027 is live',
+      body: 'Your year ahead, month by month, read from your own birth chart. Open Reports to see it.',
     });
     expect(Object.keys(VARSHIK_LAUNCH_PUSH_COPY).sort()).toEqual([...APP_LANGUAGES].sort());
   });

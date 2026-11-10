@@ -31,64 +31,64 @@ export interface LaunchCopy {
 /** Hand-written. Check any change against the launch pop-up wording (frontend i18n/roadmap/varshik-launch.ts). */
 export const VARSHIK_LAUNCH_PUSH_COPY: Record<string, LaunchCopy> = {
   en: {
-    title: 'Varshik Rashifal 2027 arrives tomorrow',
-    body: 'Your year ahead, month by month, read from your own birth chart. Tap to get ready.',
+    title: 'Varshik Rashifal 2027 is live',
+    body: 'Your year ahead, month by month, read from your own birth chart. Open Reports to see it.',
   },
   hi: {
-    title: 'Varshik Rashifal 2027 कल आ रहा है',
-    body: 'आपका आने वाला साल, महीने-दर-महीने, आपकी अपनी जन्म कुंडली से पढ़ा गया। तैयार होने के लिए टैप करें।',
+    title: 'Varshik Rashifal 2027 आ गया है',
+    body: 'आपका आने वाला साल, महीने-दर-महीने, आपकी अपनी जन्म कुंडली से पढ़ा गया। देखने के लिए रिपोर्ट खोलें।',
   },
   bn: {
-    title: 'Varshik Rashifal 2027 আসছে আগামীকাল',
-    body: 'আপনার সামনের বছর, মাসে মাসে, আপনার নিজের জন্মকুণ্ডলী থেকে পড়া। তৈরি হতে ট্যাপ করুন।',
+    title: 'Varshik Rashifal 2027 এসে গেছে',
+    body: 'আপনার সামনের বছর, মাসে মাসে, আপনার নিজের জন্মকুণ্ডলী থেকে পড়া। দেখতে রিপোর্ট খুলুন।',
   },
   mr: {
-    title: 'Varshik Rashifal 2027 उद्या येत आहे',
-    body: 'तुमचे येणारे वर्ष, महिन्या-महिन्याने, तुमच्या स्वतःच्या जन्मकुंडलीतून वाचलेले. तयार होण्यासाठी टॅप करा.',
+    title: 'Varshik Rashifal 2027 आले आहे',
+    body: 'तुमचे येणारे वर्ष, महिन्या-महिन्याने, तुमच्या स्वतःच्या जन्मकुंडलीतून वाचलेले. पाहण्यासाठी रिपोर्ट उघडा.',
   },
   te: {
-    title: 'Varshik Rashifal 2027 రేపు వస్తోంది',
-    body: 'మీ రాబోయే సంవత్సరం, నెల నెలా, మీ స్వంత జన్మ కుండలి నుండి చదివినది. సిద్ధం కావడానికి నొక్కండి.',
+    title: 'Varshik Rashifal 2027 వచ్చేసింది',
+    body: 'మీ రాబోయే సంవత్సరం, నెల నెలా, మీ స్వంత జన్మ కుండలి నుండి చదివినది. చూడటానికి రిపోర్ట్స్ తెరవండి.',
   },
   ta: {
-    title: 'Varshik Rashifal 2027 நாளை வருகிறது',
-    body: 'உங்கள் வரவிருக்கும் ஆண்டு, மாதம் மாதமாக, உங்கள் சொந்த ஜாதகத்திலிருந்து படிக்கப்பட்டது. தயாராக தட்டவும்.',
+    title: 'Varshik Rashifal 2027 வந்துவிட்டது',
+    body: 'உங்கள் வரவிருக்கும் ஆண்டு, மாதம் மாதமாக, உங்கள் சொந்த ஜாதகத்திலிருந்து படிக்கப்பட்டது. பார்க்க ரிப்போர்ட்ஸைத் திறக்கவும்.',
   },
   gu: {
-    title: 'Varshik Rashifal 2027 આવતીકાલે આવે છે',
-    body: 'તમારું આવનારું વર્ષ, મહિને મહિને, તમારી પોતાની જન્મકુંડળીમાંથી વાંચેલું. તૈયાર થવા ટૅપ કરો.',
+    title: 'Varshik Rashifal 2027 આવી ગયું છે',
+    body: 'તમારું આવનારું વર્ષ, મહિને મહિને, તમારી પોતાની જન્મકુંડળીમાંથી વાંચેલું. જોવા માટે રિપોર્ટ્સ ખોલો.',
   },
   kn: {
-    title: 'Varshik Rashifal 2027 ನಾಳೆ ಬರುತ್ತಿದೆ',
-    body: 'ನಿಮ್ಮ ಮುಂದಿನ ವರ್ಷ, ತಿಂಗಳಿಂದ ತಿಂಗಳಿಗೆ, ನಿಮ್ಮದೇ ಜನ್ಮ ಕುಂಡಲಿಯಿಂದ ಓದಿದ್ದು. ಸಿದ್ಧರಾಗಲು ಟ್ಯಾಪ್ ಮಾಡಿ.',
+    title: 'Varshik Rashifal 2027 ಬಂದಿದೆ',
+    body: 'ನಿಮ್ಮ ಮುಂದಿನ ವರ್ಷ, ತಿಂಗಳಿಂದ ತಿಂಗಳಿಗೆ, ನಿಮ್ಮದೇ ಜನ್ಮ ಕುಂಡಲಿಯಿಂದ ಓದಿದ್ದು. ನೋಡಲು ರಿಪೋರ್ಟ್ಸ್ ತೆರೆಯಿರಿ.',
   },
   es: {
-    title: 'Varshik Rashifal 2027 llega mañana',
-    body: 'Tu año por delante, mes a mes, leído desde tu propia carta natal. Toca para prepararte.',
+    title: 'Varshik Rashifal 2027 ya está aquí',
+    body: 'Tu año por delante, mes a mes, leído desde tu propia carta natal. Abre Informes para verlo.',
   },
   fr: {
-    title: 'Varshik Rashifal 2027 arrive demain',
-    body: 'Votre année à venir, mois par mois, lue dans votre propre thème natal. Touchez pour vous préparer.',
+    title: 'Varshik Rashifal 2027 est là',
+    body: 'Votre année à venir, mois par mois, lue dans votre propre thème natal. Ouvrez Rapports pour la voir.',
   },
   de: {
-    title: 'Varshik Rashifal 2027 kommt morgen',
-    body: 'Dein kommendes Jahr, Monat für Monat, gelesen aus deinem eigenen Geburtshoroskop. Tippe, um dich vorzubereiten.',
+    title: 'Varshik Rashifal 2027 ist da',
+    body: 'Dein kommendes Jahr, Monat für Monat, gelesen aus deinem eigenen Geburtshoroskop. Öffne Berichte, um es zu sehen.',
   },
   it: {
-    title: 'Varshik Rashifal 2027 arriva domani',
-    body: 'Il tuo anno che verrà, mese per mese, letto dalla tua carta natale. Tocca per prepararti.',
+    title: 'Varshik Rashifal 2027 è arrivato',
+    body: 'Il tuo anno che verrà, mese per mese, letto dalla tua carta natale. Apri Rapporti per vederlo.',
   },
   pt: {
-    title: 'O Varshik Rashifal 2027 chega amanhã',
-    body: 'O seu ano pela frente, mês a mês, lido a partir do seu próprio mapa de nascimento. Toque para se preparar.',
+    title: 'Varshik Rashifal 2027 já chegou',
+    body: 'O seu ano pela frente, mês a mês, lido a partir do seu próprio mapa de nascimento. Abra Relatórios para ver.',
   },
   ja: {
-    title: 'Varshik Rashifal 2027 は明日登場',
-    body: 'あなたの来年を、月ごとに、あなた自身の出生チャートから読み解きます。タップして準備しましょう。',
+    title: 'Varshik Rashifal 2027 が登場',
+    body: 'あなたの来年を、月ごとに、あなた自身の出生チャートから読み解きます。レポートを開いてご覧ください。',
   },
   ru: {
-    title: 'Varshik Rashifal 2027 выйдет завтра',
-    body: 'Ваш год впереди, месяц за месяцем, по вашей собственной натальной карте. Нажмите, чтобы подготовиться.',
+    title: 'Varshik Rashifal 2027 уже здесь',
+    body: 'Ваш год впереди, месяц за месяцем, по вашей собственной натальной карте. Откройте «Отчёты», чтобы увидеть.',
   },
 };
 
