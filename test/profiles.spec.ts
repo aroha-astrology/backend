@@ -142,6 +142,16 @@ describe('GET /v1/profiles', () => {
     expect(body[0]).toMatchObject({ id: 'primary', isPrimary: true, isActive: true });
   });
 
+  it('carries how sure each birth time is (the Varshik purchase sheet reads it from here)', async () => {
+    state.findUserByFirebaseUid.mockResolvedValue(
+      makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', birthTimeAccuracy: 'approximate' }),
+    );
+    state.listBirthProfilesByOwner.mockResolvedValue([makeBirthProfileRow({ id: 'profile-a', birthTimeAccuracy: 'exact' })]);
+    const body = (await (await createApp().request('/v1/profiles', { headers: AUTH })).json()) as any[];
+    expect(body[0]).toMatchObject({ id: 'primary', birthTimeAccuracy: 'approximate' });
+    expect(body[1]).toMatchObject({ id: 'profile-a', birthTimeAccuracy: 'exact' });
+  });
+
   it('bumps lastActiveAt on request when it has never been set', async () => {
     state.findUserByFirebaseUid.mockResolvedValue(
       makeUserRow({ id: 'id-1', firebaseUid: 'uid-1', lastActiveAt: null }),

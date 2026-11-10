@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { GenderSchema, PlaceSchema } from '../users/users.schemas.js';
+import { BirthTimeAccuracySchema, GenderSchema, PlaceSchema } from '../users/users.schemas.js';
 import { BirthProfileRelationshipSchema } from './birth-profiles.schemas.js';
 
 /**
@@ -19,6 +19,8 @@ export const ProfileSchema = z
     gender: GenderSchema.nullable(),
     dateOfBirth: z.string().nullable(),
     timeOfBirth: z.string().nullable(),
+    /** How sure the reader is of that time (null = never asked). Varshik Rashifal is sold only on 'exact'. */
+    birthTimeAccuracy: BirthTimeAccuracySchema.nullable(),
     placeOfBirth: PlaceSchema.nullable(),
     createdAt: z.string(),
   })

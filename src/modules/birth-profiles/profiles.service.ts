@@ -51,6 +51,7 @@ function primaryProfileDto(user: UserRow): ProfileDto {
     gender: user.gender,
     dateOfBirth: user.dateOfBirth,
     timeOfBirth: user.timeOfBirth,
+    birthTimeAccuracy: user.birthTimeAccuracy,
     placeOfBirth: user.placeOfBirth,
     createdAt: user.createdAt.toISOString(),
   };
@@ -66,6 +67,7 @@ function additionalProfileDto(row: BirthProfileRow, isActive: boolean): ProfileD
     gender: row.gender,
     dateOfBirth: row.dateOfBirth,
     timeOfBirth: row.timeOfBirth,
+    birthTimeAccuracy: row.birthTimeAccuracy,
     placeOfBirth: row.placeOfBirth,
     createdAt: row.createdAt.toISOString(),
   };
