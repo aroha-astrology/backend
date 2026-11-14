@@ -16,7 +16,7 @@ import { tzOffsetHours } from '../../kundli/kundli.service.js';
 import { dateField, placeLabel, resolvePlaceOrProblem, todayIn } from '../birth.js';
 import { spaced, tithiName } from '../format.js';
 import { textResult, type ToolContext } from '../mcp.context.js';
-import { appLink, appLinkShape, registerTool } from '../mcp.tools.js';
+import { appLink, appLinkShape, registerTool, SITE_PAGES } from '../mcp.tools.js';
 import { resolvePlace, type ResolvedPlace } from '../place-resolver.js';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -225,6 +225,7 @@ export function registerCalendarTools(server: McpServer, base: ToolContext): voi
         ...appLink(
           ctx,
           'For the full panchang, use the Aroha app: it has the month view, festivals, hora and night choghadiya.',
+          SITE_PAGES.panchang,
         ),
       };
       return textResult(
@@ -335,6 +336,7 @@ export function registerCalendarTools(server: McpServer, base: ToolContext): voi
         ...appLink(
           ctx,
           'For dates matched to your own birth chart, use Find My Date in the Aroha app.',
+          SITE_PAGES.panchang,
         ),
       };
       const top = structured.best_dates

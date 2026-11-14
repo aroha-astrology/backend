@@ -345,6 +345,18 @@ describe('ChatGPT plugin endpoint: link to Aroha and pacing', () => {
     expect(unknown.structuredContent.more_in_aroha.url).toBe(WEB_APP_URL);
   });
 
+  it('adds a plain page_url to the matching page on the website, and leaves it out where there is none', async () => {
+    const chart = await call('generate_birth_chart', PUNE_BIRTH);
+    expect(chart.structuredContent.more_in_aroha.page_url).toBe('https://www.arohaastrology.in/kundli');
+
+    const moon = await call('find_moon_sign', PUNE_BIRTH);
+    expect(moon.structuredContent.more_in_aroha.page_url).toBe('https://www.arohaastrology.in/moon-sign');
+
+    // Numerology has no page of its own, so no field rather than a loose guess.
+    const numbers = await call('get_numerology_numbers', { full_name: 'Asha Rao', birth_date: '1990-04-17' });
+    expect(numbers.structuredContent.more_in_aroha).not.toHaveProperty('page_url');
+  }, 30_000);
+
   it('says with every result that the figures are calculated, without claiming accuracy', async () => {
     const chart = await call('generate_birth_chart', PUNE_BIRTH);
     const numbers = await call('get_numerology_numbers', {

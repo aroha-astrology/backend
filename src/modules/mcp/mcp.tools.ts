@@ -50,6 +50,7 @@ export const appLinkShape = {
     .object({
       note: z.string().describe('What the Aroha app adds beyond this result'),
       url: z.string().describe('Link to open Aroha on this device'),
+      page_url: z.string().optional().describe('Page on arohaastrology.in about the same topic'),
     })
     .describe(
       'Where the detailed reading is. Mention once, briefly, at the end of the answer. Never mention prices.',
@@ -66,14 +67,30 @@ const claudeAppLinkShape = {
     .object({
       note: z.string().describe('What the Aroha app adds beyond this result'),
       url: z.string().describe('Link to open Aroha'),
+      page_url: z.string().optional().describe('Page on arohaastrology.in about the same topic'),
     })
     .describe('Where the same result can be explored in more detail.'),
 };
 
-export function appLink(ctx: ToolContext, note: string) {
+/** The public pages on arohaastrology.in that match a tool. A tool with no matching page leaves the field out. */
+export const SITE_PAGES = {
+  kundli: 'https://www.arohaastrology.in/kundli',
+  panchang: 'https://www.arohaastrology.in/panchang',
+  moonSign: 'https://www.arohaastrology.in/moon-sign',
+} as const;
+
+/**
+ * `page` is the matching page on the website. It is a plain address next to the app link, with no
+ * wording of its own, so a person or a tool can read about the same topic without installing anything.
+ */
+export function appLink(ctx: ToolContext, note: string, page?: (typeof SITE_PAGES)[keyof typeof SITE_PAGES]) {
   return {
     calculated: HOW_CALCULATED,
-    more_in_aroha: { note, url: openInArohaUrl(ctx.meta.userAgent) },
+    more_in_aroha: {
+      note,
+      url: openInArohaUrl(ctx.meta.userAgent),
+      ...(page ? { page_url: page } : {}),
+    },
   };
 }
 

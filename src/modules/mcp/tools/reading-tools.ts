@@ -12,7 +12,7 @@ import type {
 import { moonSignForecast } from '../../astro/astro.service.js';
 import { birthDateField } from '../birth.js';
 import { textResult, type ToolContext } from '../mcp.context.js';
-import { appLink, appLinkShape, registerTool } from '../mcp.tools.js';
+import { appLink, appLinkShape, registerTool, SITE_PAGES } from '../mcp.tools.js';
 import { SIGNS } from './chart-tools.js';
 
 const AREAS = ['overall', 'health', 'career', 'marriage', 'finance', 'education'] as const;
@@ -112,6 +112,7 @@ export function registerReadingTools(server: McpServer, base: ToolContext): void
         ...appLink(
           ctx,
           'For a reading from your own birth chart, not only your moon sign, use the Aroha app.',
+          SITE_PAGES.moonSign,
         ),
       };
       return textResult(

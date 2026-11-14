@@ -10,7 +10,7 @@ import {
 } from '../chart.service.js';
 import { spaced } from '../format.js';
 import { BIRTH_CHART_WIDGET_URI, textResult, type ToolContext } from '../mcp.context.js';
-import { appLink, appLinkShape, registerTool } from '../mcp.tools.js';
+import { appLink, appLinkShape, registerTool, SITE_PAGES } from '../mcp.tools.js';
 
 export const SIGNS = [
   'Aries',
@@ -62,7 +62,7 @@ export function registerChartTools(server: McpServer, base: ToolContext): void {
       const resolved = resolveBirth(args);
       if ('problem' in resolved) return resolved.problem;
       const chart = await computeBirthChart(resolved.birth);
-      return textResult({ ...chart, ...appLink(ctx, CHART_NOTE) }, chartSummary(chart));
+      return textResult({ ...chart, ...appLink(ctx, CHART_NOTE, SITE_PAGES.kundli) }, chartSummary(chart));
     },
   );
 
@@ -116,6 +116,7 @@ export function registerChartTools(server: McpServer, base: ToolContext): void {
           ...appLink(
             ctx,
             'For a detailed reading, use the Aroha app: it gives the full birth chart and a daily, weekly, monthly and yearly reading.',
+            SITE_PAGES.moonSign,
           ),
         },
         `Moon sign ${moon.sign}, nakshatra ${spaced(moon.nakshatra)} pada ${moon.pada} (lord ${moon.nakshatraLord}).` +
@@ -174,7 +175,7 @@ export function registerChartTools(server: McpServer, base: ToolContext): void {
             retrograde: p.retrograde ?? false,
           })),
           ...(args.time_known === false ? { caveat: UNKNOWN_TIME_CAVEAT } : {}),
-          ...appLink(ctx, CHART_NOTE),
+          ...appLink(ctx, CHART_NOTE, SITE_PAGES.kundli),
         },
         `Showing the birth chart with ${args.ascendant_sign} ascendant.`,
       ),
