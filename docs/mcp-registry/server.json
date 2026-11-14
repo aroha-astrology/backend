@@ -1,0 +1,14 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "in.arohaastrology/aroha-astrology",
+  "title": "Aroha Astrology",
+  "description": "Vedic (Jyotish) astrology calculations: birth chart, kundli matching, panchang, auspicious dates, moon sign horoscope and numerology.",
+  "websiteUrl": "https://www.arohaastrology.in",
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.arohaastrology.in/mcp"
+    }
+  ]
+}
